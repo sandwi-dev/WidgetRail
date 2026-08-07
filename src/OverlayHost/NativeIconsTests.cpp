@@ -48,6 +48,7 @@ void ClosedSemanticIds() {
         Pair{L"check", NativeIcon::Check}, Pair{L"connection", NativeIcon::Connection},
         Pair{L"volume", NativeIcon::Volume}, Pair{L"muted", NativeIcon::Muted},
         Pair{L"microphone", NativeIcon::Microphone},
+        Pair{L"wifi", NativeIcon::Wifi}, Pair{L"ethernet", NativeIcon::Ethernet},
     };
     for (const auto& [name, expectedIcon] : expected) {
         NativeIcon parsed = NativeIcon::Warning;
@@ -107,6 +108,7 @@ void RenderEveryIcon() {
         NativeIcon::Repeat, NativeIcon::Settings, NativeIcon::Warning,
         NativeIcon::Check, NativeIcon::Connection,
         NativeIcon::Volume, NativeIcon::Muted, NativeIcon::Microphone,
+        NativeIcon::Wifi, NativeIcon::Ethernet,
     };
     for (const NativeIcon icon : icons) {
         target->BeginDraw();

@@ -67,7 +67,9 @@ manifest `permissions` (core requirement) or `optionalPermissions` (degradable
 feature), then call the typed `HostServices.Audio` or `HostServices.Network`
 API. Required capabilities are not auto-granted. See [widget
 capabilities](capabilities.md); do not create raw broker messages or hard-code
-operation IDs.
+operation IDs. The [Network Controls reference](network-controls.md) is the
+complete example for an event-driven read subscription, saved-profile-only
+Interactive control, Windows privacy degradation, and transport-free tests.
 
 Custom worker executables should delegate host startup to the public runtime
 bootstrap instead of parsing pipe or broker arguments:

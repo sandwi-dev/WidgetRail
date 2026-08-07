@@ -26,6 +26,8 @@ enum class NativeIcon : std::uint8_t {
     Volume,
     Muted,
     Microphone,
+    Wifi,
+    Ethernet,
 };
 
 // Accepts protocol glyph names plus a small closed list of built-in transport

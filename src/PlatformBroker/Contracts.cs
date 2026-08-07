@@ -54,8 +54,43 @@ public enum NetworkConnectivity
     Internet,
 }
 
+public enum NetworkTransportKind
+{
+    None,
+    Ethernet,
+    Wifi,
+    Other,
+}
+
+public enum NetworkWirelessAvailability
+{
+    Available,
+    NoAdapter,
+    RadioOff,
+    ServiceUnavailable,
+}
+
+public enum NetworkDetailsAccess
+{
+    Available,
+    PrivacyRestricted,
+    Unavailable,
+}
+
+public enum NetworkConnectionAttemptState
+{
+    None,
+    Connecting,
+    Failed,
+}
+
 public sealed record NetworkStatusSummary(
     NetworkConnectivity Connectivity,
+    NetworkTransportKind Transport,
+    NetworkWirelessAvailability WirelessAvailability,
+    NetworkDetailsAccess DetailsAccess,
+    NetworkConnectionAttemptState ConnectionAttemptState,
+    string? AttemptProfileId,
     string? ActiveProfileId,
     string? ActiveProfileName,
     int? SignalPercent);

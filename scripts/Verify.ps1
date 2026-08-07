@@ -58,11 +58,20 @@ try {
     Invoke-Checked -Description 'Build and test Windows Core Audio provider' -Command {
         dotnet run --project 'tests\WindowsAudioProvider.Tests\WindowsAudioProvider.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test Windows network provider' -Command {
+        dotnet run --project 'tests\WindowsNetworkProvider.Tests\WindowsNetworkProvider.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build and test first-party Audio Mixer widget' -Command {
         dotnet run --project 'tests\AudioMixerWidget.Tests\AudioMixerWidget.Tests.csproj' --configuration $Configuration
     }
     Invoke-Checked -Description 'Build first-party Audio Mixer isolated worker' -Command {
         dotnet build 'src\FirstPartyWidgets\AudioMixerWidget.Worker\AudioMixerWidget.Worker.csproj' --configuration $Configuration --nologo
+    }
+    Invoke-Checked -Description 'Build and test first-party Network Controls widget' -Command {
+        dotnet run --project 'tests\NetworkControlsWidget.Tests\NetworkControlsWidget.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build first-party Network Controls isolated worker' -Command {
+        dotnet build 'src\FirstPartyWidgets\NetworkControlsWidget.Worker\NetworkControlsWidget.Worker.csproj' --configuration $Configuration --nologo
     }
     Invoke-Checked -Description 'Build and test first-party Settings widget' -Command {
         dotnet run --project 'tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj' --configuration $Configuration

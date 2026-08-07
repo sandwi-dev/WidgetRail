@@ -367,11 +367,26 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             throw new BrokerException("invalid_backend_data", "Network status is invalid.");
         if (!Enum.IsDefined(status.Connectivity))
             throw new BrokerException("invalid_backend_data", "Network connectivity is invalid.");
+        if (!Enum.IsDefined(status.Transport) ||
+            !Enum.IsDefined(status.WirelessAvailability) ||
+            !Enum.IsDefined(status.DetailsAccess) ||
+            !Enum.IsDefined(status.ConnectionAttemptState))
+            throw new BrokerException("invalid_backend_data", "Network status state is invalid.");
+        if ((status.ConnectionAttemptState == NetworkConnectionAttemptState.None) !=
+            (status.AttemptProfileId is null))
+            throw new BrokerException("invalid_backend_data", "Network attempt state is inconsistent.");
+        if (status.AttemptProfileId is not null)
+            ContractValidation.OpaqueId(status.AttemptProfileId, "invalid_backend_data");
         if (status.ActiveProfileId is not null) ContractValidation.OpaqueId(
             status.ActiveProfileId, "invalid_backend_data");
         if (status.ActiveProfileName is not null) ContractValidation.DisplayName(status.ActiveProfileName);
         if ((status.ActiveProfileId is null) != (status.ActiveProfileName is null))
             throw new BrokerException("invalid_backend_data", "Network profile summary is incomplete.");
+        if ((status.Transport != NetworkTransportKind.Wifi ||
+             status.DetailsAccess != NetworkDetailsAccess.Available) &&
+            (status.ActiveProfileId is not null || status.ActiveProfileName is not null ||
+             status.SignalPercent is not null))
+            throw new BrokerException("invalid_backend_data", "Network details state is inconsistent.");
         ContractValidation.Percent(status.SignalPercent);
         return status;
     }

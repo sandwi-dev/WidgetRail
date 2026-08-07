@@ -1,10 +1,16 @@
 # Widget capabilities
 
 Status: typed SDK services, authenticated local transport, lifecycle/consent
-enforcement, controller Settings review, a deterministic simulator, and the
-narrow real Core Audio session backend are implemented. The production bridge
-uses Core Audio for audio and the simulator for network; a real WLAN/IP Helper
-provider is not implemented.
+enforcement, controller Settings review, deterministic simulators, and narrow
+real Core Audio and Windows network backends are implemented. The production
+bridge composes both real providers. Network hardware/privacy matrices plus
+broader performance evidence remain release gates; the current
+automated packaged Release suite passes.
+
+Network Controls is the active first-party integration milestone. Its
+saved-profile-only behavior, Windows privacy boundary, lifecycle pattern, and
+remaining test/release gates are documented in the [Network Controls
+reference](network-controls.md).
 
 Capabilities are narrow host services for operating-system work that should
 not become native overlay code or raw widget process access. Widget authors use
@@ -54,7 +60,10 @@ The reusable provider definitions and DTOs live in `WidgetSdk`:
 - `WidgetAudioCapabilities`, `WidgetAudioSession`, and
   `WidgetAudioSessionsChanged`;
 - `WidgetNetworkCapabilities`, `WidgetNetworkStatus`,
-  `WidgetSavedNetworkProfile`, and `WidgetNetworkStatusChanged`.
+  `WidgetNetworkConnectivity`, `WidgetNetworkTransportKind`,
+  `WidgetNetworkWirelessAvailability`, `WidgetNetworkDetailsAccess`,
+  `WidgetNetworkConnectionAttemptState`, `WidgetSavedNetworkProfile`, and
+  `WidgetNetworkStatusChanged`.
 
 Most widgets should use `HostServices.Audio` and `HostServices.Network` rather
 than the lower-level `IWidgetCapabilityClient`. For example:
@@ -235,7 +244,7 @@ authority. Publisher signing, AppContainer-equivalent isolation, and real
 provider security testing remain mandatory before untrusted public widgets are
 supported.
 
-For the implemented audio backend, planned network backend, and privacy
+For the implemented audio and network backends and their privacy
 constraints, see
 [Windows provider architecture](windows-provider-architecture.md). For the
 broader trust decision, see [security and trust](security-and-trust.md).

@@ -243,6 +243,41 @@ continue in Background and should be governed by permissions and resource
 reporting. Those controls, plus opt-in `suspend-when-hidden`/
 `unload-after-idle` policies, are not yet enforced by the prototype.
 
+## Network Controls cannot show or switch Wi-Fi
+
+Network Controls has provider, widget, worker, catalog, and Release packaging
+wiring, but it is not yet a production-supported feature. If the card is
+missing, rebuild the complete Release package before treating it as a runtime
+failure; an older `out/Release` directory will not contain newly wired assets.
+Check the current [implementation status](implementation-status.md).
+
+When the package/provider path is available, diagnose its two independent
+permission layers separately:
+
+- In **Settings → Permissions & capabilities**, grant
+  `system.network.read.v1` to show status/profiles and, separately,
+  `system.network.saved-profile.switch.v1` to connect. Required capabilities
+  are not auto-granted. Switching is denied unless the widget is Interactive.
+- Version 1 deliberately does not query location-sensitive active Wi-Fi
+  profile/signal automatically. Expect `PrivacyRestricted` with those fields
+  omitted even after an overlay read grant; Ethernet/aggregate connectivity and
+  saved-profile enumeration can remain available. A future Windows access
+  request cannot be implied by overlay consent.
+- Only profiles already saved by Windows are eligible. An absent network cannot
+  be scanned, created, or supplied with a password through version 1.
+- WLAN connection is asynchronous. An accepted command should display bounded
+  busy feedback until a native status event confirms success or reports a
+  terminal failure/timeout; acknowledgement alone is not “connected.”
+- A missing WLAN adapter, disabled service/radio, device removal, access denial,
+  and policy restriction are ordinary unavailable states. Do not retry them on
+  a timer or ask the user to elevate the overlay.
+
+Do not put profile names, SSIDs, interface identifiers, addresses, profile XML,
+or keys in an issue or log. Report the stable error code, lifecycle state,
+Windows version, `Transport`, `WirelessAvailability`, `DetailsAccess`, and
+`ConnectionAttemptState`. See the [Network Controls
+reference](network-controls.md) for the full privacy and test contract.
+
 ## Overlay does not open or render
 
 - Build with `src/OverlayHost/build.ps1`; CMake/MSBuild metadata may lag the

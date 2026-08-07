@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.firstparty.network-controls",
+  "publisher": "org.gbar.firstparty",
+  "name": "Network Controls",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/NetworkControlsWidget.dll",
+    "type": "GameBarAlternative.FirstPartyWidgets.NetworkControls.NetworkControlsWidget"
+  },
+  "permissions": [
+    "system.network.read.v1"
+  ],
+  "optionalPermissions": [
+    "system.network.saved-profile.switch.v1"
+  ],
+  "backgroundPolicy": "suspend",
+  "resourceRequest": {
+    "memoryMb": 64,
+    "updateHz": 10
+  },
+  "architectures": [
+    "x64"
+  ]
+}

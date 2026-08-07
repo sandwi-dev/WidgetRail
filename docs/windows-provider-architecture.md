@@ -1,8 +1,9 @@
 # Windows provider architecture: Audio Mixer and Network Controls
 
 Status: **typed SDK, authenticated broker transport, controller consent,
-simulator path, and a narrow real Core Audio session provider implemented;
-the real WLAN/IP Helper provider remains planned**. This note uses
+simulator path, and narrow real Core Audio and Windows network providers
+implemented; automated packaged Release verification passes, while the network
+provider/widget remain under hardware/privacy and performance verification**. This note uses
 Microsoft documentation as the API authority. Items labeled **Documented
 fact** describe published Windows behavior. Items labeled **Platform design**
 are Game Bar Alternative decisions; their implementation status is called out
@@ -51,11 +52,11 @@ revokes subscriptions, while Background retains only the latest bounded event.
 
 The typed contract is connected end to end through the generic worker host,
 bridge-owned authenticated broker companion, Settings consent flow, and
-deterministic backend. The trusted bridge composes
-`WindowsAudioPlatformBackend` for audio with the simulated backend for network.
-Audio is therefore a working, narrow OS service for declared and explicitly
-granted widgets; network remains deterministic simulation only. See [widget
-capabilities](capabilities.md) for the author-facing API.
+deterministic backends. The trusted bridge composes
+`WindowsAudioPlatformBackend` with `WindowsNetworkPlatformBackend`. Both are
+working narrow OS services for declared and explicitly granted widgets; this
+does not close their hardware, privacy, performance, or hostile-code release
+gates. See [widget capabilities](capabilities.md) for the author-facing API.
 
 ## Audio provider
 
@@ -188,33 +189,56 @@ Never call widget IPC synchronously from a Core Audio callback.
 
 ### Platform design
 
-Use two event sources behind one revisioned model:
+The active implementation uses two native API families and three change
+registrations behind one bounded model. IP Helper's read-only
+`GetNetworkConnectivityHint` supplies coarse aggregate connectivity:
 
-1. IP Helper notifications drive aggregate/Ethernet state. Coalesce bursts and
-   call `GetAdaptersAddresses` only after an event, initial subscription, or
-   explicit recovery—not on a presentation timer.
+1. IP Helper `NotifyIpInterfaceChange` and
+   `NotifyNetworkConnectivityHintChange` callbacks drive aggregate/Ethernet
+   refreshes. The connectivity-hint entrypoint is optional on older Windows and
+   fails soft; interface notifications remain. Coalesce bursts; never refresh
+   on a presentation timer. The current backend classifies managed
+   `NetworkInterface` snapshots with a route-table-only `GetBestInterface`
+   preference rather than returning address/interface identity to widgets.
 2. One WLAN client handle per provider lifetime enumerates Wi-Fi interfaces and
-   saved profiles. Register only the notification sources required for
-   connection lifecycle; do not request `ALL`, MSM, scans, or BSSID data by
-   default.
+   saved profiles. A consentless `wlan_intf_opcode_radio_state` query
+   distinguishes enabled-but-disconnected Wi-Fi from explicit hardware or
+   software radio-off; it never queries `current_connection`. Register ACM only
+   for connection lifecycle; never request `ALL`, MSM, scans,
+   available-network lists, or BSSID data.
+
+Failed IP-interface, connectivity-hint, or ACM registrations remain degraded;
+an explicit subsequent read retries the missing registration. The provider
+does not clear degraded health merely because a cached snapshot can still be
+read.
 
 Initial saved-profile switching calls `WlanConnect` with
-`wlan_connection_mode_profile`, waits asynchronously for matching ACM
-completion/failure, then publishes the observed state. It never calls
+`wlan_connection_mode_profile` and acknowledges only that the request was
+accepted. Matching ACM completion/failure later updates the authoritative
+`Connecting`/`Failed` attempt state and publishes the observed snapshot. It
+never calls
 `WlanSetProfile`, asks for a password, reads profile XML/key material, changes
 profile preference, or connects to an unsaved discovery result. Disconnect and
 radio-toggle commands are excluded until separately reviewed.
 
-Current SSID/profile and signal presentation is conditional on Windows Wi-Fi/
-location consent. The provider must expose `permission-required`, `denied`, and
-`revoked` states without retry loops. Prompt timing must follow an explicit
-controller action, and the broker's stable package/application identity must be
-settled before relying on per-app Windows privacy controls.
+Version 1 does not automatically query location-sensitive current-connection
+identity or signal. Wi-Fi details therefore default to `PrivacyRestricted` and
+the active profile/signal fields remain absent. Saved-profile enumeration alone
+must not be presented as current-connection evidence. A future explicit Windows
+access-request flow needs its own capability/privacy review, stable packaged
+application identity, controller-triggered prompt, and deterministic
+required/denied/revoked states without retry loops.
 
 WLAN callbacks only enqueue bounded notification codes and interface identity.
 Unregister/close from the provider thread, never from the callback.
 `CancelMibChangeNotify2` must likewise run outside the callback being canceled;
 Microsoft warns that cancellation from that callback can deadlock.
+
+The implemented provider is lazy: construction and event subscription do not
+open native handles. The first read/control starts its dedicated MTA owner.
+Command and event queues are bounded, status/profile reads use the last complete
+snapshot, burst callbacks coalesce, and disposal unregisters native resources
+on the owner thread. No provider timer runs while the system is unchanged.
 
 ## Privilege and privacy boundary
 
@@ -239,9 +263,10 @@ Microsoft warns that cancellation from that callback can deadlock.
 - Audio snapshots omit raw process IDs, executable paths, icon paths, grouping
   GUIDs, and endpoint IDs. The broker may use them internally to derive a
   sanitized app label and opaque lifetime ID.
-- Network snapshots omit BSSID, MAC/IP/DNS/gateway addresses, profile XML,
-  authentication/cipher details, and keys. SSID/profile display names are still
-  sensitive and leave the broker only under the Wi-Fi read grant.
+- Network snapshots omit BSSID, MAC/IP/DNS/gateway addresses, interface GUIDs,
+  profile XML, authentication/cipher details, and keys. Version 1 does not
+  automatically query the active SSID/signal. Saved-profile display names are
+  still sensitive and leave the broker only under the network read grant.
 - Logs contain stable error codes and opaque IDs, not profile names, SSIDs,
   endpoint names, application paths, or credentials.
 - A capture-endpoint control grant is not permission to capture audio. Any
@@ -292,8 +317,8 @@ kill-on-close cleanup. The audio implementation adds a lazy, event-driven Core
 Audio session backend on top of those pieces; this is still not a complete
 hostile-code sandbox or production-support claim.
 
-The audio provider remains deliberately limited, and the network provider
-remains planned, while these production gates are open:
+Both providers remain deliberately limited prototypes while these production
+gates are open:
 
 1. stale-revision command rules and a security audit/history surface;
 2. production provider identity and stronger community-worker isolation,
@@ -304,8 +329,10 @@ remains planned, while these production gates are open:
 6. privacy review proving that raw OS identifiers and secrets cannot cross the
    broker.
 
-Audio Mixer is the active first-party integration milestone and now exercises
-the real Core Audio session backend. It does not imply master-volume,
+Audio Mixer is the implemented first-party integration reference and now
+exercises the real Core Audio session backend. It does not imply master-volume,
 output-switch, microphone, or production security support. Network Controls is
-the next roadmap widget and continues to exercise the simulator until its WLAN/
-IP Helper provider and privacy gates are implemented.
+the active roadmap widget and now exercises the real event-driven provider;
+packaged, hardware/privacy, and performance gates remain. See the [Network
+Controls reference](network-controls.md) for its authoring, controller, test,
+and packaging contract.

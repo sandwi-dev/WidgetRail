@@ -78,8 +78,8 @@ The following are **not implemented as a complete public security boundary**:
 - AppContainer launch for community workers;
 - CPU-rate/time and broader resource quotas beyond the current Job Object
   memory/single-process/cleanup policy;
-- a real WLAN/IP Helper provider, production hardening of the narrow Core Audio
-  session provider, and a security audit/history UI;
+- production hardening/hardware/privacy evidence for the narrow Core Audio and
+  Windows network providers, and a security audit/history UI;
 - secure token brokering for third-party integrations;
 - user-facing update review, rollback, or quarantine UI;
 - a graphical install/review flow, live bridge catalog reload, and safe
@@ -97,7 +97,9 @@ startup and launches them lazily through the generic worker host. This is an
 execution path, not a complete trust boundary: catalog enablement has no
 signature or publisher proof, and package/manifest changes require an overlay/
 bridge restart. Closed declared capabilities receive an authenticated broker
-channel, but the production bridge currently connects only the simulator.
+channel. The production bridge composes the narrow real Core Audio and Windows
+network backends. That provider composition is not AppContainer isolation,
+publisher trust, a security audit, or proof across the hardware/privacy matrix.
 
 The managed development theme catalog has strict manifests, version-pinned
 directories, package-relative GBSS imports, bounds, reparse/containment checks,

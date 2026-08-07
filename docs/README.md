@@ -24,6 +24,9 @@ guarantees that are available now.
 - [Widget capabilities](capabilities.md) — typed audio/network services,
   manifest declarations, lifecycle/consent behavior, errors, testing, and the
   current security boundary.
+- [Network Controls reference](network-controls.md) — active first-party
+  milestone, saved-profile-only scope, controller UX, privacy/location gates,
+  event-driven authoring, tests, and release evidence.
 
 ## Distribution and operations
 
@@ -39,9 +42,8 @@ guarantees that are available now.
 - [Implementation status](implementation-status.md) — verified components and
   honest limitations.
 - [Windows provider architecture](windows-provider-architecture.md) — the
-  event-driven Core Audio session provider, the planned WLAN/IP Helper provider,
-  privacy boundaries, and simulator/hardware evidence gates for Audio Mixer and
-  Network Controls.
+  event-driven Core Audio and WLAN/IP Helper providers, privacy boundaries, and
+  simulator/hardware evidence gates for Audio Mixer and Network Controls.
 
 ## Product and research
 

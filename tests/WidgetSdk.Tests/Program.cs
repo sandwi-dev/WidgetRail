@@ -114,7 +114,15 @@ static async Task TypedPlatformServices()
         .WithResponse(
             WidgetNetworkCapabilities.GetStatus,
             new WidgetNetworkStatus(
-                WidgetNetworkConnectivity.Internet, "wifi-1", "Wi-Fi", 80))
+                WidgetNetworkConnectivity.Internet,
+                WidgetNetworkTransportKind.Wifi,
+                WidgetNetworkWirelessAvailability.Available,
+                WidgetNetworkDetailsAccess.Available,
+                WidgetNetworkConnectionAttemptState.None,
+                null,
+                "wifi-1",
+                "Wi-Fi",
+                80))
         .WithResponse(
             WidgetNetworkCapabilities.GetSavedProfiles,
             (IReadOnlyList<WidgetSavedNetworkProfile>)[
@@ -136,6 +144,10 @@ static async Task TypedPlatformServices()
 
     var status = await widget.Network.GetStatusAsync();
     Assert.Equal(WidgetNetworkConnectivity.Internet, status.Connectivity);
+    Assert.Equal(WidgetNetworkTransportKind.Wifi, status.Transport);
+    Assert.Equal(WidgetNetworkWirelessAvailability.Available, status.WirelessAvailability);
+    Assert.Equal(WidgetNetworkDetailsAccess.Available, status.DetailsAccess);
+    Assert.Equal(WidgetNetworkConnectionAttemptState.None, status.ConnectionAttemptState);
     var profiles = await widget.Network.GetSavedProfilesAsync();
     Assert.Equal("wifi-1", profiles.Single().ProfileId);
     await widget.Network.SwitchSavedProfileAsync("wifi-1");
@@ -523,6 +535,10 @@ static Task ValidManifestPasses()
 {
     var manifest = ValidManifest();
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
+    Assert.Equal(0, WidgetManifestValidator.Validate(manifest with
+    {
+        OptionalPermissions = ["system.network.saved-profile.switch.v1"],
+    }).Count);
     var roundTrip = ManifestJson.Deserialize(ManifestJson.Serialize(manifest));
     Assert.Equal(manifest.Id, roundTrip.Id);
     return Task.CompletedTask;
@@ -873,7 +889,15 @@ file sealed class FakeCapabilityClient : IWidgetCapabilityClient
             "audio.sessions.list" => new WidgetAudioSession[]
                 { new("audio-1", "Game", 0.75, false, true) },
             "network.status.get" => new WidgetNetworkStatus(
-                WidgetNetworkConnectivity.Internet, "wifi-1", "Wi-Fi", 80),
+                WidgetNetworkConnectivity.Internet,
+                WidgetNetworkTransportKind.Wifi,
+                WidgetNetworkWirelessAvailability.Available,
+                WidgetNetworkDetailsAccess.Available,
+                WidgetNetworkConnectionAttemptState.None,
+                null,
+                "wifi-1",
+                "Wi-Fi",
+                80),
             "network.saved-profiles.list" => new WidgetSavedNetworkProfile[]
                 { new("wifi-1", "Wi-Fi", true, 80) },
             _ => new WidgetCapabilityAcknowledgement(true),

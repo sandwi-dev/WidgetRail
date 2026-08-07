@@ -47,6 +47,8 @@ public enum WidgetGlyph
     Volume,
     Muted,
     Microphone,
+    Wifi,
+    Ethernet,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ControllerButton>))]

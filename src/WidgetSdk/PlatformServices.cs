@@ -32,8 +32,43 @@ public enum WidgetNetworkConnectivity
     Internet,
 }
 
+public enum WidgetNetworkTransportKind
+{
+    None,
+    Ethernet,
+    Wifi,
+    Other,
+}
+
+public enum WidgetNetworkWirelessAvailability
+{
+    Available,
+    NoAdapter,
+    RadioOff,
+    ServiceUnavailable,
+}
+
+public enum WidgetNetworkDetailsAccess
+{
+    Available,
+    PrivacyRestricted,
+    Unavailable,
+}
+
+public enum WidgetNetworkConnectionAttemptState
+{
+    None,
+    Connecting,
+    Failed,
+}
+
 public sealed record WidgetNetworkStatus(
     [property: JsonRequired] WidgetNetworkConnectivity Connectivity,
+    [property: JsonRequired] WidgetNetworkTransportKind Transport,
+    [property: JsonRequired] WidgetNetworkWirelessAvailability WirelessAvailability,
+    [property: JsonRequired] WidgetNetworkDetailsAccess DetailsAccess,
+    [property: JsonRequired] WidgetNetworkConnectionAttemptState ConnectionAttemptState,
+    [property: JsonRequired] string? AttemptProfileId,
     [property: JsonRequired] string? ActiveProfileId,
     [property: JsonRequired] string? ActiveProfileName,
     [property: JsonRequired] int? SignalPercent);

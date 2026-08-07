@@ -75,11 +75,11 @@ static async Task CompositeProviderDomainsAreSeparated()
     audio.Publish(new(
         PlatformCapabilities.NetworkReadV1,
         PlatformCapabilities.NetworkStatusChanged,
-        new NetworkStatusChangedEvent(new(NetworkConnectivity.None, null, null, null))));
+        new NetworkStatusChangedEvent(TestNetwork.Disconnected())));
     network.Publish(new(
         PlatformCapabilities.NetworkReadV1,
         PlatformCapabilities.NetworkStatusChanged,
-        new NetworkStatusChangedEvent(new(NetworkConnectivity.None, null, null, null))));
+        new NetworkStatusChangedEvent(TestNetwork.Disconnected())));
     network.Publish(new(
         PlatformCapabilities.AudioSessionsReadV1,
         PlatformCapabilities.AudioSessionsChanged,
@@ -231,7 +231,16 @@ static async Task NetworkOperationsAreSanitized()
         ConsentDecision.Grant);
     var backend = new SimulatedPlatformBrokerBackend
     {
-        NetworkStatus = new(NetworkConnectivity.Internet, "home-5g", "Home 5G", 92),
+        NetworkStatus = new(
+            NetworkConnectivity.Internet,
+            NetworkTransportKind.Wifi,
+            NetworkWirelessAvailability.Available,
+            NetworkDetailsAccess.Available,
+            NetworkConnectionAttemptState.None,
+            null,
+            "home-5g",
+            "Home 5G",
+            92),
     };
     backend.SetSavedNetworkProfiles([
         new("home-5g", "Home 5G", true, 92),
@@ -706,7 +715,7 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
     public Task SetAudioSessionMutedAsync(string sessionId, bool isMuted, CancellationToken cancellationToken) =>
         Task.CompletedTask;
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new NetworkStatusSummary(NetworkConnectivity.None, null, null, null));
+        Task.FromResult(TestNetwork.Disconnected());
     public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<SavedNetworkProfileSummary>>([]);
     public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
@@ -731,12 +740,26 @@ sealed class SplitNetworkBackend : INetworkPlatformBrokerBackend
 {
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new NetworkStatusSummary(NetworkConnectivity.None, null, null, null));
+        Task.FromResult(TestNetwork.Disconnected());
     public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<SavedNetworkProfileSummary>>([]);
     public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
         Task.CompletedTask;
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
+}
+
+static class TestNetwork
+{
+    public static NetworkStatusSummary Disconnected() => new(
+        NetworkConnectivity.None,
+        NetworkTransportKind.None,
+        NetworkWirelessAvailability.NoAdapter,
+        NetworkDetailsAccess.Unavailable,
+        NetworkConnectionAttemptState.None,
+        null,
+        null,
+        null,
+        null);
 }
 
 static class Assert

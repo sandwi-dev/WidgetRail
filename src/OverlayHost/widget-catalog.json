@@ -63,6 +63,38 @@
           "controllerButton": "rightBumper"
         }
       ]
+    },
+    {
+      "id": "network-controls",
+      "packageId": "org.gbar.firstparty.network-controls",
+      "publisherId": "org.gbar.firstparty",
+      "name": "Network Controls",
+      "instanceId": "network-controls.default",
+      "icon": "wifi",
+      "workerExecutable": "runtime/NetworkControls/NetworkControlsWidget.Worker.exe",
+      "styleFile": "runtime/NetworkControls/styles/default.gbss",
+      "memoryLimitMb": 64,
+      "workerArguments": [],
+      "declaredCapabilities": [
+        "system.network.read.v1",
+        "system.network.saved-profile.switch.v1"
+      ],
+      "quickActions": [
+        {
+          "id": "previous-profile",
+          "label": "Previous saved network",
+          "actionId": "profile.previous",
+          "sourceElementId": "dashboard.network.previous",
+          "controllerButton": "leftBumper"
+        },
+        {
+          "id": "next-profile",
+          "label": "Next saved network",
+          "actionId": "profile.next",
+          "sourceElementId": "dashboard.network.next",
+          "controllerButton": "rightBumper"
+        }
+      ]
     }
   ]
 }

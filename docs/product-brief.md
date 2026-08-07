@@ -52,9 +52,11 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 - Audio Mixer: event-driven per-application session volume/mute on the current
   default multimedia render endpoint through brokered Core Audio capabilities;
   no master/output-switch/microphone control in the active milestone
-- Network Controls: event-driven Ethernet/Wi-Fi state, signal quality,
-  saved-profile switching in its Interactive surface, and brokered WLAN/network
-  capabilities; no password entry in the initial scope
+- Network Controls: event-driven aggregate/Ethernet/Wi-Fi transport and adapter
+  availability, saved-profile switching in its Interactive surface, and
+  brokered WLAN/network capabilities; no password entry, automatic
+  location-sensitive current-SSID query, or signal disclosure in the initial
+  scope
 - Performance: CPU, GPU, VRAM, RAM, frame-rate sources, and bounded history
 - Media: system media session controls
 - Recent applications and games
@@ -64,12 +66,13 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 
 Discord is the only planned social provider initially. Its production use remains gated on Discord confirming this general-purpose overlay is an eligible Social SDK integration and approving communications capacity.
 
-Audio Mixer is the active system-control reference-widget milestone, backed by
-the narrow event-driven Core Audio session provider. Network Controls is next
-and still uses the deterministic simulator while its WLAN/IP Helper provider is
-developed. Both ship as out-of-process first-party packages using the same
-public SDK, controller input scopes, lifecycle, and permission model available
-to other developers. Their Windows integrations belong behind narrow brokers;
+Audio Mixer is the implemented system-control reference widget, backed by the
+narrow event-driven Core Audio session provider. Network Controls is the active
+milestone and now has an event-driven WLAN/IP Helper provider plus an
+out-of-process first-party package. Its automated packaged Release gate passes;
+hardware/privacy and performance gates remain. Both widgets use the same public
+SDK, controller input scope, lifecycle, permission, and packaging model.
+Their Windows integrations belong behind narrow brokers;
 neither feature is a reason to hard-code an alternate UI or expose raw OS
 handles in the native host.
 

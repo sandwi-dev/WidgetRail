@@ -122,7 +122,7 @@ public static partial class WidgetManifestValidator
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$", RegexOptions.CultureInvariant)]
     private static partial Regex PackageIdRegex();
 
-    [GeneratedRegex("^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9]*)*(?::[A-Za-z0-9._-]+)?$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z](?:[a-z0-9-]*[a-z0-9])?)*(?::[A-Za-z0-9._-]+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex PermissionRegex();
 }
 

@@ -9,7 +9,16 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
     public NetworkStatusSummary NetworkStatus { get; set; } =
-        new(NetworkConnectivity.None, null, null, null);
+        new(
+            NetworkConnectivity.None,
+            NetworkTransportKind.None,
+            NetworkWirelessAvailability.NoAdapter,
+            NetworkDetailsAccess.Unavailable,
+            NetworkConnectionAttemptState.None,
+            null,
+            null,
+            null,
+            null);
 
     public int AudioControlCalls { get; private set; }
     public int NetworkSwitchCalls { get; private set; }

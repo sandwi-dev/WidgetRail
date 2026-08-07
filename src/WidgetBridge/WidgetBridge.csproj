@@ -13,5 +13,6 @@
     <ProjectReference Include="..\WidgetRuntime\WidgetRuntime.csproj" />
     <ProjectReference Include="..\WidgetStyling\WidgetStyling.csproj" />
     <ProjectReference Include="..\WindowsAudioProvider\WindowsAudioProvider.csproj" />
+    <ProjectReference Include="..\WindowsNetworkProvider\WindowsNetworkProvider.csproj" />
   </ItemGroup>
 </Project>

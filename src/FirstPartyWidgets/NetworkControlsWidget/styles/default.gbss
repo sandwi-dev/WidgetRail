@@ -1,0 +1,198 @@
+:root {
+  --network-accent: #78d8ff;
+  --network-accent-strong: #38bcea;
+  --network-focus: #c1efff;
+  --network-surface: rgba(17, 21, 29, 0.98);
+  --network-card: rgba(37, 44, 57, 0.95);
+  --network-control: rgba(49, 58, 73, 0.97);
+  --network-control-focus: rgba(67, 81, 101, 0.99);
+  --network-error: #ff8296;
+  --network-warning: #ffc96b;
+}
+
+.network-controls-widget {
+  width: 44vw;
+  min-width: 280px;
+  max-width: 620px;
+  gap: 15px;
+  padding: 20px 14px;
+  background: var(--network-surface);
+  color: var(--text);
+  overflow: visible;
+}
+
+.network-header {
+  gap: 3px;
+}
+
+.network-eyebrow {
+  color: var(--network-accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  max-lines: 1;
+  text-transform: uppercase;
+}
+
+.network-title {
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 700;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+
+.network-status,
+.network-card-detail,
+.network-profile-count,
+.network-profile-detail,
+.network-help {
+  color: var(--text-muted);
+  font-size: 13px;
+  max-lines: 2;
+}
+
+.network-status.is-live,
+.network-card-state.is-online,
+.network-profile-state.is-connected {
+  color: var(--success);
+}
+
+.network-status.is-error,
+.network-card-state.is-error,
+.network-profile-state.is-error {
+  color: var(--network-error);
+}
+
+.network-card-state.is-warning,
+.network-profile-state.is-connecting {
+  color: var(--network-warning);
+}
+
+.network-connection-card,
+.network-profile-card,
+.network-state-card,
+.network-wifi-note {
+  gap: 11px;
+  padding: 14px;
+  background: var(--network-card);
+  border-width: 0;
+  corner-radius: 15px;
+}
+
+.network-connection-top,
+.network-profile-switcher {
+  min-height: 54px;
+  gap: 9px;
+  align: center;
+}
+
+.network-connection-icon {
+  width: 42px;
+  height: 42px;
+  padding: 9px;
+  color: var(--network-accent);
+  background: var(--network-control);
+  shape: circle;
+}
+
+.network-connection-copy,
+.network-profile-copy {
+  min-width: 54px;
+  flex-grow: 1;
+  gap: 2px;
+}
+
+.network-card-title,
+.network-profile-name,
+.network-state-title {
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 700;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+
+.network-card-state,
+.network-profile-state {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  max-lines: 1;
+  text-transform: uppercase;
+}
+
+.network-signal-row {
+  gap: 10px;
+  align: center;
+}
+
+.network-signal-progress {
+  height: 6px;
+  min-width: 100px;
+  flex-grow: 1;
+  color: var(--network-accent-strong);
+  background: rgba(103, 113, 133, 0.40);
+}
+
+.network-signal-value {
+  width: 42px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: end;
+}
+
+.network-profile-action,
+.network-connect-action,
+.network-retry-action {
+  color: var(--text);
+  background: var(--network-control);
+  border-width: 0;
+  transition-duration: 110ms;
+  transition-easing: ease-out;
+}
+
+.network-profile-action {
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  shape: circle;
+}
+
+.network-connect-action,
+.network-retry-action {
+  min-height: 46px;
+  padding: 12px 18px;
+  corner-radius: 23px;
+}
+
+.network-connect-action {
+  min-width: 116px;
+  max-width: 260px;
+}
+
+.network-profile-action:focused,
+.network-connect-action:focused,
+.network-retry-action:focused {
+  background: var(--network-control-focus);
+  outline-color: var(--network-focus);
+  outline-width: 2px;
+  outline-offset: -3px;
+  scale: 1.04;
+}
+
+.network-connect-action:focused,
+.network-retry-action:focused {
+  color: #07151c;
+  background: var(--network-accent-strong);
+}
+
+.network-shortcuts {
+  color: var(--text-subdued);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  max-lines: 1;
+  text-transform: uppercase;
+}

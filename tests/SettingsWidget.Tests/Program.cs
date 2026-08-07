@@ -502,17 +502,32 @@ static async Task BundledPermissionsAreDiscovered()
         "Audio Mixer",
         [PlatformCapabilities.AudioSessionsReadV1],
         [PlatformCapabilities.AudioSessionsControlV1]);
+    WriteBundledWidget(
+        bundledRoot,
+        "NetworkControls",
+        "org.gbar.firstparty.network-controls",
+        "org.gbar.firstparty",
+        "Network Controls",
+        [PlatformCapabilities.NetworkReadV1],
+        [PlatformCapabilities.NetworkSavedProfileSwitchV1]);
     var widget = CreateWithPermissions(temp.Path, catalogRoot, consent, bundledRoot);
 
     await Activate(widget);
     await Action(widget, "open.permissions");
     var packages = Snapshot(widget);
     Assert.Contains("Audio Mixer", Button(packages.Root, "permission.item.0").Text!);
+    Assert.Contains("Network Controls", Button(packages.Root, "permission.item.1").Text!);
     await Action(widget, "permission.select.0");
     var capabilities = Snapshot(widget);
     Assert.Contains("Required", Button(capabilities.Root, "capability.item.0").Text!);
     Assert.Contains("Optional", Button(capabilities.Root, "capability.item.1").Text!);
     Assert.Equal(0, (await consent.LoadAsync()).Entries.Count);
+
+    await Action(widget, "back");
+    await Action(widget, "permission.select.1");
+    var networkCapabilities = Snapshot(widget);
+    Assert.Contains("Required", Button(networkCapabilities.Root, "capability.item.0").Text!);
+    Assert.Contains("Optional", Button(networkCapabilities.Root, "capability.item.1").Text!);
 }
 
 static async Task ShippedAssetsValidate()

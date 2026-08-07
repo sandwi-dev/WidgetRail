@@ -348,6 +348,22 @@ template <std::size_t Count>
     return cradle;
 }
 
+[[nodiscard]] bool DrawEthernet(
+    ID2D1RenderTarget* target,
+    ID2D1Brush* brush,
+    const Canvas& c,
+    const float stroke) noexcept {
+    target->DrawRoundedRectangle(
+        D2D1::RoundedRect(c.Rect(0.16F, 0.14F, 0.84F, 0.64F),
+            c.size * 0.08F, c.size * 0.08F), brush, stroke);
+    DrawRoundLine(target, brush, c.Point(0.31F, 0.14F), c.Point(0.31F, 0.30F), stroke);
+    DrawRoundLine(target, brush, c.Point(0.50F, 0.14F), c.Point(0.50F, 0.30F), stroke);
+    DrawRoundLine(target, brush, c.Point(0.69F, 0.14F), c.Point(0.69F, 0.30F), stroke);
+    DrawRoundLine(target, brush, c.Point(0.50F, 0.64F), c.Point(0.50F, 0.86F), stroke);
+    DrawRoundLine(target, brush, c.Point(0.32F, 0.86F), c.Point(0.68F, 0.86F), stroke);
+    return true;
+}
+
 } // namespace
 
 bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) noexcept {
@@ -362,6 +378,7 @@ bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) no
         Pair{L"check", NativeIcon::Check}, Pair{L"connection", NativeIcon::Connection},
         Pair{L"volume", NativeIcon::Volume}, Pair{L"muted", NativeIcon::Muted},
         Pair{L"microphone", NativeIcon::Microphone},
+        Pair{L"wifi", NativeIcon::Wifi}, Pair{L"ethernet", NativeIcon::Ethernet},
         Pair{L"toggle-playback", NativeIcon::Play}, Pair{L"play-pause", NativeIcon::Play},
         Pair{L"previous-track", NativeIcon::Previous}, Pair{L"next-track", NativeIcon::Next},
         Pair{L"retry", NativeIcon::Refresh}, Pair{L"repeat-mode", NativeIcon::Repeat},
@@ -404,6 +421,8 @@ bool DrawNativeIcon(
         case NativeIcon::Volume: return DrawVolume(renderTarget, brush, canvas, stroke, false);
         case NativeIcon::Muted: return DrawVolume(renderTarget, brush, canvas, stroke, true);
         case NativeIcon::Microphone: return DrawMicrophone(renderTarget, brush, canvas, stroke);
+        case NativeIcon::Wifi: return DrawConnection(renderTarget, brush, canvas, stroke);
+        case NativeIcon::Ethernet: return DrawEthernet(renderTarget, brush, canvas, stroke);
         default: return false;
     }
 }

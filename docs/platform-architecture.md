@@ -16,7 +16,7 @@ flowchart LR
     Bridge --> Styling["WidgetStyling / GBSS"]
     Worker <-->|"typed authenticated capability IPC"| Broker["PlatformBroker"]
     Broker --> Audio["Core Audio session provider"]
-    Broker -. "planned" .-> Network["IP Helper/WLAN provider"]
+    Broker --> Network["IP Helper/WLAN provider"]
     Host --> State["Host-owned order and last-widget state"]
     Catalog["Enabled installed WidgetCatalog snapshot"] --> Bridge
 ```
@@ -36,6 +36,7 @@ flowchart LR
 | `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence. The bridge consumes enabled compatible packages at startup. |
 | `src/PlatformBroker` | Version-1 audio-session/network capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for sanitized per-application sessions on the default multimedia render endpoint, with per-session volume/mute. It does not expose master volume, output switching, or microphone control. |
+| `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse connectivity, explicit transport/radio/service/privacy/attempt state, sanitized saved profiles, and opaque saved-profile switching. It does not scan, handle credentials/profile XML, query current SSID/signal automatically, or expose native identities. |
 | `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, and catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
@@ -188,8 +189,9 @@ then deterministic geometry from the last render.
 - Job Object memory/process-count/cleanup policy, typed capability IPC, consent
   UI, and prompt fail-closed revocation are implemented and tested. Publisher
   signatures/package revocation, AppContainer launch, CPU quotas, security
-  audit/history, and a real Windows network provider remain planned. The narrow
-  Core Audio session backend is implemented, but the current pieces are not a
+  audit/history, and production hardening/evidence for the Windows providers
+  remain planned. The narrow Core Audio and network backends are implemented,
+  but the current pieces are not a
   complete public-widget security boundary.
 - The bundled bridge catalog remains trusted deployment configuration. The
   joined current-user catalog is not a marketplace feed or signed package

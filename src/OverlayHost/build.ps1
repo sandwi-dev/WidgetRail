@@ -144,6 +144,7 @@ if (-not $SkipPackaging) {
     $ytMusicOutput = Join-Path $outputDirectory 'runtime\YtMusic'
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
+    $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
@@ -169,6 +170,11 @@ if (-not $SkipPackaging) {
         --configuration $Configuration --no-self-contained --nologo --output $audioMixerOutput
     if ($LASTEXITCODE -ne 0) {
         throw "Audio Mixer worker publish failed with exit code $LASTEXITCODE."
+    }
+    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget.Worker\NetworkControlsWidget.Worker.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $networkControlsOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Network Controls worker publish failed with exit code $LASTEXITCODE."
     }
     $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
     $settingsStylesOutput = Join-Path $settingsOutput 'styles'
@@ -208,6 +214,26 @@ if (-not $SkipPackaging) {
     )) {
         if (-not (Test-Path -LiteralPath (Join-Path $audioMixerOutput $requiredAudioMixerFile))) {
             throw "Audio Mixer deployment is missing $requiredAudioMixerFile."
+        }
+    }
+    $networkControlsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget'
+    $networkControlsStylesOutput = Join-Path $networkControlsOutput 'styles'
+    $networkControlsPayloadOutput = Join-Path $networkControlsOutput 'payload'
+    New-Item -ItemType Directory -Force -Path $networkControlsStylesOutput, $networkControlsPayloadOutput | Out-Null
+    Copy-Item -LiteralPath (Join-Path $networkControlsProject 'manifest.json') `
+        -Destination (Join-Path $networkControlsOutput 'manifest.json') -Force
+    Copy-Item -LiteralPath (Join-Path $networkControlsProject 'styles\default.gbss') `
+        -Destination (Join-Path $networkControlsStylesOutput 'default.gbss') -Force
+    Copy-Item -LiteralPath (Join-Path $networkControlsOutput 'NetworkControlsWidget.dll') `
+        -Destination (Join-Path $networkControlsPayloadOutput 'NetworkControlsWidget.dll') -Force
+    foreach ($requiredNetworkControlsFile in @(
+        'NetworkControlsWidget.Worker.exe',
+        'manifest.json',
+        'styles\default.gbss',
+        'payload\NetworkControlsWidget.dll'
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $networkControlsOutput $requiredNetworkControlsFile))) {
+            throw "Network Controls deployment is missing $requiredNetworkControlsFile."
         }
     }
     Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `

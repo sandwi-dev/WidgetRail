@@ -130,20 +130,23 @@ Every first-party widget contributes a focused SDK example and regression suite.
 
 ### First-party system-control reference widgets
 
-Implementation order: **Audio Mixer is the active first-party system-control
-milestone. Network Controls follows immediately after its provider, permission,
-packaging, lifecycle, and performance gates pass.** Both remain ordinary SDK
-widgets rather than privileged shell panels.
+Implementation order: **Audio Mixer is implemented and packaged as the first
+system-control reference. Network Controls is the active integrated prototype:
+provider, widget, worker, catalog, packaging hooks, and focused tests exist,
+the automated packaged Release gate passes, and hardware/privacy/performance
+gates remain open.** Both
+remain ordinary SDK widgets rather than privileged shell panels.
 
-The generic declarative path, controller Settings/global-theme foundation, and
-typed broker/consent path now support the active Audio Mixer work. Network
-Controls remains behind its provider privacy and reliability gates. Both must
+The generic declarative path, controller Settings/global-theme foundation,
+typed broker/consent path, and Audio Mixer reference now support Network
+Controls development. Network Controls remains behind its hardware/privacy and
+performance evidence gates. Both must
 remain ordinary first-party packages built on the public SDK—not special panels
 hard-coded into `OverlayHost`. Any primitive or broker API they need becomes
 documented, testable platform surface that community widgets can request under
 the same permission policy.
 
-**Audio Mixer (active)** is implemented and packaged as the first system-control
+**Audio Mixer (implemented)** is packaged as the first system-control
 reference widget; broader hardware and performance evidence remains open. Its
 provider scope is deliberately narrow:
 
@@ -179,16 +182,20 @@ does not provide a system-default setter. Do not ship an undocumented
 supported API passes the spike, default-device switching leaves the initial
 scope.
 
-**Network Controls (next)** follows Audio Mixer. It will use Windows
-WLAN/network change notifications rather than continuously polling adapters.
-Its initial production scope is:
+**Network Controls (active, integrated prototype)** follows Audio Mixer. It uses
+Windows WLAN/network change notifications rather than continuously polling
+adapters. Its initial production scope is:
 
 - Ethernet and Wi-Fi connection state;
-- current network and Wi-Fi signal quality;
+- coarse active transport and Wi-Fi adapter/service/radio availability;
+- current Wi-Fi identity and signal only after a future explicit Windows
+  privacy-access flow passes review; otherwise a clear privacy-restricted
+  state with those fields omitted;
 - controller selection among already saved Wi-Fi profiles; and
-- no capability-backed dashboard control in version 1; any future quick control
-  needs separate host-mediated authority and must not silently disclose
-  credentials or connect to an unreviewed network.
+- dashboard LB/RB selection is local/read-only; no capability-backed network
+  control runs while merely Visible. Any future dashboard connect control needs
+  separate host-mediated authority and must not silently disclose credentials
+  or connect to an unreviewed network.
 
 Password entry, editing/creating Wi-Fi profiles, captive-portal interaction,
 and exposing stored network keys are explicitly outside the initial scope. The
@@ -198,13 +205,16 @@ handle adapter removal, airplane/radio state, connection failure, and Ethernet
 priority without trapping controller focus.
 
 IP Helper notifications drive aggregate/Ethernet changes. Native Wi-Fi uses a
-long-lived WLAN client and asynchronous connection notifications; it does not
-scan continuously. SSID/current-connection/signal details that Windows treats
-as location-sensitive must degrade to permission-required/denied/revoked
-states, never trigger a retry loop or expose BSSID/profile XML/key material.
+long-lived WLAN client and asynchronous ACM connection notifications; it does
+not scan continuously or register MSM. Version 1 does not automatically query
+SSID/current-connection/signal details that Windows treats as
+location-sensitive; it reports privacy-restricted state instead. Any future
+explicit access request must degrade to required/denied/revoked states, never
+trigger a retry loop, and never expose BSSID/profile XML/key material.
 See [Windows provider architecture](windows-provider-architecture.md) for the
 documented API facts, threading/lifetime rules, privacy boundary, and simulator
-matrix.
+matrix, and the [Network Controls reference](network-controls.md) for the
+author-facing contract and completion evidence.
 
 Exit criteria for both widgets:
 
@@ -252,11 +262,12 @@ Exit criteria for both widgets:
 5. Prove one crashing out-of-process declarative widget.
 6. Review the evidence and accept or revise the proposed architecture.
 
-After the current prototype foundation, the product order is: complete and
-measure the Audio Mixer integration; implement the event-driven Network
-Controls provider/widget next; finish the installed-package review/live-reload
-experience and remaining accessibility/global-theme evidence; then add stronger
-worker isolation. Do not use either widget to justify a private host API that
+After the current prototype foundation, the product order is: continue
+measuring the implemented Audio Mixer and Network Controls integrations; finish
+the installed-package
+review/live-reload experience and remaining accessibility/global-theme
+evidence; then add stronger worker isolation. Do not use either widget to
+justify a private host API that
 external widgets cannot exercise.
 
 The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.
