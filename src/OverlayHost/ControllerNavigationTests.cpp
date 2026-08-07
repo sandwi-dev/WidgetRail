@@ -96,19 +96,19 @@ int main() {
     using gba::input::ControllerActionRoute;
     using gba::input::RouteControllerAction;
     using gba::input::RouteUnhandledControllerAction;
-    Check(RouteControllerAction(ControllerActionContext::Dashboard, L"A") ==
+    Check(RouteControllerAction(ControllerActionContext::Tray, L"A") ==
               ControllerActionRoute::HostActivate,
           "dashboard A remains the host open action");
-    Check(RouteControllerAction(ControllerActionContext::Dashboard, L"Y") ==
+    Check(RouteControllerAction(ControllerActionContext::Tray, L"Y") ==
               ControllerActionRoute::HostToggleReorder,
           "dashboard Y remains the host reorder action");
-    Check(RouteControllerAction(ControllerActionContext::Dashboard, L"B") ==
+    Check(RouteControllerAction(ControllerActionContext::Tray, L"B") ==
               ControllerActionRoute::HostCloseOverlay,
           "dashboard B is browser-like Back and closes the overlay");
     constexpr std::array<std::wstring_view, 9> widgetOwnedDashboardButtons{
         L"X", L"LB", L"RB", L"LT", L"RT", L"LS", L"RS", L"View", L"Menu"};
     for (const auto button : widgetOwnedDashboardButtons) {
-        Check(RouteControllerAction(ControllerActionContext::Dashboard, button) ==
+        Check(RouteControllerAction(ControllerActionContext::Tray, button) ==
                   ControllerActionRoute::Widget,
               "every other dashboard action is owned by the hovered widget");
     }
@@ -134,6 +134,25 @@ int main() {
               ControllerActionContext::RootWidgetScope, L"X") ==
               ControllerActionRoute::None,
           "unhandled non-Back actions never become host navigation");
+
+    using gba::input::ShouldTransferFocusToTray;
+    Check(ShouldTransferFocusToTray(NavigationDirection::Down, true, false, false),
+          "Down after the last root control transfers focus to the tray");
+    Check(!ShouldTransferFocusToTray(NavigationDirection::Up, true, false, false),
+          "only the downward root boundary enters the tray");
+    Check(!ShouldTransferFocusToTray(NavigationDirection::Down, false, false, false),
+          "nested scopes remain contained at their downward boundary");
+    Check(!ShouldTransferFocusToTray(NavigationDirection::Down, true, true, false),
+          "an explicit Down edge wins before the tray");
+    Check(!ShouldTransferFocusToTray(NavigationDirection::Down, true, false, true),
+          "a geometric Down target wins before the tray");
+    using gba::input::IsDistinctFocusMove;
+    Check(IsDistinctFocusMove(L"current", L"next", true),
+          "a distinct enabled explicit target is a real focus move");
+    Check(!IsDistinctFocusMove(L"current", L"current", true),
+          "a root self-loop is an exhausted boundary rather than movement");
+    Check(!IsDistinctFocusMove(L"current", L"next", false),
+          "an unavailable explicit target is not a focus move");
 
     std::cout << "ControllerNavigationTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

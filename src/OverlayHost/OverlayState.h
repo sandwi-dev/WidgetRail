@@ -14,6 +14,13 @@ enum class Surface {
     Widget,
 };
 
+// Presentation and input ownership are intentionally independent. A widget
+// surface can remain visible while controller focus is parked on the tray.
+enum class FocusRegion {
+    Tray,
+    Widget,
+};
+
 enum class Command {
     ToggleOverlay,
     NavigateLeft,
@@ -44,6 +51,7 @@ public:
     [[nodiscard]] bool SetAvailableWidgets(
         std::vector<std::wstring> availableWidgetIds) noexcept;
     [[nodiscard]] Surface surface() const noexcept { return surface_; }
+    [[nodiscard]] FocusRegion focusRegion() const noexcept { return focusRegion_; }
     [[nodiscard]] std::size_t selectedSlot() const noexcept { return selectedSlot_; }
     [[nodiscard]] std::wstring_view selectedWidget() const noexcept;
     [[nodiscard]] std::wstring_view activeWidget() const noexcept;
@@ -55,11 +63,15 @@ private:
     void Normalize(std::vector<std::wstring> availableWidgetIds) noexcept;
     void MoveSelection(int delta) noexcept;
     void MoveCard(int delta) noexcept;
+    void PresentSelectedWidget(FocusRegion focusRegion) noexcept;
     [[nodiscard]] std::size_t FindSlot(std::wstring_view widget) const noexcept;
     [[nodiscard]] bool Contains(std::wstring_view widget) const noexcept;
 
     PersistentState persistent_;
     Surface surface_{Surface::Hidden};
+    // Widget is the compatibility default for a persisted reopen. A first-run
+    // dashboard explicitly switches this to Tray when it becomes visible.
+    FocusRegion focusRegion_{FocusRegion::Widget};
     std::size_t selectedSlot_{0};
     std::optional<std::wstring> activeWidget_;
     bool reorderMode_{false};

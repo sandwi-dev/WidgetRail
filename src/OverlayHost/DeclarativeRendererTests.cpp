@@ -50,6 +50,10 @@ gba::WidgetStyleValue Number(const double number) {
     return {L"number", std::to_wstring(number), number, {}};
 }
 
+gba::WidgetStyleValue Color(const wchar_t* value) {
+    return {L"color", value, std::nullopt, {}};
+}
+
 void ImagePlacementMath() {
     const Rect destination{10.0F, 20.0F, 100.0F, 100.0F};
     auto cover = DeclarativeRenderer::ComputeImagePlacement(
@@ -621,6 +625,43 @@ void RealDirect2DSmoke() {
     Check(result.currentFocusRect.has_value(), "real render returns focused geometry");
     Check(result.hitRegions.size() == 4,
           "buttons and optimistic Slider render through the real Direct2D path");
+
+    slider.baseStyle = {
+        {L"background", Color(L"#00ff00")},
+        {L"height", Length(44)},
+        {L"width", Length(240)},
+    };
+    snapshot.root.children = {slider};
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    const auto minimalSlider = renderer.Render(
+        target.Get(), snapshot, L"", {0.0F, 0.0F, 640.0F, 80.0F});
+    Check(SUCCEEDED(target->EndDraw()), "minimal Slider draw completes");
+    const auto sliderRect = minimalSlider.focusRects.at(L"volume");
+    ComPtr<IWICBitmapLock> lock;
+    const WICRect lockArea{0, 0, 640, 360};
+    Check(SUCCEEDED(canvas->Lock(
+        &lockArea, WICBitmapLockRead, lock.ReleaseAndGetAddressOf())),
+        "minimal Slider bitmap locks");
+    UINT stride = 0;
+    UINT byteCount = 0;
+    BYTE* pixels = nullptr;
+    Check(SUCCEEDED(lock->GetStride(&stride)), "minimal Slider stride is available");
+    Check(SUCCEEDED(lock->GetDataPointer(&byteCount, &pixels)),
+        "minimal Slider pixels are available");
+    const auto sampleX = static_cast<UINT>(std::clamp(
+        sliderRect.x + sliderRect.width * 0.75F, 0.0F, 639.0F));
+    const auto outsideY = static_cast<UINT>(std::clamp(
+        sliderRect.y + 3.0F, 0.0F, 359.0F));
+    const auto trackY = static_cast<UINT>(std::clamp(
+        sliderRect.y + sliderRect.height * 0.5F, 0.0F, 359.0F));
+    const auto outsideGreen = pixels[outsideY * stride + sampleX * 4U + 1U];
+    const auto trackGreen = pixels[trackY * stride + sampleX * 4U + 1U];
+    Check(outsideGreen < 32,
+        "Slider background does not fill its complete 44-DIP hit target");
+    Check(trackGreen > 200,
+        "Slider background remains the visible thin track color");
+    lock.Reset();
 
     snapshot.root.children = {slider};
     snapshot.root.children[0].minimum = -std::numeric_limits<double>::max();

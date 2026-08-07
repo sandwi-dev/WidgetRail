@@ -489,11 +489,17 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
     private int _failReads;
     private int _blockNext;
     private int _degraded;
+    private NativeAvailableWifiSnapshot _availableWifi = new(0, NativeWifiScanState.NotScanned, []);
+    private NativeWifiScanStartResult _scanStartResult = NativeWifiScanStartResult.Started;
+    private NativeWifiConnectStartResult _wifiConnectStartResult = NativeWifiConnectStartResult.Started;
     public event EventHandler<NativeNetworkStateChangedEventArgs>? StateChanged;
     public long Generation { get; private set; } = 1;
     public bool IsDegraded => Volatile.Read(ref _degraded) != 0;
     public int ReadCalls => Volatile.Read(ref _readCalls);
     public int ConnectCalls => Volatile.Read(ref _connectCalls);
+    public int WifiScanCalls { get; private set; }
+    public int AvailableWifiReadCalls { get; private set; }
+    public int AvailableWifiConnectCalls { get; private set; }
     public List<string> ConnectedNativeKeys { get; } = [];
     public List<int> NativeCallThreadIds { get; } = [];
     public ManualResetEventSlim ReadEntered { get; } = new(false);
@@ -503,6 +509,9 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
 
     public void SetGeneration(long generation) => Generation = generation;
     public void SetSnapshot(NativeNetworkSnapshot snapshot) { lock (_gate) _snapshot = snapshot; }
+    public void SetAvailableWifiSnapshot(NativeAvailableWifiSnapshot snapshot) { lock (_gate) _availableWifi = snapshot; }
+    public void SetWifiScanStartResult(NativeWifiScanStartResult result) => _scanStartResult = result;
+    public void SetWifiConnectStartResult(NativeWifiConnectStartResult result) => _wifiConnectStartResult = result;
     public void FailNextRead() => Interlocked.Increment(ref _failReads);
     public void RaiseChanged(long? generation = null) => StateChanged?.Invoke(
         this, new NativeNetworkStateChangedEventArgs(generation ?? Generation));
@@ -510,6 +519,11 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
         this, new NativeNetworkStateChangedEventArgs(Generation)
         {
             ConnectionOutcome = new(key, result),
+        });
+    public void RaiseWifiScanOutcome(NativeWifiScanOutcome result, long? generation = null) => StateChanged?.Invoke(
+        this, new NativeNetworkStateChangedEventArgs(generation ?? Generation)
+        {
+            WifiScanOutcome = result,
         });
     public void BlockNextRead()
     {
@@ -547,6 +561,24 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
             ConnectedNativeKeys.Add(nativeProfileKey);
             return true;
         }
+    }
+
+    public NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot()
+    {
+        AvailableWifiReadCalls++;
+        lock (_gate) return _availableWifi;
+    }
+
+    public NativeWifiScanStartResult TryStartWifiScan()
+    {
+        WifiScanCalls++;
+        return _scanStartResult;
+    }
+
+    public NativeWifiConnectStartResult TryConnectAvailableWifiNetwork(string nativeNetworkKey)
+    {
+        AvailableWifiConnectCalls++;
+        return _wifiConnectStartResult;
     }
 
     public void Dispose()

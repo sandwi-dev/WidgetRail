@@ -157,23 +157,26 @@ two-dimensional left-stick movement for focus and `A` to activate the focused
 button. `B`, `X`, `Y`, bumpers, triggers, stick clicks, Menu, and View are
 available to the active widget input scope.
 
-Attach shortcuts to the control that owns the action:
+Attach a control-local shortcut to the Button that owns it. Attach a command
+that must work anywhere in the open window once to the active scope root:
 
 ```csharp
-UI.Row("player.transport",
-    UI.Button("Previous", "previous", "player.previous")
-        .Icon(WidgetGlyph.Previous)
-        .FocusRight("player.play")
-        .Shortcut(ControllerButton.LeftBumper),
-    UI.Button("Play", "toggle-playback", "player.play")
-        .Icon(WidgetGlyph.Play, "Play or pause")
-        .FocusLeft("player.previous")
-        .FocusRight("player.next")
-        .Shortcut(ControllerButton.X),
-    UI.Button("Next", "next", "player.next")
-        .Icon(WidgetGlyph.Next)
-        .FocusLeft("player.play")
-        .Shortcut(ControllerButton.RightBumper))
+UI.Stack("player.window",
+        UI.Row("player.transport",
+            UI.Button("Previous", "previous", "player.previous")
+                .Icon(WidgetGlyph.Previous)
+                .FocusRight("player.play"),
+            UI.Button("Play", "toggle-playback", "player.play")
+                .Icon(WidgetGlyph.Play, "Play or pause")
+                .FocusLeft("player.previous")
+                .FocusRight("player.next"),
+            UI.Button("Next", "next", "player.next")
+                .Icon(WidgetGlyph.Next)
+                .FocusLeft("player.play")))
+    .InputScope("player-window")
+    .Shortcut(ControllerButton.LeftBumper, "previous")
+    .Shortcut(ControllerButton.X, "toggle-playback")
+    .Shortcut(ControllerButton.RightBumper, "next")
 ```
 
 The default `OnControllerInputAsync` resolves against the exact last rendered
@@ -181,6 +184,9 @@ snapshot. For open input it validates the snapshot sequence and active scope,
 checks the focused node first, then the active scope-root container. It never
 searches an arbitrary unfocused child. Stale input or a focus ID outside that
 scope is unhandled.
+Therefore a Button shortcut is exact-focus-only; sibling Buttons do not make it
+window-wide. Scope-root shortcuts work with any focus in that active scope and
+with no focus, but never leak into a different nested active scope.
 Override `OnControllerInputAsync` only for semantic controls that cannot be
 represented as declarative actions; Guide/Home and arbitrary HID reports are
 never transported.

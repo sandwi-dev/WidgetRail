@@ -51,7 +51,7 @@ enum class FocusedDirectionRoute {
 }
 
 enum class ControllerActionContext {
-    Dashboard,
+    Tray,
     RootWidgetScope,
     NestedWidgetScope,
 };
@@ -65,20 +65,42 @@ enum class ControllerActionRoute {
     None,
 };
 
-/// Decides who receives a non-navigation button first. Dashboard A/Y remain
-/// shell navigation, dashboard B is browser-like Back (close), and all open
+/// Decides who receives a non-navigation button first. Tray A/Y remain shell
+/// navigation, tray B is browser-like Back (close), and all interactive
 /// widget buttons first reach the active SDK input scope. Guide is a system
 /// button and is intentionally outside this policy.
 [[nodiscard]] constexpr ControllerActionRoute RouteControllerAction(
     const ControllerActionContext context,
     const std::wstring_view button) noexcept {
-    if (context != ControllerActionContext::Dashboard) {
+    if (context != ControllerActionContext::Tray) {
         return ControllerActionRoute::Widget;
     }
     if (button == L"A") return ControllerActionRoute::HostActivate;
     if (button == L"Y") return ControllerActionRoute::HostToggleReorder;
     if (button == L"B") return ControllerActionRoute::HostCloseOverlay;
     return ControllerActionRoute::Widget;
+}
+
+/// Down exits a root widget only after both author-specified and geometric
+/// focus navigation are exhausted. Nested input scopes keep focus contained so
+/// their own Back hierarchy remains authoritative.
+[[nodiscard]] constexpr bool ShouldTransferFocusToTray(
+    const NavigationDirection direction,
+    const bool rootInputScope,
+    const bool hasExplicitTarget,
+    const bool hasGeometricTarget) noexcept {
+    return direction == NavigationDirection::Down && rootInputScope &&
+           !hasExplicitTarget && !hasGeometricTarget;
+}
+
+/// A self-loop is useful for containing focus in a nested scope, but it is not
+/// movement at a root boundary. Treat only a distinct enabled destination as
+/// an explicit move so Down on a last-row self-loop can enter the shell tray.
+[[nodiscard]] constexpr bool IsDistinctFocusMove(
+    const std::wstring_view current,
+    const std::wstring_view target,
+    const bool targetNavigable) noexcept {
+    return targetNavigable && !target.empty() && target != current;
 }
 
 /// Resolves only an explicitly unhandled widget result. B at the root scope

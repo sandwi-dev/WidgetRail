@@ -6,8 +6,8 @@
 }
 
 .settings-widget {
-  gap: 16px;
-  padding: 24px 28px;
+  gap: 12px;
+  padding: 20px 24px;
   background: var(--settings-surface);
   color: var(--text);
 }
@@ -33,8 +33,8 @@
 .settings-title,
 .page-heading {
   color: var(--text);
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 21px;
+  font-weight: 600;
   max-lines: 1;
 }
 
@@ -67,10 +67,10 @@
 .danger-button,
 .setting-stepper-button {
   min-height: 44px;
-  padding: 11px 15px;
+  padding: 10px 13px;
   background: var(--settings-row);
   border-width: 0;
-  corner-radius: 11px;
+  corner-radius: 9px;
   transition-duration: 100ms;
   transition-easing: ease-out;
 }

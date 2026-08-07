@@ -266,8 +266,47 @@ documented API facts, threading/lifetime rules, privacy boundary, and simulator
 matrix, and the [Network Controls reference](network-controls.md) for the
 author-facing contract and completion evidence.
 
+The next staged Network Control milestone adds controller-visible **currently
+available Wi-Fi networks** and **software Wi-Fi radio control**. The closed
+broker/SDK contracts and trusted provider foundation for explicit,
+user-initiated `WlanScan`, asynchronous completion/timeout, and a bounded
+`WlanGetAvailableNetworkList` snapshot are implemented. The first-party UI,
+bundled capability declaration/consent, dedicated scan/connect tests, and Wi-Fi
+radio control are not. Windows gates both scan/list APIs behind
+precise-location consent on current releases, so the flow must begin from a
+controller action, explain the OS prompt, and render required, denied, and
+revoked states without retrying. The resulting rows use generation-bound opaque
+scan IDs that expire on the next scan/provider generation; widgets never receive
+BSSID, interface identity, raw WLAN structures, profile XML, or keys.
+
+Connection support is deliberately staged: connect saved profiles first; then
+review unsaved open networks; then add a host-owned credential prompt for new
+WPA/WPA2/WPA3 Personal networks. Credentials never enter the widget snapshot,
+worker process, widget-owned storage, diagnostics, or logs. Enterprise/802.1X,
+certificate, SIM, domain-credential, hidden-network, and captive-portal setup is
+unsupported initially. `WlanConnect` remains asynchronous and authoritative
+ACM events determine success/failure. `WlanSetInterface` with
+`wlan_intf_opcode_radio_state` may control only the software radio state; a
+hardware switch, policy, or airplane-mode restriction remains authoritative.
+
+A later first-party **Bluetooth Controls** widget is also planned behind new
+closed broker capabilities and a successful packaged-identity/capability spike.
+The trusted provider will use `Windows.Devices.Radios.Radio` for Bluetooth radio
+state, `DeviceWatcher` for bounded device discovery/change events, and
+`DeviceInformationPairing.PairAsync`/`UnpairAsync` for explicit host-owned
+pairing flows. No generic Bluetooth device Connect/Disconnect command is
+promised: public Windows communication APIs are profile-specific (for example
+GATT services/characteristics and RFCOMM sockets), so each future functional
+connection needs its own reviewed profile contract and capability.
+
 Later Network Control phases add:
 
+- explicit, privacy-gated available-network scans with generation-bound opaque
+  IDs and no BSSID exposure;
+- saved/open-network connection first, followed by a host-owned WPA Personal
+  credential flow; enterprise authentication remains unsupported initially;
+- software Wi-Fi radio state/control with hardware/policy restrictions shown
+  as authoritative;
 - sanitized active-adapter state and Ethernet/Wi-Fi identity;
 - SSID and signal/link quality only through an explicit Windows privacy-access
   flow with required/denied/revoked states;
@@ -280,15 +319,19 @@ Later Network Control phases add:
 
 Network phase dependencies are: bounded status/profile models and controller
 focus; separate read and Interactive-only saved-profile-switch grants; the
-event-driven IP Helper/Native Wi-Fi provider; then Windows privacy decisions,
-hardware matrices, and measured diagnostic sampling. Identity/address details
+event-driven IP Helper/Native Wi-Fi provider; then new scan, unsaved-connect,
+credential-prompt, and radio-control capabilities; precise-location consent;
+hardware matrices; and measured diagnostic sampling. Identity/address details
 and recovery commands do not enter the public contract before those reviews.
 
-It does not initially include Wi-Fi password entry, profile creation/editing,
-stored-key access, captive-portal automation, arbitrary adapter configuration,
-or privileged troubleshooting scripts. Diagnostic sampling must stop outside
-its declared lifecycle state and must be measured against the overlay's CPU,
-network, wakeup, and memory budgets.
+The user-visible first-party reference still excludes scans, unsaved networks,
+password entry, profile creation/editing, and radio control. The staged credential flow
+must remain host-owned and WPA Personal-only at first; it never exposes stored
+keys. Captive-portal automation, enterprise/802.1X provisioning, arbitrary
+adapter configuration, and privileged troubleshooting scripts remain outside
+the initial expanded scope. Diagnostic sampling must stop outside its declared
+lifecycle state and must be measured against the overlay's CPU, network,
+wakeup, and memory budgets.
 
 Exit criteria for both widgets:
 

@@ -16,6 +16,47 @@ public sealed record NativeSavedNetworkProfile(
     bool IsConnected,
     int? SignalPercent);
 
+public sealed record NativeAvailableWifiNetwork(
+    string NativeNetworkKey,
+    string DisplayName,
+    int SignalPercent,
+    WifiSecurityKind Security,
+    bool CredentialRequired,
+    bool IsConnected,
+    bool HasSavedProfile);
+
+public enum NativeWifiScanState
+{
+    NotScanned,
+    Scanning,
+    Ready,
+    PreciseLocationDenied,
+    Unavailable,
+}
+
+public enum NativeWifiScanStartResult
+{
+    Started,
+    AlreadyScanning,
+    PreciseLocationDenied,
+    Unavailable,
+}
+
+public enum NativeWifiConnectStartResult
+{
+    Started,
+    NotFound,
+    CredentialRequired,
+    UnsupportedAuthentication,
+    Unavailable,
+}
+
+public enum NativeWifiScanOutcome
+{
+    Completed,
+    Failed,
+}
+
 public sealed record NativeNetworkSnapshot(
     NetworkConnectivity Connectivity,
     NativeNetworkMedium ActiveMedium,
@@ -26,10 +67,16 @@ public sealed record NativeNetworkSnapshot(
     NetworkWirelessAvailability WirelessAvailability = NetworkWirelessAvailability.Available,
     bool IsWirelessAccessRestricted = false);
 
+public sealed record NativeAvailableWifiSnapshot(
+    long ScanGeneration,
+    NativeWifiScanState ScanState,
+    IReadOnlyList<NativeAvailableWifiNetwork> Networks);
+
 public sealed class NativeNetworkStateChangedEventArgs(long generation) : EventArgs
 {
     public long Generation { get; } = generation;
     public NativeNetworkConnectionOutcome? ConnectionOutcome { get; init; }
+    public NativeWifiScanOutcome? WifiScanOutcome { get; init; }
 }
 
 public enum NativeNetworkConnectionResult
@@ -54,6 +101,9 @@ public interface IWindowsNetworkNativeAdapter : IDisposable
     bool IsDegraded { get; }
     NativeNetworkSnapshot ReadSnapshot();
     bool TryConnectSavedProfile(string nativeProfileKey);
+    NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot();
+    NativeWifiScanStartResult TryStartWifiScan();
+    NativeWifiConnectStartResult TryConnectAvailableWifiNetwork(string nativeNetworkKey);
 }
 
 public interface IWindowsNetworkNativeAdapterFactory

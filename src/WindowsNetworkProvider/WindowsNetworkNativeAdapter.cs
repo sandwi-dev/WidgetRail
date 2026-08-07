@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using GameBarAlternative.PlatformBroker;
 
 namespace GameBarAlternative.WindowsNetworkProvider;
@@ -13,25 +15,36 @@ public sealed class WindowsNetworkNativeAdapterFactory : IWindowsNetworkNativeAd
 
 /// <summary>
 /// Windows desktop adapter using Native Wi-Fi (wlanapi) and IP Helper connectivity/interface
-/// notifications. It never calls WlanGetProfile, scans, or returns native identities.
+/// notifications. Scans are explicit and bounded; public identities are assigned by the provider.
 /// </summary>
 internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
 {
     private const uint ErrorSuccess = 0;
+    private const uint ErrorAccessDenied = 5;
     private const uint WlanNotificationSourceNone = 0;
     private const uint WlanNotificationSourceAcm = 0x00000008;
+    private const uint WlanNotificationAcmScanComplete = 7;
+    private const uint WlanNotificationAcmScanFail = 8;
     private const uint WlanNotificationAcmConnectionComplete = 10;
     private const uint WlanNotificationAcmConnectionAttemptFail = 11;
     private const int WlanIntfOpcodeRadioState = 4;
     private const int WlanConnectionModeProfile = 0;
+    private const int WlanConnectionModeDiscoveryUnsecure = 3;
     private const int Dot11BssTypeAny = 3;
     private const int MaximumInterfaces = 32;
     private const int MaximumProfilesPerInterface = 128;
+    private const int MaximumAvailableNetworks = 256;
+    private const uint WlanAvailableNetworkConnected = 0x00000001;
+    private const uint WlanAvailableNetworkHasProfile = 0x00000002;
     private readonly NativeWifiNotificationCallback _wlanCallback;
     private readonly IpInterfaceChangeCallback _ipCallback;
     private readonly NetworkConnectivityHintChangeCallback _connectivityCallback;
     private readonly Dictionary<string, NativeProfileTarget> _connectableProfiles =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NativeAvailableNetworkTarget> _connectableNetworks =
+        new(StringComparer.Ordinal);
+    private readonly object _scanGate = new();
+    private readonly HashSet<Guid> _pendingScanInterfaces = [];
     private IntPtr _wlanHandle;
     private IntPtr _ipNotificationHandle;
     private IntPtr _connectivityNotificationHandle;
@@ -40,6 +53,12 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
     private bool _wlanServiceAvailable;
     private bool _wlanNotificationsRegistered;
     private bool _connectivityNotificationsSupported = true;
+    private NativeWifiScanState _scanState = NativeWifiScanState.NotScanned;
+    private long _scanGeneration;
+    private bool _scanHadSuccess;
+    private string? _pendingConnectionNativeKey;
+    private long _cachedAvailableGeneration = -1;
+    private IReadOnlyList<NativeAvailableWifiNetwork> _cachedAvailableNetworks = [];
 
     internal WindowsNetworkNativeAdapter(long generation)
     {
@@ -141,9 +160,193 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         var interfaceId = target.InterfaceId;
         var result = NativeMethods.WlanConnect(
             _wlanHandle, ref interfaceId, ref parameters, IntPtr.Zero);
-        if (result == ErrorSuccess) return true;
+        if (result == ErrorSuccess)
+        {
+            lock (_scanGate) _pendingConnectionNativeKey = nativeProfileKey;
+            return true;
+        }
         Volatile.Write(ref _degraded, 1);
         throw new Win32Exception((int)result, "Windows could not start the saved Wi-Fi connection.");
+    }
+
+    public NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot()
+    {
+        ThrowIfDisposed();
+        NativeWifiScanState state;
+        long generation;
+        lock (_scanGate)
+        {
+            state = _scanState;
+            generation = _scanGeneration;
+        }
+        if (state != NativeWifiScanState.Ready)
+            return new NativeAvailableWifiSnapshot(generation, state, []);
+        lock (_scanGate)
+        {
+            if (_cachedAvailableGeneration == generation)
+                return new NativeAvailableWifiSnapshot(
+                    generation, NativeWifiScanState.Ready, _cachedAvailableNetworks.ToArray());
+        }
+
+        var networks = new List<NativeAvailableWifiNetwork>();
+        var targets = new Dictionary<string, NativeAvailableNetworkTarget>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var accessDenied = false;
+        var anyInterfaceRead = false;
+        foreach (var wireless in EnumerateWirelessInterfaces())
+        {
+            var result = EnumerateAvailableNetworks(wireless.InterfaceId);
+            if (result.AccessDenied)
+            {
+                accessDenied = true;
+                continue;
+            }
+            if (!result.Succeeded) continue;
+            anyInterfaceRead = true;
+            foreach (var item in result.Networks)
+            {
+                if (networks.Count >= MaximumAvailableNetworks) break;
+                var deduplicationKey = AvailableNetworkDeduplicationKey(
+                    wireless.InterfaceId,
+                    item.Ssid,
+                    item.AuthenticationAlgorithm,
+                    item.CipherAlgorithm);
+                if (!seen.Add(deduplicationKey)) continue;
+                var nativeKey = $"wifi_native_{Guid.NewGuid():N}";
+                var hasProfile = (item.Flags & WlanAvailableNetworkHasProfile) != 0 &&
+                    !string.IsNullOrWhiteSpace(item.ProfileName);
+                var connected = (item.Flags & WlanAvailableNetworkConnected) != 0;
+                var security = ClassifySecurity(item.SecurityEnabled, item.AuthenticationAlgorithm);
+                var credentialRequired = !connected && !hasProfile && item.SecurityEnabled;
+                targets.Add(nativeKey, new NativeAvailableNetworkTarget(
+                    wireless.InterfaceId,
+                    item.Ssid,
+                    item.BssType,
+                    hasProfile ? item.ProfileName : null,
+                    security,
+                    credentialRequired));
+                networks.Add(new NativeAvailableWifiNetwork(
+                    nativeKey,
+                    DecodeSsid(item.Ssid),
+                    checked((int)Math.Min(item.SignalQuality, 100u)),
+                    security,
+                    credentialRequired,
+                    connected,
+                    hasProfile));
+            }
+        }
+
+        lock (_scanGate)
+        {
+            if (_scanGeneration != generation || _scanState != NativeWifiScanState.Ready)
+                return new NativeAvailableWifiSnapshot(_scanGeneration, _scanState, []);
+            _connectableNetworks.Clear();
+            if (!anyInterfaceRead)
+            {
+                _scanState = accessDenied
+                    ? NativeWifiScanState.PreciseLocationDenied
+                    : NativeWifiScanState.Unavailable;
+                return new NativeAvailableWifiSnapshot(_scanGeneration, _scanState, []);
+            }
+            foreach (var target in targets) _connectableNetworks.Add(target.Key, target.Value);
+            _cachedAvailableGeneration = generation;
+            _cachedAvailableNetworks = networks.ToArray();
+            return new NativeAvailableWifiSnapshot(
+                generation, NativeWifiScanState.Ready, _cachedAvailableNetworks.ToArray());
+        }
+    }
+
+    public NativeWifiScanStartResult TryStartWifiScan()
+    {
+        ThrowIfDisposed();
+        if (_wlanHandle == IntPtr.Zero)
+            return SetScanStartFailure(NativeWifiScanState.Unavailable,
+                NativeWifiScanStartResult.Unavailable);
+        var interfaces = EnumerateWirelessInterfaces();
+        if (interfaces.Count == 0)
+            return SetScanStartFailure(NativeWifiScanState.Unavailable,
+                NativeWifiScanStartResult.Unavailable);
+
+        lock (_scanGate)
+        {
+            if (_scanState == NativeWifiScanState.Scanning)
+                return NativeWifiScanStartResult.AlreadyScanning;
+            _pendingScanInterfaces.Clear();
+            _connectableNetworks.Clear();
+            _cachedAvailableGeneration = -1;
+            _cachedAvailableNetworks = [];
+            _scanHadSuccess = false;
+            _scanState = NativeWifiScanState.Scanning;
+            var denied = false;
+            foreach (var wireless in interfaces)
+            {
+                _pendingScanInterfaces.Add(wireless.InterfaceId);
+                var interfaceId = wireless.InterfaceId;
+                var result = NativeMethods.WlanScan(
+                    _wlanHandle, ref interfaceId, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                if (result == ErrorSuccess) continue;
+                _pendingScanInterfaces.Remove(wireless.InterfaceId);
+                denied |= result == ErrorAccessDenied;
+            }
+            if (_pendingScanInterfaces.Count != 0) return NativeWifiScanStartResult.Started;
+            _scanState = denied
+                ? NativeWifiScanState.PreciseLocationDenied
+                : NativeWifiScanState.Unavailable;
+            return denied
+                ? NativeWifiScanStartResult.PreciseLocationDenied
+                : NativeWifiScanStartResult.Unavailable;
+        }
+    }
+
+    public NativeWifiConnectStartResult TryConnectAvailableWifiNetwork(string nativeNetworkKey)
+    {
+        ThrowIfDisposed();
+        if (_wlanHandle == IntPtr.Zero) return NativeWifiConnectStartResult.Unavailable;
+        NativeAvailableNetworkTarget target;
+        lock (_scanGate)
+        {
+            if (!_connectableNetworks.TryGetValue(nativeNetworkKey, out target!))
+                return NativeWifiConnectStartResult.NotFound;
+        }
+        if (target.CredentialRequired)
+            return target.Security == WifiSecurityKind.Enterprise
+                ? NativeWifiConnectStartResult.UnsupportedAuthentication
+                : NativeWifiConnectStartResult.CredentialRequired;
+
+        IntPtr ssidPointer = IntPtr.Zero;
+        try
+        {
+            var parameters = new WlanConnectionParameters
+            {
+                ConnectionMode = target.ProfileName is null
+                    ? WlanConnectionModeDiscoveryUnsecure
+                    : WlanConnectionModeProfile,
+                Profile = target.ProfileName,
+                Dot11Ssid = IntPtr.Zero,
+                DesiredBssidList = IntPtr.Zero,
+                Dot11BssType = target.ProfileName is null ? target.BssType : Dot11BssTypeAny,
+                Flags = 0,
+            };
+            if (target.ProfileName is null)
+            {
+                ssidPointer = Marshal.AllocHGlobal(Marshal.SizeOf<Dot11Ssid>());
+                Marshal.StructureToPtr(ToNativeSsid(target.Ssid), ssidPointer, false);
+                parameters.Dot11Ssid = ssidPointer;
+            }
+            var interfaceId = target.InterfaceId;
+            var result = NativeMethods.WlanConnect(
+                _wlanHandle, ref interfaceId, ref parameters, IntPtr.Zero);
+            if (result != ErrorSuccess)
+                return result == ErrorAccessDenied
+                    ? NativeWifiConnectStartResult.Unavailable
+                    : NativeWifiConnectStartResult.NotFound;
+            lock (_scanGate) _pendingConnectionNativeKey = nativeNetworkKey;
+            return NativeWifiConnectStartResult.Started;
+        }
+        finally
+        {
+            if (ssidPointer != IntPtr.Zero) Marshal.FreeHGlobal(ssidPointer);
+        }
     }
 
     private void TryOpenNativeWifi()
@@ -421,6 +624,103 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         finally { NativeMethods.WlanFreeMemory(listPointer); }
     }
 
+    private AvailableNetworkReadResult EnumerateAvailableNetworks(Guid interfaceId)
+    {
+        var id = interfaceId;
+        var result = NativeMethods.WlanGetAvailableNetworkList(
+            _wlanHandle, ref id, 0, IntPtr.Zero, out var listPointer);
+        if (result == ErrorAccessDenied)
+            return new AvailableNetworkReadResult(false, true, []);
+        if (result != ErrorSuccess || listPointer == IntPtr.Zero)
+            return new AvailableNetworkReadResult(false, false, []);
+        try
+        {
+            var count = Math.Min(Marshal.ReadInt32(listPointer), MaximumAvailableNetworks);
+            var offset = 8;
+            var size = Marshal.SizeOf<WlanAvailableNetwork>();
+            var networks = new List<AvailableNetworkData>(count);
+            for (var index = 0; index < count; index++)
+            {
+                var item = Marshal.PtrToStructure<WlanAvailableNetwork>(
+                    listPointer + offset + index * size);
+                var ssidLength = checked((int)Math.Min(item.Dot11Ssid.SsidLength, 32u));
+                var source = item.Dot11Ssid.Ssid ?? [];
+                if (ssidLength > source.Length) continue;
+                var ssid = source.AsSpan(0, ssidLength).ToArray();
+                networks.Add(new AvailableNetworkData(
+                    item.ProfileName ?? string.Empty,
+                    ssid,
+                    item.BssType,
+                    item.NetworkConnectable != 0,
+                    item.SignalQuality,
+                    item.SecurityEnabled != 0,
+                    item.DefaultAuthenticationAlgorithm,
+                    item.DefaultCipherAlgorithm,
+                    item.Flags));
+            }
+            return new AvailableNetworkReadResult(true, false, networks);
+        }
+        finally { NativeMethods.WlanFreeMemory(listPointer); }
+    }
+
+    private NativeWifiScanStartResult SetScanStartFailure(
+        NativeWifiScanState state,
+        NativeWifiScanStartResult result)
+    {
+        lock (_scanGate)
+        {
+            _pendingScanInterfaces.Clear();
+            _connectableNetworks.Clear();
+            _cachedAvailableGeneration = -1;
+            _cachedAvailableNetworks = [];
+            _scanState = state;
+        }
+        return result;
+    }
+
+    private static string AvailableNetworkDeduplicationKey(
+        Guid interfaceId,
+        byte[] ssid,
+        uint authentication,
+        uint cipher)
+    {
+        var material = new byte[16 + ssid.Length + 8];
+        interfaceId.TryWriteBytes(material);
+        ssid.CopyTo(material, 16);
+        BitConverter.TryWriteBytes(material.AsSpan(16 + ssid.Length, 4), authentication);
+        BitConverter.TryWriteBytes(material.AsSpan(20 + ssid.Length, 4), cipher);
+        return Convert.ToHexString(SHA256.HashData(material));
+    }
+
+    private static string DecodeSsid(byte[] ssid)
+    {
+        if (ssid.Length == 0) return "Hidden network";
+        var value = Encoding.UTF8.GetString(ssid).Trim();
+        return string.IsNullOrWhiteSpace(value) ? "Hidden network" : value;
+    }
+
+    private static WifiSecurityKind ClassifySecurity(bool enabled, uint authentication)
+    {
+        if (!enabled) return WifiSecurityKind.Open;
+        return authentication switch
+        {
+            4 or 7 or 10 or 11 => WifiSecurityKind.Personal,
+            3 or 6 or 8 or 12 or 13 or 14 => WifiSecurityKind.Enterprise,
+            _ => WifiSecurityKind.Unknown,
+        };
+    }
+
+    private static Dot11Ssid ToNativeSsid(byte[] ssid)
+    {
+        var bytes = new byte[32];
+        ssid.AsSpan(0, Math.Min(ssid.Length, bytes.Length)).CopyTo(bytes);
+        return new Dot11Ssid
+        {
+            SsidLength = checked((uint)Math.Min(ssid.Length, bytes.Length)),
+            Ssid = bytes,
+        };
+    }
+
     private void OnIpInterfaceChanged(IntPtr context, IntPtr row, int notificationType) =>
         RaiseChanged(null);
 
@@ -429,6 +729,35 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
 
     private void OnWlanNotification(ref WlanNotificationData data, IntPtr context)
     {
+        if (data.NotificationSource == WlanNotificationSourceAcm &&
+            data.NotificationCode is WlanNotificationAcmScanComplete or WlanNotificationAcmScanFail)
+        {
+            NativeWifiScanOutcome? scanOutcome = null;
+            lock (_scanGate)
+            {
+                if (_scanState == NativeWifiScanState.Scanning &&
+                    _pendingScanInterfaces.Remove(data.InterfaceGuid))
+                {
+                    _scanHadSuccess |= data.NotificationCode == WlanNotificationAcmScanComplete;
+                    if (_pendingScanInterfaces.Count == 0)
+                    {
+                        _scanState = _scanHadSuccess
+                            ? NativeWifiScanState.Ready
+                            : NativeWifiScanState.Unavailable;
+                        _scanGeneration++;
+                        scanOutcome = _scanHadSuccess
+                            ? NativeWifiScanOutcome.Completed
+                            : NativeWifiScanOutcome.Failed;
+                    }
+                }
+            }
+            if (scanOutcome is not null)
+            {
+                RaiseChanged(null, scanOutcome);
+                return;
+            }
+        }
+
         NativeNetworkConnectionOutcome? outcome = null;
         if (data.NotificationSource == WlanNotificationSourceAcm &&
             data.NotificationCode is WlanNotificationAcmConnectionComplete or
@@ -436,24 +765,42 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
             data.DataPointer != IntPtr.Zero && data.DataSize >= 516)
         {
             var profileName = Marshal.PtrToStringUni(data.DataPointer + 4, 256)?.TrimEnd('\0');
-            if (!string.IsNullOrEmpty(profileName))
+            string? pending;
+            lock (_scanGate)
+            {
+                pending = _pendingConnectionNativeKey;
+                _pendingConnectionNativeKey = null;
+                if (!string.IsNullOrEmpty(pending) &&
+                    data.NotificationCode == WlanNotificationAcmConnectionComplete)
+                    _cachedAvailableNetworks = _cachedAvailableNetworks
+                        .Select(network => network with
+                        {
+                            IsConnected = string.Equals(
+                                network.NativeNetworkKey, pending, StringComparison.Ordinal),
+                        })
+                        .ToArray();
+            }
+            if (!string.IsNullOrEmpty(pending) || !string.IsNullOrEmpty(profileName))
             {
                 outcome = new NativeNetworkConnectionOutcome(
-                    NativeKey(data.InterfaceGuid, profileName),
+                    pending ?? NativeKey(data.InterfaceGuid, profileName!),
                     data.NotificationCode == WlanNotificationAcmConnectionComplete
                         ? NativeNetworkConnectionResult.Succeeded
                         : NativeNetworkConnectionResult.Failed);
             }
         }
-        RaiseChanged(outcome);
+        RaiseChanged(outcome, null);
     }
 
-    private void RaiseChanged(NativeNetworkConnectionOutcome? outcome)
+    private void RaiseChanged(
+        NativeNetworkConnectionOutcome? outcome,
+        NativeWifiScanOutcome? scanOutcome = null)
     {
         if (Volatile.Read(ref _disposed) != 0) return;
         StateChanged?.Invoke(this, new NativeNetworkStateChangedEventArgs(Generation)
         {
             ConnectionOutcome = outcome,
+            WifiScanOutcome = scanOutcome,
         });
     }
 
@@ -501,9 +848,38 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
             _wlanHandle = IntPtr.Zero;
         }
         _connectableProfiles.Clear();
+        lock (_scanGate)
+        {
+            _connectableNetworks.Clear();
+            _pendingScanInterfaces.Clear();
+            _pendingConnectionNativeKey = null;
+            _cachedAvailableGeneration = -1;
+            _cachedAvailableNetworks = [];
+        }
     }
 
     private sealed record NativeProfileTarget(Guid InterfaceId, string ProfileName);
+    private sealed record NativeAvailableNetworkTarget(
+        Guid InterfaceId,
+        byte[] Ssid,
+        int BssType,
+        string? ProfileName,
+        WifiSecurityKind Security,
+        bool CredentialRequired);
+    private sealed record AvailableNetworkData(
+        string ProfileName,
+        byte[] Ssid,
+        int BssType,
+        bool IsConnectable,
+        uint SignalQuality,
+        bool SecurityEnabled,
+        uint AuthenticationAlgorithm,
+        uint CipherAlgorithm,
+        uint Flags);
+    private sealed record AvailableNetworkReadResult(
+        bool Succeeded,
+        bool AccessDenied,
+        IReadOnlyList<AvailableNetworkData> Networks);
     private sealed record WirelessInterface(Guid InterfaceId, int State);
     private sealed record ManagedInterfaceState(
         bool HasWireless,
@@ -550,6 +926,22 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
             ref Guid interfaceId,
             IntPtr reserved,
             out IntPtr profileList);
+
+        [DllImport("wlanapi.dll")]
+        internal static extern uint WlanScan(
+            IntPtr clientHandle,
+            ref Guid interfaceId,
+            IntPtr dot11Ssid,
+            IntPtr informationElements,
+            IntPtr reserved);
+
+        [DllImport("wlanapi.dll")]
+        internal static extern uint WlanGetAvailableNetworkList(
+            IntPtr clientHandle,
+            ref Guid interfaceId,
+            uint flags,
+            IntPtr reserved,
+            out IntPtr availableNetworkList);
 
         [DllImport("wlanapi.dll")]
         internal static extern uint WlanQueryInterface(
@@ -647,11 +1039,38 @@ internal struct WlanProfileInfo
 internal struct WlanConnectionParameters
 {
     internal int ConnectionMode;
-    [MarshalAs(UnmanagedType.LPWStr)] internal string Profile;
+    [MarshalAs(UnmanagedType.LPWStr)] internal string? Profile;
     internal IntPtr Dot11Ssid;
     internal IntPtr DesiredBssidList;
     internal int Dot11BssType;
     internal uint Flags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct Dot11Ssid
+{
+    internal uint SsidLength;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] internal byte[] Ssid;
+}
+
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+internal struct WlanAvailableNetwork
+{
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] internal string ProfileName;
+    internal Dot11Ssid Dot11Ssid;
+    internal int BssType;
+    internal uint NumberOfBssids;
+    internal int NetworkConnectable;
+    internal uint NotConnectableReason;
+    internal uint NumberOfPhyTypes;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)] internal int[] PhyTypes;
+    internal int MorePhyTypes;
+    internal uint SignalQuality;
+    internal int SecurityEnabled;
+    internal uint DefaultAuthenticationAlgorithm;
+    internal uint DefaultCipherAlgorithm;
+    internal uint Flags;
+    internal uint Reserved;
 }
 
 [StructLayout(LayoutKind.Sequential)]

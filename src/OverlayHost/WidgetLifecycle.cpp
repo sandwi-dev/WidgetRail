@@ -14,6 +14,7 @@ std::wstring_view WidgetLifecycleProtocolValue(
 
 std::optional<WidgetLifecycleTarget> DesiredWidgetLifecycle(
     const Surface surface,
+    const FocusRegion focusRegion,
     const std::wstring_view selectedWidget,
     const std::wstring_view activeWidget,
     const bool selectedWidgetIsBridge,
@@ -26,7 +27,10 @@ std::optional<WidgetLifecycleTarget> DesiredWidgetLifecycle(
     if (surface == Surface::Widget && activeWidgetIsBridge &&
         !activeWidget.empty()) {
         return WidgetLifecycleTarget{
-            std::wstring(activeWidget), WidgetLifecycleState::Interactive};
+            std::wstring(activeWidget),
+            focusRegion == FocusRegion::Widget
+                ? WidgetLifecycleState::Interactive
+                : WidgetLifecycleState::Visible};
     }
     return std::nullopt;
 }

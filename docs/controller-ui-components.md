@@ -202,6 +202,8 @@ Visual polish alone is not a component contract.
 - Put long collections in Scroll and let host focus reveal the selected row.
 - Use a nested input scope for dialogs/detail panes and bind B to one-level
   Back in that scope.
+- Put window-wide shortcuts on the active scope-root container. Button-local
+  shortcuts are exact-focus-only; sibling controls are never searched.
 - Publish immediate local feedback, then reconcile provider truth with bounded
   cancellation and stale-event protection.
 - Test controller navigation at minimum width, maximum text scale, empty/

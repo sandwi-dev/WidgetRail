@@ -7,8 +7,8 @@
 }
 
 .ytmusic-widget {
-  gap: 18px;
-  padding: 26px 30px 22px;
+  gap: 14px;
+  padding: 22px 26px 18px;
   background: var(--media-surface);
   color: var(--text);
   overflow: visible;
@@ -22,7 +22,7 @@
 .widget-title {
   color: var(--text);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.09em;
   max-lines: 1;
   text-transform: uppercase;
@@ -59,17 +59,17 @@
 }
 
 #media-layout {
-  height: 168px;
-  gap: 24px;
+  height: 154px;
+  gap: 20px;
   align: center;
 }
 
 .artwork-frame,
 .artwork-image,
 .artwork-placeholder {
-  width: 164px;
-  height: 164px;
-  corner-radius: 13px;
+  width: 150px;
+  height: 150px;
+  corner-radius: 10px;
   overflow: clip;
 }
 
@@ -80,14 +80,14 @@
 
 .artwork-placeholder {
   color: var(--text-muted);
-  padding: 52px;
+  padding: 48px;
 }
 
 #media-details {
-  min-width: 360px;
+  min-width: 300px;
   flex-grow: 1;
-  gap: 13px;
-  padding: 7px 0;
+  gap: 10px;
+  padding: 5px 0;
 }
 
 #track-details {
@@ -96,14 +96,14 @@
 
 .track-title {
   color: var(--text);
-  font-size: 25px;
-  font-weight: 700;
+  font-size: 23px;
+  font-weight: 600;
   max-lines: 1;
   text-overflow: ellipsis;
 }
 
 .track-artist {
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .track-album {
@@ -134,15 +134,15 @@
 }
 
 #primary-actions {
-  height: 60px;
-  gap: 14px;
+  height: 56px;
+  gap: 12px;
   align: center;
   justify: center;
 }
 
 #secondary-actions {
-  height: 42px;
-  gap: 12px;
+  height: 40px;
+  gap: 10px;
   align: center;
   justify: center;
 }
@@ -162,21 +162,23 @@
 
 .transport-action,
 .refresh-action {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
 }
 
 .play-action {
-  width: 60px;
-  height: 60px;
-  padding: 12px;
+  width: 56px;
+  height: 56px;
+  padding: 11px;
   background: var(--media-accent);
 }
 
 .secondary-action {
-  width: 42px;
-  height: 42px;
-  padding: 9px;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 8px;
 }
 
 .transport-action:focused,
@@ -186,15 +188,15 @@
   outline-color: var(--media-focus);
   outline-width: 2px;
   outline-offset: -3px;
-  scale: 1.04;
+  scale: 1;
 }
 
 .play-action:focused {
   background: var(--media-accent);
   outline-color: #ffb0c2;
-  outline-width: 3px;
-  outline-offset: -4px;
-  scale: 1.05;
+  outline-width: 2px;
+  outline-offset: -3px;
+  scale: 1;
 }
 
 .secondary-action.is-active {
@@ -212,7 +214,7 @@
   padding: 12px 18px;
   background: var(--media-control);
   border-width: 0;
-  corner-radius: 12px;
+  corner-radius: 9px;
 }
 
 .primary-action:focused,
@@ -221,5 +223,5 @@
   outline-color: var(--media-focus);
   outline-width: 2px;
   outline-offset: -3px;
-  scale: 1.03;
+  scale: 1;
 }

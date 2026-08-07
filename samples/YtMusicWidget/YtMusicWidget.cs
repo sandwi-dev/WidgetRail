@@ -166,19 +166,19 @@ public class YtMusicWidget : Widget
                     UI.Button("", "previous", "previous")
                         .Icon(WidgetGlyph.Previous, "Previous track")
                         .FocusRight("play-pause").FocusDown("shuffle")
-                        .Shortcut(ControllerButton.LeftBumper).Classes("transport-action"),
+                        .Classes("transport-action"),
                     UI.Button("", "toggle-playback", "play-pause")
                         .Icon(snapshot.IsPlaying ? WidgetGlyph.Pause : WidgetGlyph.Play, playLabel)
                         .FocusLeft("previous").FocusRight("next").FocusDown("like")
-                        .Shortcut(ControllerButton.X).Classes("play-action", snapshot.IsPlaying ? "is-playing" : "is-paused"),
+                        .Classes("play-action", snapshot.IsPlaying ? "is-playing" : "is-paused"),
                     UI.Button("", "next", "next")
                         .Icon(WidgetGlyph.Next, "Next track")
                         .FocusLeft("play-pause").FocusRight("refresh").FocusDown("dislike")
-                        .Shortcut(ControllerButton.RightBumper).Classes("transport-action"),
+                        .Classes("transport-action"),
                     UI.Button("", RefreshAction, "refresh")
                         .Icon(WidgetGlyph.Refresh, "Refresh now playing")
                         .FocusLeft("next").FocusDown("repeat")
-                        .Shortcut(ControllerButton.Y).Classes("refresh-action")),
+                        .Classes("refresh-action")),
                 UI.Row("secondary-actions",
                     UI.Button("", "shuffle", "shuffle")
                         .Icon(WidgetGlyph.Shuffle, shuffleEnabled ? "Turn shuffle off" : "Turn shuffle on")
@@ -201,6 +201,10 @@ public class YtMusicWidget : Widget
                         .FocusUp("refresh").FocusLeft("dislike")
                         .Classes("secondary-action", repeatMode == YtMusicRepeatMode.Off ? "is-inactive" : "is-active",
                             $"repeat-{repeatMode.ToString().ToLowerInvariant()}")))
+                .Shortcut(ControllerButton.LeftBumper, "previous")
+                .Shortcut(ControllerButton.X, "toggle-playback")
+                .Shortcut(ControllerButton.RightBumper, "next")
+                .Shortcut(ControllerButton.Y, RefreshAction)
                 .Classes("ytmusic-widget", "is-connected"),
             InitialFocusId: "play-pause",
             QuickActions: ConnectedQuickActions,

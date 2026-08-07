@@ -170,11 +170,15 @@ template <std::size_t Count>
     ID2D1Brush* brush,
     const Canvas& c,
     const bool next) noexcept {
+    // Define Previous first: the triangle points left and the stop bar stays
+    // on the leading (left) edge. Next is its exact horizontal mirror. Keeping
+    // direction and bar placement in one transform prevents the two semantic
+    // glyphs from becoming independently flipped.
     const auto x = [next](const float value) { return next ? 1.0F - value : value; };
     const std::array triangle{
-        c.Point(x(0.30F), 0.16F), c.Point(x(0.76F), 0.50F), c.Point(x(0.30F), 0.84F)};
+        c.Point(x(0.70F), 0.16F), c.Point(x(0.24F), 0.50F), c.Point(x(0.70F), 0.84F)};
     const bool result = FillPolygon(target, brush, triangle);
-    const auto bar = c.Rect(x(0.18F), 0.16F, x(0.28F), 0.84F);
+    const auto bar = c.Rect(x(0.14F), 0.16F, x(0.22F), 0.84F);
     target->FillRectangle(D2D1::RectF(
         std::min(bar.left, bar.right), bar.top,
         std::max(bar.left, bar.right), bar.bottom), brush);

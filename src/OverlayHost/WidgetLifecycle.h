@@ -29,6 +29,7 @@ struct WidgetLifecycleTarget final {
 /// can background only a worker it already tracks without launching another.
 [[nodiscard]] std::optional<WidgetLifecycleTarget> DesiredWidgetLifecycle(
     Surface surface,
+    FocusRegion focusRegion,
     std::wstring_view selectedWidget,
     std::wstring_view activeWidget,
     bool selectedWidgetIsBridge,

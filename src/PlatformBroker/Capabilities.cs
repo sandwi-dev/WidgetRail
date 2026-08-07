@@ -22,6 +22,8 @@ public static class PlatformCapabilities
     public const string AudioOutputControlV1 = "system.audio.output.control.v1";
     public const string NetworkReadV1 = "system.network.read.v1";
     public const string NetworkSavedProfileSwitchV1 = "system.network.saved-profile.switch.v1";
+    public const string NetworkWifiReadV1 = "system.network.wifi.read.v1";
+    public const string NetworkWifiConnectV1 = "system.network.wifi.connect.v1";
 
     public const string AudioSessionsList = "audio.sessions.list";
     public const string AudioSessionSetVolume = "audio.session.set-volume";
@@ -32,10 +34,14 @@ public static class PlatformCapabilities
     public const string NetworkStatusGet = "network.status.get";
     public const string NetworkSavedProfilesList = "network.saved-profiles.list";
     public const string NetworkSavedProfileSwitch = "network.saved-profile.switch";
+    public const string NetworkAvailableWifiGet = "network.wifi.available.get";
+    public const string NetworkWifiScan = "network.wifi.scan";
+    public const string NetworkAvailableWifiConnect = "network.wifi.connect";
 
     public const string AudioSessionsChanged = "audio.sessions.changed";
     public const string AudioOutputChanged = "audio.output.changed";
     public const string NetworkStatusChanged = "network.status.changed";
+    public const string NetworkAvailableWifiChanged = "network.wifi.available.changed";
 
     private static readonly IReadOnlyDictionary<string, BrokerCapabilityDefinition> Definitions =
         new Dictionary<string, BrokerCapabilityDefinition>(StringComparer.Ordinal)
@@ -52,6 +58,10 @@ public static class PlatformCapabilities
                 Set(NetworkStatusGet, NetworkSavedProfilesList), Set(NetworkStatusChanged)),
             [NetworkSavedProfileSwitchV1] = new(NetworkSavedProfileSwitchV1, 1,
                 BrokerCapabilityKind.Control, Set(NetworkSavedProfileSwitch), Set()),
+            [NetworkWifiReadV1] = new(NetworkWifiReadV1, 1, BrokerCapabilityKind.Read,
+                Set(NetworkAvailableWifiGet, NetworkWifiScan), Set(NetworkAvailableWifiChanged)),
+            [NetworkWifiConnectV1] = new(NetworkWifiConnectV1, 1,
+                BrokerCapabilityKind.Control, Set(NetworkAvailableWifiConnect), Set()),
         };
 
     public static IReadOnlyCollection<BrokerCapabilityDefinition> All { get; } =

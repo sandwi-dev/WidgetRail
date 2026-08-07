@@ -562,6 +562,10 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
     var list = Resolve(theme, "scroll", "network.profiles.scroll", "network-profile-list");
     var row = Resolve(theme, "stack", "network.profile.test.row", "network-profile-row");
     var profileButton = Resolve(theme, "button", "network.profile.test", "network-profile-button");
+    var header = Resolve(theme, "stack", "network.header", "network-header");
+    var connectionCard = Resolve(theme, "stack", "network.connection.card", "network-connection-card");
+    var notice = Resolve(theme, "row", "network.wifi.note", "network-wifi-note");
+    var profileMeta = Resolve(theme, "row", "network.profile.test.meta", "network-profile-meta");
     var focusedProfileButton = theme.Resolve(new GbssElement(
         "button", "network.profile.test",
         new HashSet<string>(["network-profile-button"], StringComparer.Ordinal),
@@ -570,6 +574,11 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
         "Saved-network row reduced its controller height below 44px.");
     Assert.True(Pixels(list.Get("max-height")!, 560) <= 300,
         "Saved-network list can escape the compact surface height budget.");
+    Assert.Equal("0", header.Get("flex-shrink")!.Text);
+    Assert.Equal("0", connectionCard.Get("flex-shrink")!.Text);
+    Assert.Equal("0", notice.Get("flex-shrink")!.Text);
+    Assert.Equal("0", row.Get("flex-shrink")!.Text);
+    Assert.Equal("0", profileMeta.Get("flex-shrink")!.Text);
 
     var listHorizontalInset = HorizontalSpacing(list.Get("padding")!, 560) / 2;
     var focusInset = Math.Abs(Pixels(focusedProfileButton.Get("outline-offset")!, 560));

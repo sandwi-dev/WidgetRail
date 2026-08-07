@@ -288,20 +288,22 @@ lateral distance, and stable ID. It does not wrap focus at an edge.
 
 ```csharp
 return new WidgetView(
-    UI.Row("transport",
-        UI.Button("Previous", "previous", "previous")
-            .Icon(WidgetGlyph.Previous)
-            .FocusRight("play")
-            .Shortcut(ControllerButton.LeftBumper),
-        UI.Button("Play", "toggle", "play")
-            .Icon(WidgetGlyph.Play, "Play or pause")
-            .FocusLeft("previous")
-            .FocusRight("next")
-            .Shortcut(ControllerButton.X),
-        UI.Button("Next", "next", "next")
-            .Icon(WidgetGlyph.Next)
-            .FocusLeft("play")
-            .Shortcut(ControllerButton.RightBumper)),
+    UI.Stack("player-window",
+            UI.Row("transport",
+                UI.Button("Previous", "previous", "previous")
+                    .Icon(WidgetGlyph.Previous)
+                    .FocusRight("play"),
+                UI.Button("Play", "toggle", "play")
+                    .Icon(WidgetGlyph.Play, "Play or pause")
+                    .FocusLeft("previous")
+                    .FocusRight("next"),
+                UI.Button("Next", "next", "next")
+                    .Icon(WidgetGlyph.Next)
+                    .FocusLeft("play")))
+        .InputScope("player-window")
+        .Shortcut(ControllerButton.LeftBumper, "previous")
+        .Shortcut(ControllerButton.X, "toggle")
+        .Shortcut(ControllerButton.RightBumper, "next"),
     InitialFocusId: "play");
 ```
 
@@ -316,6 +318,10 @@ active scope-root container. It never searches an arbitrary unfocused child and
 does not leak to a parent or sibling scope. A node may bind a button/phase only
 once; separate focused controls and separate nested scopes may reuse the same
 button because exact focus and active scope disambiguate them:
+
+A Button-local shortcut is available only while that exact Button is focused.
+Declare a window-wide shortcut once on the active scope-root container, as in
+the transport example above; copying it across siblings is not a substitute.
 
 ```csharp
 var root = UI.Stack("root",

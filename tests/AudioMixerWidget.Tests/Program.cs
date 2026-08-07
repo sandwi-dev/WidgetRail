@@ -723,11 +723,18 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
     var muteIcon = Resolve(theme, "icon", "audio.session.test.mute.icon", "audio-mute-icon");
     var value = Resolve(theme, "text", "audio.session.test.volume.value", "audio-volume-value");
     var list = Resolve(theme, "scroll", "audio.sessions.scroll", "audio-session-list");
+    var header = Resolve(theme, "stack", "audio.header", "audio-header");
+    var sessionState = Resolve(theme, "text", "audio.session.test.state", "audio-session-state");
 
     Assert.True(Pixels(slider.Get("height")!, 280) >= 44,
         "The slider focus target fell below the compact 44px controller budget.");
-    Assert.Equal(30D, Pixels(muteIcon.Get("width")!, 280));
-    Assert.Equal(30D, Pixels(muteIcon.Get("height")!, 280));
+    Assert.Equal(28D, Pixels(muteIcon.Get("width")!, 280));
+    Assert.Equal(28D, Pixels(muteIcon.Get("height")!, 280));
+    Assert.Equal("0", header.Get("flex-shrink")!.Text);
+    Assert.Equal("0", card.Get("flex-shrink")!.Text);
+    Assert.Equal("0", sessionState.Get("flex-shrink")!.Text);
+    Assert.True(Pixels(sessionState.Get("width")!, 280) >= 44,
+        "The trailing session state can collapse into clipped character fragments.");
     Assert.True(Pixels(list.Get("min-height")!, 280) >= 150 &&
                 Pixels(list.Get("max-height")!, 280) <= 360,
         "The application list escaped its bounded scroll viewport.");

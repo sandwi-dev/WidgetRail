@@ -22,6 +22,7 @@ void Send(gba::OverlayState& state, const gba::Command command) {
 
 int main() {
     using gba::Command;
+    using gba::FocusRegion;
     using gba::OverlayState;
     using gba::PersistentState;
     using gba::Surface;
@@ -32,9 +33,15 @@ int main() {
     Check(firstRun.selectedSlot() == 0, "hidden state ignores navigation");
     Send(firstRun, Command::ToggleOverlay);
     Check(firstRun.surface() == Surface::Dashboard, "first open shows dashboard");
+    Check(firstRun.focusRegion() == FocusRegion::Tray, "first open focuses the icon tray");
     Send(firstRun, Command::NavigateRight);
+    Check(firstRun.surface() == Surface::Widget,
+          "cycling the tray automatically presents the selected widget");
+    Check(firstRun.focusRegion() == FocusRegion::Tray,
+          "automatic presentation keeps controller focus on the tray");
+    Check(firstRun.activeWidget() == L"yt-music", "tray selection and visible widget stay aligned");
     Send(firstRun, Command::Activate);
-    Check(firstRun.surface() == Surface::Widget, "activate enters widget");
+    Check(firstRun.focusRegion() == FocusRegion::Widget, "activate enters visible widget controls");
     Check(firstRun.activeWidget() == L"yt-music", "selected stable widget ID activates");
     Send(firstRun, Command::NavigateRight);
     Check(firstRun.activeWidget() == L"yt-music", "widget owns navigation input");
@@ -51,15 +58,26 @@ int main() {
           !firstRun.reorderMode(),
           "open widget retains host navigation and action ownership");
     Send(firstRun, Command::SampleWidgetBack);
-    Check(firstRun.surface() == Surface::Dashboard, "widget Back returns to dashboard");
+    Check(firstRun.surface() == Surface::Widget && firstRun.activeWidget() == L"yt-music",
+          "widget Back preserves the visible panel");
+    Check(firstRun.focusRegion() == FocusRegion::Tray,
+          "widget Back returns only controller focus to the tray");
+    Send(firstRun, Command::NavigateRight);
+    Check(firstRun.activeWidget() == L"performance" &&
+          firstRun.selectedWidget() == L"performance" &&
+          firstRun.focusRegion() == FocusRegion::Tray,
+          "tray cycling automatically replaces the visible widget without entering it");
     Send(firstRun, Command::ToggleOverlay);
+    Check(firstRun.surface() == Surface::Hidden, "tray Back route can close through ToggleOverlay");
     Send(firstRun, Command::ToggleOverlay);
-    Check(firstRun.surface() == Surface::Dashboard, "dashboard surface restores");
-    Check(firstRun.selectedWidget() == L"yt-music", "dashboard selection restores by ID");
+    Check(firstRun.surface() == Surface::Widget &&
+          firstRun.focusRegion() == FocusRegion::Tray,
+          "Guide restores both the visible widget and tray focus region");
+    Check(firstRun.selectedWidget() == L"performance", "tray selection restores by ID");
 
     OverlayState persistedSelection(firstRun.persistent());
     Send(persistedSelection, Command::ToggleOverlay);
-    Check(persistedSelection.selectedWidget() == L"yt-music",
+    Check(persistedSelection.selectedWidget() == L"performance",
           "selection survives process restart by stable identity");
 
     OverlayState resumeWidget;
@@ -68,7 +86,8 @@ int main() {
     Send(resumeWidget, Command::Activate);
     Send(resumeWidget, Command::ToggleOverlay);
     Send(resumeWidget, Command::ToggleOverlay);
-    Check(resumeWidget.surface() == Surface::Widget && resumeWidget.activeWidget() == L"yt-music",
+    Check(resumeWidget.surface() == Surface::Widget && resumeWidget.activeWidget() == L"yt-music" &&
+          resumeWidget.focusRegion() == FocusRegion::Widget,
           "Guide restores an open widget");
 
     OverlayState reorder;

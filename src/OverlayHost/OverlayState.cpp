@@ -22,6 +22,7 @@ OverlayState::OverlayState(
 bool OverlayState::Dispatch(const Command command) noexcept {
     const auto before = persistent_;
     const auto priorSurface = surface_;
+    const auto priorFocusRegion = focusRegion_;
     const auto priorSlot = selectedSlot_;
     const auto priorActive = activeWidget_;
     const auto priorReorder = reorderMode_;
@@ -42,25 +43,33 @@ bool OverlayState::Dispatch(const Command command) noexcept {
             surface_ = Surface::Widget;
         } else {
             surface_ = Surface::Dashboard;
+            focusRegion_ = FocusRegion::Tray;
         }
     } else if (surface_ == Surface::Hidden) {
         // Hidden means dormant: no navigation input changes host state.
     } else if (surface_ == Surface::Dashboard) {
         switch (command) {
         case Command::NavigateLeft:
-            reorderMode_ ? MoveCard(-1) : MoveSelection(-1);
+            if (reorderMode_) {
+                MoveCard(-1);
+            } else {
+                MoveSelection(-1);
+                PresentSelectedWidget(FocusRegion::Tray);
+            }
             break;
         case Command::NavigateRight:
-            reorderMode_ ? MoveCard(1) : MoveSelection(1);
+            if (reorderMode_) {
+                MoveCard(1);
+            } else {
+                MoveSelection(1);
+                PresentSelectedWidget(FocusRegion::Tray);
+            }
             break;
         case Command::Activate:
             if (reorderMode_) {
                 reorderMode_ = false;
-            } else if (!selectedWidget().empty()) {
-                activeWidget_ = std::wstring(selectedWidget());
-                persistent_.lastWidget = activeWidget_;
-                persistent_.reopenWidget = true;
-                surface_ = Surface::Widget;
+            } else {
+                PresentSelectedWidget(FocusRegion::Widget);
             }
             break;
         case Command::Cancel:
@@ -74,14 +83,41 @@ bool OverlayState::Dispatch(const Command command) noexcept {
         case Command::ToggleOverlay:
             break;
         }
+    } else if (focusRegion_ == FocusRegion::Tray) {
+        switch (command) {
+        case Command::NavigateLeft:
+            reorderMode_ ? MoveCard(-1) : MoveSelection(-1);
+            PresentSelectedWidget(FocusRegion::Tray);
+            break;
+        case Command::NavigateRight:
+            reorderMode_ ? MoveCard(1) : MoveSelection(1);
+            PresentSelectedWidget(FocusRegion::Tray);
+            break;
+        case Command::Activate:
+            if (reorderMode_) {
+                reorderMode_ = false;
+            } else {
+                PresentSelectedWidget(FocusRegion::Widget);
+            }
+            break;
+        case Command::Cancel:
+            reorderMode_ = false;
+            break;
+        case Command::ToggleReorder:
+            if (!persistent_.order.empty()) reorderMode_ = !reorderMode_;
+            break;
+        case Command::SampleWidgetBack:
+        case Command::ToggleOverlay:
+            break;
+        }
     } else if (command == Command::SampleWidgetBack) {
         if (activeWidget_) selectedSlot_ = FindSlot(*activeWidget_);
-        persistent_.reopenWidget = false;
-        surface_ = Surface::Dashboard;
+        focusRegion_ = FocusRegion::Tray;
+        reorderMode_ = false;
     }
 
     return before != persistent_ || priorSurface != surface_ ||
-           priorSlot != selectedSlot_ || priorActive != activeWidget_ ||
+           priorFocusRegion != focusRegion_ || priorSlot != selectedSlot_ || priorActive != activeWidget_ ||
            priorReorder != reorderMode_;
 }
 
@@ -102,7 +138,10 @@ bool OverlayState::SetAvailableWidgets(
     if (activeWidget_ && !Contains(*activeWidget_)) {
         activeWidget_.reset();
         persistent_.reopenWidget = false;
-        if (surface_ == Surface::Widget) surface_ = Surface::Dashboard;
+        if (surface_ == Surface::Widget) {
+            surface_ = Surface::Dashboard;
+            focusRegion_ = FocusRegion::Tray;
+        }
     }
     return before != persistent_ || priorSurface != surface_ ||
            priorActive != activeWidget_ || priorSelected != selectedWidget();
@@ -159,6 +198,15 @@ void OverlayState::MoveCard(const int delta) noexcept {
     if (next < 0 || next >= static_cast<long long>(persistent_.order.size())) return;
     std::swap(persistent_.order[selectedSlot_], persistent_.order[static_cast<std::size_t>(next)]);
     selectedSlot_ = static_cast<std::size_t>(next);
+}
+
+void OverlayState::PresentSelectedWidget(const FocusRegion focusRegion) noexcept {
+    if (selectedWidget().empty()) return;
+    activeWidget_ = std::wstring(selectedWidget());
+    persistent_.lastWidget = activeWidget_;
+    persistent_.reopenWidget = true;
+    surface_ = Surface::Widget;
+    focusRegion_ = focusRegion;
 }
 
 std::size_t OverlayState::FindSlot(const std::wstring_view widget) const noexcept {

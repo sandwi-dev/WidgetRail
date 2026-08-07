@@ -97,6 +97,42 @@ public sealed record WidgetSavedNetworkProfile(
 public sealed record SwitchWidgetSavedNetworkProfileRequest(
     [property: JsonRequired] string ProfileId);
 
+public enum WidgetWifiScanState
+{
+    NotScanned,
+    Scanning,
+    Ready,
+    PreciseLocationDenied,
+    Unavailable,
+}
+
+public enum WidgetWifiSecurityKind
+{
+    Open,
+    Personal,
+    Enterprise,
+    Unknown,
+}
+
+public sealed record WidgetAvailableWifiNetwork(
+    [property: JsonRequired] string NetworkId,
+    [property: JsonRequired] string DisplayName,
+    [property: JsonRequired] int SignalPercent,
+    [property: JsonRequired] WidgetWifiSecurityKind Security,
+    [property: JsonRequired] bool CredentialRequired,
+    [property: JsonRequired] bool IsConnected,
+    [property: JsonRequired] bool HasSavedProfile);
+
+public sealed record WidgetAvailableWifiNetworks(
+    [property: JsonRequired] WidgetWifiScanState ScanState,
+    [property: JsonRequired] IReadOnlyList<WidgetAvailableWifiNetwork> Networks);
+
+public sealed record ConnectWidgetAvailableWifiNetworkRequest(
+    [property: JsonRequired] string NetworkId);
+
+public sealed record WidgetAvailableWifiNetworksChanged(
+    [property: JsonRequired] WidgetAvailableWifiNetworks Snapshot);
+
 public sealed record WidgetNetworkStatusChanged(
     [property: JsonRequired] WidgetNetworkStatus Status);
 
@@ -143,6 +179,22 @@ public static class WidgetNetworkCapabilities
 
     public static WidgetCapabilityEvent<WidgetNetworkStatusChanged> StatusChanged { get; } =
         new("system.network.read.v1", "network.status.changed");
+
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetAvailableWifiNetworks>
+        GetAvailableWifi { get; } =
+            new("system.network.wifi.read.v1", "network.wifi.available.get");
+
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetCapabilityAcknowledgement>
+        RequestWifiScan { get; } =
+            new("system.network.wifi.read.v1", "network.wifi.scan");
+
+    public static WidgetCapabilityOperation<ConnectWidgetAvailableWifiNetworkRequest,
+        WidgetCapabilityAcknowledgement> ConnectAvailableWifi { get; } =
+            new("system.network.wifi.connect.v1", "network.wifi.connect");
+
+    public static WidgetCapabilityEvent<WidgetAvailableWifiNetworksChanged>
+        AvailableWifiChanged { get; } =
+            new("system.network.wifi.read.v1", "network.wifi.available.changed");
 }
 
 public sealed class WidgetAudioService
@@ -263,4 +315,46 @@ public sealed class WidgetNetworkService
     public ValueTask<IWidgetCapabilitySubscription<WidgetNetworkStatusChanged>>
         OpenStatusSubscriptionAsync(CancellationToken cancellationToken = default) =>
         _client.OpenSubscriptionAsync(WidgetNetworkCapabilities.StatusChanged, cancellationToken);
+
+    public ValueTask<WidgetAvailableWifiNetworks> GetAvailableWifiAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(
+            WidgetNetworkCapabilities.GetAvailableWifi,
+            new WidgetCapabilityQuery(),
+            cancellationToken);
+
+    public async ValueTask RequestWifiScanAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _client.InvokeAsync(
+            WidgetNetworkCapabilities.RequestWifiScan,
+            new WidgetCapabilityQuery(),
+            cancellationToken).ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
+
+    public async ValueTask ConnectAvailableWifiAsync(
+        string networkId, CancellationToken cancellationToken = default)
+    {
+        var response = await _client.InvokeAsync(
+            WidgetNetworkCapabilities.ConnectAvailableWifi,
+            new ConnectWidgetAvailableWifiNetworkRequest(networkId),
+            cancellationToken).ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
+
+    public IAsyncEnumerable<WidgetAvailableWifiNetworksChanged> WatchAvailableWifiAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.SubscribeAsync(WidgetNetworkCapabilities.AvailableWifiChanged, cancellationToken);
+
+    public ValueTask<IWidgetCapabilitySubscription<WidgetAvailableWifiNetworksChanged>>
+        OpenAvailableWifiSubscriptionAsync(CancellationToken cancellationToken = default) =>
+        _client.OpenSubscriptionAsync(
+            WidgetNetworkCapabilities.AvailableWifiChanged, cancellationToken);
+
+    private static void DemandAcknowledged(WidgetCapabilityAcknowledgement response)
+    {
+        if (response is null || !response.Acknowledged)
+            throw new WidgetCapabilityException(
+                "malformed_response", "The network provider returned an invalid acknowledgement.");
+    }
 }

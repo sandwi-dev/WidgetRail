@@ -2,10 +2,12 @@
 
 Status: implemented prototype policy
 
-Guide/Home is the global overlay toggle. B is hierarchical Back: nested widget
-scope, widget root, then dashboard/close. Dashboard navigation and reordering
-are host responsibilities; once a widget is open, its semantic focus graph and
-actions receive B before the host considers a root-level fallback.
+Guide/Home is the global overlay toggle. The visible widget panel and icon tray
+are persistent sibling regions while the overlay is open; changing focus does
+not hide the selected panel. B is hierarchical Back: nested widget scope,
+widget root to tray, then tray to close. Dashboard navigation and reordering are
+host responsibilities; while widget controls own focus, their semantic focus
+graph and actions receive B before the host considers a root-level fallback.
 
 Guide/Home is intentionally absent from `ControllerButton`, so widgets cannot
 intercept, remap, or suppress it.
@@ -15,8 +17,8 @@ intercept, remap, or suppress it.
 | Context | Host-owned input | Widget input |
 | --- | --- | --- |
 | Hidden | Guide/Home opens the overlay. | No widget controller input. Ordinary polling is stopped. |
-| Dashboard / hover | D-pad and horizontal left-stick movement navigate; A opens; B closes; Y enters/exits reorder. | Up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, Menu, or View. Other undeclared input is unhandled. |
-| Open widget | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus; focused Sliders own horizontal adjustment. Unhandled root-scope B returns to the dashboard. | A activates the focused Button or an optional Slider activation. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
+| Tray / dashboard focus | D-pad or left-stick Left/Right selects the adjacent widget and swaps the visible panel automatically; A moves focus into that panel; B closes; Y enters/exits reorder. | The selected panel is Visible and may expose up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, Menu, or View. Other undeclared input is unhandled. |
+| Widget-panel focus | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus; focused Sliders own horizontal adjustment. Unhandled root-scope B and a root Down boundary return focus to the still-visible tray. | A activates the focused Button or an optional Slider activation. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
 
 The protocol names the contexts `DashboardQuickAction` and `OpenWidget`.
 Events carry button, phase, optional focused element ID, input sequence,
@@ -26,11 +28,19 @@ MVP host emits only `Pressed`; snapshot validation rejects `Released` or
 
 ## B behavior
 
-While a widget is open, B is offered to the active input scope. A nested scope
-must bind its own one-level Back action; an unhandled nested B does not bubble
-through widget state. If the root scope does not handle B, the host returns to
-the dashboard. On the dashboard, B closes the overlay. Guide/Home remains the
-global toggle and closes immediately from any depth.
+While widget controls own focus, B is offered to the active input scope. A
+nested scope must bind its own one-level Back action; an unhandled nested B does
+not bubble through widget state. If the root scope does not handle B, the host
+moves focus to the icon tray without hiding the selected panel. B on the tray
+closes the overlay. Guide/Home remains the global toggle, is detached from both
+regions' navigation graphs, and closes immediately from any depth.
+
+The tray and each widget scope retain independent focus memory. A on the tray
+enters the selected panel at its remembered/root initial control. Down from the
+last root-scope control—including an explicit self-neighbor used to express a
+boundary—moves focus back to the tray. The host applies that boundary fallback
+only at the widget root; it never escapes a nested dialog or subnavigation
+scope.
 
 ## Dashboard quick actions
 
@@ -70,6 +80,12 @@ The default SDK routes against the most recently rendered snapshot:
    candidates, preserving the exact focus ID across state changes. The SDK
    suppresses their A activation, shortcut, and Slider adjustment actions.
 6. Unmatched or ambiguous input returns `handled = false`.
+
+Shortcut placement follows the same lookup order. Put an action that belongs
+only to one control on that Button; it works only while that exact Button is
+focused. Put an action that must work anywhere in the open window on the active
+scope-root Stack/Row/Scroll. Do not copy the same window shortcut onto sibling
+buttons and do not expect the router to search those siblings.
 
 The runtime also requires the input's active-scope ID and snapshot sequence to
 match the latest rendered snapshot. Stale input, a mismatched scope, or a focus
@@ -111,9 +127,11 @@ A full queue returns `handled = false` without waiting. Deactivation cancels the
 running action and drops queued actions. A later action failure is reported by
 `Widget.ControllerActionFailed` and the runtime client's corresponding event;
 it does not crash the worker or retroactively change the acknowledgement.
-The host therefore publishes `Visible` for the selected dashboard widget before
-offering its quick actions. Background widgets reject controller-action
-admission without starting work; an open widget is `Interactive`.
+The host therefore publishes `Visible` for the panel selected while the tray
+owns focus and `Interactive` only while that panel's controls own focus.
+Selecting another tray item moves the prior panel to `Background`, publishes
+the new panel as `Visible`, and swaps it in without an A press. Background
+widgets reject controller-action admission without starting work.
 
 Slider value changes use the same queue but carry a validated, quantized
 **absolute** `RequestedValue`. A contiguous pending tail coalesces latest-wins

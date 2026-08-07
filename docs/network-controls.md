@@ -36,6 +36,62 @@ BSSID/MAC/IP/DNS/gateway values, open captive portals, change radio/airplane
 mode, disconnect, or silently reorder Windows profile preference. It does not
 shell out to `netsh`, edit the registry, install a service/driver, or elevate.
 
+## Staged Wi-Fi and Bluetooth extensions
+
+The product roadmap now requires a controller-first view of **currently
+available Wi-Fi networks**, software Wi-Fi radio control, and Bluetooth
+radio/device controls. The broker/SDK DTOs, closed Wi-Fi capability IDs, and
+event-driven Native Wi-Fi scan/connect provider foundation now exist, but the
+first-party Network Controls surface, bundled capability declaration/consent,
+and dedicated scan/connect behavior tests are not integrated. It is therefore
+staged infrastructure, not a user-visible or shipping feature. Wi-Fi radio
+control and every Bluetooth contract/UI flow remain unimplemented. Unknown
+future capability names must continue to fail closed.
+
+The Wi-Fi work is staged as follows:
+
+1. An explicit Interactive action requests Windows precise-location access,
+   starts one `WlanScan`, waits for completion or a bounded timeout, and reads
+   one `WlanGetAvailableNetworkList` snapshot. There is no scan loop.
+2. Every result receives a generation-bound opaque scan ID. It is valid only
+   for that scan/provider generation and must never be persisted, logged, or
+   treated as the SSID/BSSID/interface identity.
+3. Already-saved networks remain the first supported connection path. Unsaved
+   open networks are the next bounded path. New WPA/WPA2/WPA3 Personal networks
+   require a host-owned credential prompt; the worker sees only terminal/busy
+   state and never the credential.
+4. Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
+   captive-portal provisioning are unsupported initially. Stored Windows keys
+   are never read or exposed.
+5. Software radio control may use `WlanSetInterface` with
+   `wlan_intf_opcode_radio_state`; it cannot override a hardware switch,
+   airplane-mode policy, administrator policy, or missing/disabled adapter.
+
+Windows treats `WlanScan` and `WlanGetAvailableNetworkList` as precise-location
+sensitive. Consent must align with an explicit controller action and denial or
+revocation must be readable without automatic retries. See Microsoft's
+[Wi-Fi access/location changes](https://learn.microsoft.com/en-us/windows/win32/nativewifi/wi-fi-access-location-changes),
+[WlanScan](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlanscan),
+[WlanGetAvailableNetworkList](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlangetavailablenetworklist),
+[WlanConnect](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlanconnect),
+and [WlanSetInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlansetinterface)
+documentation.
+
+Bluetooth is a separate future widget/provider contract. The planned host
+broker uses `Windows.Devices.Radios.Radio` for Bluetooth radio state,
+`DeviceWatcher` for device enumeration/change events, and
+`DeviceInformationPairing` for explicit pair/unpair. These WinRT paths require
+a packaged-identity/capability spike before any support claim. A generic
+Bluetooth device Connect/Disconnect operation is **not** promised: Windows
+communication is profile-specific, such as GATT service/characteristic access
+or RFCOMM sockets, and each future profile integration needs a separate narrow
+capability. See Microsoft's [Radio](https://learn.microsoft.com/en-us/uwp/api/windows.devices.radios.radio?view=winrt-26100),
+[DeviceWatcher](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.devicewatcher?view=winrt-26100),
+[DeviceInformationPairing](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing?view=winrt-26100),
+[Bluetooth GATT client](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/gatt-client),
+and [Bluetooth RFCOMM](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/send-or-receive-files-with-rfcomm)
+documentation.
+
 There is no capability-backed dashboard quick action in version 1. A dashboard
 card is only Visible, while network switching requires Interactive lifecycle.
 The user opens the widget before a connection-changing command can run.

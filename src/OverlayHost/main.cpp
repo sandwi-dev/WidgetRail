@@ -779,6 +779,7 @@ private:
 
     void Dispatch(const gba::Command command) {
         const auto priorSurface = state_.surface();
+        const auto priorFocusRegion = state_.focusRegion();
         const auto priorExtent = DesiredPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
@@ -798,6 +799,11 @@ private:
         if (priorSurface != state_.surface() || priorActive != state_.activeWidget()) {
             focusedElementId_.clear();
             lastWidgetRenderResult_ = {};
+        }
+        if (state_.surface() == gba::Surface::Widget &&
+            priorFocusRegion != state_.focusRegion() &&
+            state_.focusRegion() == gba::FocusRegion::Widget) {
+            RestoreFocusForActiveSurface(state_.activeWidget());
         }
 
         if (state_.surface() != gba::Surface::Hidden) {
@@ -1096,7 +1102,8 @@ private:
 
     void SyncWidgetActivity() {
         const auto desired = gba::DesiredWidgetLifecycle(
-            state_.surface(), state_.selectedWidget(), state_.activeWidget(),
+            state_.surface(), state_.focusRegion(),
+            state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
             IsBridgeWidget(state_.activeWidget()));
         if (desired && desired->widgetId == lifecycleBridgeWidget_ &&
@@ -1374,30 +1381,34 @@ private:
             : gba::input::NavigationEventPhase::Pressed;
         switch (key) {
         case VK_LEFT:
-            if (state_.surface() == gba::Surface::Widget) {
+            if (state_.surface() == gba::Surface::Widget &&
+                state_.focusRegion() == gba::FocusRegion::Widget) {
                 HandleWidgetDirection(gba::input::NavigationDirection::Left, phase, false);
             } else if (!repeated) {
                 Dispatch(gba::Command::NavigateLeft);
             }
             break;
         case VK_RIGHT:
-            if (state_.surface() == gba::Surface::Widget) {
+            if (state_.surface() == gba::Surface::Widget &&
+                state_.focusRegion() == gba::FocusRegion::Widget) {
                 HandleWidgetDirection(gba::input::NavigationDirection::Right, phase, false);
             } else if (!repeated) {
                 Dispatch(gba::Command::NavigateRight);
             }
             break;
         case VK_UP:
-            if (!repeated && state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"up");
+            if (!repeated && state_.surface() == gba::Surface::Widget &&
+                state_.focusRegion() == gba::FocusRegion::Widget) MoveWidgetFocus(L"up");
             break;
         case VK_DOWN:
-            if (!repeated && state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"down");
+            if (!repeated && state_.surface() == gba::Surface::Widget &&
+                state_.focusRegion() == gba::FocusRegion::Widget) MoveWidgetFocus(L"down");
             break;
         case VK_RETURN:
             if (!repeated) DispatchControllerAction(L"A");
             break;
         case VK_ESCAPE:
-            if (state_.surface() == gba::Surface::Dashboard && state_.reorderMode()) {
+            if (state_.focusRegion() == gba::FocusRegion::Tray && state_.reorderMode()) {
                 Dispatch(gba::Command::Cancel);
             }
             break;
@@ -1446,7 +1457,7 @@ private:
     void DispatchStickNavigation(const gba::input::StickNavigationEvent event) {
         using gba::input::NavigationDirection;
         const auto direction = event.direction;
-        if (state_.surface() == gba::Surface::Dashboard) {
+        if (state_.focusRegion() == gba::FocusRegion::Tray) {
             if (direction == NavigationDirection::Left) {
                 Dispatch(gba::Command::NavigateLeft);
             } else if (direction == NavigationDirection::Right) {
@@ -1454,7 +1465,8 @@ private:
             }
             return;
         }
-        if (state_.surface() != gba::Surface::Widget) return;
+        if (state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget) return;
         switch (direction) {
         case NavigationDirection::Left:
         case NavigationDirection::Right:
@@ -1581,7 +1593,8 @@ private:
         const gba::input::NavigationDirection direction,
         const gba::input::NavigationEventPhase phase,
         const bool repeatedCanNavigate) {
-        if (state_.surface() != gba::Surface::Widget) return;
+        if (state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget) return;
         const std::wstring_view widgetId = state_.activeWidget();
         const auto* snapshot = SnapshotFor(widgetId);
         if (!snapshot) return;
@@ -1676,7 +1689,9 @@ private:
     }
 
     void MoveWidgetFocus(const std::wstring_view direction) {
-        if (state_.surface() != gba::Surface::Widget || focusedElementId_.empty()) {
+        if (state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget ||
+            focusedElementId_.empty()) {
             return;
         }
         const std::wstring_view widgetId = state_.activeWidget();
@@ -1703,8 +1718,11 @@ private:
         const auto* explicitTarget = target && !target->empty()
             ? gba::input::FindNodeInInputScope(*snapshot, *target, activeScope)
             : nullptr;
-        if (explicitTarget &&
-            gba::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_)) {
+        const bool explicitNavigable = explicitTarget &&
+            gba::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_);
+        const bool explicitMoves = explicitTarget && gba::input::IsDistinctFocusMove(
+            focusedElementId_, explicitTarget->id, explicitNavigable);
+        if (explicitMoves) {
             focusedElementId_ = explicitTarget->id;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
@@ -1717,11 +1735,20 @@ private:
         else if (direction == L"right") navigationDirection = gba::input::NavigationDirection::Right;
         else if (direction == L"up") navigationDirection = gba::input::NavigationDirection::Up;
         else if (direction == L"down") navigationDirection = gba::input::NavigationDirection::Down;
-        if (const auto fallback = gba::input::FindGeometricFocusTarget(
-                focusedElementId_, navigationDirection, lastWidgetRenderResult_)) {
+        const auto fallback = gba::input::FindGeometricFocusTarget(
+            focusedElementId_, navigationDirection, lastWidgetRenderResult_);
+        if (fallback) {
             focusedElementId_ = *fallback;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        if (gba::input::ShouldTransferFocusToTray(
+                navigationDirection,
+                activeScope == gba::input::RootInputScope(*snapshot),
+                explicitMoves,
+                fallback.has_value())) {
+            Dispatch(gba::Command::SampleWidgetBack);
         }
     }
 
@@ -1746,8 +1773,8 @@ private:
     void DispatchControllerAction(const std::wstring_view button) {
         using gba::input::ControllerActionContext;
         using gba::input::ControllerActionRoute;
-        const auto context = state_.surface() == gba::Surface::Dashboard
-            ? ControllerActionContext::Dashboard
+        const auto context = state_.focusRegion() == gba::FocusRegion::Tray
+            ? ControllerActionContext::Tray
             : ControllerActionContext::RootWidgetScope;
         switch (gba::input::RouteControllerAction(context, button)) {
         case ControllerActionRoute::HostActivate:
@@ -1777,7 +1804,9 @@ private:
             return;
         }
 
-        const std::wstring_view widget = state_.surface() == gba::Surface::Widget
+        const bool interactiveWidget = state_.surface() == gba::Surface::Widget &&
+            state_.focusRegion() == gba::FocusRegion::Widget;
+        const std::wstring_view widget = interactiveWidget
             ? state_.activeWidget()
             : state_.selectedWidget();
 
@@ -1788,7 +1817,7 @@ private:
             const auto protocolButton = ProtocolButton(button);
             const auto* snapshot = SnapshotFor(widget);
             if (protocolButton.empty() || !snapshot) return;
-            const bool isOpen = state_.surface() == gba::Surface::Widget;
+            const bool isOpen = interactiveWidget;
             const auto visibleFocus = isOpen
                 ? gba::input::ResolveVisibleFocusTarget(
                     focusedElementId_, snapshot->activeInputScopeId,
@@ -1841,7 +1870,7 @@ private:
             return;
         }
 
-        if (state_.surface() == gba::Surface::Widget &&
+        if (interactiveWidget &&
             gba::input::RouteUnhandledControllerAction(
                 gba::input::ControllerActionContext::RootWidgetScope, button) ==
                 gba::input::ControllerActionRoute::HostBackToDashboard) {
@@ -2172,7 +2201,7 @@ private:
                                 x + tileSize - indicatorInset, top + tileSize),
                     2.0F, 2.0F};
                 renderTarget_->FillRoundedRectangle(indicator, selectedTextBrush_.Get());
-                if (state_.reorderMode()) {
+                if (state_.focusRegion() == gba::FocusRegion::Tray) {
                     renderTarget_->DrawRoundedRectangle(
                         tile, focusBrush_.Get(), focusOutlineWidth_);
                 }
@@ -2229,10 +2258,10 @@ private:
                 prompt += action.label;
             }
             if (!prompt.empty()) prompt += L"     ";
-            prompt += L"A  Open     Y  Reorder     B  Close";
+            prompt += L"A  Enter widget     Y  Reorder     B / Guide  Close";
             return prompt;
         }
-        return L"D-pad / Left stick  Select     A  Open     Y  Reorder     B / Guide  Close";
+        return L"D-pad / Left stick  Switch widget     A  Enter widget     Y  Reorder     B / Guide  Close";
     }
 
     void DrawDashboard(const float width, const float height) {
@@ -2309,17 +2338,17 @@ private:
         const float horizontalInset = std::min(30.0F, geometry.panelWidth * 0.1F);
         const float contentLeft = panelLeft + horizontalInset;
         const float contentRight = std::max(contentLeft, panelRight - horizontalInset);
-        const float separatorY = std::min(
-            panelBottom, geometry.footerY + std::min(1.0F, geometry.footerHeight));
-        renderTarget_->DrawLine(
-            D2D1::Point2F(contentLeft, separatorY),
-            D2D1::Point2F(contentRight, separatorY),
-            secondaryBrush_.Get(), 0.5F);
         const float textTop = geometry.footerY +
             std::min(15.0F, geometry.footerHeight * 0.35F);
         const float textBottom = panelBottom -
             std::min(12.0F, geometry.footerHeight * 0.25F);
         if (textBottom <= textTop + 1.0F) return;
+        if (state_.focusRegion() == gba::FocusRegion::Tray) {
+            DrawTextLine(DashboardHint(), hintFormat_.Get(),
+                         D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
+                         dashboardSecondaryBrush_.Get());
+            return;
+        }
         const std::wstring prompt = OpenWidgetPrompt();
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         const bool rootScope = snapshot &&
@@ -2360,9 +2389,12 @@ private:
         const float panelLeft = geometry->panelX;
         const float panelTop = geometry->panelY;
         const float panelWidth = geometry->panelWidth;
-        const float panelBottom = geometry->panelY + geometry->panelHeight;
+        // The footer is host chrome, not widget content. End the card at the
+        // content boundary so both widget and tray guides read as a detached
+        // shell layer and never masquerade as part of a third-party widget.
+        const float visualPanelBottom = geometry->footerY;
         const D2D1_ROUNDED_RECT panel{
-            D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, panelBottom),
+            D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, visualPanelBottom),
             panelCornerRadius_, panelCornerRadius_};
         renderTarget_->FillRoundedRectangle(panel, cardBrush_.Get());
 
@@ -2392,7 +2424,11 @@ private:
                 };
                 collectSliderOverrides(collectSliderOverrides, snapshot->root);
                 auto result = declarativeRenderer_->Render(
-                    renderTarget_.Get(), *snapshot, focusedElementId_, viewport, options);
+                    renderTarget_.Get(), *snapshot,
+                    state_.focusRegion() == gba::FocusRegion::Widget
+                        ? std::wstring_view(focusedElementId_)
+                        : std::wstring_view{},
+                    viewport, options);
                 if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
                         focusedElementId_, snapshot->activeInputScopeId, result);
                     visibleFocus && *visibleFocus != focusedElementId_) {
@@ -2437,11 +2473,7 @@ private:
                      bodyFormat_.Get(),
                      D2D1::RectF(panelLeft + 30, 146, panelLeft + panelWidth - 30, 202),
                      secondaryBrush_.Get());
-        DrawTextLine(L"B  Back to icons                       Guide  Close overlay",
-                     hintFormat_.Get(),
-                     D2D1::RectF(panelLeft + 30, panelBottom - 40,
-                                 panelLeft + panelWidth - 30, panelBottom - 14),
-                     secondaryBrush_.Get());
+        DrawWidgetFooter(*geometry);
         DrawIconStrip(width, height, &*geometry);
     }
 

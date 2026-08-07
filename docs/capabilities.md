@@ -33,6 +33,24 @@ The current closed capability set is:
 | `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, and `WatchStatusAsync` | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | `SwitchSavedProfileAsync` | Interactive only |
 
+The following authority domains are **planned only**. Their final capability
+IDs and typed SDK surfaces are not assigned, the manifest validator does not
+accept them, and no widget may infer them from the current network grants:
+
+| Planned closed authority | Intended boundary | Initial lifecycle |
+| --- | --- | --- |
+| Available Wi-Fi scan/read | One explicit, precise-location-gated scan; generation-bound opaque result IDs; no BSSID or raw WLAN structures | Interactive only |
+| Unsaved Wi-Fi connect | Saved/open networks first; a later host-owned WPA Personal credential prompt; no credential reaches the worker | Interactive only |
+| Wi-Fi software-radio control | `WlanSetInterface` software state only; hardware/policy state remains authoritative | Interactive only |
+| Bluetooth radio read/control | Packaged-identity/capability-gated `Windows.Devices.Radios.Radio` state and explicit state change | Read while Visible/Interactive; control Interactive only |
+| Bluetooth device read/pair/unpair | Bounded `DeviceWatcher` results and host-owned pairing ceremony through `DeviceInformationPairing` | Read while Visible/Interactive; pair/unpair Interactive only |
+
+There is deliberately no planned generic Bluetooth Connect/Disconnect grant.
+Windows communication is profile-specific (for example GATT or RFCOMM), so a
+future device function must define a narrower profile/service capability rather
+than inherit authority from enumeration or pairing. Enterprise Wi-Fi
+provisioning is likewise outside the initial expanded network contract.
+
 Declare a capability in `permissions` when the widget cannot provide its core
 purpose without it. Put enhancements in `optionalPermissions`:
 

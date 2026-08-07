@@ -35,6 +35,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing artwork uses a semantic native glyph", MissingArtworkUsesGlyph),
     ("Connected card exposes bounded host quick actions", ConnectedQuickActions),
     ("Dashboard-reserved buttons are rejected as quick actions", ReservedQuickActionIsRejected),
+    ("Open-window shortcuts route from every connected control and focusless root", OpenWindowShortcutsRouteFromEveryFocus),
+    ("Focused A activation remains local while host-owned inputs remain unclaimed", FocusedActivationRemainsLocal),
+    ("YT Music shortcuts cannot escape their active input scope", OpenWindowShortcutsRespectInputScopes),
     ("Transport shortcuts route commands and refresh state", TransportCommandFlow),
     ("Transport transitions preserve complete metadata through stale snapshots", TransportTransitionPreservesMetadata),
     ("Repeated transport commands do not wait for snapshot reconciliation", RepeatedTransportCommandsBypassReconciliation),
@@ -794,10 +797,14 @@ static async Task ConnectStateFlow()
     var connected = widget.Render().CreateSnapshot("ytmusic.test", 2);
     Assert.Equal("play-pause", connected.InitialFocusId);
     Assert.Equal("First Song", Find(connected.Root, "track-title").Text);
-    Assert.Equal(ControllerButton.X, Find(connected.Root, "play-pause").Shortcuts.Single().Button);
-    Assert.Equal(ControllerButton.LeftBumper, Find(connected.Root, "previous").Shortcuts.Single().Button);
-    Assert.Equal(ControllerButton.RightBumper, Find(connected.Root, "next").Shortcuts.Single().Button);
-    Assert.Equal(ControllerButton.Y, Find(connected.Root, "refresh").Shortcuts.Single().Button);
+    Assert.Equal(0, Find(connected.Root, "play-pause").Shortcuts.Count);
+    Assert.Equal(0, Find(connected.Root, "previous").Shortcuts.Count);
+    Assert.Equal(0, Find(connected.Root, "next").Shortcuts.Count);
+    Assert.Equal(0, Find(connected.Root, "refresh").Shortcuts.Count);
+    AssertWindowShortcut(connected.Root, ControllerButton.X, "toggle-playback");
+    AssertWindowShortcut(connected.Root, ControllerButton.LeftBumper, "previous");
+    AssertWindowShortcut(connected.Root, ControllerButton.RightBumper, "next");
+    AssertWindowShortcut(connected.Root, ControllerButton.Y, "refresh");
 }
 
 static async Task ConnectedArtworkLayout()
@@ -1009,6 +1016,177 @@ static Task ReservedQuickActionIsRejected()
     return Task.CompletedTask;
 }
 
+static async Task OpenWindowShortcutsRouteFromEveryFocus()
+{
+    var widget = new RoutingProbeYtMusicWidget(
+        new FakeClient { Snapshot = PlayingSnapshot("Controller Song") },
+        FastUpdatePolicy());
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Connected);
+    const long snapshotSequence = 40;
+    var snapshot = widget.RenderSnapshot("ytmusic.routing", snapshotSequence);
+    Assert.Equal("ytmusic-root", snapshot.ActiveInputScopeId);
+
+    var focusTargets = new[]
+    {
+        "previous", "play-pause", "next", "refresh",
+        "shuffle", "like", "dislike", "repeat",
+    };
+    var shortcuts = new (ControllerButton Button, string ActionId)[]
+    {
+        (ControllerButton.LeftBumper, "previous"),
+        (ControllerButton.X, "toggle-playback"),
+        (ControllerButton.RightBumper, "next"),
+        (ControllerButton.Y, "refresh"),
+    };
+    long inputSequence = 1;
+    foreach (var focusedId in focusTargets)
+    {
+        foreach (var shortcut in shortcuts)
+        {
+            var handled = await widget.OnControllerInputAsync(OpenWidgetInput(
+                shortcut.Button,
+                focusedId,
+                snapshotSequence,
+                snapshot.ActiveInputScopeId,
+                inputSequence++));
+            Assert.True(handled,
+                $"{shortcut.Button} was not handled while '{focusedId}' had focus.");
+            var action = await widget.NextActionAsync();
+            Assert.Equal(shortcut.ActionId, action.ActionId);
+            Assert.Equal("ytmusic-root", action.SourceElementId);
+            Assert.Equal(shortcut.Button, action.ControllerButton);
+        }
+    }
+
+    foreach (var shortcut in shortcuts)
+    {
+        var handled = await widget.OnControllerInputAsync(OpenWidgetInput(
+            shortcut.Button,
+            focusedElementId: null,
+            snapshotSequence,
+            snapshot.ActiveInputScopeId,
+            inputSequence++));
+        Assert.True(handled, $"{shortcut.Button} did not use the focusless root fallback.");
+        var action = await widget.NextActionAsync();
+        Assert.Equal(shortcut.ActionId, action.ActionId);
+        Assert.Equal("ytmusic-root", action.SourceElementId);
+    }
+
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static async Task FocusedActivationRemainsLocal()
+{
+    var widget = new RoutingProbeYtMusicWidget(
+        new FakeClient { Snapshot = PlayingSnapshot("Activation Song") },
+        FastUpdatePolicy());
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Connected);
+    const long snapshotSequence = 50;
+    var snapshot = widget.RenderSnapshot("ytmusic.activation", snapshotSequence);
+    var activations = new (string ElementId, string ActionId)[]
+    {
+        ("previous", "previous"),
+        ("play-pause", "toggle-playback"),
+        ("next", "next"),
+        ("refresh", "refresh"),
+        ("shuffle", "shuffle"),
+        ("like", "like"),
+        ("dislike", "dislike"),
+        ("repeat", "repeat"),
+    };
+    long inputSequence = 1;
+    foreach (var activation in activations)
+    {
+        Assert.True(await widget.OnControllerInputAsync(OpenWidgetInput(
+            ControllerButton.A,
+            activation.ElementId,
+            snapshotSequence,
+            snapshot.ActiveInputScopeId,
+            inputSequence++)),
+            $"A did not activate '{activation.ElementId}'.");
+        var action = await widget.NextActionAsync();
+        Assert.Equal(activation.ActionId, action.ActionId);
+        Assert.Equal(activation.ElementId, action.SourceElementId);
+
+        Assert.True(!await widget.OnControllerInputAsync(OpenWidgetInput(
+            ControllerButton.B,
+            activation.ElementId,
+            snapshotSequence,
+            snapshot.ActiveInputScopeId,
+            inputSequence++)),
+            $"The widget captured host-owned B while '{activation.ElementId}' had focus.");
+    }
+    Assert.True(!await widget.OnControllerInputAsync(OpenWidgetInput(
+        ControllerButton.DPadDown,
+        "play-pause",
+        snapshotSequence,
+        snapshot.ActiveInputScopeId,
+        inputSequence)),
+        "The widget captured host-owned D-pad navigation.");
+
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static async Task OpenWindowShortcutsRespectInputScopes()
+{
+    var widget = new ScopedRoutingProbeYtMusicWidget(
+        new FakeClient { Snapshot = PlayingSnapshot("Scoped Song") },
+        FastUpdatePolicy());
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Connected);
+
+    widget.ActiveScope = "ytmusic-window";
+    var primary = widget.RenderSnapshot("ytmusic.scope", 60);
+    Assert.True(await widget.OnControllerInputAsync(OpenWidgetInput(
+        ControllerButton.RightBumper,
+        "like",
+        primary.Sequence,
+        primary.ActiveInputScopeId)),
+        "The active YT Music scope did not inherit its window shortcut.");
+    var action = await widget.NextActionAsync();
+    Assert.Equal("next", action.ActionId);
+    Assert.Equal("ytmusic-root", action.SourceElementId);
+
+    widget.ActiveScope = "dialog-window";
+    var dialog = widget.RenderSnapshot("ytmusic.scope", 61);
+    Assert.True(!await widget.OnControllerInputAsync(OpenWidgetInput(
+        ControllerButton.LeftBumper,
+        "dialog-action",
+        dialog.Sequence,
+        dialog.ActiveInputScopeId)),
+        "A nested dialog without LB captured the parent YT Music shortcut.");
+    Assert.True(!await widget.OnControllerInputAsync(OpenWidgetInput(
+        ControllerButton.X,
+        "like",
+        dialog.Sequence,
+        dialog.ActiveInputScopeId)),
+        "Focus outside the active dialog escaped into the YT Music scope.");
+    Assert.True(!await widget.OnControllerInputAsync(OpenWidgetInput(
+        ControllerButton.RightBumper,
+        "like",
+        dialog.Sequence,
+        "ytmusic-window")),
+        "An input naming a non-active scope bypassed the snapshot scope.");
+
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static ControllerInputEvent OpenWidgetInput(
+    ControllerButton button,
+    string? focusedElementId,
+    long snapshotSequence,
+    string activeInputScopeId,
+    long inputSequence = 0) => new(
+        button,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        focusedElementId,
+        Sequence: inputSequence,
+        ActiveInputScopeId: activeInputScopeId,
+        SnapshotSequence: snapshotSequence);
+
 static async Task ErrorState()
 {
     var fake = new FakeClient { StatusException = new InvalidOperationException("YTMDesktop2 is not running") };
@@ -1094,6 +1272,13 @@ static void AssertQuickAction(ViewSnapshot snapshot, ControllerButton button, st
     Assert.Equal(label, action.Label);
 }
 
+static void AssertWindowShortcut(ViewNode root, ControllerButton button, string actionId)
+{
+    var shortcut = root.Shortcuts.Single(item => item.Button == button);
+    Assert.Equal(actionId, shortcut.ActionId);
+    Assert.Equal(ControllerEventPhase.Pressed, shortcut.Phase);
+}
+
 file sealed record RecordedRequest(string Method, string Path, string? Authorization, string? Body);
 
 file sealed record SecondaryActionScenario(
@@ -1151,6 +1336,48 @@ file sealed class LifecycleProbeYtMusicWidget(
     {
         Interlocked.Increment(ref _deactivationCount);
         await base.OnDeactivatedAsync(transitionToken);
+    }
+}
+
+file class RoutingProbeYtMusicWidget(
+    IYtMusicClient client,
+    YtMusicUpdatePolicy updatePolicy) : YtMusicWidget(client, updatePolicy)
+{
+    private readonly System.Threading.Channels.Channel<WidgetActionEvent> _actions =
+        System.Threading.Channels.Channel.CreateUnbounded<WidgetActionEvent>();
+
+    public async Task<WidgetActionEvent> NextActionAsync() =>
+        await _actions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        _actions.Writer.TryWrite(action);
+        return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class ScopedRoutingProbeYtMusicWidget(
+    IYtMusicClient client,
+    YtMusicUpdatePolicy updatePolicy) : RoutingProbeYtMusicWidget(client, updatePolicy)
+{
+    public string ActiveScope { get; set; } = "ytmusic-window";
+
+    public override WidgetView Render()
+    {
+        var view = base.Render();
+        var ytmusicWindow = ((StackElement)view.Root).InputScope("ytmusic-window");
+        return view with
+        {
+            Root = UI.Stack("scope-test-shell",
+                ytmusicWindow,
+                UI.Stack("dialog-root",
+                    UI.Button("Dialog action", "dialog-action", "dialog-action"))
+                    .InputScope("dialog-window")),
+            InitialFocusId = ActiveScope == "dialog-window" ? "dialog-action" : view.InitialFocusId,
+            ActiveInputScopeId = ActiveScope,
+        };
     }
 }
 

@@ -157,6 +157,16 @@ provider and widget Release suites pass 18/18 and 16/16 respectively. Focused ch
 replace hardware/privacy/performance matrices, which remain open. The current
 full managed Release suite, native host suite, package required-file checks,
 hidden-startup smoke, and controller input-probe smoke pass.
+Available-network broker/SDK contracts and an explicit, event-driven Native
+Wi-Fi scan/connect provider foundation are implemented behind separate closed
+capabilities. They use generation-bound opaque IDs and cover saved-profile and
+unsaved-open connection starts, but are not yet declared or rendered by the
+bundled Network Controls widget and lack dedicated behavior tests; the passing
+Network Controls count does not claim them. Host-owned WPA Personal credential
+entry, Wi-Fi software-radio control, and all Bluetooth radio/device/pairing
+surfaces remain staged roadmap work. The researched continuation uses
+`WlanSetInterface` and packaged WinRT Radio/DeviceWatcher/
+DeviceInformationPairing APIs.
 
 YT Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
 connection attempt, and renders media metadata, artwork, transport state, and
@@ -166,6 +176,20 @@ reconciles the companion every two seconds, and uses bounded optimistic transpor
 updates with rollback on command failure. Like, dislike, shuffle, and repeat
 publish immediate semantic selected/busy feedback, preserve independent pending
 features through stale polls, and clear or roll back on reconciliation.
+Its connected X/LB/RB/Y window shortcuts are declared once on the active root
+scope, so they resolve from every connected focus target without sibling
+searching and remain isolated from nested scopes. Previous/Next use corrected
+native directional geometry.
+
+The overlay now treats the selected widget panel and icon tray as persistent
+sibling regions. Tray selection swaps the Visible panel automatically; A moves
+focus into its controls and publishes Interactive; root B or a root Down
+boundary returns focus to the still-visible tray; tray B closes; and nested
+scopes remain contained. Guide is a region-independent global toggle. The
+built-in themes also use non-shrinking fixed regions, a thin native Slider
+track inside the 44-DIP target, and lighter typography/radii/spacing. These
+changes remain in Verifying until packaged controller and screenshot evidence
+is recorded in GBA-015 and GBA-016.
 
 ### Settings and global theme pipeline
 
@@ -300,7 +324,7 @@ the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
 bounded cleanup. The current SDK and YT Music Release suites pass 41/41 and
-35/35 respectively. The current Settings Release suite passes 32/32, including
+38/38 respectively. The current Settings Release suite passes 32/32, including
 paginated identity review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
@@ -337,8 +361,8 @@ native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
 The full native aggregate passes. Focused native suites report Controller
-Navigation 62 checks, Slider Interaction 2,071, Focus Navigation 17, Widget Surface
-Focus 16, and Declarative Renderer 4,227. Display-sensitive evidence includes 187
+Navigation 70 checks, Slider Interaction 2,071, Focus Navigation 17, Widget Surface
+Focus 16, Declarative Renderer 4,233, and Native Icons 188. Display-sensitive evidence includes 187
 declarative-layout checks, 668 placement/render-metric/surface-geometry checks,
 and 18 foreground-target/reentrancy checks, alongside state-machine,
 remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer
@@ -433,8 +457,13 @@ with C++ installed:
   evidence—not a completed **Network Control** product widget. Its roadmap adds
   privacy-gated identity/link details, bounded IP/gateway/DNS summaries,
   measured throughput/latency/loss diagnostics, and reviewed recovery actions.
-  Version 1 explicitly excludes password entry, profile creation, scans, radio
-  controls, and automatic current SSID/signal access. See
+  The implemented version 1 explicitly excludes password entry, profile
+  creation, scans, radio controls, and automatic current SSID/signal access.
+  Staged roadmap work adds precise-location-gated available-network scans,
+  saved/open connection first, a host-owned WPA Personal credential prompt,
+  software Wi-Fi radio control, and separately capability-gated Bluetooth
+  radio/enumeration/pair/unpair. Enterprise Wi-Fi and generic Bluetooth
+  Connect/Disconnect are not promised. See
   [widget capabilities](capabilities.md) and [Windows provider
   architecture](windows-provider-architecture.md) and [Network Controls
   reference](network-controls.md).

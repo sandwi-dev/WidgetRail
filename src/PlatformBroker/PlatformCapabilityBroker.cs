@@ -211,6 +211,15 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     await _backend.GetSavedNetworkProfilesAsync(cancellationToken).ConfigureAwait(false))),
             PlatformCapabilities.NetworkSavedProfileSwitch =>
                 await SwitchNetworkAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+            PlatformCapabilities.NetworkAvailableWifiGet =>
+                BrokerJson.ToElement(ValidateAvailableWifiNetworks(
+                    DemandEmptyPayload(request.Payload),
+                    await _backend.GetAvailableWifiNetworksAsync(cancellationToken)
+                        .ConfigureAwait(false))),
+            PlatformCapabilities.NetworkWifiScan =>
+                await RequestWifiScanAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+            PlatformCapabilities.NetworkAvailableWifiConnect =>
+                await ConnectAvailableWifiAsync(request.Payload, cancellationToken).ConfigureAwait(false),
             _ => throw new BrokerException("unsupported_operation", "Broker operation is unsupported."),
         };
     }
@@ -356,6 +365,24 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return BrokerJson.ToElement(new { acknowledged = true });
     }
 
+    private async Task<JsonElement> RequestWifiScanAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        DemandEmptyPayload(payload);
+        await _backend.RequestWifiScanAsync(cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> ConnectAvailableWifiAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ConnectAvailableWifiNetworkRequest>(payload);
+        ContractValidation.OpaqueId(request.NetworkId);
+        await _backend.ConnectAvailableWifiNetworkAsync(request.NetworkId, cancellationToken)
+            .ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
     private static bool DemandEmptyPayload(JsonElement payload)
     {
         if (payload.ValueKind != JsonValueKind.Object || payload.EnumerateObject().Any())
@@ -462,6 +489,37 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return profiles.ToArray();
     }
 
+    private static AvailableWifiNetworksSummary ValidateAvailableWifiNetworks(
+        bool _, AvailableWifiNetworksSummary? snapshot) => ValidateAvailableWifiNetworks(snapshot);
+
+    private static AvailableWifiNetworksSummary ValidateAvailableWifiNetworks(
+        AvailableWifiNetworksSummary? snapshot)
+    {
+        if (snapshot is null || !Enum.IsDefined(snapshot.ScanState) || snapshot.Networks is null)
+            throw new BrokerException("invalid_backend_data", "Available Wi-Fi result is invalid.");
+        if (snapshot.Networks.Count > BrokerJson.MaximumArrayItems)
+            throw new BrokerException("invalid_backend_data", "Too many available Wi-Fi networks.");
+        if (snapshot.ScanState != WifiScanState.Ready && snapshot.Networks.Count != 0)
+            throw new BrokerException(
+                "invalid_backend_data", "Available Wi-Fi state contains stale networks.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var network in snapshot.Networks)
+        {
+            if (network is null || !Enum.IsDefined(network.Security))
+                throw new BrokerException("invalid_backend_data", "Available Wi-Fi entry is invalid.");
+            ContractValidation.OpaqueId(network.NetworkId, "invalid_backend_data");
+            ContractValidation.DisplayName(network.DisplayName);
+            ContractValidation.Percent(network.SignalPercent);
+            if (network.SignalPercent is < 0 or > 100 ||
+                network.Security == WifiSecurityKind.Open && network.CredentialRequired ||
+                network.IsConnected && network.CredentialRequired)
+                throw new BrokerException("invalid_backend_data", "Available Wi-Fi entry is inconsistent.");
+            if (!ids.Add(network.NetworkId))
+                throw new BrokerException("invalid_backend_data", "Available Wi-Fi IDs are duplicated.");
+        }
+        return snapshot with { Networks = snapshot.Networks.ToArray() };
+    }
+
     private void OnBackendEvent(object? sender, BrokerPlatformEvent platformEvent)
     {
         try
@@ -482,6 +540,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     platformEvent.Payload is NetworkStatusChangedEvent network =>
                     BrokerJson.ToElement(new NetworkStatusChangedEvent(
                         ValidateNetworkStatus(network.Status))),
+                PlatformCapabilities.NetworkAvailableWifiChanged when
+                    platformEvent.Payload is AvailableWifiNetworksChangedEvent wifi =>
+                    BrokerJson.ToElement(new AvailableWifiNetworksChangedEvent(
+                        ValidateAvailableWifiNetworks(wifi.Snapshot))),
                 _ => throw new BrokerException("invalid_backend_data", "Broker event payload is invalid."),
             };
             var envelope = new BrokerEventEnvelope(BrokerJson.ProtocolVersion,

@@ -28,6 +28,23 @@ void Check(const bool condition, const std::string_view message) {
     }
 }
 
+[[nodiscard]] int CountAlpha(
+    const BYTE* bytes,
+    const UINT stride,
+    const int left,
+    const int top,
+    const int right,
+    const int bottom) noexcept {
+    int count = 0;
+    for (int y = top; y < bottom; ++y) {
+        for (int x = left; x < right; ++x) {
+            if (bytes[(static_cast<UINT>(y) * stride) + (static_cast<UINT>(x) * 4U) + 3U] != 0)
+                ++count;
+        }
+    }
+    return count;
+}
+
 template <typename Interface>
 void Release(Interface*& value) noexcept {
     if (value != nullptr) {
@@ -121,8 +138,10 @@ void RenderEveryIcon() {
         const WICRect lockArea{0, 0, 64, 64};
         Check(SUCCEEDED(bitmap->Lock(&lockArea, WICBitmapLockRead, &lock)), "rendered bitmap locks");
         UINT byteCount = 0;
+        UINT stride = 0;
         BYTE* bytes = nullptr;
         Check(SUCCEEDED(lock->GetDataPointer(&byteCount, &bytes)), "rendered bytes are accessible");
+        Check(SUCCEEDED(lock->GetStride(&stride)), "rendered bitmap stride is accessible");
         bool anyVisiblePixel = false;
         for (UINT offset = 3; offset < byteCount; offset += 4) {
             if (bytes[offset] != 0) {
@@ -131,6 +150,22 @@ void RenderEveryIcon() {
             }
         }
         Check(anyVisiblePixel, "icon produces visible vector pixels");
+        if (icon == NativeIcon::Previous) {
+            Check(CountAlpha(bytes, stride, 10, 12, 19, 52) >
+                    CountAlpha(bytes, stride, 45, 12, 54, 52),
+                "Previous stop bar stays on the left");
+            Check(CountAlpha(bytes, stride, 33, 17, 44, 25) >
+                    CountAlpha(bytes, stride, 21, 17, 32, 25),
+                "Previous triangle points left");
+        }
+        if (icon == NativeIcon::Next) {
+            Check(CountAlpha(bytes, stride, 45, 12, 54, 52) >
+                    CountAlpha(bytes, stride, 10, 12, 19, 52),
+                "Next stop bar stays on the right");
+            Check(CountAlpha(bytes, stride, 21, 17, 32, 25) >
+                    CountAlpha(bytes, stride, 33, 17, 44, 25),
+                "Next triangle points right");
+        }
         Release(lock);
     }
 

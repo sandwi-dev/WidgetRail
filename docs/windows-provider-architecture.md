@@ -196,6 +196,17 @@ publishes `IsAvailable = true`, including when the recovered list is empty.
   namespace, and MSM notifications are location-sensitive. MSM notification
   registration requires the `wiFiControl` device capability; requesting it
   requires user location consent. Access can be denied or revoked.
+- `WlanScan` requests an asynchronous available-network scan and clients use
+  ACM notification plus a bounded timeout before reading results.
+  `WlanGetAvailableNetworkList` retrieves the resulting available networks.
+  Both can return `ERROR_ACCESS_DENIED` without precise-location consent. See
+  [WlanScan](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlanscan),
+  [WlanGetAvailableNetworkList](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlangetavailablenetworklist),
+  and [Wi-Fi access/location changes](https://learn.microsoft.com/en-us/windows/win32/nativewifi/wi-fi-access-location-changes).
+- `WlanSetInterface` with `wlan_intf_opcode_radio_state` changes only the
+  software radio state of a specific PHY; it cannot change a hardware radio
+  switch. See
+  [WlanSetInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlansetinterface).
 
 ### Platform design
 
@@ -239,6 +250,36 @@ access-request flow needs its own capability/privacy review, stable packaged
 application identity, controller-triggered prompt, and deterministic
 required/denied/revoked states without retry loops.
 
+### Staged available-network and radio design
+
+The available-network broker/SDK contracts and provider foundation are
+implemented behind separate `system.network.wifi.read.v1` and
+`system.network.wifi.connect.v1` capabilities. They are not declared by the
+bundled Network Controls package or rendered by its UI, and the new path still
+needs dedicated behavior tests before it is shipping. Radio control remains a
+later capability/API milestone rather than an extension of
+`system.network.read.v1` or the saved-profile-switch grant:
+
+1. An explicit Interactive controller action aligns the Windows
+   precise-location request with the user's intent. A denial or revocation
+   returns a stable privacy state and never starts a retry/prompt loop.
+2. The provider issues one `WlanScan`, waits for ACM completion or a bounded
+   timeout, then reads one `WlanGetAvailableNetworkList` snapshot. It does not
+   scan while Background, on dashboard selection, or on a timer.
+3. Each row crosses the broker as sanitized presentation plus a
+   generation-bound opaque scan ID. The ID expires on the next scan or provider
+   generation. BSSID, interface GUID, raw SSID bytes, authentication structures,
+   profile XML, and keys never cross the broker or enter logs.
+4. Connection rolls out saved profiles first and unsaved open networks second.
+   A later host-owned credential prompt may create/connect a new WPA/WPA2/WPA3
+   Personal profile without exposing the secret to the widget worker.
+   Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
+   captive-portal provisioning are unsupported initially.
+5. Software radio control uses `WlanSetInterface` only after a separate
+   Interactive capability/consent review. Hardware-off, airplane-mode,
+   administrator policy, service loss, or unsupported PHY remains authoritative
+   and is never represented as a successful toggle.
+
 WLAN callbacks only enqueue bounded notification codes and interface identity.
 Unregister/close from the provider thread, never from the callback.
 `CancelMibChangeNotify2` must likewise run outside the callback being canceled;
@@ -249,6 +290,37 @@ open native handles. The first read/control starts its dedicated MTA owner.
 Command and event queues are bounded, status/profile reads use the last complete
 snapshot, burst callbacks coalesce, and disposal unregisters native resources
 on the owner thread. No provider timer runs while the system is unchanged.
+
+## Bluetooth provider roadmap (not implemented)
+
+### Microsoft-documented API facts
+
+- `Windows.Devices.Radios.Radio` enumerates radios, reports kind/state, requests
+  access, and can request an On/Off state subject to hardware and policy. See
+  [Radio](https://learn.microsoft.com/en-us/uwp/api/windows.devices.radios.radio?view=winrt-26100).
+- `DeviceWatcher` performs initial enumeration and then reports added, updated,
+  and removed devices. See
+  [DeviceWatcher](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.devicewatcher?view=winrt-26100).
+- `DeviceInformationPairing` exposes explicit `PairAsync` and `UnpairAsync`
+  operations. Desktop UI-dependent pairing objects must be associated with the
+  owner window. See
+  [DeviceInformationPairing](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing?view=winrt-26100).
+- Bluetooth communication is profile-specific. GATT requires knowledge of the
+  intended services/characteristics, while RFCOMM establishes a socket to a
+  service. The public API therefore does not justify a generic device-level
+  Connect/Disconnect promise. See [Bluetooth GATT client](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/gatt-client)
+  and [Bluetooth RFCOMM](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/send-or-receive-files-with-rfcomm).
+
+### Platform design
+
+Bluetooth radio read/control, device enumeration, and pair/unpair will be new
+closed broker capabilities only after a packaged-identity, manifest-capability,
+desktop owner-window, privacy, and hardware matrix passes. The host owns all
+system prompts and pairing ceremonies; the widget receives bounded opaque IDs,
+sanitized labels/states, and stable results. It never receives a pairing secret
+or raw device handle. Generic Connect/Disconnect remains out of scope; a future
+GATT or RFCOMM integration must declare its exact profile/service authority and
+resource/lifecycle policy.
 
 ## Privilege and privacy boundary
 

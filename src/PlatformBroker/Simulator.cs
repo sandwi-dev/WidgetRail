@@ -5,6 +5,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
 {
     private readonly List<AudioSessionSummary> _audioSessions = [];
     private readonly List<SavedNetworkProfileSummary> _networkProfiles = [];
+    private readonly List<AvailableWifiNetworkSummary> _availableWifiNetworks = [];
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
@@ -22,6 +23,9 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
 
     public int AudioControlCalls { get; private set; }
     public int NetworkSwitchCalls { get; private set; }
+    public int WifiScanCalls { get; private set; }
+    public int WifiConnectCalls { get; private set; }
+    public WifiScanState WifiScanState { get; set; } = WifiScanState.NotScanned;
     public AudioOutputSummary AudioOutput { get; set; } = new(0.5, false);
 
     public void SetAudioSessions(IEnumerable<AudioSessionSummary> sessions)
@@ -34,6 +38,13 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         _networkProfiles.Clear();
         _networkProfiles.AddRange(profiles);
+    }
+
+    public void SetAvailableWifiNetworks(IEnumerable<AvailableWifiNetworkSummary> networks)
+    {
+        _availableWifiNetworks.Clear();
+        _availableWifiNetworks.AddRange(networks);
+        WifiScanState = WifiScanState.Ready;
     }
 
     public void Publish(BrokerPlatformEvent platformEvent) =>
@@ -102,6 +113,31 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         NetworkSwitchCalls++;
+        return Task.CompletedTask;
+    }
+
+    public Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new AvailableWifiNetworksSummary(
+            WifiScanState, _availableWifiNetworks.ToArray()));
+    }
+
+    public Task RequestWifiScanAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WifiScanCalls++;
+        WifiScanState = WifiScanState.Scanning;
+        _availableWifiNetworks.Clear();
+        return Task.CompletedTask;
+    }
+
+    public Task ConnectAvailableWifiNetworkAsync(
+        string networkId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WifiConnectCalls++;
         return Task.CompletedTask;
     }
 }

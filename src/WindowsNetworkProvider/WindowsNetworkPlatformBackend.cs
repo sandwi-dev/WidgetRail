@@ -15,11 +15,20 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private const int MaximumNativeKeyLength = 2048;
     private const int MaximumDisplayNameLength = 160;
     private static readonly TimeSpan DefaultConnectionAttemptTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan WifiScanTimeout = TimeSpan.FromSeconds(6);
     private readonly IWindowsNetworkNativeAdapterFactory _factory;
     private readonly TimeSpan _connectionAttemptTimeout;
     private readonly BlockingCollection<NetworkCommand> _commands = new(128);
     private readonly Channel<NetworkStatusSummary> _events = Channel.CreateBounded<NetworkStatusSummary>(
         new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+            AllowSynchronousContinuations = false,
+        });
+    private readonly Channel<AvailableWifiNetworksSummary> _wifiEvents =
+        Channel.CreateBounded<AvailableWifiNetworksSummary>(new BoundedChannelOptions(1)
         {
             SingleReader = true,
             SingleWriter = false,
@@ -36,6 +45,12 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private IReadOnlyList<SavedNetworkProfileSummary> _profiles = [];
     private IReadOnlyDictionary<string, string> _nativeKeysByOpaqueId =
         new Dictionary<string, string>(StringComparer.Ordinal);
+    private AvailableWifiNetworksSummary _availableWifi =
+        new(WifiScanState.NotScanned, []);
+    private IReadOnlyDictionary<string, string> _wifiNativeKeysByOpaqueId =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _wifiOpaqueIds = new(StringComparer.Ordinal);
+    private long _mappedWifiScanGeneration = -1;
     private Thread? _ownerThread;
     private Task _eventPump = Task.CompletedTask;
     private long _nextGeneration;
@@ -52,6 +67,8 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private NetworkConnectionAttemptState _attemptState;
     private Timer? _connectionAttemptTimer;
     private long _connectionAttemptGeneration;
+    private Timer? _wifiScanTimer;
+    private long _wifiScanTimerGeneration;
 
     private static NetworkStatusSummary EmptyStatus { get; } =
         new(
@@ -114,6 +131,55 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     {
         await EnsureReadableAsync(cancellationToken).ConfigureAwait(false);
         lock (_stateGate) return _profiles.ToArray();
+    }
+
+    public async Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(
+        CancellationToken cancellationToken)
+    {
+        await EnsureReadableAsync(cancellationToken).ConfigureAwait(false);
+        lock (_stateGate)
+            return _availableWifi with { Networks = _availableWifi.Networks.ToArray() };
+    }
+
+    public async Task RequestWifiScanAsync(CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfDisposed();
+        if (_ownerUnavailable)
+            throw new BrokerException("platform_unavailable", "Windows networking is temporarily unavailable.");
+        var command = new WifiScanCommand(cancellationToken);
+        EnqueueCommand(command);
+        await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task ConnectAvailableWifiNetworkAsync(
+        string networkId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsValidPublicWifiId(networkId))
+            throw new BrokerException("invalid_payload", "The available Wi-Fi identifier is invalid.");
+        EnsureStarted();
+        await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfDisposed();
+        if (_ownerUnavailable)
+            throw new BrokerException("platform_unavailable", "Windows networking is temporarily unavailable.");
+        var command = new ConnectAvailableWifiCommand(networkId, cancellationToken);
+        EnqueueCommand(command);
+        await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private void EnqueueCommand(NetworkCommand command)
+    {
+        try
+        {
+            if (!_commands.TryAdd(command))
+                throw new BrokerException("provider_busy", "The network provider is busy.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend), exception);
+        }
     }
 
     private async Task EnsureReadableAsync(CancellationToken cancellationToken)
@@ -194,6 +260,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                     case RefreshCommand:
                         Interlocked.Exchange(ref _refreshQueued, 0);
                         Refresh(adapter, publish: true);
+                        RefreshAvailableWifi(adapter, publish: true);
                         break;
                     case RetryRefreshCommand retry:
                         if (retry.CancellationToken.IsCancellationRequested)
@@ -201,11 +268,21 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         else
                         {
                             Refresh(adapter, publish: true);
+                            RefreshAvailableWifi(adapter, publish: true);
                             retry.Completion.TrySetResult();
                         }
                         break;
                     case ConnectCommand connect:
                         ExecuteConnect(adapter, connect);
+                        break;
+                    case WifiScanCommand scan:
+                        ExecuteWifiScan(adapter, scan);
+                        break;
+                    case WifiScanTimeoutCommand timeout:
+                        ExecuteWifiScanTimeout(timeout.Generation);
+                        break;
+                    case ConnectAvailableWifiCommand connectWifi:
+                        ExecuteConnectAvailableWifi(adapter, connectWifi);
                         break;
                 }
             }
@@ -239,10 +316,23 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                     case RetryRefreshCommand retry:
                         retry.Completion.TrySetResult();
                         break;
+                    case WifiScanCommand scan:
+                        scan.Completion.TrySetException(
+                            new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
+                        break;
+                    case ConnectAvailableWifiCommand connectWifi:
+                        connectWifi.Completion.TrySetException(
+                            new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
+                        break;
                 }
             }
             _events.Writer.TryComplete();
-            lock (_stateGate) CancelConnectionAttemptTimerLocked();
+            _wifiEvents.Writer.TryComplete();
+            lock (_stateGate)
+            {
+                CancelConnectionAttemptTimerLocked();
+                CancelWifiScanTimerLocked();
+            }
             _ready.TrySetResult();
             _threadExited.TrySetResult();
         }
@@ -255,7 +345,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         {
             ThrowIfDisposed();
             if (_started != 0) return;
-            _eventPump = DispatchEventsAsync();
+            _eventPump = Task.WhenAll(DispatchEventsAsync(), DispatchWifiEventsAsync());
             _ownerThread = new Thread(OwnerThreadMain)
             {
                 IsBackground = true,
@@ -353,6 +443,164 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         }
     }
 
+    private void ExecuteWifiScan(IWindowsNetworkNativeAdapter adapter, WifiScanCommand command)
+    {
+        if (command.CancellationToken.IsCancellationRequested)
+        {
+            command.Completion.TrySetCanceled(command.CancellationToken);
+            return;
+        }
+        try
+        {
+            var result = adapter.TryStartWifiScan();
+            if (result == NativeWifiScanStartResult.AlreadyScanning)
+            {
+                command.Completion.TrySetResult();
+                return;
+            }
+            var state = result switch
+            {
+                NativeWifiScanStartResult.Started => WifiScanState.Scanning,
+                NativeWifiScanStartResult.PreciseLocationDenied =>
+                    WifiScanState.PreciseLocationDenied,
+                _ => WifiScanState.Unavailable,
+            };
+            AvailableWifiNetworksSummary snapshot;
+            lock (_stateGate)
+            {
+                _wifiOpaqueIds.Clear();
+                _wifiNativeKeysByOpaqueId =
+                    new Dictionary<string, string>(StringComparer.Ordinal);
+                _mappedWifiScanGeneration = -1;
+                snapshot = _availableWifi = new AvailableWifiNetworksSummary(state, []);
+                CancelWifiScanTimerLocked();
+                if (state == WifiScanState.Scanning)
+                {
+                    var generation = ++_wifiScanTimerGeneration;
+                    _wifiScanTimer = new Timer(
+                        OnWifiScanTimeout,
+                        generation,
+                        WifiScanTimeout,
+                        Timeout.InfiniteTimeSpan);
+                }
+            }
+            _wifiEvents.Writer.TryWrite(snapshot);
+            command.Completion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            command.Completion.TrySetException(new BrokerException(
+                "platform_unavailable", "Windows Wi-Fi scanning is temporarily unavailable.", exception));
+        }
+    }
+
+    private void OnWifiScanTimeout(object? state)
+    {
+        if (state is not long generation || Volatile.Read(ref _disposeStarted) != 0) return;
+        try { _commands.TryAdd(new WifiScanTimeoutCommand(generation)); }
+        catch (InvalidOperationException) { }
+    }
+
+    private void ExecuteWifiScanTimeout(long generation)
+    {
+        AvailableWifiNetworksSummary? snapshot = null;
+        lock (_stateGate)
+        {
+            if (generation != _wifiScanTimerGeneration ||
+                _availableWifi.ScanState != WifiScanState.Scanning) return;
+            CancelWifiScanTimerLocked();
+            snapshot = _availableWifi = new AvailableWifiNetworksSummary(
+                WifiScanState.Unavailable, []);
+        }
+        _wifiEvents.Writer.TryWrite(snapshot);
+    }
+
+    private void ExecuteConnectAvailableWifi(
+        IWindowsNetworkNativeAdapter adapter,
+        ConnectAvailableWifiCommand command)
+    {
+        if (command.CancellationToken.IsCancellationRequested)
+        {
+            command.Completion.TrySetCanceled(command.CancellationToken);
+            return;
+        }
+        try
+        {
+            string nativeKey;
+            bool alreadyConnected;
+            lock (_stateGate)
+            {
+                if (_attemptState == NetworkConnectionAttemptState.Connecting)
+                    throw new BrokerException(
+                        "provider_busy", "A network connection is already in progress.");
+                if (_availableWifi.ScanState != WifiScanState.Ready ||
+                    !_wifiNativeKeysByOpaqueId.TryGetValue(command.NetworkId, out nativeKey!))
+                    throw new BrokerException(
+                        "resource_not_found", "The visible Wi-Fi network is no longer available.");
+                alreadyConnected = _availableWifi.Networks.Any(network =>
+                    network.NetworkId == command.NetworkId && network.IsConnected);
+            }
+            if (alreadyConnected)
+            {
+                command.Completion.TrySetResult();
+                return;
+            }
+
+            var result = adapter.TryConnectAvailableWifiNetwork(nativeKey);
+            switch (result)
+            {
+                case NativeWifiConnectStartResult.CredentialRequired:
+                    throw new BrokerException(
+                        "credential_required", "This Wi-Fi network requires a credential.");
+                case NativeWifiConnectStartResult.UnsupportedAuthentication:
+                    throw new BrokerException(
+                        "unsupported_authentication", "This Wi-Fi authentication method is unsupported.");
+                case NativeWifiConnectStartResult.NotFound:
+                    throw new BrokerException(
+                        "resource_not_found", "The visible Wi-Fi network is no longer available.");
+                case NativeWifiConnectStartResult.Unavailable:
+                    throw new BrokerException(
+                        "platform_unavailable", "Windows Wi-Fi connection control is unavailable.");
+                case NativeWifiConnectStartResult.Started:
+                    break;
+                default:
+                    throw new BrokerException(
+                        "platform_unavailable", "Windows returned an invalid Wi-Fi connection state.");
+            }
+
+            NetworkStatusSummary connecting;
+            lock (_stateGate)
+            {
+                _pendingProfileId = command.NetworkId;
+                _pendingNativeKey = nativeKey;
+                _attemptState = NetworkConnectionAttemptState.Connecting;
+                var attemptGeneration = ++_connectionAttemptGeneration;
+                CancelConnectionAttemptTimerLocked();
+                _connectionAttemptTimer = new Timer(
+                    OnConnectionAttemptTimeout,
+                    attemptGeneration,
+                    _connectionAttemptTimeout,
+                    Timeout.InfiniteTimeSpan);
+                connecting = _status = _status with
+                {
+                    ConnectionAttemptState = NetworkConnectionAttemptState.Connecting,
+                    AttemptProfileId = command.NetworkId,
+                };
+            }
+            _events.Writer.TryWrite(connecting);
+            command.Completion.TrySetResult();
+        }
+        catch (BrokerException exception)
+        {
+            command.Completion.TrySetException(exception);
+        }
+        catch (Exception exception)
+        {
+            command.Completion.TrySetException(new BrokerException(
+                "platform_unavailable", "Windows Wi-Fi connection control is unavailable.", exception));
+        }
+    }
+
     private void OnConnectionAttemptTimeout(object? state)
     {
         if (state is not long generation || Volatile.Read(ref _disposeStarted) != 0) return;
@@ -434,6 +682,93 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         }
     }
 
+    private void RefreshAvailableWifi(IWindowsNetworkNativeAdapter adapter, bool publish)
+    {
+        try
+        {
+            var native = adapter.ReadAvailableWifiSnapshot() ?? throw new InvalidOperationException();
+            var state = native.ScanState switch
+            {
+                NativeWifiScanState.NotScanned => WifiScanState.NotScanned,
+                NativeWifiScanState.Scanning => WifiScanState.Scanning,
+                NativeWifiScanState.Ready => WifiScanState.Ready,
+                NativeWifiScanState.PreciseLocationDenied => WifiScanState.PreciseLocationDenied,
+                _ => WifiScanState.Unavailable,
+            };
+            var networks = new List<AvailableWifiNetworkSummary>();
+            var reverse = new Dictionary<string, string>(StringComparer.Ordinal);
+            lock (_stateGate)
+            {
+                if (state == WifiScanState.Ready &&
+                    native.ScanGeneration != _mappedWifiScanGeneration)
+                {
+                    _wifiOpaqueIds.Clear();
+                    _mappedWifiScanGeneration = native.ScanGeneration;
+                }
+                if (state != WifiScanState.Ready)
+                {
+                    _wifiOpaqueIds.Clear();
+                    _mappedWifiScanGeneration = -1;
+                }
+                foreach (var item in native.Networks ?? [])
+                {
+                    if (networks.Count >= MaximumProfiles ||
+                        string.IsNullOrEmpty(item.NativeNetworkKey) ||
+                        item.NativeNetworkKey.Length > MaximumNativeKeyLength ||
+                        !Enum.IsDefined(item.Security)) continue;
+                    if (!_wifiOpaqueIds.TryGetValue(item.NativeNetworkKey, out var opaqueId))
+                    {
+                        opaqueId = $"wifi_{Guid.NewGuid():N}";
+                        _wifiOpaqueIds.Add(item.NativeNetworkKey, opaqueId);
+                    }
+                    if (!reverse.TryAdd(opaqueId, item.NativeNetworkKey)) continue;
+                    networks.Add(new AvailableWifiNetworkSummary(
+                        opaqueId,
+                        SanitizeDisplayName(item.DisplayName, "Hidden network"),
+                        Math.Clamp(item.SignalPercent, 0, 100),
+                        item.Security,
+                        item.CredentialRequired,
+                        item.IsConnected,
+                        item.HasSavedProfile));
+                }
+                networks.Sort(static (left, right) =>
+                {
+                    var connected = right.IsConnected.CompareTo(left.IsConnected);
+                    if (connected != 0) return connected;
+                    var signal = right.SignalPercent.CompareTo(left.SignalPercent);
+                    return signal != 0 ? signal :
+                        string.Compare(left.DisplayName, right.DisplayName,
+                            StringComparison.OrdinalIgnoreCase);
+                });
+                var snapshot = new AvailableWifiNetworksSummary(
+                    state,
+                    state == WifiScanState.Ready ? networks.ToArray() : []);
+                var changed = !AvailableWifiEqual(_availableWifi, snapshot);
+                _availableWifi = snapshot;
+                _wifiNativeKeysByOpaqueId = state == WifiScanState.Ready
+                    ? reverse
+                    : new Dictionary<string, string>(StringComparer.Ordinal);
+                if (state != WifiScanState.Scanning) CancelWifiScanTimerLocked();
+                if (publish && changed) _wifiEvents.Writer.TryWrite(snapshot);
+            }
+        }
+        catch
+        {
+            AvailableWifiNetworksSummary snapshot;
+            lock (_stateGate)
+            {
+                _wifiOpaqueIds.Clear();
+                _mappedWifiScanGeneration = -1;
+                _wifiNativeKeysByOpaqueId =
+                    new Dictionary<string, string>(StringComparer.Ordinal);
+                snapshot = _availableWifi = new AvailableWifiNetworksSummary(
+                    WifiScanState.Unavailable, []);
+                CancelWifiScanTimerLocked();
+            }
+            if (publish) _wifiEvents.Writer.TryWrite(snapshot);
+        }
+    }
+
     private static NetworkStatusSummary BuildStatus(
         NativeNetworkSnapshot snapshot,
         string? activeOpaqueId)
@@ -501,15 +836,6 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                 _pendingNativeKey = null;
             }
 
-            if (_attemptState == NetworkConnectionAttemptState.Connecting &&
-                _pendingNativeKey is not null &&
-                !snapshot.SavedProfiles.Any(profile =>
-                    string.Equals(profile.NativeProfileKey, _pendingNativeKey, StringComparison.Ordinal)))
-            {
-                _attemptState = NetworkConnectionAttemptState.Failed;
-                CancelConnectionAttemptTimerLocked();
-            }
-
             return status with
             {
                 ConnectionAttemptState = _attemptState,
@@ -529,16 +855,23 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             _status = UnavailableStatus;
             _profiles = [];
             _nativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
+            _availableWifi = new AvailableWifiNetworksSummary(WifiScanState.Unavailable, []);
+            _wifiNativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
+            _wifiOpaqueIds.Clear();
+            _mappedWifiScanGeneration = -1;
             _pendingProfileId = null;
             _pendingNativeKey = null;
             _attemptState = NetworkConnectionAttemptState.None;
             ++_connectionAttemptGeneration;
             CancelConnectionAttemptTimerLocked();
+            CancelWifiScanTimerLocked();
         }
         _degraded = true;
         _snapshotUnavailable = true;
         _wirelessAccessRestricted = false;
         if (publish && changed) _events.Writer.TryWrite(UnavailableStatus);
+        if (publish) _wifiEvents.Writer.TryWrite(
+            new AvailableWifiNetworksSummary(WifiScanState.Unavailable, []));
     }
 
     private async Task DispatchEventsAsync()
@@ -549,6 +882,24 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                 PlatformCapabilities.NetworkReadV1,
                 PlatformCapabilities.NetworkStatusChanged,
                 new NetworkStatusChangedEvent(status));
+            var handlers = EventPublished;
+            if (handlers is null) continue;
+            foreach (EventHandler<BrokerPlatformEvent> handler in handlers.GetInvocationList())
+            {
+                try { handler(this, platformEvent); }
+                catch { }
+            }
+        }
+    }
+
+    private async Task DispatchWifiEventsAsync()
+    {
+        await foreach (var snapshot in _wifiEvents.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            var platformEvent = new BrokerPlatformEvent(
+                PlatformCapabilities.NetworkWifiReadV1,
+                PlatformCapabilities.NetworkAvailableWifiChanged,
+                new AvailableWifiNetworksChangedEvent(snapshot));
             var handlers = EventPublished;
             if (handlers is null) continue;
             foreach (EventHandler<BrokerPlatformEvent> handler in handlers.GetInvocationList())
@@ -599,10 +950,28 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         IReadOnlyList<SavedNetworkProfileSummary> right) => left.Count == right.Count &&
         left.Zip(right).All(pair => pair.First == pair.Second);
 
+    private static bool AvailableWifiEqual(
+        AvailableWifiNetworksSummary left,
+        AvailableWifiNetworksSummary right) =>
+        left.ScanState == right.ScanState &&
+        left.Networks.Count == right.Networks.Count &&
+        left.Networks.Zip(right.Networks).All(pair => pair.First == pair.Second);
+
+    private static bool IsValidPublicWifiId(string value) =>
+        !string.IsNullOrEmpty(value) && value.Length <= 128 &&
+        value.StartsWith("wifi_", StringComparison.Ordinal) &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
+
     private void CancelConnectionAttemptTimerLocked()
     {
         _connectionAttemptTimer?.Dispose();
         _connectionAttemptTimer = null;
+    }
+
+    private void CancelWifiScanTimerLocked()
+    {
+        _wifiScanTimer?.Dispose();
+        _wifiScanTimer = null;
     }
 
     private void ThrowIfDisposed()
@@ -644,6 +1013,19 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
     private sealed record ConnectCommand(string ProfileId, CancellationToken CancellationToken) : NetworkCommand
+    {
+        public TaskCompletionSource Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+    private sealed record WifiScanCommand(CancellationToken CancellationToken) : NetworkCommand
+    {
+        public TaskCompletionSource Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+    private sealed record WifiScanTimeoutCommand(long Generation) : NetworkCommand;
+    private sealed record ConnectAvailableWifiCommand(
+        string NetworkId,
+        CancellationToken CancellationToken) : NetworkCommand
     {
         public TaskCompletionSource Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);

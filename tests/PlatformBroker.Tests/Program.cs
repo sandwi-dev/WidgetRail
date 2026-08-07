@@ -50,7 +50,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(6, PlatformCapabilities.All.Count);
+    Assert.Equal(8, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -810,6 +810,11 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
         Task.FromResult<IReadOnlyList<SavedNetworkProfileSummary>>([]);
     public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+    public Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AvailableWifiNetworksSummary(WifiScanState.NotScanned, []));
+    public Task RequestWifiScanAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
 
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }
@@ -840,6 +845,11 @@ sealed class SplitNetworkBackend : INetworkPlatformBrokerBackend
     public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<SavedNetworkProfileSummary>>([]);
     public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AvailableWifiNetworksSummary(WifiScanState.NotScanned, []));
+    public Task RequestWifiScanAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken) =>
         Task.CompletedTask;
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }

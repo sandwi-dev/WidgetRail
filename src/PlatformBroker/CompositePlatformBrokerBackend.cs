@@ -49,6 +49,17 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         string profileId, CancellationToken cancellationToken) =>
         _network.SwitchSavedNetworkProfileAsync(profileId, cancellationToken);
 
+    public Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(
+        CancellationToken cancellationToken) =>
+        _network.GetAvailableWifiNetworksAsync(cancellationToken);
+
+    public Task RequestWifiScanAsync(CancellationToken cancellationToken) =>
+        _network.RequestWifiScanAsync(cancellationToken);
+
+    public Task ConnectAvailableWifiNetworkAsync(
+        string networkId, CancellationToken cancellationToken) =>
+        _network.ConnectAvailableWifiNetworkAsync(networkId, cancellationToken);
+
     private void ForwardAudioEvent(object? sender, BrokerPlatformEvent platformEvent)
     {
         if (platformEvent.CapabilityId is PlatformCapabilities.AudioSessionsReadV1 or
@@ -58,10 +69,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
 
     private void ForwardNetworkEvent(object? sender, BrokerPlatformEvent platformEvent)
     {
-        if (string.Equals(
-                platformEvent.CapabilityId,
-                PlatformCapabilities.NetworkReadV1,
-                StringComparison.Ordinal))
+        if (platformEvent.CapabilityId is PlatformCapabilities.NetworkReadV1 or
+            PlatformCapabilities.NetworkWifiReadV1)
             EventPublished?.Invoke(this, platformEvent);
     }
 

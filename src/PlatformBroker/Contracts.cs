@@ -112,6 +112,43 @@ public sealed record SavedNetworkProfileSummary(
 public sealed record SwitchSavedNetworkProfileRequest(
     [property: JsonRequired] string ProfileId);
 
+public enum WifiScanState
+{
+    NotScanned,
+    Scanning,
+    Ready,
+    PreciseLocationDenied,
+    Unavailable,
+}
+
+public enum WifiSecurityKind
+{
+    Open,
+    Personal,
+    Enterprise,
+    Unknown,
+}
+
+/// <summary>
+/// A visible network from one bounded Native Wifi scan. NetworkId is an opaque,
+/// scan-generation-bound token; it never contains an SSID, BSSID, or profile name.
+/// </summary>
+public sealed record AvailableWifiNetworkSummary(
+    string NetworkId,
+    string DisplayName,
+    int SignalPercent,
+    WifiSecurityKind Security,
+    bool CredentialRequired,
+    bool IsConnected,
+    bool HasSavedProfile);
+
+public sealed record AvailableWifiNetworksSummary(
+    WifiScanState ScanState,
+    IReadOnlyList<AvailableWifiNetworkSummary> Networks);
+
+public sealed record ConnectAvailableWifiNetworkRequest(
+    [property: JsonRequired] string NetworkId);
+
 public sealed record AudioSessionsChangedEvent(
     IReadOnlyList<AudioSessionSummary> Sessions,
     bool IsAvailable = true);
@@ -119,6 +156,7 @@ public sealed record AudioOutputChangedEvent(
     AudioOutputSummary? Output,
     bool IsAvailable = true);
 public sealed record NetworkStatusChangedEvent(NetworkStatusSummary Status);
+public sealed record AvailableWifiNetworksChangedEvent(AvailableWifiNetworksSummary Snapshot);
 
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
 
@@ -143,6 +181,9 @@ public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource
     Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken);
     Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken);
+    Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(CancellationToken cancellationToken);
+    Task RequestWifiScanAsync(CancellationToken cancellationToken);
+    Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken);
 }
 
 /// <summary>

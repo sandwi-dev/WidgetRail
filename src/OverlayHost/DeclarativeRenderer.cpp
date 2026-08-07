@@ -1056,8 +1056,11 @@ struct DeclarativeRenderer::RenderPass final {
                 RenderDiagnosticSeverity::Error);
         }
 
-        const auto thumbRadius = focused ? 9.0F : 7.0F;
-        const auto trackHeight = focused ? 8.0F : 6.0F;
+        // Keep the controller hit target at 44 DIP while painting a restrained
+        // track inside it. The target size is an interaction contract, not a
+        // reason to turn the whole control into a heavy filled pill.
+        const auto thumbRadius = focused ? 8.0F : 6.5F;
+        const auto trackHeight = focused ? 6.0F : 4.5F;
         const auto trackInset = thumbRadius + 2.0F;
         const Rect track{
             rect.x + trackInset,
@@ -1200,7 +1203,11 @@ struct DeclarativeRenderer::RenderPass final {
             return;
         }
         target->PushAxisAlignedClip(D2DRect(box->visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        DrawSurface(node, style, paintRect, opacity);
+        // Slider background is its track color. Painting the generic surface
+        // first duplicates that color across the complete 44-DIP hit target.
+        // Authors can wrap a Slider in a Card/Row when they want a filled
+        // control surface; the Slider itself stays visually lightweight.
+        if (node.kind != L"slider") DrawSurface(node, style, paintRect, opacity);
 
         if (node.kind == L"text") {
             DrawTextContent(node, style, box->contentBox, opacity);

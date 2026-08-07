@@ -31,6 +31,9 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-011 | P0 | Verifying | Widget SDK / host focus / Audio Mixer | Focus-safe disabled/busy semantics and per-session Audio reconciliation are implemented; packaged controller verification remains. |
 | GBA-012 | P1 | Verifying | Declarative renderer / component styles | Effective surface/ancestor focus clipping and non-scaling full-width defaults are implemented; packaged visual verification remains. |
 | GBA-013 | P1 | Verifying | Network Controls / widget SDK | The full-width controller-scroll profile list and focused-row routing are implemented; packaged visual/controller verification remains. |
+| GBA-014 | P0 | Verifying | YT Music / Widget SDK routing / native icons | Window-wide transport shortcuts and Previous/Next glyph orientation are corrected; packaged controller/visual verification remains. |
+| GBA-015 | P1 | Verifying | Declarative renderer / built-in widget themes | Fixed regions no longer shrink into clipping, Sliders use a thin native track inside their controller target, and the built-in surfaces use a lighter visual hierarchy; packaged visual verification remains. |
+| GBA-016 | P0 | Verifying | OverlayHost focus / lifecycle / controller routing | The selected widget panel now remains visible while the tray owns focus, with one-level Back, automatic tray preview, and root-boundary return behavior; packaged controller evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -286,7 +289,7 @@ an inset outline and no scale transform. Settings removes its full-width focus
 growth. Deferred native focus decoration now starts with the render surface,
 intersects every Scroll or `overflow: clip` ancestor, and preserves explicit
 `overflow: visible`. Platform theme Release tests pass 13/13; native renderer
-tests pass 4,227 checks including nested non-Scroll clips, scaled root-edge
+tests pass 4,233 checks including nested non-Scroll clips, scaled root-edge
 controls, visible-overflow freedom, and retained Scroll behavior. Packaged
 screenshots at supported scale settings remain required before closing.
 
@@ -316,6 +319,118 @@ cycling, dashboard quick actions, and selected-row fallback are removed.
 Pending rows remain focused and focus survives reorder/churn. Network Controls
 passes 16/16 and the catalog passes 21/21; packaged visual/controller evidence
 remains.
+
+## GBA-014 — YT Music window shortcuts and transport glyphs are focus-dependent or reversed
+
+**Evidence:** In the packaged YT Music widget, the user's controller test and
+screenshot showed LB, RB, X, and Y working only while focus was on the sibling
+transport Button that declared that shortcut. Moving focus to like, dislike,
+shuffle, repeat, or another connected control made the intended window command
+unavailable. The same screenshot showed Previous and Next rendered with their
+directional geometry reversed.
+
+**Acceptance:**
+
+1. In the connected YT Music window, X toggles playback, LB selects Previous,
+   RB selects Next, and Y refreshes from every focus target and a focusless root.
+2. A remains local activation for the exact focused Button. A shortcut declared
+   on a Button remains exact-focus-only and is never discovered through a
+   sibling search.
+3. Window-wide commands are declared once on the active scope-root container.
+   A nested active scope cannot inherit or leak to the parent YT Music scope,
+   and stale or mismatched scope/snapshot input remains unhandled.
+4. The Previous glyph has its stop bar on the left and triangle pointing left;
+   Next has its stop bar on the right and triangle pointing right. Semantic IDs,
+   accessibility labels, and actions remain unchanged.
+5. Focused YT Music routing tests, native pixel-orientation tests, the complete
+   Release gate, and packaged controller/screenshot verification pass.
+
+**Implementation evidence:** The connected view now attaches X/LB/RB/Y once to
+the `ytmusic-root` scope container and leaves the sibling transport Buttons
+without non-A shortcuts. The SDK still resolves an exact focused-node shortcut
+first and then only the active scope root. YT Music passes 38/38, including
+every-focus/focusless routing, focused-A ownership, and nested-scope isolation.
+Native Icons passes 188 checks, including pixel assertions for the stop-bar and
+triangle direction of both glyphs. Packaged hands-on controller and screenshot
+verification is still required before closing.
+
+## GBA-015 — Fixed widget regions clip and the built-in visual hierarchy is too heavy
+
+**Evidence:** Packaged Audio Mixer and Network Controls screenshots showed
+header copy, row labels, and trailing values crowded or clipped when the
+scrollable content needed more room. Sliders appeared as a thick filled capsule
+with a second track painted over it, while large radii, heavy typography, and
+dense card surfaces made YT Music, Settings, Audio Mixer, and Network Controls
+feel visually bulky.
+
+**Root cause:** The layout engine allowed fixed headers, section labels, and
+trailing metadata to use the default flex shrink behavior alongside the actual
+scroll region. The renderer also painted a Slider node's background as a full
+control surface before drawing the Slider track, producing two competing
+surfaces instead of one thin control.
+
+**Acceptance:**
+
+1. Headers, section labels, fixed controls, and trailing values use
+   non-shrinking allocations; only the intended scroll/content region yields
+   space at compact sizes.
+2. Long and localized labels truncate or wrap deliberately without hiding the
+   value, state, or focused controller target at 720p and supported DPI/text
+   scales.
+3. A Slider renders one thin track, fill, and thumb inside a minimum 44-DIP
+   focus/hit target. It has no duplicate full-height background surface.
+4. Built-in theme, YT Music, Settings, Audio Mixer, and Network Controls use a
+   consistent lighter hierarchy for typography, spacing, radii, surfaces, and
+   focused states without weakening contrast or controller legibility.
+5. Layout/style/renderer regressions and packaged screenshots pass across the
+   compact, standard, high-DPI, and increased-text-scale matrix.
+
+**Implementation evidence:** Fixed widget regions and trailing metadata now
+opt out of flex shrinking while bounded scroll regions retain the available
+flex. The native Slider draws a thin track within its unchanged 44-DIP
+controller target instead of painting a second full control background. The
+built-in platform theme and all four packaged widget themes use the revised
+lighter typography, radius, spacing, and surface treatment. Declarative
+Renderer passes 4,233 checks. Packaged visual screenshots are still required
+before closing.
+
+## GBA-016 — Returning to the tray must not hide the selected widget panel
+
+**Evidence:** The earlier shell modeled the widget panel as visible only while
+the widget owned controller focus. Pressing B at the widget root therefore
+returned to the tray by hiding the panel, forcing A to reopen it and preventing
+PS5-style preview navigation between a persistent tray and the selected panel.
+
+**Acceptance:**
+
+1. While the overlay is open, the selected widget panel and icon tray remain
+   visible as separate regions regardless of which region owns focus.
+2. An unhandled B at the widget root moves focus to the tray and keeps that
+   widget visible. B on the tray closes the overlay. Nested scopes consume
+   their own B and never fall through multiple levels.
+3. Left/Right D-pad or left-stick navigation on the tray selects the adjacent
+   widget and swaps the visible panel automatically. A enters that panel's
+   controls; it is not required to reveal the panel.
+4. Down from the last root-scope control returns focus to the tray, including a
+   deliberate root self-loop. Directional escape never crosses a nested scope.
+5. Guide remains a host-global toggle detached from either region's navigation
+   graph. Tray and widget retain independent focus restoration.
+6. Lifecycle distinguishes presentation from interaction: the tray-selected
+   panel is `Visible`, the panel owning focus is `Interactive`, and a replaced
+   or closed panel becomes `Background`.
+7. Native state, routing, lifecycle, and packaged controller tests cover Back,
+   tray switching, root-boundary escape, nested containment, focus restoration,
+   Guide close/reopen, and rapid region changes without flicker.
+
+**Implementation evidence:** Overlay state now tracks visible widget selection
+separately from focus ownership. Root Back transfers focus to the persistent
+tray; tray Back closes; tray selection swaps the visible widget; A enters its
+controls; and a root-scope Down boundary returns to the tray without escaping
+nested scopes. Guide remains region-independent. Lifecycle transitions publish
+`Visible` for a previewed panel and `Interactive` only while its controls own
+focus. Controller Navigation passes 70 checks and Declarative Renderer passes
+4,233 checks. Packaged hands-on controller evidence remains required before
+closing.
 
 ## Closed issues
 
