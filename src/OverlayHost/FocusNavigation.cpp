@@ -22,14 +22,18 @@ bool Overlaps(const float a0, const float a1, const float b0, const float b1) no
 bool IsEnabledFocusTarget(
     const std::wstring_view id,
     const RenderResult& renderResult) noexcept {
-    const auto focusRect = std::find_if(
-        renderResult.focusRects.begin(), renderResult.focusRects.end(),
-        [id](const auto& item) { return item.first == id; });
-    if (focusRect == renderResult.focusRects.end()) return false;
+    const auto enabled = renderResult.navigationEnabled.find(id);
+    if (enabled != renderResult.navigationEnabled.end()) {
+        return enabled->second &&
+            (renderResult.focusRects.contains(id) ||
+             renderResult.revealableFocusIds.contains(id));
+    }
+    // Compatibility for synthetic/older render results used by host seams.
     const auto region = std::find_if(
         renderResult.hitRegions.begin(), renderResult.hitRegions.end(),
         [id](const RenderHitRegion& item) { return item.nodeId == id; });
-    return region != renderResult.hitRegions.end() && region->enabled;
+    return renderResult.focusRects.contains(id) &&
+        region != renderResult.hitRegions.end() && region->enabled;
 }
 
 std::optional<std::wstring> ResolveVisibleFocusTarget(
@@ -38,8 +42,9 @@ std::optional<std::wstring> ResolveVisibleFocusTarget(
     const RenderResult& renderResult) {
     const auto isVisibleInScope = [&](const std::wstring_view id) {
         const auto rect = renderResult.focusRects.find(id);
-        if (rect == renderResult.focusRects.end() ||
-            rect->second.width <= 0.0F || rect->second.height <= 0.0F ||
+        const auto visible = rect != renderResult.focusRects.end() &&
+            rect->second.width > 0.0F && rect->second.height > 0.0F;
+        if ((!visible && !renderResult.revealableFocusIds.contains(id)) ||
             !IsEnabledFocusTarget(id, renderResult)) {
             return false;
         }
@@ -65,8 +70,11 @@ std::optional<std::wstring> FindGeometricFocusTarget(
     const NavigationDirection direction,
     const RenderResult& renderResult) {
     if (direction == NavigationDirection::None) return std::nullopt;
-    const auto currentEntry = renderResult.focusRects.find(currentId);
-    if (currentEntry == renderResult.focusRects.end()) return std::nullopt;
+    const auto& geometry = renderResult.navigationRects.empty()
+        ? renderResult.focusRects
+        : renderResult.navigationRects;
+    const auto currentEntry = geometry.find(currentId);
+    if (currentEntry == geometry.end()) return std::nullopt;
     const auto& current = currentEntry->second;
     const auto currentScopeEntry = renderResult.focusScopes.find(currentId);
     const std::wstring_view currentScope = currentScopeEntry == renderResult.focusScopes.end()
@@ -78,7 +86,7 @@ std::optional<std::wstring> FindGeometricFocusTarget(
         std::numeric_limits<float>::infinity(),
         std::numeric_limits<float>::infinity(),
         std::wstring{}};
-    for (const auto& [id, candidate] : renderResult.focusRects) {
+    for (const auto& [id, candidate] : geometry) {
         if (id == currentId || !IsEnabledFocusTarget(id, renderResult)) continue;
         const auto candidateScopeEntry = renderResult.focusScopes.find(id);
         const std::wstring_view candidateScope =

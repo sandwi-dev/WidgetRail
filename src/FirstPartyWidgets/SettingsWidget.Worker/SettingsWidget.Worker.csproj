@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\WidgetRuntime\WidgetRuntime.csproj" />
     <ProjectReference Include="..\SettingsWidget\SettingsWidget.csproj" />
+    <ProjectReference Include="..\..\PlatformDiagnostics\PlatformDiagnostics.csproj" />
   </ItemGroup>
 </Project>

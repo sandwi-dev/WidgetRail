@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
@@ -24,17 +26,23 @@ public enum AudioMixerViewState
 public sealed class AudioMixerWidget : Widget
 {
     public const double VolumeStep = 0.05;
-
-    private static readonly IReadOnlyList<WidgetQuickAction> SessionQuickActions =
-    [
-        new(ControllerButton.LeftBumper, "session.previous", "Previous audio session"),
-        new(ControllerButton.RightBumper, "session.next", "Next audio session"),
-    ];
+    private static readonly WidgetSurfaceHints CompactSurface = new()
+    {
+        Mode = WidgetSurfaceMode.Compact,
+        PreferredWidth = 520,
+        PreferredHeight = 520,
+        MinimumWidth = 320,
+        MinimumHeight = 360,
+    };
 
     private readonly object _stateLock = new();
     private readonly SemaphoreSlim _commandGate = new(1, 1);
     private readonly SemaphoreSlim _outputCommandGate = new(1, 1);
     private IReadOnlyList<WidgetAudioSession> _sessions = [];
+    private IReadOnlyDictionary<string, SessionControlIds> _sessionControls =
+        new Dictionary<string, SessionControlIds>(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, SessionActionTarget> _sessionActions =
+        new Dictionary<string, SessionActionTarget>(StringComparer.Ordinal);
     private WidgetAudioOutput? _output;
     private AudioMixerViewState _viewState = AudioMixerViewState.Initial;
     private string? _selectedSessionId;
@@ -80,23 +88,23 @@ public sealed class AudioMixerWidget : Widget
     {
         AudioMixerViewState viewState;
         IReadOnlyList<WidgetAudioSession> sessions;
-        WidgetAudioSession? selected;
+        IReadOnlyDictionary<string, SessionControlIds> controlsBySessionId;
         WidgetAudioOutput? output;
-        int selectedIndex;
         string status;
         bool statusIsError;
         bool controlBusy;
+        string? pendingSessionId;
         bool outputControlBusy;
         lock (_stateLock)
         {
             viewState = _viewState;
             sessions = _sessions;
-            selectedIndex = _selectedIndex;
-            selected = SelectedSessionLocked();
+            controlsBySessionId = _sessionControls;
             output = _output;
             status = _status;
             statusIsError = _statusIsError;
             controlBusy = _controlBusy;
+            pendingSessionId = _pendingSessionId;
             outputControlBusy = _outputControlBusy;
         }
 
@@ -111,13 +119,15 @@ public sealed class AudioMixerWidget : Widget
         if (viewState is not (AudioMixerViewState.Ready or AudioMixerViewState.Empty) || output is null)
             return RenderNonSessionState(header, viewState);
 
+        var sessionControls = sessions.Select(session => controlsBySessionId[session.SessionId]).ToArray();
+        var firstControls = sessionControls.FirstOrDefault();
+
         var masterPercent = VolumePercent(output.Volume);
         var masterDown = UI.Button("−", "output.volume.down", "audio.master.volume.down")
             .Disabled(outputControlBusy || output.Volume <= 0)
             .Busy(outputControlBusy)
             .FocusLeft("audio.master.volume.up")
             .FocusRight("audio.master.mute")
-            .FocusDown(selected is null ? "audio.retry" : "audio.session.previous")
             .Classes("audio-volume-action", "audio-master-action");
         var masterMute = UI.Button(output.IsMuted ? "Unmute" : "Mute", "output.mute.toggle", "audio.master.mute")
             .Icon(output.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Volume,
@@ -127,15 +137,20 @@ public sealed class AudioMixerWidget : Widget
             .Busy(outputControlBusy)
             .FocusLeft("audio.master.volume.down")
             .FocusRight("audio.master.volume.up")
-            .FocusDown(selected is null ? "audio.retry" : "audio.mute")
             .Classes("audio-mute-action", "audio-master-mute", output.IsMuted ? "is-muted" : "is-audible");
         var masterUp = UI.Button("+", "output.volume.up", "audio.master.volume.up")
             .Disabled(outputControlBusy || output.Volume >= 1)
             .Busy(outputControlBusy)
             .FocusLeft("audio.master.mute")
             .FocusRight("audio.master.volume.down")
-            .FocusDown(selected is null ? "audio.retry" : "audio.session.next")
             .Classes("audio-volume-action", "audio-master-action");
+
+        if (firstControls is not null)
+        {
+            masterDown = masterDown.FocusDown(firstControls.VolumeDown);
+            masterMute = masterMute.FocusDown(firstControls.Mute);
+            masterUp = masterUp.FocusDown(firstControls.VolumeUp);
+        }
         var masterCard = UI.Stack("audio.master.card",
                 UI.Row("audio.master.heading",
                     UI.Text("MASTER OUTPUT", "audio.master.label", "Master output").Classes("audio-master-label"),
@@ -155,7 +170,7 @@ public sealed class AudioMixerWidget : Widget
                     .Classes("audio-controls", "audio-master-controls"))
             .Classes("audio-master-card");
 
-        if (selected is null)
+        if (sessions.Count == 0)
         {
             var retry = UI.Button("Check again", "retry", "audio.retry")
                 .Icon(WidgetGlyph.Refresh, "Check for application audio")
@@ -171,89 +186,106 @@ public sealed class AudioMixerWidget : Widget
                         retry).Classes("audio-state-card"))
                 .InputScope("audio-mixer")
                 .Classes("audio-mixer-widget", "has-master", "has-state");
-            return new WidgetView(emptyRoot, InitialFocusId: "audio.master.mute");
+            return new WidgetView(emptyRoot, InitialFocusId: "audio.master.mute", Surface: CompactSurface);
         }
 
-        var hasMultipleSessions = sessions.Count > 1;
-        var volumePercent = VolumePercent(selected.Volume);
-        var previousButton = UI.Button("", "session.previous", "audio.session.previous")
-            .Icon(WidgetGlyph.Previous, "Previous audio session")
-            .Disabled(!hasMultipleSessions)
-            .FocusRight("audio.session.next")
-            .FocusDown("audio.volume.down")
-            .FocusUp("audio.master.volume.down")
-            .Classes("audio-session-action");
-        var nextButton = UI.Button("", "session.next", "audio.session.next")
-            .Icon(WidgetGlyph.Next, "Next audio session")
-            .Disabled(!hasMultipleSessions)
-            .FocusLeft("audio.session.previous")
-            .FocusDown("audio.volume.up")
-            .FocusUp("audio.master.volume.up")
-            .Classes("audio-session-action");
-        var volumeDown = UI.Button("−", "volume.down", "audio.volume.down")
-            .Disabled(controlBusy || selected.Volume <= 0)
-            .Busy(controlBusy)
-            .FocusUp("audio.session.previous")
-            .FocusLeft("audio.volume.up")
-            .FocusRight("audio.mute")
-            .Classes("audio-volume-action");
-        var mute = UI.Button(selected.IsMuted ? "Unmute" : "Mute", "mute.toggle", "audio.mute")
-            .Icon(selected.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Volume,
-                selected.IsMuted ? $"Unmute {selected.DisplayName}" : $"Mute {selected.DisplayName}")
-            .Selected(selected.IsMuted)
-            .Busy(controlBusy)
-            .Disabled(controlBusy)
-            .FocusUp("audio.session.previous")
-            .FocusLeft("audio.volume.down")
-            .FocusRight("audio.volume.up")
-            .Classes("audio-mute-action", selected.IsMuted ? "is-muted" : "is-audible");
-        var volumeUp = UI.Button("+", "volume.up", "audio.volume.up")
-            .Disabled(controlBusy || selected.Volume >= 1)
-            .Busy(controlBusy)
-            .FocusUp("audio.session.next")
-            .FocusLeft("audio.mute")
-            .FocusRight("audio.volume.down")
-            .Classes("audio-volume-action");
+        var sessionRows = new WidgetElement[sessions.Count];
+        for (var index = 0; index < sessions.Count; index++)
+        {
+            var previous = index == 0 ? null : sessionControls[index - 1];
+            var next = index + 1 == sessions.Count ? null : sessionControls[index + 1];
+            sessionRows[index] = RenderSessionRow(
+                sessions[index], index, sessions.Count, sessionControls[index], previous, next,
+                controlBusy, pendingSessionId);
+        }
 
         var root = UI.Stack("audio.root",
                 header,
                 masterCard,
-                UI.Stack("audio.session.card",
-                    UI.Row("audio.session.switcher",
-                        previousButton,
-                        UI.Stack("audio.session.details",
-                            UI.Text(selected.DisplayName, "audio.session.name", selected.DisplayName)
-                                .Classes("audio-session-name"),
-                            UI.Text($"Session {selectedIndex + 1} of {sessions.Count}", "audio.session.count",
-                                    $"Audio session {selectedIndex + 1} of {sessions.Count}")
-                                .Classes("audio-session-count"),
-                            UI.Text(selected.IsActive ? "ACTIVE NOW" : "IDLE", "audio.session.state",
-                                    selected.IsActive ? "Audio is active" : "Audio is idle")
-                                .Classes("audio-session-state", selected.IsActive ? "is-active" : "is-idle"))
-                            .Classes("audio-session-details"),
-                        nextButton)
-                        .Classes("audio-session-switcher"),
-                    UI.Row("audio.volume.row",
-                        UI.Progress(volumePercent, 100, "audio.volume.progress",
-                                $"{selected.DisplayName} volume {volumePercent} percent")
-                            .Classes("audio-volume-progress"),
-                        UI.Text($"{volumePercent}%", "audio.volume.value", $"Volume {volumePercent} percent")
-                            .Classes("audio-volume-value"))
-                        .Classes("audio-volume-row"),
-                    UI.Row("audio.controls", volumeDown, mute, volumeUp).Classes("audio-controls"),
-                    UI.Text("LB/RB  SESSION     LT/RT  VOLUME     X  MUTE", "audio.shortcuts",
-                            "Left and right bumper select a session. Left and right trigger change volume. X toggles mute.")
-                        .Classes("audio-shortcuts"))
-                    .Classes("audio-session-card"))
+                UI.Row("audio.sessions.heading",
+                    UI.Text("APPLICATIONS", "audio.sessions.label", "Application volume mixer")
+                        .Classes("audio-sessions-label"),
+                    UI.Text($"{sessions.Count} apps", "audio.sessions.count",
+                            $"{sessions.Count} application audio sessions")
+                        .Classes("audio-sessions-count"))
+                    .Classes("audio-sessions-heading"),
+                UI.VerticalScroll("audio.sessions.scroll", sessionRows)
+                    .Classes("audio-session-list"))
             .InputScope("audio-mixer")
-            .Shortcut(ControllerButton.LeftBumper, "session.previous")
-            .Shortcut(ControllerButton.RightBumper, "session.next")
-            .Shortcut(ControllerButton.LeftTrigger, "volume.down")
-            .Shortcut(ControllerButton.RightTrigger, "volume.up")
-            .Shortcut(ControllerButton.X, "mute.toggle")
             .Classes("audio-mixer-widget", "has-sessions");
 
-        return new WidgetView(root, InitialFocusId: "audio.master.mute", QuickActions: SessionQuickActions);
+        return new WidgetView(root, InitialFocusId: "audio.master.mute", Surface: CompactSurface);
+    }
+
+    private static StackElement RenderSessionRow(
+        WidgetAudioSession session,
+        int index,
+        int count,
+        SessionControlIds controls,
+        SessionControlIds? previous,
+        SessionControlIds? next,
+        bool controlBusy,
+        string? pendingSessionId)
+    {
+        var isPending = controlBusy &&
+            string.Equals(session.SessionId, pendingSessionId, StringComparison.Ordinal);
+        var percent = VolumePercent(session.Volume);
+        var volumeDown = UI.Button("−", controls.VolumeDown, controls.VolumeDown)
+            .Disabled(controlBusy || session.Volume <= 0)
+            .Busy(isPending)
+            .FocusLeft(controls.VolumeUp)
+            .FocusRight(controls.Mute)
+            .FocusUp(previous?.VolumeDown ?? "audio.master.volume.down")
+            .Classes("audio-volume-action", "audio-session-volume-action");
+        var mute = UI.Button(session.IsMuted ? "Unmute" : "Mute", controls.Mute, controls.Mute)
+            .Icon(session.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Volume,
+                session.IsMuted ? $"Unmute {session.DisplayName}" : $"Mute {session.DisplayName}")
+            .Selected(session.IsMuted)
+            .Busy(isPending)
+            .Disabled(controlBusy)
+            .FocusLeft(controls.VolumeDown)
+            .FocusRight(controls.VolumeUp)
+            .FocusUp(previous?.Mute ?? "audio.master.mute")
+            .Classes("audio-mute-action", "audio-session-mute-action",
+                session.IsMuted ? "is-muted" : "is-audible");
+        var volumeUp = UI.Button("+", controls.VolumeUp, controls.VolumeUp)
+            .Disabled(controlBusy || session.Volume >= 1)
+            .Busy(isPending)
+            .FocusLeft(controls.Mute)
+            .FocusRight(controls.VolumeDown)
+            .FocusUp(previous?.VolumeUp ?? "audio.master.volume.up")
+            .Classes("audio-volume-action", "audio-session-volume-action");
+
+        if (next is not null)
+        {
+            volumeDown = volumeDown.FocusDown(next.VolumeDown);
+            mute = mute.FocusDown(next.Mute);
+            volumeUp = volumeUp.FocusDown(next.VolumeUp);
+        }
+
+        return UI.Stack(controls.Row,
+                UI.Row(controls.Heading,
+                    UI.Stack(controls.Details,
+                        UI.Text(session.DisplayName, controls.Name, session.DisplayName)
+                            .Classes("audio-session-name"),
+                        UI.Text($"APP {index + 1} OF {count}", controls.Position,
+                                $"Application audio session {index + 1} of {count}")
+                            .Classes("audio-session-count"))
+                        .Classes("audio-session-details"),
+                    UI.Text(session.IsActive ? "ACTIVE" : "IDLE", controls.State,
+                            session.IsActive ? $"{session.DisplayName} audio is active" : $"{session.DisplayName} audio is idle")
+                        .Classes("audio-session-state", session.IsActive ? "is-active" : "is-idle"))
+                    .Classes("audio-session-heading"),
+                UI.Row(controls.VolumeRow,
+                    UI.Progress(percent, 100, controls.Progress,
+                            $"{session.DisplayName} volume {percent} percent")
+                        .Classes("audio-volume-progress"),
+                    UI.Text($"{percent}%", controls.Value, $"{session.DisplayName} volume {percent} percent")
+                        .Classes("audio-volume-value"))
+                    .Classes("audio-volume-row"),
+                UI.Row(controls.Controls, volumeDown, mute, volumeUp)
+                    .Classes("audio-controls", "audio-session-controls"))
+            .Classes("audio-session-card", isPending ? "is-pending" : "is-ready");
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -280,23 +312,25 @@ public sealed class AudioMixerWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (TryResolveSessionAction(action.ActionId, out var sessionId, out var sessionAction))
+        {
+            switch (sessionAction)
+            {
+                case SessionAction.VolumeDown:
+                    await ChangeVolumeAsync(sessionId, -VolumeStep, cancellationToken).ConfigureAwait(false);
+                    break;
+                case SessionAction.VolumeUp:
+                    await ChangeVolumeAsync(sessionId, VolumeStep, cancellationToken).ConfigureAwait(false);
+                    break;
+                case SessionAction.ToggleMute:
+                    await ToggleMuteAsync(sessionId, cancellationToken).ConfigureAwait(false);
+                    break;
+            }
+            return;
+        }
+
         switch (action.ActionId)
         {
-            case "session.previous":
-                SelectRelativeSession(-1);
-                break;
-            case "session.next":
-                SelectRelativeSession(1);
-                break;
-            case "volume.down":
-                await ChangeVolumeAsync(-VolumeStep, cancellationToken).ConfigureAwait(false);
-                break;
-            case "volume.up":
-                await ChangeVolumeAsync(VolumeStep, cancellationToken).ConfigureAwait(false);
-                break;
-            case "mute.toggle":
-                await ToggleMuteAsync(cancellationToken).ConfigureAwait(false);
-                break;
             case "output.volume.down":
                 await ChangeOutputVolumeAsync(-VolumeStep, cancellationToken).ConfigureAwait(false);
                 break;
@@ -371,7 +405,7 @@ public sealed class AudioMixerWidget : Widget
                     .Classes("audio-state-card"))
             .InputScope("audio-mixer")
             .Classes("audio-mixer-widget", error ? "has-error" : "has-state");
-        return new WidgetView(root, InitialFocusId: "audio.retry");
+        return new WidgetView(root, InitialFocusId: "audio.retry", Surface: CompactSurface);
     }
 
     private void StartActiveRun(CancellationToken activeLifetime)
@@ -527,6 +561,7 @@ public sealed class AudioMixerWidget : Widget
     private void ApplySessions(IReadOnlyList<WidgetAudioSession>? incoming, long generation)
     {
         var normalized = NormalizeSessions(incoming);
+        var (controls, actions) = BuildSessionRouting(normalized);
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
@@ -549,6 +584,8 @@ public sealed class AudioMixerWidget : Widget
             }
 
             _sessions = normalized;
+            _sessionControls = controls;
+            _sessionActions = actions;
             if (normalized.Count == 0)
             {
                 _selectedSessionId = null;
@@ -598,30 +635,55 @@ public sealed class AudioMixerWidget : Widget
             var volume = double.IsFinite(session.Volume) ? Math.Clamp(session.Volume, 0, 1) : 0;
             result.Add(session with
             {
-                DisplayName = string.IsNullOrWhiteSpace(session.DisplayName)
-                    ? "Unnamed application"
-                    : session.DisplayName.Trim(),
+                DisplayName = NormalizeDisplayName(session.DisplayName),
                 Volume = volume,
             });
         }
         return result;
     }
 
-    private void SelectRelativeSession(int delta)
+    private static string NormalizeDisplayName(string? displayName)
     {
-        lock (_stateLock)
+        if (string.IsNullOrWhiteSpace(displayName)) return "Unnamed application";
+        var trimmed = displayName.Trim();
+        const int maximumRunes = 160;
+        var builder = new StringBuilder(Math.Min(trimmed.Length, maximumRunes + 1));
+        var count = 0;
+        foreach (var rune in trimmed.EnumerateRunes())
         {
-            if (_sessions.Count <= 1 || _viewState != AudioMixerViewState.Ready) return;
-            _selectedIndex = (_selectedIndex + delta) % _sessions.Count;
-            if (_selectedIndex < 0) _selectedIndex += _sessions.Count;
-            _selectedSessionId = _sessions[_selectedIndex].SessionId;
-            _status = $"Selected {_sessions[_selectedIndex].DisplayName}";
-            _statusIsError = false;
+            if (count == maximumRunes)
+            {
+                builder.Append('…');
+                break;
+            }
+            builder.Append(rune.ToString());
+            count++;
         }
-        Invalidate();
+        return builder.ToString();
     }
 
-    private async ValueTask ChangeVolumeAsync(double delta, CancellationToken cancellationToken)
+    private static (
+        IReadOnlyDictionary<string, SessionControlIds> Controls,
+        IReadOnlyDictionary<string, SessionActionTarget> Actions)
+        BuildSessionRouting(IReadOnlyList<WidgetAudioSession> sessions)
+    {
+        var controls = new Dictionary<string, SessionControlIds>(sessions.Count, StringComparer.Ordinal);
+        var actions = new Dictionary<string, SessionActionTarget>(sessions.Count * 3, StringComparer.Ordinal);
+        foreach (var session in sessions)
+        {
+            var ids = SessionControlIds.For(session);
+            controls.Add(session.SessionId, ids);
+            actions.Add(ids.VolumeDown, new SessionActionTarget(session.SessionId, SessionAction.VolumeDown));
+            actions.Add(ids.Mute, new SessionActionTarget(session.SessionId, SessionAction.ToggleMute));
+            actions.Add(ids.VolumeUp, new SessionActionTarget(session.SessionId, SessionAction.VolumeUp));
+        }
+        return (controls, actions);
+    }
+
+    private async ValueTask ChangeVolumeAsync(
+        string sessionId,
+        double delta,
+        CancellationToken cancellationToken)
     {
         await _commandGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -630,8 +692,9 @@ public sealed class AudioMixerWidget : Widget
             double desired;
             lock (_stateLock)
             {
-                original = SelectedSessionLocked();
+                original = FindSessionLocked(sessionId);
                 if (original is null) return;
+                SelectSessionLocked(original.SessionId);
                 desired = RoundVolume(original.Volume + delta);
                 if (desired == original.Volume) return;
                 ReplaceSessionLocked(original with { Volume = desired });
@@ -675,7 +738,7 @@ public sealed class AudioMixerWidget : Widget
         }
     }
 
-    private async ValueTask ToggleMuteAsync(CancellationToken cancellationToken)
+    private async ValueTask ToggleMuteAsync(string sessionId, CancellationToken cancellationToken)
     {
         await _commandGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -684,8 +747,9 @@ public sealed class AudioMixerWidget : Widget
             bool desired;
             lock (_stateLock)
             {
-                original = SelectedSessionLocked();
+                original = FindSessionLocked(sessionId);
                 if (original is null) return;
+                SelectSessionLocked(original.SessionId);
                 desired = !original.IsMuted;
                 ReplaceSessionLocked(original with { IsMuted = desired });
                 _controlBusy = true;
@@ -910,11 +974,41 @@ public sealed class AudioMixerWidget : Widget
         Invalidate();
     }
 
-    private WidgetAudioSession? SelectedSessionLocked()
+    private WidgetAudioSession? FindSessionLocked(string sessionId) =>
+        _sessions.FirstOrDefault(session =>
+            string.Equals(session.SessionId, sessionId, StringComparison.Ordinal));
+
+    private void SelectSessionLocked(string sessionId)
     {
-        if (_sessions.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _sessions.Count)
-            return null;
-        return _sessions[_selectedIndex];
+        var index = -1;
+        for (var candidate = 0; candidate < _sessions.Count; candidate++)
+        {
+            if (!string.Equals(_sessions[candidate].SessionId, sessionId, StringComparison.Ordinal)) continue;
+            index = candidate;
+            break;
+        }
+        if (index < 0) return;
+        _selectedIndex = index;
+        _selectedSessionId = sessionId;
+    }
+
+    private bool TryResolveSessionAction(
+        string actionId,
+        out string sessionId,
+        out SessionAction action)
+    {
+        lock (_stateLock)
+        {
+            if (_sessionActions.TryGetValue(actionId, out var target))
+            {
+                sessionId = target.SessionId;
+                action = target.Action;
+                return true;
+            }
+        }
+        sessionId = string.Empty;
+        action = default;
+        return false;
     }
 
     private void ReplaceSessionLocked(WidgetAudioSession replacement)
@@ -939,6 +1033,8 @@ public sealed class AudioMixerWidget : Widget
         {
             if (_runGeneration != generation) return;
             _sessions = [];
+            _sessionControls = new Dictionary<string, SessionControlIds>(StringComparer.Ordinal);
+            _sessionActions = new Dictionary<string, SessionActionTarget>(StringComparer.Ordinal);
             _output = null;
             _selectedSessionId = null;
             _selectedIndex = 0;
@@ -980,4 +1076,55 @@ public sealed class AudioMixerWidget : Widget
 
     private static int VolumePercent(double value) =>
         (int)Math.Round(Math.Clamp(value, 0, 1) * 100, MidpointRounding.AwayFromZero);
+
+    private enum SessionAction
+    {
+        VolumeDown,
+        VolumeUp,
+        ToggleMute,
+    }
+
+    private sealed record SessionActionTarget(string SessionId, SessionAction Action);
+
+    private sealed class SessionControlIds
+    {
+        private SessionControlIds(string prefix)
+        {
+            Row = $"{prefix}.row";
+            Heading = $"{prefix}.heading";
+            Details = $"{prefix}.details";
+            Name = $"{prefix}.name";
+            Position = $"{prefix}.position";
+            State = $"{prefix}.state";
+            VolumeRow = $"{prefix}.volume.row";
+            Progress = $"{prefix}.volume.progress";
+            Value = $"{prefix}.volume.value";
+            Controls = $"{prefix}.controls";
+            VolumeDown = $"{prefix}.volume.down";
+            Mute = $"{prefix}.mute";
+            VolumeUp = $"{prefix}.volume.up";
+        }
+
+        public string Row { get; }
+        public string Heading { get; }
+        public string Details { get; }
+        public string Name { get; }
+        public string Position { get; }
+        public string State { get; }
+        public string VolumeRow { get; }
+        public string Progress { get; }
+        public string Value { get; }
+        public string Controls { get; }
+        public string VolumeDown { get; }
+        public string Mute { get; }
+        public string VolumeUp { get; }
+
+        public static SessionControlIds For(WidgetAudioSession session) => For(session.SessionId);
+
+        private static SessionControlIds For(string sessionId)
+        {
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(sessionId));
+            return new SessionControlIds($"audio.session.{Convert.ToHexString(hash).ToLowerInvariant()}");
+        }
+    }
 }

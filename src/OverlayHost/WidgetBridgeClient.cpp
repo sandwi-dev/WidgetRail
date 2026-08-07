@@ -470,6 +470,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");
     node.inputScopeId = OptionalString(source, L"inputScopeId");
+    node.scrollAxis = OptionalString(source, L"scrollAxis");
     if (source.HasKey(L"styleClasses")) {
         const auto classes = source.GetNamedArray(L"styleClasses");
         node.styleClasses.reserve(classes.Size());
@@ -553,6 +554,20 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.activeInputScopeId =
         std::wstring(std::wstring_view(source.GetNamedString(L"activeInputScopeId")));
     snapshot.initialFocusId = OptionalString(source, L"initialFocusId");
+    if (source.HasKey(L"surface")) {
+        const auto hints = source.GetNamedObject(L"surface");
+        WidgetSurfaceHints parsed;
+        parsed.mode = OptionalString(hints, L"mode");
+        const auto optionalNumber = [&hints](const wchar_t* name) -> std::optional<double> {
+            if (!hints.HasKey(name)) return std::nullopt;
+            return hints.GetNamedNumber(name);
+        };
+        parsed.preferredWidth = optionalNumber(L"preferredWidth");
+        parsed.preferredHeight = optionalNumber(L"preferredHeight");
+        parsed.minimumWidth = optionalNumber(L"minimumWidth");
+        parsed.minimumHeight = optionalNumber(L"minimumHeight");
+        snapshot.surface = std::move(parsed);
+    }
     if (source.HasKey(L"quickActions")) {
         const JsonArray actions = source.GetNamedArray(L"quickActions");
         snapshot.quickActions.reserve(actions.Size());

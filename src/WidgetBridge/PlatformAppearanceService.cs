@@ -45,6 +45,9 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
 
     public ThemeSnapshot Current => _themes.Current;
 
+    public IReadOnlyList<GbssDiagnostic> LastReloadDiagnostics =>
+        _themes.LastReloadDiagnostics;
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

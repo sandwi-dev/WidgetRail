@@ -38,7 +38,9 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     private readonly CancellationTokenSource _shutdown = new();
 
     private BridgeCatalog _current;
+    private IReadOnlyList<string> _lastDiagnostics;
     private long _revision;
+    private bool _retainedLastGood;
     private FileSystemWatcher? _trustedWatcher;
     private FileSystemWatcher? _installedWatcher;
     private Task? _reloadWorker;
@@ -49,7 +51,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         string trustedCatalogPath,
         string installedCatalogRoot,
         string workerHostExecutable,
-        BridgeCatalog initialCatalog)
+        BridgeCatalog initialCatalog,
+        IReadOnlyList<string>? initialDiagnostics = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trustedCatalogPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
@@ -58,6 +61,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         _installedCatalogRoot = Path.GetFullPath(installedCatalogRoot);
         _workerHostExecutable = Path.GetFullPath(workerHostExecutable);
         _current = initialCatalog ?? throw new ArgumentNullException(nameof(initialCatalog));
+        _lastDiagnostics = initialDiagnostics?.Take(64).ToArray() ?? [];
     }
 
     public event EventHandler<BridgeCatalogChanged>? Changed;
@@ -71,6 +75,16 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     public long Revision
     {
         get { lock (_stateGate) return _revision; }
+    }
+
+    public IReadOnlyList<string> LastDiagnostics
+    {
+        get { lock (_stateGate) return _lastDiagnostics; }
+    }
+
+    public bool RetainedLastGood
+    {
+        get { lock (_stateGate) return _retainedLastGood; }
     }
 
     public void Start()
@@ -124,7 +138,11 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 };
                 Diagnostics?.Invoke(this, warnings);
                 lock (_stateGate)
+                {
+                    _lastDiagnostics = warnings;
+                    _retainedLastGood = true;
                     return new BridgeCatalogReloadResult(false, true, _revision, _current, warnings);
+                }
             }
 
             if (!loaded.InstalledCatalogValid)
@@ -133,12 +151,18 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 ["Widget catalog reload retained the last-good installed catalog."]).ToArray();
                 Diagnostics?.Invoke(this, warnings);
                 lock (_stateGate)
+                {
+                    _lastDiagnostics = warnings;
+                    _retainedLastGood = true;
                     return new BridgeCatalogReloadResult(false, true, _revision, _current, warnings);
+                }
             }
 
             BridgeCatalogChanged? changed = null;
             lock (_stateGate)
             {
+                _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
+                _retainedLastGood = false;
                 if (!_current.IsEquivalentTo(loaded.Catalog))
                 {
                     _current = loaded.Catalog;
@@ -245,8 +269,16 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             }
             catch (Exception exception)
             {
-                Diagnostics?.Invoke(this,
-                    [$"Widget catalog reload failed unexpectedly ({SafeCode(exception)})."]);
+                var diagnostics = new[]
+                {
+                    $"Widget catalog reload failed unexpectedly ({SafeCode(exception)}).",
+                };
+                lock (_stateGate)
+                {
+                    _lastDiagnostics = diagnostics;
+                    _retainedLastGood = true;
+                }
+                Diagnostics?.Invoke(this, diagnostics);
             }
         }
     }

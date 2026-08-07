@@ -30,11 +30,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog monitor closes the startup notification window", CatalogMonitorStartupCatchUp),
     ("Catalog reconciliation preserves compatible workers and retires changed workers", CatalogReconciliationPreservesCompatibleWorkers),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
+    ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
     ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
     ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
+    ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
 };
@@ -97,6 +99,50 @@ static Task CatalogMemoryPolicyIsTrusted()
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(tooLarge.Path));
     return Task.CompletedTask;
 }
+
+static async Task DiagnosticsAreSettingsOnly()
+{
+    var exact = DiagnosticCandidate();
+    Assert.True(WidgetBridgeServer.IsTrustedSettings(exact),
+        "The exact built-in Settings identity did not receive diagnostics.");
+    Assert.True(!WidgetBridgeServer.IsTrustedSettings(exact with { Id = "settings-copy" }),
+        "A different widget ID received private diagnostics.");
+    Assert.True(!WidgetBridgeServer.IsTrustedSettings(exact with { PackageId = "dev.example.settings" }),
+        "A package spoofing the Settings widget ID received private diagnostics.");
+    Assert.True(!WidgetBridgeServer.IsTrustedSettings(exact with { PublisherId = "dev.example" }),
+        "A publisher spoofing the Settings identity received private diagnostics.");
+    Assert.True(!WidgetBridgeServer.IsTrustedSettings(exact with
+    {
+        DeclaredCapabilities = ["audio.sessions.read"],
+    }), "A capability-bearing worker received private diagnostics.");
+    Assert.True(!WidgetBridgeServer.IsTrustedSettings(exact with
+    {
+        RequiresAppContainer = true,
+        IsolationKey = "spoofed-settings",
+    }), "An installed isolated worker received private diagnostics.");
+
+    await using var companion = new DiagnosticsWidgetProcessCompanion(
+        _ => ValueTask.FromResult(GameBarAlternative.PlatformDiagnostics.PlatformDiagnosticsSnapshot.Unavailable()),
+        new WidgetProcessCompanionContext(
+            WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null));
+    var pidIndex = companion.WorkerArguments.ToList().IndexOf("--diagnostics-server-pid");
+    Assert.True(pidIndex >= 0 && pidIndex + 1 < companion.WorkerArguments.Count,
+        "Diagnostics companion omitted its kernel-verifiable server PID.");
+    Assert.Equal(
+        Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        companion.WorkerArguments[pidIndex + 1]);
+}
+
+static ConfiguredWidget DiagnosticCandidate() => new()
+{
+    Id = "settings",
+    PackageId = "org.gbar.firstparty.settings",
+    PublisherId = "org.gbar.firstparty",
+    Name = "Settings",
+    InstanceId = "settings",
+    WorkerExecutable = Environment.ProcessPath
+        ?? throw new InvalidOperationException("Test process path is unavailable."),
+};
 
 static Task CatalogGlyphIsClosed()
 {
@@ -629,14 +675,37 @@ static async Task SnapshotAndQuickAction()
 static async Task DashboardButtonsStayHostOwned()
 {
     await using var harness = await BridgeHarness.StartAsync();
-    var response = await harness.Client.RequestAsync(
-        BridgeMessageTypes.ControllerInput,
-        new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
-            ControllerButton.A,
-            ControllerEventPhase.Pressed,
-            ControllerInputContext.DashboardQuickAction)));
-    Assert.Equal(BridgeMessageTypes.Error, response.Type);
+    foreach (var button in new[]
+             {
+                 ControllerButton.A, ControllerButton.B, ControllerButton.Y,
+                 ControllerButton.DPadUp, ControllerButton.DPadDown,
+                 ControllerButton.DPadLeft, ControllerButton.DPadRight,
+             })
+    {
+        var response = await harness.Client.RequestAsync(
+            BridgeMessageTypes.ControllerInput,
+            new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
+                button,
+                ControllerEventPhase.Pressed,
+                ControllerInputContext.DashboardQuickAction)));
+        Assert.Equal(BridgeMessageTypes.Error, response.Type);
+    }
     Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+
+static Task ScrollRenderRole()
+{
+    var snapshot = new WidgetView(
+        UI.VerticalScroll("sessions",
+            UI.Button("Game", "mute", "session.game.mute")),
+        InitialFocusId: "session.game.mute",
+        Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Compact })
+        .CreateSnapshot("bridge.scroll", 1);
+    var styles = BridgeRenderStyleResolver.Resolve(snapshot, theme: null);
+    Assert.Equal(2, styles.Count);
+    Assert.True(styles.ContainsKey("sessions"), "Scroll role was omitted from bridge styles.");
+    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    return Task.CompletedTask;
 }
 
 static async Task WorkerFailureIsSurfaced()

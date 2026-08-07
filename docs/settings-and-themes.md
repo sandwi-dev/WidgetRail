@@ -144,6 +144,12 @@ The implemented root categories are:
 - **Permissions & capabilities:** installed packages, their supported required/
   optional declarations, and explicit Grant/Deny/Not decided state.
 - **Diagnostics:** settings validity, total/invalid themes, and schema version.
+  Runtime diagnostics additionally arrive through the bridge-owned,
+  process-bound private Settings channel: catalog/appearance last-good state,
+  provider and consent availability, and bounded worker health. Native
+  overlay/Guide telemetry is explicitly unavailable until a structured host
+  contract exists; Settings never guesses from logs. See
+  [Diagnostics and recovery](diagnostics-and-recovery.md).
 - **Reset:** a confirmation surface that atomically restores built-in theme,
   sizing, backdrop, motion, contrast, bold-text, and transparency defaults.
 
@@ -155,14 +161,14 @@ Controller behavior follows the platform model:
 
 - D-pad and left stick move focus.
 - A selects or toggles the focused setting.
-- B returns one level inside Settings; it does not close the overlay.
-- Guide/Home remains the only controller input that opens or closes the
-  overlay from any depth.
+- B returns one level inside Settings; at the Settings root it returns to the
+  dashboard, and dashboard B closes the overlay.
+- Guide/Home remains the global toggle from any depth.
 - Reset uses a confirmation surface with explicit Reset and Cancel actions.
 
 The Settings surface requires no mouse, keyboard, hover state, or text entry.
-Each nested page owns B to return one level. Guide/Home remains the only
-overlay-wide close control.
+Each nested page owns B to return one level. Guide/Home remains the immediate
+overlay-wide toggle.
 
 The Installed widgets page shows five packages per page. LB/RB page inside its
 nested scope, A opens package details, and the details page enables or disables

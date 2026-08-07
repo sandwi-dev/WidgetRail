@@ -45,6 +45,12 @@ enum class OverflowBehavior {
     Clip,
 };
 
+enum class ScrollAxis {
+    None,
+    Horizontal,
+    Vertical,
+};
+
 enum class MainAxisAlignment {
     Start,
     Center,
@@ -82,6 +88,10 @@ struct LayoutElement {
     MainAxisAlignment mainAxisAlignment{MainAxisAlignment::Start};
     CrossAxisAlignment crossAxisAlignment{CrossAxisAlignment::Stretch};
     OverflowBehavior overflow{OverflowBehavior::Visible};
+    // Scroll offsets are host-owned logical DIPs. The engine clamps them to
+    // the measured content extent and clips descendants to contentBox.
+    ScrollAxis scrollAxis{ScrollAxis::None};
+    float scrollOffset{};
 };
 
 struct MeasureConstraints {
@@ -100,6 +110,9 @@ struct LayoutBox {
     bool overflowX{};
     bool overflowY{};
     bool clippedByAncestor{};
+    ScrollAxis scrollAxis{ScrollAxis::None};
+    float scrollOffset{};
+    float maximumScrollOffset{};
 };
 
 enum class LayoutIssueSeverity {

@@ -185,8 +185,8 @@ host launches the installed worker.
 ## Controller input is not handled
 
 - Guide/Home is never delivered to widgets.
-- Dashboard A, Y, and D-pad are host-owned.
-- Dashboard quick actions support B, X, bumpers, triggers, stick clicks, Menu,
+- Dashboard A, B, Y, and D-pad are host-owned.
+- Dashboard quick actions support X, bumpers, triggers, stick clicks, Menu,
   and View.
 - Open-widget shortcuts check the focused node, then the explicitly published
   active input scope. They do not infer a scope from focus or fall through to a
@@ -199,6 +199,8 @@ host launches the installed worker.
 - Disabled and busy buttons do not activate.
 - An unhandled B returns to the dashboard only from the widget's root scope. A
   nested scope does not bubble B or get dismissed by the host.
+- B on the dashboard/icon tray closes the overlay. A widget cannot claim it as
+  a dashboard quick action.
 
 If a modal has no focusable controls, bind B directly on its Stack/Row with
 `.InputScope("modal").Shortcut(ControllerButton.B, "dismiss")`, publish

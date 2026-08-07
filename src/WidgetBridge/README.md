@@ -58,12 +58,12 @@ widget worker.
 `monotonicTimestampMicroseconds`, `activeInputScopeId`, and
 `snapshotSequence`. For `dashboardQuickAction`, the SDK resolves the button
 from the latest rendered snapshot's `quickActions`. The host owns A activation,
-Y reorder, D-pad/analog navigation, and Guide; widgets may declare B, X,
+B close, Y reorder, D-pad/analog navigation, and Guide; widgets may declare X,
 bumpers, triggers, stick clicks, Menu, or View as dashboard quick actions.
 
 For `openWidget`, the SDK requires `activeInputScopeId` and
 `snapshotSequence` to match its latest snapshot. It checks a focused-node
-shortcut and then the explicitly active Stack/Row scope. A focus ID outside the
+shortcut and then the explicitly active Stack/Row/Scroll scope. A focus ID outside the
 scope, a stale sequence, or the wrong scope returns unhandled. Focus may be
 absent, allowing a modal container's B shortcut to resolve. Lookup never
 bubbles into parent or sibling scopes.
@@ -195,7 +195,7 @@ this exact additional shape:
 when both state maps are empty. `base` and `focused` are independently complete
 computed styles; native must select the appropriate map rather than implement a
 cascade or merge pseudo-state rules itself. Resolution uses the lowercase node
-kind (`stack`, `row`, `text`, `button`, `progress`, `spacer`, `image`, or
+kind (`stack`, `row`, `scroll`, `text`, `button`, `progress`, `spacer`, `image`, or
 `icon`) as its role plus the node ID and style classes. Value `kind` is one of
 `color`, `length`, `lengthList`, `number`, `integer`, `ratio`, `duration`,
 `keyword`, or `fontFamily`. `text`, `number`, and `unit` preserve the compiler's

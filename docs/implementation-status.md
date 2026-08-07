@@ -27,9 +27,9 @@ reentrant DPI placement is coalesced. This is normal DWM windowing, not game
 injection.
 
 Guide/Home shows or hides from any depth. Dashboard D-pad/left-stick movement,
-A, and Y are host-owned. Open widgets receive their other semantic actions; B
-falls back to the dashboard only when unhandled in the root input scope and
-never closes the overlay. Nested scopes never bubble to the root.
+A, B, and Y are host-owned; dashboard B closes the overlay. Open widgets receive
+their other semantic actions; B falls back to the dashboard only when unhandled
+in the root input scope. Nested scopes never bubble to the root.
 GameInput is the primary Guide source. A removable XInput compatibility adapter
 uses an undocumented ordinal only for drivers observed to omit Guide callbacks;
 it is not a universal device-compatibility guarantee.

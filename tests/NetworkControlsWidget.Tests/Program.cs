@@ -624,8 +624,18 @@ static async ValueTask<bool> Route(
         ActiveInputScopeId: snapshot.ActiveInputScopeId,
         SnapshotSequence: snapshot.Sequence));
 
-static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence) =>
-    widget.RenderSnapshot("network.test", sequence);
+static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
+{
+    var snapshot = widget.RenderSnapshot("network.test", sequence);
+    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.True(snapshot.Surface is not null, "Network Controls omitted its bounded surface hint.");
+    Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
+    Assert.Equal(560D, snapshot.Surface.PreferredWidth);
+    Assert.Equal(520D, snapshot.Surface.PreferredHeight);
+    Assert.Equal(320D, snapshot.Surface.MinimumWidth);
+    Assert.Equal(360D, snapshot.Surface.MinimumHeight);
+    return snapshot;
+}
 
 static IEnumerable<ViewNode> Nodes(ViewNode node)
 {

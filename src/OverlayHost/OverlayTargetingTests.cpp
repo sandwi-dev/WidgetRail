@@ -18,6 +18,40 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
+    using gba::OverlayPresentationDirective;
+    constexpr gba::OverlayPresentationExtent dashboard{1180, 180};
+    constexpr gba::OverlayPresentationExtent compactWidget{540, 620};
+    constexpr gba::OverlayPresentationExtent tallWidget{540, 700};
+    constexpr gba::OverlayPresentationExtent wideWidget{980, 700};
+
+    Check(gba::DecideOverlayPresentation(false, false, {}, {}) ==
+              OverlayPresentationDirective::None,
+          "an already hidden overlay needs no presentation work");
+    Check(gba::DecideOverlayPresentation(true, false, dashboard, {}) ==
+              OverlayPresentationDirective::Hide,
+          "visible to hidden requests one hide");
+    Check(gba::DecideOverlayPresentation(false, true, {}, dashboard) ==
+              OverlayPresentationDirective::Place,
+          "opening resolves monitor and places the overlay");
+    Check(gba::DecideOverlayPresentation(true, true, dashboard, dashboard) ==
+              OverlayPresentationDirective::Repaint,
+          "dashboard selection is repaint-only");
+    Check(gba::DecideOverlayPresentation(true, true, compactWidget, compactWidget) ==
+              OverlayPresentationDirective::Repaint,
+          "same-extent snapshot refresh is repaint-only");
+    Check(gba::DecideOverlayPresentation(true, true, compactWidget, tallWidget) ==
+              OverlayPresentationDirective::Place,
+          "handled action height changes request placement");
+    Check(gba::DecideOverlayPresentation(true, true, tallWidget, wideWidget) ==
+              OverlayPresentationDirective::Place,
+          "handled action width changes request placement");
+    Check(gba::DecideOverlayPresentation(true, true, wideWidget, dashboard) ==
+              OverlayPresentationDirective::Place,
+          "catalog reconciliation returning to dashboard requests placement");
+    Check(gba::DecideOverlayPresentation(true, true, dashboard, dashboard, true) ==
+              OverlayPresentationDirective::Place,
+          "monitor target change requests placement even at the same extent");
+
     gba::ForegroundTargetTracker tracker;
     tracker.SetOwnedWindows(100, 101);
 

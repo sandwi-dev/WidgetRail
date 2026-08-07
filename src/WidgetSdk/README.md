@@ -4,6 +4,15 @@ Widgets access platform providers through the protected `HostServices` property.
 Production services are attached exactly once by `WidgetWorkerBootstrap` before
 `OnCreatedAsync`; a widget cannot replace them after creation.
 
+For dense controller surfaces, use `UI.VerticalScroll` or
+`UI.HorizontalScroll`; the host owns clipping, focus-follow, and restored
+offsets. A view may also provide bounded `WidgetSurfaceHints` so compact and
+wide widgets communicate a useful shape without assuming a monitor or fixed
+window. Both are optional snapshot protocol-v2 features. Widgets that use
+neither continue emitting the package-API-1-compatible protocol-v1 snapshot.
+See [Declarative UI](../../docs/declarative-ui.md) and
+[Display and resolution](../../docs/display-and-resolution.md).
+
 Unit tests can use the supported transport-free fake instead of reflection,
 internal APIs, named pipes, or hand-written JSON:
 

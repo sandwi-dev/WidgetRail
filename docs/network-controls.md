@@ -320,11 +320,12 @@ The open widget should provide:
 - explicit focus neighbors for ambiguous layouts, with stable focus across
   status updates.
 
-Home navigation reserves only D-pad/left stick, A, Y, and Guide. The open
+Home navigation reserves D-pad/left stick, A, B, Y, and Guide. The open
 widget may use other buttons through its active input scope, but Network
 Controls should not overload dashboard shortcuts to bypass lifecycle or
 consent. B remains the host fallback to return from the root widget surface
-only when the active scope does not handle it; Guide always closes the overlay.
+only when the active scope does not handle it; dashboard B closes, and Guide
+always toggles the overlay.
 
 Layouts must use bounded responsive units and semantic styles, not a fixed
 desktop pixel width. Verify narrow, ultrawide, 100/150/200% DPI, Windows text

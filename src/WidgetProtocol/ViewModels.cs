@@ -7,12 +7,49 @@ public enum ViewNodeKind
 {
     Stack,
     Row,
+    Scroll,
     Text,
     Button,
     Progress,
     Spacer,
     Image,
     Icon,
+}
+
+/// <summary>The single logical axis owned by a host-rendered scroll container.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ScrollAxis>))]
+public enum ScrollAxis
+{
+    Vertical,
+    Horizontal,
+}
+
+/// <summary>
+/// A semantic sizing class, not a window size. The host resolves it against
+/// the current work area, DPI, accessibility scale, and shell chrome.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetSurfaceMode>))]
+public enum WidgetSurfaceMode
+{
+    Adaptive,
+    Compact,
+    Standard,
+    Wide,
+}
+
+/// <summary>
+/// Bounded logical-DIP hints for the currently published view. The host may
+/// choose any smaller or larger safe size; widgets must remain responsive.
+/// Width/height pairs are atomic so partially specified geometry cannot leak
+/// into placement policy.
+/// </summary>
+public sealed record WidgetSurfaceHints
+{
+    public WidgetSurfaceMode Mode { get; init; } = WidgetSurfaceMode.Adaptive;
+    public double? PreferredWidth { get; init; }
+    public double? PreferredHeight { get; init; }
+    public double? MinimumWidth { get; init; }
+    public double? MinimumHeight { get; init; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ImageFit>))]
@@ -118,10 +155,15 @@ public sealed record ViewNode
     public bool? IsBusy { get; init; }
     public FocusNeighbors? Focus { get; init; }
     /// <summary>
-    /// Starts a nested controller input surface. Only stack and row containers
+    /// Starts a nested controller input surface. Only stack, row, and scroll containers
     /// may declare one; the root is always the default surface.
     /// </summary>
     public string? InputScopeId { get; init; }
+    /// <summary>
+    /// Selects the bounded axis for a Scroll node. The host owns the offset,
+    /// clips descendants, and reveals controller focus; widgets never publish pixels.
+    /// </summary>
+    public ScrollAxis? ScrollAxis { get; init; }
     public IReadOnlyList<string> StyleClasses { get; init; } = [];
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public IReadOnlyList<ViewNode> Children { get; init; } = [];
@@ -139,5 +181,7 @@ public sealed record ViewSnapshot
     public required string ActiveInputScopeId { get; init; }
     public string? InitialFocusId { get; init; }
     public IReadOnlyList<WidgetQuickAction> QuickActions { get; init; } = [];
+    /// <summary>Version-2, host-clamped sizing hints for this exact view.</summary>
+    public WidgetSurfaceHints? Surface { get; init; }
     public required ViewNode Root { get; init; }
 }

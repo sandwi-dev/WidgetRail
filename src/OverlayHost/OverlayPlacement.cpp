@@ -7,6 +7,18 @@
 namespace gba {
 namespace {
 
+constexpr float kMinimumPanelWidthDip = 240.0F;
+constexpr float kMaximumPanelWidthDip = 1'600.0F;
+constexpr float kMinimumPanelHeightDip = 180.0F;
+constexpr float kMaximumPanelHeightDip = 1'200.0F;
+constexpr float kShellSideReservationDip = 72.0F;
+constexpr float kShellVerticalReservationDip = 178.0F;
+
+struct PanelExtent final {
+    float width{};
+    float height{};
+};
+
 [[nodiscard]] std::optional<int> ScaleDip(float value, unsigned int dpi) noexcept {
     if (!std::isfinite(value) || value < 0.0F || dpi == 0 || dpi > 1'000'000U) {
         return std::nullopt;
@@ -18,7 +30,150 @@ namespace {
     return static_cast<int>(std::lround(scaled));
 }
 
+[[nodiscard]] bool ValidPair(
+    const std::optional<float> width,
+    const std::optional<float> height,
+    const float minimumWidth,
+    const float maximumWidth,
+    const float minimumHeight,
+    const float maximumHeight) noexcept {
+    if (width.has_value() != height.has_value()) return false;
+    if (!width) return false;
+    return std::isfinite(*width) && std::isfinite(*height) &&
+           *width >= minimumWidth && *width <= maximumWidth &&
+           *height >= minimumHeight && *height <= maximumHeight;
+}
+
+[[nodiscard]] PanelExtent DefaultPanelExtent(const WidgetSurfaceMode mode) noexcept {
+    switch (mode) {
+    case WidgetSurfaceMode::Compact:
+        return {560.0F, 420.0F};
+    case WidgetSurfaceMode::Wide:
+        return {1'120.0F, 620.0F};
+    case WidgetSurfaceMode::Standard:
+    case WidgetSurfaceMode::Adaptive:
+    default:
+        return {880.0F, 520.0F};
+    }
+}
+
+[[nodiscard]] float SanitizedTextScale(const float value) noexcept {
+    if (!std::isfinite(value)) return 1.0F;
+    return std::clamp(value, 0.85F, 1.5F);
+}
+
 } // namespace
+
+ResolvedWidgetSurface ResolveWidgetSurfaceTarget(
+    const std::optional<WidgetSurfaceRequest>& request,
+    const float textScale) noexcept {
+    // A protocol-v1/no-hints view keeps the original 1180x700 shell and
+    // 880x522 floating panel. This is intentionally distinguishable from an
+    // explicit v2 Adaptive request, which opts into compact host chrome.
+    if (!request) {
+        return {1'180.0F, 700.0F, 880.0F, 522.0F, false};
+    }
+
+    PanelExtent target = DefaultPanelExtent(request->mode);
+    const bool preferredValid = ValidPair(
+        request->preferredWidthDip, request->preferredHeightDip,
+        kMinimumPanelWidthDip, kMaximumPanelWidthDip,
+        kMinimumPanelHeightDip, kMaximumPanelHeightDip);
+    if (preferredValid) {
+        target = {*request->preferredWidthDip, *request->preferredHeightDip};
+    }
+
+    const bool minimumValid = ValidPair(
+        request->minimumWidthDip, request->minimumHeightDip,
+        kMinimumPanelWidthDip, kMaximumPanelWidthDip,
+        kMinimumPanelHeightDip, kMaximumPanelHeightDip);
+    const bool minimumConsistent = minimumValid &&
+        (!preferredValid ||
+         (*request->minimumWidthDip <= *request->preferredWidthDip &&
+          *request->minimumHeightDip <= *request->preferredHeightDip));
+    if (minimumConsistent) {
+        target.width = std::max(target.width, *request->minimumWidthDip);
+        target.height = std::max(target.height, *request->minimumHeightDip);
+    }
+
+    // Large text needs additional reflow room, but making width grow as fast
+    // as font size creates wasteful ultrawide surfaces. Preserve full vertical
+    // growth and half-rate horizontal growth; Scroll remains the overflow
+    // contract when the selected monitor cannot satisfy either dimension.
+    const float extraTextScale = std::max(0.0F, SanitizedTextScale(textScale) - 1.0F);
+    target.width *= 1.0F + extraTextScale * 0.5F;
+    target.height *= 1.0F + extraTextScale;
+    target.width = std::clamp(
+        target.width, kMinimumPanelWidthDip, kMaximumPanelWidthDip);
+    target.height = std::clamp(
+        target.height, kMinimumPanelHeightDip, kMaximumPanelHeightDip);
+
+    return {
+        target.width + kShellSideReservationDip,
+        target.height + kShellVerticalReservationDip,
+        target.width,
+        target.height,
+        false,
+    };
+}
+
+std::optional<ResolvedWidgetSurface> ResolveWidgetSurface(
+    const std::optional<WidgetSurfaceRequest>& request,
+    const WidgetSurfaceConstraints constraints) noexcept {
+    const long long workWidth = static_cast<long long>(constraints.workArea.right) -
+                                constraints.workArea.left;
+    const long long workHeight = static_cast<long long>(constraints.workArea.bottom) -
+                                 constraints.workArea.top;
+    if (workWidth <= 0 || workHeight <= 0 ||
+        constraints.dpi == 0 || constraints.dpi > 1'000'000U ||
+        !std::isfinite(constraints.interfaceScale) ||
+        constraints.interfaceScale <= 0.0F || constraints.interfaceScale > 100.0F) {
+        return std::nullopt;
+    }
+
+    const auto side = ScaleDip(constraints.margins.side, constraints.dpi);
+    const auto top = ScaleDip(constraints.margins.top, constraints.dpi);
+    const auto bottom = ScaleDip(constraints.margins.bottom, constraints.dpi);
+    if (!side || !top || !bottom) return std::nullopt;
+
+    const long long horizontalMargins = static_cast<long long>(*side) * 2;
+    const long long verticalMargins = static_cast<long long>(*top) + *bottom;
+    const long long availableWidthPx = std::max(1LL, workWidth - horizontalMargins);
+    const long long availableHeightPx = std::max(1LL, workHeight - verticalMargins);
+    const double pixelsPerDesignDip = static_cast<double>(constraints.dpi) / 96.0 *
+                                      constraints.interfaceScale;
+    if (!std::isfinite(pixelsPerDesignDip) || pixelsPerDesignDip <= 0.0) {
+        return std::nullopt;
+    }
+
+    const auto target = ResolveWidgetSurfaceTarget(request, constraints.textScale);
+    const float maximumWindowWidthDip = static_cast<float>(
+        static_cast<double>(availableWidthPx) / pixelsPerDesignDip);
+    const float maximumWindowHeightDip = static_cast<float>(
+        static_cast<double>(availableHeightPx) / pixelsPerDesignDip);
+    if (!std::isfinite(maximumWindowWidthDip) ||
+        !std::isfinite(maximumWindowHeightDip) ||
+        maximumWindowWidthDip <= 0.0F || maximumWindowHeightDip <= 0.0F) {
+        return std::nullopt;
+    }
+
+    const float windowWidth = std::min(target.windowWidthDip, maximumWindowWidthDip);
+    const float windowHeight = std::min(target.windowHeightDip, maximumWindowHeightDip);
+    const float panelWidth = std::min(
+        target.panelWidthDip,
+        std::max(0.0F, windowWidth - kShellSideReservationDip));
+    const float panelHeight = std::min(
+        target.panelHeightDip,
+        std::max(0.0F, windowHeight - kShellVerticalReservationDip));
+    return ResolvedWidgetSurface{
+        windowWidth,
+        windowHeight,
+        panelWidth,
+        panelHeight,
+        windowWidth + 0.001F < target.windowWidthDip ||
+            windowHeight + 0.001F < target.windowHeightDip,
+    };
+}
 
 std::optional<OverlayPlacement> ComputeOverlayPlacement(
     const PhysicalRect workArea,

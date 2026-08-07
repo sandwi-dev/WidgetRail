@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Text.Json;
 using GameBarAlternative.PlatformBroker;
+using GameBarAlternative.PlatformDiagnostics;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
@@ -31,6 +32,7 @@ public sealed class WidgetBridgeServer(
     private readonly object _catalogGate = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private long _catalogRevision;
+    private long _diagnosticsRevision;
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
     private bool _disposed;
@@ -234,9 +236,12 @@ public sealed class WidgetBridgeServer(
                     : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
                 IsolationKey = configured.IsolationKey,
                 ReadOnlyPaths = configured.ReadOnlyPaths,
-                CompanionSessionFactory = configured.DeclaredCapabilities.Count == 0
-                    ? null
-                    : CreateCompanionFactory(configured),
+                CompanionSessionFactory = IsTrustedSettings(configured)
+                    ? context => new DiagnosticsWidgetProcessCompanion(
+                        CreateDiagnosticsSnapshotAsync, context)
+                    : configured.DeclaredCapabilities.Count == 0
+                        ? null
+                        : CreateCompanionFactory(configured),
             });
             var registration = new ClientRegistration(configured, client);
             client.Invalidated += (_, revision) =>
@@ -261,6 +266,7 @@ public sealed class WidgetBridgeServer(
             };
             client.Failed += (_, failure) =>
             {
+                registration.RecordFailure(failure);
                 if (IsCurrent(registration)) _ = SendEventAsync(
                     BridgeMessageTypes.Failure,
                     new
@@ -275,6 +281,117 @@ public sealed class WidgetBridgeServer(
             _clients[widgetId] = registration;
             return registration;
         }
+    }
+
+    internal static bool IsTrustedSettings(ConfiguredWidget configured) =>
+        !configured.RequiresAppContainer &&
+        configured.DeclaredCapabilities.Count == 0 &&
+        string.Equals(configured.Id, "settings", StringComparison.Ordinal) &&
+        string.Equals(configured.PackageId, "org.gbar.firstparty.settings", StringComparison.Ordinal) &&
+        string.Equals(configured.PublisherId, "org.gbar.firstparty", StringComparison.Ordinal);
+
+    private async ValueTask<PlatformDiagnosticsSnapshot> CreateDiagnosticsSnapshotAsync(
+        CancellationToken cancellationToken)
+    {
+        BridgeCatalog catalog;
+        long catalogRevision;
+        lock (_catalogGate)
+        {
+            catalog = _catalog;
+            catalogRevision = _catalogRevision;
+        }
+
+        var workers = catalog.Widgets.Select(descriptor =>
+        {
+            _clients.TryGetValue(descriptor.Id, out var registration);
+            var failure = registration?.LastFailure;
+            return new PlatformWorkerDiagnostic(
+                descriptor.Id,
+                descriptor.Name,
+                registration?.Client.IsRunning == true,
+                registration?.Client.Starts ?? 0,
+                failure?.Code,
+                failure?.CanRestart ?? false);
+        }).ToArray();
+
+        PlatformDiagnosticArea consent;
+        if (_consentStore is null)
+        {
+            consent = Area("consent", "Permissions", PlatformDiagnosticState.Unavailable,
+                "Permission service is not configured");
+        }
+        else
+        {
+            try
+            {
+                var document = await _consentStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+                var denied = document.Entries.Count(entry => entry.Decision == ConsentDecision.Deny);
+                consent = Area("consent", "Permissions", PlatformDiagnosticState.Healthy,
+                    $"Revision {document.Revision}; {document.Entries.Count} decisions; {denied} denied");
+            }
+            catch (Exception exception) when (exception is BrokerException or
+                                                   IOException or UnauthorizedAccessException)
+            {
+                var code = exception is BrokerException broker ? broker.Code :
+                    exception is UnauthorizedAccessException ? "access_denied" : "io_error";
+                consent = Area("consent", "Permissions", PlatformDiagnosticState.Degraded,
+                    $"Permission state is unavailable ({SafeCode(code)})");
+            }
+        }
+
+        var catalogDiagnostics = _catalogMonitor?.LastDiagnostics ?? [];
+        var retained = _catalogMonitor?.RetainedLastGood == true;
+        var catalogState = retained || catalogDiagnostics.Count != 0
+            ? PlatformDiagnosticState.Degraded
+            : PlatformDiagnosticState.Healthy;
+        var catalogSummary = retained
+            ? $"Revision {catalogRevision}; retained last good after a rejected reload"
+            : catalogDiagnostics.Count == 0
+                ? $"Revision {catalogRevision}; {catalog.Widgets.Count} widgets validated"
+                : $"Revision {catalogRevision}; {catalogDiagnostics.Count} bounded warnings";
+
+        var appearanceErrors = _appearance?.LastReloadDiagnostics.Count(item =>
+            item.Severity == GameBarAlternative.WidgetStyling.GbssDiagnosticSeverity.Error) ?? 0;
+        var appearance = _appearance is null
+            ? Area("appearance", "Appearance", PlatformDiagnosticState.Unavailable,
+                "Appearance service is not configured")
+            : appearanceErrors == 0
+                ? Area("appearance", "Appearance", PlatformDiagnosticState.Healthy,
+                    $"Revision {_appearance.Current.Revision}; active theme validated")
+                : Area("appearance", "Appearance", PlatformDiagnosticState.Degraded,
+                    $"Revision {_appearance.Current.Revision}; retained last good after {appearanceErrors} errors");
+
+        return new PlatformDiagnosticsSnapshot(
+            PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
+            Interlocked.Increment(ref _diagnosticsRevision),
+            Area("bridge", "Bridge", PlatformDiagnosticState.Healthy,
+                "Native host session is connected"),
+            Area("catalog", "Widget catalog", catalogState, catalogSummary),
+            appearance,
+            _platformBackend is null
+                ? Area("providers", "Platform providers", PlatformDiagnosticState.Unavailable,
+                    "Audio and network providers are not configured")
+                : Area("providers", "Platform providers", PlatformDiagnosticState.Healthy,
+                    "Audio and network providers are available on demand"),
+            consent,
+            Area("overlay", "Overlay host", PlatformDiagnosticState.Unavailable,
+                "Host telemetry is not reported by this build"),
+            Area("guide", "Guide input", PlatformDiagnosticState.Unavailable,
+                "Host telemetry is not reported by this build"),
+            workers);
+    }
+
+    private static PlatformDiagnosticArea Area(
+        string id,
+        string label,
+        PlatformDiagnosticState state,
+        string summary) => PlatformDiagnosticsSnapshot.Area(id, label, state, summary);
+
+    private static string SafeCode(string value)
+    {
+        var safe = new string(value.Take(64).Where(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '_' or '-').ToArray());
+        return safe.Length == 0 ? "unavailable" : safe;
     }
 
     private Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>
@@ -416,11 +533,11 @@ public sealed class WidgetBridgeServer(
         if (input.FocusedElementId is { Length: > 128 })
             throw new BridgeProtocolException("Focused element ID is too long.");
         if (input.Context == ControllerInputContext.DashboardQuickAction && input.Button is
-            ControllerButton.A or ControllerButton.Y or
+            ControllerButton.A or ControllerButton.B or ControllerButton.Y or
             ControllerButton.DPadUp or ControllerButton.DPadDown or
             ControllerButton.DPadLeft or ControllerButton.DPadRight)
             throw new BridgeProtocolException(
-                "A, Y, and D-pad input are owned by the dashboard and cannot be forwarded.");
+                "A, B, Y, and D-pad input are owned by the dashboard and cannot be forwarded.");
     }
 
     private static void ValidateHostState(WidgetLifecycleState state)
@@ -449,5 +566,14 @@ public sealed class WidgetBridgeServer(
             set => Volatile.Write(ref _configured, value);
         }
         public WidgetProcessClient Client { get; } = client;
+        private WorkerFailureDiagnostic? _lastFailure;
+        public WorkerFailureDiagnostic? LastFailure => Volatile.Read(ref _lastFailure);
+
+        public void RecordFailure(WidgetFailure failure) => Volatile.Write(
+            ref _lastFailure,
+            new WorkerFailureDiagnostic(failure.Reason.ToString(), failure.CanRestart));
+
     }
+
+    private sealed record WorkerFailureDiagnostic(string Code, bool CanRestart);
 }

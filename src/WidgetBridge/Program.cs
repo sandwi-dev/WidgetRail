@@ -38,7 +38,8 @@ internal static class Program
                 Console.Error.WriteLine($"Widget catalog warning: {warning}");
             var catalog = catalogLoad.Catalog;
             await using var catalogMonitor = new BridgeCatalogMonitor(
-                catalogPath, installedCatalogRoot, workerHostExecutable, catalog);
+                catalogPath, installedCatalogRoot, workerHostExecutable, catalog,
+                catalogLoad.Warnings);
             catalogMonitor.Diagnostics += (_, warnings) =>
             {
                 foreach (var warning in warnings)

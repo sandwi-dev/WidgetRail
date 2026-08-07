@@ -38,6 +38,56 @@ struct OverlayRenderMetrics final {
     float physicalPixelsPerDip{};
 };
 
+enum class WidgetSurfaceMode {
+    Adaptive,
+    Compact,
+    Standard,
+    Wide,
+};
+
+/// Sanitized native projection of optional per-view widget surface hints.
+/// Dimensions describe the useful floating panel, not an HWND. The host owns
+/// all surrounding shell chrome and may choose a smaller safe result.
+struct WidgetSurfaceRequest final {
+    WidgetSurfaceMode mode{WidgetSurfaceMode::Adaptive};
+    std::optional<float> preferredWidthDip;
+    std::optional<float> preferredHeightDip;
+    std::optional<float> minimumWidthDip;
+    std::optional<float> minimumHeightDip;
+};
+
+struct ResolvedWidgetSurface final {
+    // Host design DIPs before interface zoom is applied to physical placement.
+    float windowWidthDip{};
+    float windowHeightDip{};
+    // Preferred floating-panel extent supplied to responsive shell geometry.
+    float panelWidthDip{};
+    float panelHeightDip{};
+    bool constrainedByWorkArea{};
+};
+
+struct WidgetSurfaceConstraints final {
+    PhysicalRect workArea{};
+    unsigned int dpi{96};
+    float interfaceScale{1.0F};
+    float textScale{1.0F};
+    OverlayMarginsDip margins{};
+};
+
+/// Resolves the semantic class and optional panel dimensions without consulting
+/// a monitor. An absent request is the package-API-1 compatibility surface.
+/// Malformed optional values are ignored in favor of bounded class defaults.
+[[nodiscard]] ResolvedWidgetSurface ResolveWidgetSurfaceTarget(
+    const std::optional<WidgetSurfaceRequest>& request,
+    float textScale) noexcept;
+
+/// Host-authoritative surface resolver. It applies text accessibility growth,
+/// reserves shell tray/footer/controller chrome, then clamps the design-DIP
+/// viewport against the selected monitor after DPI and interface zoom.
+[[nodiscard]] std::optional<ResolvedWidgetSurface> ResolveWidgetSurface(
+    const std::optional<WidgetSurfaceRequest>& request,
+    WidgetSurfaceConstraints constraints) noexcept;
+
 struct OverlaySurfaceGeometry final {
     float panelX{};
     float panelY{};

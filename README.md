@@ -41,7 +41,11 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 - A bounded hidden/visible Windows process-tree performance observation harness
 - Managed contract suites plus native state, image-cache, layout, and icon tests
 
-Start with the [documentation index](docs/README.md) or [widget quickstart](docs/widget-quickstart.md). See [implementation status](docs/implementation-status.md) for verified components and honest limitations.
+Start with the [documentation index](docs/README.md), the platform-grade
+[widget authoring guide](docs/widget-authoring-guide.md), or the shorter
+[widget quickstart](docs/widget-quickstart.md). See [implementation
+status](docs/implementation-status.md) for verified components and honest
+limitations.
 
 Managed verification is immediately available:
 
@@ -58,6 +62,7 @@ The complete verification command requires Visual Studio's Desktop development w
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Widget authoring guide and API map](docs/widget-authoring-guide.md)
 - [Platform architecture](docs/platform-architecture.md)
 - [Widget quickstart](docs/widget-quickstart.md)
 - [Declarative UI](docs/declarative-ui.md) and [GBSS](docs/gbss.md)

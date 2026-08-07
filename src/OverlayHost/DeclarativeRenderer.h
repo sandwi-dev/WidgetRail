@@ -8,8 +8,10 @@
 #include <dwrite.h>
 #include <wrl/client.h>
 
+#include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -42,8 +44,18 @@ struct RenderResult final {
     std::vector<RenderDiagnostic> diagnostics;
     std::vector<RenderHitRegion> hitRegions;
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
+    // Full logical controller geometry includes offscreen descendants of a
+    // semantic scroll container. Pointer hit regions remain visible-only.
+    std::map<std::wstring, declarative::Rect, std::less<>> navigationRects;
+    std::map<std::wstring, bool, std::less<>> navigationEnabled;
+    std::set<std::wstring, std::less<>> revealableFocusIds;
     std::map<std::wstring, std::wstring, std::less<>> focusScopes;
+    std::map<std::wstring, float, std::less<>> scrollOffsets;
     std::optional<declarative::Rect> currentFocusRect;
+    // Deferred outlines normally escape ordinary layout clips. A focused
+    // scroll descendant additionally carries the effective scroll viewport so
+    // its ring cannot paint over adjacent rows or host chrome.
+    std::optional<declarative::Rect> currentFocusOutlineClip;
 };
 
 struct ImagePlacement final {
@@ -88,6 +100,9 @@ public:
 
     void DiscardTargetResources() noexcept;
 
+    /// Drops host-owned offsets when a widget instance is removed or replaced.
+    void ForgetWidgetState(std::wstring_view widgetInstanceId) noexcept;
+
     // Pure deterministic seam used by the renderer and native tests.
     [[nodiscard]] static ImagePlacement ComputeImagePlacement(
         declarative::Size imageSize,
@@ -98,6 +113,10 @@ public:
 private:
     struct PreparedNode;
     struct RenderPass;
+    struct ScrollStateEntry final {
+        float offset{};
+        std::uint64_t lastAccess{};
+    };
 
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetImageBitmap(
         ID2D1RenderTarget* renderTarget,
@@ -109,6 +128,8 @@ private:
     RemoteImageCache* imageCache_{};
     ID2D1RenderTarget* bitmapTarget_{};
     std::unordered_map<std::wstring, Microsoft::WRL::ComPtr<ID2D1Bitmap>> bitmaps_;
+    std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
+    std::uint64_t scrollStateAccessClock_{};
 };
 
 } // namespace gba

@@ -4,9 +4,14 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.Samples.ClockWidget;
 
-public sealed class ClockWidget(TimeProvider? timeProvider = null) : Widget
+public sealed class ClockWidget : Widget
 {
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly TimeProvider _timeProvider;
+
+    public ClockWidget() : this(TimeProvider.System) { }
+
+    public ClockWidget(TimeProvider timeProvider) =>
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     public override WidgetView Render()
     {

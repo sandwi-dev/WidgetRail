@@ -26,6 +26,15 @@ public enum NetworkControlsViewState
 /// </summary>
 public sealed class NetworkControlsWidget : Widget
 {
+    private static readonly WidgetSurfaceHints CompactSurface = new()
+    {
+        Mode = WidgetSurfaceMode.Compact,
+        PreferredWidth = 560,
+        PreferredHeight = 520,
+        MinimumWidth = 320,
+        MinimumHeight = 360,
+    };
+
     private static readonly IReadOnlyList<WidgetQuickAction> ProfileQuickActions =
     [
         new(ControllerButton.LeftBumper, "profile.previous", "Previous saved network"),
@@ -167,7 +176,11 @@ public sealed class NetworkControlsWidget : Widget
             .Shortcut(ControllerButton.RightBumper, "profile.next")
             .Shortcut(ControllerButton.X, "profile.connect")
             .Classes("network-controls-widget", selected is null ? "has-state" : "has-profiles");
-        return new WidgetView(root, InitialFocusId: initialFocus, QuickActions: quickActions);
+        return new WidgetView(
+            root,
+            InitialFocusId: initialFocus,
+            QuickActions: quickActions,
+            Surface: CompactSurface);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -422,7 +435,7 @@ public sealed class NetworkControlsWidget : Widget
                     .Classes("network-state-card"))
             .InputScope("network-controls")
             .Classes("network-controls-widget", error ? "has-error" : "has-state");
-        return new WidgetView(root, InitialFocusId: "network.retry");
+        return new WidgetView(root, InitialFocusId: "network.retry", Surface: CompactSurface);
     }
 
     private void StartActiveRun(CancellationToken activeLifetime)

@@ -13,6 +13,9 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | --- | --- | --- |
 | `UI.Stack(id, children)` | `stack` | Vertical semantic container. |
 | `UI.Row(id, children)` | `row` | Horizontal semantic container. |
+| `UI.VerticalScroll(id, children)` | `scroll` | Host-owned vertical viewport with controller focus-follow. |
+| `UI.HorizontalScroll(id, children)` | `scroll` | Host-owned horizontal viewport with controller focus-follow. |
+| `UI.Scroll(id, axis, children)` | `scroll` | Axis-explicit form of the same bounded viewport. |
 | `UI.Text(text, id, accessibilityLabel?)` | `text` | Non-interactive text. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include a semantic glyph. |
 | `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |
@@ -22,11 +25,78 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.Image(httpsSource, id, accessibilityLabel, fit?)` | `image` | HTTPS image with required accessible alternative text. |
 | `UI.Icon(glyph, id, accessibilityLabel)` | `icon` | Host-rendered semantic vector icon from a closed enum. |
 
-Stack and Row containers may call `.InputScope("scope-id")` to start a nested
+Stack, Row, and Scroll containers may call `.InputScope("scope-id")` to start a nested
 controller input surface. The root is always the default input scope, so a
 simple widget does not need to declare one. Those containers may also call
 `.Shortcut(button, actionId)` for a surface-level action that must work without
 focused content, such as B to dismiss a modal.
+
+## Controller scroll containers
+
+Use a semantic Scroll container when a surface can contain more controller
+targets than its clamped viewport. Do not implement a hidden index, LB/RB
+cycling, or widget-owned pixel offsets:
+
+```csharp
+var sessions = UI.VerticalScroll("audio.sessions",
+    sessionRows.Select(BuildSessionRow).ToArray())
+    .Classes("session-list");
+```
+
+The host measures the full content extent along the declared axis, clips it to
+the container's content box, and clamps its offset to that measured extent.
+Offscreen buttons remain valid D-pad/analog navigation targets. When focus
+moves, the host scrolls the nearest edge just far enough to make the complete
+control visible before painting it. A widget never receives or publishes the
+offset.
+
+Keep the Scroll ID and descendant button IDs stable across snapshots. Offset
+memory is isolated by exact widget runtime instance, active input scope, and
+Scroll container ID, so closing/reopening a widget or nested surface restores
+the focused row without leaking state to another version or modal. If a
+dynamic item disappears, host focus memory selects the enabled control nearest
+its prior tree position and the Scroll container reveals it. Runtime
+replacement clears both focus and scroll state.
+
+Scroll containers may start an input scope and declare scope shortcuts exactly
+like Stack/Row. GBSS can target their `scroll` role or a stable ID/class. The
+axis is semantic and cannot be changed by GBSS; this prevents a theme from
+breaking controller navigation. Non-finite, negative, or excessive internal
+offsets are clamped by the native layout engine, and an unknown/missing axis is
+rejected before publication.
+
+## Per-view surface hints
+
+`WidgetView.Surface` describes the useful shape of the *current view* without
+requesting a window size. The host remains authoritative:
+
+```csharp
+return new WidgetView(
+    root,
+    InitialFocusId: "master-mute",
+    Surface: new WidgetSurfaceHints
+    {
+        Mode = WidgetSurfaceMode.Compact,
+        PreferredWidth = 560,
+        PreferredHeight = 420,
+        MinimumWidth = 360,
+        MinimumHeight = 260,
+    });
+```
+
+Modes are `Adaptive`, `Compact`, `Standard`, and `Wide`. Explicit preferred and
+minimum dimensions are optional logical-DIP pairs: specify both width and
+height or neither. Accepted widths are 240–1600 DIPs and heights are 180–1200
+DIPs; values must be finite, and a minimum cannot exceed its preferred value.
+These bounds protect placement math, not the monitor: the shell may render
+smaller than a requested minimum when the current work area or accessibility
+scale leaves no alternative.
+
+Suggested host defaults are 560×420 for Compact, 880×520 for Standard, and
+1120×620 for Wide. Adaptive asks the shell to select from content/shell policy.
+Explicit values refine the selected mode but do not bypass work-area, DPI,
+text-scale, tray/footer, or minimum-control-size constraints. Widgets must
+still reflow and use Scroll for overflow after the host clamps the surface.
 
 Image fit is `Contain`, `Cover` (default), or `Fill`. Image sources must be
 absolute HTTPS URLs with a host and no embedded credentials. Redirect,
@@ -107,7 +177,8 @@ migration.
 
 The current snapshot limits include:
 
-- protocol version 1;
+- protocol versions 1–2. Plain Stack/Row views remain v1; Scroll or explicit
+  surface hints opt that snapshot into v2 without changing package host API 1;
 - at most 2,048 nodes;
 - at most 32 levels of tree depth;
 - strings up to 4,096 characters; and
@@ -230,8 +301,8 @@ QuickActions:
 ]
 ```
 
-Allowed dashboard buttons are B, X, LB, RB, LT, RT, both stick clicks, Menu,
-and View. A, Y, D-pad, and Guide/Home are reserved by the dashboard. See the
+Allowed dashboard buttons are X, LB, RB, LT, RT, both stick clicks, Menu, and
+View. A, B, Y, D-pad, and Guide/Home are reserved by the dashboard. See the
 [controller input model](controller-input.md).
 
 ## State changes and invalidation

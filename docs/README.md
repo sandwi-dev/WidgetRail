@@ -7,6 +7,10 @@ guarantees that are available now.
 
 ## Start here
 
+- [Widget authoring guide and API map](widget-authoring-guide.md) — complete
+  minimal-to-advanced tutorial, manifest/API reference, controller scopes,
+  Scroll/surface contracts, lifecycle, capabilities, local/GitHub workflows,
+  security, performance, responsive layout, and diagnostics.
 - [Platform architecture](platform-architecture.md) — process boundaries,
   data flow, and current implementation limits.
 - [Widget quickstart](widget-quickstart.md) — scaffold, build, validate,
@@ -47,11 +51,16 @@ guarantees that are available now.
   boundaries, and the current trust decision.
 - [Troubleshooting](troubleshooting.md) — CLI, worker, bridge, controller,
   rendering, image, and GBSS diagnostics.
+- [Diagnostics and recovery](diagnostics-and-recovery.md) — sanitized runtime
+  health, the private Settings channel, controller behavior, and safe recovery
+  boundaries.
 - [Widget packaging contract](widget-packaging.md) — archive layout,
   containment rules, immutable installation, schema migration, version pins,
   and catalog APIs.
 - [Implementation status](implementation-status.md) — verified components and
   honest limitations.
+- [Known issues](known-issues.md) — active user-visible bugs, reproduction
+  evidence, acceptance criteria, status, and closing commits.
 - [Windows provider architecture](windows-provider-architecture.md) — the
   event-driven Core Audio and WLAN/IP Helper providers, privacy boundaries, and
   simulator/hardware evidence gates for Audio Mixer and Network Controls.

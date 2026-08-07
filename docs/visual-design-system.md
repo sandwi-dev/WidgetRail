@@ -333,7 +333,8 @@ function, or script value.
 - Game title/HUD remains recognizable behind every non-modal surface.
 - One focused item is unambiguous in grayscale and high contrast.
 - Dashboard shows no more than three quick actions per card.
-- Open widgets retain all non-Guide controller input.
+- Open widgets retain their action buttons; B reaches the active nested scope
+  before the root-level Back fallback.
 - 720p has no clipped art, prompts, focus rings, or text below 14 physical px.
 - 21:9 and 32:9 keep interaction within the centered 16:9 stage.
 - 150% text produces reflow rather than overlap or silent truncation.

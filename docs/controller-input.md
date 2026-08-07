@@ -2,10 +2,10 @@
 
 Status: implemented prototype policy
 
-The central rule is simple: Guide/Home is the only controller button that can
-show or hide the overlay. B never closes the overlay. Dashboard navigation and
-reordering are host responsibilities; once a widget is open, its semantic
-focus graph and actions own the experience.
+Guide/Home is the global overlay toggle. B is hierarchical Back: nested widget
+scope, widget root, then dashboard/close. Dashboard navigation and reordering
+are host responsibilities; once a widget is open, its semantic focus graph and
+actions receive B before the host considers a root-level fallback.
 
 Guide/Home is intentionally absent from `ControllerButton`, so widgets cannot
 intercept, remap, or suppress it.
@@ -15,8 +15,8 @@ intercept, remap, or suppress it.
 | Context | Host-owned input | Widget input |
 | --- | --- | --- |
 | Hidden | Guide/Home opens the overlay. | No widget controller input. Ordinary polling is stopped. |
-| Dashboard / hover | D-pad and horizontal left-stick movement navigate; A opens; Y enters/exits reorder. | Up to three declared quick actions on B, X, LB, RB, LT, RT, stick clicks, Menu, or View. Other undeclared input is unhandled. |
-| Open widget | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus. | A activates the focused button. B, X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
+| Dashboard / hover | D-pad and horizontal left-stick movement navigate; A opens; B closes; Y enters/exits reorder. | Up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, Menu, or View. Other undeclared input is unhandled. |
+| Open widget | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus. Unhandled root-scope B returns to the dashboard. | A activates the focused button. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
 
 The protocol names the contexts `DashboardQuickAction` and `OpenWidget`.
 Events carry button, phase, optional focused element ID, input sequence,
@@ -26,14 +26,11 @@ MVP host emits only `Pressed`; snapshot validation rejects `Released` or
 
 ## B behavior
 
-While a widget is open, B is offered to the active input scope. If the root
-scope does not handle B, the prototype host falls back to returning to the
-dashboard. An unhandled B in a nested scope stays unhandled: it does not bubble
-to the root and the host does not dismiss the modal or leave the widget.
-Guide/Home closes from any depth.
-
-On the dashboard, B may be an explicit widget quick action. It never closes the
-overlay; Guide/Home remains the sole close gesture.
+While a widget is open, B is offered to the active input scope. A nested scope
+must bind its own one-level Back action; an unhandled nested B does not bubble
+through widget state. If the root scope does not handle B, the host returns to
+the dashboard. On the dashboard, B closes the overlay. Guide/Home remains the
+global toggle and closes immediately from any depth.
 
 ## Dashboard quick actions
 
@@ -44,9 +41,9 @@ decides how prompts are displayed. Validation rejects:
 - more than three quick actions;
 - duplicate buttons;
 - blank labels or invalid action IDs; and
-- A, Y, or D-pad as dashboard bindings.
+- A, B, Y, or D-pad as dashboard bindings.
 
-The bridge rejects attempts to forward dashboard A, Y, or D-pad as raw widget
+The bridge rejects attempts to forward dashboard A, B, Y, or D-pad as raw widget
 input even if a malformed native client requests it.
 
 ## Open-widget routing

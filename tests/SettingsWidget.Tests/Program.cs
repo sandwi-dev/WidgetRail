@@ -1,5 +1,6 @@
 using GameBarAlternative.FirstPartyWidgets.Settings;
 using GameBarAlternative.PlatformBroker;
+using GameBarAlternative.PlatformDiagnostics;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
@@ -9,6 +10,7 @@ using GameBarAlternative.WidgetStyling;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Root exposes all first-party settings categories", RootCategories),
+    ("Settings uses a bounded controller-scroll surface", ControllerScrollSurface),
     ("Nested pages own scoped B navigation", NestedScopesAndBack),
     ("Settings composites expose controller semantics", CompositeControls),
     ("Visual accessibility preferences persist through a nested controller scope", VisualAccessibilityPersistence),
@@ -19,6 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Malformed settings recover through safe defaults", InvalidSettingsRecovery),
     ("Saving exposes busy and completion feedback", BusyFeedback),
     ("Diagnostics report invalid theme packages", InvalidThemeDiagnostics),
+    ("Runtime diagnostics expose bounded failures and refresh recovery", RuntimeDiagnosticsRecovery),
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
@@ -69,6 +72,29 @@ static Task RootCategories()
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
+}
+
+static async Task ControllerScrollSurface()
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    var root = Snapshot(widget);
+    Assert.Equal(ProtocolConstants.SurfaceHintsVersion, root.ProtocolVersion);
+    Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
+    Assert.Equal(880d, root.Surface?.PreferredWidth);
+    Assert.Equal(520d, root.Surface?.PreferredHeight);
+    Assert.Equal(ViewNodeKind.Scroll,
+        Nodes(root.Root).Single(node => node.Id == "settings.categories").Kind);
+    Assert.Equal(ScrollAxis.Vertical,
+        Nodes(root.Root).Single(node => node.Id == "settings.categories").ScrollAxis);
+
+    await Action(widget, "open.diagnostics");
+    var diagnostics = Snapshot(widget);
+    var page = Nodes(diagnostics.Root).Single(node => node.Id == "diagnostics.page");
+    Assert.Equal(ViewNodeKind.Scroll, page.Kind);
+    Assert.Equal(ScrollAxis.Vertical, page.ScrollAxis);
+    Assert.Equal("diagnostics.page", page.InputScopeId);
+    Assert.Valid(diagnostics);
 }
 
 static async Task NestedScopesAndBack()
@@ -287,6 +313,69 @@ static async Task InvalidThemeDiagnostics()
     var snapshot = Snapshot(widget);
     Assert.Contains("1 invalid", Text(snapshot.Root, "diagnostics.themes").Text!);
     Assert.Valid(snapshot);
+}
+
+static async Task RuntimeDiagnosticsRecovery()
+{
+    using var temp = new TemporaryDirectory();
+    var degraded = new PlatformDiagnosticsSnapshot(
+        PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
+        7,
+        PlatformDiagnosticsSnapshot.Area("bridge", "Bridge", PlatformDiagnosticState.Healthy,
+            "Native host session is connected"),
+        PlatformDiagnosticsSnapshot.Area("catalog", "Widget catalog", PlatformDiagnosticState.Degraded,
+            "Revision 4; retained last good after a rejected reload"),
+        PlatformDiagnosticsSnapshot.Area("appearance", "Appearance", PlatformDiagnosticState.Degraded,
+            "Revision 3; retained last good after 1 errors"),
+        PlatformDiagnosticsSnapshot.Area("providers", "Platform providers", PlatformDiagnosticState.Healthy,
+            "Audio and network providers are available on demand"),
+        PlatformDiagnosticsSnapshot.Area("consent", "Permissions", PlatformDiagnosticState.Healthy,
+            "Revision 2; 1 decisions; 1 denied"),
+        PlatformDiagnosticsSnapshot.Area("overlay", "Overlay host", PlatformDiagnosticState.Unavailable,
+            "Host telemetry is not reported by this build"),
+        PlatformDiagnosticsSnapshot.Area("guide", "Guide input", PlatformDiagnosticState.Unavailable,
+            "Host telemetry is not reported by this build"),
+        [new PlatformWorkerDiagnostic(
+            "audio-mixer", "Audio Mixer", false, 3, "ProcessExited", true)]);
+    var recovered = degraded with
+    {
+        Revision = 8,
+        Catalog = PlatformDiagnosticsSnapshot.Area(
+            "catalog", "Widget catalog", PlatformDiagnosticState.Healthy,
+            "Revision 5; 4 widgets validated"),
+        Appearance = PlatformDiagnosticsSnapshot.Area(
+            "appearance", "Appearance", PlatformDiagnosticState.Healthy,
+            "Revision 4; active theme validated"),
+        Workers = [new PlatformWorkerDiagnostic(
+            "audio-mixer", "Audio Mixer", true, 4, null, false)],
+    };
+    var service = new SequenceDiagnosticsService(degraded, recovered);
+    var paths = new PlatformSettingsPaths(temp.Path);
+    var widget = new SettingsWidget(
+        new PlatformSettingsStore(paths), new ThemeCatalog(paths), diagnostics: service);
+    await Activate(widget);
+    await Action(widget, "open.diagnostics");
+
+    var initial = Snapshot(widget);
+    Assert.Equal("diagnostics.page", initial.ActiveInputScopeId);
+    Assert.Equal("diagnostics.refresh", initial.InitialFocusId);
+    Assert.HasShortcut(initial.Root, "diagnostics.page", ControllerButton.B, "back");
+    Assert.Contains("retained last good", Text(initial.Root, "diagnostics.area.catalog").Text!);
+    Assert.Contains("1 denied", Text(initial.Root, "diagnostics.area.consent").Text!);
+    Assert.Contains("not reported", Text(initial.Root, "diagnostics.area.guide").Text!);
+    Assert.Contains("ProcessExited", Text(initial.Root, "diagnostics.worker.audio-mixer").Text!);
+    Assert.Equal("diagnostics.back", Button(initial.Root, "diagnostics.refresh").Focus!.Down);
+    Assert.Equal("diagnostics.refresh", Button(initial.Root, "diagnostics.back").Focus!.Up);
+    Assert.Valid(initial);
+
+    await Action(widget, "refresh");
+    var refreshed = Snapshot(widget);
+    Assert.Contains("4 widgets validated", Text(refreshed.Root, "diagnostics.area.catalog").Text!);
+    Assert.Contains("1/1 running; 0", Text(refreshed.Root, "diagnostics.workers").Text!);
+    Assert.True(!Nodes(refreshed.Root).Any(node => node.Id == "diagnostics.worker.audio-mixer"),
+        "Recovered worker retained a stale failure row.");
+    Assert.Equal(2, service.RequestCount);
+    Assert.Valid(refreshed);
 }
 
 static async Task ActivationLifecycle()
@@ -889,7 +978,7 @@ static SettingsWidget CreateWithPermissions(
         new ThemeCatalog(paths),
         new WidgetCatalog(catalogRoot),
         consentStore,
-        bundledWidgetRoot);
+        bundledWidgetRoot: bundledWidgetRoot);
 }
 
 static PlatformSettingsStore Store(string root) => new(new PlatformSettingsPaths(root));
@@ -1024,6 +1113,23 @@ file sealed class TemporaryDirectory : IDisposable
     public void Dispose()
     {
         if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
+    }
+}
+
+file sealed class SequenceDiagnosticsService(params PlatformDiagnosticsSnapshot[] snapshots)
+    : IPlatformDiagnosticsService
+{
+    private readonly PlatformDiagnosticsSnapshot[] _snapshots = snapshots;
+    private int _requests;
+
+    public int RequestCount => Volatile.Read(ref _requests);
+
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = Interlocked.Increment(ref _requests);
+        return ValueTask.FromResult(_snapshots[Math.Min(request - 1, _snapshots.Length - 1)]);
     }
 }
 

@@ -79,11 +79,17 @@ try {
     Invoke-Checked -Description 'Build and test first-party Settings widget' -Command {
         dotnet run --project 'tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test private platform diagnostics transport' -Command {
+        dotnet run --project 'tests\PlatformDiagnostics.Tests\PlatformDiagnostics.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build first-party Settings isolated worker' -Command {
         dotnet build 'src\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj' --configuration $Configuration --nologo
     }
     Invoke-Checked -Description 'Build and test widget package catalog' -Command {
         dotnet run --project 'tests\WidgetCatalog.Tests\WidgetCatalog.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Validate developer documentation contracts and local links' -Command {
+        dotnet run --project 'tests\Documentation.Tests\Documentation.Tests.csproj' --configuration $Configuration
     }
 
     if (Test-Path -LiteralPath 'tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj') {

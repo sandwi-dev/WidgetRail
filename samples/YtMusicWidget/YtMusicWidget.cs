@@ -22,6 +22,14 @@ public class YtMusicWidget : Widget
     private const string ConnectAction = "connect";
     private const string PairAction = "pair";
     private const string RefreshAction = "refresh";
+    private static readonly WidgetSurfaceHints StandardSurface = new()
+    {
+        Mode = WidgetSurfaceMode.Standard,
+        PreferredWidth = 760,
+        PreferredHeight = 440,
+        MinimumWidth = 640,
+        MinimumHeight = 420,
+    };
     private static readonly IReadOnlyList<WidgetQuickAction> ConnectedQuickActions =
     [
         new(ControllerButton.LeftBumper, "previous", "Previous track"),
@@ -96,7 +104,9 @@ public class YtMusicWidget : Widget
             };
             if (!string.IsNullOrWhiteSpace(pairingCode))
                 children.Add(UI.Text(pairingCode, "pairing-code", $"Pairing code {pairingCode}").Classes("pairing-code"));
-            return new WidgetView(UI.Stack("ytmusic-root", children.ToArray()).Classes("ytmusic-widget", "is-loading"));
+            return new WidgetView(
+                UI.Stack("ytmusic-root", children.ToArray()).Classes("ytmusic-widget", "is-loading"),
+                Surface: StandardSurface);
         }
 
         if (connection != YtMusicWidgetConnectionState.Connected)
@@ -117,7 +127,8 @@ public class YtMusicWidget : Widget
                             .Classes("connection-action"))
                     .Classes("connection-actions"))
                 .Classes("ytmusic-widget", "is-disconnected"),
-                InitialFocusId: primaryId);
+                InitialFocusId: primaryId,
+                Surface: StandardSurface);
         }
 
         var duration = snapshot.DurationSeconds > 0 ? snapshot.DurationSeconds : 1;
@@ -192,7 +203,8 @@ public class YtMusicWidget : Widget
                             $"repeat-{repeatMode.ToString().ToLowerInvariant()}")))
                 .Classes("ytmusic-widget", "is-connected"),
             InitialFocusId: "play-pause",
-            QuickActions: ConnectedQuickActions);
+            QuickActions: ConnectedQuickActions,
+            Surface: StandardSurface);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)

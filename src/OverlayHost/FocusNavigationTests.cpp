@@ -18,6 +18,8 @@ void Add(gba::RenderResult& result, std::wstring id, gba::declarative::Rect rect
          const bool enabled = true, std::wstring scope = L"root") {
     result.focusScopes[id] = std::move(scope);
     result.focusRects[id] = rect;
+    result.navigationRects[id] = rect;
+    result.navigationEnabled[id] = enabled;
     result.hitRegions.push_back({std::move(id), rect, enabled});
 }
 
@@ -70,6 +72,20 @@ int main() {
     result.focusRects.erase(L"modal-button");
     Check(!ResolveVisibleFocusTarget(L"play", L"modal", result),
           "fully clipped active scope reports no actionable focus");
+
+    gba::RenderResult scrolled;
+    Add(scrolled, L"session-0", {0, 0, 200, 44});
+    scrolled.focusScopes[L"session-1"] = L"root";
+    scrolled.navigationRects[L"session-1"] = {0, 48, 200, 44};
+    scrolled.navigationEnabled[L"session-1"] = true;
+    scrolled.revealableFocusIds.insert(L"session-1");
+    Check(FindGeometricFocusTarget(
+              L"session-0", NavigationDirection::Down, scrolled) == L"session-1",
+          "offscreen scroll descendant participates in geometric navigation");
+    Check(gba::input::IsEnabledFocusTarget(L"session-1", scrolled),
+          "host-revealable descendant is an enabled focus target");
+    Check(ResolveVisibleFocusTarget(L"session-1", L"root", scrolled) == L"session-1",
+          "preferred offscreen scroll focus survives until the reveal render pass");
 
     std::cout << "FocusNavigationTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

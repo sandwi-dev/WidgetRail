@@ -86,6 +86,7 @@ struct WidgetNode final {
     std::wstring imageFit;
     std::wstring glyph;
     std::wstring inputScopeId;
+    std::wstring scrollAxis;
     std::vector<std::wstring> styleClasses;
     std::vector<WidgetShortcut> shortcuts;
     std::wstring focusUp;
@@ -103,12 +104,21 @@ struct WidgetNode final {
     std::vector<WidgetNode> children;
 };
 
+struct WidgetSurfaceHints final {
+    std::wstring mode{L"adaptive"};
+    std::optional<double> preferredWidth;
+    std::optional<double> preferredHeight;
+    std::optional<double> minimumWidth;
+    std::optional<double> minimumHeight;
+};
+
 struct WidgetSnapshot final {
     long long sequence{};
     std::wstring instanceId;
     std::wstring activeInputScopeId;
     std::wstring initialFocusId;
     std::vector<WidgetQuickAction> quickActions;
+    std::optional<WidgetSurfaceHints> surface;
     WidgetNode root;
 };
 

@@ -213,7 +213,7 @@ running another version.
 
 The MVP accepts only Pressed shortcuts. A and D-pad are reserved for focused
 activation and navigation. Dashboard quick actions are separate: the host owns
-A, Y, D-pad/analog, and Guide, while cards may expose B, X, bumpers, triggers,
+A, B, Y, D-pad/analog, and Guide, while cards may expose X, bumpers, triggers,
 stick clicks, Menu, or View.
 
 Continue with the [declarative UI reference](declarative-ui.md), [controller

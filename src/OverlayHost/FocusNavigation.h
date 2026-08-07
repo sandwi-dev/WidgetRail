@@ -22,8 +22,9 @@ namespace gba::input {
     const RenderResult& renderResult) noexcept;
 
 /// Keeps controller focus attached to geometry that is actually visible after
-/// responsive layout. The preferred target wins when it remains visible and
-/// enabled in the active input scope; otherwise the first visible target in
+/// responsive layout. The preferred target wins when it remains visible or
+/// can be revealed by a semantic scroll container and is enabled in the active
+/// input scope; otherwise the first visible target in
 /// deterministic render/tree order is returned. A surface with no visible
 /// controls has no resolved target.
 [[nodiscard]] std::optional<std::wstring> ResolveVisibleFocusTarget(

@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unavailable Core Audio is distinct from a healthy empty session list", UnavailableAudioIsDegraded),
     ("Disposal unregisters native resources on the owner thread", DisposalIsOwnerThreadSafe),
     ("Production Core Audio adapter initializes without leaking native identity", ProductionAdapterSmoke),
+    ("Production Core Audio applies and restores opt-in per-session controls", ProductionSessionControlSmoke),
 };
 
 var failures = 0;
@@ -308,6 +309,51 @@ static async Task ProductionAdapterSmoke()
         Assert.True(session.Volume is >= 0 and <= 1);
     }
 }
+
+static async Task ProductionSessionControlSmoke()
+{
+    if (!OperatingSystem.IsWindows() ||
+        !string.Equals(Environment.GetEnvironmentVariable("GBA_TEST_LIVE_AUDIO_CONTROL"), "1",
+            StringComparison.Ordinal)) return;
+    await using var backend = new WindowsAudioPlatformBackend();
+    var sessions = await backend.GetAudioSessionsAsync(CancellationToken.None)
+        .WaitAsync(TimeSpan.FromSeconds(5));
+    var session = sessions.OrderBy(candidate => candidate.IsActive).FirstOrDefault();
+    if (session is null) return;
+
+    var target = session.Volume <= 0.95
+        ? Math.Min(1, session.Volume + 0.05)
+        : Math.Max(0, session.Volume - 0.05);
+    Console.WriteLine(
+        $"LIVE AUDIO session='{session.DisplayName}' original={Percent(session.Volume)}% target={Percent(target)}%");
+    try
+    {
+        await backend.SetAudioSessionVolumeAsync(
+            session.SessionId, target, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        var changed = (await backend.GetAudioSessionsAsync(CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(5)))
+            .Single(candidate => candidate.SessionId == session.SessionId);
+        Console.WriteLine(
+            $"LIVE AUDIO session='{session.DisplayName}' readback={Percent(changed.Volume)}%");
+        Assert.Equal(target, changed.Volume, precision: 0.001);
+    }
+    finally
+    {
+        await backend.SetAudioSessionVolumeAsync(
+            session.SessionId, session.Volume, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        var restored = (await backend.GetAudioSessionsAsync(CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(5)))
+            .Single(candidate => candidate.SessionId == session.SessionId);
+        Console.WriteLine(
+            $"LIVE AUDIO session='{session.DisplayName}' restored={Percent(restored.Volume)}%");
+        Assert.Equal(session.Volume, restored.Volume, precision: 0.001);
+    }
+}
+
+static int Percent(double value) =>
+    (int)Math.Round(Math.Clamp(value, 0, 1) * 100, MidpointRounding.AwayFromZero);
 
 static Channel<AudioSessionsChangedEvent> EventChannel(WindowsAudioPlatformBackend backend)
 {

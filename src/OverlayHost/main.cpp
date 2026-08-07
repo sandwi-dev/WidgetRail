@@ -27,6 +27,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -540,28 +541,29 @@ private:
         case kImageReadyMessage:
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
-        case kCatalogRefreshMessage:
-            if (RefreshWidgetCatalog()) {
-                KillTimer(window_, kCatalogRetryTimer);
-                catalogRetryAttempts_ = 0;
-                RefreshCurrentBridgeSnapshot();
-                InvalidateRect(window_, nullptr, FALSE);
-            } else if (bridge_.HasWidgetCatalogChangedRevisionInFlight() &&
+        case kCatalogRefreshMessage: {
+            bool refreshed = false;
+            RefreshAndApplyPresentation([&] {
+                refreshed = RefreshWidgetCatalog();
+                if (refreshed) {
+                    KillTimer(window_, kCatalogRetryTimer);
+                    catalogRetryAttempts_ = 0;
+                    RefreshCurrentBridgeSnapshot();
+                }
+            });
+            if (!refreshed && bridge_.HasWidgetCatalogChangedRevisionInFlight() &&
                        state_.surface() != gba::Surface::Hidden &&
                        catalogRetryAttempts_ < 3) {
                 const UINT delay = 250U << catalogRetryAttempts_++;
                 SetTimer(window_, kCatalogRetryTimer, delay, nullptr);
-            } else {
+            } else if (!refreshed) {
                 bridge_.AbandonWidgetCatalogChangedRevision();
                 catalogRetryAttempts_ = 0;
             }
             return 0;
+        }
         case kSnapshotRefreshMessage:
-            RefreshCurrentBridgeSnapshot();
-            if (state_.surface() != gba::Surface::Hidden) {
-                ShowOverlay();
-                InvalidateRect(window_, nullptr, FALSE);
-            }
+            RefreshAndApplyPresentation([&] { RefreshCurrentBridgeSnapshot(); });
             return 0;
         case kForegroundChangedMessage:
             if (state_.surface() != gba::Surface::Hidden) {
@@ -611,13 +613,9 @@ private:
                         : state_.selectedWidget();
                     if (state_.surface() != gba::Surface::Hidden &&
                         currentWidget == invalidatedWidget) {
-                        const int priorHeight = DesiredHeightDip();
-                        RefreshWidgetSnapshot(invalidatedWidget);
-                        // Repaint-only invalidations must not churn HWND
-                        // placement. Resize only when the generic surface size
-                        // class changes.
-                        if (DesiredHeightDip() != priorHeight) ShowOverlay();
-                        InvalidateRect(window_, nullptr, FALSE);
+                        RefreshAndApplyPresentation([&] {
+                            RefreshWidgetSnapshot(invalidatedWidget);
+                        });
                     } else {
                         // Preserve the event's widget identity. An offscreen
                         // cache is invalidated and will be fetched on selection.
@@ -780,6 +778,7 @@ private:
 
     void Dispatch(const gba::Command command) {
         const auto priorSurface = state_.surface();
+        const auto priorExtent = DesiredPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
         if (priorSurface == gba::Surface::Widget && IsBridgeWidget(priorActive)) {
@@ -800,17 +799,13 @@ private:
             lastWidgetRenderResult_ = {};
         }
 
-        if (state_.surface() == gba::Surface::Hidden) {
-            HideOverlay();
-        } else {
+        if (state_.surface() != gba::Surface::Hidden) {
             const bool enteredBridgeWidget =
                 state_.surface() == gba::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
                 (priorSurface != gba::Surface::Widget || priorActive != state_.activeWidget());
             const bool hoveredBridgeWidget =
                 state_.surface() == gba::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
                 (priorSurface != gba::Surface::Dashboard || priorSelected != state_.selectedWidget());
-            ShowOverlay();
-            InvalidateRect(window_, nullptr, FALSE);
             if (priorSurface == gba::Surface::Hidden) {
                 PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
             }
@@ -819,6 +814,11 @@ private:
                 PostMessageW(window_, kSnapshotRefreshMessage, 0, 0);
             }
         }
+        ApplyPresentation(gba::DecideOverlayPresentation(
+            priorSurface != gba::Surface::Hidden,
+            state_.surface() != gba::Surface::Hidden,
+            priorExtent,
+            DesiredPresentationExtentDip()));
     }
 
     const gba::WidgetComputedStyle& ShellComputedStyle(
@@ -1036,7 +1036,21 @@ private:
         // residency. Clear every replaced/removed runtime even when its
         // offscreen snapshot was evicted earlier.
         for (const auto& id : gba::ChangedWidgetRuntimeIds(
-                 previousDescriptors, widgetDescriptors_)) focusMemory_.Forget(id);
+                 previousDescriptors, widgetDescriptors_)) {
+            focusMemory_.Forget(id);
+            const auto previous = std::find_if(
+                previousDescriptors.begin(), previousDescriptors.end(),
+                [&](const gba::WidgetDescriptor& candidate) {
+                    return candidate.id == id;
+                });
+            if (declarativeRenderer_ && previous != previousDescriptors.end() &&
+                !previous->instanceId.empty()) {
+                // Scroll offsets belong to the exact worker runtime, just like
+                // focus memory. Never let a replacement package inherit native
+                // renderer state merely because it reused public node IDs.
+                declarativeRenderer_->ForgetWidgetState(previous->instanceId);
+            }
+        }
         std::erase_if(widgetSnapshots_, [&](const auto& entry) {
             const auto descriptor = std::find_if(
                 widgetDescriptors_.begin(), widgetDescriptors_.end(),
@@ -1180,14 +1194,31 @@ private:
             dpi == 0 || monitorDpiY == 0) {
             dpi = 96;
         }
-        const int desiredHeightDip = DesiredHeightDip();
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
+        float desiredWidthDip = static_cast<float>(kPanelWidth);
+        float desiredHeightDip = static_cast<float>(kDashboardHeight);
+        if (state_.surface() == gba::Surface::Widget) {
+            const auto resolved = gba::ResolveWidgetSurface(
+                CurrentWidgetSurfaceRequest(),
+                gba::WidgetSurfaceConstraints{
+                    {work.left, work.top, work.right, work.bottom},
+                    dpi,
+                    interfaceScale,
+                    CurrentTextScale(),
+                });
+            if (!resolved) {
+                AppendDiagnostic(L"Unable to resolve a safe widget surface");
+                return;
+            }
+            desiredWidthDip = resolved->windowWidthDip;
+            desiredHeightDip = resolved->windowHeightDip;
+        }
         const auto placement = gba::ComputeOverlayPlacement(
             {work.left, work.top, work.right, work.bottom}, dpi,
-            static_cast<float>(kPanelWidth) * interfaceScale,
-            static_cast<float>(desiredHeightDip) * interfaceScale);
+            desiredWidthDip * interfaceScale,
+            desiredHeightDip * interfaceScale);
         if (!placement) {
             AppendDiagnostic(L"Unable to compute a safe overlay placement");
             return;
@@ -1250,10 +1281,89 @@ private:
         }
     }
 
-    int DesiredHeightDip() const {
-        if (state_.surface() != gba::Surface::Widget) return kDashboardHeight;
-        if (IsBridgeWidget(state_.activeWidget()) && !SnapshotFor(state_.activeWidget())) return 540;
-        return kWidgetPanelHeight;
+    [[nodiscard]] float CurrentTextScale() const noexcept {
+        return appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->textScale)
+            : 1.0F;
+    }
+
+    [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
+    CurrentWidgetSurfaceRequest() const {
+        if (!IsBridgeWidget(state_.activeWidget())) return std::nullopt;
+        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        if (!snapshot) {
+            // Startup is host UI rather than a protocol-v1 view. Keep it
+            // compact until the worker publishes its authoritative surface.
+            return gba::WidgetSurfaceRequest{gba::WidgetSurfaceMode::Compact};
+        }
+        if (!snapshot->surface) return std::nullopt;
+
+        gba::WidgetSurfaceRequest request;
+        if (snapshot->surface->mode == L"compact") {
+            request.mode = gba::WidgetSurfaceMode::Compact;
+        } else if (snapshot->surface->mode == L"standard") {
+            request.mode = gba::WidgetSurfaceMode::Standard;
+        } else if (snapshot->surface->mode == L"wide") {
+            request.mode = gba::WidgetSurfaceMode::Wide;
+        } else {
+            // Unknown and empty values fail safely to Adaptive. The managed
+            // validator rejects them earlier, but native parsing is still an
+            // untrusted transport boundary.
+            request.mode = gba::WidgetSurfaceMode::Adaptive;
+        }
+        const auto toFloat = [](const std::optional<double> value) -> std::optional<float> {
+            if (!value || !std::isfinite(*value) ||
+                *value > std::numeric_limits<float>::max() ||
+                *value < -std::numeric_limits<float>::max()) return std::nullopt;
+            return static_cast<float>(*value);
+        };
+        request.preferredWidthDip = toFloat(snapshot->surface->preferredWidth);
+        request.preferredHeightDip = toFloat(snapshot->surface->preferredHeight);
+        request.minimumWidthDip = toFloat(snapshot->surface->minimumWidth);
+        request.minimumHeightDip = toFloat(snapshot->surface->minimumHeight);
+        return request;
+    }
+
+    [[nodiscard]] gba::ResolvedWidgetSurface DesiredWidgetSurfaceTarget() const {
+        return gba::ResolveWidgetSurfaceTarget(
+            CurrentWidgetSurfaceRequest(), CurrentTextScale());
+    }
+
+    [[nodiscard]] gba::OverlayPresentationExtent DesiredPresentationExtentDip() const {
+        if (state_.surface() != gba::Surface::Widget) {
+            return {kPanelWidth, kDashboardHeight};
+        }
+        const auto target = DesiredWidgetSurfaceTarget();
+        return {
+            static_cast<int>(std::lround(target.windowWidthDip)),
+            static_cast<int>(std::lround(target.windowHeightDip)),
+        };
+    }
+
+    void ApplyPresentation(const gba::OverlayPresentationDirective directive) {
+        switch (directive) {
+        case gba::OverlayPresentationDirective::None:
+            return;
+        case gba::OverlayPresentationDirective::Hide:
+            HideOverlay();
+            return;
+        case gba::OverlayPresentationDirective::Place:
+            ShowOverlay();
+            [[fallthrough]];
+        case gba::OverlayPresentationDirective::Repaint:
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+    }
+
+    template <typename Refresh>
+    void RefreshAndApplyPresentation(Refresh&& refresh) {
+        const bool wasVisible = state_.surface() != gba::Surface::Hidden;
+        const auto priorExtent = DesiredPresentationExtentDip();
+        std::forward<Refresh>(refresh)();
+        const bool isVisible = state_.surface() != gba::Surface::Hidden;
+        ApplyPresentation(gba::DecideOverlayPresentation(
+            wasVisible, isVisible, priorExtent, DesiredPresentationExtentDip()));
     }
 
     void HandleKey(const UINT key) {
@@ -1275,23 +1385,21 @@ private:
             if (state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"down");
             break;
         case VK_RETURN:
-            state_.surface() == gba::Surface::Widget
-                ? DispatchWidgetAction(L"A")
-                : Dispatch(gba::Command::Activate);
+            DispatchControllerAction(L"A");
             break;
         case VK_ESCAPE:
+            if (state_.surface() == gba::Surface::Dashboard && state_.reorderMode()) {
+                Dispatch(gba::Command::Cancel);
+            }
+            break;
         case 'B':
-            state_.surface() == gba::Surface::Widget
-                ? DispatchWidgetAction(L"B")
-                : Dispatch(gba::Command::Cancel);
+            DispatchControllerAction(L"B");
             break;
         case 'X':
-            DispatchWidgetAction(L"X");
+            DispatchControllerAction(L"X");
             break;
         case 'Y':
-            state_.surface() == gba::Surface::Dashboard
-                ? Dispatch(gba::Command::ToggleReorder)
-                : DispatchWidgetAction(L"Y");
+            DispatchControllerAction(L"Y");
             break;
         case 'E':
             Dispatch(gba::Command::ToggleReorder);
@@ -1378,54 +1486,42 @@ private:
         }
 
         if (pressed & XINPUT_GAMEPAD_A) {
-            if (state_.surface() == gba::Surface::Dashboard) {
-                Dispatch(gba::Command::Activate);
-            } else {
-                DispatchWidgetAction(L"A");
-            }
+            DispatchControllerAction(L"A");
         }
         if (pressed & XINPUT_GAMEPAD_B) {
-            if (state_.surface() == gba::Surface::Dashboard && state_.reorderMode()) {
-                Dispatch(gba::Command::Cancel);
-            } else {
-                DispatchWidgetAction(L"B");
-            }
+            DispatchControllerAction(L"B");
         }
         if (pressed & XINPUT_GAMEPAD_Y) {
-            if (state_.surface() == gba::Surface::Dashboard) {
-                Dispatch(gba::Command::ToggleReorder);
-            } else {
-                DispatchWidgetAction(L"Y");
-            }
+            DispatchControllerAction(L"Y");
         }
         if (pressed & XINPUT_GAMEPAD_X) {
-            DispatchWidgetAction(L"X");
+            DispatchControllerAction(L"X");
         }
         if (pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) {
-            DispatchWidgetAction(L"LB");
+            DispatchControllerAction(L"LB");
         }
         if (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) {
-            DispatchWidgetAction(L"RB");
+            DispatchControllerAction(L"RB");
         }
         if (pressed & XINPUT_GAMEPAD_LEFT_THUMB) {
-            DispatchWidgetAction(L"LS");
+            DispatchControllerAction(L"LS");
         }
         if (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) {
-            DispatchWidgetAction(L"RS");
+            DispatchControllerAction(L"RS");
         }
         if (pressed & XINPUT_GAMEPAD_BACK) {
-            DispatchWidgetAction(L"View");
+            DispatchControllerAction(L"View");
         }
         if (pressed & XINPUT_GAMEPAD_START) {
-            DispatchWidgetAction(L"Menu");
+            DispatchControllerAction(L"Menu");
         }
         const bool leftTriggerPressed = connected && controller.Gamepad.bLeftTrigger >= 30;
         const bool rightTriggerPressed = connected && controller.Gamepad.bRightTrigger >= 30;
         if (leftTriggerPressed && !leftTriggerPressed_) {
-            DispatchWidgetAction(L"LT");
+            DispatchControllerAction(L"LT");
         }
         if (rightTriggerPressed && !rightTriggerPressed_) {
-            DispatchWidgetAction(L"RT");
+            DispatchControllerAction(L"RT");
         }
         leftTriggerPressed_ = leftTriggerPressed;
         rightTriggerPressed_ = rightTriggerPressed;
@@ -1560,6 +1656,31 @@ private:
         return L"";
     }
 
+    void DispatchControllerAction(const std::wstring_view button) {
+        using gba::input::ControllerActionContext;
+        using gba::input::ControllerActionRoute;
+        const auto context = state_.surface() == gba::Surface::Dashboard
+            ? ControllerActionContext::Dashboard
+            : ControllerActionContext::RootWidgetScope;
+        switch (gba::input::RouteControllerAction(context, button)) {
+        case ControllerActionRoute::HostActivate:
+            Dispatch(gba::Command::Activate);
+            return;
+        case ControllerActionRoute::HostToggleReorder:
+            Dispatch(gba::Command::ToggleReorder);
+            return;
+        case ControllerActionRoute::HostCloseOverlay:
+            Dispatch(gba::Command::ToggleOverlay);
+            return;
+        case ControllerActionRoute::Widget:
+            DispatchWidgetAction(button);
+            return;
+        case ControllerActionRoute::HostBackToDashboard:
+        case ControllerActionRoute::None:
+            return;
+        }
+    }
+
     void DispatchWidgetAction(const std::wstring_view button) {
         if (state_.surface() == gba::Surface::Hidden) {
             return;
@@ -1570,7 +1691,9 @@ private:
             : state_.selectedWidget();
 
         if (IsBridgeWidget(widget)) {
-            if (!SnapshotFor(widget)) RefreshWidgetSnapshot(widget);
+            if (!SnapshotFor(widget)) {
+                RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
+            }
             const auto protocolButton = ProtocolButton(button);
             const auto* snapshot = SnapshotFor(widget);
             if (protocolButton.empty() || !snapshot) return;
@@ -1600,14 +1723,19 @@ private:
             } else if (*handled) {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" handled " + std::wstring(button);
-                RefreshWidgetSnapshot(widget);
+                RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
             } else {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" has no " + std::wstring(button) + L" action here";
                 snapshot = SnapshotFor(widget);
-                if (isOpen && button == L"B" &&
-                    snapshot && std::wstring_view(snapshot->activeInputScopeId) ==
-                        gba::input::RootInputScope(*snapshot)) {
+                const auto unhandledContext = snapshot &&
+                    std::wstring_view(snapshot->activeInputScopeId) ==
+                        gba::input::RootInputScope(*snapshot)
+                    ? gba::input::ControllerActionContext::RootWidgetScope
+                    : gba::input::ControllerActionContext::NestedWidgetScope;
+                if (isOpen && gba::input::RouteUnhandledControllerAction(
+                        unhandledContext, button) ==
+                        gba::input::ControllerActionRoute::HostBackToDashboard) {
                     Dispatch(gba::Command::SampleWidgetBack);
                     return;
                 }
@@ -1618,7 +1746,10 @@ private:
             return;
         }
 
-        if (state_.surface() == gba::Surface::Widget && button == L"B") {
+        if (state_.surface() == gba::Surface::Widget &&
+            gba::input::RouteUnhandledControllerAction(
+                gba::input::ControllerActionContext::RootWidgetScope, button) ==
+                gba::input::ControllerActionRoute::HostBackToDashboard) {
             Dispatch(gba::Command::SampleWidgetBack);
             return;
         }
@@ -1983,7 +2114,7 @@ private:
 
     std::wstring DashboardHint() const {
         if (state_.reorderMode()) {
-            return L"D-pad / Left stick  Move     Y  Done     B  Cancel";
+            return L"D-pad / Left stick  Move     Y  Done     B  Close";
         }
         if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty()) {
             return lastActionMessage_;
@@ -1993,15 +2124,20 @@ private:
             !snapshot->quickActions.empty()) {
             std::wstring prompt;
             for (const auto& action : snapshot->quickActions) {
+                // Dashboard A/Y/B are shell navigation. Do not advertise a
+                // widget shortcut the native router cannot dispatch here.
+                if (action.button == L"a" || action.button == L"y" ||
+                    action.button == L"b") continue;
                 if (!prompt.empty()) prompt += L"     ";
                 prompt += DisplayButton(action.button);
                 prompt += L"  ";
                 prompt += action.label;
             }
-            prompt += L"     A  Open     Y  Reorder";
+            if (!prompt.empty()) prompt += L"     ";
+            prompt += L"A  Open     Y  Reorder     B  Close";
             return prompt;
         }
-        return L"D-pad / Left stick  Select     A  Open     Y  Reorder     Guide  Close";
+        return L"D-pad / Left stick  Select     A  Open     Y  Reorder     B / Guide  Close";
     }
 
     void DrawDashboard(const float width, const float height) {
@@ -2050,10 +2186,11 @@ private:
         std::vector<std::pair<std::wstring, std::wstring>> prompts;
         CollectShortcutPrompts(snapshot->root, prompts);
         const auto order = [](const std::wstring_view button) {
-            if (button == L"x") return 0;
-            if (button == L"leftBumper") return 1;
-            if (button == L"rightBumper") return 2;
-            if (button == L"y") return 3;
+            if (button == L"b") return 0;
+            if (button == L"x") return 1;
+            if (button == L"leftBumper") return 2;
+            if (button == L"rightBumper") return 3;
+            if (button == L"y") return 4;
             return 10;
         };
         std::stable_sort(prompts.begin(), prompts.end(), [&](const auto& left, const auto& right) {
@@ -2089,19 +2226,27 @@ private:
             std::min(12.0F, geometry.footerHeight * 0.25F);
         if (textBottom <= textTop + 1.0F) return;
         const std::wstring prompt = OpenWidgetPrompt();
+        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        const bool rootScope = snapshot &&
+            std::wstring_view(snapshot->activeInputScopeId) ==
+                gba::input::RootInputScope(*snapshot);
+        const std::wstring hostPrompt = rootScope
+            ? L"B  Back     Guide  Close"
+            : L"Guide  Close";
         if (contentRight - contentLeft >= 300.0F) {
+            const float hostPromptWidth = rootScope ? 180.0F : 106.0F;
             DrawTextLine(prompt, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop,
-                                     contentRight - 120.0F, textBottom),
+                                     contentRight - hostPromptWidth - 14.0F, textBottom),
                          secondaryBrush_.Get());
-            DrawTextLine(L"Guide  Close", hintFormat_.Get(),
-                         D2D1::RectF(contentRight - 106.0F, textTop,
+            DrawTextLine(hostPrompt, hintFormat_.Get(),
+                         D2D1::RectF(contentRight - hostPromptWidth, textTop,
                                      contentRight, textBottom),
                          secondaryBrush_.Get());
         } else {
-            // At narrow logical widths retain the universal escape affordance;
+            // At narrow logical widths retain the hierarchy/escape affordance;
             // widget action labels remain discoverable on larger surfaces.
-            DrawTextLine(L"Guide  Close", hintFormat_.Get(),
+            DrawTextLine(hostPrompt, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
                          secondaryBrush_.Get());
         }
@@ -2113,8 +2258,9 @@ private:
         const float physicalPixelsPerDip) {
         const std::wstring_view widget = state_.activeWidget();
         const bool bridgeWidget = IsBridgeWidget(widget);
+        const auto widgetSurface = DesiredWidgetSurfaceTarget();
         const auto geometry = gba::ComputeOverlaySurfaceGeometry(
-            width, height, bridgeWidget ? 880.0F : 720.0F);
+            width, height, bridgeWidget ? widgetSurface.panelWidthDip : 720.0F);
         if (!geometry) return;
         const float panelLeft = geometry->panelX;
         const float panelTop = geometry->panelY;

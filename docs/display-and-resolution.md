@@ -74,6 +74,8 @@ Use the public declarative layout and GBSS primitives:
 - bounded logical lengths, percentages, `vw`, and `vh`;
 - explicit line limits and ellipsis for bounded labels;
 - `overflow: clip` for surfaces that must not escape their viewport; and
+- semantic `UI.VerticalScroll` / `UI.HorizontalScroll` for controller content
+  that can exceed the clamped viewport; and
 - stable focus IDs and explicit focus neighbors where reflow makes geometry
   ambiguous.
 
@@ -82,10 +84,45 @@ positive desktop coordinates, or a particular taskbar position. Widgets never
 read monitor APIs themselves. They render the snapshot requested by the host
 for the current viewport.
 
-Focusable controls clipped out of the rendered viewport are not navigation
-candidates. When catalog replacement changes a widget runtime, the host clears
-that widget's remembered focus rather than restoring an ID from a different
-surface generation.
+Focusable controls clipped by an ordinary Stack/Row are not navigation
+candidates. Descendants clipped by a semantic Scroll remain navigation
+candidates because the host can reveal them before dispatch. Scroll offsets
+are remembered per exact widget runtime, active input scope, and container ID.
+When catalog replacement changes a widget runtime, the host clears that
+widget's remembered focus and scroll state rather than restoring IDs or
+geometry from a different surface generation.
+
+`WidgetView.Surface` may publish a bounded `Adaptive`, `Compact`, `Standard`,
+or `Wide` presentation hint plus optional preferred/minimum logical dimensions.
+It is never a fixed-size request. The shell clamps the resolved surface against
+the selected monitor and its own chrome after applying interface/accessibility
+scale; declarative layout and Scroll then handle the final viewport.
+
+Surface dimensions describe the useful floating **widget panel**, including
+the host footer inside that panel. They do not include the persistent icon tray,
+the space separating tray and panel, outer safety margins, or the overlay HWND.
+The current host defaults are:
+
+| Mode | Preferred panel |
+| --- | ---: |
+| `Compact` | 560×420 DIPs |
+| `Adaptive` | 880×520 DIPs |
+| `Standard` | 880×520 DIPs |
+| `Wide` | 1120×620 DIPs |
+
+An explicit preferred pair refines its mode. A valid minimum pair is advisory:
+the host honors it when space exists, but monitor containment always wins.
+Larger text receives additional reflow room before the result is clamped;
+interface scale remains a physical zoom and therefore reduces how much of the
+requested logical surface fits in a fixed physical work area. Widgets must use
+responsive layout and semantic Scroll rather than treating either pair as a
+guaranteed measurement.
+
+Snapshots without `Surface` retain the package-API-1 compatibility canvas
+(1180×700 shell with an 880-DIP panel). A worker-starting placeholder is
+host-owned and compact; it can resize once when the first authoritative
+snapshot arrives. Unknown, partial, non-finite, and out-of-range native hint
+data cannot escape the sizing policy and falls back to bounded mode defaults.
 
 ## Deterministic evidence
 
@@ -102,6 +139,11 @@ The native Release suite currently proves these policy/math seams:
   portrait, ultrawide, 4K, 5K, and 8K work areas, including negative and
   offset desktop coordinates, ten DPI values, and dashboard/loading/widget
   heights;
+- semantic Compact/Adaptive/Standard/Wide resolution, explicit preferred and
+  minimum pairs, API-1 compatibility fallback, malformed-hint fallback, and
+  extent stability across identical snapshots;
+- 1280×720, portrait, offset-ultrawide, and combined 200%-DPI/125%-interface/
+  150%-text surface clamping with host tray/footer/controller reservations;
 - more than 100,000 containment checks across dense logical boundaries for
   panel, widget viewport, adaptive footer, and persistent tray geometry;
 - declarative compact/clipping behavior for constrained viewports, including

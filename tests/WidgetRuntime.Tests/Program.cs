@@ -40,6 +40,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controller queue rejects saturation without waiting", ControllerQueueIsBounded),
     ("Queued controller failures are observable without crashing", ControllerQueueFailuresAreObservable),
     ("Unexpected worker exit is reported and recoverable", CrashRecovery),
+    ("Companion endpoint ownership is established before worker launch", CompanionEndpointPrecedesLaunch),
     ("Host companion sessions are recreated and lifecycle-restored after crashes", CompanionSessionsFollowWorkerRestarts),
     ("Request timeout terminates a hung worker", HungWorkerTimesOut),
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
@@ -71,6 +72,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         RequiredValue(arguments, "--max-message-bytes"), CultureInfo.InvariantCulture);
     if (arguments.Contains("--malformed-worker", StringComparer.Ordinal))
         return await RunMalformedWorkerAsync(pipe, instance, maximumBytes);
+    VerifyPrecreatedCompanionEndpoint(arguments);
 
     Widget widget = arguments.Contains("--hanging-destroy", StringComparer.Ordinal)
         ? new HangingDestroyWidget()
@@ -84,6 +86,27 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             : new TestWidget();
     await new WidgetWorkerServer(widget, instance, pipe, maximumBytes).RunAsync();
     return 0;
+}
+
+static void VerifyPrecreatedCompanionEndpoint(string[] arguments)
+{
+    var endpoint = OptionalValue(arguments, "--probe-precreated-pipe");
+    if (endpoint is null || !OperatingSystem.IsWindows()) return;
+    try
+    {
+        using var stolen = new System.IO.Pipes.NamedPipeServerStream(
+            endpoint, System.IO.Pipes.PipeDirection.InOut, 1,
+            System.IO.Pipes.PipeTransmissionMode.Byte,
+            System.IO.Pipes.PipeOptions.Asynchronous |
+            System.IO.Pipes.PipeOptions.CurrentUserOnly |
+            System.IO.Pipes.PipeOptions.FirstPipeInstance);
+        throw new InvalidOperationException(
+            "Worker launched before the companion owned its first pipe instance.");
+    }
+    catch (IOException)
+    {
+        // Expected: the host companion already owns the first instance.
+    }
 }
 
 static async Task<int> RunMalformedWorkerAsync(string pipeName, string instanceId, int maximumBytes)
@@ -721,6 +744,15 @@ static async Task CompanionSessionsFollowWorkerRestarts()
     Assert.True(sessions[1].Disposed, "Client disposal left its companion session alive.");
 }
 
+static async Task CompanionEndpointPrecedesLaunch()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    await using var client = CreateClient(
+        companionFactory: _ => new PrecreatedPipeCompanionSession());
+    var snapshot = await client.GetSnapshotAsync();
+    Assert.Equal("runtime.test", snapshot.WidgetInstanceId);
+}
+
 static async Task HungWorkerTimesOut()
 {
     await using var client = CreateClient(requestTimeout: TimeSpan.FromMilliseconds(250));
@@ -1197,6 +1229,41 @@ file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
     public ValueTask DisposeAsync()
     {
         Disposed = true;
+        return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class PrecreatedPipeCompanionSession : IWidgetProcessCompanionSession
+{
+    private readonly System.IO.Pipes.NamedPipeServerStream _endpoint;
+
+    public PrecreatedPipeCompanionSession()
+    {
+        var pipeName = $"gba-companion-prelaunch-{Guid.NewGuid():N}";
+        _endpoint = new System.IO.Pipes.NamedPipeServerStream(
+            pipeName, System.IO.Pipes.PipeDirection.InOut, 1,
+            System.IO.Pipes.PipeTransmissionMode.Byte,
+            System.IO.Pipes.PipeOptions.Asynchronous |
+            System.IO.Pipes.PipeOptions.CurrentUserOnly |
+            System.IO.Pipes.PipeOptions.FirstPipeInstance);
+        WorkerArguments = ["--probe-precreated-pipe", pipeName];
+    }
+
+    public IReadOnlyList<string> WorkerArguments { get; }
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    public Task SetLifecycleStateAsync(
+        WidgetLifecycleState state,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public ValueTask DisposeAsync()
+    {
+        _endpoint.Dispose();
         return ValueTask.CompletedTask;
     }
 }

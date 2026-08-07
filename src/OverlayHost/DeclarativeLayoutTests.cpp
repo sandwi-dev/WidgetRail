@@ -1,5 +1,6 @@
 #include "DeclarativeLayout.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -19,6 +20,7 @@ using gba::declarative::MainAxisAlignment;
 using gba::declarative::OverflowBehavior;
 using gba::declarative::Rect;
 using gba::declarative::Size;
+using gba::declarative::ScrollAxis;
 
 int checks = 0;
 
@@ -148,6 +150,67 @@ void OverflowClipping() {
     Check(result.Find("clip")->overflowY, "overflow is reported on container");
     Check(result.Find("too-tall")->clippedByAncestor, "child reports ancestor clipping");
     Near(result.Find("too-tall")->visibleBox.height, 100.0F, "visible box is intersected with clip");
+}
+
+void ScrollOffsetsAreBoundedAndClipped() {
+    auto scroll = Element("sessions");
+    scroll.scrollAxis = ScrollAxis::Vertical;
+    scroll.gap = 4.0F;
+    for (int index = 0; index < 8; ++index) {
+        auto row = Element("session-" + std::to_string(index));
+        row.height = 44.0F;
+        row.minHeight = 44.0F;
+        row.flexShrink = 0.0F;
+        scroll.children.push_back(std::move(row));
+    }
+
+    const auto initial = ComputeLayout(scroll, {0, 0, 240, 100});
+    Check(initial.valid(), "vertical scroll layout is valid");
+    Near(initial.Find("sessions")->maximumScrollOffset, 280.0F,
+         "content extent determines bounded maximum offset");
+    Near(initial.Find("session-0")->borderBox.y, 0.0F,
+         "initial scroll position starts at the leading edge");
+    Check(initial.Find("session-3")->visibleBox.height == 0.0F,
+          "offscreen descendants are fully clipped");
+
+    scroll.scrollOffset = 999999.0F;
+    const auto trailing = ComputeLayout(scroll, {0, 0, 240, 100});
+    Near(trailing.Find("sessions")->scrollOffset, 280.0F,
+         "oversized offset clamps to measured content extent");
+    Near(trailing.Find("session-7")->borderBox.y, 56.0F,
+         "clamped trailing offset reveals final row");
+    Near(trailing.Find("session-7")->visibleBox.height, 44.0F,
+         "final row remains wholly visible");
+
+    scroll.scrollOffset = std::numeric_limits<float>::quiet_NaN();
+    const auto invalid = ComputeLayout(scroll, {0, 0, 240, 100});
+    Near(invalid.Find("sessions")->scrollOffset, 0.0F,
+         "non-finite offset fails closed to the leading edge");
+    Check(std::any_of(invalid.issues.begin(), invalid.issues.end(), [](const auto& issue) {
+        return issue.code == "value_clamped";
+    }), "invalid offset emits a bounded diagnostic");
+
+    auto horizontal = Element("horizontal", LayoutDirection::Row);
+    horizontal.scrollAxis = ScrollAxis::Horizontal;
+    horizontal.scrollOffset = 999.0F;
+    for (int index = 0; index < 4; ++index) {
+        auto item = Element("horizontal-" + std::to_string(index));
+        item.width = 44.0F;
+        item.minWidth = 44.0F;
+        item.flexShrink = 0.0F;
+        horizontal.children.push_back(std::move(item));
+    }
+    const auto horizontalResult = ComputeLayout(horizontal, {0, 0, 100, 60});
+    Near(horizontalResult.Find("horizontal")->scrollOffset, 76.0F,
+         "horizontal offset uses the same bounded contract");
+    Near(horizontalResult.Find("horizontal-3")->borderBox.x, 56.0F,
+         "horizontal trailing item is fully revealed at the clamped edge");
+
+    scroll.scrollOffset = 0.0F;
+    scroll.direction = LayoutDirection::Row;
+    const auto mismatched = ComputeLayout(scroll, {0, 0, 240, 100});
+    Check(!mismatched.valid() && mismatched.boxes.empty(),
+          "axis and direction mismatch fails closed without partial geometry");
 }
 
 void ResponsiveViewports() {
@@ -347,6 +410,7 @@ int main() {
     FlexGrowHonorsMaximum();
     NestedPaddingAndMargins();
     OverflowClipping();
+    ScrollOffsetsAreBoundedAndClipped();
     ResponsiveViewports();
     IntrinsicAndCompactMode();
     TinyAndPortraitWidgetContainment();

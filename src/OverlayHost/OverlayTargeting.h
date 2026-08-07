@@ -4,6 +4,44 @@
 
 namespace gba {
 
+struct OverlayPresentationExtent final {
+    int widthDip{};
+    int heightDip{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const OverlayPresentationExtent&,
+        const OverlayPresentationExtent&) noexcept = default;
+};
+
+enum class OverlayPresentationDirective {
+    None,
+    Hide,
+    Repaint,
+    Place,
+};
+
+// Pure presentation policy shared by state transitions and asynchronous
+// snapshot refreshes. A visible HWND only needs another placement pass when
+// its requested logical extent or monitor target changed. Selection, focus,
+// and content-only changes are repaints; repeatedly calling SetWindowPos with
+// SWP_SHOWWINDOW for those changes causes unnecessary DWM/Direct2D churn.
+[[nodiscard]] constexpr OverlayPresentationDirective DecideOverlayPresentation(
+    const bool wasVisible,
+    const bool isVisible,
+    const OverlayPresentationExtent before,
+    const OverlayPresentationExtent after,
+    const bool targetChanged = false) noexcept {
+    if (!isVisible) {
+        return wasVisible
+            ? OverlayPresentationDirective::Hide
+            : OverlayPresentationDirective::None;
+    }
+    if (!wasVisible || targetChanged || before != after) {
+        return OverlayPresentationDirective::Place;
+    }
+    return OverlayPresentationDirective::Repaint;
+}
+
 // Pure foreground-target state used by the HWND host and deterministic tests.
 // Native window validity remains an OS concern supplied at each boundary.
 class ForegroundTargetTracker final {

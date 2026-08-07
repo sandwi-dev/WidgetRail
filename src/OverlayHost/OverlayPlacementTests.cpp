@@ -18,6 +18,14 @@ void Check(bool condition, const char* message) {
     }
 }
 
+void CheckNear(
+    const float actual,
+    const float expected,
+    const char* message,
+    const float tolerance = 0.01F) {
+    Check(std::abs(actual - expected) <= tolerance, message);
+}
+
 void FullyContained(const gba::OverlayPlacement& value, const gba::PhysicalRect& work) {
     Check(value.width > 0 && value.height > 0, "placement has positive size");
     Check(value.x >= work.left && value.y >= work.top, "placement starts inside work area");
@@ -71,6 +79,179 @@ void SurfaceContained(
 
 int main() {
     using namespace gba;
+
+    const auto legacySurface = ResolveWidgetSurfaceTarget(std::nullopt, 1.0F);
+    CheckNear(legacySurface.windowWidthDip, 1180.0F,
+              "missing hints preserve the v1 window width");
+    CheckNear(legacySurface.windowHeightDip, 700.0F,
+              "missing hints preserve the v1 window height");
+    CheckNear(legacySurface.panelWidthDip, 880.0F,
+              "missing hints preserve the v1 panel width");
+
+    WidgetSurfaceRequest compactRequest{WidgetSurfaceMode::Compact};
+    const auto compactTarget = ResolveWidgetSurfaceTarget(compactRequest, 1.0F);
+    CheckNear(compactTarget.windowWidthDip, 632.0F,
+              "compact mode adds bounded side chrome");
+    CheckNear(compactTarget.windowHeightDip, 598.0F,
+              "compact mode reserves panel, footer, and tray height");
+    CheckNear(compactTarget.panelWidthDip, 560.0F,
+              "compact mode resolves its documented panel width");
+    CheckNear(compactTarget.panelHeightDip, 420.0F,
+              "compact mode resolves its documented panel height");
+
+    WidgetSurfaceRequest standardRequest{WidgetSurfaceMode::Standard};
+    const auto standardTarget = ResolveWidgetSurfaceTarget(standardRequest, 1.0F);
+    CheckNear(standardTarget.windowWidthDip, 952.0F,
+              "standard mode does not retain the legacy dead side space");
+    CheckNear(standardTarget.windowHeightDip, 698.0F,
+              "standard mode preserves the established panel shape");
+
+    WidgetSurfaceRequest wideRequest{WidgetSurfaceMode::Wide};
+    const auto wideTarget = ResolveWidgetSurfaceTarget(wideRequest, 1.0F);
+    CheckNear(wideTarget.windowWidthDip, 1192.0F,
+              "wide mode resolves independently of widget identity");
+    CheckNear(wideTarget.windowHeightDip, 798.0F,
+              "wide mode reserves the same host-owned vertical chrome");
+    Check(compactTarget.windowWidthDip != wideTarget.windowWidthDip &&
+              compactTarget.windowHeightDip != wideTarget.windowHeightDip,
+          "surface class transitions produce distinct presentation extents");
+    Check(ResolveWidgetSurfaceTarget(compactRequest, 1.0F).windowWidthDip ==
+              compactTarget.windowWidthDip,
+          "same surface request deterministically preserves its extent");
+
+    WidgetSurfaceRequest explicitRequest{WidgetSurfaceMode::Compact};
+    explicitRequest.preferredWidthDip = 600.0F;
+    explicitRequest.preferredHeightDip = 460.0F;
+    explicitRequest.minimumWidthDip = 360.0F;
+    explicitRequest.minimumHeightDip = 260.0F;
+    const auto explicitTarget = ResolveWidgetSurfaceTarget(explicitRequest, 1.0F);
+    CheckNear(explicitTarget.panelWidthDip, 600.0F,
+              "valid explicit preferred width refines the semantic mode");
+    CheckNear(explicitTarget.panelHeightDip, 460.0F,
+              "valid explicit preferred height refines the semantic mode");
+
+    WidgetSurfaceRequest partialRequest{WidgetSurfaceMode::Compact};
+    partialRequest.preferredWidthDip = 900.0F;
+    const auto partialTarget = ResolveWidgetSurfaceTarget(partialRequest, 1.0F);
+    CheckNear(partialTarget.panelWidthDip, 560.0F,
+              "partial preferred pair safely falls back to the mode width");
+    CheckNear(partialTarget.panelHeightDip, 420.0F,
+              "partial preferred pair safely falls back to the mode height");
+
+    WidgetSurfaceRequest unknownModeRequest{
+        static_cast<WidgetSurfaceMode>(999)};
+    const auto unknownModeTarget = ResolveWidgetSurfaceTarget(unknownModeRequest, 1.0F);
+    CheckNear(unknownModeTarget.panelWidthDip, 880.0F,
+              "unknown native mode safely falls back to Adaptive width");
+    CheckNear(unknownModeTarget.panelHeightDip, 520.0F,
+              "unknown native mode safely falls back to Adaptive height");
+
+    WidgetSurfaceRequest outOfRangeRequest{WidgetSurfaceMode::Compact};
+    outOfRangeRequest.preferredWidthDip = 5'000.0F;
+    outOfRangeRequest.preferredHeightDip = 5'000.0F;
+    const auto outOfRangeTarget = ResolveWidgetSurfaceTarget(outOfRangeRequest, 1.0F);
+    CheckNear(outOfRangeTarget.panelWidthDip, 560.0F,
+              "out-of-range preferred dimensions cannot escape mode bounds");
+    CheckNear(outOfRangeTarget.panelHeightDip, 420.0F,
+              "out-of-range preferred height falls back atomically");
+
+    WidgetSurfaceRequest invalidRequest{WidgetSurfaceMode::Standard};
+    invalidRequest.preferredWidthDip = std::numeric_limits<float>::quiet_NaN();
+    invalidRequest.preferredHeightDip = 420.0F;
+    invalidRequest.minimumWidthDip = 1'000.0F;
+    invalidRequest.minimumHeightDip = 700.0F;
+    const auto invalidTarget = ResolveWidgetSurfaceTarget(invalidRequest, 1.0F);
+    CheckNear(invalidTarget.panelWidthDip, 1000.0F,
+              "a valid standalone minimum can raise a malformed preference safely");
+    CheckNear(invalidTarget.panelHeightDip, 700.0F,
+              "a valid standalone minimum remains host bounded");
+
+    WidgetSurfaceRequest inconsistentRequest{WidgetSurfaceMode::Compact};
+    inconsistentRequest.preferredWidthDip = 500.0F;
+    inconsistentRequest.preferredHeightDip = 400.0F;
+    inconsistentRequest.minimumWidthDip = 900.0F;
+    inconsistentRequest.minimumHeightDip = 600.0F;
+    const auto inconsistentTarget = ResolveWidgetSurfaceTarget(inconsistentRequest, 1.0F);
+    CheckNear(inconsistentTarget.panelWidthDip, 500.0F,
+              "minimum exceeding preferred is ignored defensively");
+    CheckNear(inconsistentTarget.panelHeightDip, 400.0F,
+              "invalid minimum pair cannot enlarge a valid preference");
+
+    const auto largeTextTarget = ResolveWidgetSurfaceTarget(standardRequest, 1.5F);
+    CheckNear(largeTextTarget.panelWidthDip, 1100.0F,
+              "150 percent text receives bounded horizontal reflow room");
+    CheckNear(largeTextTarget.panelHeightDip, 780.0F,
+              "150 percent text receives full vertical reflow room");
+    const auto invalidTextTarget = ResolveWidgetSurfaceTarget(
+        standardRequest, std::numeric_limits<float>::infinity());
+    CheckNear(invalidTextTarget.windowWidthDip, standardTarget.windowWidthDip,
+              "invalid text scale fails safely to the standard scale");
+
+    const auto compact720p = ResolveWidgetSurface(
+        compactRequest,
+        WidgetSurfaceConstraints{{0, 0, 1280, 720}, 96, 1.0F, 1.0F});
+    Check(compact720p.has_value(), "compact surface resolves on 720p");
+    CheckNear(compact720p->windowWidthDip, 632.0F,
+              "compact surface avoids empty horizontal space on 720p");
+    CheckNear(compact720p->windowHeightDip, 598.0F,
+              "compact surface fits 720p with shell margins");
+    Check(!compact720p->constrainedByWorkArea,
+          "compact default fits an ordinary 720p work area");
+
+    const auto standard720p = ResolveWidgetSurface(
+        standardRequest,
+        WidgetSurfaceConstraints{{0, 0, 1280, 720}, 96, 1.0F, 1.0F});
+    Check(standard720p.has_value() && standard720p->constrainedByWorkArea,
+          "standard surface reports its 720p height clamp");
+    CheckNear(standard720p->windowWidthDip, 952.0F,
+              "720p clamp preserves a fitting standard width");
+    CheckNear(standard720p->windowHeightDip, 664.0F,
+              "720p clamp reserves host top and bottom work-area margins");
+
+    const auto portraitSurface = ResolveWidgetSurface(
+        standardRequest,
+        WidgetSurfaceConstraints{{0, 0, 720, 1280}, 96, 1.0F, 1.0F});
+    Check(portraitSurface.has_value() && portraitSurface->constrainedByWorkArea,
+          "portrait surface clamps only the dimension that cannot fit");
+    CheckNear(portraitSurface->windowWidthDip, 672.0F,
+              "portrait surface remains inside horizontal work-area margins");
+    CheckNear(portraitSurface->windowHeightDip, 698.0F,
+              "portrait surface retains a fitting height");
+
+    const auto ultrawideSurface = ResolveWidgetSurface(
+        wideRequest,
+        WidgetSurfaceConstraints{{-3440, -100, 0, 1300}, 96, 1.0F, 1.0F});
+    Check(ultrawideSurface.has_value() && !ultrawideSurface->constrainedByWorkArea,
+          "wide request fits an offset ultrawide work area");
+    CheckNear(ultrawideSurface->windowWidthDip, 1192.0F,
+              "ultrawide placement does not stretch a wide widget");
+
+    const auto highScaleSurface = ResolveWidgetSurface(
+        standardRequest,
+        WidgetSurfaceConstraints{{0, 0, 1920, 1080}, 192, 1.25F, 1.5F});
+    Check(highScaleSurface.has_value() && highScaleSurface->constrainedByWorkArea,
+          "high DPI, interface zoom, and text scale resolve against physical work area");
+    CheckNear(highScaleSurface->windowWidthDip, 729.6F,
+              "high-scale width exactly reconstructs the safe physical work area");
+    CheckNear(highScaleSurface->windowHeightDip, 387.2F,
+              "high-scale height exactly reconstructs the safe physical work area");
+    Check(highScaleSurface->panelWidthDip <= highScaleSurface->windowWidthDip &&
+              highScaleSurface->panelHeightDip <= highScaleSurface->windowHeightDip,
+          "high-scale panel remains bounded by host chrome and viewport");
+
+    Check(!ResolveWidgetSurface(
+              compactRequest,
+              WidgetSurfaceConstraints{{0, 0, 0, 720}, 96, 1.0F, 1.0F}),
+          "surface resolution rejects an empty work area");
+    Check(!ResolveWidgetSurface(
+              compactRequest,
+              WidgetSurfaceConstraints{{0, 0, 1280, 720}, 0, 1.0F, 1.0F}),
+          "surface resolution rejects zero DPI");
+    Check(!ResolveWidgetSurface(
+              compactRequest,
+              WidgetSurfaceConstraints{{0, 0, 1280, 720}, 96, 0.0F, 1.0F}),
+          "surface resolution rejects zero interface scale");
+
     for (const auto work : {
              PhysicalRect{0, 0, 1280, 720},
              PhysicalRect{0, 0, 1920, 1040},

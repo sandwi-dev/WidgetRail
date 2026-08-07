@@ -6,7 +6,8 @@ public sealed record WidgetView(
     WidgetElement Root,
     string? InitialFocusId = null,
     IReadOnlyList<WidgetQuickAction>? QuickActions = null,
-    string? ActiveInputScopeId = null)
+    string? ActiveInputScopeId = null,
+    WidgetSurfaceHints? Surface = null)
 {
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
     {
@@ -15,22 +16,38 @@ public sealed record WidgetView(
 
         var snapshot = new ViewSnapshot
         {
+            ProtocolVersion = RequiredProtocolVersion(),
             Sequence = sequence,
             WidgetInstanceId = widgetInstanceId,
             ActiveInputScopeId = ActiveInputScopeId ?? RootScopeId(Root),
             InitialFocusId = InitialFocusId,
             QuickActions = QuickActions?.ToArray() ?? [],
+            Surface = Surface,
             Root = Root.ToProtocolNode(),
         };
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
+
+        int RequiredProtocolVersion() =>
+            Surface is not null || ContainsScroll(Root)
+                ? ProtocolConstants.CurrentVersion
+                : ProtocolConstants.BaselineVersion;
     }
+
+    private static bool ContainsScroll(WidgetElement element) => element switch
+    {
+        ScrollElement => true,
+        StackElement stack => stack.Children.Any(ContainsScroll),
+        RowElement row => row.Children.Any(ContainsScroll),
+        _ => false,
+    };
 
     private static string RootScopeId(WidgetElement root) => root switch
     {
         StackElement stack => stack.InputScopeId ?? stack.Id,
         RowElement row => row.InputScopeId ?? row.Id,
+        ScrollElement scroll => scroll.InputScopeId ?? scroll.Id,
         _ => root.Id,
     };
 }

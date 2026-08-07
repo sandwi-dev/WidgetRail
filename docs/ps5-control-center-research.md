@@ -14,13 +14,15 @@ Accessibility is a system concern above individual content. PS5 offers text sizi
 
 ## Concrete rules for this overlay
 
-1. **One global toggle.** Guide/Home alone opens or closes the overlay. No widget may bind it.
+1. **One global toggle plus hierarchical Back.** Guide/Home toggles from any
+   depth and no widget may bind it. B returns one level—nested widget view,
+   widget root to dashboard, then dashboard to closed.
 2. **Separate input surfaces.** On the dashboard, the host owns D-pad/analog
-   navigation, `A` to open, `Y` to enter reorder mode, and Guide to close. A
-   selected card may expose a visible B quick action. Inside an opened widget,
+   navigation, `A` to open, `B` to close, `Y` to enter reorder mode, and Guide
+   to close. Inside an opened widget,
    A and directional input retain host activation/focus semantics; the
-   explicitly active widget scope owns B, X, Y, bumpers, triggers, stick clicks,
-   Menu, and View without bubbling to another scope.
+   explicitly active widget scope receives B first and owns X, Y, bumpers,
+   triggers, stick clicks, Menu, and View without bubbling to another scope.
 3. **Cards answer “what now?”** A dashboard card shows a small live snapshot—state, one primary datum, and no more than three safe quick actions. It must not be a miniature full widget.
 4. **Prompts are explicit.** Every quick action is supplied as `{ button, actionId, label }`; the card renders the button prompt beside its label. Never hide undocumented shortcuts behind a selected card.
 5. **Quick actions cannot steal shell navigation.** Dashboard quick actions are limited to `X`, bumpers, triggers, and stick clicks. `A`, `B`, `Y`, D-pad, Menu, and View remain host-owned on the dashboard.

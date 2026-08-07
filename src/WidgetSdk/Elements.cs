@@ -66,6 +66,46 @@ public sealed record RowElement : WidgetElement
     };
 }
 
+/// <summary>
+/// A bounded host-owned scroll viewport. Controller focus is automatically
+/// revealed and the host restores the offset while this stable ID remains in
+/// the same widget instance.
+/// </summary>
+public sealed record ScrollElement : WidgetElement
+{
+    internal ScrollElement(string id, ScrollAxis axis, IReadOnlyList<WidgetElement> children)
+        : base(RequireId(id))
+    {
+        if (!Enum.IsDefined(axis)) throw new ArgumentOutOfRangeException(nameof(axis));
+        Axis = axis;
+        Children = children;
+    }
+
+    public ScrollAxis Axis { get; init; }
+    public IReadOnlyList<WidgetElement> Children { get; init; }
+    public string? InputScopeId { get; init; }
+    public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
+    public ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
+    public ScrollElement Shortcut(
+        ControllerButton button,
+        string actionId,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed) => this with
+        {
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase)],
+        };
+
+    internal override ViewNode ToProtocolNode() => new()
+    {
+        Id = Id,
+        Kind = ViewNodeKind.Scroll,
+        ScrollAxis = Axis,
+        StyleClasses = StyleClasses,
+        InputScopeId = InputScopeId,
+        Shortcuts = Shortcuts,
+        Children = Children.Select(child => child.ToProtocolNode()).ToArray(),
+    };
+}
+
 public sealed record TextElement : WidgetElement
 {
     internal TextElement(string id, string text, string? accessibilityLabel) : base(RequireId(id))

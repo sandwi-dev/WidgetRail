@@ -174,6 +174,14 @@ private:
         } else if (!ids.insert(element.id).second) {
             AddIssue(element.id, "duplicate_id", "Layout element IDs must be unique.", LayoutIssueSeverity::Error);
         }
+        if ((element.scrollAxis == ScrollAxis::Vertical &&
+             element.direction != LayoutDirection::Column) ||
+            (element.scrollAxis == ScrollAxis::Horizontal &&
+             element.direction != LayoutDirection::Row)) {
+            AddIssue(element.id, "scroll_axis_direction_mismatch",
+                "Scroll axis must match the container layout direction.",
+                LayoutIssueSeverity::Error);
+        }
         for (const auto& child : element.children) Preflight(child, depth + 1, ids, nodes);
     }
 
@@ -261,12 +269,18 @@ private:
             false,
             false,
             !Contains(ancestorClip, assigned),
+            element.scrollAxis,
+            0.0F,
+            0.0F,
         };
         result_.boxes[element.id] = box;
         if (element.children.empty()) return assigned;
 
         const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
         const auto row = element.direction == LayoutDirection::Row;
+        const auto scrollsMainAxis =
+            (row && element.scrollAxis == ScrollAxis::Horizontal) ||
+            (!row && element.scrollAxis == ScrollAxis::Vertical);
         const auto availableMain = row ? content.width : content.height;
         const auto availableCross = row ? content.height : content.width;
         std::vector<FlexItem> items;
@@ -275,7 +289,12 @@ private:
 
         for (const auto& child : element.children) {
             const auto margin = ResolveSpacing(child.margin, child.id, true);
-            const auto measured = Measure(child, content.width, content.height).size;
+            const auto measured = Measure(
+                child,
+                element.scrollAxis == ScrollAxis::Horizontal
+                    ? kMaximumCoordinate : content.width,
+                element.scrollAxis == ScrollAxis::Vertical
+                    ? kMaximumCoordinate : content.height).size;
             const auto explicitMain = row ? child.width : child.height;
             const auto basis = ResolveOptional(child.flexBasis, child.id, "flexBasis", 0.0F, kMaximumCoordinate);
             const auto preferred = basis.value_or(
@@ -299,14 +318,30 @@ private:
 
         const auto totalGap =
             items.size() > 1 ? gap * static_cast<float>(items.size() - 1) : 0.0F;
-        const auto targetForItems = std::max(0.0F, availableMain - margins - totalGap);
+        auto targetForItems = std::max(0.0F, availableMain - margins - totalGap);
+        if (scrollsMainAxis) {
+            float naturalMain{};
+            for (const auto& item : items) naturalMain += item.main;
+            targetForItems = std::max(targetForItems, naturalMain);
+        }
         DistributeFlex(items, targetForItems);
 
-        const auto childClip = element.overflow == OverflowBehavior::Clip
+        const auto childClip = element.overflow == OverflowBehavior::Clip ||
+                element.scrollAxis != ScrollAxis::None
             ? Intersect(ancestorClip, content)
             : ancestorClip;
         float occupiedMain = margins + totalGap;
         for (const auto& item : items) occupiedMain += item.main;
+        if (scrollsMainAxis) {
+            box.maximumScrollOffset = std::max(0.0F, occupiedMain - availableMain);
+            box.scrollOffset = ResolveNumber(
+                element.scrollOffset,
+                element.id,
+                "scrollOffset",
+                0.0F,
+                box.maximumScrollOffset,
+                0.0F);
+        }
         const float remainingMain = std::max(0.0F, availableMain - occupiedMain);
         float leadingMain = 0.0F;
         float distributedGap = gap;
@@ -331,7 +366,7 @@ private:
         default:
             break;
         }
-        auto cursor = (row ? content.x : content.y) + leadingMain;
+        auto cursor = (row ? content.x : content.y) + leadingMain - box.scrollOffset;
         Rect descendants{};
         bool haveDescendants = false;
         for (auto& item : items) {
@@ -344,8 +379,10 @@ private:
 
             const auto remeasured = Measure(
                 child,
-                row ? item.main : availableCross,
-                row ? availableCross : item.main).size;
+                row ? item.main : (element.scrollAxis == ScrollAxis::Horizontal
+                    ? kMaximumCoordinate : availableCross),
+                row ? (element.scrollAxis == ScrollAxis::Vertical
+                    ? kMaximumCoordinate : availableCross) : item.main).size;
             auto cross = row ? remeasured.height : remeasured.width;
             const auto explicitCross = row ? child.height : child.width;
             // Cross-axis alignment belongs to the container. A child's own
@@ -387,6 +424,10 @@ private:
                 descendants.x + descendants.width > content.x + content.width + kEpsilon;
             box.overflowY = descendants.y < content.y - kEpsilon ||
                 descendants.y + descendants.height > content.y + content.height + kEpsilon;
+            if (element.scrollAxis == ScrollAxis::Horizontal)
+                box.overflowX = box.maximumScrollOffset > kEpsilon;
+            else if (element.scrollAxis == ScrollAxis::Vertical)
+                box.overflowY = box.maximumScrollOffset > kEpsilon;
             result_.boxes[element.id] = box;
             return Union(assigned, descendants);
         }

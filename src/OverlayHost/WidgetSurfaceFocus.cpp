@@ -1,5 +1,8 @@
 #include "WidgetSurfaceFocus.h"
 
+#include <algorithm>
+#include <vector>
+
 namespace gba::input {
 namespace {
 
@@ -37,6 +40,22 @@ const WidgetNode* FirstEnabledButton(
     return nullptr;
 }
 
+void CollectEnabledButtons(
+    const WidgetNode& node,
+    const std::wstring_view targetScope,
+    const std::wstring_view inheritedScope,
+    std::vector<const WidgetNode*>& result) {
+    const std::wstring_view currentScope = node.inputScopeId.empty()
+        ? inheritedScope
+        : std::wstring_view(node.inputScopeId);
+    if (currentScope == targetScope && node.kind == L"button" &&
+        !node.isDisabled && !node.isBusy) {
+        result.push_back(&node);
+    }
+    for (const auto& child : node.children)
+        CollectEnabledButtons(child, targetScope, currentScope, result);
+}
+
 bool IsEnabledButton(const WidgetNode* node) noexcept {
     return node && node->kind == L"button" && !node->isDisabled && !node->isBusy;
 }
@@ -63,7 +82,16 @@ void WidgetSurfaceFocusMemory::Remember(
     if (widgetId.empty() || focusedElementId.empty()) return;
     const auto scope = std::wstring_view(snapshot.activeInputScopeId);
     const auto* node = FindNodeInInputScope(snapshot, focusedElementId, scope);
-    if (IsEnabledButton(node)) entries_[Key(widgetId, scope)] = focusedElementId;
+    if (!IsEnabledButton(node)) return;
+    std::vector<const WidgetNode*> buttons;
+    CollectEnabledButtons(snapshot.root, scope, RootInputScope(snapshot), buttons);
+    const auto position = std::find(buttons.begin(), buttons.end(), node);
+    if (position != buttons.end()) {
+        entries_[Key(widgetId, scope)] = {
+            std::wstring(focusedElementId),
+            static_cast<std::size_t>(position - buttons.begin()),
+        };
+    }
 }
 
 std::wstring WidgetSurfaceFocusMemory::Restore(
@@ -72,8 +100,16 @@ std::wstring WidgetSurfaceFocusMemory::Restore(
     const auto scope = std::wstring_view(snapshot.activeInputScopeId);
     const auto memory = entries_.find(Key(widgetId, scope));
     if (memory != entries_.end() &&
-        IsEnabledButton(FindNodeInInputScope(snapshot, memory->second, scope))) {
-        return memory->second;
+        IsEnabledButton(FindNodeInInputScope(snapshot, memory->second.elementId, scope))) {
+        return memory->second.elementId;
+    }
+    if (memory != entries_.end()) {
+        std::vector<const WidgetNode*> buttons;
+        CollectEnabledButtons(snapshot.root, scope, RootInputScope(snapshot), buttons);
+        if (!buttons.empty()) {
+            const auto nearest = std::min(memory->second.ordinal, buttons.size() - 1);
+            return buttons[nearest]->id;
+        }
     }
     if (!snapshot.initialFocusId.empty() &&
         IsEnabledButton(FindNodeInInputScope(snapshot, snapshot.initialFocusId, scope))) {

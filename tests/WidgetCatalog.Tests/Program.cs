@@ -420,6 +420,9 @@ static Task HostCompatibility()
         Architectures = ["x64"],
     };
     var x64V1 = new WidgetHostContext(1, "x64");
+    Assert.Equal(1, WidgetHostContext.Current.HostApiMajor);
+    Assert.True(ProtocolConstants.CurrentVersion > WidgetHostContext.Current.HostApiMajor,
+        "Optional declarative protocol features must evolve independently of package host API 1.");
     Assert.True(WidgetHostCompatibility.Evaluate(manifest, x64V1).IsSupported,
         "Matching host API and architecture were rejected.");
     Assert.Equal("requires_newer_host_api", WidgetHostCompatibility.Evaluate(

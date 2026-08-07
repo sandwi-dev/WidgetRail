@@ -50,6 +50,23 @@ gba::WidgetSnapshot Snapshot(const wchar_t* activeScope) {
     return snapshot;
 }
 
+gba::WidgetSnapshot SessionList(std::initializer_list<const wchar_t*> ids) {
+    gba::WidgetSnapshot snapshot;
+    snapshot.instanceId = L"audio.runtime.v1";
+    snapshot.activeInputScopeId = L"audio-root";
+    snapshot.initialFocusId = L"master-mute";
+    snapshot.root.id = L"audio-root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.children.push_back(Button(L"master-mute"));
+    gba::WidgetNode sessions;
+    sessions.id = L"sessions";
+    sessions.kind = L"scroll";
+    sessions.scrollAxis = L"vertical";
+    for (const auto* id : ids) sessions.children.push_back(Button(id));
+    snapshot.root.children.push_back(std::move(sessions));
+    return snapshot;
+}
+
 } // namespace
 
 int main() {
@@ -89,6 +106,20 @@ int main() {
     modal.root.children[2].children[1].isDisabled = true;
     Check(memory.Restore(L"widget", modal) == L"modal-first",
           "disabled remembered focus falls back safely");
+
+    auto sessions = SessionList({
+        L"session.game.mute", L"session.chat.mute", L"session.music.mute",
+        L"session.browser.mute", L"session.voice.mute", L"session.capture.mute",
+    });
+    memory.Remember(L"audio", sessions, L"session.browser.mute");
+    Check(memory.Restore(L"audio", sessions) == L"session.browser.mute",
+          "stable dynamic-list child ID survives close and reopen");
+    auto churned = SessionList({
+        L"session.game.mute", L"session.chat.mute", L"session.music.mute",
+        L"session.voice.mute", L"session.capture.mute",
+    });
+    Check(memory.Restore(L"audio", churned) == L"session.voice.mute",
+          "removed focused app falls to the nearest controller row by tree position");
 
     std::cout << "WidgetSurfaceFocusTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

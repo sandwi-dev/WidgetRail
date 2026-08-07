@@ -111,6 +111,7 @@ internal static class BridgeRenderStyleResolver
     {
         ViewNodeKind.Stack => "stack",
         ViewNodeKind.Row => "row",
+        ViewNodeKind.Scroll => "scroll",
         ViewNodeKind.Text => "text",
         ViewNodeKind.Button => "button",
         ViewNodeKind.Progress => "progress",

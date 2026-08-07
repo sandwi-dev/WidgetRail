@@ -27,6 +27,9 @@ constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 32;
 constexpr std::size_t kMaximumTextCharacters = 4096;
 constexpr float kMinimumControlSize = 44.0F;
+constexpr std::size_t kMaximumScrollStateEntries = 4096;
+constexpr std::size_t kMaximumFocusFollowPasses = 32;
+constexpr float kRevealEpsilon = 0.01F;
 constexpr NativeColor kDefaultText{0.969F, 0.973F, 0.988F, 1.0F};
 constexpr NativeColor kMutedText{0.725F, 0.741F, 0.784F, 1.0F};
 constexpr NativeColor kDefaultFocus{1.0F, 1.0F, 1.0F, 1.0F};
@@ -111,6 +114,19 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
 
 [[nodiscard]] std::wstring WidenStableId(const std::string_view value) {
     return {value.begin(), value.end()};
+}
+
+[[nodiscard]] bool FindNodePath(
+    const WidgetNode& node,
+    const std::wstring_view targetId,
+    std::vector<const WidgetNode*>& path) {
+    path.push_back(&node);
+    if (node.id == targetId) return true;
+    for (const auto& child : node.children) {
+        if (FindNodePath(child, targetId, path)) return true;
+    }
+    path.pop_back();
+    return false;
 }
 
 [[nodiscard]] std::wstring TransformText(
@@ -226,6 +242,7 @@ struct DeclarativeRenderer::RenderPass final {
     const NativeRenderStyle* deferredFocusStyle{};
     Rect deferredFocusRect{};
     float deferredFocusOpacity{1.0F};
+    std::optional<Rect> deferredFocusClip;
 
     void Add(
         const std::wstring_view nodeId,
@@ -316,10 +333,14 @@ struct DeclarativeRenderer::RenderPass final {
         LayoutElement element;
         element.id = narrowId;
         const auto semanticRow = node.kind == L"row";
-        element.direction = style.direction() == NativeDirection::Row ||
+        element.direction = node.kind == L"scroll"
+            ? (node.scrollAxis == L"horizontal"
+                ? LayoutDirection::Row
+                : LayoutDirection::Column)
+            : (style.direction() == NativeDirection::Row ||
                 (style.direction() == NativeDirection::Unspecified && semanticRow)
-            ? LayoutDirection::Row
-            : LayoutDirection::Column;
+                    ? LayoutDirection::Row
+                    : LayoutDirection::Column);
         element.width = style.widthPx();
         element.height = style.heightPx();
         element.minWidth = style.minWidthPx();
@@ -346,6 +367,23 @@ struct DeclarativeRenderer::RenderPass final {
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
             : declarative::OverflowBehavior::Visible;
+        if (node.kind == L"scroll") {
+            element.overflow = declarative::OverflowBehavior::Clip;
+            if (node.scrollAxis == L"vertical")
+                element.scrollAxis = declarative::ScrollAxis::Vertical;
+            else if (node.scrollAxis == L"horizontal")
+                element.scrollAxis = declarative::ScrollAxis::Horizontal;
+            else
+                Add(node.id, L"invalid_scroll_axis",
+                    L"Scroll requires the vertical or horizontal axis.",
+                    RenderDiagnosticSeverity::Error);
+            const auto key = ScrollStateKey(node.id);
+            if (const auto offset = owner->scrollOffsets_.find(key);
+                offset != owner->scrollOffsets_.end()) {
+                offset->second.lastAccess = ++owner->scrollStateAccessClock_;
+                element.scrollOffset = offset->second.offset;
+            }
+        }
         switch (style.justify()) {
         case NativeJustify::Center: element.mainAxisAlignment = declarative::MainAxisAlignment::Center; break;
         case NativeJustify::End: element.mainAxisAlignment = declarative::MainAxisAlignment::End; break;
@@ -376,6 +414,205 @@ struct DeclarativeRenderer::RenderPass final {
                 effectiveBackground));
         }
         return element;
+    }
+
+    [[nodiscard]] std::wstring ScrollStateKey(const std::wstring_view nodeId) const {
+        std::wstring key(snapshot->instanceId);
+        key.push_back(L'\x1f');
+        key.append(snapshot->activeInputScopeId);
+        key.push_back(L'\x1f');
+        key.append(nodeId);
+        return key;
+    }
+
+    void VisitScrollNodes(
+        const WidgetNode& node,
+        const std::function<void(const WidgetNode&)>& callback) const {
+        if (node.kind == L"scroll") callback(node);
+        for (const auto& child : node.children) VisitScrollNodes(child, callback);
+    }
+
+    void StoreScrollOffset(const std::wstring_view key, const float offset) {
+        owner->scrollOffsets_.insert_or_assign(
+            std::wstring{key},
+            DeclarativeRenderer::ScrollStateEntry{
+                offset,
+                ++owner->scrollStateAccessClock_,
+            });
+    }
+
+    [[nodiscard]] std::vector<const WidgetNode*> FocusPath() const {
+        std::vector<const WidgetNode*> path;
+        if (!focusedId.empty()) (void)FindNodePath(snapshot->root, focusedId, path);
+        return path;
+    }
+
+    [[nodiscard]] bool FollowFocusedDescendant() {
+        if (focusedId.empty()) return false;
+        const auto* focusBox = layout.Find(NarrowStableId(focusedId));
+        if (!focusBox) return false;
+        const auto path = FocusPath();
+        if (path.empty()) return false;
+        bool changed = false;
+        // Inner offsets change the target geometry seen by outer viewports.
+        // Visit the exact ancestor path from inner to outer; BuildLayout then
+        // repeats this bounded pass against freshly measured geometry.
+        for (auto item = path.rbegin(); item != path.rend(); ++item) {
+            const auto& scroll = **item;
+            if (scroll.kind != L"scroll") continue;
+            const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
+            if (!scrollBox || scrollBox->scrollAxis == declarative::ScrollAxis::None) continue;
+            auto desired = scrollBox->scrollOffset;
+            const auto& viewportBox = scrollBox->contentBox;
+            const auto& targetRect = focusBox->borderBox;
+            if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical) {
+                if (targetRect.y < viewportBox.y)
+                    desired -= viewportBox.y - targetRect.y;
+                else if (targetRect.y + targetRect.height > viewportBox.y + viewportBox.height)
+                    desired += targetRect.y + targetRect.height - viewportBox.y - viewportBox.height;
+            } else {
+                if (targetRect.x < viewportBox.x)
+                    desired -= viewportBox.x - targetRect.x;
+                else if (targetRect.x + targetRect.width > viewportBox.x + viewportBox.width)
+                    desired += targetRect.x + targetRect.width - viewportBox.x - viewportBox.width;
+            }
+            desired = std::clamp(desired, 0.0F, scrollBox->maximumScrollOffset);
+            const auto key = ScrollStateKey(scroll.id);
+            const auto existing = owner->scrollOffsets_.find(key);
+            if (existing == owner->scrollOffsets_.end() ||
+                std::abs(existing->second.offset - desired) > 0.01F) {
+                StoreScrollOffset(key, desired);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    [[nodiscard]] bool AxisCanReveal(
+        const std::vector<const WidgetNode*>& path,
+        const std::size_t clipPathIndex,
+        const declarative::ScrollAxis axis,
+        const float targetStart,
+        const float targetSize,
+        const float clipStart,
+        const float clipSize) const {
+        if (targetStart >= clipStart - kRevealEpsilon &&
+            targetStart + targetSize <= clipStart + clipSize + kRevealEpsilon) {
+            return true;
+        }
+
+        float minimumDelta{};
+        float maximumDelta{};
+        bool hasMatchingScroll{};
+        for (std::size_t index = clipPathIndex; index + 1 < path.size(); ++index) {
+            const auto& candidate = *path[index];
+            if (candidate.kind != L"scroll") continue;
+            const auto* box = layout.Find(NarrowStableId(candidate.id));
+            if (!box || box->scrollAxis != axis || box->maximumScrollOffset <= kRevealEpsilon)
+                continue;
+            // Changing offset from o to n moves descendants by o - n.
+            minimumDelta += box->scrollOffset - box->maximumScrollOffset;
+            maximumDelta += box->scrollOffset;
+            hasMatchingScroll = true;
+        }
+        if (!hasMatchingScroll) return false;
+
+        float requiredMinimum{};
+        float requiredMaximum{};
+        if (targetSize <= clipSize + kRevealEpsilon) {
+            requiredMinimum = clipStart - targetStart;
+            requiredMaximum = clipStart + clipSize - targetStart - targetSize;
+        } else {
+            // Oversized controls cannot be wholly contained; require a
+            // non-trivial visible intersection and clip their focus outline.
+            requiredMinimum = clipStart - targetStart - targetSize + kRevealEpsilon;
+            requiredMaximum = clipStart + clipSize - targetStart - kRevealEpsilon;
+        }
+        return std::max(minimumDelta, requiredMinimum) <=
+            std::min(maximumDelta, requiredMaximum) + kRevealEpsilon;
+    }
+
+    [[nodiscard]] bool CanRevealNode(const std::wstring_view nodeId) const {
+        const auto* targetBox = layout.Find(NarrowStableId(nodeId));
+        if (!targetBox) return false;
+        std::vector<const WidgetNode*> path;
+        if (!FindNodePath(snapshot->root, nodeId, path) || path.size() < 2) return false;
+        const auto& targetRect = targetBox->borderBox;
+
+        const auto canSatisfyClip = [&](const Rect& clip, const std::size_t index) {
+            return AxisCanReveal(path, index, declarative::ScrollAxis::Horizontal,
+                                 targetRect.x, targetRect.width, clip.x, clip.width) &&
+                AxisCanReveal(path, index, declarative::ScrollAxis::Vertical,
+                              targetRect.y, targetRect.height, clip.y, clip.height);
+        };
+
+        // The host viewport is an implicit non-moving clip around every tree.
+        if (!canSatisfyClip(viewport, 0)) return false;
+        bool hasScrollAncestor{};
+        for (std::size_t index = 0; index + 1 < path.size(); ++index) {
+            const auto& ancestor = *path[index];
+            const auto preparedAncestor = prepared.find(NarrowStableId(ancestor.id));
+            const auto* box = layout.Find(NarrowStableId(ancestor.id));
+            if (preparedAncestor == prepared.end() || !box) return false;
+            const auto clips = ancestor.kind == L"scroll" ||
+                preparedAncestor->second.baseStyle.overflow() == NativeOverflow::Clip;
+            if (!clips) continue;
+            hasScrollAncestor |= ancestor.kind == L"scroll";
+            if (!canSatisfyClip(box->contentBox, index)) return false;
+        }
+        return hasScrollAncestor;
+    }
+
+    [[nodiscard]] std::optional<Rect> ScrollVisibilityClip(
+        const std::wstring_view nodeId) const {
+        std::vector<const WidgetNode*> path;
+        if (!FindNodePath(snapshot->root, nodeId, path) || path.size() < 2)
+            return std::nullopt;
+        std::optional<Rect> clip;
+        for (std::size_t index = 0; index + 1 < path.size(); ++index) {
+            const auto& ancestor = *path[index];
+            if (ancestor.kind != L"scroll") continue;
+            const auto* box = layout.Find(NarrowStableId(ancestor.id));
+            if (!box) continue;
+            const auto localClip = Intersection(box->contentBox, box->visibleBox);
+            clip = clip ? Intersection(*clip, localClip) : localClip;
+        }
+        return clip;
+    }
+
+    void SynchronizeScrollState() {
+        std::set<std::wstring, std::less<>> activeKeys;
+        VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
+            const auto key = ScrollStateKey(scroll.id);
+            activeKeys.insert(key);
+            if (const auto* box = layout.Find(NarrowStableId(scroll.id))) {
+                StoreScrollOffset(key, box->scrollOffset);
+                result.scrollOffsets[scroll.id] = box->scrollOffset;
+            }
+        });
+        std::wstring prefix(snapshot->instanceId);
+        prefix.push_back(L'\x1f');
+        prefix.append(snapshot->activeInputScopeId);
+        prefix.push_back(L'\x1f');
+        std::erase_if(owner->scrollOffsets_, [&](const auto& entry) {
+            return entry.first.starts_with(prefix) && !activeKeys.contains(entry.first);
+        });
+        if (owner->scrollOffsets_.size() <= kMaximumScrollStateEntries) return;
+
+        // Evict only the overflow, oldest inactive entries first. The active
+        // snapshot (at most the protocol's bounded node count) survives a cap
+        // transition instead of losing its scroll position with the old map
+        // clear behavior.
+        std::vector<std::pair<std::uint64_t, std::wstring>> inactive;
+        inactive.reserve(owner->scrollOffsets_.size() - activeKeys.size());
+        for (const auto& [key, state] : owner->scrollOffsets_) {
+            if (!activeKeys.contains(key)) inactive.emplace_back(state.lastAccess, key);
+        }
+        std::ranges::sort(inactive);
+        const auto overflow = owner->scrollOffsets_.size() - kMaximumScrollStateEntries;
+        const auto count = std::min(overflow, inactive.size());
+        for (std::size_t index = 0; index < count; ++index)
+            owner->scrollOffsets_.erase(inactive[index].second);
     }
 
     [[nodiscard]] ComPtr<IDWriteTextFormat> TextFormat(const NativeRenderStyle& style) {
@@ -518,7 +755,6 @@ struct DeclarativeRenderer::RenderPass final {
                 return MeasureLeaf(element, constraints);
             },
             layoutOptions);
-
         // One correction pass resolves parent-relative values against measured boxes.
         prepared.clear();
         auto correctedRoot = PrepareNode(
@@ -535,6 +771,30 @@ struct DeclarativeRenderer::RenderPass final {
                 return MeasureLeaf(element, constraints);
             },
             layoutOptions);
+        // Focus-follow runs after percentage/em correction. Nested scrollers
+        // require a fixed point: revealing inside the innermost viewport moves
+        // the target geometry observed by each outer viewport. The wire tree
+        // depth is bounded to 32, so this loop has a matching hard ceiling and
+        // performs no relayout once offsets are stable.
+        for (std::size_t pass = 0; pass < kMaximumFocusFollowPasses; ++pass) {
+            if (!FollowFocusedDescendant()) break;
+            prepared.clear();
+            auto revealedRoot = PrepareNode(
+                snapshot->root,
+                {},
+                viewport.width,
+                viewport.height,
+                options.rootFontSizePx,
+                options.surfaceBackground);
+            layout = declarative::ComputeLayout(
+                revealedRoot,
+                viewport,
+                [this](const LayoutElement& element, const declarative::MeasureConstraints& constraints) {
+                    return MeasureLeaf(element, constraints);
+                },
+                layoutOptions);
+        }
+        SynchronizeScrollState();
         for (const auto& issue : layout.issues) {
             Add(WidenStableId(issue.elementId),
                 std::wstring{issue.code.begin(), issue.code.end()},
@@ -834,6 +1094,10 @@ struct DeclarativeRenderer::RenderPass final {
         const auto paintRect = ScaleRect(box->borderBox, style.scale());
 
         if (node.kind == L"button") {
+            result.navigationRects[node.id] = box->borderBox;
+            result.navigationEnabled[node.id] = !node.isDisabled && !node.isBusy;
+            result.focusScopes[node.id] = std::wstring{inputScope};
+            if (CanRevealNode(node.id)) result.revealableFocusIds.insert(node.id);
             // Controller focus and pointer hit-testing must use the geometry a
             // user can actually see. A clipped/offscreen child remains in the
             // declarative tree but is not a navigation candidate.
@@ -842,9 +1106,9 @@ struct DeclarativeRenderer::RenderPass final {
                 result.hitRegions.push_back(
                     {node.id, visibleRect, !node.isDisabled && !node.isBusy});
                 result.focusRects[node.id] = visibleRect;
-                result.focusScopes[node.id] = std::wstring{inputScope};
                 if (focused) result.currentFocusRect = visibleRect;
             }
+            if (focused) result.currentFocusOutlineClip = ScrollVisibilityClip(node.id);
         }
 
         if (!target) {
@@ -883,7 +1147,8 @@ struct DeclarativeRenderer::RenderPass final {
             DrawImage(node, style, paintRect, opacity, focused);
         } else if (node.kind == L"icon") {
             DrawSemanticIcon(node, style, box->contentBox, opacity, node.glyph);
-        } else if (node.kind != L"stack" && node.kind != L"row" && node.kind != L"spacer") {
+        } else if (node.kind != L"stack" && node.kind != L"row" &&
+                   node.kind != L"scroll" && node.kind != L"spacer") {
             Add(node.id, L"unknown_kind", L"Unsupported declarative node kind: " + node.kind);
         }
 
@@ -897,13 +1162,19 @@ struct DeclarativeRenderer::RenderPass final {
             deferredFocusStyle = &style;
             deferredFocusRect = paintRect;
             deferredFocusOpacity = opacity;
+            deferredFocusClip = ScrollVisibilityClip(node.id);
         }
     }
 
     void DrawDeferredFocus() {
         if (deferredFocusNode && deferredFocusStyle) {
+            if (deferredFocusClip) {
+                target->PushAxisAlignedClip(
+                    D2DRect(*deferredFocusClip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            }
             DrawFocus(*deferredFocusNode, *deferredFocusStyle,
                       deferredFocusRect, deferredFocusOpacity);
+            if (deferredFocusClip) target->PopAxisAlignedClip();
         }
     }
 };
@@ -960,6 +1231,16 @@ RenderResult DeclarativeRenderer::Render(
 void DeclarativeRenderer::DiscardTargetResources() noexcept {
     bitmaps_.clear();
     bitmapTarget_ = nullptr;
+}
+
+void DeclarativeRenderer::ForgetWidgetState(
+    const std::wstring_view widgetInstanceId) noexcept {
+    if (widgetInstanceId.empty()) return;
+    std::wstring prefix(widgetInstanceId);
+    prefix.push_back(L'\x1f');
+    std::erase_if(scrollOffsets_, [&](const auto& entry) {
+        return entry.first.starts_with(prefix);
+    });
 }
 
 ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(

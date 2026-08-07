@@ -6,6 +6,9 @@ using GameBarAlternative.WidgetSdk;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),
+    ("Protocol v2 scroll containers round-trip with host-owned semantics", ScrollContainersRoundTrip),
+    ("Baseline widgets remain protocol v1 compatible", BaselineProtocolCompatibility),
+    ("Scroll containers and surface hints fail closed", ScrollAndSurfaceValidation),
     ("Duplicate stable IDs are rejected", DuplicateIdsAreRejected),
     ("Broken focus neighbors are rejected", BrokenFocusIsRejected),
     ("Invalid progress is rejected", InvalidProgressIsRejected),
@@ -213,6 +216,112 @@ static Task DuplicateIdsAreRejected()
     return Task.CompletedTask;
 }
 
+static Task ScrollContainersRoundTrip()
+{
+    var snapshot = new WidgetView(
+        UI.VerticalScroll("sessions",
+            UI.Button("Game", "mute-game", "session.game.mute")
+                .FocusDown("session.chat.mute"),
+            UI.Button("Chat", "mute-chat", "session.chat.mute")
+                .FocusUp("session.game.mute"))
+            .InputScope("mixer-surface")
+            .Shortcut(ControllerButton.B, "close-details"),
+        InitialFocusId: "session.game.mute",
+        Surface: new WidgetSurfaceHints
+        {
+            Mode = WidgetSurfaceMode.Compact,
+            PreferredWidth = 560,
+            PreferredHeight = 420,
+            MinimumWidth = 360,
+            MinimumHeight = 260,
+        }).CreateSnapshot("scroll.instance", 8);
+
+    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ViewNodeKind.Scroll, snapshot.Root.Kind);
+    Assert.Equal(ScrollAxis.Vertical, snapshot.Root.ScrollAxis);
+    Assert.Equal("mixer-surface", snapshot.ActiveInputScopeId);
+    var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+    Assert.Equal(WidgetSurfaceMode.Compact, restored.Surface!.Mode);
+    Assert.Equal(560D, restored.Surface.PreferredWidth);
+    Assert.Equal(360D, restored.Surface.MinimumWidth);
+    Assert.Equal("close-details", restored.Root.Shortcuts.Single().ActionId);
+    return Task.CompletedTask;
+}
+
+static Task BaselineProtocolCompatibility()
+{
+    var baseline = new WidgetView(
+        UI.Stack("root",
+            UI.Text("Community widget", "title"),
+            UI.Button("Refresh", "refresh", "refresh")),
+        InitialFocusId: "refresh")
+        .CreateSnapshot("community.clock", 1);
+    Assert.Equal(ProtocolConstants.BaselineVersion, baseline.ProtocolVersion);
+    var json = Encoding.UTF8.GetString(SnapshotJson.Serialize(baseline));
+    Assert.True(!json.Contains("\"surface\"", StringComparison.Ordinal),
+        "Baseline snapshots must not emit v2 surface fields.");
+    Assert.True(!json.Contains("\"scrollAxis\"", StringComparison.Ordinal),
+        "Baseline snapshots must not emit v2 scroll fields.");
+    var restored = SnapshotJson.Deserialize(Encoding.UTF8.GetBytes(json));
+    Assert.Equal(ProtocolConstants.BaselineVersion, restored.ProtocolVersion);
+    Assert.Equal(ViewNodeKind.Stack, restored.Root.Kind);
+    return Task.CompletedTask;
+}
+
+static Task ScrollAndSurfaceValidation()
+{
+    var legacyScroll = new WidgetView(UI.VerticalScroll("scroll"))
+        .CreateSnapshot("scroll.instance", 1) with { ProtocolVersion = 1 };
+    Assert.True(ViewSnapshotValidator.Validate(legacyScroll)
+        .Any(error => error.Code == "feature_requires_version"),
+        "Protocol v1 must reject the v2 scroll feature.");
+
+    var missingAxis = new ViewSnapshot
+    {
+        Sequence = 1,
+        WidgetInstanceId = "scroll.instance",
+        ActiveInputScopeId = "scroll",
+        Root = new ViewNode { Id = "scroll", Kind = ViewNodeKind.Scroll },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(missingAxis)
+        .Any(error => error.Code == "required" && error.Path.EndsWith("scrollAxis", StringComparison.Ordinal)),
+        "Scroll without an axis must fail closed.");
+
+    var invalidSurface = new WidgetView(
+        UI.Stack("root"),
+        Surface: new WidgetSurfaceHints
+        {
+            Mode = (WidgetSurfaceMode)999,
+            PreferredWidth = double.NaN,
+            MinimumWidth = 800,
+            MinimumHeight = 700,
+        });
+    var exception = Assert.Throws<ProtocolValidationException>(() =>
+        invalidSurface.CreateSnapshot("surface.instance", 1));
+    Assert.True(exception.Errors.Any(error => error.Code == "invalid_surface_mode"),
+        "Unknown surface modes must fail closed.");
+    Assert.True(exception.Errors.Any(error => error.Code == "incomplete_surface_size"),
+        "Partial preferred dimensions must fail closed.");
+    Assert.True(exception.Errors.Any(error => error.Code == "invalid_surface_size"),
+        "Non-finite dimensions must fail closed.");
+
+    var inverted = new WidgetView(
+        UI.Stack("root"),
+        Surface: new WidgetSurfaceHints
+        {
+            PreferredWidth = 400,
+            PreferredHeight = 300,
+            MinimumWidth = 500,
+            MinimumHeight = 350,
+        });
+    var invertedException = Assert.Throws<ProtocolValidationException>(() =>
+        inverted.CreateSnapshot("surface.instance", 2));
+    Assert.True(invertedException.Errors.Count(error =>
+        error.Code == "surface_minimum_exceeds_preferred") == 2,
+        "Minimum dimensions cannot exceed preferred dimensions.");
+    return Task.CompletedTask;
+}
+
 static Task BrokenFocusIsRejected()
 {
     var view = new WidgetView(UI.Stack("root", UI.Button("Go", "go", "go").FocusDown("missing")), "go");
@@ -322,14 +431,13 @@ static Task InputSurfacesValidate()
         UI.Stack("root"),
         QuickActions:
         [
-            new WidgetQuickAction(ControllerButton.B, "back", "Back"),
             new WidgetQuickAction(ControllerButton.Menu, "menu", "Menu"),
             new WidgetQuickAction(ControllerButton.View, "view", "View"),
         ]);
     _ = dashboardButtons.CreateSnapshot("scope.instance", 7);
     foreach (var reserved in new[]
              {
-                 ControllerButton.A, ControllerButton.Y,
+                 ControllerButton.A, ControllerButton.B, ControllerButton.Y,
                  ControllerButton.DPadUp, ControllerButton.DPadDown,
                  ControllerButton.DPadLeft, ControllerButton.DPadRight,
              })

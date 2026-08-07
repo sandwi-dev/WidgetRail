@@ -10,14 +10,14 @@
 }
 
 .audio-mixer-widget {
-  width: 44vw;
+  width: 100vw;
   min-width: 280px;
-  max-width: 620px;
-  gap: 18px;
-  padding: 20px 16px;
+  max-width: 560px;
+  gap: 12px;
+  padding: 16px;
   background: var(--audio-surface);
   color: var(--text);
-  overflow: visible;
+  overflow: clip;
 }
 
 .audio-header {
@@ -64,15 +64,15 @@
 .audio-state-card,
 .audio-master-card,
 .audio-session-card {
-  gap: 13px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   background: var(--audio-card);
   border-width: 0;
   corner-radius: 15px;
 }
 
 .audio-master-card {
-  gap: 11px;
+  gap: 9px;
   background: rgba(31, 48, 61, 0.96);
 }
 
@@ -96,7 +96,7 @@
 }
 
 .audio-master-controls {
-  min-height: 52px;
+  min-height: 46px;
 }
 
 .audio-master-progress {
@@ -110,21 +110,47 @@
   max-lines: 1;
 }
 
-.audio-session-switcher {
-  min-height: 58px;
-  gap: 8px;
+.audio-sessions-heading,
+.audio-session-heading {
+  gap: 10px;
   align: center;
+  justify: space-between;
+}
+
+.audio-sessions-label,
+.audio-sessions-count {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  max-lines: 1;
+  text-transform: uppercase;
+}
+
+.audio-sessions-count {
+  color: var(--audio-accent);
+  letter-spacing: 0.02em;
+}
+
+.audio-session-list {
+  min-height: 176px;
+  max-height: 360px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 10px;
+  padding: 0 2px 0 0;
+  overflow: clip;
 }
 
 .audio-session-details {
-  min-width: 64px;
+  min-width: 80px;
   flex-grow: 1;
   gap: 2px;
 }
 
 .audio-session-name {
   color: var(--text);
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
   max-lines: 1;
   text-overflow: ellipsis;
@@ -152,13 +178,12 @@
 }
 
 .audio-controls {
-  min-height: 58px;
+  min-height: 48px;
   gap: 8px;
   align: center;
   justify: center;
 }
 
-.audio-session-action,
 .audio-volume-action,
 .audio-mute-action,
 .audio-retry-action {
@@ -169,11 +194,10 @@
   transition-easing: ease-out;
 }
 
-.audio-session-action,
 .audio-volume-action {
-  width: 44px;
-  height: 44px;
-  padding: 10px;
+  width: 42px;
+  height: 42px;
+  padding: 9px;
   shape: circle;
 }
 
@@ -181,9 +205,9 @@
   min-width: 88px;
   max-width: 156px;
   flex-grow: 1;
-  height: 52px;
-  padding: 12px 18px;
-  corner-radius: 26px;
+  height: 46px;
+  padding: 10px 16px;
+  corner-radius: 23px;
 }
 
 .audio-mute-action.is-muted {
@@ -196,7 +220,6 @@
   corner-radius: 12px;
 }
 
-.audio-session-action:focused,
 .audio-volume-action:focused,
 .audio-mute-action:focused,
 .audio-retry-action:focused {
@@ -212,10 +235,6 @@
   color: #08131a;
 }
 
-.audio-shortcuts {
-  color: var(--text-subdued);
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  max-lines: 1;
-  text-transform: uppercase;
+.audio-session-card.is-pending {
+  background: rgba(43, 57, 72, 0.98);
 }

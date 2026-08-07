@@ -14,9 +14,12 @@ public static class ViewSnapshotValidator
             StringComparer.Ordinal);
         var nodes = 0;
 
-        if (snapshot.ProtocolVersion != ProtocolConstants.CurrentVersion)
-            Add("$.protocolVersion", "unsupported_version", $"Expected protocol version {ProtocolConstants.CurrentVersion}.");
+        if (snapshot.ProtocolVersion < ProtocolConstants.MinimumSupportedVersion ||
+            snapshot.ProtocolVersion > ProtocolConstants.CurrentVersion)
+            Add("$.protocolVersion", "unsupported_version",
+                $"Expected protocol version {ProtocolConstants.MinimumSupportedVersion}-{ProtocolConstants.CurrentVersion}.");
         CheckIdentifier(snapshot.WidgetInstanceId, "$.widgetInstanceId", "widget instance ID");
+        ValidateSurfaceHints();
         Visit(snapshot.Root, "$.root", 1, "$.root");
         var activeInputScopeId = snapshot.ActiveInputScopeId ?? string.Empty;
         CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID");
@@ -80,6 +83,60 @@ public static class ViewSnapshotValidator
 
         return errors;
 
+        void ValidateSurfaceHints()
+        {
+            if (snapshot.Surface is null) return;
+            if (snapshot.ProtocolVersion < ProtocolConstants.SurfaceHintsVersion)
+                Add("$.surface", "feature_requires_version",
+                    $"Surface hints require protocol version {ProtocolConstants.SurfaceHintsVersion} or later.");
+            if (!Enum.IsDefined(snapshot.Surface.Mode))
+                Add("$.surface.mode", "invalid_surface_mode", "The surface mode is not supported.");
+            CheckPair(snapshot.Surface.PreferredWidth, snapshot.Surface.PreferredHeight,
+                "preferred", ProtocolConstants.MinimumSurfaceWidth,
+                ProtocolConstants.MaximumSurfaceWidth,
+                ProtocolConstants.MinimumSurfaceHeight,
+                ProtocolConstants.MaximumSurfaceHeight);
+            CheckPair(snapshot.Surface.MinimumWidth, snapshot.Surface.MinimumHeight,
+                "minimum", ProtocolConstants.MinimumSurfaceWidth,
+                ProtocolConstants.MaximumSurfaceWidth,
+                ProtocolConstants.MinimumSurfaceHeight,
+                ProtocolConstants.MaximumSurfaceHeight);
+            if (snapshot.Surface.PreferredWidth is { } preferredWidth &&
+                snapshot.Surface.MinimumWidth is { } minimumWidth &&
+                minimumWidth > preferredWidth)
+                Add("$.surface.minimumWidth", "surface_minimum_exceeds_preferred",
+                    "Minimum width cannot exceed preferred width.");
+            if (snapshot.Surface.PreferredHeight is { } preferredHeight &&
+                snapshot.Surface.MinimumHeight is { } minimumHeight &&
+                minimumHeight > preferredHeight)
+                Add("$.surface.minimumHeight", "surface_minimum_exceeds_preferred",
+                    "Minimum height cannot exceed preferred height.");
+        }
+
+        void CheckPair(
+            double? width,
+            double? height,
+            string label,
+            double minimumWidth,
+            double maximumWidth,
+            double minimumHeight,
+            double maximumHeight)
+        {
+            if (width.HasValue != height.HasValue)
+            {
+                Add($"$.surface.{label}Width", "incomplete_surface_size",
+                    $"The {label} width and height must be supplied together.");
+            }
+            if (width is { } actualWidth &&
+                (!double.IsFinite(actualWidth) || actualWidth < minimumWidth || actualWidth > maximumWidth))
+                Add($"$.surface.{label}Width", "invalid_surface_size",
+                    $"The {label} width must be finite and between {minimumWidth} and {maximumWidth} DIPs.");
+            if (height is { } actualHeight &&
+                (!double.IsFinite(actualHeight) || actualHeight < minimumHeight || actualHeight > maximumHeight))
+                Add($"$.surface.{label}Height", "invalid_surface_size",
+                    $"The {label} height must be finite and between {minimumHeight} and {maximumHeight} DIPs.");
+        }
+
         void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey)
         {
             if (node is null)
@@ -109,13 +166,28 @@ public static class ViewSnapshotValidator
             CheckString(node.ActionId, $"{path}.actionId");
             CheckString(node.ImageSource, $"{path}.imageSource");
 
-            var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row;
+            var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll;
+            if (node.Kind is ViewNodeKind.Scroll)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.ScrollContainerVersion)
+                    Add(path, "feature_requires_version",
+                        $"Scroll requires protocol version {ProtocolConstants.ScrollContainerVersion} or later.");
+                if (node.ScrollAxis is null)
+                    Add($"{path}.scrollAxis", "required", "A scroll container requires an axis.");
+                else if (!Enum.IsDefined(node.ScrollAxis.Value))
+                    Add($"{path}.scrollAxis", "invalid_scroll_axis", "The scroll axis is not supported.");
+            }
+            else if (node.ScrollAxis is not null)
+            {
+                Add($"{path}.scrollAxis", "scroll_axis_not_allowed",
+                    "Scroll axis applies only to scroll containers.");
+            }
             if (node.InputScopeId is not null)
             {
                 CheckIdentifier(node.InputScopeId, $"{path}.inputScopeId", "input scope ID");
                 if (!isContainer)
                     Add($"{path}.inputScopeId", "input_scope_not_allowed",
-                        "Only stack and row containers may start an input scope.");
+                        "Only stack, row, and scroll containers may start an input scope.");
             }
             var startsScope = depth == 1 || (isContainer && node.InputScopeId is not null);
             var scopeKey = startsScope ? path : inheritedScopeKey;
@@ -169,9 +241,9 @@ public static class ViewSnapshotValidator
             var shortcuts = node.Shortcuts ?? [];
             if (node.StyleClasses is null)
                 Add($"{path}.styleClasses", "required", "Style classes cannot be null.");
-            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row) && children.Count != 0)
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll) && children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
-            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Button) && shortcuts.Count != 0)
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button) && shortcuts.Count != 0)
                 Add($"{path}.shortcuts", "shortcuts_not_allowed",
                     "Only input-scope containers and buttons may declare shortcuts.");
 
@@ -220,7 +292,7 @@ public static class ViewSnapshotValidator
     }
 
     private static bool IsDashboardQuickActionButton(ControllerButton button) => button is
-        ControllerButton.B or ControllerButton.X or
+        ControllerButton.X or
         ControllerButton.LeftBumper or ControllerButton.RightBumper or
         ControllerButton.LeftTrigger or ControllerButton.RightTrigger or
         ControllerButton.LeftStick or ControllerButton.RightStick or

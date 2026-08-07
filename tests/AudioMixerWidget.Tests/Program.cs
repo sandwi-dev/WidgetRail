@@ -8,13 +8,14 @@ using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Initial empty and session surfaces are valid and controller first", StateSurfaces),
-    ("D-pad and analog focus graph covers every audio control", ExplicitFocusGraph),
-    ("Open and dashboard controller routes stay widget owned", ControllerRoutes),
+    ("Pinned master and all-session scroll surfaces are compact and valid", StateSurfaces),
+    ("D-pad and analog focus graph covers every row", ExplicitFocusGraph),
+    ("Per-row actions route by stable identity without session shortcuts", ControllerRoutes),
     ("Volume updates immediately and resists stale in-flight events", OptimisticVolume),
     ("Mute and volume failures roll back with bounded feedback", OptimisticRollback),
     ("Master output updates immediately reconciles and rolls back", MasterOutputControls),
-    ("Session churn preserves identity selection and control focus", StableSelectionDuringChurn),
+    ("Session churn preserves stable row identity and nearest anchor", StableSelectionDuringChurn),
+    ("Many sessions and long labels remain bounded and uniquely focusable", ManySessionsRemainBounded),
     ("Capability failure codes render distinct recovery states", CapabilityFailureStates),
     ("Live provider loss remains distinct from an empty session list", LiveProviderAvailability),
     ("Unavailable host service fails closed without OS fallback", UnavailableService),
@@ -49,6 +50,10 @@ static async Task StateSurfaces()
     var initial = Snapshot(widget, 0);
     Assert.Equal(AudioMixerViewState.Initial, widget.ViewState);
     Assert.Equal("audio.retry", initial.InitialFocusId);
+    Assert.Equal(WidgetSurfaceMode.Compact, initial.Surface!.Mode);
+    Assert.Equal(520D, initial.Surface.PreferredWidth);
+    Assert.Equal(520D, initial.Surface.PreferredHeight);
+    Assert.Equal(360D, initial.Surface.MinimumHeight);
     Assert.Valid(initial);
 
     await Activate(widget);
@@ -63,9 +68,13 @@ static async Task StateSurfaces()
     await WaitUntil(() => widget.ViewState == AudioMixerViewState.Ready);
     var session = Snapshot(widget, 2);
     Assert.Equal("audio.master.mute", session.InitialFocusId);
-    Assert.Equal("Space Game", Text(session.Root, "audio.session.name").Text);
-    Assert.Equal(72D, Node(session.Root, "audio.volume.progress").Value);
-    Assert.Equal(WidgetGlyph.Volume, Node(session.Root, "audio.mute").Glyph);
+    var prefix = SessionPrefix(session.Root, "Space Game");
+    Assert.Equal("Space Game", Text(session.Root, $"{prefix}.name").Text);
+    Assert.Equal(72D, Node(session.Root, $"{prefix}.volume.progress").Value);
+    Assert.Equal(WidgetGlyph.Volume, Node(session.Root, $"{prefix}.mute").Glyph);
+    Assert.Equal(ViewNodeKind.Scroll, Node(session.Root, "audio.sessions.scroll").Kind);
+    Assert.Equal(ScrollAxis.Vertical, Node(session.Root, "audio.sessions.scroll").ScrollAxis);
+    Assert.Equal(1, Node(session.Root, "audio.sessions.scroll").Children.Count);
     Assert.Valid(session);
     await Background(widget);
 }
@@ -77,22 +86,28 @@ static async Task ExplicitFocusGraph()
     await ActivateReady(widget);
     var snapshot = Snapshot(widget, 1);
     var buttons = Buttons(snapshot.Root).ToDictionary(node => node.Id, StringComparer.Ordinal);
+    var game = SessionPrefix(snapshot.Root, "Game");
+    var chat = SessionPrefix(snapshot.Root, "Chat");
     Assert.SequenceEqual(
         ["audio.master.volume.down", "audio.master.mute", "audio.master.volume.up",
-         "audio.session.previous", "audio.session.next", "audio.volume.down", "audio.mute", "audio.volume.up"],
+         $"{game}.volume.down", $"{game}.mute", $"{game}.volume.up",
+         $"{chat}.volume.down", $"{chat}.mute", $"{chat}.volume.up"],
         buttons.Keys);
     foreach (var button in buttons.Values)
         Assert.True(button.Focus is not null, $"{button.Id} has no explicit focus neighbors.");
-    Assert.Equal("audio.mute", buttons["audio.volume.down"].Focus!.Right);
-    Assert.Equal("audio.volume.up", buttons["audio.mute"].Focus!.Right);
-    Assert.Equal("audio.volume.down", buttons["audio.volume.up"].Focus!.Right);
-    Assert.Equal("audio.session.previous", buttons["audio.volume.down"].Focus!.Up);
-    Assert.Equal("audio.session.next", buttons["audio.volume.up"].Focus!.Up);
+    Assert.Equal($"{game}.mute", buttons[$"{game}.volume.down"].Focus!.Right);
+    Assert.Equal($"{game}.volume.up", buttons[$"{game}.mute"].Focus!.Right);
+    Assert.Equal($"{game}.volume.down", buttons[$"{game}.volume.up"].Focus!.Right);
+    Assert.Equal("audio.master.volume.down", buttons[$"{game}.volume.down"].Focus!.Up);
+    Assert.Equal("audio.master.volume.up", buttons[$"{game}.volume.up"].Focus!.Up);
+    Assert.Equal($"{chat}.volume.down", buttons[$"{game}.volume.down"].Focus!.Down);
+    Assert.Equal($"{chat}.mute", buttons[$"{game}.mute"].Focus!.Down);
+    Assert.Equal($"{game}.mute", buttons[$"{chat}.mute"].Focus!.Up);
     Assert.Equal("audio.master.mute", buttons["audio.master.volume.down"].Focus!.Right);
     Assert.Equal("audio.master.volume.up", buttons["audio.master.mute"].Focus!.Right);
     Assert.Equal("audio.master.volume.down", buttons["audio.master.volume.up"].Focus!.Right);
-    Assert.Equal("audio.session.previous", buttons["audio.master.volume.down"].Focus!.Down);
-    Assert.Equal("audio.mute", buttons["audio.master.mute"].Focus!.Down);
+    Assert.Equal($"{game}.volume.down", buttons["audio.master.volume.down"].Focus!.Down);
+    Assert.Equal($"{game}.mute", buttons["audio.master.mute"].Focus!.Down);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -103,36 +118,38 @@ static async Task ControllerRoutes()
     var widget = Create(fake);
     await ActivateReady(widget);
     var snapshot = widget.RenderSnapshot("audio.test", 42);
-    Assert.SequenceEqual(
-        [ControllerButton.LeftBumper, ControllerButton.RightBumper],
-        snapshot.QuickActions.Select(action => action.Button));
-    Assert.True(!snapshot.QuickActions.Any(action => action.Button is
-            ControllerButton.A or ControllerButton.Y or
-            ControllerButton.DPadUp or ControllerButton.DPadDown or
-            ControllerButton.DPadLeft or ControllerButton.DPadRight),
-        "Dashboard navigation leaked into widget quick actions.");
+    Assert.Equal(0, snapshot.QuickActions.Count);
     var scope = Node(snapshot.Root, "audio.root");
-    Assert.True(!scope.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.B),
-        "The root widget scope captured B instead of leaving standard close behavior to the host.");
+    Assert.Equal(0, scope.Shortcuts.Count);
+    Assert.True(!await Route(widget, snapshot, ControllerButton.LeftBumper, "audio.master.mute"),
+        "LB retained the removed session-cycle shortcut.");
+    Assert.True(!await Route(widget, snapshot, ControllerButton.RightBumper, "audio.master.mute"),
+        "RB retained the removed session-cycle shortcut.");
+    Assert.True(!await Route(widget, snapshot, ControllerButton.LeftTrigger, "audio.master.mute"),
+        "LT retained the removed session-volume shortcut.");
+    Assert.True(!await Route(widget, snapshot, ControllerButton.RightTrigger, "audio.master.mute"),
+        "RT retained the removed session-volume shortcut.");
 
-    Assert.True(await Route(widget, snapshot, ControllerButton.RightBumper), "RB was not accepted.");
-    await WaitUntil(() => widget.SelectedSessionId == "b");
-    Assert.True(await Route(widget, snapshot, ControllerButton.X), "X was not accepted.");
+    var chat = SessionPrefix(snapshot.Root, "Chat");
+    Assert.True(await Route(widget, snapshot, ControllerButton.A, $"{chat}.mute"),
+        "A did not activate the focused Chat mute control.");
     await WaitUntil(() => fake.MuteRequests.Count == 1);
     Assert.Equal("b", fake.MuteRequests[0].SessionId);
     Assert.Equal(true, fake.MuteRequests[0].IsMuted);
-    Assert.True(await Route(widget, widget.RenderSnapshot("audio.test", 43), ControllerButton.LeftTrigger),
-        "LT was not accepted.");
+    var current = widget.RenderSnapshot("audio.test", 43);
+    var game = SessionPrefix(current.Root, "Game");
+    Assert.True(await Route(widget, current, ControllerButton.A, $"{game}.volume.down"),
+        "A did not activate the focused Game volume-down control.");
     await WaitUntil(() => fake.VolumeRequests.Count == 1);
-    Assert.Near(0.35D, fake.VolumeRequests[0].Volume);
+    Assert.Equal("a", fake.VolumeRequests[0].SessionId);
+    Assert.Near(0.45D, fake.VolumeRequests[0].Volume);
 
     var dashboard = widget.RenderSnapshot("audio.test", 44);
-    Assert.True(await widget.OnControllerInputAsync(new ControllerInputEvent(
+    Assert.True(!await widget.OnControllerInputAsync(new ControllerInputEvent(
         ControllerButton.LeftBumper,
         ControllerEventPhase.Pressed,
         ControllerInputContext.DashboardQuickAction,
-        SnapshotSequence: dashboard.Sequence)), "Dashboard LB was not widget routed.");
-    await WaitUntil(() => widget.SelectedSessionId == "a");
+        SnapshotSequence: dashboard.Sequence)), "Dashboard LB unexpectedly cycled an audio session.");
     await Background(widget);
 }
 
@@ -146,19 +163,21 @@ static async Task OptimisticVolume()
     };
     var widget = Create(fake);
     await ActivateReady(widget);
-    var action = widget.OnActionAsync(new("volume.up", "audio.volume.up")).AsTask();
+    var before = Snapshot(widget, 0);
+    var game = SessionPrefix(before.Root, "Game");
+    var action = widget.OnActionAsync(new($"{game}.volume.up", $"{game}.volume.up")).AsTask();
     await WaitUntil(() => fake.VolumeRequests.Count == 1);
     var optimistic = Snapshot(widget, 1);
-    Assert.Equal(55D, Node(optimistic.Root, "audio.volume.progress").Value);
-    Assert.Equal(true, Node(optimistic.Root, "audio.volume.up").IsBusy);
+    Assert.Equal(55D, Node(optimistic.Root, $"{game}.volume.progress").Value);
+    Assert.Equal(true, Node(optimistic.Root, $"{game}.volume.up").IsBusy);
 
     fake.Emit([Session("game", "Game", 0.5)]);
     await Task.Delay(30);
-    Assert.Equal(55D, Node(Snapshot(widget, 2).Root, "audio.volume.progress").Value);
+    Assert.Equal(55D, Node(Snapshot(widget, 2).Root, $"{game}.volume.progress").Value);
     gate.SetResult();
     await action;
-    Assert.Equal(55D, Node(Snapshot(widget, 3).Root, "audio.volume.progress").Value);
-    Assert.True(Node(Snapshot(widget, 4).Root, "audio.volume.up").IsBusy is not true,
+    Assert.Equal(55D, Node(Snapshot(widget, 3).Root, $"{game}.volume.progress").Value);
+    Assert.True(Node(Snapshot(widget, 4).Root, $"{game}.volume.up").IsBusy is not true,
         "Busy feedback did not clear after acknowledgement.");
     await Background(widget);
 }
@@ -172,14 +191,15 @@ static async Task OptimisticRollback()
     };
     var widget = Create(fake);
     await ActivateReady(widget);
-    await widget.OnActionAsync(new("mute.toggle", "audio.mute"));
+    var game = SessionPrefix(Snapshot(widget, 0).Root, "Game");
+    await widget.OnActionAsync(new($"{game}.mute", $"{game}.mute"));
     Assert.Equal(false, widget.Sessions.Single().IsMuted);
     Assert.Contains("permission denied", Text(Snapshot(widget, 1).Root, "audio.status").Text!);
     Assert.True(Text(Snapshot(widget, 2).Root, "audio.status").StyleClasses.Contains("is-error"),
         "Control denial did not expose error feedback.");
 
     fake.ControlException = new InvalidOperationException("provider details must not leak");
-    await widget.OnActionAsync(new("volume.up", "audio.volume.up"));
+    await widget.OnActionAsync(new($"{game}.volume.up", $"{game}.volume.up"));
     Assert.Equal(0.5D, widget.Sessions.Single().Volume);
     var status = Text(Snapshot(widget, 3).Root, "audio.status").Text!;
     Assert.Contains("previous value restored", status);
@@ -228,20 +248,55 @@ static async Task StableSelectionDuringChurn()
     };
     var widget = Create(fake);
     await ActivateReady(widget);
-    await widget.OnActionAsync(new("session.next", "audio.session.next"));
+    var original = Snapshot(widget, 0);
+    var stableB = SessionPrefix(original.Root, "Chat");
+    await widget.OnActionAsync(new($"{stableB}.mute", $"{stableB}.mute"));
     Assert.Equal("b", widget.SelectedSessionId);
 
     fake.Emit([Session("c", "Music", 0.5), Session("b", "Chat renamed", 0.6), Session("d", "Browser", 0.2)]);
     await WaitUntil(() => widget.Sessions.First().SessionId == "c");
     Assert.Equal("b", widget.SelectedSessionId);
     var retained = Snapshot(widget, 1);
-    Assert.Equal("Chat renamed", Text(retained.Root, "audio.session.name").Text);
+    Assert.Equal("Chat renamed", Text(retained.Root, $"{stableB}.name").Text);
+    Assert.True(Nodes(retained.Root).Any(node => node.Id == $"{stableB}.mute"),
+        "The stable focus target changed after display-name/order churn.");
     Assert.Equal("audio.master.mute", retained.InitialFocusId);
 
     fake.Emit([Session("c", "Music", 0.5), Session("d", "Browser", 0.2)]);
     await WaitUntil(() => widget.Sessions.Count == 2);
     Assert.Equal("d", widget.SelectedSessionId);
     Assert.Equal("audio.master.mute", Snapshot(widget, 2).InitialFocusId);
+    await Background(widget);
+}
+
+static async Task ManySessionsRemainBounded()
+{
+    var sessions = Enumerable.Range(0, 128)
+        .Select(index => Session(
+            $"opaque/session:{index}:\u2603",
+            index == 73 ? new string('W', 4_096) : $"Application {index:000}",
+            (index % 21) / 20D,
+            muted: index % 7 == 0,
+            active: index % 3 == 0))
+        .ToArray();
+    var fake = new FakeCapabilityClient { Sessions = sessions };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var snapshot = Snapshot(widget, 1);
+    var scroll = Node(snapshot.Root, "audio.sessions.scroll");
+    Assert.Equal(128, scroll.Children.Count);
+    Assert.Equal(384, Buttons(scroll).Count());
+    Assert.Equal(384, Buttons(scroll).Select(node => node.Id).Distinct(StringComparer.Ordinal).Count());
+    Assert.True(Nodes(scroll).All(node => node.Id.Length <= 128),
+        "A long or unsafe provider identifier escaped into a protocol node ID.");
+    Assert.True(Nodes(scroll).All(node => node.Id.All(ch =>
+            char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')),
+        "An unsafe provider identifier escaped into a protocol node ID.");
+    Assert.Valid(snapshot);
+
+    var target = SessionPrefix(snapshot.Root, "Application 101");
+    await widget.OnActionAsync(new($"{target}.volume.down", $"{target}.volume.down"));
+    Assert.Equal("opaque/session:101:☃", fake.VolumeRequests.Single().SessionId);
     await Background(widget);
 }
 
@@ -290,7 +345,9 @@ static async Task LiveProviderAvailability()
     fake.Emit([Session("game", "Game", 0.6)], isAvailable: true);
     fake.EmitOutput(new WidgetAudioOutput(0.6, false), isAvailable: true);
     await WaitUntil(() => widget.ViewState == AudioMixerViewState.Ready);
-    Assert.Equal(60D, Node(Snapshot(widget, 2).Root, "audio.volume.progress").Value);
+    var recovered = Snapshot(widget, 2);
+    var game = SessionPrefix(recovered.Root, "Game");
+    Assert.Equal(60D, Node(recovered.Root, $"{game}.volume.progress").Value);
     await Background(widget);
 }
 
@@ -364,7 +421,9 @@ static async Task CancellationIsNotFailure()
     var widget = Create(fake);
     await ActivateReady(widget);
     using var cancellation = new CancellationTokenSource();
-    var command = widget.OnActionAsync(new("volume.up", "audio.volume.up"), cancellation.Token).AsTask();
+    var game = SessionPrefix(Snapshot(widget, 0).Root, "Game");
+    var command = widget.OnActionAsync(
+        new($"{game}.volume.up", $"{game}.volume.up"), cancellation.Token).AsTask();
     await WaitUntil(() => fake.VolumeRequests.Count == 1);
     cancellation.Cancel();
     await Assert.ThrowsCanceled(command);
@@ -392,8 +451,10 @@ static async Task ShippedAssetsValidate()
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     AssertResponsiveLayoutBudget(compiled.Theme!);
     var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.gbss"));
-    Assert.Contains("width: 44vw", style);
-    Assert.Contains("max-width: 620px", style);
+    Assert.Contains("width: 100vw", style);
+    Assert.Contains("max-width: 560px", style);
+    Assert.Contains(".audio-session-list", style);
+    Assert.Contains("max-height: 360px", style);
     Assert.True(!style.Contains("min-width: 440px", StringComparison.Ordinal),
         "The widget retained a desktop-only hard width floor.");
 
@@ -413,18 +474,18 @@ static async Task ShippedAssetsValidate()
 static void AssertResponsiveLayoutBudget(GbssTheme theme)
 {
     var root = Resolve(theme, "stack", "audio.root", "audio-mixer-widget");
-    var card = Resolve(theme, "stack", "audio.session.card", "audio-session-card");
-    var controls = Resolve(theme, "row", "audio.controls", "audio-controls");
-    var volumeButton = Resolve(theme, "button", "audio.volume.down", "audio-volume-action");
-    var muteButton = Resolve(theme, "button", "audio.mute", "audio-mute-action");
-    var sessionSwitcher = Resolve(theme, "row", "audio.session.switcher", "audio-session-switcher");
-    var sessionButton = Resolve(theme, "button", "audio.session.previous", "audio-session-action");
-    var sessionDetails = Resolve(theme, "stack", "audio.session.details", "audio-session-details");
+    var card = Resolve(theme, "stack", "audio.session.test.row", "audio-session-card");
+    var controls = Resolve(theme, "row", "audio.session.test.controls", "audio-controls");
+    var volumeButton = Resolve(theme, "button", "audio.session.test.volume.down", "audio-volume-action");
+    var muteButton = Resolve(theme, "button", "audio.session.test.mute", "audio-mute-action");
+    var list = Resolve(theme, "scroll", "audio.sessions.scroll", "audio-session-list");
 
     var volumeTarget = Pixels(volumeButton.Get("width")!, 280);
-    var sessionTarget = Pixels(sessionButton.Get("width")!, 280);
-    Assert.True(volumeTarget >= 44 && sessionTarget >= 44,
-        "Narrow layout reduced primary controller targets below 44px.");
+    Assert.True(volumeTarget >= 42,
+        "Narrow layout reduced a controller target below the compact 42px budget.");
+    Assert.True(Pixels(list.Get("min-height")!, 280) >= 176 &&
+                Pixels(list.Get("max-height")!, 280) <= 360,
+        "The application list escaped its bounded scroll viewport.");
 
     foreach (var viewport in new[] { 280D, 320D, 1280D, 3840D })
     {
@@ -443,13 +504,7 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
         Assert.True(controlMinimum <= cardInner,
             $"Audio controls need {controlMinimum}px but only {cardInner}px is available at {viewport}px.");
 
-        var switcherMinimum =
-            2 * Pixels(sessionButton.Get("width")!, viewport) +
-            Pixels(sessionDetails.Get("min-width")!, viewport) +
-            2 * Pixels(sessionSwitcher.Get("gap")!, viewport);
-        Assert.True(switcherMinimum <= cardInner,
-            $"Session switcher needs {switcherMinimum}px but only {cardInner}px is available at {viewport}px.");
-        Assert.True(rootWidth <= 620 && rootWidth <= viewport,
+        Assert.True(rootWidth <= 560 && rootWidth <= viewport,
             $"Root width {rootWidth}px escaped its viewport/max bound at {viewport}px.");
     }
 }
@@ -517,12 +572,13 @@ static async Task Background(AudioMixerWidget widget) =>
 static async ValueTask<bool> Route(
     AudioMixerWidget widget,
     ViewSnapshot snapshot,
-    ControllerButton button) =>
+    ControllerButton button,
+    string focusedElementId) =>
     await widget.OnControllerInputAsync(new ControllerInputEvent(
         button,
         ControllerEventPhase.Pressed,
         ControllerInputContext.OpenWidget,
-        FocusedElementId: "audio.mute",
+        FocusedElementId: focusedElementId,
         Sequence: 7,
         ActiveInputScopeId: snapshot.ActiveInputScopeId,
         SnapshotSequence: snapshot.Sequence));
@@ -553,6 +609,15 @@ static ViewNode Node(ViewNode root, string id) =>
 
 static ViewNode Text(ViewNode root, string id) =>
     Nodes(root).Single(node => node.Id == id && node.Kind == ViewNodeKind.Text);
+
+static string SessionPrefix(ViewNode root, string displayName)
+{
+    var name = Nodes(root).Single(node =>
+        node.Kind == ViewNodeKind.Text &&
+        string.Equals(node.Text, displayName, StringComparison.Ordinal) &&
+        node.Id.EndsWith(".name", StringComparison.Ordinal));
+    return name.Id[..^".name".Length];
+}
 
 static async Task WaitUntil(Func<bool> condition, int timeoutMilliseconds = 2_000)
 {

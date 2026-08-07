@@ -10,6 +10,18 @@ public static class UI
     public static RowElement Row(string id, params WidgetElement[] children) =>
         new(id, CopyChildren(children));
 
+    public static ScrollElement Scroll(
+        string id,
+        ScrollAxis axis,
+        params WidgetElement[] children) =>
+        new(id, axis, CopyChildren(children));
+
+    public static ScrollElement VerticalScroll(string id, params WidgetElement[] children) =>
+        Scroll(id, ScrollAxis.Vertical, children);
+
+    public static ScrollElement HorizontalScroll(string id, params WidgetElement[] children) =>
+        Scroll(id, ScrollAxis.Horizontal, children);
+
     public static TextElement Text(string text, string id, string? accessibilityLabel = null) =>
         new(id, text, accessibilityLabel);
 

@@ -18,7 +18,7 @@ The interaction should feel immediate, predictable, personal, and substantially 
 
 1. **Controller-only runtime.** Every host surface and every accepted widget must be usable without mouse, keyboard, or touch.
 2. **Guide is the boundary.** Guide/Home is the only controller input globally reserved by the shell.
-3. **The active widget owns input.** `B`, bumpers, triggers, sticks, D-pad, stick clicks, Menu, and View belong to the active widget. The shell must not use `B` to close or bumpers to change widgets while a widget is active.
+3. **The active widget owns actions; B is hierarchical Back.** The active scope receives `B` first, an unhandled root `B` returns to the dashboard, and dashboard `B` closes the overlay. Bumpers, triggers, stick clicks, Menu, and View are never repurposed as host widget switching while a widget is active.
 4. **Resume, do not reset.** Reopening restores the last widget, focused element, selected tab, scroll position, and relevant widget state.
 5. **The layout belongs to the user.** Widget order, visibility, favorites, and presentation are persistent and controller-editable.
 6. **Deep customization is a platform feature.** A safe CSS-like language styles stable semantic roles and controller states across the shell and participating widgets.
@@ -38,12 +38,13 @@ Dashboard shell focus
   -> choose/reorder widget with controller
   -> A activates
 Widget focus
-  -> all non-Guide input belongs to widget
+  -> widget actions and nested Back
+  -> B returns to dashboard; B again closes
   -> Guide press
 Game or application
 ```
 
-Within a widget, the host may provide standard spatial focus movement for declarative controls, but it does so on behalf of that widget. It never converts `B`, `LB`, or `RB` into shell navigation.
+Within a widget, the host may provide standard spatial focus movement for declarative controls, but it does so on behalf of that widget. It never converts `LB` or `RB` into shell navigation. B follows the explicit nested/root/dashboard Back hierarchy above.
 
 If a widget crashes, the host returns focus to that widget's dashboard card and offers controller-accessible restart or disable actions.
 
@@ -122,7 +123,8 @@ a Background widget merely because a generic idle timer elapsed.
 
 - Guide toggles a native overlay in the supported presentation modes.
 - Three fake widget cards can be reordered using only a controller.
-- Activating a widget transfers every non-Guide input to its context.
+- Activating a widget transfers every widget action to its context; B is
+  offered to the active scope before the root-level Back fallback.
 - Closing and reopening restores the active widget and stable focus ID.
 - A minimal GBSS file can change tokens and focused-state treatment with live reload.
 - A deliberately crashing sample widget does not terminate the overlay.

@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pairing never sends stale authorization and replaces the token", PairingReplacesStaleCredential),
     ("HTTP 401 is classified as expired authorization", HttpUnauthorizedIsTyped),
     ("Disconnected UI offers controller-first connect and pair", DisconnectedUi),
+    ("Every connection state publishes one bounded standard surface", SurfaceContractAcrossConnectionStates),
     ("First activation starts one non-blocking automatic connection", AutoConnectStartsOnce),
     ("Lifecycle preserves one visibility lifetime across visible and interactive states", LifecycleVisibilityLifetime),
     ("Active playback interpolates and polls only while active", ActivePlaybackUpdates),
@@ -72,6 +73,62 @@ static Task EndpointValidation()
     Assert.Throws<InvalidOperationException>(() => YtmDesktopApiClient.ValidateEndpoint("http://user@127.0.0.1:13091"));
     Assert.Throws<InvalidOperationException>(() => YtmDesktopApiClient.ValidateEndpoint("http://127.0.0.1:13091?token=bad"));
     return Task.CompletedTask;
+}
+
+static async Task SurfaceContractAcrossConnectionStates()
+{
+    var statusGate = new TaskCompletionSource<YtMusicConnectionInfo>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeClient
+    {
+        StatusTask = statusGate.Task,
+        Snapshot = PlayingSnapshot("Surface Song"),
+    };
+    var widget = new YtMusicWidget(fake);
+    AssertStandardSurface(widget.Render().CreateSnapshot("ytmusic.surface", 0));
+
+    var connect = widget.OnActionAsync(new WidgetActionEvent("connect", "connect")).AsTask();
+    await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Connecting);
+    AssertStandardSurface(widget.Render().CreateSnapshot("ytmusic.surface", 1));
+    statusGate.SetResult(new YtMusicConnectionInfo(false));
+    await connect;
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    AssertStandardSurface(widget.Render().CreateSnapshot("ytmusic.surface", 2));
+
+    var pairingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var pairingFake = new FakeClient
+    {
+        PairCompletionTask = pairingGate.Task,
+        Snapshot = PlayingSnapshot("Paired Surface Song"),
+    };
+    var pairingWidget = new YtMusicWidget(pairingFake);
+    var pairing = pairingWidget.OnActionAsync(new WidgetActionEvent("pair", "pair")).AsTask();
+    await WaitUntil(() => pairingWidget.ConnectionState == YtMusicWidgetConnectionState.Pairing);
+    AssertStandardSurface(pairingWidget.Render().CreateSnapshot("ytmusic.surface", 3));
+    pairingGate.SetResult();
+    await pairing;
+    AssertStandardSurface(pairingWidget.Render().CreateSnapshot("ytmusic.surface", 4));
+
+    var errorWidget = new YtMusicWidget(new FakeClient
+    {
+        StatusException = new InvalidOperationException("unavailable"),
+    });
+    await errorWidget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    Assert.Equal(YtMusicWidgetConnectionState.Error, errorWidget.ConnectionState);
+    AssertStandardSurface(errorWidget.Render().CreateSnapshot("ytmusic.surface", 5));
+}
+
+static void AssertStandardSurface(ViewSnapshot snapshot)
+{
+    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.True(snapshot.Surface is not null, "YT Music omitted its bounded surface hint.");
+    Assert.Equal(WidgetSurfaceMode.Standard, snapshot.Surface!.Mode);
+    Assert.Equal(760D, snapshot.Surface.PreferredWidth);
+    Assert.Equal(440D, snapshot.Surface.PreferredHeight);
+    Assert.Equal(640D, snapshot.Surface.MinimumWidth);
+    Assert.Equal(420D, snapshot.Surface.MinimumHeight);
+    var errors = ViewSnapshotValidator.Validate(snapshot);
+    Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
 }
 
 static async Task HttpClientParsesSnapshot()

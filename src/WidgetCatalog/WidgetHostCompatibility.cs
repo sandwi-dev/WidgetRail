@@ -6,7 +6,7 @@ namespace GameBarAlternative.WidgetCatalog;
 public sealed record WidgetHostContext(int HostApiMajor, string Architecture)
 {
     public static WidgetHostContext Current { get; } = new(
-        ProtocolConstants.CurrentVersion,
+        ProtocolConstants.CurrentHostApiMajor,
         RuntimeInformation.ProcessArchitecture switch
         {
             System.Runtime.InteropServices.Architecture.X64 => "x64",

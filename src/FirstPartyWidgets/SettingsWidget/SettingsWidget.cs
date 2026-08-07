@@ -1,6 +1,7 @@
 using System.Globalization;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.PlatformBroker;
+using GameBarAlternative.PlatformDiagnostics;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
@@ -36,11 +37,13 @@ public sealed partial class SettingsWidget : Widget
     private readonly ThemeCatalog _catalog;
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
+    private readonly IPlatformDiagnosticsService _diagnosticsService;
     private readonly string? _bundledWidgetRoot;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _stateLock = new();
     private PlatformSettingsDocument _settings = PlatformSettingsDocument.Default;
     private ThemeCatalogSnapshot _themes;
+    private PlatformDiagnosticsSnapshot _diagnostics = PlatformDiagnosticsSnapshot.Unavailable();
     private WidgetCatalogSnapshot _installedWidgets = new([]);
     private bool _installedWidgetCatalogValid = true;
     private string? _installedWidgetDiagnostic;
@@ -60,6 +63,7 @@ public sealed partial class SettingsWidget : Widget
         ThemeCatalog? catalog = null,
         CatalogService? widgetCatalog = null,
         ConsentStore? consentStore = null,
+        IPlatformDiagnosticsService? diagnostics = null,
         string? bundledWidgetRoot = null)
     {
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
@@ -69,6 +73,7 @@ public sealed partial class SettingsWidget : Widget
             Path.Combine(paths.RootDirectory, "widgets"));
         _consentStore = consentStore ?? new ConsentStore(
             Path.Combine(paths.RootDirectory, "consent"));
+        _diagnosticsService = diagnostics ?? UnavailablePlatformDiagnosticsService.Instance;
         _bundledWidgetRoot = string.IsNullOrWhiteSpace(bundledWidgetRoot)
             ? null
             : Path.GetFullPath(bundledWidgetRoot);
@@ -93,6 +98,7 @@ public sealed partial class SettingsWidget : Widget
         bool busy;
         bool error;
         bool settingsValid;
+        PlatformDiagnosticsSnapshot diagnostics;
         string status;
         lock (_stateLock)
         {
@@ -103,6 +109,7 @@ public sealed partial class SettingsWidget : Widget
             busy = _busy;
             error = _error;
             settingsValid = _settingsValid;
+            diagnostics = _diagnostics;
             status = _status;
         }
 
@@ -125,7 +132,8 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.Permissions => RenderPermissionPackages(header, busy),
             SettingsPage.PackageCapabilities => RenderPackageCapabilities(header, busy),
             SettingsPage.CapabilityDecision => RenderCapabilityDecision(header, busy),
-            SettingsPage.Diagnostics => RenderDiagnostics(header, settings, themes, settingsValid),
+            SettingsPage.Diagnostics => RenderDiagnostics(
+                header, settings, themes, settingsValid, diagnostics, busy),
             SettingsPage.Reset => RenderReset(header, busy),
             _ => RenderRoot(header, settings, busy),
         };
@@ -319,11 +327,24 @@ public sealed partial class SettingsWidget : Widget
             var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
                 .ConfigureAwait(false);
             warning ??= permissionWarning;
+            PlatformDiagnosticsSnapshot diagnostics;
+            try
+            {
+                diagnostics = await _diagnosticsService.GetSnapshotAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (PlatformDiagnosticsException exception)
+            {
+                diagnostics = PlatformDiagnosticsSnapshot.Unavailable(
+                    $"Runtime diagnostics unavailable ({exception.Code})");
+                warning ??= $"Runtime diagnostics unavailable ({exception.Code})";
+            }
             lock (_stateLock)
             {
                 _settings = settings;
                 _settingsValid = settingsValid;
                 _themes = themes;
+                _diagnostics = diagnostics;
                 _themePage = Math.Clamp(_themePage, 0, LastThemePage(themes));
                 _busy = false;
                 _error = warning is not null;
@@ -451,7 +472,7 @@ public sealed partial class SettingsWidget : Widget
             .FocusUp("settings.refresh").Classes("category-card", "danger-card");
         return View(
             header,
-            UI.Stack("settings.categories",
+            UI.VerticalScroll("settings.categories",
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
                     "settings.summary", "Selected theme").Classes("settings-summary"),
                 appearance, accessibility, overlay, installedWidgets, permissions, diagnostics, refresh, reset).Classes("category-list"),
@@ -570,20 +591,69 @@ public sealed partial class SettingsWidget : Widget
         StackElement header,
         PlatformSettingsDocument settings,
         ThemeCatalogSnapshot themes,
-        bool settingsValid)
+        bool settingsValid,
+        PlatformDiagnosticsSnapshot diagnostics,
+        bool busy)
     {
         var invalidThemes = themes.Themes.Count(theme => !theme.IsValid);
+        var runningWorkers = diagnostics.Workers.Count(worker => worker.IsRunning);
+        var failedWorkers = diagnostics.Workers.Count(worker => worker.LastFailureCode is not null);
+        var areas = new[]
+        {
+            diagnostics.Bridge,
+            diagnostics.Catalog,
+            diagnostics.Appearance,
+            diagnostics.Providers,
+            diagnostics.Consent,
+            diagnostics.Overlay,
+            diagnostics.Guide,
+        };
+        var children = new List<WidgetElement>
+        {
+            UI.Text("Diagnostics", "diagnostics.heading", "Settings diagnostics").Classes("page-heading"),
+            UI.Text(settingsValid ? "Settings file: valid" : "Settings file: invalid; defaults shown",
+                "diagnostics.settings", "Settings file status").Classes(settingsValid ? "diagnostic-ok" : "diagnostic-error"),
+            UI.Text($"Theme packages: {themes.Themes.Count} total, {invalidThemes} invalid",
+                "diagnostics.themes", "Theme package status").Classes(
+                    invalidThemes == 0 ? "diagnostic-ok" : "diagnostic-error"),
+            UI.Text($"Schema: {settings.SchemaVersion}; runtime snapshot {diagnostics.Revision}",
+                "diagnostics.schema", "Settings and runtime diagnostics schema").Classes("diagnostic-line"),
+        };
+        children.AddRange(areas.Select(area => UI.Text(
+            $"{DiagnosticPrefix(area.State)} {area.Label}: {area.Summary}",
+            $"diagnostics.area.{area.Id}",
+            $"{area.Label} diagnostic: {area.State}; {area.Summary}").Classes(
+                area.State == PlatformDiagnosticState.Healthy ? "diagnostic-ok" : "diagnostic-error")));
+        children.Add(UI.Text(
+            $"Workers: {runningWorkers}/{diagnostics.Workers.Count} running; {failedWorkers} with a recorded failure",
+            "diagnostics.workers", "Widget worker status").Classes(
+                failedWorkers == 0 ? "diagnostic-ok" : "diagnostic-error"));
+        foreach (var worker in diagnostics.Workers.Where(worker => worker.LastFailureCode is not null).Take(3))
+        {
+            children.Add(UI.Text(
+                $"{worker.WidgetName}: {worker.LastFailureCode}; " +
+                (worker.IsRunning
+                    ? "running after the recorded failure"
+                    : worker.CanRestart ? "will restart on demand" : "restart limit reached"),
+                $"diagnostics.worker.{worker.WidgetId}",
+                $"{worker.WidgetName} worker failure").Classes("diagnostic-error"));
+        }
+        children.Add(UI.Button("Refresh diagnostics", "refresh", "diagnostics.refresh")
+            .Icon(WidgetGlyph.Refresh, "Refresh diagnostics")
+            .FocusDown("diagnostics.back").Busy(busy).Classes("primary-button"));
+        children.Add(UI.Button("Back", "back", "diagnostics.back")
+            .FocusUp("diagnostics.refresh").Classes("secondary-button"));
         return View(header,
-            PageScope("diagnostics.page",
-                UI.Text("Diagnostics", "diagnostics.heading", "Settings diagnostics").Classes("page-heading"),
-                UI.Text(settingsValid ? "Settings file: valid" : "Settings file: invalid; defaults shown",
-                    "diagnostics.settings", "Settings file status").Classes(settingsValid ? "diagnostic-ok" : "diagnostic-error"),
-                UI.Text($"Theme packages: {themes.Themes.Count} total, {invalidThemes} invalid",
-                    "diagnostics.themes", "Theme package status").Classes("diagnostic-line"),
-                UI.Text($"Schema: {settings.SchemaVersion}", "diagnostics.schema", "Settings schema version").Classes("diagnostic-line"),
-                UI.Button("Back", "back", "diagnostics.back").Classes("secondary-button")),
-            "diagnostics.back", "diagnostics.page");
+            PageScope("diagnostics.page", children.ToArray()),
+            "diagnostics.refresh", "diagnostics.page");
     }
+
+    private static string DiagnosticPrefix(PlatformDiagnosticState state) => state switch
+    {
+        PlatformDiagnosticState.Healthy => "OK",
+        PlatformDiagnosticState.Degraded => "Check",
+        _ => "Unavailable",
+    };
 
     private static WidgetView RenderReset(StackElement header, bool busy) => View(
         header,
@@ -641,8 +711,8 @@ public sealed partial class SettingsWidget : Widget
         return View(header, scope, $"theme.item.{start}", "theme.picker");
     }
 
-    private static StackElement PageScope(string id, params WidgetElement[] children) =>
-        UI.Stack(id, children).InputScope(id).Shortcut(ControllerButton.B, "back").Classes("settings-page");
+    private static ScrollElement PageScope(string id, params WidgetElement[] children) =>
+        UI.VerticalScroll(id, children).InputScope(id).Shortcut(ControllerButton.B, "back").Classes("settings-page");
 
     private static WidgetView View(
         StackElement header,
@@ -651,7 +721,15 @@ public sealed partial class SettingsWidget : Widget
         string activeScope) => new(
             UI.Stack("settings-root", header, content).Classes("settings-widget"),
             initialFocus,
-            ActiveInputScopeId: activeScope);
+            ActiveInputScopeId: activeScope,
+            Surface: new WidgetSurfaceHints
+            {
+                Mode = WidgetSurfaceMode.Standard,
+                PreferredWidth = 880,
+                PreferredHeight = 520,
+                MinimumWidth = 520,
+                MinimumHeight = 360,
+            });
 
     private static RowElement LinkStepper(RowElement stepper, string? up, string? down, bool busy)
     {

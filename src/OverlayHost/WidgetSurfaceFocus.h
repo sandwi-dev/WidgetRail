@@ -36,11 +36,16 @@ public:
     void Forget(std::wstring_view widgetId);
 
 private:
+    struct Entry final {
+        std::wstring elementId;
+        std::size_t ordinal{};
+    };
+
     [[nodiscard]] static std::wstring Key(
         std::wstring_view widgetId,
         std::wstring_view scopeId);
 
-    std::unordered_map<std::wstring, std::wstring> entries_;
+    std::unordered_map<std::wstring, Entry> entries_;
 };
 
 } // namespace gba::input

@@ -1,4 +1,5 @@
 using GameBarAlternative.FirstPartyWidgets.Settings;
+using GameBarAlternative.PlatformDiagnostics;
 using GameBarAlternative.WidgetRuntime;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings.Worker;
@@ -10,8 +11,53 @@ internal static class Program
         return await WidgetWorkerBootstrap.RunAsync(
             args,
             () => new SettingsWidget(
+                diagnostics: CreateDiagnostics(args),
                 bundledWidgetRoot: OptionalPath(args, "--bundled-widget-root")))
             .ConfigureAwait(false);
+    }
+
+    private static IPlatformDiagnosticsService CreateDiagnostics(string[] args)
+    {
+        var pipe = OptionalToken(args, "--diagnostics-pipe", 200);
+        var nonce = OptionalToken(args, "--diagnostics-nonce", 64);
+        var serverProcessId = OptionalPositiveInt(args, "--diagnostics-server-pid");
+        if (pipe is null && nonce is null && serverProcessId is null)
+            return UnavailablePlatformDiagnosticsService.Instance;
+        if (pipe is null || nonce is null || serverProcessId is null || nonce.Length != 64 ||
+            !nonce.All(char.IsAsciiHexDigit))
+            throw new WidgetWorkerBootstrapException(
+                "invalid_diagnostics_channel", "The diagnostics channel arguments are invalid.");
+        return new PlatformDiagnosticsPipeClient(pipe, nonce, serverProcessId.Value);
+    }
+
+    private static int? OptionalPositiveInt(string[] args, string name)
+    {
+        var value = OptionalToken(args, name, 10);
+        if (value is null) return null;
+        if (!int.TryParse(value, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed) || parsed <= 0)
+            throw new WidgetWorkerBootstrapException(
+                "invalid_diagnostics_channel", "The diagnostics channel arguments are invalid.");
+        return parsed;
+    }
+
+    private static string? OptionalToken(string[] args, string name, int maximumLength)
+    {
+        var indexes = Enumerable.Range(0, args.Length)
+            .Where(index => string.Equals(args[index], name, StringComparison.Ordinal))
+            .ToArray();
+        if (indexes.Length == 0) return null;
+        if (indexes.Length != 1)
+            throw new WidgetWorkerBootstrapException(
+                "invalid_diagnostics_channel", "The diagnostics channel arguments are invalid.");
+        var index = indexes[0];
+        var value = index + 1 < args.Length ? args[index + 1] : null;
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maximumLength ||
+            value.StartsWith("--", StringComparison.Ordinal) ||
+            !value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_'))
+            throw new WidgetWorkerBootstrapException(
+                "invalid_diagnostics_channel", "The diagnostics channel arguments are invalid.");
+        return value;
     }
 
     private static string? OptionalPath(string[] args, string name)
