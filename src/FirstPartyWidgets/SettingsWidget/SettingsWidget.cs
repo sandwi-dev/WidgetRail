@@ -31,6 +31,7 @@ public sealed partial class SettingsWidget : Widget
     private readonly ThemeCatalog _catalog;
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
+    private readonly string? _bundledWidgetRoot;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _stateLock = new();
     private PlatformSettingsDocument _settings = PlatformSettingsDocument.Default;
@@ -47,7 +48,8 @@ public sealed partial class SettingsWidget : Widget
         PlatformSettingsStore? store = null,
         ThemeCatalog? catalog = null,
         CatalogService? widgetCatalog = null,
-        ConsentStore? consentStore = null)
+        ConsentStore? consentStore = null,
+        string? bundledWidgetRoot = null)
     {
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
         _store = store ?? new PlatformSettingsStore(paths);
@@ -56,6 +58,9 @@ public sealed partial class SettingsWidget : Widget
             Path.Combine(paths.RootDirectory, "widgets"));
         _consentStore = consentStore ?? new ConsentStore(
             Path.Combine(paths.RootDirectory, "consent"));
+        _bundledWidgetRoot = string.IsNullOrWhiteSpace(bundledWidgetRoot)
+            ? null
+            : Path.GetFullPath(bundledWidgetRoot);
         var builtIn = _catalog.BuiltInDefault;
         _themes = new ThemeCatalogSnapshot(
             [new ThemeCatalogEntry(builtIn.Descriptor, builtIn.IsValid, builtIn.Diagnostics)]);

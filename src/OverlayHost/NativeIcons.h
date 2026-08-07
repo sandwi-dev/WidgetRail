@@ -23,6 +23,9 @@ enum class NativeIcon : std::uint8_t {
     Warning,
     Check,
     Connection,
+    Volume,
+    Muted,
+    Microphone,
 };
 
 // Accepts protocol glyph names plus a small closed list of built-in transport

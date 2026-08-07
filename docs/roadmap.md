@@ -1,6 +1,6 @@
 # Prototype roadmap
 
-Status: proposed sequence with evidence gates, 2026-08-06
+Status: active implementation sequence with evidence gates, 2026-08-07
 
 The next goal is not “build all widgets.” It is to prove that the operating-system constraints permit the product experience without turning the overlay into injected or driver-backed bloatware.
 
@@ -130,23 +130,35 @@ Every first-party widget contributes a focused SDK example and regression suite.
 
 ### First-party system-control reference widgets
 
-Audio Mixer and Network Controls begin only after the generic declarative widget
-path, controller Settings/global-theme foundation, and real-provider security/
-privacy gates. The typed broker and consent path already works against a
-simulator. The widgets must be ordinary first-party packages built on
-the public SDK—not special panels hard-coded into `OverlayHost`. Any primitive
-or broker API they need becomes documented, testable platform surface that
-community widgets can request under the same permission policy.
+Implementation order: **Audio Mixer is the active first-party system-control
+milestone. Network Controls follows immediately after its provider, permission,
+packaging, lifecycle, and performance gates pass.** Both remain ordinary SDK
+widgets rather than privileged shell panels.
 
-**Audio Mixer** uses Windows Core Audio notifications and callbacks rather than
-a high-frequency polling loop. Its production scope is:
+The generic declarative path, controller Settings/global-theme foundation, and
+typed broker/consent path now support the active Audio Mixer work. Network
+Controls remains behind its provider privacy and reliability gates. Both must
+remain ordinary first-party packages built on the public SDK—not special panels
+hard-coded into `OverlayHost`. Any primitive or broker API they need becomes
+documented, testable platform surface that community widgets can request under
+the same permission policy.
 
-- master/output volume and mute;
-- output-device discovery and, only if a supported public Windows API passes a
-  packaging/minimum-version spike, switching;
-- per-application audio sessions with volume and mute;
-- microphone mute and level where the broker can expose them safely; and
-- a future separately reviewed host-mediated dashboard-control path, if needed.
+**Audio Mixer (active)** is implemented and packaged as the first system-control
+reference widget; broader hardware and performance evidence remains open. Its
+provider scope is deliberately narrow:
+
+- enumerate sanitized per-application audio sessions on the current default
+  multimedia render endpoint;
+- observe session/default-endpoint changes through Core Audio callbacks;
+- set volume or mute for one opaque session while the widget is Interactive;
+  and
+- publish bounded, coalesced session-change events without a timer polling
+  loop.
+
+Endpoint master volume/mute, output-device selection, and microphone controls
+are not in this milestone. Each needs an explicit capability and provider/API
+review before it can enter the roadmap. In particular, no undocumented
+`PolicyConfig`, registry, or shell-automation output switch is acceptable.
 
 Version-1 broker control grants are Interactive-only. Do not route master mute,
 volume, saved-network switching, or another general control through a Visible
@@ -167,8 +179,9 @@ does not provide a system-default setter. Do not ship an undocumented
 supported API passes the spike, default-device switching leaves the initial
 scope.
 
-**Network Controls** uses Windows WLAN/network change notifications rather than
-continuously polling adapters. Its initial production scope is:
+**Network Controls (next)** follows Audio Mixer. It will use Windows
+WLAN/network change notifications rather than continuously polling adapters.
+Its initial production scope is:
 
 - Ethernet and Wi-Fi connection state;
 - current network and Wi-Fi signal quality;
@@ -239,11 +252,11 @@ Exit criteria for both widgets:
 5. Prove one crashing out-of-process declarative widget.
 6. Review the evidence and accept or revise the proposed architecture.
 
-After the current prototype foundation, the product order is: finish generic
-widget rendering and the installed-package review/reload experience; finish
-the remaining accessibility/global-theme evidence; add stronger worker
-isolation and real Windows provider backends; then build Audio Mixer and Network
-Controls through those public surfaces. Do not use either widget to
-justify a private host API that external widgets cannot exercise.
+After the current prototype foundation, the product order is: complete and
+measure the Audio Mixer integration; implement the event-driven Network
+Controls provider/widget next; finish the installed-package review/live-reload
+experience and remaining accessibility/global-theme evidence; then add stronger
+worker isolation. Do not use either widget to justify a private host API that
+external widgets cannot exercise.
 
 The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.

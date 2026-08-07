@@ -15,7 +15,8 @@ flowchart LR
     Worker --> SDK["WidgetSdk + WidgetProtocol"]
     Bridge --> Styling["WidgetStyling / GBSS"]
     Worker <-->|"typed authenticated capability IPC"| Broker["PlatformBroker"]
-    Broker -. "planned OS providers" .-> Windows["Core Audio + IP Helper/WLAN"]
+    Broker --> Audio["Core Audio session provider"]
+    Broker -. "planned" .-> Network["IP Helper/WLAN provider"]
     Host --> State["Host-owned order and last-widget state"]
     Catalog["Enabled installed WidgetCatalog snapshot"] --> Bridge
 ```
@@ -33,7 +34,8 @@ flowchart LR
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, and last-good reload. The bridge/native shell consume its live revisions, including bounded text scale for shell and generic widget layout. |
 | `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence. The bridge consumes enabled compatible packages at startup. |
-| `src/PlatformBroker` | Version-1 audio-session/network capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, and a deterministic simulator. It has no real Core Audio/WLAN backend yet. |
+| `src/PlatformBroker` | Version-1 audio-session/network capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
+| `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for sanitized per-application sessions on the default multimedia render endpoint, with per-session volume/mute. It does not expose master volume, output switching, or microphone control. |
 | `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, and catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
@@ -85,10 +87,10 @@ third-party managed assemblies.
    disposal, or reconciled consent revocation terminates the subscription.
 
 The worker cannot send broker lifecycle transitions or elevate itself. The
-runtime propagates only host-owned states to the companion server. The current
-production bridge uses `SimulatedPlatformBrokerBackend`, so the typed contracts
-are connected end to end without touching Core Audio or WLAN yet. See [widget
-capabilities](capabilities.md).
+runtime propagates only host-owned states to the companion server. The trusted
+bridge composes the real Core Audio session backend with the simulated network
+backend. Both remain behind the same typed, declared, consented contract. See
+[widget capabilities](capabilities.md).
 
 ## Resource behavior
 
@@ -186,8 +188,9 @@ then deterministic geometry from the last render.
 - Job Object memory/process-count/cleanup policy, typed capability IPC, consent
   UI, and prompt fail-closed revocation are implemented and tested. Publisher
   signatures/package revocation, AppContainer launch, CPU quotas, security
-  audit/history, and real Windows audio/network providers remain planned; the
-  current pieces are not a complete public-widget security boundary.
+  audit/history, and a real Windows network provider remain planned. The narrow
+  Core Audio session backend is implemented, but the current pieces are not a
+  complete public-widget security boundary.
 - The bundled bridge catalog remains trusted deployment configuration. The
   joined current-user catalog is not a marketplace feed or signed package
   index; enabling a package is not a publisher-trust guarantee.

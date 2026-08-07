@@ -44,6 +44,9 @@ public enum WidgetGlyph
     Warning,
     Check,
     Connection,
+    Volume,
+    Muted,
+    Microphone,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ControllerButton>))]

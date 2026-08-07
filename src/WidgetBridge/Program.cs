@@ -1,6 +1,7 @@
 using System.Globalization;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.PlatformBroker;
+using GameBarAlternative.WindowsAudioProvider;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -39,7 +40,9 @@ internal static class Program
             await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
             var consentStore = new ConsentStore(
                 Path.Combine(settingsPaths.RootDirectory, "consent"));
-            var platformBackend = new SimulatedPlatformBrokerBackend();
+            await using var platformBackend = new CompositePlatformBrokerBackend(
+                new WindowsAudioPlatformBackend(),
+                new SimulatedPlatformBrokerBackend());
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)

@@ -2,6 +2,7 @@ using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using System.Text.Json;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings;
 
@@ -10,6 +11,8 @@ public sealed partial class SettingsWidget
     public const int PermissionPackagesPerPage = 5;
     public const int CapabilitiesPerPage = 4;
     private const int MaximumPermissionPackages = 256;
+    private const int MaximumBundledDirectories = 64;
+    private const int MaximumManifestBytes = 1024 * 1024;
 
     private sealed record DeclaredCapability(string Id, bool IsRequired);
     private sealed record PermissionPackage(
@@ -40,31 +43,30 @@ public sealed partial class SettingsWidget
         try
         {
             var catalog = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
-            var discovered = new List<PermissionPackage>(
-                Math.Min(catalog.Widgets.Count, MaximumPermissionPackages));
+            var discovered = new Dictionary<string, PermissionPackage>(StringComparer.Ordinal);
+            if (_bundledWidgetRoot is not null)
+            {
+                foreach (var manifest in DiscoverBundledManifests(_bundledWidgetRoot))
+                {
+                    var package = CreatePermissionPackage(manifest, ref unknownDeclarations);
+                    if (package.Capabilities.Count != 0)
+                        discovered.TryAdd(package.Id, package);
+                }
+            }
             foreach (var widget in catalog.Widgets.Take(MaximumPermissionPackages))
             {
                 var manifest = widget.ActiveVersion.Manifest;
-                var capabilities = new List<DeclaredCapability>();
-                var seen = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var id in manifest.Permissions)
-                {
-                    if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
-                        capabilities.Add(new(id, IsRequired: true));
-                    else if (!PlatformCapabilities.TryGet(id, out _))
-                        unknownDeclarations++;
-                }
-                foreach (var id in manifest.OptionalPermissions)
-                {
-                    if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
-                        capabilities.Add(new(id, IsRequired: false));
-                    else if (!PlatformCapabilities.TryGet(id, out _))
-                        unknownDeclarations++;
-                }
-                discovered.Add(new(widget.Id, manifest.Publisher, widget.Name, capabilities));
+                var package = CreatePermissionPackage(manifest, ref unknownDeclarations);
+                if (package.Capabilities.Count != 0)
+                    discovered.TryAdd(package.Id, package);
             }
-            packages = discovered;
-            if (catalog.Widgets.Count > MaximumPermissionPackages)
+            packages = discovered.Values
+                .OrderBy(package => package.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(package => package.Id, StringComparer.Ordinal)
+                .Take(MaximumPermissionPackages)
+                .ToArray();
+            if (catalog.Widgets.Count > MaximumPermissionPackages ||
+                discovered.Count > MaximumPermissionPackages)
                 catalogDiagnostic = $"Installed package list is limited to {MaximumPermissionPackages} entries";
         }
         catch (WidgetPackageException exception)
@@ -150,6 +152,76 @@ public sealed partial class SettingsWidget
             }
         }
         return !catalogValid || !consentValid ? diagnostic : null;
+    }
+
+    private static PermissionPackage CreatePermissionPackage(
+        WidgetManifest manifest,
+        ref int unknownDeclarations)
+    {
+        var capabilities = new List<DeclaredCapability>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in manifest.Permissions)
+        {
+            if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
+                capabilities.Add(new(id, IsRequired: true));
+            else if (!PlatformCapabilities.TryGet(id, out _))
+                unknownDeclarations++;
+        }
+        foreach (var id in manifest.OptionalPermissions)
+        {
+            if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
+                capabilities.Add(new(id, IsRequired: false));
+            else if (!PlatformCapabilities.TryGet(id, out _))
+                unknownDeclarations++;
+        }
+        return new PermissionPackage(
+            manifest.Id,
+            manifest.Publisher,
+            manifest.Name,
+            capabilities.OrderByDescending(capability => capability.IsRequired)
+                .ThenBy(capability => capability.Id, StringComparer.Ordinal)
+                .ToArray());
+    }
+
+    private static IReadOnlyList<WidgetManifest> DiscoverBundledManifests(string root)
+    {
+        if (!Directory.Exists(root)) return [];
+        RejectReparsePoint(root);
+        var manifests = new List<WidgetManifest>();
+        var directories = Directory.EnumerateDirectories(root)
+            .Order(StringComparer.Ordinal)
+            .Take(MaximumBundledDirectories + 1)
+            .ToArray();
+        if (directories.Length > MaximumBundledDirectories)
+            throw new IOException("Bundled widget directory limit exceeded.");
+        foreach (var directory in directories)
+        {
+            RejectReparsePoint(directory);
+            var manifestPath = Path.Combine(directory, "manifest.json");
+            if (!File.Exists(manifestPath)) continue;
+            RejectReparsePoint(manifestPath);
+            if (new FileInfo(manifestPath).Length > MaximumManifestBytes)
+                throw new IOException("Bundled widget manifest exceeds its bound.");
+            WidgetManifest manifest;
+            try { manifest = ManifestJson.Deserialize(File.ReadAllBytes(manifestPath)); }
+            catch (JsonException exception)
+            {
+                throw new WidgetPackageException(
+                    "invalid_bundled_manifest", "Bundled widget manifest is invalid.", exception);
+            }
+            if (WidgetManifestValidator.Validate(manifest).Count != 0)
+                throw new WidgetPackageException(
+                    "invalid_bundled_manifest", "Bundled widget manifest failed validation.");
+            manifests.Add(manifest);
+        }
+        return manifests;
+    }
+
+    private static void RejectReparsePoint(string path)
+    {
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            throw new WidgetPackageException(
+                "unsafe_bundled_catalog", "Bundled widget catalog path is unsafe.");
     }
 
     private WidgetView RenderPermissionPackages(StackElement header, bool busy)

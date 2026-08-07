@@ -78,7 +78,8 @@ The following are **not implemented as a complete public security boundary**:
 - AppContainer launch for community workers;
 - CPU-rate/time and broader resource quotas beyond the current Job Object
   memory/single-process/cleanup policy;
-- real Core Audio/WLAN providers and a security audit/history UI;
+- a real WLAN/IP Helper provider, production hardening of the narrow Core Audio
+  session provider, and a security audit/history UI;
 - secure token brokering for third-party integrations;
 - user-facing update review, rollback, or quarantine UI;
 - a graphical install/review flow, live bridge catalog reload, and safe

@@ -23,6 +23,22 @@ public sealed class WidgetWorkerServer
         string pipeName,
         int maximumMessageBytes = WidgetRuntimeProtocol.DefaultMaximumMessageBytes,
         IWidgetCapabilityClient? capabilityClient = null)
+        : this(
+            widget,
+            widgetInstanceId,
+            pipeName,
+            maximumMessageBytes,
+            new WidgetHostServices(
+                capabilityClient ?? UnavailableWidgetCapabilityClient.Instance))
+    {
+    }
+
+    internal WidgetWorkerServer(
+        Widget widget,
+        string widgetInstanceId,
+        string pipeName,
+        int maximumMessageBytes,
+        WidgetHostServices hostServices)
     {
         _widget = widget ?? throw new ArgumentNullException(nameof(widget));
         _widgetInstanceId = ValidateIdentifier(widgetInstanceId);
@@ -30,8 +46,7 @@ public sealed class WidgetWorkerServer
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <= WidgetRuntimeProtocol.AbsoluteMaximumMessageBytes
             ? maximumMessageBytes
             : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
-        _widget.AttachHostServices(new WidgetHostServices(
-            capabilityClient ?? UnavailableWidgetCapabilityClient.Instance));
+        _widget.AttachHostServices(hostServices ?? throw new ArgumentNullException(nameof(hostServices)));
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)

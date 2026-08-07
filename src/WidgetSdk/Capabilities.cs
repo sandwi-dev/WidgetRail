@@ -14,6 +14,18 @@ public sealed record WidgetCapabilityEvent<TPayload>(
     string EventType);
 
 /// <summary>
+/// An acknowledged platform-event subscription. A successful open means the
+/// host has registered the subscription before returning, so callers may fetch
+/// a current snapshot without losing events in the snapshot/subscription gap.
+/// The event stream is single-consumer and coalescing semantics are defined by
+/// the provider contract.
+/// </summary>
+public interface IWidgetCapabilitySubscription<TPayload> : IAsyncDisposable
+{
+    IAsyncEnumerable<TPayload> ReadAllAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// The only OS-capability boundary visible to widget code. The implementation
 /// lives in the worker bootstrap and communicates with an identity-bound host
 /// broker. Transport credentials and OS objects are not exposed by this API;
@@ -29,9 +41,40 @@ public interface IWidgetCapabilityClient
         TRequest request,
         CancellationToken cancellationToken = default);
 
-    IAsyncEnumerable<TPayload> SubscribeAsync<TPayload>(
+    /// <summary>
+    /// Opens and acknowledges a subscription before returning. Widgets that
+    /// combine current state with events should open first, fetch second, then
+    /// drain events so changes during the fetch are reconciled afterward.
+    /// </summary>
+    ValueTask<IWidgetCapabilitySubscription<TPayload>> OpenSubscriptionAsync<TPayload>(
         WidgetCapabilityEvent<TPayload> platformEvent,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Compatibility stream for event-only consumers. Snapshot-plus-event
+    /// consumers should prefer <see cref="OpenSubscriptionAsync{TPayload}"/>.
+    /// </summary>
+    IAsyncEnumerable<TPayload> SubscribeAsync<TPayload>(
+        WidgetCapabilityEvent<TPayload> platformEvent,
+        CancellationToken cancellationToken = default) =>
+        WidgetCapabilitySubscriptionCompatibility.ReadAsync(
+            this, platformEvent, cancellationToken);
+}
+
+internal static class WidgetCapabilitySubscriptionCompatibility
+{
+    internal static async IAsyncEnumerable<TPayload> ReadAsync<TPayload>(
+        IWidgetCapabilityClient client,
+        WidgetCapabilityEvent<TPayload> platformEvent,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+        CancellationToken cancellationToken)
+    {
+        await using var subscription = await client.OpenSubscriptionAsync(
+            platformEvent, cancellationToken).ConfigureAwait(false);
+        await foreach (var item in subscription.ReadAllAsync(cancellationToken)
+                           .WithCancellation(cancellationToken).ConfigureAwait(false))
+            yield return item;
+    }
 }
 
 public sealed class WidgetHostServices
@@ -77,17 +120,10 @@ internal sealed class UnavailableWidgetCapabilityClient : IWidgetCapabilityClien
         ValueTask.FromException<TResponse>(new WidgetCapabilityUnavailableException(
             "This worker was not given an authenticated platform capability channel."));
 
-    public async IAsyncEnumerable<TPayload> SubscribeAsync<TPayload>(
+    public ValueTask<IWidgetCapabilitySubscription<TPayload>> OpenSubscriptionAsync<TPayload>(
         WidgetCapabilityEvent<TPayload> platformEvent,
-        [System.Runtime.CompilerServices.EnumeratorCancellation]
-        CancellationToken cancellationToken = default)
-    {
-        await Task.Yield();
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new WidgetCapabilityUnavailableException(
-            "This worker was not given an authenticated platform capability channel.");
-#pragma warning disable CS0162
-        yield break;
-#pragma warning restore CS0162
-    }
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<IWidgetCapabilitySubscription<TPayload>>(
+            new WidgetCapabilityUnavailableException(
+                "This worker was not given an authenticated platform capability channel."));
 }

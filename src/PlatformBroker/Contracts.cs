@@ -74,16 +74,32 @@ public sealed record NetworkStatusChangedEvent(NetworkStatusSummary Status);
 
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
 
-public interface IPlatformBrokerBackend
+public interface IPlatformBrokerEventSource
 {
     event EventHandler<BrokerPlatformEvent>? EventPublished;
+}
+
+public interface IAudioPlatformBrokerBackend : IPlatformBrokerEventSource
+{
 
     Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(CancellationToken cancellationToken);
     Task SetAudioSessionVolumeAsync(string sessionId, double volume, CancellationToken cancellationToken);
     Task SetAudioSessionMutedAsync(string sessionId, bool isMuted, CancellationToken cancellationToken);
+}
+
+public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource
+{
     Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken);
     Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Complete host backend. Providers can implement the narrower audio or network
+/// contracts and be joined with <see cref="CompositePlatformBrokerBackend"/>.
+/// </summary>
+public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend, INetworkPlatformBrokerBackend
+{
 }
 
 public sealed class BrokerException : Exception

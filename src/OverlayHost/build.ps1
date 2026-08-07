@@ -143,6 +143,7 @@ if (-not $SkipPackaging) {
     $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
     $ytMusicOutput = Join-Path $outputDirectory 'runtime\YtMusic'
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
+    $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
@@ -164,6 +165,11 @@ if (-not $SkipPackaging) {
     if ($LASTEXITCODE -ne 0) {
         throw "Settings worker publish failed with exit code $LASTEXITCODE."
     }
+    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget.Worker\AudioMixerWidget.Worker.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $audioMixerOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Audio Mixer worker publish failed with exit code $LASTEXITCODE."
+    }
     $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
     $settingsStylesOutput = Join-Path $settingsOutput 'styles'
     $settingsPayloadOutput = Join-Path $settingsOutput 'payload'
@@ -182,6 +188,26 @@ if (-not $SkipPackaging) {
     )) {
         if (-not (Test-Path -LiteralPath (Join-Path $settingsOutput $requiredSettingsFile))) {
             throw "Settings deployment is missing $requiredSettingsFile."
+        }
+    }
+    $audioMixerProject = Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget'
+    $audioMixerStylesOutput = Join-Path $audioMixerOutput 'styles'
+    $audioMixerPayloadOutput = Join-Path $audioMixerOutput 'payload'
+    New-Item -ItemType Directory -Force -Path $audioMixerStylesOutput, $audioMixerPayloadOutput | Out-Null
+    Copy-Item -LiteralPath (Join-Path $audioMixerProject 'manifest.json') `
+        -Destination (Join-Path $audioMixerOutput 'manifest.json') -Force
+    Copy-Item -LiteralPath (Join-Path $audioMixerProject 'styles\default.gbss') `
+        -Destination (Join-Path $audioMixerStylesOutput 'default.gbss') -Force
+    Copy-Item -LiteralPath (Join-Path $audioMixerOutput 'AudioMixerWidget.dll') `
+        -Destination (Join-Path $audioMixerPayloadOutput 'AudioMixerWidget.dll') -Force
+    foreach ($requiredAudioMixerFile in @(
+        'AudioMixerWidget.Worker.exe',
+        'manifest.json',
+        'styles\default.gbss',
+        'payload\AudioMixerWidget.dll'
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $audioMixerOutput $requiredAudioMixerFile))) {
+            throw "Audio Mixer deployment is missing $requiredAudioMixerFile."
         }
     }
     Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `

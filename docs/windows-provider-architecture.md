@@ -1,7 +1,8 @@
 # Windows provider architecture: Audio Mixer and Network Controls
 
-Status: **typed SDK, authenticated broker transport, controller consent, and
-simulator path implemented; real Windows providers remain planned**. This note uses
+Status: **typed SDK, authenticated broker transport, controller consent,
+simulator path, and a narrow real Core Audio session provider implemented;
+the real WLAN/IP Helper provider remains planned**. This note uses
 Microsoft documentation as the API authority. Items labeled **Documented
 fact** describe published Windows behavior. Items labeled **Platform design**
 are Game Bar Alternative decisions; their implementation status is called out
@@ -50,11 +51,11 @@ revokes subscriptions, while Background retains only the latest bounded event.
 
 The typed contract is connected end to end through the generic worker host,
 bridge-owned authenticated broker companion, Settings consent flow, and
-deterministic backend. It is callable by declared/granted widgets but is not a
-working OS service: the production bridge still supplies only
-`SimulatedPlatformBrokerBackend`. No real provider should be connected until
-the remaining provider, audit, privacy, churn, and isolation gates below pass.
-See [widget capabilities](capabilities.md) for the author-facing API.
+deterministic backend. The trusted bridge composes
+`WindowsAudioPlatformBackend` for audio with the simulated backend for network.
+Audio is therefore a working, narrow OS service for declared and explicitly
+granted widgets; network remains deterministic simulation only. See [widget
+capabilities](capabilities.md) for the author-facing API.
 
 ## Audio provider
 
@@ -92,27 +93,29 @@ See [widget capabilities](capabilities.md) for the author-facing API.
   That is an OS-facing identifier, not data that must cross the broker. See
   [IAudioSessionControl2](https://learn.microsoft.com/en-us/windows/win32/api/audiopolicy/nn-audiopolicy-iaudiosessioncontrol2).
 
-### Platform design
+### Implemented provider design
 
-Run a dedicated Core Audio MTA thread. On startup it should:
+A first audio request lazily starts a dedicated Core Audio MTA thread. It owns
+the native object graph and:
 
-1. create one `IMMDeviceEnumerator` and register endpoint notifications;
-2. resolve the default render endpoint for the chosen console/multimedia role;
-3. activate endpoint volume and session-manager interfaces;
-4. register endpoint, new-session, and per-session callbacks;
-5. enumerate existing sessions and call `GetCount` as required by the session
+1. creates one `IMMDeviceEnumerator` and registers endpoint notifications;
+2. resolves the default multimedia render endpoint;
+3. activates the session-manager interface;
+4. registers new-session and per-session callbacks;
+5. enumerates existing sessions and calls `GetCount` as required by the session
    notification contract; and
-6. publish one complete immutable snapshot before forwarding deltas.
+6. publishes one complete immutable snapshot before forwarding changed
+   snapshots as bounded, coalesced events.
 
 On default-device change or invalidation, construct a replacement endpoint
 model completely, atomically publish it, then unregister/release the old graph.
 Use one provider event-context GUID to reconcile optimistic widget feedback
 without suppressing changes from other clients.
 
-The first safe command set is endpoint/session volume and mute. Capture-
-endpoint control is a separate grant and may expose configured input volume and
-mute, but never opens an audio stream or returns samples. Peak/activity meters
-would reveal microphone use patterns and require a separate privacy review.
+The implemented command set is per-session volume and mute through opaque
+session IDs. Endpoint master volume/mute is not exposed. Capture-endpoint or
+microphone control needs a separate grant; an activity meter would access
+capture data and requires a different capability and privacy review.
 
 #### Output-device switching gate
 
@@ -279,16 +282,18 @@ Optional Windows integration tests run only on an explicitly opted-in machine:
 
 ## Implementation gates
 
-The managed foundation now supplies typed SDK services/DTOs, versioned bounded
+The managed foundation supplies typed SDK services/DTOs, versioned bounded
 request/result/event contracts, nonce/identity-bound pipe transport, a closed
 capability vocabulary, manifest/consent/lifecycle checks, controller grant/
 deny/revoke UI, sanitized DTO validation, durable consent storage, coalesced
 subscriptions, and an initial simulator. Windows workers also have pre-launch
 Job Object containment with a trusted memory ceiling, one-process limit, and
-kill-on-close cleanup. These are necessary building blocks, not real OS
-integration or a complete hostile-code sandbox.
+kill-on-close cleanup. The audio implementation adds a lazy, event-driven Core
+Audio session backend on top of those pieces; this is still not a complete
+hostile-code sandbox or production-support claim.
 
-Real OS providers remain planned until all of these exist:
+The audio provider remains deliberately limited, and the network provider
+remains planned, while these production gates are open:
 
 1. stale-revision command rules and a security audit/history surface;
 2. production provider identity and stronger community-worker isolation,
@@ -299,6 +304,8 @@ Real OS providers remain planned until all of these exist:
 6. privacy review proving that raw OS identifiers and secrets cannot cross the
    broker.
 
-Until those gates pass, Audio Mixer and Network Controls remain roadmap items,
-not working first-party widgets. Their typed capability contracts currently
-exercise the simulator only.
+Audio Mixer is the active first-party integration milestone and now exercises
+the real Core Audio session backend. It does not imply master-volume,
+output-switch, microphone, or production security support. Network Controls is
+the next roadmap widget and continues to exercise the simulator until its WLAN/
+IP Helper provider and privacy gates are implemented.

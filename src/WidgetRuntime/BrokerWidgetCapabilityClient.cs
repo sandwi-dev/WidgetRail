@@ -5,13 +5,11 @@ using System.Threading.Channels;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetSdk;
 
-namespace GameBarAlternative.WidgetWorkerHost;
+namespace GameBarAlternative.WidgetRuntime;
 
 /// <summary>
-/// Worker-owned adapter. Normal widget code receives only the transport-neutral
-/// SDK interface. This is API encapsulation, not a sandbox boundary: arbitrary
-/// same-process code can inspect its launch environment until AppContainer
-/// isolation is implemented.
+/// Keeps broker transport details behind the transport-neutral SDK contract.
+/// Widget code receives only <see cref="IWidgetCapabilityClient"/>.
 /// </summary>
 internal sealed class BrokerWidgetCapabilityClient(BrokerPipeClient client)
     : IWidgetCapabilityClient
@@ -54,26 +52,18 @@ internal sealed class BrokerWidgetCapabilityClient(BrokerPipeClient client)
         return Deserialize<TResponse>(payload, "malformed_response");
     }
 
-    public async IAsyncEnumerable<TPayload> SubscribeAsync<TPayload>(
+    public async ValueTask<IWidgetCapabilitySubscription<TPayload>> OpenSubscriptionAsync<TPayload>(
         WidgetCapabilityEvent<TPayload> platformEvent,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(platformEvent);
-        await using var subscription = await OpenSubscriptionAsync(
+        var subscription = await OpenBrokerSubscriptionAsync(
             platformEvent.CapabilityId, platformEvent.EventType, cancellationToken)
             .ConfigureAwait(false);
-        while (true)
-        {
-            var envelope = await ReadEventAsync(subscription, cancellationToken).ConfigureAwait(false);
-            if (envelope.ProtocolVersion != BrokerJson.ProtocolVersion ||
-                envelope.CapabilityId != platformEvent.CapabilityId ||
-                envelope.EventType != platformEvent.EventType || envelope.Sequence <= 0)
-                throw CapabilityFailure("malformed_event");
-            yield return Deserialize<TPayload>(envelope.Payload, "malformed_event");
-        }
+        return new BrokerCapabilitySubscription<TPayload>(subscription, platformEvent);
     }
 
-    private async Task<BrokerPipeEventSubscription> OpenSubscriptionAsync(
+    private async Task<BrokerPipeEventSubscription> OpenBrokerSubscriptionAsync(
         string capabilityId, string eventType, CancellationToken cancellationToken)
     {
         try
@@ -124,6 +114,46 @@ internal sealed class BrokerWidgetCapabilityClient(BrokerPipeClient client)
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
             throw CapabilityFailure(errorCode);
+        }
+    }
+
+    private sealed class BrokerCapabilitySubscription<TPayload>(
+        BrokerPipeEventSubscription subscription,
+        WidgetCapabilityEvent<TPayload> platformEvent)
+        : IWidgetCapabilitySubscription<TPayload>
+    {
+        private readonly BrokerPipeEventSubscription _subscription = subscription;
+        private readonly WidgetCapabilityEvent<TPayload> _platformEvent = platformEvent;
+        private int _readerStarted;
+        private int _disposed;
+
+        public IAsyncEnumerable<TPayload> ReadAllAsync(
+            CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            if (Interlocked.Exchange(ref _readerStarted, 1) != 0)
+                throw new InvalidOperationException("A capability subscription supports one event reader.");
+            return ReadAllCoreAsync(cancellationToken);
+        }
+
+        private async IAsyncEnumerable<TPayload> ReadAllCoreAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                var envelope = await ReadEventAsync(_subscription, cancellationToken).ConfigureAwait(false);
+                if (envelope.ProtocolVersion != BrokerJson.ProtocolVersion ||
+                    envelope.CapabilityId != _platformEvent.CapabilityId ||
+                    envelope.EventType != _platformEvent.EventType || envelope.Sequence <= 0)
+                    throw CapabilityFailure("malformed_event");
+                yield return Deserialize<TPayload>(envelope.Payload, "malformed_event");
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            await _subscription.DisposeAsync().ConfigureAwait(false);
         }
     }
 

@@ -7,6 +7,5 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
-    <ProjectReference Include="..\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
 </Project>

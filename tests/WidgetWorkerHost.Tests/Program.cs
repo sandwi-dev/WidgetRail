@@ -3,12 +3,12 @@ using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetWorkerHost;
-using WorkerHostProgram = GameBarAlternative.WidgetWorkerHost.Program;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Loads a public package Widget entrypoint", () => Run(LoadsWidget)),
     ("Runs a package through the isolated worker protocol", RunsIsolatedWorker),
+    ("Bootstrap authenticates capabilities before widget lifecycle creation", BrokerServicesPrecedeWidgetCreation),
     ("Rejects entrypoint path escape", () => Run(RejectsPathEscape)),
     ("Rejects missing and non-Widget types", () => Run(RejectsInvalidTypes)),
     ("Rejects invalid assemblies without leaking paths", () => Run(RejectsInvalidAssembly)),
@@ -58,6 +58,57 @@ static async Task RunsIsolatedWorker()
     Assert.True(client.IsRunning, "Worker host should remain alive after a valid snapshot.");
 }
 
+static async Task BrokerServicesPrecedeWidgetCreation()
+{
+    using var temporary = new TemporaryDirectory();
+    const string instanceId = "worker-host.broker";
+    var identity = new BrokerWidgetIdentity("dev.test.widget", "dev.test", instanceId);
+    var pipeName = $"gba-worker-bootstrap-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName,
+        identity,
+        [PlatformCapabilities.AudioSessionsReadV1],
+        new ConsentStore(temporary.Path),
+        new SimulatedPlatformBrokerBackend(),
+        new BrokerPipeTransportOptions
+        {
+            AcceptTimeout = TimeSpan.FromSeconds(3),
+            HandshakeTimeout = TimeSpan.FromSeconds(2),
+            RequestTimeout = TimeSpan.FromSeconds(1),
+        },
+        new string('C', 64));
+    var serverTask = server.RunAsync();
+
+    var root = Path.GetDirectoryName(typeof(WidgetAssemblyLoader).Assembly.Location)!;
+    var executable = Path.Combine(root, "WidgetWorkerHost.exe");
+    var assembly = typeof(BootstrapCapabilityProbeWidget).Assembly.Location;
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = executable,
+        Arguments =
+        [
+            "--package-root", Path.GetDirectoryName(assembly)!,
+            "--widget-assembly", assembly,
+            "--widget-type", typeof(BootstrapCapabilityProbeWidget).FullName!,
+            "--broker-pipe", pipeName,
+            "--broker-package", identity.PackageId,
+            "--broker-publisher", identity.PublisherId,
+            "--broker-instance", identity.InstanceId,
+            "--broker-nonce", server.ChannelNonce,
+        ],
+        WidgetInstanceId = instanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(3),
+        RequestTimeout = TimeSpan.FromSeconds(2),
+        MaximumRestartAttempts = 0,
+        MemoryLimitBytes = 64L * 1024 * 1024,
+    });
+
+    var snapshot = await client.GetSnapshotAsync();
+    Assert.Equal("available", snapshot.Root.Text);
+    await client.StopAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
 static Task Run(Action action)
 {
     action();
@@ -101,18 +152,29 @@ static void RejectsInvalidAssembly()
 
 static void BrokerArgumentsAreAtomic()
 {
-    Assert.True(WorkerHostProgram.ParseBrokerConnection([], "widget-1") is null,
+    var withoutBroker = WidgetWorkerLaunchArguments.Parse(RuntimeArguments());
+    Assert.True(withoutBroker.Broker is null,
         "A worker without broker arguments must preserve unavailable capabilities.");
-    Assert.Throws<ArgumentException>(() => WorkerHostProgram.ParseBrokerConnection(
-        ["--broker-pipe", "pipe-only"], "widget-1"));
-    Assert.Throws<ArgumentException>(() => WorkerHostProgram.ParseBrokerConnection(
-        BrokerArguments("different-instance"), "widget-1"));
+    Assert.Throws<ArgumentException>(() => WidgetWorkerLaunchArguments.Parse(
+        [.. RuntimeArguments(), "--broker-pipe", "pipe-only"]));
+    Assert.Throws<ArgumentException>(() => WidgetWorkerLaunchArguments.Parse(
+        [.. RuntimeArguments(), .. BrokerArguments("different-instance")]));
+    Assert.Throws<ArgumentException>(() => WidgetWorkerLaunchArguments.Parse(
+        [.. RuntimeArguments(), "--widget-instance", "duplicate"]));
 
-    var connection = WorkerHostProgram.ParseBrokerConnection(BrokerArguments("widget-1"), "widget-1")!;
-    Assert.Equal("dev.test.widget", connection.PackageId);
-    Assert.Equal("dev.test", connection.PublisherId);
-    Assert.Equal("widget-1", connection.InstanceId);
+    var connection = WidgetWorkerLaunchArguments.Parse(
+        [.. RuntimeArguments(), .. BrokerArguments("widget-1")]).Broker!;
+    Assert.Equal("dev.test.widget", connection.Identity.PackageId);
+    Assert.Equal("dev.test", connection.Identity.PublisherId);
+    Assert.Equal("widget-1", connection.Identity.InstanceId);
 }
+
+static string[] RuntimeArguments() =>
+[
+    "--widget-pipe", "gba-runtime-test",
+    "--widget-instance", "widget-1",
+    "--max-message-bytes", "65536",
+];
 
 static string[] BrokerArguments(string instanceId) =>
 [
@@ -161,18 +223,17 @@ static async Task TypedCapabilityAdapter()
     Assert.True(acknowledged.Acknowledged, "Control acknowledgement was not decoded.");
     Assert.Equal(1, backend.AudioControlCalls);
 
-    await using var events = adapter.SubscribeAsync(WidgetAudioCapabilities.SessionsChanged)
-        .GetAsyncEnumerator();
+    await using var subscription = await adapter.OpenSubscriptionAsync(
+        WidgetAudioCapabilities.SessionsChanged);
+    // Publish after Open returns but before a reader exists. Delivery proves
+    // the remote broker registered and acknowledged the subscription first.
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsChanged,
+        new AudioSessionsChangedEvent(
+            [new("audio-2", "Voice", 0.5, false, true)])));
+    await using var events = subscription.ReadAllAsync().GetAsyncEnumerator();
     var moveNext = events.MoveNextAsync().AsTask();
-    for (var attempt = 0; attempt < 20 && !moveNext.IsCompleted; attempt++)
-    {
-        backend.Publish(new BrokerPlatformEvent(
-            PlatformCapabilities.AudioSessionsReadV1,
-            PlatformCapabilities.AudioSessionsChanged,
-            new AudioSessionsChangedEvent(
-                [new("audio-2", "Voice", 0.5, false, true)])));
-        await Task.Delay(10);
-    }
     Assert.True(await moveNext.WaitAsync(TimeSpan.FromSeconds(1)),
         "Typed capability event was not decoded.");
     Assert.Equal("audio-2", events.Current.Sessions.Single().SessionId);
@@ -216,3 +277,16 @@ file static class Assert
 }
 
 public sealed class NotAWidget;
+
+public sealed class BootstrapCapabilityProbeWidget : Widget
+{
+    private string _state = "not-created";
+
+    protected override ValueTask OnCreatedAsync(CancellationToken widgetLifetime)
+    {
+        _state = HostServices.Capabilities.IsAvailable ? "available" : "unavailable";
+        return ValueTask.CompletedTask;
+    }
+
+    public override WidgetView Render() => new(UI.Text(_state, "capability-state"));
+}

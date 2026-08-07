@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.firstparty.audio-mixer",
+  "publisher": "org.gbar.firstparty",
+  "name": "Audio Mixer",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/AudioMixerWidget.dll",
+    "type": "GameBarAlternative.FirstPartyWidgets.AudioMixer.AudioMixerWidget"
+  },
+  "permissions": [
+    "system.audio.sessions.read.v1"
+  ],
+  "optionalPermissions": [
+    "system.audio.sessions.control.v1"
+  ],
+  "backgroundPolicy": "suspend",
+  "resourceRequest": {
+    "memoryMb": 64,
+    "updateHz": 10
+  },
+  "architectures": [
+    "x64"
+  ]
+}

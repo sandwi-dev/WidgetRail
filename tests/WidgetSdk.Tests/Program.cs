@@ -30,8 +30,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Default controller routing ignores A on non-buttons", NonButtonDoesNotActivate),
     ("Default controller routing blocks disabled and busy buttons", DisabledAndBusyButtonsDoNotActivate),
     ("Controller shortcut fallback stays in explicit active input surface", ScopedShortcutRouting),
-    ("Host capability services are explicit typed and attach once", HostCapabilityServices),
+    ("Public test host services are typed immutable and attach once", HostCapabilityServices),
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
+    ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
 };
 
 var failures = new List<string>();
@@ -65,20 +66,68 @@ static async Task HostCapabilityServices()
     {
     }
 
-    var fake = new FakeCapabilityClient();
-    widget.AttachHostServices(new WidgetHostServices(fake));
+    var operation = new WidgetCapabilityOperation<string, string>(
+        "test.capability.v1", "test.invoke");
+    var services = new WidgetTestHostServicesBuilder()
+        .WithResponse(operation, "accepted")
+        .Build();
+    WidgetTestHost.Attach(widget, services);
     Assert.True(widget.CapabilitiesAvailable, "Attached capability client was not visible to the widget.");
     Assert.Equal("accepted", await widget.CallAsync());
-    Assert.Equal("test.capability.v1", fake.LastCapabilityId);
+    await WidgetTestHost.InitializeAsync(widget);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    Assert.Equal(WidgetLifecycleState.Visible, widget.TestLifecycleState);
     Assert.Throws<InvalidOperationException>(() =>
-        widget.AttachHostServices(new WidgetHostServices(fake)));
+        WidgetTestHost.Attach(widget, services));
+    await WidgetTestHost.DestroyAsync(widget);
+
+    var initialized = new CapabilityWidget();
+    await WidgetTestHost.InitializeAsync(initialized);
+    Assert.Throws<InvalidOperationException>(() =>
+        WidgetTestHost.Attach(initialized, services));
+
+    var missing = WidgetTestHost.Attach(
+        new CapabilityWidget(), new WidgetTestHostServicesBuilder().Build());
+    try
+    {
+        _ = await missing.CallAsync();
+        throw new InvalidOperationException("Expected an unconfigured test operation to fail.");
+    }
+    catch (WidgetCapabilityException exception)
+    {
+        Assert.Equal("test_handler_missing", exception.ErrorCode);
+    }
 }
 
 static async Task TypedPlatformServices()
 {
-    var fake = new FakeCapabilityClient();
-    var widget = new CapabilityWidget();
-    widget.AttachHostServices(new WidgetHostServices(fake));
+    var services = new WidgetTestHostServicesBuilder()
+        .WithResponse(
+            WidgetAudioCapabilities.GetSessions,
+            (IReadOnlyList<WidgetAudioSession>)[new("audio-1", "Game", 0.75, false, true)])
+        .WithResponse(
+            WidgetAudioCapabilities.SetSessionVolume,
+            new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetAudioCapabilities.SetSessionMuted,
+            new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetNetworkCapabilities.GetStatus,
+            new WidgetNetworkStatus(
+                WidgetNetworkConnectivity.Internet, "wifi-1", "Wi-Fi", 80))
+        .WithResponse(
+            WidgetNetworkCapabilities.GetSavedProfiles,
+            (IReadOnlyList<WidgetSavedNetworkProfile>)[
+                new("wifi-1", "Wi-Fi", true, 80)])
+        .WithResponse(
+            WidgetNetworkCapabilities.SwitchSavedProfile,
+            new WidgetCapabilityAcknowledgement(true))
+        .WithEvents(
+            WidgetAudioCapabilities.SessionsChanged,
+            [new WidgetAudioSessionsChanged(
+                [new("audio-1", "Game", 0.75, false, true)])])
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
 
     var sessions = await widget.Audio.GetSessionsAsync();
     Assert.Equal("audio-1", sessions.Single().SessionId);
@@ -94,9 +143,36 @@ static async Task TypedPlatformServices()
     await using var events = widget.Audio.WatchSessionsAsync().GetAsyncEnumerator();
     Assert.True(await events.MoveNextAsync(), "Typed audio event was not forwarded.");
     Assert.Equal("audio-1", events.Current.Sessions.Single().SessionId);
-    Assert.True(fake.OperationIds.Contains("audio.sessions.list"), "Audio list operation was not routed.");
-    Assert.True(fake.OperationIds.Contains("network.saved-profile.switch"),
-        "Network switch operation was not routed.");
+}
+
+static async Task SubscriptionOpenAcknowledges()
+{
+    var opened = 0;
+    var services = new WidgetTestHostServicesBuilder()
+        .WithEventStream(
+            WidgetAudioCapabilities.SessionsChanged,
+            cancellationToken =>
+            {
+                Interlocked.Increment(ref opened);
+                return OneAudioEvent(cancellationToken);
+            })
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+    await using var subscription = await widget.Audio.OpenSessionsSubscriptionAsync();
+    Assert.Equal(1, Volatile.Read(ref opened));
+    await using var reader = subscription.ReadAllAsync().GetAsyncEnumerator();
+    Assert.True(await reader.MoveNextAsync(), "Acknowledged subscription did not forward its event.");
+    Assert.Equal("audio-ack", reader.Current.Sessions.Single().SessionId);
+}
+
+static async IAsyncEnumerable<WidgetAudioSessionsChanged> OneAudioEvent(
+    [System.Runtime.CompilerServices.EnumeratorCancellation]
+    CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    yield return new WidgetAudioSessionsChanged(
+        [new("audio-ack", "Acknowledged", 0.5, false, true)]);
+    await Task.Yield();
 }
 
 static Task SnapshotRoundTrip()
@@ -770,6 +846,7 @@ file sealed class CapabilityWidget : Widget
         new("test.capability.v1", "test.invoke");
 
     public bool CapabilitiesAvailable => HostServices.Capabilities.IsAvailable;
+    public WidgetLifecycleState TestLifecycleState => LifecycleState;
     public WidgetAudioService Audio => HostServices.Audio;
     public WidgetNetworkService Network => HostServices.Network;
     public ValueTask<string> CallAsync() =>
@@ -804,16 +881,30 @@ file sealed class FakeCapabilityClient : IWidgetCapabilityClient
         return ValueTask.FromResult((TResponse)response);
     }
 
-    public async IAsyncEnumerable<TPayload> SubscribeAsync<TPayload>(
+    public ValueTask<IWidgetCapabilitySubscription<TPayload>> OpenSubscriptionAsync<TPayload>(
         WidgetCapabilityEvent<TPayload> platformEvent,
+        CancellationToken cancellationToken = default)
+    {
+        var item = (TPayload)(object)new WidgetAudioSessionsChanged(
+            [new("audio-1", "Game", 0.75, false, true)]);
+        return ValueTask.FromResult<IWidgetCapabilitySubscription<TPayload>>(
+            new SingleEventSubscription<TPayload>(item));
+    }
+}
+
+file sealed class SingleEventSubscription<TPayload>(TPayload item) :
+    IWidgetCapabilitySubscription<TPayload>
+{
+    public async IAsyncEnumerable<TPayload> ReadAllAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        yield return item;
         await Task.Yield();
-        if (typeof(TPayload) == typeof(WidgetAudioSessionsChanged))
-            yield return (TPayload)(object)new WidgetAudioSessionsChanged(
-                [new("audio-1", "Game", 0.75, false, true)]);
     }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
 file static class Assert

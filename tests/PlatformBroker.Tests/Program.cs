@@ -6,6 +6,7 @@ using GameBarAlternative.PlatformBroker;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Capability vocabulary is closed and versioned", CapabilityVocabularyIsClosed),
+    ("Composite backend keeps provider event domains separated", CompositeProviderDomainsAreSeparated),
     ("Missing and explicit consent fail closed", ConsentFailsClosed),
     ("Authenticated channel identity cannot be substituted", IdentityMismatchIsDenied),
     ("Request JSON is strict and bounded", RequestsAreStrictAndBounded),
@@ -57,6 +58,36 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(!PlatformCapabilities.TryGet("system.full-access.v1", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.audio.sessions.read.v2", out _));
     return Task.CompletedTask;
+}
+
+static async Task CompositeProviderDomainsAreSeparated()
+{
+    var audio = new SplitAudioBackend();
+    var network = new SplitNetworkBackend();
+    await using var composite = new CompositePlatformBrokerBackend(audio, network);
+    var published = new List<BrokerPlatformEvent>();
+    composite.EventPublished += (_, platformEvent) => published.Add(platformEvent);
+
+    audio.Publish(new(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsChanged,
+        new AudioSessionsChangedEvent([])));
+    audio.Publish(new(
+        PlatformCapabilities.NetworkReadV1,
+        PlatformCapabilities.NetworkStatusChanged,
+        new NetworkStatusChangedEvent(new(NetworkConnectivity.None, null, null, null))));
+    network.Publish(new(
+        PlatformCapabilities.NetworkReadV1,
+        PlatformCapabilities.NetworkStatusChanged,
+        new NetworkStatusChangedEvent(new(NetworkConnectivity.None, null, null, null))));
+    network.Publish(new(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsChanged,
+        new AudioSessionsChangedEvent([])));
+
+    Assert.Equal(2, published.Count);
+    Assert.Equal(PlatformCapabilities.AudioSessionsReadV1, published[0].CapabilityId);
+    Assert.Equal(PlatformCapabilities.NetworkReadV1, published[1].CapabilityId);
 }
 
 static async Task ConsentFailsClosed()
@@ -681,6 +712,30 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
     public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
         Task.CompletedTask;
 
+    public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
+}
+
+sealed class SplitAudioBackend : IAudioPlatformBrokerBackend
+{
+    public event EventHandler<BrokerPlatformEvent>? EventPublished;
+    public Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AudioSessionSummary>>([]);
+    public Task SetAudioSessionVolumeAsync(string sessionId, double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioSessionMutedAsync(string sessionId, bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
+}
+
+sealed class SplitNetworkBackend : INetworkPlatformBrokerBackend
+{
+    public event EventHandler<BrokerPlatformEvent>? EventPublished;
+    public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new NetworkStatusSummary(NetworkConnectivity.None, null, null, null));
+    public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SavedNetworkProfileSummary>>([]);
+    public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }
 

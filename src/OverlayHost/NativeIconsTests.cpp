@@ -46,6 +46,8 @@ void ClosedSemanticIds() {
         Pair{L"dislike", NativeIcon::Dislike}, Pair{L"repeat", NativeIcon::Repeat},
         Pair{L"settings", NativeIcon::Settings}, Pair{L"warning", NativeIcon::Warning},
         Pair{L"check", NativeIcon::Check}, Pair{L"connection", NativeIcon::Connection},
+        Pair{L"volume", NativeIcon::Volume}, Pair{L"muted", NativeIcon::Muted},
+        Pair{L"microphone", NativeIcon::Microphone},
     };
     for (const auto& [name, expectedIcon] : expected) {
         NativeIcon parsed = NativeIcon::Warning;
@@ -104,6 +106,7 @@ void RenderEveryIcon() {
         NativeIcon::Shuffle, NativeIcon::Like, NativeIcon::Dislike,
         NativeIcon::Repeat, NativeIcon::Settings, NativeIcon::Warning,
         NativeIcon::Check, NativeIcon::Connection,
+        NativeIcon::Volume, NativeIcon::Muted, NativeIcon::Microphone,
     };
     for (const NativeIcon icon : icons) {
         target->BeginDraw();

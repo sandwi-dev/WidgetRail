@@ -6,7 +6,10 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
-    <ProjectReference Include="..\WidgetSdk\WidgetSdk.csproj" />
+    <ProjectReference Include="..\..\WidgetSdk\WidgetSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="styles\default.gbss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

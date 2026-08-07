@@ -1,5 +1,37 @@
 # Widget runtime spike
 
+## Native .NET worker bootstrap
+
+Custom workers must use `WidgetWorkerBootstrap`; do not parse the host command
+line or open runtime/broker pipes directly. A complete executable entrypoint is:
+
+```csharp
+using GameBarAlternative.WidgetRuntime;
+
+return await WidgetWorkerBootstrap.RunAsync(args, () => new MyWidget());
+```
+
+The bootstrap validates the standard runtime arguments and treats the five
+broker arguments as an all-or-none set. It authenticates the identity-bound
+broker channel before invoking the factory, attaches the resulting typed
+`WidgetHostServices` before `OnCreatedAsync`, handles Ctrl+C and caller
+cancellation, and disposes transport state on every exit. Without broker
+arguments, capabilities fail closed through the normal unavailable client.
+Widgets never receive pipe names, nonces, broker JSON, or OS handles.
+
+The factory parameter supports explicit constructor injection when useful:
+
+```csharp
+return await WidgetWorkerBootstrap.RunAsync(
+    args, services => new MyWidget(services.Audio));
+```
+
+Unhandled startup errors are reduced to a generic process-safe diagnostic.
+Factories with a closed, non-sensitive startup failure may throw
+`WidgetWorkerBootstrapException`; its code and message are strictly bounded and
+must never contain paths, credentials, or user data. Host-owned lifecycle
+messages remain the only way to transition a running widget.
+
 `WidgetProcessClient` is the host-side lifecycle/API boundary. Construction is
 inert; the configured worker starts on the first render, action, controller
 input, or activation request. Deactivation of an unstarted worker is the one
@@ -106,6 +138,6 @@ afresh for every worker start/restart. The bridge uses it to create an
 identity/declaration/consent/backend-fixed broker companion and append only its
 bounded bootstrap arguments. Companion lifecycle is updated before the worker
 lifecycle request. The generic worker authenticates that channel and attaches
-typed SDK host services before widget creation. Widget protocol messages cannot
+typed SDK host services before widget lifecycle creation. Widget protocol messages cannot
 provide a companion or choose its identity/backend. See [widget
 capabilities](../../docs/capabilities.md).

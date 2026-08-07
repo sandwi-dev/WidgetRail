@@ -297,6 +297,57 @@ template <std::size_t Count>
     return outer && inner;
 }
 
+[[nodiscard]] bool DrawVolume(
+    ID2D1RenderTarget* target,
+    ID2D1Brush* brush,
+    const Canvas& c,
+    const float stroke,
+    const bool muted) noexcept {
+    const bool speaker = FillPolygon(target, brush, std::array{
+        c.Point(0.12F, 0.39F), c.Point(0.32F, 0.39F), c.Point(0.55F, 0.18F),
+        c.Point(0.55F, 0.82F), c.Point(0.32F, 0.61F), c.Point(0.12F, 0.61F)});
+    if (muted) {
+        DrawRoundLine(target, brush, c.Point(0.66F, 0.36F), c.Point(0.88F, 0.64F), stroke);
+        DrawRoundLine(target, brush, c.Point(0.88F, 0.36F), c.Point(0.66F, 0.64F), stroke);
+        return speaker;
+    }
+    const bool inner = PaintPath(target, brush, stroke, PathPaint::Stroke,
+        [&c](ID2D1GeometrySink* sink) {
+            sink->BeginFigure(c.Point(0.64F, 0.35F), D2D1_FIGURE_BEGIN_HOLLOW);
+            sink->AddBezier(D2D1::BezierSegment(
+                c.Point(0.72F, 0.40F), c.Point(0.72F, 0.60F), c.Point(0.64F, 0.65F)));
+            sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        });
+    const bool outer = PaintPath(target, brush, stroke, PathPaint::Stroke,
+        [&c](ID2D1GeometrySink* sink) {
+            sink->BeginFigure(c.Point(0.75F, 0.22F), D2D1_FIGURE_BEGIN_HOLLOW);
+            sink->AddBezier(D2D1::BezierSegment(
+                c.Point(0.93F, 0.34F), c.Point(0.93F, 0.66F), c.Point(0.75F, 0.78F)));
+            sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        });
+    return speaker && inner && outer;
+}
+
+[[nodiscard]] bool DrawMicrophone(
+    ID2D1RenderTarget* target,
+    ID2D1Brush* brush,
+    const Canvas& c,
+    const float stroke) noexcept {
+    target->DrawRoundedRectangle(
+        D2D1::RoundedRect(c.Rect(0.34F, 0.10F, 0.66F, 0.60F),
+            c.size * 0.16F, c.size * 0.16F), brush, stroke);
+    const bool cradle = PaintPath(target, brush, stroke, PathPaint::Stroke,
+        [&c](ID2D1GeometrySink* sink) {
+            sink->BeginFigure(c.Point(0.22F, 0.44F), D2D1_FIGURE_BEGIN_HOLLOW);
+            sink->AddBezier(D2D1::BezierSegment(
+                c.Point(0.22F, 0.73F), c.Point(0.78F, 0.73F), c.Point(0.78F, 0.44F)));
+            sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        });
+    DrawRoundLine(target, brush, c.Point(0.50F, 0.72F), c.Point(0.50F, 0.88F), stroke);
+    DrawRoundLine(target, brush, c.Point(0.34F, 0.88F), c.Point(0.66F, 0.88F), stroke);
+    return cradle;
+}
+
 } // namespace
 
 bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) noexcept {
@@ -309,6 +360,8 @@ bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) no
         Pair{L"dislike", NativeIcon::Dislike}, Pair{L"repeat", NativeIcon::Repeat},
         Pair{L"settings", NativeIcon::Settings}, Pair{L"warning", NativeIcon::Warning},
         Pair{L"check", NativeIcon::Check}, Pair{L"connection", NativeIcon::Connection},
+        Pair{L"volume", NativeIcon::Volume}, Pair{L"muted", NativeIcon::Muted},
+        Pair{L"microphone", NativeIcon::Microphone},
         Pair{L"toggle-playback", NativeIcon::Play}, Pair{L"play-pause", NativeIcon::Play},
         Pair{L"previous-track", NativeIcon::Previous}, Pair{L"next-track", NativeIcon::Next},
         Pair{L"retry", NativeIcon::Refresh}, Pair{L"repeat-mode", NativeIcon::Repeat},
@@ -348,6 +401,9 @@ bool DrawNativeIcon(
         case NativeIcon::Warning: return DrawWarning(renderTarget, brush, canvas, stroke);
         case NativeIcon::Check: return DrawCheck(renderTarget, brush, canvas, stroke);
         case NativeIcon::Connection: return DrawConnection(renderTarget, brush, canvas, stroke);
+        case NativeIcon::Volume: return DrawVolume(renderTarget, brush, canvas, stroke, false);
+        case NativeIcon::Muted: return DrawVolume(renderTarget, brush, canvas, stroke, true);
+        case NativeIcon::Microphone: return DrawMicrophone(renderTarget, brush, canvas, stroke);
         default: return false;
     }
 }

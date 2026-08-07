@@ -48,7 +48,10 @@ deterministic rendered geometry as a fallback, without wraparound.
 - `WidgetRuntime`: lazy out-of-process workers over random named pipes with
   bounded framed JSON, explicit lifecycle transitions, per-start host-owned
   companion sessions, timeouts, failure reporting, limited restart, and
-  pre-launch Windows Job Object containment.
+  pre-launch Windows Job Object containment. Public custom workers use
+  `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
+  optional broker before constructing the widget, attaches host services before
+  creation, and owns cancellation and transport disposal.
 - `WidgetBridge`: current-user-only native sidecar pipe, trusted catalog,
   enabled-installed catalog discovery, worker forwarding, quick actions,
   controller input, identity/declaration-bound broker companions, invalidation/
@@ -72,14 +75,21 @@ deterministic rendered geometry as a fallback, without wraparound.
   four closed grants, nonce/identity-bound named-pipe transport, manifest/
   consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent
   persistence, bounded/coalesced subscriptions, and a deterministic simulator.
-  It is connected to widget `HostServices`, but not real Windows providers yet.
+  It is connected to widget `HostServices`; the trusted bridge now composes the
+  real Windows audio backend with the simulated network backend.
+- `WindowsAudioProvider`: an event-driven Core Audio backend for sanitized
+  per-application sessions on the current default multimedia render endpoint.
+  A dedicated MTA owns native objects; callbacks only enqueue coalesced refresh
+  work. It supports per-session volume/mute, not endpoint master control,
+  output switching, or microphone control.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
   `enable`, and `disable` commands. Remote acquisition requires SHA-256 pinning,
   reports the actual digest, and installs disabled pending explicit review.
 
-The first-party Settings worker and the Clock/YT Music samples are reference
-widgets. Settings is packaged and registered beside YT Music, renders through
+The first-party Settings and Audio Mixer widgets and the Clock/YT Music samples
+are reference widgets. Settings is packaged and registered beside YT Music,
+renders through
 the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
 requires confirmation before reset, and provides package → capability → grant/
@@ -87,6 +97,15 @@ deny review. Permission grants require explicit confirmation; deny/revoke is
 immediate, missing/invalid state fails closed, and first-party packages are not
 auto-granted. It reloads settings/themes/permissions once per active lifetime
 and does not poll in Background.
+
+Audio Mixer is the active first-party integration milestone. It is packaged and
+registered through the same catalog/bridge/worker path as the other widgets. Its widget code
+uses only the public typed audio service, fetches once on activation, then
+reacts to provider events rather than polling. It offers controller session
+selection plus optimistic per-session volume/mute controls in Interactive and
+renders explicit permission, lifecycle, empty, unavailable, and failure states.
+Broader hardware/churn coverage and end-to-end hidden/visible performance evidence
+remain open; this is not yet an end-user release claim.
 
 YT Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
 connection attempt, and renders media metadata, artwork, transport state, and
@@ -204,8 +223,10 @@ with C++ installed:
   packages are discovered when the bridge starts, so install/enable/disable
   or manifest changes require an overlay/bridge restart. Closed capability
   declarations are connected to the broker and Settings consent flow.
-- Publisher signatures, AppContainer, CPU quotas, real Windows providers, and
-  security audit/history UI are not production-ready. Job Object containment
+- Publisher signatures, AppContainer, CPU quotas, the Windows network provider,
+  and security audit/history UI are not production-ready. The narrow Core Audio
+  session backend is implemented, but still needs broader hardware/churn and
+  hidden-state performance evidence. Job Object containment
   plus capability transport/consent are implemented but do not form a complete
   untrusted-widget boundary.
 - Closed audio/network manifest permissions are enforced through the broker.
@@ -238,13 +259,13 @@ with C++ installed:
   install/scaffold/preview tooling, the full 150% text-scale visual matrix, and
   the complete high-contrast/bold/reduced-transparency/auto-scroll accessibility
   system are not. See [settings and global themes](settings-and-themes.md).
-- Audio Mixer and Network Controls are planned first-party public-SDK examples,
-  not implemented widgets. Their event-driven Core Audio and WLAN/network
-  providers remain future work. Version-1 typed SDK contracts, authenticated
-  transport, consent UI, generic host integration, and a deterministic backend
-  exist. Initial Network Controls explicitly excludes password entry and
-  profile creation. See [widget capabilities](capabilities.md) and [Windows
-  provider architecture](windows-provider-architecture.md).
+- Audio Mixer is the active first-party public-SDK example: its widget,
+  package/catalog integration, and event-driven per-session Core Audio provider
+  exist, while broader hardware and performance evidence remain open. Network
+  Controls is next; its real WLAN/IP Helper provider is not implemented. Initial
+  Network Controls explicitly excludes password entry and profile creation. See
+  [widget capabilities](capabilities.md) and [Windows provider
+  architecture](windows-provider-architecture.md).
 
 ## Diagnostics
 
@@ -266,6 +287,7 @@ and [troubleshooting](troubleshooting.md).
    widget install/review flow and live catalog reload.
 3. Implement signing/trust and AppContainer-equivalent isolation before
    supporting untrusted community binaries.
-4. Build Audio Mixer and Network Controls as event-driven, out-of-process
-   public-SDK reference packages through the generic path.
+4. Finish Audio Mixer packaging/performance evidence, then build Network
+   Controls as the next event-driven, out-of-process public-SDK reference
+   package through the same generic path.
 5. Run the documented controller/game compatibility and performance matrix.

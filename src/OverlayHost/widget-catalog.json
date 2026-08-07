@@ -25,9 +25,44 @@
       "workerExecutable": "runtime/Settings/SettingsWidget.Worker.exe",
       "styleFile": "runtime/Settings/styles/default.gbss",
       "memoryLimitMb": 48,
-      "workerArguments": [],
+      "workerArguments": [
+        "--bundled-widget-root",
+        ".."
+      ],
       "declaredCapabilities": [],
       "quickActions": []
+    },
+    {
+      "id": "audio-mixer",
+      "packageId": "org.gbar.firstparty.audio-mixer",
+      "publisherId": "org.gbar.firstparty",
+      "name": "Audio Mixer",
+      "instanceId": "audio-mixer.default",
+      "icon": "volume",
+      "workerExecutable": "runtime/AudioMixer/AudioMixerWidget.Worker.exe",
+      "styleFile": "runtime/AudioMixer/styles/default.gbss",
+      "memoryLimitMb": 64,
+      "workerArguments": [],
+      "declaredCapabilities": [
+        "system.audio.sessions.read.v1",
+        "system.audio.sessions.control.v1"
+      ],
+      "quickActions": [
+        {
+          "id": "previous-session",
+          "label": "Previous audio session",
+          "actionId": "session.previous",
+          "sourceElementId": "dashboard.audio.previous",
+          "controllerButton": "leftBumper"
+        },
+        {
+          "id": "next-session",
+          "label": "Next audio session",
+          "actionId": "session.next",
+          "sourceElementId": "dashboard.audio.next",
+          "controllerButton": "rightBumper"
+        }
+      ]
     }
   ]
 }

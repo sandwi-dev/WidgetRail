@@ -26,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Undeclared capabilities and decisions are never actionable", UndeclaredCapabilitiesAreHidden),
     ("Malformed catalog and consent fail closed with diagnostics", MalformedPermissionStateFailsClosed),
     ("Permission catalog reloads only on activation", PermissionActivationReload),
+    ("Bundled first-party capability manifests join permission review", BundledPermissionsAreDiscovered),
     ("First-party packages are never auto-granted", FirstPartyIsNotAutoGranted),
     ("Manifest and default GBSS validate", ShippedAssetsValidate),
 };
@@ -487,6 +488,33 @@ static async Task FirstPartyIsNotAutoGranted()
     Assert.Contains("Not decided", Button(Snapshot(widget).Root, "capability.item.0").Text!);
 }
 
+static async Task BundledPermissionsAreDiscovered()
+{
+    using var temp = new TemporaryDirectory();
+    var bundledRoot = Path.Combine(temp.Path, "runtime");
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    WriteBundledWidget(
+        bundledRoot,
+        "AudioMixer",
+        "org.gbar.firstparty.audiomixer",
+        "org.gbar.firstparty",
+        "Audio Mixer",
+        [PlatformCapabilities.AudioSessionsReadV1],
+        [PlatformCapabilities.AudioSessionsControlV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent, bundledRoot);
+
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    var packages = Snapshot(widget);
+    Assert.Contains("Audio Mixer", Button(packages.Root, "permission.item.0").Text!);
+    await Action(widget, "permission.select.0");
+    var capabilities = Snapshot(widget);
+    Assert.Contains("Required", Button(capabilities.Root, "capability.item.0").Text!);
+    Assert.Contains("Optional", Button(capabilities.Root, "capability.item.1").Text!);
+    Assert.Equal(0, (await consent.LoadAsync()).Entries.Count);
+}
+
 static async Task ShippedAssetsValidate()
 {
     var project = ProjectDirectory();
@@ -509,14 +537,16 @@ static SettingsWidget Create(string root)
 static SettingsWidget CreateWithPermissions(
     string settingsRoot,
     string catalogRoot,
-    ConsentStore consentStore)
+    ConsentStore consentStore,
+    string? bundledWidgetRoot = null)
 {
     var paths = new PlatformSettingsPaths(settingsRoot);
     return new SettingsWidget(
         new PlatformSettingsStore(paths),
         new ThemeCatalog(paths),
         new WidgetCatalog(catalogRoot),
-        consentStore);
+        consentStore,
+        bundledWidgetRoot);
 }
 
 static PlatformSettingsStore Store(string root) => new(new PlatformSettingsPaths(root));
@@ -592,6 +622,36 @@ static void WriteInstalledWidget(
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
     File.WriteAllBytes(Path.Combine(directory, "manifest.json"), ManifestJson.Serialize(manifest));
     File.WriteAllBytes(Path.Combine(payload, "Widget.dll"), [0x47, 0x42, 0x41]);
+}
+
+static void WriteBundledWidget(
+    string bundledRoot,
+    string directoryName,
+    string id,
+    string publisher,
+    string name,
+    IReadOnlyList<string> required,
+    IReadOnlyList<string> optional)
+{
+    var directory = Path.Combine(bundledRoot, directoryName);
+    Directory.CreateDirectory(directory);
+    var manifest = new WidgetManifest
+    {
+        Id = id,
+        Publisher = publisher,
+        Name = name,
+        Version = "1.0.0",
+        HostApi = new("1.0", 1),
+        Entrypoint = new("dotnet-worker", "payload/Widget.dll", "Dev.Test.Widget"),
+        Permissions = required,
+        OptionalPermissions = optional,
+        BackgroundPolicy = "suspend",
+        ResourceRequest = new(32, 1),
+        Architectures = ["x64"],
+    };
+    var errors = WidgetManifestValidator.Validate(manifest);
+    Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
+    File.WriteAllBytes(Path.Combine(directory, "manifest.json"), ManifestJson.Serialize(manifest));
 }
 
 static string ProjectDirectory()

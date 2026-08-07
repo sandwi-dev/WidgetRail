@@ -116,6 +116,17 @@ public sealed class WidgetAudioService
         CancellationToken cancellationToken = default) =>
         _client.SubscribeAsync(WidgetAudioCapabilities.SessionsChanged, cancellationToken);
 
+    /// <summary>
+    /// Opens an acknowledged session-change subscription. For a race-free
+    /// current-state observer, await this first, call <see cref="GetSessionsAsync"/>,
+    /// then consume <see cref="IWidgetCapabilitySubscription{TPayload}.ReadAllAsync"/>.
+    /// Events are full coalesced session snapshots and therefore reconcile any
+    /// changes that occurred while the current snapshot was being fetched.
+    /// </summary>
+    public ValueTask<IWidgetCapabilitySubscription<WidgetAudioSessionsChanged>>
+        OpenSessionsSubscriptionAsync(CancellationToken cancellationToken = default) =>
+        _client.OpenSubscriptionAsync(WidgetAudioCapabilities.SessionsChanged, cancellationToken);
+
     private static void DemandAcknowledged(WidgetCapabilityAcknowledgement response)
     {
         if (response is null || !response.Acknowledged)
@@ -152,4 +163,8 @@ public sealed class WidgetNetworkService
     public IAsyncEnumerable<WidgetNetworkStatusChanged> WatchStatusAsync(
         CancellationToken cancellationToken = default) =>
         _client.SubscribeAsync(WidgetNetworkCapabilities.StatusChanged, cancellationToken);
+
+    public ValueTask<IWidgetCapabilitySubscription<WidgetNetworkStatusChanged>>
+        OpenStatusSubscriptionAsync(CancellationToken cancellationToken = default) =>
+        _client.OpenSubscriptionAsync(WidgetNetworkCapabilities.StatusChanged, cancellationToken);
 }

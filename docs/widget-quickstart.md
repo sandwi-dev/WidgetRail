@@ -69,6 +69,21 @@ API. Required capabilities are not auto-granted. See [widget
 capabilities](capabilities.md); do not create raw broker messages or hard-code
 operation IDs.
 
+Custom worker executables should delegate host startup to the public runtime
+bootstrap instead of parsing pipe or broker arguments:
+
+```csharp
+using GameBarAlternative.WidgetRuntime;
+
+return await WidgetWorkerBootstrap.RunAsync(args, () => new VolumeControl());
+```
+
+For unit tests, create typed fake capability responses/events with
+`WidgetTestHostServicesBuilder`, attach them through `WidgetTestHost.Attach`,
+then drive the same Created/Background/Visible/Interactive lifecycle with the
+`WidgetTestHost` helpers. This keeps tests transport-free without reflection or
+private runtime APIs. See the SDK and runtime READMEs for complete examples.
+
 ## Validate
 
 ```powershell

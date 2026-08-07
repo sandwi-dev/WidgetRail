@@ -1,9 +1,10 @@
 # Widget capabilities
 
 Status: typed SDK services, authenticated local transport, lifecycle/consent
-enforcement, controller Settings review, and a deterministic simulator are
-implemented. The production bridge still uses the simulator; real Core Audio
-and WLAN/IP Helper providers are not implemented.
+enforcement, controller Settings review, a deterministic simulator, and the
+narrow real Core Audio session backend are implemented. The production bridge
+uses Core Audio for audio and the simulator for network; a real WLAN/IP Helper
+provider is not implemented.
 
 Capabilities are narrow host services for operating-system work that should
 not become native overlay code or raw widget process access. Widget authors use
@@ -16,9 +17,9 @@ The current closed capability set is:
 
 | Manifest capability | Typed SDK surface | Lifecycle |
 | --- | --- | --- |
-| `system.audio.sessions.read.v1` | `HostServices.Audio.GetSessionsAsync` and `WatchSessionsAsync` | Visible or Interactive |
+| `system.audio.sessions.read.v1` | `HostServices.Audio.GetSessionsAsync`, `OpenSessionsSubscriptionAsync`, and `WatchSessionsAsync` | Visible or Interactive |
 | `system.audio.sessions.control.v1` | `SetSessionVolumeAsync` and `SetSessionMutedAsync` | Interactive only |
-| `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, and `WatchStatusAsync` | Visible or Interactive |
+| `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, and `WatchStatusAsync` | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | `SwitchSavedProfileAsync` | Interactive only |
 
 Declare a capability in `permissions` when the widget cannot provide its core
@@ -76,11 +77,12 @@ private async Task ObserveSessionsAsync(CancellationToken cancellationToken)
 {
     try
     {
+        await using var subscription = await HostServices.Audio
+            .OpenSessionsSubscriptionAsync(cancellationToken);
         _sessions = await HostServices.Audio.GetSessionsAsync(cancellationToken);
         Invalidate();
 
-        await foreach (var change in HostServices.Audio
-            .WatchSessionsAsync(cancellationToken))
+        await foreach (var change in subscription.ReadAllAsync(cancellationToken))
         {
             _sessions = change.Sessions;
             Invalidate();
@@ -102,6 +104,12 @@ private async Task ObserveSessionsAsync(CancellationToken cancellationToken)
     }
 }
 ```
+
+Open the acknowledged subscription before fetching current state. The open
+returns only after host registration, and the capacity-one full-snapshot event
+buffer retains the newest change that occurs during the fetch. Fetching first
+and calling `WatchSessionsAsync` afterward can lose a one-off change. The
+`Watch*` helpers remain appropriate for event-only consumers and compatibility.
 
 Use the state token for a watcher tied to exactly one state. The previous token
 is canceled before every transition, including Visible to Interactive. A widget
@@ -160,8 +168,9 @@ an explicit action or a bounded worker-recovery path.
 
 ## Controller permission review
 
-Settings discovers installed manifests when the Settings widget enters a new
-Visible/Interactive lifetime; it does not poll. The controller flow is:
+Settings discovers installed and bundled first-party manifests when the
+Settings widget enters a new Visible/Interactive lifetime; it does not poll.
+The controller flow is:
 
 1. **Permissions & capabilities** lists packages, five per page.
 2. A package page lists supported required/optional declarations, four per
@@ -179,8 +188,10 @@ auto-granted.
 
 ## Testing
 
-Widget unit tests should implement `IWidgetCapabilityClient` as a fake and have
-the repository runtime/test harness attach it before `OnCreatedAsync`. Assert:
+Widget unit tests should build transport-free services with
+`WidgetTestHostServicesBuilder`, attach them with `WidgetTestHost.Attach`, and
+drive creation/lifecycle/destruction with the public `WidgetTestHost` helpers.
+Assert:
 
 - the widget calls the published `WidgetAudioCapabilities` or
   `WidgetNetworkCapabilities` descriptors rather than ad-hoc strings;
@@ -189,12 +200,18 @@ the repository runtime/test harness attach it before `OnCreatedAsync`. Assert:
 - event bursts do not create overlapping UI refresh work; and
 - optional capability loss removes only the optional feature.
 
-The current SDK does not yet publish a standalone external host-services test
-harness; repository tests use internal runtime attachment. Transport contract
-tests exercise the real nonce/identity handshake, bounds, cancellation,
+`WidgetWorkerBootstrap.RunAsync` is the public worker entrypoint. It validates
+the host launch contract, authenticates the optional broker before invoking the
+widget factory, attaches host services before `OnCreatedAsync`, and owns
+cancellation/disposal. Widget executables should not parse pipe/broker arguments
+or construct transports themselves.
+
+Transport contract tests exercise the real nonce/identity handshake, bounds, cancellation,
 lifecycle, coalescing, unsubscribe, and disposal against
-`SimulatedPlatformBrokerBackend`. Provider/widget tests must use that simulator
-or fakes in normal CI—never the developer's real audio device or network.
+`SimulatedPlatformBrokerBackend`. Widget tests use the public fake host; normal
+CI must not change the developer's audio device or network. Real Core Audio
+smoke tests are read-only unless an explicitly isolated integration test opts
+into bounded control and restores prior state.
 
 ## Exact security boundary
 
@@ -218,6 +235,7 @@ authority. Publisher signing, AppContainer-equivalent isolation, and real
 provider security testing remain mandatory before untrusted public widgets are
 supported.
 
-For the planned real Windows backends and privacy constraints, see
+For the implemented audio backend, planned network backend, and privacy
+constraints, see
 [Windows provider architecture](windows-provider-architecture.md). For the
 broader trust decision, see [security and trust](security-and-trust.md).
