@@ -57,9 +57,14 @@ planned. A structurally valid package is not necessarily trustworthy.
   path. Remote sources require an expected SHA-256 digest, comparison occurs
   before package installation, and every successful remote install reports the
   actual digest.
-- Newly discovered widget IDs default to disabled. A remote install explicitly
-  disables its widget ID and requires a separate Settings or CLI enable
-  decision.
+- Newly discovered widget IDs default to disabled. Local and remote updates are
+  rejected while the ID is enabled; installation, active-version selection,
+  review, and enablement remain separate decisions. Remote installation also
+  requires an exact independently obtained SHA-256 pin.
+- Installed package versions are immutable. Active-version selection and
+  rollback require the widget to be disabled, leave it disabled, and persist an
+  exact schema-2 pin. A missing pinned version fails catalog discovery closed
+  rather than selecting different code.
 - Only enabled, host-compatible installed packages using the closed capability
   vocabulary are joined. The bridge watches the trusted catalog file plus the
   installed catalog state/package tree, coalesces notifications, and publishes
@@ -85,7 +90,7 @@ The following are **not implemented as a complete public security boundary**:
 - production hardening/hardware/privacy evidence for the narrow Core Audio and
   Windows network providers, and a security audit/history UI;
 - secure token brokering for third-party integrations;
-- user-facing update review, rollback, or quarantine UI;
+- automatic update discovery/review, version removal, or crash-quarantine UI;
 - a graphical/file-picker installer and safe automatic updates;
 - universal anti-cheat or controller-containment compatibility.
 
@@ -111,15 +116,18 @@ production bridge composes the narrow real Core Audio and Windows network
 backends. None of that is AppContainer isolation, publisher trust, a security
 audit, or proof across the hardware/privacy matrix.
 
-The managed development theme catalog has strict manifests, version-pinned
-directories, package-relative GBSS imports, bounds, reparse/containment checks,
-and sanitized diagnostics. The bridge watches only the settings file and
-current-user theme tree, debounces notifications, and republishes only a fully
-valid last-good snapshot. It only reads data consumed by the allowlisted GBSS
-compiler. There is still no supported theme distribution package, installer,
-signature, or publisher trust decision. Future distribution must never turn
-themes into a route for DLLs, scripts, remote resources, fonts, shaders, or
-arbitrary paths. See [settings and global themes](settings-and-themes.md).
+The managed theme catalog has strict manifests, version-pinned directories,
+package-relative GBSS imports, bounds, reparse/containment checks, and sanitized
+diagnostics. The implemented data-only `.gbartheme` workflow scaffolds,
+validates, previews computed styles, deterministically packs/inspects, and
+atomically installs local or SHA-256-pinned HTTPS/GitHub Release packages. The
+bridge watches only the settings file and current-user theme tree, debounces
+notifications, and republishes only a fully valid last-good snapshot. It only
+reads data consumed by the allowlisted GBSS compiler; executable content,
+scripts, remote resources, fonts, shaders, and arbitrary assets are rejected.
+Theme publisher signing, revocation, removal/update/rollback, gallery, and
+graphical preview remain unimplemented. See [theme packaging and
+distribution](theme-packaging.md).
 
 ## Trust decision today
 

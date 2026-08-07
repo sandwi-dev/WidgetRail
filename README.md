@@ -29,7 +29,8 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   reference widgets through the same declarative worker path
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
-  accepted catalog changes reconcile live and workers still start lazily
+  immutable version pin/rollback commands; accepted catalog changes reconcile
+  live and workers still start lazily
 - A generic installed-widget worker host, pre-launch Windows Job Object memory/
   process containment, controller permission review, and typed authenticated
   audio/network capability transport backed by deterministic simulators and

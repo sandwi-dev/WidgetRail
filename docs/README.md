@@ -40,13 +40,15 @@ guarantees that are available now.
 
 - [Publishing and installation](publishing-and-installation.md) — sharing
   source and `.gbarwidget` releases through GitHub, deterministic packing,
-  SHA-256 pinning, bounded remote acquisition, and catalog management.
+  SHA-256 pinning, bounded remote acquisition, disabled-only version
+  selection/rollback, and catalog management.
 - [Security and trust](security-and-trust.md) — package validation, process
   boundaries, missing production isolation, and the current trust decision.
 - [Troubleshooting](troubleshooting.md) — CLI, worker, bridge, controller,
   rendering, image, and GBSS diagnostics.
 - [Widget packaging contract](widget-packaging.md) — archive layout,
-  containment rules, immutable installation, and catalog APIs.
+  containment rules, immutable installation, schema migration, version pins,
+  and catalog APIs.
 - [Implementation status](implementation-status.md) — verified components and
   honest limitations.
 - [Windows provider architecture](windows-provider-architecture.md) — the

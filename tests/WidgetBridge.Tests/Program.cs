@@ -429,7 +429,7 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
         WriteArchiveEntry(archive, "styles/default.gbss",
             System.Text.Encoding.UTF8.GetBytes(styleSource));
     }
-    var installed = await catalog.CreateInstaller().InstallAsync(packagePath);
+    var installed = await catalog.InstallAsync(packagePath);
     if (enabled) await catalog.SetEnabledAsync(id, true);
     return installed;
 }

@@ -19,6 +19,9 @@ gbar install .\\VolumeControl-1.0.0.gbarwidget
 gbar install github:example/widgets@v1.0.0/volume-control.gbarwidget --sha256 <64-hex-digest>
 gbar list
 gbar disable dev.example.volume-control
+gbar version list dev.example.volume-control
+gbar version select dev.example.volume-control 1.0.0
+gbar version rollback dev.example.volume-control
 gbar enable dev.example.volume-control
 
 gbar theme new "Ocean Night" --id dev.example.ocean-night --publisher dev.example
@@ -65,6 +68,14 @@ gbar theme list
   `--catalog <root>` overrides the default
   `%LOCALAPPDATA%\\GameBarAlternative\\widgets` location for every catalog
   command.
+- `version list <widget-id>` lists every immutable installed version and marks
+  the active one. `version select <widget-id> <version>` pins any installed
+  canonical dotted numeric version. `version rollback <widget-id>` selects the
+  greatest installed version older than the active version; `--to <version>`
+  selects a specific older version. Selection and rollback require the widget
+  to be disabled and leave it disabled. Review the selected package, then run
+  `enable` as a separate decision. Use `version select`, not `rollback`, to move
+  forward again.
 
 ### Theme authoring and distribution
 
@@ -131,10 +142,16 @@ only the publisher-bearing public schema.
 Packaging and catalog commands only inspect bytes and metadata; they never load
 or execute a widget assembly. Packages are not signed, and a digest proves
 integrity rather than publisher identity, so compare the required remote digest
-through an independent trusted channel. Newly installed widgets remain disabled
-until explicitly enabled after review. Remote updates of an enabled widget are
-rejected without changing the installed version; disable the widget explicitly,
-retry the install, review it, and then re-enable it.
+through an independent trusted channel. Newly installed widget IDs remain
+disabled until explicitly enabled after review. Installed versions are
+immutable and coexist under `<id>/<version>`; changing the active version never
+rewrites either package. Update or rollback is a disabled-only review flow:
+disable the ID, install if necessary, explicitly select or roll back, review,
+and then enable it again. A local or remote update of an enabled widget is
+rejected before package publication without changing its active version.
+Installing a newer version does not override an existing explicit pin; the CLI
+prints the still-selected version and the exact `version select` command needed
+to review the new one.
 
 The shared remote downloader permits HTTPS on port 443 only, rejects credentials,
 fragments, localhost, and obvious private or link-local IP literals, and checks

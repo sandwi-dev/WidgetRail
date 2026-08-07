@@ -27,7 +27,8 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 ```
 
 The widget commands are `new`, `validate`, `render`, `replay`, `pack`,
-`install`, `list`, `enable`, and `disable`. The separate `theme` group provides
+`install`, `list`, `enable`, `disable`, and the `version list|select|rollback`
+group. The separate `theme` group provides
 `new`, `validate`, `preview`, `pack`, `inspect`, `install`, and `list` for
 data-only global themes. Remote install accepts an absolute HTTPS URL or a
 deterministic GitHub Release shorthand. There is no `gbar dev` watcher, GitHub
@@ -166,6 +167,29 @@ the overlay without a restart; listing/reload does not eagerly start the worker.
 Enablement is not capability consent. If the package declares a brokered
 service, review and grant it separately under Settings → Permissions &
 capabilities. Invalid catalog updates retain the last-good running catalog.
+
+Installed package versions are immutable and coexist. Before changing the
+active version, disable the widget. In Settings → Installed widgets, open the
+package, choose **Manage versions**, select the exact version, return to
+details, and review it. A compatible selection can then use **Enable reviewed
+widget** as a separate action; an incompatible selection remains reviewable
+but cannot be enabled. LB/RB page the five-row version list and B returns one
+scope. The equivalent CLI flow is:
+
+```powershell
+& $gbar disable dev.example.volume-control
+& $gbar version list dev.example.volume-control
+& $gbar version select dev.example.volume-control 1.1.0
+# Review Settings → Installed widgets, then:
+& $gbar enable dev.example.volume-control
+```
+
+`version rollback` without `--to` chooses the greatest installed version older
+than the active version. `version rollback --to <version>` requires a specific
+installed older version. Both operations leave the widget disabled; moving to
+a newer version uses `version select`. If the catalog pins a version whose
+immutable directory is missing, discovery fails closed instead of silently
+running another version.
 
 The MVP accepts only Pressed shortcuts. A and D-pad are reserved for focused
 activation and navigation. Dashboard quick actions are separate: the host owns

@@ -42,26 +42,35 @@ public sealed class WidgetPackageInstaller
         return Task.FromResult(plan.Inspection);
     }
 
-    public async Task<InstalledWidgetVersion> InstallAsync(
+    internal async Task<InstalledWidgetVersion> InstallAsync(
         string packagePath,
+        Func<WidgetPackageInspection, CancellationToken, Task> prePublish,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packagePath);
+        ArgumentNullException.ThrowIfNull(prePublish);
         using var archive = OpenArchive(packagePath);
-        return await InstallArchiveAsync(archive, cancellationToken);
+        return await InstallArchiveAsync(archive, prePublish, cancellationToken);
     }
 
-    public async Task<InstalledWidgetVersion> InstallAsync(
+    /// <summary>
+    /// Validates one locked stream, runs a policy decision against that exact
+    /// inspection, and publishes the same bytes only when the policy succeeds.
+    /// </summary>
+    internal async Task<InstalledWidgetVersion> InstallAsync(
         Stream packageStream,
+        Func<WidgetPackageInspection, CancellationToken, Task> prePublish,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(packageStream);
+        ArgumentNullException.ThrowIfNull(prePublish);
         using var archive = OpenArchive(packageStream);
-        return await InstallArchiveAsync(archive, cancellationToken);
+        return await InstallArchiveAsync(archive, prePublish, cancellationToken);
     }
 
     private async Task<InstalledWidgetVersion> InstallArchiveAsync(
         ZipArchive archive,
+        Func<WidgetPackageInspection, CancellationToken, Task>? prePublish,
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(_root);
@@ -89,23 +98,28 @@ public sealed class WidgetPackageInstaller
             FileSystemSafety.EnsureTreeContainsNoReparsePoints(_root, stage);
             var stagedManifestPath = Path.Combine(stage, "manifest.json");
             var stagedManifest = ReadAndValidateManifest(await File.ReadAllBytesAsync(stagedManifestPath, cancellationToken));
-            if (!string.Equals(stagedManifest.Id, plan.Inspection.Id, StringComparison.Ordinal) ||
-                !string.Equals(stagedManifest.Version, plan.Inspection.Manifest.Version, StringComparison.Ordinal))
-                throw new WidgetPackageException("identity_mismatch", "Staged manifest identity changed during extraction.");
+            if (!ManifestJson.Serialize(stagedManifest).AsSpan().SequenceEqual(
+                    ManifestJson.Serialize(plan.Inspection.Manifest)))
+                throw new WidgetPackageException(
+                    "package_changed", "Package manifest changed between archive inspection and staging.");
 
-            var idParent = Path.Combine(_packagesRoot, plan.Inspection.Id);
+            var stagedInspection = plan.Inspection with { Manifest = stagedManifest };
+            if (prePublish is not null)
+                await prePublish(stagedInspection, cancellationToken);
+
+            var idParent = Path.Combine(_packagesRoot, stagedInspection.Id);
             Directory.CreateDirectory(idParent);
             FileSystemSafety.EnsureNoReparsePoints(_root, idParent);
-            var destination = Path.Combine(idParent, plan.Inspection.Manifest.Version);
+            var destination = Path.Combine(idParent, stagedInspection.Manifest.Version);
             if (Directory.Exists(destination) || File.Exists(destination))
                 throw new WidgetPackageException(
                     "version_already_installed",
-                    $"{plan.Inspection.Id} {plan.Inspection.Manifest.Version} is already installed; installed versions are immutable.");
+                    $"{stagedInspection.Id} {stagedInspection.Manifest.Version} is already installed; installed versions are immutable.");
 
             Directory.Move(stage, destination);
             return new InstalledWidgetVersion(
-                plan.Inspection.Id,
-                plan.Inspection.Version,
+                stagedInspection.Id,
+                stagedInspection.Version,
                 destination,
                 stagedManifest);
         }

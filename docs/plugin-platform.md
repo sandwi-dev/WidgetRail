@@ -121,7 +121,11 @@ schema migration is required before the final policy names become public API.
 
 ## IPC
 
-Use a length-prefixed Protocol Buffers protocol over a local named pipe rather than full gRPC/Kestrel in v1. This retains generated, language-neutral contracts without adding an HTTP/2 server to each worker.
+The implemented version-1 runtime uses bounded length-prefixed UTF-8 JSON over
+a local named pipe, not Protocol Buffers, gRPC, Kestrel, or HTTP/2. Every frame
+has a four-byte little-endian length and a strict versioned envelope. Runtime,
+bridge, and capability-broker transports use separate closed contracts; this is
+the v1 decision that tooling and documentation must target.
 
 Pipe requirements:
 
@@ -131,7 +135,8 @@ Pipe requirements:
 - Mutual protocol and package identity validation
 - Maximum frame size, string length, collection size, image size, and message rate
 - Deadlines and cancellation for every request
-- Unknown-field compatibility and field numbers that are never reused
+- Strict JSON member/casing validation; unknown or duplicate members fail the
+  current protocol version rather than being silently ignored
 
 Core messages:
 
@@ -276,7 +281,8 @@ Available now:
 - `gbar validate`, `render`, and `replay` exercise manifests, styles,
   snapshots, focus, and controller actions;
 - `gbar pack` creates a deterministic `.gbarwidget` bundle;
-- local/HTTPS/GitHub Release install plus catalog list/enable/disable commands;
+- local/HTTPS/GitHub Release install, catalog list/enable/disable, and immutable
+  `gbar version list|select|rollback` commands;
 - `gbar theme new|validate|preview|pack|inspect|install|list` for deterministic,
   bounded, data-only global themes;
 - `WidgetWorkerBootstrap`, `WidgetTestHost`, and typed fake host services; and
@@ -292,7 +298,7 @@ Remaining tooling:
 - resource-budget, responsiveness, accessibility, and controller-only
   conformance harnesses;
 - a published supported SDK/NuGet/template workflow outside this repository;
-- native graphical theme preview plus remove/update/rollback commands; and
+- native graphical theme preview plus package remove/update discovery; and
 - an SDK Gallery widget covering the complete public primitive/state matrix.
 
 Developer mode permits unsigned local packages but keeps process isolation, displays a persistent warning, and disables automatic background activation.
@@ -303,8 +309,10 @@ Developer mode permits unsigned local packages but keeps process isolation, disp
 - Manifest declares minimum API and maximum understood major
 - Protocol negotiation occurs before a widget is mounted
 - Install to immutable versioned directories
-- Stage, validate, handshake, and switch versions atomically
-- Retain one known-good rollback version
+- Stage and validate without replacing installed bytes; select versions only
+  while disabled, then review and enable separately
+- Persist an exact active-version pin and retain installed older versions for
+  CLI rollback; a missing pin fails closed
 - Production executable packages require publisher identity and tamper-evident signing
 - Start with local sideloading; add a curated catalog only after security and rollback are proven
 - A future catalog can link to Microsoft Store or WinGet packages rather than becoming an immediate hosting/payment platform

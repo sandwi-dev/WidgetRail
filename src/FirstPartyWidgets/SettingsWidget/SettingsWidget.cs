@@ -19,6 +19,7 @@ public enum SettingsPage
     Overlay,
     InstalledWidgets,
     InstalledWidgetDetails,
+    InstalledWidgetVersions,
     Permissions,
     PackageCapabilities,
     CapabilityDecision,
@@ -44,6 +45,7 @@ public sealed partial class SettingsWidget : Widget
     private bool _installedWidgetCatalogValid = true;
     private string? _installedWidgetDiagnostic;
     private int _installedWidgetPage;
+    private int _installedVersionPage;
     private string? _selectedInstalledWidgetId;
     private SettingsPage _page;
     private int _themePage;
@@ -119,6 +121,7 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.Overlay => RenderOverlay(header, settings, busy),
             SettingsPage.InstalledWidgets => RenderInstalledWidgets(header, busy),
             SettingsPage.InstalledWidgetDetails => RenderInstalledWidgetDetails(header, busy),
+            SettingsPage.InstalledWidgetVersions => RenderInstalledWidgetVersions(header, busy),
             SettingsPage.Permissions => RenderPermissionPackages(header, busy),
             SettingsPage.PackageCapabilities => RenderPackageCapabilities(header, busy),
             SettingsPage.CapabilityDecision => RenderCapabilityDecision(header, busy),
@@ -158,6 +161,9 @@ public sealed partial class SettingsWidget : Widget
                 case "theme.next-page": ChangeThemePage(1); break;
                 case "installed.previous-page": ChangeInstalledWidgetPage(-1); break;
                 case "installed.next-page": ChangeInstalledWidgetPage(1); break;
+                case "installed.versions.open": Navigate(SettingsPage.InstalledWidgetVersions); break;
+                case "installed.versions.previous-page": ChangeInstalledVersionPage(-1); break;
+                case "installed.versions.next-page": ChangeInstalledVersionPage(1); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
                     .ConfigureAwait(false); break;
                 case "permission.previous-page": ChangePermissionPackagePage(-1); break;
@@ -243,6 +249,8 @@ public sealed partial class SettingsWidget : Widget
                         await SelectThemeAsync(index, cancellationToken).ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.select.", out index))
                         SelectInstalledWidget(index);
+                    else if (TryIndexedAction(action.ActionId, "installed.version.select.", out index))
+                        await SelectInstalledVersionAsync(index, cancellationToken).ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "permission.select.", out index))
                         SelectPermissionPackage(index);
                     else if (TryIndexedAction(action.ActionId, "capability.select.", out index))
@@ -692,6 +700,7 @@ public sealed partial class SettingsWidget : Widget
         SettingsPage.ThemePicker => SettingsPage.Appearance,
         SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
         SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
+        SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,
         SettingsPage.PackageCapabilities => SettingsPage.Permissions,
         SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,
         SettingsPage.Root => SettingsPage.Root,

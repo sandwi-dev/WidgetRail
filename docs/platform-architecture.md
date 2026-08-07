@@ -33,11 +33,11 @@ flowchart LR
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network services/DTOs. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, and last-good reload. The bridge/native shell consume its live revisions, including bounded text scale for shell and generic widget layout. |
-| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence. The bridge consumes enabled compatible packages through complete validated live revisions. |
+| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement/order persistence, schema-1 migration, and fail-closed exact active-version pins. The bridge consumes enabled compatible packages through complete validated live revisions. |
 | `src/PlatformBroker` | Version-1 audio-session/network capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for sanitized per-application sessions on the default multimedia render endpoint, with per-session volume/mute. It does not expose master volume, output switching, or microphone control. |
 | `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse connectivity, explicit transport/radio/service/privacy/attempt state, sanitized saved profiles, and opaque saved-profile switching. It does not scan, handle credentials/profile XML, query current SSID/signal automatically, or expose native identities. |
-| `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, and catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
+| `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, catalog install/list/enable/disable, and immutable version list/select/rollback commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
 
@@ -178,15 +178,17 @@ then deterministic geometry from the last render.
 - The native renderer is still a reference/prototype implementation. The YT
   Music path is integrated; complete generic rendering of every SDK node and
   every computed GBSS state is still being finished.
-- `.gbarwidget` pack/install/list/enable/disable work with the current-user
+- `.gbarwidget` pack/install/list/enable/disable and disabled-only version
+  list/select/rollback work with the current-user
   catalog. The bridge watches bounded catalog inputs, publishes complete
   last-good semantic revisions, and launches enabled compatible packages lazily
   through the packaged generic worker host. Install accepts local files,
   bounded absolute HTTPS URLs, and exact GitHub Release shorthand. Remote
   sources require SHA-256 and install disabled. Settings provides controller
   package identity/capability review plus enable/disable after CLI installation;
-  there is no file-picker installer, automatic update discovery, or signature
-  verification. Supported capability declarations receive the authenticated
+  Settings includes disabled-only exact-version selection/rollback; there is no
+  file-picker installer, automatic update discovery, version removal, or
+  signature verification. Supported capability declarations receive the authenticated
   broker path; unknown IDs cause that package to be skipped.
 - Job Object memory/process-count/cleanup policy, typed capability IPC, consent
   UI, and prompt fail-closed revocation are implemented and tested. Publisher

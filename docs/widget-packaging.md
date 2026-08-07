@@ -76,9 +76,11 @@ It then:
    `packages/<id>/<version>`.
 
 An existing destination is never replaced or merged. Installing an update adds
-a new version beside the old version; discovery selects the greatest
-`System.Version` as active. A failed install deletes its staging directory
-and cannot damage an installed version.
+a new version beside the old version. Without an explicit version pin,
+discovery selects the greatest `System.Version` as active. Once selected, an
+installed version remains pinned until another explicit selection changes it.
+A failed install deletes its staging directory and cannot damage an installed
+version.
 
 ## Discovery and user state
 
@@ -101,11 +103,52 @@ fails closed when installed content is missing, malformed, reparse-backed, or
 identity-mismatched. Widget IDs use ordinal ordering; versions use descending
 `System.Version` ordering.
 
-`catalog-state.json` stores only enablement and presentation order. New IDs are
-disabled by default and appended in ordinal ID order. State updates serialize
-through an in-process lock and a bounded cross-process catalog lock, flush a
-uniquely named sibling temporary file, and atomically replace the state file.
-Package contents remain immutable.
+Schema-version-2 `catalog-state.json` stores enablement, presentation order,
+and an optional canonical `activeVersion` pin. New IDs are disabled by default
+and appended in ordinal ID order. A schema-version-1 state document remains
+readable: it has no pin, so discovery initially uses the greatest installed
+version, and the next successful state mutation atomically writes schema 2.
+State updates serialize through an in-process lock and a bounded cross-process
+catalog lock, flush a uniquely named sibling temporary file, and atomically
+replace the state file. Package contents remain immutable.
+
+Legacy schema 1:
+
+```json
+{
+  "version": 1,
+  "widgets": [
+    { "id": "dev.example.clock", "enabled": false, "order": 0 }
+  ]
+}
+```
+
+Current schema 2 with an exact pin:
+
+```json
+{
+  "version": 2,
+  "widgets": [
+    {
+      "id": "dev.example.clock",
+      "enabled": false,
+      "order": 0,
+      "activeVersion": "1.1.0"
+    }
+  ]
+}
+```
+
+These files are strict host state, not a user-editing API. Use the CLI or
+`WidgetCatalog` methods so validation, locking, and atomic replacement remain
+in force.
+
+A pin is authoritative. If its exact immutable version directory is absent,
+discovery reports `active_version_missing`; malformed installed content fails
+with its structural catalog diagnostic. Neither case falls forward or backward
+to different code. Reinstall the exact pinned version first; after discovery
+succeeds, another installed version can be selected explicitly. Version
+selection is accepted only while the widget is disabled and does not enable it.
 
 ## API sketch
 
@@ -114,16 +157,20 @@ var catalog = new WidgetCatalog(userCatalogRoot);
 var installer = catalog.CreateInstaller();
 
 var inspection = await installer.ValidateAsync("Clock.gbarwidget");
-var installed = await installer.InstallAsync("Clock.gbarwidget");
+var installed = await catalog.InstallAsync("Clock.gbarwidget");
 
-await catalog.SetEnabledAsync(installed.Id, enabled: true);
+await catalog.SetActiveVersionAsync(installed.Id, new Version(1, 0, 0));
 await catalog.SetOrderAsync(["dev.example.clock", "dev.example.audio"]);
+await catalog.SetEnabledAsync(installed.Id, enabled: true);
 
 WidgetCatalogSnapshot snapshot = await catalog.DiscoverAsync();
 ```
 
 `SetOrderAsync` moves the supplied installed IDs to the front and preserves
-the relative order of remaining widgets.
+the relative order and active-version pins of remaining widgets.
+Only `WidgetCatalog.InstallAsync` publishes package bytes. The lower-level
+installer is a validation surface, preventing library consumers from bypassing
+the disabled-update and reviewed-version latch.
 
 ## Live bridge consumption
 
@@ -172,11 +219,41 @@ any archive rule on this page. See [publishing and
 installation](publishing-and-installation.md#remote-acquisition-safety-boundary)
 for the command grammar and limits.
 
+CLI installation passes a pre-publish policy callback to the stream overload
+of the package installer. The installer validates the package identity from
+that stream, runs the enabled-ID policy against the validated identity, and
+only then extracts and atomically publishes those same package bytes. Local
+installs keep one read-only file stream open across optional hashing,
+validation, policy, and extraction; remote installs use the downloader's
+locked, digest-verified temporary-file stream. A rejected policy never
+publishes the staged version.
+
+## Version selection and rollback
+
+The CLI exposes the same catalog contract without deleting package bytes:
+
+```powershell
+gbar version list dev.example.clock
+gbar disable dev.example.clock
+gbar version select dev.example.clock 1.1.0
+gbar version rollback dev.example.clock
+gbar version rollback dev.example.clock --to 1.0.0
+```
+
+`list` reports every installed path and marks the active version. `select`
+accepts any installed canonical dotted numeric version. `rollback` without
+`--to` chooses the greatest installed version strictly older than the active
+one; an explicit target must also be installed and older. Selection and
+rollback require a disabled widget, preserve that disabled state, and require a
+separate review and `gbar enable` action afterward. There is no history stack:
+use `version select` to move forward to a newer installed version.
+
 ## Deliberately deferred
 
 - Publisher signature and certificate-chain verification
 - Online catalog metadata, release discovery, automatic updates, and revocation
-- Rollback/pinning UI and garbage collection of old versions
+- Version removal and garbage collection of old versions (Settings and CLI
+  exact-version selection/rollback are implemented)
 - A graphical/file-picker installer (controller review/enablement exists after
   CLI installation)
 

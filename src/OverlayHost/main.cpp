@@ -1508,6 +1508,15 @@ private:
         const auto* snapshot = SnapshotFor(widgetId);
         if (!snapshot) return;
         const auto activeScope = std::wstring_view(snapshot->activeInputScopeId);
+        const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
+            focusedElementId_, activeScope, lastWidgetRenderResult_);
+        if (!visibleFocus) return;
+        if (*visibleFocus != focusedElementId_) {
+            focusedElementId_ = *visibleFocus;
+            focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
         const auto* focused = gba::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, activeScope);
         if (!focused) return;
@@ -1519,7 +1528,8 @@ private:
         const auto* explicitTarget = target && !target->empty()
             ? gba::input::FindNodeInInputScope(*snapshot, *target, activeScope)
             : nullptr;
-        if (explicitTarget && !explicitTarget->isDisabled && !explicitTarget->isBusy) {
+        if (explicitTarget && !explicitTarget->isDisabled && !explicitTarget->isBusy &&
+            gba::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_)) {
             focusedElementId_ = explicitTarget->id;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
@@ -1571,10 +1581,22 @@ private:
             const auto* snapshot = SnapshotFor(widget);
             if (protocolButton.empty() || !snapshot) return;
             const bool isOpen = state_.surface() == gba::Surface::Widget;
+            const auto visibleFocus = isOpen
+                ? gba::input::ResolveVisibleFocusTarget(
+                    focusedElementId_, snapshot->activeInputScopeId,
+                    lastWidgetRenderResult_)
+                : std::optional<std::wstring>{};
+            if (isOpen && visibleFocus && *visibleFocus != focusedElementId_) {
+                focusedElementId_ = *visibleFocus;
+                focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+                InvalidateRect(window_, nullptr, FALSE);
+            }
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
-                isOpen ? std::wstring_view(focusedElementId_) : std::wstring_view{},
+                isOpen && visibleFocus
+                    ? std::wstring_view(*visibleFocus)
+                    : std::wstring_view{},
                 snapshot->activeInputScopeId,
                 snapshot->sequence,
                 ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000));
@@ -1793,6 +1815,10 @@ private:
 
     void DiscardGraphicsResources() {
         if (declarativeRenderer_) declarativeRenderer_->DiscardTargetResources();
+        // Hit and focus rectangles are valid only for the render target's
+        // logical viewport. Never dispatch controller focus through geometry
+        // retained across a resize, DPI migration, or appearance rebuild.
+        lastWidgetRenderResult_ = {};
         iconFormat_.Reset();
         hintFormat_.Reset();
         bodyFormat_.Reset();
@@ -1985,17 +2011,25 @@ private:
     }
 
     void DrawDashboard(const float width, const float height) {
+        if (width <= 0.0F || height <= 0.0F) return;
+        const float horizontalInset = std::min(34.0F, width * 0.1F);
+        const float contentLeft = horizontalInset;
+        const float contentRight = std::max(contentLeft, width - horizontalInset);
+        const float titleTop = std::min(10.0F, height);
+        const float titleBottom = std::max(titleTop, std::min(44.0F, height));
+        const float hintTop = titleBottom;
+        const float hintBottom = std::max(hintTop, std::min(66.0F, height));
         const std::wstring_view title = state_.reorderMode()
             ? L"Reorder widgets"
             : DisplayWidgetName(state_.selectedWidget());
         DrawTextLine(title, titleFormat_.Get(),
-                     D2D1::RectF(34, 10, width - 34, 44),
+                     D2D1::RectF(contentLeft, titleTop, contentRight, titleBottom),
                      dashboardTextBrush_.Get());
         DrawIconStrip(width, height);
 
         const std::wstring hint = DashboardHint();
         DrawTextLine(hint, hintFormat_.Get(),
-                     D2D1::RectF(34, 44, width - 34, 66),
+                     D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom),
                      dashboardSecondaryBrush_.Get());
     }
 
@@ -2041,22 +2075,42 @@ private:
         return result.empty() ? L"A  Select" : result;
     }
 
-    void DrawWidgetFooter(const float panelLeft,
-                          const float panelWidth,
-                          const float panelBottom) {
+    void DrawWidgetFooter(const gba::OverlaySurfaceGeometry& geometry) {
+        if (geometry.footerHeight <= 0.0F || geometry.panelWidth <= 0.0F) return;
+        const float panelLeft = geometry.panelX;
+        const float panelRight = geometry.panelX + geometry.panelWidth;
+        const float panelBottom = geometry.panelY + geometry.panelHeight;
+        const float horizontalInset = std::min(30.0F, geometry.panelWidth * 0.1F);
+        const float contentLeft = panelLeft + horizontalInset;
+        const float contentRight = std::max(contentLeft, panelRight - horizontalInset);
+        const float separatorY = std::min(
+            panelBottom, geometry.footerY + std::min(1.0F, geometry.footerHeight));
         renderTarget_->DrawLine(
-            D2D1::Point2F(panelLeft + 30, panelBottom - 54),
-            D2D1::Point2F(panelLeft + panelWidth - 30, panelBottom - 54),
+            D2D1::Point2F(contentLeft, separatorY),
+            D2D1::Point2F(contentRight, separatorY),
             secondaryBrush_.Get(), 0.5F);
+        const float textTop = geometry.footerY +
+            std::min(15.0F, geometry.footerHeight * 0.35F);
+        const float textBottom = panelBottom -
+            std::min(12.0F, geometry.footerHeight * 0.25F);
+        if (textBottom <= textTop + 1.0F) return;
         const std::wstring prompt = OpenWidgetPrompt();
-        DrawTextLine(prompt, hintFormat_.Get(),
-                     D2D1::RectF(panelLeft + 30, panelBottom - 40,
-                                 panelLeft + panelWidth - 150, panelBottom - 12),
-                     secondaryBrush_.Get());
-        DrawTextLine(L"Guide  Close", hintFormat_.Get(),
-                     D2D1::RectF(panelLeft + panelWidth - 130, panelBottom - 40,
-                                 panelLeft + panelWidth - 24, panelBottom - 12),
-                     secondaryBrush_.Get());
+        if (contentRight - contentLeft >= 300.0F) {
+            DrawTextLine(prompt, hintFormat_.Get(),
+                         D2D1::RectF(contentLeft, textTop,
+                                     contentRight - 120.0F, textBottom),
+                         secondaryBrush_.Get());
+            DrawTextLine(L"Guide  Close", hintFormat_.Get(),
+                         D2D1::RectF(contentRight - 106.0F, textTop,
+                                     contentRight, textBottom),
+                         secondaryBrush_.Get());
+        } else {
+            // At narrow logical widths retain the universal escape affordance;
+            // widget action labels remain discoverable on larger surfaces.
+            DrawTextLine(L"Guide  Close", hintFormat_.Get(),
+                         D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
+                         secondaryBrush_.Get());
+        }
     }
 
     void DrawWidget(
@@ -2093,6 +2147,15 @@ private:
                     options.accessibility = CurrentAccessibilityPolicy();
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot, focusedElementId_, viewport, options);
+                if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
+                        focusedElementId_, snapshot->activeInputScopeId, result);
+                    visibleFocus && *visibleFocus != focusedElementId_) {
+                    focusedElementId_ = *visibleFocus;
+                    focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+                    // The completed pass used the old focus state. Schedule one
+                    // more paint so the recovered target receives its ring.
+                    InvalidateRect(window_, nullptr, FALSE);
+                }
                 lastWidgetRenderResult_ = result;
                 const auto lastSequence = renderedSnapshotSequences_.find(std::wstring(widget));
                 if (lastSequence == renderedSnapshotSequences_.end() ||
@@ -2113,7 +2176,7 @@ private:
                                          panelLeft + panelWidth - 30, 110),
                              secondaryBrush_.Get());
             }
-            DrawWidgetFooter(panelLeft, panelWidth, panelBottom);
+            DrawWidgetFooter(*geometry);
             DrawIconStrip(width, height, &*geometry);
             return;
         }

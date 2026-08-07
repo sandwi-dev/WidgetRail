@@ -26,6 +26,7 @@ void Add(gba::RenderResult& result, std::wstring id, gba::declarative::Rect rect
 int main() {
     using gba::input::FindGeometricFocusTarget;
     using gba::input::NavigationDirection;
+    using gba::input::ResolveVisibleFocusTarget;
     gba::RenderResult result;
     Add(result, L"play", {100, 50, 60, 60});
     Add(result, L"previous", {30, 55, 48, 48});
@@ -49,6 +50,26 @@ int main() {
           "disabled component is not focusable");
     Check(FindGeometricFocusTarget(L"play", NavigationDirection::Down, result) != L"modal-button",
           "geometric fallback cannot cross nested input scopes");
+    Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"play",
+          "visible preferred focus survives responsive layout");
+
+    result.focusRects.erase(L"play");
+    Check(!gba::input::IsEnabledFocusTarget(L"play", result),
+          "clipped control is never an enabled focus target");
+    Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"previous",
+          "clipped preferred focus recovers in deterministic tree order");
+    result.hitRegions[0].enabled = false;
+    Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"previous",
+          "clipped disabled focus cannot receive controller input");
+    result.focusRects.erase(L"previous");
+    Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"next",
+          "recovery skips controls clipped by a smaller viewport");
+    Check(ResolveVisibleFocusTarget(L"play", L"modal", result) == L"modal-button",
+          "responsive recovery stays inside the active nested input scope");
+
+    result.focusRects.erase(L"modal-button");
+    Check(!ResolveVisibleFocusTarget(L"play", L"modal", result),
+          "fully clipped active scope reports no actionable focus");
 
     std::cout << "FocusNavigationTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

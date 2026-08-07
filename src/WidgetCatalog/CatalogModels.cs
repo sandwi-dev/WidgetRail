@@ -45,6 +45,8 @@ public sealed record WidgetPackageInspection(
     int EntryCount,
     long TotalUncompressedBytes);
 
+public sealed record WidgetVersionChange(string Id, Version PreviousVersion, Version SelectedVersion);
+
 public sealed class WidgetPackageException(string code, string message, Exception? innerException = null)
     : Exception(message, innerException)
 {

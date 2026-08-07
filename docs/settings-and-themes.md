@@ -198,6 +198,19 @@ catalog or consent state disables actions and shows sanitized diagnostics;
 unknown declarations and stale/undeclared decisions are hidden. Required
 capabilities are not auto-granted, including for first-party packages.
 
+Settings → Installed widgets uses a separate nested controller flow for
+package versions. Open a package, choose **Manage versions**, and page through
+at most five immutable versions with LB/RB. Each row labels the exact version
+as Active, Rollback, or Select newer and reports Compatible or Incompatible.
+B returns first to package details and then to the package list. The active row
+is selected and non-actionable. While the widget is enabled every version row
+is disabled and focus starts on Back; disable the widget before selecting code.
+A version selection persists the exact pin and reports “review before
+enabling,” but never enables it. Return to package details and use **Enable
+reviewed widget** only after reviewing the selected identity, compatibility,
+and capabilities. An incompatible selected version remains reviewable but
+cannot be enabled.
+
 Installed package/permission state is refreshed with the other Settings state
 on activation, not by a polling loop. The bridge independently watches catalog
 changes and publishes a complete validated semantic revision without a restart.
@@ -460,10 +473,11 @@ dotnet run --project .\tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj -c
 dotnet run --project .\tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj -c Release
 ```
 
-They cover nested B scopes, paged theme/package/permission selection, explicit
-enablement-versus-consent review, bounds, busy/error/reset behavior, lifecycle/
-no polling, global selector precedence, last-good appearance/catalog revisions,
-bounded shell appearance, and lazy worker behavior. Current exact evidence is
+They cover nested B scopes, paged theme/package/version/permission selection,
+disabled-only exact-version rollback, explicit enablement-versus-consent
+review, bounds, busy/error/reset behavior, lifecycle/no polling, global selector
+precedence, last-good appearance/catalog revisions, bounded shell appearance,
+and lazy worker behavior. Current exact evidence is
 recorded in [implementation status](implementation-status.md), not duplicated
 as a drifting count here.
 

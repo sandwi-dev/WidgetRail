@@ -336,6 +336,23 @@ internal static class PackageIntegrity
         return await SHA256.HashDataAsync(stream, cancellationToken);
     }
 
+    public static async Task<byte[]> HashStreamAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanRead || !stream.CanSeek)
+            throw new CliOperationException("Package hash streams must be readable and seekable.");
+        var originalPosition = stream.Position;
+        try
+        {
+            stream.Position = 0;
+            return await SHA256.HashDataAsync(stream, cancellationToken);
+        }
+        finally
+        {
+            stream.Position = originalPosition;
+        }
+    }
+
     public static void Verify(byte[]? expected, byte[] actual)
     {
         if (expected is not null && !CryptographicOperations.FixedTimeEquals(expected, actual))

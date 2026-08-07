@@ -76,9 +76,9 @@ deterministic rendered geometry as a fallback, without wraparound.
   version-pinned development themes, built-in default, safe theme discovery,
   layer composition, and last-good snapshots.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, immutable versions,
-  discovery, enablement, and order persistence. Enabled compatible packages
-  join complete validated live bridge revisions and remain lazy until first
-  use.
+  schema-1 state migration, fail-closed exact version pins, discovery,
+  enablement, and pin-preserving order persistence. Enabled compatible packages
+  join complete validated live bridge revisions and remain lazy until first use.
 - `PlatformBroker`: a version-1 audio-session/network capability foundation with
   four closed grants, nonce/identity-bound named-pipe transport, manifest/
   consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent
@@ -98,8 +98,10 @@ deterministic rendered geometry as a fallback, without wraparound.
   privacy-restricted in version 1.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
-  `enable`, and `disable` commands. Remote acquisition requires SHA-256 pinning,
-  reports the actual digest, and installs disabled pending explicit review.
+  `enable`, `disable`, and `version list|select|rollback` commands. Local and
+  remote updates share an exact-stream pre-publish enabled-ID guard. Remote
+  acquisition requires SHA-256 pinning, reports the actual digest, and installs
+  disabled pending explicit review.
 
 The first-party Settings, Audio Mixer, and Network Controls widgets and the
 Clock/YT Music samples are reference widgets. Settings is packaged and
@@ -108,8 +110,9 @@ the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
 requires confirmation before reset, and provides two separate controller
 flows: installed package identity/version/publisher/runtime/required-optional
-capability review plus enable/disable, then package → capability → grant/deny
-consent. Enablement is not consent. Permission grants require explicit
+capability review, a nested paged Manage versions surface with disabled-only
+exact selection/rollback, plus enable/disable; then package → capability →
+grant/deny consent. Enablement is not consent. Permission grants require explicit
 confirmation; deny/revoke is immediate, missing/invalid state fails closed,
 and first-party packages are not auto-granted. It reloads settings/themes/
 catalog/permissions once per active lifetime and does not poll in Background.
@@ -196,6 +199,15 @@ bounded diagnostics. Reload/list never starts a worker.
 Starting the monitor schedules a complete catch-up reload after both watchers
 are active, closing the initial load-to-watch race.
 
+Catalog-state schema 2 adds an optional exact active-version pin while retaining
+schema-1 reads. Without a pin, discovery selects the greatest installed
+`System.Version`; the next successful mutation migrates legacy state to schema
+2. `gbar version list|select|rollback` exposes immutable installed versions.
+Selection and rollback require a disabled widget, keep it disabled for review,
+and never rewrite package bytes. A missing pinned directory fails discovery
+closed with `active_version_missing` rather than silently executing another
+version.
+
 Presentation/order-only changes preserve compatible workers while atomically
 swapping their validated presentation/quick-action metadata. A package,
 publisher, instance, executable, argument, declared-capability, or memory-policy
@@ -268,16 +280,21 @@ protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
 settings/themes, catalog, bridge, the generic worker host, broker, and Windows
 providers/reference widgets. The runtime covers suspended pre-containment
 launch, memory/process limits, kill-on-close, and restart cleanup. The current
-Settings Release suite passes 27/27, including paginated identity review,
-required/optional separation, enablement-versus-consent copy, fail-closed
-catalog/compatibility behavior, nested visual-accessibility controls, legacy
-appearance defaults, and no polling. The platform settings/themes suite passes
-13/13, including legacy schema-1 theme compatibility. CLI passes 34/34,
-including theme scaffold, production validation/computed preview,
-deterministic packaging/inspection, local and pinned-GitHub installation,
-catalog limits, immutable versions, and adversarial package cases. Catalog
-passes 13/13, including
-shared host-API/architecture evaluation. Bridge passes 22/22, including
+Settings Release suite passes 28/28, including paginated identity review,
+disabled-only version selection/rollback, required/optional separation,
+enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
+nested visual-accessibility controls, legacy appearance defaults, and no
+polling. The platform settings/themes suite passes 13/13, including legacy
+schema-1 theme compatibility. CLI passes 35/35, including version
+list/selection/rollback, exact-stream local/remote update policy, theme
+scaffold, production validation/computed preview, deterministic
+packaging/inspection, pinned-GitHub installation, catalog limits, immutable
+versions, and adversarial package cases. Catalog passes 20/20, including
+schema-1 state migration, exact active-version pins and disabled repair,
+linearizable concurrent rollback/first-install operations, public-API
+disabled-update enforcement, lock-free reads during atomic state replacement,
+pin-preserving reorder, and shared host-API/architecture evaluation. Bridge
+passes 22/22, including
 semantic catalog revisions/last-good/catch-up reload, atomic presentation
 metadata replacement, and compatible-worker reconciliation.
 Network Controls and its Windows provider retain their focused 13/13 and 17/17
@@ -316,10 +333,12 @@ with C++ installed:
   widgets through catalog descriptors. Responsive viewport/containment math is
   covered broadly; physical mixed-DPI, localization, accessibility, and visual
   regression evidence is still incomplete.
-- Local and bounded remote package/catalog commands are implemented. There is
-  no graphical/file-picker installer, automatic release/update discovery,
-  signed publisher workflow, rollback UI, or marketplace yet. Settings provides
-  controller identity review and enable/disable after CLI installation. The
+- Local and bounded remote package/catalog commands plus CLI and Settings
+  immutable-version selection/rollback are implemented. There is no
+  graphical/file-picker installer, automatic release/update discovery, signed
+  publisher workflow, version removal/garbage collection, or marketplace yet.
+  Settings provides controller identity/version review and enable/disable after
+  CLI installation. The
   bridge publishes accepted catalog changes live with last-good retention and
   safe worker reconciliation. Closed capability declarations are connected to
   the separate Settings consent flow.
@@ -396,8 +415,9 @@ and [troubleshooting](troubleshooting.md).
    including the 150% text-scale matrix and controller focus reachability.
 2. Extend the bounded process sampler with ETW/PresentMon automation, stored
    comparable baselines, latency scenarios, and per-widget resource diagnostics.
-3. Add native graphical theme preview, remove/update/rollback, and `gbar dev`.
-4. Implement signing/trust, rollback/quarantine, and AppContainer-equivalent
+3. Add native graphical theme preview, package remove/update discovery, and
+   `gbar dev` (Settings and CLI exact-version rollback are implemented).
+4. Implement signing/trust, crash quarantine, and AppContainer-equivalent
    isolation before supporting untrusted community binaries.
 5. Continue Audio Mixer/Network Controls hardware evidence, then non-auth
    Performance, general media, recent apps/games, and capture references.

@@ -31,6 +31,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Install rejects traversal archives through the CLI", InstallRejectsTraversal),
     ("Remote install verifies a pinned package and leaves it disabled", RemoteDistributionWorkflow),
     ("Remote updates require explicit disable and preserve enabled versions on failure", RemoteUpdateRequiresDisable),
+    ("Version selection and rollback are explicit disabled-only operations", VersionSelectionAndRollback),
     ("GitHub shorthand resolves directly to a release asset", GitHubShorthandResolves),
     ("Remote install requires a valid SHA-256 pin before network access", RemoteRequiresHash),
     ("Remote sources reject unsafe schemes authorities and literals", RemoteRejectsUnsafeSources),
@@ -68,8 +69,12 @@ static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "new", "validate", "render", "replay", "pack", "install", "list", "enable", "disable" })
+    foreach (var command in new[] { "new", "validate", "render", "replay", "pack", "install", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
+    var version = await RunCli("version", "help");
+    Assert.Equal(0, version.Code);
+    foreach (var command in new[] { "list", "select", "rollback" })
+        Assert.Contains($"version {command}", version.Output);
     var theme = await RunCli("theme", "help");
     Assert.Equal(0, theme.Code);
     foreach (var command in new[] { "new", "validate", "preview", "pack", "inspect", "install", "list" })
@@ -408,6 +413,15 @@ static async Task LocalDistributionWorkflow()
     Assert.Contains("disabled  dev.test.local", (await RunCli("list", "--catalog", catalog)).Output);
     Assert.Equal(0, (await RunCli("enable", "dev.test.local", "--catalog", catalog)).Code);
     Assert.Contains("enabled   dev.test.local", (await RunCli("list", "--catalog", catalog)).Output);
+
+    var updateSource = CreatePackageSource(temp.Path, "dev.test.local", "dev.test", "3.0.0");
+    var updatePackage = Path.Combine(temp.Path, "local-update.gbarwidget");
+    Assert.Equal(0, (await RunCli("pack", updateSource, "--output", updatePackage)).Code);
+    var blockedUpdate = await RunCli("install", updatePackage, "--catalog", catalog);
+    Assert.Equal(1, blockedUpdate.Code);
+    Assert.Contains("Disable it before installing an update", blockedUpdate.Error);
+    Assert.True(!Directory.Exists(Path.Combine(catalog, "packages", "dev.test.local", "3.0.0")),
+        "A local update bypassed disabled-only review.");
 }
 
 static async Task PackRejectsInvalidManifest()
@@ -500,7 +514,7 @@ static async Task RemoteUpdateRequiresDisable()
     var result = await RunCliWithHandler(handler, "install", "https://widgets.example/update.gbarwidget",
         "--sha256", hash, "--catalog", catalog);
     Assert.Equal(1, result.Code);
-    Assert.Contains("Disable it before installing a remote update", result.Error);
+    Assert.Contains("Disable it before installing an update", result.Error);
     var preserved = await RunCli("list", "--catalog", catalog);
     Assert.Contains("enabled   dev.test.remote-update  1.0.0", preserved.Output);
 
@@ -508,8 +522,71 @@ static async Task RemoteUpdateRequiresDisable()
     var retry = await RunCliWithHandler(handler, "install", "https://widgets.example/update.gbarwidget",
         "--sha256", hash, "--catalog", catalog);
     Assert.Equal(0, retry.Code);
+    Assert.Contains("Version 1.0.0 remains selected", retry.Output);
     var updated = await RunCli("list", "--catalog", catalog);
-    Assert.Contains("disabled  dev.test.remote-update  2.0.0", updated.Output);
+    Assert.Contains("disabled  dev.test.remote-update  1.0.0", updated.Output);
+    Assert.Equal(0, (await RunCli("version", "select", "dev.test.remote-update", "2.0.0",
+        "--catalog", catalog)).Code);
+    Assert.Contains("disabled  dev.test.remote-update  2.0.0",
+        (await RunCli("list", "--catalog", catalog)).Output);
+}
+
+static async Task VersionSelectionAndRollback()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = Path.Combine(temp.Path, "catalog");
+    foreach (var version in new[] { "1.0.0", "2.0.0", "3.0.0" })
+    {
+        var package = await CreatePackedPackageAsync(temp.Path, "dev.test.rollback", version);
+        Assert.Equal(0, (await RunCli("install", package, "--catalog", catalog)).Code);
+    }
+    Assert.Equal(0, (await RunCli(
+        "version", "select", "dev.test.rollback", "3.0.0", "--catalog", catalog)).Code);
+
+    var versions = await RunCli("version", "list", "dev.test.rollback", "--catalog", catalog);
+    Assert.Equal(0, versions.Code);
+    Assert.Contains("active version 3.0.0", versions.Output);
+    Assert.Contains("active  3.0.0", versions.Output);
+    Assert.Contains("       2.0.0", versions.Output);
+
+    Assert.Equal(0, (await RunCli("enable", "dev.test.rollback", "--catalog", catalog)).Code);
+    var enabledRollback = await RunCli("version", "rollback", "dev.test.rollback", "--catalog", catalog);
+    Assert.Equal(1, enabledRollback.Code);
+    Assert.Contains("Disable it before", enabledRollback.Error);
+    Assert.Contains("active version 3.0.0", (await RunCli(
+        "version", "list", "dev.test.rollback", "--catalog", catalog)).Output);
+
+    Assert.Equal(0, (await RunCli("disable", "dev.test.rollback", "--catalog", catalog)).Code);
+    var rollback = await RunCli("version", "rollback", "dev.test.rollback", "--catalog", catalog);
+    Assert.Equal(0, rollback.Code);
+    Assert.Contains("from 3.0.0 to 2.0.0 (disabled)", rollback.Output);
+
+    var explicitRollback = await RunCli(
+        "version", "rollback", "dev.test.rollback", "--to", "1.0.0", "--catalog", catalog);
+    Assert.Equal(0, explicitRollback.Code);
+    Assert.Contains("from 2.0.0 to 1.0.0 (disabled)", explicitRollback.Output);
+
+    var forward = await RunCli(
+        "version", "select", "dev.test.rollback", "3.0.0", "--catalog", catalog);
+    Assert.Equal(0, forward.Code);
+    Assert.Contains("Selected dev.test.rollback 3.0.0 (disabled)", forward.Output);
+
+    var newerPackage = await CreatePackedPackageAsync(temp.Path, "dev.test.rollback", "4.0.0");
+    var newerInstall = await RunCli("install", newerPackage, "--catalog", catalog);
+    Assert.Equal(0, newerInstall.Code);
+    Assert.Contains("Version 3.0.0 remains selected", newerInstall.Output);
+    var afterInstall = await RunCli("version", "list", "dev.test.rollback", "--catalog", catalog);
+    Assert.Contains("active version 3.0.0", afterInstall.Output);
+    Assert.Contains("       4.0.0", afterInstall.Output);
+
+    var missing = await RunCli(
+        "version", "select", "dev.test.rollback", "9.0.0", "--catalog", catalog);
+    Assert.Equal(1, missing.Code);
+    Assert.Contains("is not installed", missing.Error);
+    var invalidDirection = await RunCli(
+        "version", "rollback", "dev.test.rollback", "--to", "3.0.0", "--catalog", catalog);
+    Assert.Equal(2, invalidDirection.Code);
+    Assert.Contains("must be older", invalidDirection.Error);
 }
 
 static async Task GitHubShorthandResolves()

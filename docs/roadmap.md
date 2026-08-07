@@ -101,7 +101,7 @@ No capture, Discord, marketplace, web widgets, or general community code yet.
 
 - Versioned manifest schema
 - C# `WidgetRunner` SDK
-- Length-prefixed protobuf protocol over secured named pipes
+- Bounded length-prefixed strict JSON protocol over secured named pipes
 - Core declarative layout/content/input primitives
 - `gbar new`, `gbar dev`, validation, packaging, and input replay
 - State API, the five-state host-authoritative lifecycle, crash recovery,
@@ -310,9 +310,11 @@ The current product order is:
    controller/game/presentation matrix;
 2. extend the bounded process sampler with ETW/PresentMon tooling and continue
    Audio Control/Network Control hardware/privacy/performance evidence;
-3. add native graphical theme preview, remove/update/rollback, and `gbar dev`;
-4. implement AppContainer-equivalent worker isolation, publisher signing,
-   rollback/quarantine, and malicious-widget tests before public binaries; and
+3. implement AppContainer-equivalent worker isolation, publisher signing,
+   automated recovery/crash quarantine, and malicious-widget tests before
+   expanding community distribution or shipping public binaries;
+4. add native graphical theme preview, package remove/update discovery, and
+   `gbar dev` (Settings and CLI exact-version rollback are implemented); and
 5. continue non-auth first-party references: Performance/self-diagnostics,
    general media controls, recent apps/games, and the capture feasibility spike.
 

@@ -273,9 +273,16 @@ internal static class ThemeInstallCommand
         {
             var source = Path.GetFullPath(sourceText);
             if (!File.Exists(source)) throw new CliUsageException($"Theme package does not exist: {source}");
+            if (!Path.GetExtension(source).Equals(".gbartheme", StringComparison.OrdinalIgnoreCase))
+                throw new CliUsageException("Theme packages must use the .gbartheme extension.");
+            if ((File.GetAttributes(source) & FileAttributes.ReparsePoint) != 0)
+                throw new ThemePackageException("reparse_point", "Local theme package files cannot be reparse points.");
+            await using var localPackage = new FileStream(
+                source, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
             if (expected is not null)
-                PackageIntegrity.Verify(expected, await PackageIntegrity.HashFileAsync(source, cancellationToken));
-            inspection = await ThemePackage.InspectArchiveAsync(source, cancellationToken);
+                PackageIntegrity.Verify(expected, await PackageIntegrity.HashStreamAsync(localPackage, cancellationToken));
+            inspection = await ThemePackage.InspectArchiveAsync(localPackage, cancellationToken);
         }
         else
         {

@@ -52,6 +52,10 @@ struct OverlaySurfaceGeometry final {
     float widgetViewportY{};
     float widgetViewportWidth{};
     float widgetViewportHeight{};
+    // Host-owned footer chrome follows the widget viewport and remains inside
+    // the panel. It may collapse at pathological heights.
+    float footerY{};
+    float footerHeight{};
 };
 
 /// Computes a bottom-centered physical-pixel window rectangle that is fully

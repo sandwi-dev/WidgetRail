@@ -126,6 +126,7 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     const float widgetViewportWidth = std::max(0.0F, panelWidth - contentInset * 2.0F);
     const float widgetViewportHeight = std::max(
         0.0F, panelHeight - footerReservation - contentInset);
+    const float footerY = panelY + panelHeight - footerReservation;
     return OverlaySurfaceGeometry{
         panelX,
         panelY,
@@ -137,6 +138,8 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
         panelY + contentInset,
         widgetViewportWidth,
         widgetViewportHeight,
+        footerY,
+        footerReservation,
     };
 }
 

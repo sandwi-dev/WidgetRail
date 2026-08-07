@@ -22,10 +22,42 @@ bool Overlaps(const float a0, const float a1, const float b0, const float b1) no
 bool IsEnabledFocusTarget(
     const std::wstring_view id,
     const RenderResult& renderResult) noexcept {
+    const auto focusRect = std::find_if(
+        renderResult.focusRects.begin(), renderResult.focusRects.end(),
+        [id](const auto& item) { return item.first == id; });
+    if (focusRect == renderResult.focusRects.end()) return false;
     const auto region = std::find_if(
         renderResult.hitRegions.begin(), renderResult.hitRegions.end(),
         [id](const RenderHitRegion& item) { return item.nodeId == id; });
     return region != renderResult.hitRegions.end() && region->enabled;
+}
+
+std::optional<std::wstring> ResolveVisibleFocusTarget(
+    const std::wstring_view preferredId,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    const auto isVisibleInScope = [&](const std::wstring_view id) {
+        const auto rect = renderResult.focusRects.find(id);
+        if (rect == renderResult.focusRects.end() ||
+            rect->second.width <= 0.0F || rect->second.height <= 0.0F ||
+            !IsEnabledFocusTarget(id, renderResult)) {
+            return false;
+        }
+        const auto scope = renderResult.focusScopes.find(id);
+        return scope != renderResult.focusScopes.end() &&
+               scope->second == activeScopeId;
+    };
+
+    if (!preferredId.empty() && isVisibleInScope(preferredId)) {
+        return std::wstring{preferredId};
+    }
+    // Hit regions are emitted during the renderer's depth-first tree walk,
+    // unlike the unordered lookup maps. Using them preserves author order and
+    // makes resize recovery deterministic across processes and builds.
+    for (const auto& region : renderResult.hitRegions) {
+        if (isVisibleInScope(region.nodeId)) return region.nodeId;
+    }
+    return std::nullopt;
 }
 
 std::optional<std::wstring> FindGeometricFocusTarget(

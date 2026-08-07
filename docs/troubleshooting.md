@@ -156,13 +156,27 @@ rendering only for code you trust.
   mismatch diagnostic also reports the received digest. For other failures,
   inspect the network/redirect diagnostic. Temporary download files are removed
   on success and failure.
-- `gbar list`, `enable`, and `disable` must use the same `--catalog` value as
-  install. The default is `%LOCALAPPDATA%\GameBarAlternative\widgets`.
-- The prototype native host does not yet discover this user catalog. A
-  successful install followed by no new dashboard card is currently expected.
-- Newly discovered widget IDs are disabled. A remote update refuses to replace
-  an enabled ID; run `gbar disable <widget-id>`, retry installation, review the
-  result, then run `gbar enable <widget-id>` with the same `--catalog`.
+- `gbar list`, `enable`, `disable`, and every `gbar version` command must use
+  the same `--catalog` value as install. The default is
+  `%LOCALAPPDATA%\GameBarAlternative\widgets`.
+- The packaged native host and Settings widget discover and watch the default
+  current-user catalog. A custom `--catalog` path is an isolated CLI/test
+  catalog and does not appear in the packaged overlay.
+- Newly discovered widget IDs are disabled. Local and remote updates refuse to
+  add a version while that ID is enabled; run `gbar disable <widget-id>`, retry
+  installation, run `gbar version list <widget-id>` and `gbar version select
+  <widget-id> <version>`, review the result, then run `gbar enable <widget-id>`
+  with the same `--catalog`.
+- Version selection and rollback are disabled-only. `gbar version rollback
+  <widget-id>` chooses the greatest installed version older than the active
+  version; `--to <version>` must name a specific installed older version. Use
+  `version select` to move forward.
+- An `active_version_missing` diagnostic means schema-2 catalog state pins an
+  immutable version directory that is absent. Discovery intentionally fails
+  closed rather than running another version. Reinstall the exact pinned
+  package first; after discovery succeeds, an explicitly selected installed
+  version can replace the pin while the widget is disabled. Do not hand-edit
+  the state to an arbitrary version.
 
 Remote acquisition does not launch the widget. A successful download therefore
 cannot create lifecycle logs by itself; lifecycle begins only when a configured

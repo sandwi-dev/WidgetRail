@@ -43,13 +43,24 @@ internal static class InstallCommand
         var remoteUri = RemotePackageSource.Resolve(source);
         if (remoteUri is null)
         {
+            var localPath = Path.GetFullPath(source);
+            if (!File.Exists(localPath))
+                throw new WidgetPackageException("package_not_found", $"Package does not exist: {localPath}");
+            if (!Path.GetExtension(localPath).Equals(".gbarwidget", StringComparison.OrdinalIgnoreCase))
+                throw new WidgetPackageException("invalid_extension", "Widget packages must use the .gbarwidget extension.");
+            if ((File.GetAttributes(localPath) & FileAttributes.ReparsePoint) != 0)
+                throw new WidgetPackageException("reparse_point", "Local widget package files cannot be reparse points.");
+            await using var localPackage = new FileStream(
+                localPath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
             if (expectedSha256 is not null)
             {
-                var actualSha256 = await PackageIntegrity.HashFileAsync(source, cancellationToken);
+                var actualSha256 = await PackageIntegrity.HashStreamAsync(localPackage, cancellationToken);
                 PackageIntegrity.Verify(expectedSha256, actualSha256);
             }
-            var installed = await catalog.CreateInstaller().InstallAsync(source, cancellationToken);
+            var installed = await catalog.InstallAsync(localPackage, cancellationToken);
             await output.WriteLineAsync($"Installed {installed.Id} {installed.Version} to {installed.InstallPath}.");
+            await WriteSelectionHintAsync(catalog, installed, output, cancellationToken);
             return 0;
         }
 
@@ -57,20 +68,29 @@ internal static class InstallCommand
             throw new CliUsageException("Remote widget installation requires --sha256 <64-hex>.");
         using var downloader = new RemotePackageDownloader(remoteHttpHandler);
         await using var downloaded = await downloader.DownloadAsync(remoteUri, expectedSha256, cancellationToken);
-        var installer = catalog.CreateInstaller();
-        var inspection = await installer.ValidateAsync(downloaded.PackageStream, cancellationToken);
-        var existing = (await catalog.DiscoverAsync(cancellationToken)).Widgets
-            .SingleOrDefault(widget => widget.Id == inspection.Id);
-        if (existing?.Enabled == true)
-            throw new CliOperationException(
-                $"Widget '{inspection.Id}' is enabled. Disable it before installing a remote update so a failed update cannot change its active state.");
-        var remoteInstalled = await installer.InstallAsync(downloaded.PackageStream, cancellationToken);
+        var remoteInstalled = await catalog.InstallAsync(downloaded.PackageStream, cancellationToken);
         await output.WriteLineAsync(
             $"Installed {remoteInstalled.Id} {remoteInstalled.Version} to {remoteInstalled.InstallPath} (disabled)." +
             " Review it, then run gbar enable when ready.");
+        await WriteSelectionHintAsync(catalog, remoteInstalled, output, cancellationToken);
         await output.WriteLineAsync($"Downloaded SHA-256: {Convert.ToHexString(downloaded.Sha256).ToLowerInvariant()}");
         return 0;
     }
+
+    private static async Task WriteSelectionHintAsync(
+        CatalogService catalog,
+        InstalledWidgetVersion installed,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        var widget = (await catalog.DiscoverAsync(cancellationToken)).Widgets
+            .Single(candidate => candidate.Id == installed.Id);
+        if (widget.ActiveVersion.Version == installed.Version) return;
+        await output.WriteLineAsync(
+            $"Version {widget.ActiveVersion.Version} remains selected. To review this version, run " +
+            $"gbar version select {installed.Id} {installed.Version} before enabling it.");
+    }
+
 }
 
 internal static class ListCommand

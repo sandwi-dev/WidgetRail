@@ -1,9 +1,10 @@
 # Publishing and installation
 
-Status: deterministic pack/install/catalog commands and bounded HTTPS release
-downloads, live last-good bridge catalog revisions, and controller package
-review/enablement are implemented; publisher signing and a production update/
-rollback flow are not
+Status: deterministic pack/install/catalog commands, bounded HTTPS release
+downloads, immutable version pin/rollback CLI, live last-good bridge catalog
+revisions, and controller package review/enablement are implemented; publisher
+signing, automatic update discovery, and version removal/garbage collection are
+not
 
 ## Recommended workflow today: share source and immutable releases on GitHub
 
@@ -40,8 +41,9 @@ assets/...
 ```
 
 The `gbar` CLI and `WidgetCatalog` library can deterministically pack, validate,
-extract, discover, enable, and order these packages. Installation is immutable
-by `<id>/<version>` and fails if the same version already exists. See the
+extract, discover, pin, roll back, enable, and order these packages.
+Installation is immutable by `<id>/<version>` and fails if the same version
+already exists. See the
 complete [packaging contract](widget-packaging.md).
 
 `gbar pack` recursively includes the supplied directory, so package from a
@@ -136,9 +138,10 @@ for audit or comparison, but do not mistake a value learned from the download
 itself for an independent trust decision.
 
 Remote installation leaves the widget disabled. If that widget ID is already
-installed and enabled, the command refuses the update without changing the
-working version; disable it explicitly before retrying. This prevents a failed
-download or extraction from changing the active widget's state. Review the
+installed and enabled, the command refuses the update without publishing the
+new version or changing the working version; disable it explicitly before
+retrying. This prevents unreviewed code or a failed download/extraction from
+changing the active widget's state. Review the
 source, manifest permissions, publisher, and reported digest before opting in.
 The preferred controller flow is Settings → Installed widgets; the CLI remains
 available for scripted/test catalogs:
@@ -147,9 +150,36 @@ available for scripted/test catalogs:
 gbar list
 gbar disable dev.example.volume-control
 # Run the remote install command again when updating an enabled widget.
+# Inspect every installed version and make the intended version explicit.
+gbar version list dev.example.volume-control
+gbar version select dev.example.volume-control 0.2.0
 # Prefer reviewing/enabling the result in Settings. CLI equivalent:
 gbar enable dev.example.volume-control
 ```
+
+The complete update review sequence is therefore:
+
+1. Disable the widget ID.
+2. Install the exact new GitHub Release asset with its independently obtained
+   SHA-256 pin. The old immutable version remains installed.
+3. In Settings → Installed widgets, open the package and choose **Manage
+   versions**. Select the exact new version. For scripted catalogs, use `gbar
+   version list <widget-id>` followed by `gbar version select <widget-id>
+   <new-version>`.
+4. Review the selected identity, version, compatibility, and capabilities on
+   the package details page.
+5. Enable the widget as a separate action.
+
+An ID without an explicit active-version pin uses the greatest installed
+`System.Version`; explicitly selecting the reviewed release removes that
+implicit choice from later discovery. If an older version was already pinned,
+installing a new release preserves that pin and prints the exact `version
+select` command needed to choose the new package. If the update fails after
+enablement, disable the widget and run `gbar version rollback <widget-id>` to
+select the greatest installed version older than the active one, or add `--to
+<version>` for a specific installed older version. Rollback leaves the widget
+disabled so the selected package can be reviewed before re-enabling it. Use
+`version select`, not `rollback`, to move forward again.
 
 If installation used `--catalog`, pass that same value to both commands.
 The packaged bridge and Settings widget read the default current-user catalog;
@@ -164,14 +194,29 @@ Local files use the same command and package validator:
 gbar install .\dev.example.volume-control-0.1.0.gbarwidget
 gbar list
 gbar disable dev.example.volume-control
+gbar version list dev.example.volume-control
+gbar version select dev.example.volume-control 0.1.0
 gbar enable dev.example.volume-control
 ```
 
 A newly discovered widget ID is disabled by default. Explicitly enable it after
 review in Settings → Installed widgets (or with the CLI for automation).
 Installing another local version of an ID preserves that ID's existing catalog
-state. A remote update requires that ID to be disabled before the downloaded
-version can be installed.
+state and the old immutable package. Follow the same disable, install, explicit
+version selection, review, and enable sequence for local updates. Both local
+and remote updates reject an enabled ID before publishing the new immutable
+version into the catalog.
+
+For a local install, the CLI first rejects missing files, wrong extensions,
+and reparse-point sources, then opens the package once for read-only access
+with read sharing. Optional SHA-256 verification, archive inspection, the
+enabled-ID policy decision, extraction, and publication all operate from that
+same open stream. The installer invokes the policy after validating the exact
+archive identity and before publishing any version directory, so changing the
+source path during the command cannot substitute different package bytes. A
+policy rejection removes staging and leaves the installed catalog unchanged.
+Remote installation applies the same pre-publish policy to its already locked,
+digest-verified temporary-file stream.
 
 The default catalog is
 `%LOCALAPPDATA%\GameBarAlternative\widgets`. Every catalog command accepts the
@@ -181,6 +226,7 @@ same explicit override:
 gbar install .\widget.gbarwidget --catalog .\artifacts\test-catalog
 gbar list --catalog .\artifacts\test-catalog
 gbar disable dev.example.widget --catalog .\artifacts\test-catalog
+gbar version list dev.example.widget --catalog .\artifacts\test-catalog
 ```
 
 There is no file-picker/graphical installer, automatic updater, signature
@@ -193,10 +239,15 @@ unsupported or invalid individual packages fail soft with bounded diagnostics.
 After CLI installation, open Settings → Installed widgets. The paginated
 controller surface shows package ID, publisher, active/installed versions,
 runtime, host-API range, architectures, compatibility result/reason, and
-required versus optional capability declarations before enable or disable. An
-incompatible package cannot be enabled, though an already enabled incompatible
-entry can be disabled for recovery/update. Enabling only joins a compatible
-widget to the overlay; it does **not** grant a capability. Open Settings →
+required versus optional capability declarations before enable or disable.
+**Manage versions** opens a five-item-per-page nested scope: LB/RB change pages,
+B returns to package details, and each exact version is labeled Active,
+Rollback, or Select newer plus Compatible/Incompatible. Version rows are
+actionable only while the widget is disabled. Selecting one keeps it disabled
+and requires separate review and enablement. An incompatible package cannot be
+enabled, though an already enabled incompatible entry can be disabled for
+recovery/update. Enabling only joins a compatible widget to the overlay; it
+does **not** grant a capability. Open Settings →
 Permissions & capabilities separately to confirm a grant or immediately deny/
 revoke it. Required means the feature is core, not that it is automatically
 granted. Optional means the widget must degrade without it.
@@ -263,9 +314,20 @@ var catalog = new WidgetCatalog(currentUserCatalogRoot);
 var installer = catalog.CreateInstaller();
 
 var inspection = await installer.ValidateAsync("Example.gbarwidget");
-var installed = await installer.InstallAsync("Example.gbarwidget");
+var installed = await catalog.InstallAsync("Example.gbarwidget");
+await catalog.SetActiveVersionAsync(installed.Id, installed.Version);
 var snapshot = await catalog.DiscoverAsync();
 ```
+
+`SetActiveVersionAsync` accepts only an installed version while the widget is
+disabled. Catalog-state schema 1 remains readable and has no explicit pin; the
+next successful mutation writes schema 2. A schema-2 pin to a missing version
+fails discovery closed with `active_version_missing` rather than silently
+executing different code. Reinstalling that exact pinned package through
+`WidgetCatalog.InstallAsync` repairs the catalog in a forced-disabled state.
+`WidgetPackageInstaller` exposes validation only to callers; publication goes
+through the catalog so install, enablement, and active-version decisions share
+one cross-process operation lock.
 
 CLI or library installation validates archive containment and manifest shape.
 It does not establish who published the code. The bridge combines its trusted
@@ -287,8 +349,10 @@ The intended flow is explicitly **planned**:
    the current lazy path and Job Object containment are retained under stronger
    production isolation.
 
-Rollback/pinning UI, update checks, garbage collection, cross-process install
-locking, signature chains, and revocation are also planned.
+Update checks, version removal/garbage collection, cross-process install
+locking, signature chains, and revocation are also planned. The implemented
+Settings and CLI pin/rollback flows deliberately do not remove immutable
+versions or discover updates automatically.
 
 Read [security and trust](security-and-trust.md) before running a package you
 did not build yourself.

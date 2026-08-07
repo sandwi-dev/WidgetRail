@@ -23,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
+    ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
     ("Malformed installed widget catalogs fail closed", InstalledWidgetCatalogFailure),
     ("Installed widget review reloads only on activation", InstalledWidgetActivationReload),
     ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
@@ -401,6 +402,58 @@ static async Task InstalledWidgetToggle()
     Assert.Contains("Toggle disabled", Text(disabled.Root, "settings.status").Text!);
     Assert.Valid(enabled);
     Assert.Valid(disabled);
+}
+
+static async Task InstalledWidgetVersionRollback()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    const string widgetId = "dev.test.versions";
+    foreach (var version in new[] { "1.0.0", "2.0.0", "3.0.0" })
+        WriteInstalledWidget(catalogRoot, widgetId, "dev.publisher.versions", "Versions",
+            [], [], version: version);
+
+    var catalog = new WidgetCatalog(catalogRoot);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.select.0");
+    var details = Snapshot(widget);
+    Assert.Contains("Manage versions (3)", Button(details.Root, "installed.details.versions").Text!);
+
+    await Action(widget, "installed.versions.open");
+    var versions = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetVersions, widget.CurrentPage);
+    Assert.Equal("installed.versions", versions.ActiveInputScopeId);
+    Assert.HasShortcut(versions.Root, "installed.versions", ControllerButton.B, "back");
+    Assert.Equal("installed.version.item.1", versions.InitialFocusId);
+    Assert.Equal(true, Button(versions.Root, "installed.version.item.0").IsSelected);
+    Assert.Equal(true, Button(versions.Root, "installed.version.item.0").IsDisabled);
+    Assert.Contains("Rollback · 2.0.0", Button(versions.Root, "installed.version.item.1").Text!);
+
+    await Action(widget, "installed.version.select.1");
+    Assert.Equal("2.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
+    var rolledBack = Snapshot(widget);
+    Assert.Equal(true, Button(rolledBack.Root, "installed.version.item.1").IsSelected);
+    Assert.Contains("Select newer · 3.0.0", Button(rolledBack.Root, "installed.version.item.0").Text!);
+    Assert.Contains("2.0.0 selected; review before enabling", Text(rolledBack.Root, "settings.status").Text!);
+
+    await Action(widget, "back");
+    await Action(widget, "installed.toggle");
+    await Action(widget, "installed.versions.open");
+    var enabled = Snapshot(widget);
+    Assert.Equal("installed.versions.back", enabled.InitialFocusId);
+    Assert.True(Buttons(enabled.Root)
+        .Where(button => button.Id.StartsWith("installed.version.item.", StringComparison.Ordinal))
+        .All(button => button.IsDisabled is true), "Enabled widget exposed a version-selection action.");
+    await Action(widget, "installed.version.select.2");
+    Assert.Equal("2.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
+    Assert.Contains("Disable the widget", Text(Snapshot(widget).Root, "settings.status").Text!);
+    Assert.Valid(details);
+    Assert.Valid(versions);
+    Assert.Valid(rolledBack);
+    Assert.Valid(enabled);
 }
 
 static async Task InstalledWidgetCatalogFailure()
@@ -802,9 +855,9 @@ static void WriteInstalledWidget(
     IReadOnlyList<string> required,
     IReadOnlyList<string> optional,
     HostApiRange? hostApi = null,
-    IReadOnlyList<string>? architectures = null)
+    IReadOnlyList<string>? architectures = null,
+    string version = "1.0.0")
 {
-    const string version = "1.0.0";
     var directory = Path.Combine(catalogRoot, "packages", id, version);
     var payload = Path.Combine(directory, "payload");
     Directory.CreateDirectory(payload);

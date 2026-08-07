@@ -97,11 +97,18 @@ The native Release suite currently proves these policy/math seams:
 - bounded behavior for 640×360, 1×1, 7×3, an extreme two-billion-pixel-wide
   extent, and oversized margins;
 - render-metric reconstruction for 1×1, 853×479, 3440×1440, and 7680×4320
-  clients across 72–480 DPI and interface scales 0.85, 1, 1.125, and 1.5;
-- contained shell/widget geometry for tiny, portrait, short-wide, normal, and
-  4K logical viewports;
+  clients across 72–480 DPI and the supported 0.8–1.25 interface-scale range;
+- an integrated placement-to-render matrix spanning handheld-sized, legacy,
+  portrait, ultrawide, 4K, 5K, and 8K work areas, including negative and
+  offset desktop coordinates, ten DPI values, and dashboard/loading/widget
+  heights;
+- more than 100,000 containment checks across dense logical boundaries for
+  panel, widget viewport, adaptive footer, and persistent tray geometry;
 - declarative compact/clipping behavior for constrained viewports, including
-  portrait cases and non-integer physical-pixel scale; and
+  portrait cases and non-integer physical-pixel scale;
+- deterministic controller-focus recovery when resize/reflow clips the
+  preferred control, with hidden controls excluded from explicit navigation
+  and action dispatch; and
 - foreground self-ignore, invalid-target fallback, Alt+Tab retargeting,
   duplicate suppression, and DPI-placement reentrancy coalescing.
 

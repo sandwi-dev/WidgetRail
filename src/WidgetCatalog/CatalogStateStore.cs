@@ -5,7 +5,7 @@ namespace GameBarAlternative.WidgetCatalog;
 
 internal sealed record CatalogState
 {
-    public int Version { get; init; } = 1;
+    public int Version { get; init; } = 2;
     public IReadOnlyList<CatalogStateEntry> Widgets { get; init; } = [];
 }
 
@@ -14,6 +14,7 @@ internal sealed record CatalogStateEntry
     public required string Id { get; init; }
     public bool Enabled { get; init; }
     public required int Order { get; init; }
+    public string? ActiveVersion { get; init; }
 }
 
 internal sealed class CatalogStateStore
@@ -45,11 +46,22 @@ internal sealed class CatalogStateStore
         if (!File.Exists(_path)) return new CatalogState();
         try
         {
-            await using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            // Readers keep a stable handle to the old atomic document while a
+            // writer replaces the directory entry. Delete sharing prevents a
+            // bridge/catalog read from transiently blocking File.Move on Windows.
+            await using var stream = new FileStream(
+                _path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
             var state = await JsonSerializer.DeserializeAsync<CatalogState>(stream, JsonOptions, cancellationToken)
                 ?? throw new JsonException("Catalog state was null.");
             ValidateState(state);
-            return state;
+            return state.Version == 1
+                ? state with
+                {
+                    Version = 2,
+                    Widgets = state.Widgets.Select(entry => entry with { ActiveVersion = null }).ToArray(),
+                }
+                : state;
         }
         catch (JsonException exception)
         {
@@ -131,7 +143,8 @@ internal sealed class CatalogStateStore
 
     private static void ValidateState(CatalogState state)
     {
-        if (state.Version != 1) throw new JsonException($"Unsupported catalog state version {state.Version}.");
+        if (state.Version is not (1 or 2))
+            throw new JsonException($"Unsupported catalog state version {state.Version}.");
         if (state.Widgets is null) throw new JsonException("Widget state list cannot be null.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var orders = new HashSet<int>();
@@ -141,6 +154,12 @@ internal sealed class CatalogStateStore
                 throw new JsonException("Widget state IDs must be non-empty and unique.");
             if (entry.Order < 0 || !orders.Add(entry.Order))
                 throw new JsonException("Widget state order values must be non-negative and unique.");
+            if (state.Version == 1 && entry.ActiveVersion is not null)
+                throw new JsonException("Catalog state version 1 cannot pin an active widget version.");
+            if (entry.ActiveVersion is not null &&
+                (!System.Version.TryParse(entry.ActiveVersion, out var version) ||
+                 !string.Equals(version.ToString(), entry.ActiveVersion, StringComparison.Ordinal)))
+                throw new JsonException("Pinned widget versions must use canonical dotted numeric notation.");
         }
     }
 }
