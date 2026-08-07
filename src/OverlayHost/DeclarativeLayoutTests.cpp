@@ -1,0 +1,300 @@
+#include "DeclarativeLayout.h"
+
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <limits>
+#include <string_view>
+
+namespace {
+
+using gba::declarative::BoxSpacing;
+using gba::declarative::ComputeLayout;
+using gba::declarative::CrossAxisAlignment;
+using gba::declarative::IntrinsicMeasureCallback;
+using gba::declarative::LayoutDirection;
+using gba::declarative::LayoutElement;
+using gba::declarative::LayoutIssueSeverity;
+using gba::declarative::MainAxisAlignment;
+using gba::declarative::OverflowBehavior;
+using gba::declarative::Rect;
+using gba::declarative::Size;
+
+int checks = 0;
+
+void Check(const bool condition, const std::string_view message) {
+    ++checks;
+    if (!condition) {
+        std::cerr << "FAIL: " << message << '\n';
+        std::exit(EXIT_FAILURE);
+    }
+}
+
+void Near(const float actual, const float expected, const std::string_view message) {
+    Check(std::abs(actual - expected) <= 0.01F, message);
+}
+
+LayoutElement Element(const std::string_view id, const LayoutDirection direction = LayoutDirection::Column) {
+    LayoutElement result;
+    result.id = id;
+    result.direction = direction;
+    return result;
+}
+
+void MediaLayout1080p() {
+    auto header = Element("header");
+    header.height = 48.0F;
+    header.flexShrink = 0.0F;
+
+    auto artwork = Element("artwork");
+    artwork.flexBasis = 184.0F;
+    artwork.flexShrink = 0.0F;
+    artwork.aspectRatio = 1.0F;
+
+    auto details = Element("details");
+    details.flexBasis = 0.0F;
+    details.flexGrow = 1.0F;
+
+    auto body = Element("body", LayoutDirection::Row);
+    body.flexBasis = 0.0F;
+    body.flexGrow = 1.0F;
+    body.gap = 20.0F;
+    body.children = {artwork, details};
+
+    auto prompts = Element("prompts");
+    prompts.height = 44.0F;
+    prompts.flexShrink = 0.0F;
+
+    auto root = Element("media");
+    root.padding = BoxSpacing::One(24.0F);
+    root.gap = 16.0F;
+    root.children = {header, body, prompts};
+
+    const auto result = ComputeLayout(root, {0.0F, 0.0F, 880.0F, 520.0F});
+    Check(result.valid(), "1080p media layout is valid");
+    Near(result.Find("media")->contentBox.width, 832.0F, "media padding resolves");
+    Near(result.Find("header")->borderBox.height, 48.0F, "fixed header height");
+    Near(result.Find("body")->borderBox.height, 348.0F, "body receives remaining column space");
+    Near(result.Find("artwork")->borderBox.width, 184.0F, "art basis remains fixed");
+    Near(result.Find("artwork")->borderBox.height, 184.0F, "art aspect ratio is square");
+    Near(result.Find("details")->borderBox.x, 228.0F, "details follows art and gap");
+    Near(result.Find("details")->borderBox.width, 628.0F, "details grows into remaining width");
+    Near(result.Find("prompts")->borderBox.y, 452.0F, "prompt strip follows body gap");
+}
+
+void FlexShrinkAndMinimums() {
+    auto first = Element("first");
+    first.flexBasis = 200.0F;
+    first.flexShrink = 1.0F;
+    first.minWidth = 120.0F;
+    auto second = first;
+    second.id = "second";
+
+    auto root = Element("row", LayoutDirection::Row);
+    root.gap = 16.0F;
+    root.children = {first, second};
+    const auto result = ComputeLayout(root, {0.0F, 0.0F, 300.0F, 100.0F});
+    Check(result.valid(), "shrink layout valid");
+    Near(result.Find("first")->borderBox.width, 142.0F, "first shrinks proportionally");
+    Near(result.Find("second")->borderBox.width, 142.0F, "second shrinks proportionally");
+    Near(result.Find("second")->borderBox.x, 158.0F, "gap remains fixed while items shrink");
+}
+
+void FlexGrowHonorsMaximum() {
+    auto capped = Element("capped");
+    capped.flexBasis = 100.0F;
+    capped.flexGrow = 1.0F;
+    capped.maxWidth = 120.0F;
+    auto flexible = Element("flexible");
+    flexible.flexBasis = 100.0F;
+    flexible.flexGrow = 1.0F;
+
+    auto root = Element("row", LayoutDirection::Row);
+    root.children = {capped, flexible};
+    const auto result = ComputeLayout(root, {0.0F, 0.0F, 500.0F, 80.0F});
+    Near(result.Find("capped")->borderBox.width, 120.0F, "grow respects max width");
+    Near(result.Find("flexible")->borderBox.width, 380.0F, "remaining grow space is redistributed");
+}
+
+void NestedPaddingAndMargins() {
+    auto leaf = Element("leaf");
+    leaf.width = 40.0F;
+    leaf.height = 20.0F;
+    leaf.margin = BoxSpacing::Four(1.0F, 2.0F, 3.0F, 4.0F);
+
+    auto stack = Element("stack");
+    stack.padding = BoxSpacing::Three(10.0F, 20.0F, 30.0F);
+    stack.children = {leaf};
+    const auto result = ComputeLayout(stack, {0.0F, 0.0F, 200.0F, 120.0F});
+    const auto* rootBox = result.Find("stack");
+    const auto* leafBox = result.Find("leaf");
+    Near(rootBox->contentBox.x, 20.0F, "three-value padding left");
+    Near(rootBox->contentBox.y, 10.0F, "three-value padding top");
+    Near(rootBox->contentBox.height, 80.0F, "three-value padding bottom");
+    Near(leafBox->borderBox.x, 24.0F, "four-value margin left");
+    Near(leafBox->borderBox.y, 11.0F, "four-value margin top");
+}
+
+void OverflowClipping() {
+    auto child = Element("too-tall");
+    child.flexBasis = 150.0F;
+    child.minHeight = 150.0F;
+    child.flexShrink = 0.0F;
+
+    auto root = Element("clip");
+    root.overflow = OverflowBehavior::Clip;
+    root.children = {child};
+    const auto result = ComputeLayout(root, {0.0F, 0.0F, 100.0F, 100.0F});
+    Check(result.Find("clip")->overflowY, "overflow is reported on container");
+    Check(result.Find("too-tall")->clippedByAncestor, "child reports ancestor clipping");
+    Near(result.Find("too-tall")->visibleBox.height, 100.0F, "visible box is intersected with clip");
+}
+
+void ResponsiveViewports() {
+    auto rail = Element("rail", LayoutDirection::Row);
+    rail.padding = BoxSpacing::Two(8.0F, 16.0F);
+    auto card = Element("card");
+    card.flexBasis = 408.0F;
+    card.flexGrow = 1.0F;
+    card.maxWidth = 544.0F;
+    card.aspectRatio = 16.0F / 9.0F;
+    auto info = Element("info");
+    info.flexBasis = 248.0F;
+    info.flexGrow = 1.0F;
+    rail.gap = 16.0F;
+    rail.children = {card, info};
+
+    gba::declarative::LayoutOptions at720Options;
+    at720Options.responsiveViewport = Size{1280.0F, 720.0F};
+    gba::declarative::LayoutOptions at1080Options;
+    at1080Options.responsiveViewport = Size{1920.0F, 1080.0F};
+    gba::declarative::LayoutOptions ultrawideOptions;
+    ultrawideOptions.responsiveViewport = Size{3440.0F, 1440.0F};
+    const auto at720 = ComputeLayout(rail, {0.0F, 0.0F, 1280.0F, 230.0F}, {}, at720Options);
+    const auto at1080 = ComputeLayout(rail, {0.0F, 0.0F, 1920.0F, 230.0F}, {}, at1080Options);
+    const auto ultrawideStage = ComputeLayout(rail, {440.0F, 0.0F, 2560.0F, 307.0F}, {}, ultrawideOptions);
+    Check(!at720.compactMode && !at1080.compactMode && !ultrawideStage.compactMode,
+        "720p, 1080p, and centered ultrawide stage are standard mode");
+    Check(at720.Find("card")->borderBox.width <= 544.0F, "720p respects card max");
+    Near(at1080.Find("card")->borderBox.width, 544.0F, "1080p grow clamps card max");
+    Near(ultrawideStage.Find("rail")->borderBox.x, 440.0F, "ultrawide stage origin is preserved");
+    Check(ultrawideStage.Find("info")->borderBox.width > at1080.Find("info")->borderBox.width,
+        "ultrawide stage allocates additional flexible detail width");
+}
+
+void IntrinsicAndCompactMode() {
+    auto text = Element("text");
+    text.flexGrow = 1.0F;
+    auto root = Element("compact", LayoutDirection::Row);
+    root.children = {text};
+    bool sawCompact = false;
+    const IntrinsicMeasureCallback measure =
+        [&sawCompact](const LayoutElement& element, const gba::declarative::MeasureConstraints& constraints) {
+            if (element.id == "text") {
+                sawCompact |= constraints.compactMode;
+                return Size{std::min(300.0F, constraints.maximumWidth), constraints.compactMode ? 48.0F : 24.0F};
+            }
+            return Size{};
+        };
+    const auto result = ComputeLayout(root, {0.0F, 0.0F, 800.0F, 500.0F}, measure);
+    Check(result.compactMode && sawCompact, "compact mode reaches intrinsic callback");
+    Near(result.Find("text")->borderBox.height, 500.0F, "default cross-axis stretch remains deterministic");
+}
+
+void AxisAlignment() {
+    auto first = Element("first");
+    first.width = 40.0F;
+    first.height = 20.0F;
+    auto second = Element("second");
+    second.width = 40.0F;
+    second.height = 20.0F;
+    auto centered = Element("centered", LayoutDirection::Row);
+    centered.mainAxisAlignment = MainAxisAlignment::Center;
+    centered.crossAxisAlignment = CrossAxisAlignment::Center;
+    centered.gap = 10.0F;
+    centered.children = {first, second};
+    const auto centerResult = ComputeLayout(centered, {0, 0, 200, 100});
+    Near(centerResult.Find("first")->borderBox.x, 55.0F, "center justify adds leading space");
+    Near(centerResult.Find("first")->borderBox.y, 40.0F, "center align positions cross axis");
+    Near(centerResult.Find("second")->borderBox.x, 105.0F, "center justify retains authored gap");
+
+    centered.mainAxisAlignment = MainAxisAlignment::SpaceBetween;
+    centered.crossAxisAlignment = CrossAxisAlignment::End;
+    const auto spread = ComputeLayout(centered, {0, 0, 200, 100});
+    Near(spread.Find("first")->borderBox.x, 0.0F, "space-between starts at leading edge");
+    Near(spread.Find("second")->borderBox.x, 160.0F, "space-between ends at trailing edge");
+    Near(spread.Find("first")->borderBox.y, 80.0F, "end align positions cross axis");
+}
+
+void PixelSnapAndSafeMath() {
+    auto child = Element("child");
+    child.flexBasis = std::numeric_limits<float>::quiet_NaN();
+    child.flexGrow = 99.0F;
+    child.padding = BoxSpacing::One(std::numeric_limits<float>::infinity());
+    auto root = Element("root", LayoutDirection::Row);
+    root.children = {child};
+    gba::declarative::LayoutOptions options;
+    options.pixelScale = 2.0F;
+    const auto result = ComputeLayout(root, {0.25F, 0.25F, 100.25F, 50.25F}, {}, options);
+    Check(result.valid(), "bad numeric inputs degrade to warnings");
+    Check(result.issues.size() >= 3, "unsafe values produce bounded diagnostics");
+    const auto box = result.Find("root")->borderBox;
+    Near(box.x, 0.5F, "left edge snaps to physical half-pixel grid");
+    Check(std::isfinite(result.Find("child")->borderBox.width), "output width remains finite");
+}
+
+void DuplicateIdsFailClosed() {
+    auto one = Element("same");
+    auto two = Element("same");
+    auto root = Element("root");
+    root.children = {one, two};
+    const auto result = ComputeLayout(root, {0.0F, 0.0F, 100.0F, 100.0F});
+    Check(!result.valid(), "duplicate stable IDs fail layout");
+    Check(result.boxes.empty(), "invalid tree publishes no partial rect map");
+    Check(result.issues.size() == 1 &&
+        result.issues[0].severity == LayoutIssueSeverity::Error &&
+        result.issues[0].code == "duplicate_id", "duplicate diagnostic is deterministic");
+}
+
+void OutputIsDeterministicAndOrdinal() {
+    auto zebra = Element("zebra");
+    zebra.flexGrow = 1.0F;
+    auto alpha = Element("alpha");
+    alpha.flexGrow = 2.0F;
+    auto root = Element("root", LayoutDirection::Row);
+    root.gap = 3.0F;
+    root.children = {zebra, alpha};
+    gba::declarative::LayoutOptions options;
+    options.pixelScale = 1.5F;
+    const auto first = ComputeLayout(root, {1.0F, 2.0F, 601.0F, 101.0F}, {}, options);
+    const auto second = ComputeLayout(root, {1.0F, 2.0F, 601.0F, 101.0F}, {}, options);
+    Check(first.boxes.size() == second.boxes.size(), "repeat layout has same element count");
+    auto firstItem = first.boxes.begin();
+    auto secondItem = second.boxes.begin();
+    Check(firstItem->first == "alpha", "output map enumerates IDs ordinally");
+    for (; firstItem != first.boxes.end(); ++firstItem, ++secondItem) {
+        Check(firstItem->first == secondItem->first, "repeat layout preserves ID order");
+        Near(firstItem->second.borderBox.x, secondItem->second.borderBox.x, "repeat x is deterministic");
+        Near(firstItem->second.borderBox.y, secondItem->second.borderBox.y, "repeat y is deterministic");
+        Near(firstItem->second.borderBox.width, secondItem->second.borderBox.width, "repeat width is deterministic");
+        Near(firstItem->second.borderBox.height, secondItem->second.borderBox.height, "repeat height is deterministic");
+    }
+}
+
+} // namespace
+
+int main() {
+    MediaLayout1080p();
+    FlexShrinkAndMinimums();
+    FlexGrowHonorsMaximum();
+    NestedPaddingAndMargins();
+    OverflowClipping();
+    ResponsiveViewports();
+    IntrinsicAndCompactMode();
+    AxisAlignment();
+    PixelSnapAndSafeMath();
+    DuplicateIdsFailClosed();
+    OutputIsDeterministicAndOrdinal();
+    std::cout << "DeclarativeLayoutTests passed (" << checks << " checks)\n";
+    return EXIT_SUCCESS;
+}

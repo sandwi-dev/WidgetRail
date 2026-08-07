@@ -1,0 +1,5 @@
+{
+  "templateVersion": 1,
+  "name": "Controller Widget",
+  "description": "A controller-first C# widget with focus, shortcuts, state, GBSS, and input replay."
+}

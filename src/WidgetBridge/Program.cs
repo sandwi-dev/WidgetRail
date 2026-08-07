@@ -1,0 +1,54 @@
+using System.Globalization;
+
+namespace GameBarAlternative.WidgetBridge;
+
+internal static class Program
+{
+    public static async Task<int> Main(string[] args)
+    {
+        try
+        {
+            var pipeName = RequiredValue(args, "--host-pipe");
+            var catalogPath = RequiredValue(args, "--catalog");
+            var acceptTimeout = OptionalInt(args, "--accept-timeout-ms", 10_000, 100, 60_000);
+            var maximumBytes = OptionalInt(args, "--max-message-bytes",
+                BridgeProtocol.DefaultMaximumMessageBytes, 256, BridgeProtocol.AbsoluteMaximumMessageBytes);
+            var catalog = BridgeCatalog.Load(catalogPath);
+            await using var server = new WidgetBridgeServer(pipeName, catalog, maximumBytes);
+            using var shutdown = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, eventArgs) =>
+            {
+                eventArgs.Cancel = true;
+                shutdown.Cancel();
+            };
+            await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
+                .ConfigureAwait(false);
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Widget bridge failed: {exception.Message}");
+            return 1;
+        }
+    }
+
+    private static string RequiredValue(string[] args, string name)
+    {
+        var index = Array.IndexOf(args, name);
+        if (index < 0 || index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+            throw new ArgumentException($"Missing required argument {name}.");
+        return args[index + 1];
+    }
+
+    private static int OptionalInt(string[] args, string name, int fallback, int minimum, int maximum)
+    {
+        var index = Array.IndexOf(args, name);
+        if (index < 0) return fallback;
+        if (index + 1 >= args.Length ||
+            !int.TryParse(args[index + 1], NumberStyles.None, CultureInfo.InvariantCulture, out var value) ||
+            value < minimum || value > maximum)
+            throw new ArgumentException($"Invalid value for {name}.");
+        return value;
+    }
+}
+

@@ -1,0 +1,144 @@
+#pragma once
+
+#include "WidgetBridgeClient.h"
+
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace gba {
+
+struct NativeColor final {
+    float red{};
+    float green{};
+    float blue{};
+    float alpha{1.0F};
+    friend bool operator==(const NativeColor&, const NativeColor&) = default;
+};
+
+struct NativeEdges final {
+    float top{};
+    float right{};
+    float bottom{};
+    float left{};
+    friend bool operator==(const NativeEdges&, const NativeEdges&) = default;
+};
+
+enum class NativeDirection { Unspecified, Row, Column };
+enum class NativeAlign { Unspecified, Start, Center, End, Stretch };
+enum class NativeJustify { Unspecified, Start, Center, End, SpaceBetween, SpaceAround };
+enum class NativeOverflow { Clip, Visible };
+enum class NativeImageFit { Contain, Cover, Fill, None };
+enum class NativeObjectPosition { Center, Top, Right, Bottom, Left, TopLeft, TopRight, BottomLeft, BottomRight };
+enum class NativeShape { Rectangle, Rounded, Pill, Circle };
+enum class NativeTextOverflow { Clip, Ellipsis };
+enum class NativeTextTransform { None, Uppercase, Lowercase };
+enum class NativeTextAlign { Start, Center, End };
+enum class NativeTransitionEasing { Linear, EaseOut, EaseInOut, Spring };
+
+struct NativeStyleContext final {
+    /// All dimensions are device-independent pixels.
+    float viewportWidthPx{1920.0F};
+    float viewportHeightPx{1080.0F};
+    float parentWidthPx{1920.0F};
+    float parentHeightPx{1080.0F};
+    float parentFontSizePx{16.0F};
+    float rootFontSizePx{16.0F};
+    bool focused{};
+};
+
+struct NativeAccessibilityPolicy final {
+    bool reducedTransparency{};
+    bool reducedMotion{};
+    float minimumFocusRingPx{2.0F};
+    /// Called last for text and focused outline colors. Arguments are foreground/background.
+    std::function<NativeColor(NativeColor, NativeColor)> contrastHook;
+};
+
+struct NativeStyleDiagnostic final {
+    std::wstring property;
+    std::wstring message;
+};
+
+/// Immutable, fully resolved style. It contains no GBSS strings except the
+/// validated font family; all lengths are device-independent pixels.
+class NativeRenderStyle final {
+public:
+    NativeRenderStyle();
+
+    [[nodiscard]] const std::optional<NativeColor>& background() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& foreground() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& borderColor() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& outlineColor() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& shadowColor() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& imageTint() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& scrimColor() const noexcept;
+    [[nodiscard]] const std::optional<float>& widthPx() const noexcept;
+    [[nodiscard]] const std::optional<float>& heightPx() const noexcept;
+    [[nodiscard]] const std::optional<float>& minWidthPx() const noexcept;
+    [[nodiscard]] const std::optional<float>& minHeightPx() const noexcept;
+    [[nodiscard]] const std::optional<float>& maxWidthPx() const noexcept;
+    [[nodiscard]] const std::optional<float>& maxHeightPx() const noexcept;
+    [[nodiscard]] float fontSizePx() const noexcept;
+    [[nodiscard]] float letterSpacingPx() const noexcept;
+    [[nodiscard]] float cornerRadiusPx() const noexcept;
+    [[nodiscard]] float outlineWidthPx() const noexcept;
+    [[nodiscard]] float outlineOffsetPx() const noexcept;
+    [[nodiscard]] float borderWidthPx() const noexcept;
+    [[nodiscard]] float backgroundBlurPx() const noexcept;
+    [[nodiscard]] float shadowBlurPx() const noexcept;
+    [[nodiscard]] float shadowOffsetXPx() const noexcept;
+    [[nodiscard]] float shadowOffsetYPx() const noexcept;
+    [[nodiscard]] const NativeEdges& gapPx() const noexcept;
+    [[nodiscard]] const NativeEdges& paddingPx() const noexcept;
+    [[nodiscard]] const NativeEdges& marginPx() const noexcept;
+    [[nodiscard]] float opacity() const noexcept;
+    [[nodiscard]] float scale() const noexcept;
+    [[nodiscard]] float transitionDurationMilliseconds() const noexcept;
+    [[nodiscard]] const std::optional<float>& aspectRatio() const noexcept;
+    [[nodiscard]] NativeImageFit imageFit() const noexcept;
+    [[nodiscard]] NativeObjectPosition objectPosition() const noexcept;
+    [[nodiscard]] NativeShape shape() const noexcept;
+    [[nodiscard]] int fontWeight() const noexcept;
+    [[nodiscard]] const std::wstring& fontFamily() const noexcept;
+    [[nodiscard]] float lineHeight() const noexcept;
+    [[nodiscard]] int maxLines() const noexcept;
+    [[nodiscard]] NativeTextOverflow textOverflow() const noexcept;
+    [[nodiscard]] NativeTextTransform textTransform() const noexcept;
+    [[nodiscard]] NativeTransitionEasing transitionEasing() const noexcept;
+    [[nodiscard]] float flexGrow() const noexcept;
+    [[nodiscard]] float flexShrink() const noexcept;
+    [[nodiscard]] const std::optional<float>& flexBasisPx() const noexcept;
+    [[nodiscard]] bool flexBasisAuto() const noexcept;
+    [[nodiscard]] NativeAlign align() const noexcept;
+    [[nodiscard]] NativeJustify justify() const noexcept;
+    [[nodiscard]] NativeDirection direction() const noexcept;
+    [[nodiscard]] NativeOverflow overflow() const noexcept;
+    [[nodiscard]] NativeTextAlign textAlign() const noexcept;
+
+private:
+    struct Data;
+    explicit NativeRenderStyle(std::shared_ptr<const Data> data);
+    std::shared_ptr<const Data> data_;
+    friend class NativeStyleAdapter;
+};
+
+struct NativeStyleResult final {
+    NativeRenderStyle style;
+    std::vector<NativeStyleDiagnostic> diagnostics;
+};
+
+class NativeStyleAdapter final {
+public:
+    /// Defensively adapts bridge-computed typed values. Unknown/malformed
+    /// properties fall back to host defaults and produce bounded diagnostics.
+    [[nodiscard]] static NativeStyleResult Adapt(
+        const WidgetComputedStyle& computed,
+        const NativeStyleContext& context,
+        const NativeAccessibilityPolicy& accessibility = {});
+};
+
+} // namespace gba
+

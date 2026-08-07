@@ -1,0 +1,506 @@
+#include "RemoteImageCache.h"
+
+#include <WinHttp.h>
+#include <wincodec.h>
+
+#include <algorithm>
+#include <cwctype>
+#include <limits>
+#include <optional>
+#include <stdexcept>
+#include <utility>
+
+namespace gba {
+namespace {
+
+using Microsoft::WRL::ComPtr;
+
+class InternetHandle final {
+public:
+    InternetHandle() = default;
+    explicit InternetHandle(HINTERNET value) noexcept : value_(value) {}
+    ~InternetHandle() { reset(); }
+    InternetHandle(const InternetHandle&) = delete;
+    InternetHandle& operator=(const InternetHandle&) = delete;
+    InternetHandle(InternetHandle&& other) noexcept : value_(std::exchange(other.value_, nullptr)) {}
+    InternetHandle& operator=(InternetHandle&& other) noexcept {
+        if (this != &other) {
+            reset();
+            value_ = std::exchange(other.value_, nullptr);
+        }
+        return *this;
+    }
+    [[nodiscard]] HINTERNET get() const noexcept { return value_; }
+    [[nodiscard]] explicit operator bool() const noexcept { return value_ != nullptr; }
+    void reset(HINTERNET value = nullptr) noexcept {
+        if (value_) WinHttpCloseHandle(value_);
+        value_ = value;
+    }
+
+private:
+    HINTERNET value_{};
+};
+
+struct ParsedUrl {
+    std::wstring host;
+    std::wstring resource;
+    INTERNET_PORT port{};
+};
+
+[[nodiscard]] std::optional<ParsedUrl> ParseHttpsUrl(std::wstring_view url) {
+    if (url.empty() || url.size() > 8'192) return std::nullopt;
+    URL_COMPONENTS parts{sizeof(parts)};
+    parts.dwSchemeLength = static_cast<DWORD>(-1);
+    parts.dwHostNameLength = static_cast<DWORD>(-1);
+    parts.dwUrlPathLength = static_cast<DWORD>(-1);
+    parts.dwExtraInfoLength = static_cast<DWORD>(-1);
+    parts.dwUserNameLength = static_cast<DWORD>(-1);
+    parts.dwPasswordLength = static_cast<DWORD>(-1);
+    std::wstring owned(url);
+    if (!WinHttpCrackUrl(owned.c_str(), static_cast<DWORD>(owned.size()), 0, &parts) ||
+        parts.nScheme != INTERNET_SCHEME_HTTPS || parts.dwHostNameLength == 0 ||
+        parts.dwUserNameLength != 0 || parts.dwPasswordLength != 0) {
+        return std::nullopt;
+    }
+
+    ParsedUrl parsed;
+    parsed.host.assign(parts.lpszHostName, parts.dwHostNameLength);
+    parsed.resource.assign(parts.lpszUrlPath, parts.dwUrlPathLength);
+    parsed.resource.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+    if (const auto fragment = parsed.resource.find(L'#'); fragment != std::wstring::npos)
+        parsed.resource.resize(fragment);
+    if (parsed.resource.empty()) parsed.resource = L"/";
+    parsed.port = parts.nPort;
+    return parsed;
+}
+
+[[nodiscard]] std::wstring QueryHeader(HINTERNET request, DWORD query) {
+    DWORD bytes = 0;
+    WinHttpQueryHeaders(request, query, WINHTTP_HEADER_NAME_BY_INDEX,
+                        WINHTTP_NO_OUTPUT_BUFFER, &bytes, WINHTTP_NO_HEADER_INDEX);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || bytes < sizeof(wchar_t)) return {};
+    std::vector<wchar_t> value(bytes / sizeof(wchar_t));
+    if (!WinHttpQueryHeaders(request, query, WINHTTP_HEADER_NAME_BY_INDEX,
+                             value.data(), &bytes, WINHTTP_NO_HEADER_INDEX)) return {};
+    return std::wstring(value.data());
+}
+
+[[nodiscard]] bool IsImageMime(std::wstring value) {
+    const auto semicolon = value.find(L';');
+    if (semicolon != std::wstring::npos) value.resize(semicolon);
+    while (!value.empty() && std::iswspace(value.back())) value.pop_back();
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(),
+        [](wchar_t character) { return !std::iswspace(character); }));
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](wchar_t character) { return static_cast<wchar_t>(std::towlower(character)); });
+    return value.size() > 6 && value.starts_with(L"image/");
+}
+
+[[nodiscard]] RemoteImageFetchResult Failure(HRESULT result, std::wstring error) {
+    return {result, {}, std::move(error)};
+}
+
+[[nodiscard]] HRESULT LastErrorResult() noexcept {
+    const DWORD error = GetLastError();
+    return HRESULT_FROM_WIN32(error == ERROR_SUCCESS ? ERROR_GEN_FAILURE : error);
+}
+
+[[nodiscard]] RemoteImageFetchResult DecodeWithWic(
+    std::vector<std::uint8_t> bytes,
+    std::wstring mime,
+    const RemoteImageLimits& limits) {
+    const HRESULT initialization = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool uninitialize = SUCCEEDED(initialization);
+    if (FAILED(initialization) && initialization != RPC_E_CHANGED_MODE)
+        return Failure(initialization, L"COM initialization failed.");
+
+    ComPtr<IWICImagingFactory> factory;
+    HRESULT result = CoCreateInstance(CLSID_WICImagingFactory2, nullptr, CLSCTX_INPROC_SERVER,
+                                      IID_PPV_ARGS(factory.ReleaseAndGetAddressOf()));
+    if (FAILED(result)) {
+        result = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                  IID_PPV_ARGS(factory.ReleaseAndGetAddressOf()));
+    }
+    if (FAILED(result)) {
+        if (uninitialize) CoUninitialize();
+        return Failure(result, L"WIC factory creation failed.");
+    }
+
+    ComPtr<IWICStream> stream;
+    ComPtr<IWICBitmapDecoder> decoder;
+    ComPtr<IWICBitmapFrameDecode> frame;
+    ComPtr<IWICFormatConverter> converter;
+    result = factory->CreateStream(stream.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) {
+        result = stream->InitializeFromMemory(bytes.data(), static_cast<DWORD>(bytes.size()));
+    }
+    if (SUCCEEDED(result)) {
+        result = factory->CreateDecoderFromStream(stream.Get(), nullptr,
+            WICDecodeMetadataCacheOnLoad, decoder.ReleaseAndGetAddressOf());
+    }
+    if (SUCCEEDED(result)) result = decoder->GetFrame(0, frame.ReleaseAndGetAddressOf());
+
+    UINT width = 0;
+    UINT height = 0;
+    if (SUCCEEDED(result)) result = frame->GetSize(&width, &height);
+    const std::uint64_t stride64 = static_cast<std::uint64_t>(width) * 4U;
+    const std::uint64_t decoded64 = stride64 * height;
+    if (SUCCEEDED(result) &&
+        (width == 0 || height == 0 || stride64 > std::numeric_limits<UINT>::max() ||
+         decoded64 > limits.maximumDecodedBytes ||
+         decoded64 > std::numeric_limits<UINT>::max())) {
+        result = HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+    }
+    if (SUCCEEDED(result)) result = factory->CreateFormatConverter(converter.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) {
+        result = converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppPBGRA,
+            WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
+    }
+
+    RemoteDecodedImage image;
+    if (SUCCEEDED(result)) {
+        image.width = width;
+        image.height = height;
+        image.stride = static_cast<UINT32>(stride64);
+        image.premultipliedBgra.resize(static_cast<std::size_t>(decoded64));
+        image.mimeType = std::move(mime);
+        result = converter->CopyPixels(nullptr, image.stride,
+            static_cast<UINT>(image.premultipliedBgra.size()), image.premultipliedBgra.data());
+    }
+    if (uninitialize) CoUninitialize();
+    if (FAILED(result)) return Failure(result, L"WIC rejected or could not decode the image.");
+    return {S_OK, std::move(image), {}};
+}
+
+} // namespace
+
+RemoteImageCache::RemoteImageCache(
+    RemoteImageLimits limits,
+    CompletionCallback completion,
+    FetchFunction fetch)
+    : limits_(limits),
+      completion_(std::move(completion)),
+      fetch_(fetch ? std::move(fetch) : FetchAndDecode) {
+    if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
+        limits_.maximumDecodedBytes < 4 ||
+        limits_.maximumDecodedBytes > 256U * 1024U * 1024U ||
+        limits_.maximumDownloadBytes == 0 ||
+        limits_.maximumDownloadBytes > 5U * 1024U * 1024U ||
+        limits_.maximumRedirects > 10 ||
+        limits_.resolveTimeoutMilliseconds == 0 || limits_.resolveTimeoutMilliseconds > 60'000 ||
+        limits_.connectTimeoutMilliseconds == 0 || limits_.connectTimeoutMilliseconds > 60'000 ||
+        limits_.sendTimeoutMilliseconds == 0 || limits_.sendTimeoutMilliseconds > 60'000 ||
+        limits_.receiveTimeoutMilliseconds == 0 || limits_.receiveTimeoutMilliseconds > 60'000) {
+        throw std::invalid_argument("Invalid remote image cache limits.");
+    }
+    worker_ = std::jthread([this](std::stop_token token) { WorkerLoop(token); });
+}
+
+RemoteImageCache::~RemoteImageCache() {
+    Shutdown();
+}
+
+RemoteImageRequestResult RemoteImageCache::Request(std::wstring url) {
+    if (!IsAllowedHttpsUrl(url)) return RemoteImageRequestResult::InvalidUrl;
+    std::scoped_lock lock(mutex_);
+    return QueueLocked(std::move(url), false);
+}
+
+RemoteImageRequestResult RemoteImageCache::Retry(std::wstring url) {
+    if (!IsAllowedHttpsUrl(url)) return RemoteImageRequestResult::InvalidUrl;
+    std::scoped_lock lock(mutex_);
+    return QueueLocked(std::move(url), true);
+}
+
+RemoteImageState RemoteImageCache::GetState(std::wstring_view url) const {
+    std::scoped_lock lock(mutex_);
+    const auto found = entries_.find(std::wstring(url));
+    return found == entries_.end() ? RemoteImageState::Missing : found->second.state;
+}
+
+std::wstring RemoteImageCache::GetError(std::wstring_view url) const {
+    std::scoped_lock lock(mutex_);
+    const auto found = entries_.find(std::wstring(url));
+    return found == entries_.end() ? std::wstring{} : found->second.error;
+}
+
+RemoteImageCacheStats RemoteImageCache::GetStats() const {
+    std::scoped_lock lock(mutex_);
+    std::size_t pending = 0;
+    for (const auto& [url, entry] : entries_) {
+        (void)url;
+        if (entry.state == RemoteImageState::Queued || entry.state == RemoteImageState::Loading) ++pending;
+    }
+    return {entries_.size(), decodedBytes_, pending};
+}
+
+HRESULT RemoteImageCache::CreateBitmap(
+    ID2D1RenderTarget* renderTarget,
+    std::wstring_view url,
+    ID2D1Bitmap** bitmap) {
+    if (!renderTarget || !bitmap) return E_POINTER;
+    *bitmap = nullptr;
+    std::shared_ptr<const RemoteDecodedImage> image;
+    RemoteImageState state = RemoteImageState::Missing;
+    {
+        std::scoped_lock lock(mutex_);
+        const auto found = entries_.find(std::wstring(url));
+        if (found != entries_.end()) {
+            state = found->second.state;
+            found->second.lastUse = ++useCounter_;
+            image = found->second.image;
+        }
+    }
+    if (state == RemoteImageState::Queued || state == RemoteImageState::Loading) return E_PENDING;
+    if (state != RemoteImageState::Ready || !image)
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    const auto properties = D2D1::BitmapProperties(
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+        96.0F, 96.0F);
+    return renderTarget->CreateBitmap(
+        D2D1::SizeU(image->width, image->height),
+        image->premultipliedBgra.data(), image->stride, properties, bitmap);
+}
+
+void RemoteImageCache::Clear() {
+    std::scoped_lock lock(mutex_);
+    for (auto iterator = entries_.begin(); iterator != entries_.end();) {
+        if (iterator->second.state == RemoteImageState::Queued ||
+            iterator->second.state == RemoteImageState::Loading) {
+            ++iterator;
+        } else {
+            iterator = entries_.erase(iterator);
+        }
+    }
+    decodedBytes_ = 0;
+}
+
+void RemoteImageCache::Shutdown() noexcept {
+    {
+        std::scoped_lock lock(mutex_);
+        if (shuttingDown_) return;
+        shuttingDown_ = true;
+        queue_.clear();
+    }
+    worker_.request_stop();
+    condition_.notify_all();
+    if (worker_.joinable()) worker_.join();
+}
+
+bool RemoteImageCache::IsAllowedHttpsUrl(std::wstring_view url) noexcept {
+    try {
+        return ParseHttpsUrl(url).has_value();
+    } catch (...) {
+        return false;
+    }
+}
+
+RemoteImageRequestResult RemoteImageCache::QueueLocked(std::wstring url, bool retry) {
+    if (shuttingDown_) return RemoteImageRequestResult::ShuttingDown;
+    if (const auto found = entries_.find(url); found != entries_.end()) {
+        found->second.lastUse = ++useCounter_;
+        if (!retry || found->second.state != RemoteImageState::Failed)
+            return RemoteImageRequestResult::AlreadyTracked;
+        found->second.state = RemoteImageState::Queued;
+        found->second.error.clear();
+        queue_.push_back(std::move(url));
+        condition_.notify_one();
+        return RemoteImageRequestResult::Queued;
+    }
+    while (entries_.size() >= limits_.maximumEntries) {
+        if (!EvictOneLocked(url)) return RemoteImageRequestResult::CapacityExceeded;
+    }
+    entries_.emplace(url, Entry{RemoteImageState::Queued, {}, {}, ++useCounter_});
+    queue_.push_back(std::move(url));
+    condition_.notify_one();
+    return RemoteImageRequestResult::Queued;
+}
+
+bool RemoteImageCache::EvictOneLocked(std::wstring_view protectedUrl) {
+    auto candidate = entries_.end();
+    for (auto iterator = entries_.begin(); iterator != entries_.end(); ++iterator) {
+        if (iterator->first == protectedUrl ||
+            iterator->second.state == RemoteImageState::Queued ||
+            iterator->second.state == RemoteImageState::Loading) continue;
+        if (candidate == entries_.end() || iterator->second.lastUse < candidate->second.lastUse)
+            candidate = iterator;
+    }
+    if (candidate == entries_.end()) return false;
+    if (candidate->second.image)
+        decodedBytes_ -= candidate->second.image->premultipliedBgra.size();
+    entries_.erase(candidate);
+    return true;
+}
+
+void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
+    while (!stopToken.stop_requested()) {
+        std::wstring url;
+        {
+            std::unique_lock lock(mutex_);
+            condition_.wait(lock, [this, &stopToken] {
+                return shuttingDown_ || stopToken.stop_requested() || !queue_.empty();
+            });
+            if (shuttingDown_ || stopToken.stop_requested()) break;
+            url = std::move(queue_.front());
+            queue_.pop_front();
+            const auto found = entries_.find(url);
+            if (found == entries_.end() || found->second.state != RemoteImageState::Queued) continue;
+            found->second.state = RemoteImageState::Loading;
+        }
+
+        auto result = fetch_(url, stopToken, limits_);
+        RemoteImageState finalState = RemoteImageState::Failed;
+        {
+            std::scoped_lock lock(mutex_);
+            if (shuttingDown_ || stopToken.stop_requested()) break;
+            CompleteLocked(url, std::move(result));
+            const auto found = entries_.find(url);
+            if (found != entries_.end()) finalState = found->second.state;
+        }
+        if (completion_ && !stopToken.stop_requested()) {
+            try { completion_(url, finalState); }
+            catch (...) { /* Client callbacks cannot terminate the cache worker. */ }
+        }
+    }
+}
+
+void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchResult result) {
+    const auto found = entries_.find(url);
+    if (found == entries_.end()) return;
+    auto& entry = found->second;
+    entry.lastUse = ++useCounter_;
+    const std::uint64_t expectedStride = static_cast<std::uint64_t>(result.image.width) * 4U;
+    const std::uint64_t expectedBytes = expectedStride * result.image.height;
+    if (result.succeeded() &&
+        (result.image.width == 0 || result.image.height == 0 ||
+         result.image.stride != expectedStride ||
+         expectedBytes != result.image.premultipliedBgra.size() ||
+         expectedBytes > limits_.maximumDecodedBytes)) {
+        result = Failure(E_INVALIDARG, L"Fetcher returned invalid decoded image data.");
+    }
+    if (result.succeeded()) {
+        const auto bytes = result.image.premultipliedBgra.size();
+        while (decodedBytes_ + bytes > limits_.maximumDecodedBytes) {
+            if (!EvictOneLocked(url)) {
+                result = Failure(HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_MEMORY),
+                                 L"Decoded image exceeds the available cache budget.");
+                break;
+            }
+        }
+        if (result.succeeded()) {
+            entry.image = std::make_shared<RemoteDecodedImage>(std::move(result.image));
+            entry.error.clear();
+            entry.state = RemoteImageState::Ready;
+            decodedBytes_ += bytes;
+            return;
+        }
+    }
+    entry.image.reset();
+    entry.error = result.error.empty() ? L"Remote image request failed." : std::move(result.error);
+    entry.state = RemoteImageState::Failed;
+}
+
+RemoteImageFetchResult RemoteImageCache::FetchAndDecode(
+    std::wstring_view url,
+    std::stop_token stopToken,
+    const RemoteImageLimits& limits) {
+    const auto parsed = ParseHttpsUrl(url);
+    if (!parsed) return Failure(E_INVALIDARG, L"Only credential-free HTTPS URLs are allowed.");
+
+    InternetHandle session(WinHttpOpen(
+        L"GameBarAlternative/0.1",
+        WINHTTP_ACCESS_TYPE_NO_PROXY,
+        WINHTTP_NO_PROXY_NAME,
+        WINHTTP_NO_PROXY_BYPASS,
+        0));
+    if (!session) return Failure(LastErrorResult(), L"WinHTTP session creation failed.");
+    if (!WinHttpSetTimeouts(session.get(),
+            static_cast<int>(limits.resolveTimeoutMilliseconds),
+            static_cast<int>(limits.connectTimeoutMilliseconds),
+            static_cast<int>(limits.sendTimeoutMilliseconds),
+            static_cast<int>(limits.receiveTimeoutMilliseconds))) {
+        return Failure(LastErrorResult(), L"WinHTTP timeout policy failed.");
+    }
+    DWORD secureProtocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+#ifdef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3
+    secureProtocols |= WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+#endif
+    if (!WinHttpSetOption(session.get(), WINHTTP_OPTION_SECURE_PROTOCOLS,
+                          &secureProtocols, sizeof(secureProtocols))) {
+        return Failure(LastErrorResult(), L"WinHTTP TLS policy failed.");
+    }
+    DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP;
+    if (!WinHttpSetOption(session.get(), WINHTTP_OPTION_REDIRECT_POLICY,
+                          &redirectPolicy, sizeof(redirectPolicy))) {
+        return Failure(LastErrorResult(), L"WinHTTP redirect policy failed.");
+    }
+    DWORD redirects = limits.maximumRedirects;
+    if (!WinHttpSetOption(session.get(), WINHTTP_OPTION_MAX_HTTP_AUTOMATIC_REDIRECTS,
+                          &redirects, sizeof(redirects))) {
+        return Failure(LastErrorResult(), L"WinHTTP redirect limit failed.");
+    }
+
+    InternetHandle connection(WinHttpConnect(session.get(), parsed->host.c_str(), parsed->port, 0));
+    if (!connection) return Failure(LastErrorResult(), L"WinHTTP connection creation failed.");
+    InternetHandle request(WinHttpOpenRequest(
+        connection.get(), L"GET", parsed->resource.c_str(), nullptr,
+        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
+    if (!request) return Failure(LastErrorResult(), L"WinHTTP request creation failed.");
+    constexpr wchar_t headers[] = L"Accept: image/*\r\nCache-Control: no-transform\r\n";
+    if (!WinHttpSendRequest(request.get(), headers, static_cast<DWORD>(-1),
+                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(request.get(), nullptr)) {
+        return Failure(LastErrorResult(), L"HTTPS image request failed.");
+    }
+    if (stopToken.stop_requested()) return Failure(E_ABORT, L"Image request was cancelled.");
+
+    DWORD status = 0;
+    DWORD statusBytes = sizeof(status);
+    if (!WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusBytes,
+                             WINHTTP_NO_HEADER_INDEX) || status < 200 || status >= 300) {
+        return Failure(HRESULT_FROM_WIN32(ERROR_WINHTTP_INVALID_SERVER_RESPONSE),
+                       L"Image endpoint did not return a successful status.");
+    }
+
+    DWORD finalUrlBytes = 0;
+    WinHttpQueryOption(request.get(), WINHTTP_OPTION_URL, nullptr, &finalUrlBytes);
+    std::vector<wchar_t> finalUrl(finalUrlBytes / sizeof(wchar_t) + 1);
+    if (finalUrlBytes == 0 ||
+        !WinHttpQueryOption(request.get(), WINHTTP_OPTION_URL, finalUrl.data(), &finalUrlBytes) ||
+        !IsAllowedHttpsUrl(finalUrl.data())) {
+        return Failure(E_ACCESSDENIED, L"Redirect target was not an allowed HTTPS URL.");
+    }
+
+    std::wstring mime = QueryHeader(request.get(), WINHTTP_QUERY_CONTENT_TYPE);
+    if (!IsImageMime(mime))
+        return Failure(HRESULT_FROM_WIN32(ERROR_INVALID_DATA), L"Response MIME type is not an image.");
+    const std::wstring contentLength = QueryHeader(request.get(), WINHTTP_QUERY_CONTENT_LENGTH);
+    if (!contentLength.empty()) {
+        wchar_t* end = nullptr;
+        const unsigned long long announced = std::wcstoull(contentLength.c_str(), &end, 10);
+        if (end == contentLength.c_str() || announced > limits.maximumDownloadBytes)
+            return Failure(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE), L"Image response is too large.");
+    }
+
+    std::vector<std::uint8_t> bytes;
+    for (;;) {
+        if (stopToken.stop_requested()) return Failure(E_ABORT, L"Image request was cancelled.");
+        DWORD available = 0;
+        if (!WinHttpQueryDataAvailable(request.get(), &available))
+            return Failure(LastErrorResult(), L"Image response read failed.");
+        if (available == 0) break;
+        if (bytes.size() + available > limits.maximumDownloadBytes)
+            return Failure(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE), L"Image response exceeded 5 MiB.");
+        const auto offset = bytes.size();
+        bytes.resize(offset + available);
+        DWORD read = 0;
+        if (!WinHttpReadData(request.get(), bytes.data() + offset, available, &read))
+            return Failure(LastErrorResult(), L"Image response read failed.");
+        bytes.resize(offset + read);
+    }
+    if (bytes.empty()) return Failure(HRESULT_FROM_WIN32(ERROR_INVALID_DATA), L"Image response was empty.");
+    return DecodeWithWic(std::move(bytes), std::move(mime), limits);
+}
+
+} // namespace gba

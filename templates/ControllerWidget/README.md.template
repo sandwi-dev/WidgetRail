@@ -1,0 +1,46 @@
+# {{WidgetName}}
+
+`{{WidgetId}}` is a controller-first Game Bar Alternative widget generated from
+the standard starter. It demonstrates stable semantic IDs, an explicit focus
+graph, bumper shortcuts, invalidation, GBSS styling, and deterministic input
+replay.
+
+## Build and validate
+
+```powershell
+dotnet build .\\{{WidgetName}}.csproj
+gbar validate .
+```
+
+Render a protocol snapshot directly from the compiled widget:
+
+```powershell
+gbar render .\\bin\\Debug\\net8.0\\{{WidgetName}}.dll --type {{Publisher}}.{{WidgetName}}.{{WidgetName}} --instance development.preview --output .\\snapshot.json
+```
+
+Replay controller input without launching the overlay:
+
+```powershell
+gbar replay .\\snapshot.json .\\replays\\smoke.json
+```
+
+The replay begins on `apply`, moves left, activates `lower`, then exercises the
+`RB` and `X` shortcuts. `Home/Guide` is reserved by the shell and is
+intentionally absent from the widget API. `B`, `LB`, `RB`, and every other
+non-Home control remain available to the active widget.
+
+## Development rules
+
+- Give every element a stable ID; persisted focus depends on it.
+- Prefer automatic directional navigation for simple layouts and explicit
+  neighbors where movement could be ambiguous.
+- Declare controller shortcuts next to the action they invoke.
+- Derive `.Disabled()`, `.Selected()`, and `.Busy()` from widget state. Disabled
+  and busy buttons remain visible for accessibility but cannot activate.
+- Keep `Render()` deterministic for the current state.
+- Call `Invalidate()` only after visible state changes.
+- Request no capability until the widget needs it.
+- Treat the manifest's resource request as a budget, not an entitlement.
+
+GBSS is declarative. It cannot execute scripts or load network/file URLs.
+Accessibility rules applied by the host always override widget styles.

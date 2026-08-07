@@ -1,0 +1,131 @@
+# Platform architecture
+
+Status: implemented prototype boundaries, not a production security boundary
+
+The platform separates the always-resident native overlay from managed widget
+logic. The host owns the window, pixels, focus, controller policy, and
+persistence. Widgets return bounded semantic UI snapshots; they do not create
+windows, draw arbitrary paths, inject into games, or ship browser UI.
+
+```mermaid
+flowchart LR
+    Controller["Controller"] --> Host["Native OverlayHost"]
+    Host <-->|"bounded local IPC"| Bridge["Managed WidgetBridge"]
+    Bridge <-->|"one lazy worker connection"| Worker["Widget worker"]
+    Worker --> SDK["WidgetSdk + WidgetProtocol"]
+    Bridge --> Styling["WidgetStyling / GBSS"]
+    Host --> State["Host-owned order and last-widget state"]
+    Catalog["WidgetCatalog package library"] -. "planned host integration" .-> Bridge
+```
+
+## Components
+
+| Component | Implemented responsibility |
+| --- | --- |
+| `src/OverlayHost` | Win32/Direct2D panel/backdrop shell, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, and the current YT Music reference integration. |
+| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted catalog loading, worker supervision, controller forwarding, invalidation/failure events, and computed GBSS styles. |
+| `src/WidgetRuntime` | Lazy worker process client/server, random named pipes, bounded length-prefixed JSON, strict envelopes, timeouts, crash reporting, and limited restart. |
+| `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
+| `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, and state helpers. |
+| `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, bounded typed properties, and source-located diagnostics. |
+| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence as a library API. |
+| `tools/GbarCli` | Widget scaffolding/validation/render/replay plus deterministic package creation and local catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
+
+## Snapshot flow
+
+1. The native host requests a widget snapshot from the bridge.
+2. The bridge lazily starts the configured worker if necessary.
+3. The worker calls `Widget.Render()` and validates the resulting semantic
+   tree before serializing it.
+4. The bridge resolves the widget's trusted GBSS file and returns typed render
+   styles beside the validated snapshot.
+5. The native host renders known semantic nodes and routes controller events
+   using stable IDs and declared focus/action metadata.
+6. A widget calls `Invalidate()` after visible state changes. Invalidation
+   travels back to the host, which requests a fresh snapshot.
+
+Controller shortcut lookup is local to the active input scope in that exact
+snapshot. The root is the default scope; nested Stack/Row scopes can reuse a
+binding and never fall through into parents or siblings. Dashboard quick
+actions use a separate contract, while Guide remains host-owned.
+
+The snapshot publishes `ActiveInputScopeId`; the host does not infer it from
+focus. Each open-widget event echoes that ID and the snapshot sequence it was
+rendered from. The SDK rejects stale/mismatched input before action resolution,
+so an old press cannot activate a binding after a rerender changes the active
+surface. The host owns live focus and remembers it by widget and scope, falling
+back to the snapshot's `InitialFocusId` or first enabled button. A focusless
+scope remains valid and can use a Stack/Row-level shortcut such as modal B.
+
+All transport messages have explicit size limits, protocol versions, strict
+camel-case JSON, and unknown-member rejection. The native process never loads
+third-party managed assemblies.
+
+## Resource behavior
+
+The overlay starts hidden. It retains the Guide system-button callback but
+does not continuously render or perform ordinary controller polling while
+hidden. Workers start lazily on demand; unexpected exits and request timeouts
+are reported through the runtime and bridge.
+
+The host sends an explicit stable lifecycle state through the bridge and
+runtime. In the current integration, a selected bridge card is `Visible`, its
+open surface is `Interactive`, and moving selection or hiding the overlay sends
+`Background`. `Created` and `Destroying` are runtime-owned. Once launched, the
+worker remains resident in Background by default. The SDK cancels the shared
+Visible/Interactive lifetime while leaving the widget lifetime available to
+explicitly permitted background work.
+
+The SDK also creates a token per lifecycle state. It cancels the previous state
+token before notifying the widget of the new host-authoritative state, so work
+specific to a dashboard preview does not leak into Interactive and vice versa.
+Widget authors receive creation, stable-state-change, and bounded destroying
+hooks; legacy activation hooks cover the combined Visible/Interactive lifetime.
+
+Process unload is separate from the stable lifecycle states and occurs through
+terminal `Destroying`. The planned policy choices are default `keep-alive`,
+plus `suspend-when-hidden` and `unload-after-idle` when selected by
+manifest/user policy. The host must not invent an idle timeout or resource
+heuristic. Policy enforcement is not implemented in the current prototype.
+
+## Window and input behavior
+
+The visible prototype uses a topmost controller panel plus a non-activating,
+uniform black backdrop over the monitor containing the previously foreground
+app. Clicking outside the panel on that backdrop closes the overlay. The host
+observes foreground and z-order changes and reasserts both windows without
+activation after a short settle; hiding removes them from the topmost band and
+attempts to restore the prior foreground app.
+
+GameInput's system-button callback is the primary Guide source. A quarantined,
+removable XInput adapter covers an observed Xbox-360-class/8BitDo driver gap by
+using an undocumented `xinput1_4.dll` ordinal. That fallback is compatibility
+evidence, not a supported Microsoft contract or universal device claim.
+
+Ordinary controls use documented XInput while visible. Open-widget navigation
+uses a two-dimensional stick state machine with separate engage/release
+thresholds and repeat timing. Focus follows a usable explicit neighbor first,
+then deterministic geometry from the last render.
+
+## Current limits
+
+- The native renderer is still a reference/prototype implementation. The YT
+  Music path is integrated; complete generic rendering of every SDK node and
+  every computed GBSS state is still being finished.
+- `.gbarwidget` pack/install/list/enable/disable work for local files and the
+  current-user catalog. There is no graphical installer, URL downloader,
+  signature verification, or native-host discovery from that catalog yet.
+- Publisher signatures, revocation, AppContainer launch, Job Object resource
+  policy, and a capability broker are **planned**, not current guarantees.
+- The trusted bridge catalog is deployment configuration, not a marketplace
+  feed or signed package index.
+- The host does not universally suppress controller input seen through every
+  game input API. See [controller input](controller-input.md).
+- Topmost behavior is best effort and covers one selected monitor. True
+  Fullscreen Exclusive, secure desktop/UAC, higher-integrity windows, and
+  injection-based or anti-cheat render compatibility are outside the current
+  support target.
+
+See [security and trust](security-and-trust.md) before executing third-party
+widgets, and [architecture research](architecture-plan.md) for the longer-term
+technology rationale.

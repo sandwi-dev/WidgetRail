@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.samples.clock",
+  "publisher": "org.gbar.samples",
+  "name": "Clock",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/ClockWidget.dll",
+    "type": "GameBarAlternative.Samples.ClockWidget.ClockWidget"
+  },
+  "permissions": [],
+  "optionalPermissions": [],
+  "backgroundPolicy": "none",
+  "resourceRequest": {
+    "memoryMb": 32,
+    "updateHz": 1
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}

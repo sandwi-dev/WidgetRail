@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.samples.ytmusic",
+  "publisher": "org.gbar.samples",
+  "name": "YT Music",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/YtMusicWidget.dll",
+    "type": "GameBarAlternative.Samples.YtMusicWidget.YtMusicWidget"
+  },
+  "permissions": [
+    "network.loopback:13091"
+  ],
+  "optionalPermissions": [],
+  "backgroundPolicy": "suspend",
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 5
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}
+

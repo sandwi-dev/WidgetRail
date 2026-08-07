@@ -1,0 +1,24 @@
+# Native build output
+.vs/
+out/
+build/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.pdb
+
+# Runtime state and diagnostics
+artifacts/
+logs/
+*.log
+*.etl
+
+# Widget development packages
+*.gbar-widget
+
+# Local IDE metadata
+.idea/
+.vscode/

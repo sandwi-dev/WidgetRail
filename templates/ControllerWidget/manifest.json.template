@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "id": "{{WidgetId}}",
+  "publisher": "{{Publisher}}",
+  "name": "{{WidgetName}}",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/{{WidgetName}}.dll",
+    "type": "{{Publisher}}.{{WidgetName}}.{{WidgetName}}"
+  },
+  "permissions": [],
+  "optionalPermissions": [],
+  "backgroundPolicy": "none",
+  "resourceRequest": {
+    "memoryMb": 32,
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}

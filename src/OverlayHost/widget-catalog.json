@@ -1,0 +1,14 @@
+{
+  "catalogVersion": 1,
+  "widgets": [
+    {
+      "id": "yt-music",
+      "name": "YT Music",
+      "instanceId": "yt-music.default",
+      "workerExecutable": "runtime/YtMusic/YtMusicWidget.Worker.exe",
+      "styleFile": "runtime/YtMusic/styles/default.gbss",
+      "workerArguments": [],
+      "quickActions": []
+    }
+  ]
+}

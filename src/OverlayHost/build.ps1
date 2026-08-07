@@ -1,0 +1,379 @@
+[CmdletBinding()]
+param(
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Debug',
+    [ValidateSet('x64')]
+    [string]$Architecture = 'x64',
+    [switch]$SkipTests,
+    [switch]$SkipPackaging
+)
+
+$ErrorActionPreference = 'Stop'
+$projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+$gameInputVersion = '3.5.262'
+$nugetRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
+$gameInputPackage = Join-Path $nugetRoot "microsoft.gameinput\$gameInputVersion"
+$gameInputHeader = Join-Path $gameInputPackage 'native\include\GameInput.h'
+if (-not (Test-Path -LiteralPath $gameInputHeader)) {
+    & dotnet restore (Join-Path $projectDirectory 'NativeDependencies.csproj') --nologo
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $gameInputHeader)) {
+        throw "Microsoft.GameInput $gameInputVersion could not be restored."
+    }
+}
+$vsWhere = Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio\Installer\vswhere.exe'
+
+if (Test-Path -LiteralPath $vsWhere) {
+    $vsRoot = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+}
+
+if (-not $vsRoot) {
+    $vsCandidates = Get-ChildItem -LiteralPath (Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio') -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending
+    foreach ($version in $vsCandidates) {
+        $edition = Get-ChildItem -LiteralPath $version.FullName -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($edition -and (Test-Path -LiteralPath (Join-Path $edition.FullName 'VC\Tools\MSVC'))) {
+            $vsRoot = $edition.FullName
+            break
+        }
+    }
+}
+
+if (-not $vsRoot) {
+    throw 'Visual Studio C++ build tools were not found. Install the Desktop development with C++ workload.'
+}
+
+$vcToolsRoot = Join-Path $vsRoot 'VC\Tools\MSVC'
+$vcTools = Get-ChildItem -LiteralPath $vcToolsRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+if (-not $vcTools) {
+    throw "No MSVC toolset was found below $vcToolsRoot. Install the Desktop development with C++ workload."
+}
+
+$cl = Join-Path $vcTools.FullName "bin\Host$Architecture\$Architecture\cl.exe"
+$standardHeader = Join-Path $vcTools.FullName 'include\excpt.h'
+if (-not (Test-Path -LiteralPath $cl) -or -not (Test-Path -LiteralPath $standardHeader)) {
+    throw "The MSVC installation at $($vcTools.FullName) is incomplete. Install or repair the Desktop development with C++ workload."
+}
+
+$sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
+$sdk = Get-ChildItem -LiteralPath (Join-Path $sdkRoot 'Include') -Directory |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'um\GameInput.h') } |
+    Sort-Object Name -Descending |
+    Select-Object -First 1
+if (-not $sdk) {
+    throw "A Windows SDK containing GameInput.h was not found below $sdkRoot."
+}
+
+$sdkBin = Join-Path $sdkRoot "bin\$($sdk.Name)\$Architecture"
+$compilerBin = Split-Path -Parent $cl
+if (-not (Test-Path -LiteralPath (Join-Path $sdkBin 'mt.exe'))) {
+    throw "The Windows SDK manifest tool was not found below $sdkBin."
+}
+$env:PATH = "$sdkBin;$compilerBin;$env:PATH"
+
+$outputDirectory = Join-Path $projectDirectory "out\$Configuration"
+$hostObjectDirectory = Join-Path $outputDirectory 'obj\host'
+$testObjectDirectory = Join-Path $outputDirectory 'obj\tests'
+$imageTestObjectDirectory = Join-Path $outputDirectory 'obj\image-tests'
+$layoutTestObjectDirectory = Join-Path $outputDirectory 'obj\layout-tests'
+$iconTestObjectDirectory = Join-Path $outputDirectory 'obj\icon-tests'
+$styleTestObjectDirectory = Join-Path $outputDirectory 'obj\style-tests'
+$placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
+$guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
+$navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
+$focusTestObjectDirectory = Join-Path $outputDirectory 'obj\focus-tests'
+$surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus-tests'
+$lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
+$bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
+$rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $placementTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+
+$optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
+$includeArguments = @(
+    "/I$gameInputPackage\native\include",
+    "/I$($vcTools.FullName)\include",
+    "/I$sdkRoot\Include\$($sdk.Name)\ucrt",
+    "/I$sdkRoot\Include\$($sdk.Name)\shared",
+    "/I$sdkRoot\Include\$($sdk.Name)\um",
+    "/I$sdkRoot\Include\$($sdk.Name)\winrt",
+    "/I$sdkRoot\Include\$($sdk.Name)\cppwinrt"
+)
+$libraryArguments = @(
+    "/LIBPATH:$gameInputPackage\native\lib\$Architecture",
+    "/LIBPATH:$($vcTools.FullName)\lib\$Architecture",
+    "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\ucrt\$Architecture",
+    "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\um\$Architecture"
+)
+$common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
+    $optimization + $includeArguments
+
+$hostArguments = $common + @(
+    (Join-Path $projectDirectory 'main.cpp'),
+    (Join-Path $projectDirectory 'OverlayState.cpp'),
+    (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+    (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+    (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+    (Join-Path $projectDirectory 'NativeIcons.cpp'),
+    (Join-Path $projectDirectory 'NativeStyle.cpp'),
+    (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+    (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+    (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+    (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+    (Join-Path $projectDirectory 'FocusNavigation.cpp'),
+    (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
+    (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),
+    "/Fo:$hostObjectDirectory\",
+    "/Fe:$outputDirectory\OverlayHost.exe",
+    '/link'
+) + $libraryArguments + @(
+    '/SUBSYSTEM:WINDOWS',
+    '/MANIFEST:EMBED',
+    "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')",
+    'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
+    'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
+    'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+)
+
+& $cl $hostArguments
+if ($LASTEXITCODE -ne 0) {
+    throw "OverlayHost build failed with exit code $LASTEXITCODE."
+}
+
+if (-not $SkipPackaging) {
+    $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
+    $ytMusicOutput = Join-Path $outputDirectory 'runtime\YtMusic'
+    & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetBridge publish failed with exit code $LASTEXITCODE."
+    }
+    & dotnet publish (Join-Path $projectDirectory '..\..\samples\YtMusicWidget.Worker\YtMusicWidget.Worker.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $ytMusicOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "YT Music worker publish failed with exit code $LASTEXITCODE."
+    }
+    Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
+        -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
+}
+
+if (-not $SkipTests) {
+    $testArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayStateTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayState.cpp'),
+        "/Fo:$testObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayStateTests.exe",
+        '/link'
+    ) + $libraryArguments + @('/SUBSYSTEM:CONSOLE')
+
+    & $cl $testArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayStateTests build failed with exit code $LASTEXITCODE."
+    }
+
+    & (Join-Path $outputDirectory 'OverlayStateTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayStateTests failed with exit code $LASTEXITCODE."
+    }
+
+    $imageTestArguments = $common + @(
+        (Join-Path $projectDirectory 'RemoteImageCacheTests.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$imageTestObjectDirectory\",
+        "/Fe:$outputDirectory\RemoteImageCacheTests.exe",
+        '/link'
+    ) + $libraryArguments + @(
+        '/SUBSYSTEM:CONSOLE', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'd2d1.lib'
+    )
+    & $cl $imageTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "RemoteImageCacheTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'RemoteImageCacheTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "RemoteImageCacheTests failed with exit code $LASTEXITCODE."
+    }
+
+    $layoutTestArguments = $common + @(
+        (Join-Path $projectDirectory 'DeclarativeLayoutTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        "/Fo:$layoutTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeLayoutTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $layoutTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeLayoutTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeLayoutTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeLayoutTests failed with exit code $LASTEXITCODE."
+    }
+
+    $iconTestArguments = $common + @(
+        (Join-Path $projectDirectory 'NativeIconsTests.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        "/Fo:$iconTestObjectDirectory\",
+        "/Fe:$outputDirectory\NativeIconsTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib')
+    & $cl $iconTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeIconsTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'NativeIconsTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeIconsTests failed with exit code $LASTEXITCODE."
+    }
+
+    $styleTestArguments = $common + @(
+        (Join-Path $projectDirectory 'NativeStyleTests.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        "/Fo:$styleTestObjectDirectory\",
+        "/Fe:$outputDirectory\NativeStyleTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $styleTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeStyleTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'NativeStyleTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeStyleTests failed with exit code $LASTEXITCODE."
+    }
+
+    $bridgeCatalogTestArguments = $common + @(
+        '/DGBA_WIDGET_BRIDGE_CLIENT_TESTING',
+        (Join-Path $projectDirectory 'WidgetBridgeCatalogTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+        "/Fo:$bridgeCatalogTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetBridgeCatalogTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('windowsapp.lib')
+    & $cl $bridgeCatalogTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetBridgeCatalogTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'WidgetBridgeCatalogTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetBridgeCatalogTests failed with exit code $LASTEXITCODE."
+    }
+
+    $placementTestArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+        "/Fo:$placementTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayPlacementTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $placementTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlacementTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayPlacementTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlacementTests failed with exit code $LASTEXITCODE."
+    }
+
+    $guideTestArguments = $common + @(
+        (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
+        (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+        "/Fo:$guideTestObjectDirectory\",
+        "/Fe:$outputDirectory\GuideInputCompatibilityTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib')
+    & $cl $guideTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "GuideInputCompatibilityTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'GuideInputCompatibilityTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "GuideInputCompatibilityTests failed with exit code $LASTEXITCODE."
+    }
+
+    $navigationTestArguments = $common + @(
+        (Join-Path $projectDirectory 'ControllerNavigationTests.cpp'),
+        (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+        "/Fo:$navigationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerNavigationTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $navigationTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerNavigationTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerNavigationTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerNavigationTests failed with exit code $LASTEXITCODE."
+    }
+
+    $focusTestArguments = $common + @(
+        (Join-Path $projectDirectory 'FocusNavigationTests.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
+        "/Fo:$focusTestObjectDirectory\",
+        "/Fe:$outputDirectory\FocusNavigationTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $focusTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "FocusNavigationTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'FocusNavigationTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "FocusNavigationTests failed with exit code $LASTEXITCODE."
+    }
+
+    $surfaceFocusTestArguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetSurfaceFocusTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
+        "/Fo:$surfaceFocusTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetSurfaceFocusTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $surfaceFocusTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetSurfaceFocusTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'WidgetSurfaceFocusTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetSurfaceFocusTests failed with exit code $LASTEXITCODE."
+    }
+
+    $lifecycleTestArguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetLifecycleTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),
+        "/Fo:$lifecycleTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetLifecycleTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $lifecycleTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetLifecycleTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'WidgetLifecycleTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetLifecycleTests failed with exit code $LASTEXITCODE."
+    }
+
+    $rendererTestArguments = $common + @(
+        (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$rendererTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $rendererTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+Write-Host "Built $outputDirectory\OverlayHost.exe"

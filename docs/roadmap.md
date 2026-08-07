@@ -1,0 +1,162 @@
+# Prototype roadmap
+
+Status: proposed sequence with evidence gates, 2026-08-06
+
+The next goal is not “build all widgets.” It is to prove that the operating-system constraints permit the product experience without turning the overlay into injected or driver-backed bloatware.
+
+## Phase 0: platform feasibility
+
+### Spike A: Guide button
+
+Build the smallest event-driven GameInput program that records Guide/Share and ordinary controls.
+
+Test:
+
+- Xbox Series and Elite controllers
+- DualSense
+- One generic controller
+- USB and Bluetooth
+- Xbox Game Bar enabled and disabled
+- Steam open and closed
+- Foreground game requesting exclusive input where possible
+
+Exit criteria:
+
+- A documented supported controller matrix
+- Reliable press/release transitions without polling while hidden
+- Conflict detection or clear onboarding for Game Bar and Steam
+- A controller-only fallback chord decision
+
+### Spike B: input containment
+
+Open and focus a minimal overlay over input test applications using XInput, GameInput, Raw Input, SDL, Unity, and Unreal.
+
+Exit criteria:
+
+- Evidence of which backends stop receiving input and which continue
+- No stuck buttons across open/close transitions
+- A written support policy that does not imply universal suppression
+- Explicit decision to continue without a filter driver, or stop and reassess the product promise
+
+### Spike C: presentation compatibility
+
+Render a transparent controller-navigable strip with D3D11, Direct2D, and DirectComposition.
+
+Test DirectX 11, DirectX 12, Vulkan, and OpenGL applications in windowed, borderless, Fullscreen Optimizations, and true Fullscreen Exclusive modes. Include HDR/SDR, VRR, mixed-DPI multi-monitor, and a hybrid-GPU laptop when available.
+
+Exit criteria:
+
+- Windowed, borderless, and Fullscreen Optimizations are reliable
+- True FSE limitation is detected or documented
+- Overlay focus and restoration do not strand the user
+- No continuous presentation while hidden
+
+### Spike D: resource and UI stack
+
+Implement the same three-card screen in native D2D/DWrite and, only if useful, a minimal WinUI 3 comparison.
+
+Measure private working set, startup, warm activation, frame time, GPU activity, and idle wakeups with ETW/Windows Performance Recorder and PresentMon.
+
+Current single-sample evidence for the visible prototype is 93.2 MB host +
+59.1 MB bridge + 51.5 MB worker = **203.8 MB private memory**. Over five
+seconds, `OverlayHost` accumulated **78.12 ms CPU**; bridge and worker deltas
+were below timer resolution. This does not yet satisfy the repeatable ETW,
+hidden-state, GPU, wakeup, or multi-widget evidence gate.
+
+Exit criteria:
+
+- Native host meets or credibly approaches the product budgets
+- A measured renderer decision, including the cost of custom focus/accessibility work
+- Automated benchmark scripts and stored baseline results
+
+### Spike E: isolated worker
+
+Launch a sample worker, negotiate a protocol over a secured named pipe, render its declarative tree, forward controller events, persist state, and recover from deliberate crash/hang/oversized-message cases.
+
+Exit criteria:
+
+- Worker failure never terminates or blocks the shell
+- Lazy cold start is acceptable or hidden by a cached snapshot
+- Job Object accounting and termination work
+- AppContainer communication is proven on the chosen minimum Windows versions
+- The initial trust/support policy for Windows 10 versus Windows 11 is explicit
+
+## Phase 1: shell vertical slice
+
+Deliver one controller-only executable with:
+
+- Guide toggle
+- Dashboard strip with three sample widgets
+- Controller edit mode for reorder, visibility, and favorites
+- Widget activation and strict internal input routing
+- Last widget and stable focus restoration
+- Safe mode, reset, diagnostics, and invalid-config recovery
+- Minimal GBSS variables, semantic selectors, focus states, and live reload
+- Performance overlay for the overlay itself
+
+No capture, Discord, marketplace, web widgets, or general community code yet.
+
+## Phase 2: first public SDK
+
+- Versioned manifest schema
+- C# `WidgetRunner` SDK
+- Length-prefixed protobuf protocol over secured named pipes
+- Core declarative layout/content/input primitives
+- `gbar new`, `gbar dev`, validation, packaging, and input replay
+- State API, the five-state host-authoritative lifecycle, crash recovery,
+  explicit lifecycle-policy controls, and resource reporting
+- One built-in widget and one out-of-process sample implementing equivalent behavior
+- Controller-only and accessibility conformance tests
+
+Developer mode is local and unsigned but remains isolated. Public distribution remains off until Phase 3.
+
+## Phase 3: security and useful first-party widgets
+
+- AppContainer/Win32 isolation and capability broker
+- Signed packages, atomic update, rollback, and crash-loop disable
+- Malicious/abusive widget test corpus
+- Audio sessions widget
+- Performance widget
+- Media controls
+- Recent apps/games
+- Capture proof and widget if Windows API tests pass
+- Discord proof after eligibility and production communications access are confirmed
+
+Every first-party widget contributes a focused SDK example and regression suite.
+
+## Phase 4: ecosystem
+
+- Curated catalog and controller-first install/update/rollback
+- Publisher identity and moderation process
+- Compatibility and resource labels
+- WinGet or Microsoft Store discovery where useful
+- Theme gallery
+- Public API stability policy and migration tooling
+- Optional WASM logic tier evaluation
+- Optional shared WebView2 tier only if demanded and clearly resource-labeled
+
+## Risk register
+
+| Risk | Severity | Evidence needed | Current response |
+| --- | --- | --- | --- |
+| Games receive controller input behind overlay | Critical | Backend test matrix | Phase 0 stop/go gate; no driver by default |
+| Guide conflict or unavailable system button | Critical | Controller/client matrix | GameInput callback, conflict onboarding, controller-only fallback |
+| Overlay not visible in true FSE | High | Presentation matrix | Do not support true FSE initially; no injection |
+| Native UI scope expands uncontrollably | High | Three-card implementation effort and accessibility audit | Small primitive set; renderer-independent widget protocol; compare WinUI only with data |
+| Community widget compromises user | Critical | AppContainer and broker abuse tests | No public executable widgets before isolation passes |
+| Worker model feels slow or heavy | High | Cold-start and working-set measurements | Lazy first launch, resident-Background measurement, explicit user lifecycle choices, resource labels |
+| GBSS updates break themes | Medium | Theme compatibility fixtures | Stable semantic selectors, typed allowlist, versioned tokens |
+| Discord rejects overlay use case | High for social only | Written eligibility/production access | Keep Discord as optional first-party integration, not a core dependency |
+| Anti-cheat reacts to overlay | High | Representative signed/unsigned game tests | No injection, no game-memory access, compatibility matrix |
+| Feature creep recreates bloatware | High | Continuous resource regression tests | Budgets in CI; every background capability justified |
+
+## Immediate implementation order
+
+1. Create the native solution and diagnostics harness.
+2. Complete Guide-button and input-containment spikes before polishing UI.
+3. Complete the presentation matrix.
+4. Measure native rendering against the budgets.
+5. Prove one crashing out-of-process declarative widget.
+6. Review the evidence and accept or revise the proposed architecture.
+
+The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.

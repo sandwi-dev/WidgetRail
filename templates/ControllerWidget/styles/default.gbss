@@ -1,0 +1,30 @@
+:root {
+  --surface: #1c1c24;
+  --text-muted: #b7b7c4;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.status {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+#actions {
+  gap: 12px;
+}
+
+button:focused {
+  outline-color: var(--accent);
+  outline-width: 3px;
+  scale: 1.04;
+  transition-duration: 120ms;
+}
+
+.controller-help {
+  color: var(--text-muted);
+  font-size: 14px;
+}
