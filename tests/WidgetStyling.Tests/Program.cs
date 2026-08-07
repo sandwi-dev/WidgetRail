@@ -11,6 +11,7 @@ var tests = new (string Name, Action Run)[]
     ("Variables resolve forward references and fallbacks", Variables),
     ("Variable cycles prevent theme publication", VariableCycles),
     ("Cascade applies specificity states and source order", Cascade),
+    ("Explicit theme layers outrank selector specificity", LayerPrecedence),
     ("Selected disabled and focused states compose", InteractionStateComposition),
     ("Typed values clamp bounded renderer inputs", Clamping),
     ("Invalid typed values prevent theme publication", InvalidTypedValues),
@@ -196,6 +197,23 @@ static void Cascade()
     var unfocused = compile.Theme.Resolve(new GbssElement("button", null, new HashSet<string>(["primary"]), null));
     Assert.Equal("#222222", unfocused.Get("color")!.Text);
     Assert.Equal("1", unfocused.Get("scale")!.Text);
+}
+
+static void LayerPrecedence()
+{
+    var platform = GbssParser.Parse("#play { color: #111111; }", "platform.gbss");
+    var widget = GbssParser.Parse("#play { color: #222222; }", "widget.gbss");
+    var user = GbssParser.Parse("button { color: #333333; }", "user.gbss");
+    Assert.EmptyErrors(platform.Diagnostics.Concat(widget.Diagnostics).Concat(user.Diagnostics));
+    var compile = GbssThemeCompiler.Compile(
+    [
+        new GbssThemeLayer(0, [platform.Document]),
+        new GbssThemeLayer(100, [widget.Document]),
+        new GbssThemeLayer(200, [user.Document]),
+    ]);
+    Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+    var style = compile.Theme!.Resolve(new GbssElement("button", "play"));
+    Assert.Equal("#333333", style.Get("color")!.Text);
 }
 
 static void Clamping()

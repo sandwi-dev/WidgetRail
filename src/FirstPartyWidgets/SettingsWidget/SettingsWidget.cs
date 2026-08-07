@@ -1,0 +1,588 @@
+using System.Globalization;
+using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WidgetStyling;
+
+namespace GameBarAlternative.FirstPartyWidgets.Settings;
+
+public enum SettingsPage
+{
+    Root,
+    Appearance,
+    ThemePicker,
+    Accessibility,
+    Overlay,
+    Diagnostics,
+    Reset,
+}
+
+public sealed class SettingsWidget : Widget
+{
+    public const int ThemesPerPage = 5;
+    private const double ScaleStep = 0.05;
+    private const double OpacityStep = 0.05;
+    private readonly PlatformSettingsStore _store;
+    private readonly ThemeCatalog _catalog;
+    private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private readonly object _stateLock = new();
+    private PlatformSettingsDocument _settings = PlatformSettingsDocument.Default;
+    private ThemeCatalogSnapshot _themes;
+    private SettingsPage _page;
+    private int _themePage;
+    private int _activationLoadCount;
+    private bool _settingsValid = true;
+    private bool _busy;
+    private bool _error;
+    private string _status = "Settings load when this widget becomes visible";
+
+    public SettingsWidget(PlatformSettingsStore? store = null, ThemeCatalog? catalog = null)
+    {
+        var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
+        _store = store ?? new PlatformSettingsStore(paths);
+        _catalog = catalog ?? new ThemeCatalog(paths);
+        var builtIn = _catalog.BuiltInDefault;
+        _themes = new ThemeCatalogSnapshot(
+            [new ThemeCatalogEntry(builtIn.Descriptor, builtIn.IsValid, builtIn.Diagnostics)]);
+    }
+
+    public SettingsPage CurrentPage
+    {
+        get { lock (_stateLock) return _page; }
+    }
+
+    public int ActivationLoadCount => Volatile.Read(ref _activationLoadCount);
+
+    public override WidgetView Render()
+    {
+        PlatformSettingsDocument settings;
+        ThemeCatalogSnapshot themes;
+        SettingsPage page;
+        int themePage;
+        bool busy;
+        bool error;
+        bool settingsValid;
+        string status;
+        lock (_stateLock)
+        {
+            settings = _settings;
+            themes = _themes;
+            page = _page;
+            themePage = _themePage;
+            busy = _busy;
+            error = _error;
+            settingsValid = _settingsValid;
+            status = _status;
+        }
+
+        var header = UI.Stack("settings.header",
+            UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title"),
+            UI.Text(status, "settings.status", status).Classes(
+                "settings-status", error ? "is-error" : busy ? "is-busy" : "is-ready"))
+            .Classes("settings-header");
+        return page switch
+        {
+            SettingsPage.Root => RenderRoot(header, settings, busy),
+            SettingsPage.Appearance => RenderAppearance(header, settings, themes, busy),
+            SettingsPage.ThemePicker => RenderThemes(header, settings, themes, themePage, busy),
+            SettingsPage.Accessibility => RenderAccessibility(header, settings, busy),
+            SettingsPage.Overlay => RenderOverlay(header, settings, busy),
+            SettingsPage.Diagnostics => RenderDiagnostics(header, settings, themes, settingsValid),
+            SettingsPage.Reset => RenderReset(header, busy),
+            _ => RenderRoot(header, settings, busy),
+        };
+    }
+
+    protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    {
+        Interlocked.Increment(ref _activationLoadCount);
+        await ReloadAsync(activeLifetime).ConfigureAwait(false);
+    }
+
+    public override async ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            switch (action.ActionId)
+            {
+                case "open.appearance": Navigate(SettingsPage.Appearance); break;
+                case "open.accessibility": Navigate(SettingsPage.Accessibility); break;
+                case "open.overlay": Navigate(SettingsPage.Overlay); break;
+                case "open.diagnostics": Navigate(SettingsPage.Diagnostics); break;
+                case "open.reset": Navigate(SettingsPage.Reset); break;
+                case "open.themes": Navigate(SettingsPage.ThemePicker); break;
+                case "back": Navigate(ParentPage(CurrentPage)); break;
+                case "theme.previous-page": ChangeThemePage(-1); break;
+                case "theme.next-page": ChangeThemePage(1); break;
+                case "text.decrease": await ChangeAppearanceAsync(
+                    appearance => appearance with { TextScale = Step(
+                        appearance.TextScale, -ScaleStep,
+                        AppearanceSettings.MinimumTextScale,
+                        AppearanceSettings.MaximumTextScale) }, "Text size saved", cancellationToken).ConfigureAwait(false); break;
+                case "text.increase": await ChangeAppearanceAsync(
+                    appearance => appearance with { TextScale = Step(
+                        appearance.TextScale, ScaleStep,
+                        AppearanceSettings.MinimumTextScale,
+                        AppearanceSettings.MaximumTextScale) }, "Text size saved", cancellationToken).ConfigureAwait(false); break;
+                case "interface.decrease": await ChangeAppearanceAsync(
+                    appearance => appearance with { InterfaceScale = Step(
+                        appearance.InterfaceScale, -ScaleStep,
+                        AppearanceSettings.MinimumInterfaceScale,
+                        AppearanceSettings.MaximumInterfaceScale) }, "Interface size saved", cancellationToken).ConfigureAwait(false); break;
+                case "interface.increase": await ChangeAppearanceAsync(
+                    appearance => appearance with { InterfaceScale = Step(
+                        appearance.InterfaceScale, ScaleStep,
+                        AppearanceSettings.MinimumInterfaceScale,
+                        AppearanceSettings.MaximumInterfaceScale) }, "Interface size saved", cancellationToken).ConfigureAwait(false); break;
+                case "opacity.decrease": await ChangeAppearanceAsync(
+                    appearance => appearance with { BackdropOpacity = Step(
+                        appearance.BackdropOpacity, -OpacityStep,
+                        AppearanceSettings.MinimumBackdropOpacity,
+                        AppearanceSettings.MaximumBackdropOpacity) }, "Backdrop saved", cancellationToken).ConfigureAwait(false); break;
+                case "opacity.increase": await ChangeAppearanceAsync(
+                    appearance => appearance with { BackdropOpacity = Step(
+                        appearance.BackdropOpacity, OpacityStep,
+                        AppearanceSettings.MinimumBackdropOpacity,
+                        AppearanceSettings.MaximumBackdropOpacity) }, "Backdrop saved", cancellationToken).ConfigureAwait(false); break;
+                case "motion.system": await ChangeAppearanceAsync(
+                    appearance => appearance with
+                    {
+                        Motion = appearance.Motion == MotionPreference.System
+                            ? MotionPreference.Full
+                            : MotionPreference.System,
+                    }, "Motion preference saved", cancellationToken).ConfigureAwait(false); break;
+                case "motion.reduced": await ChangeAppearanceAsync(
+                    appearance => appearance with
+                    {
+                        Motion = appearance.Motion == MotionPreference.Reduced
+                            ? MotionPreference.Full
+                            : MotionPreference.Reduced,
+                    }, "Motion preference saved", cancellationToken).ConfigureAwait(false); break;
+                case "reset.confirm": await ResetAsync(cancellationToken).ConfigureAwait(false); break;
+                case "reset.cancel": Navigate(SettingsPage.Root); break;
+                default:
+                    if (TryThemeIndex(action.ActionId, out var index))
+                        await SelectThemeAsync(index, cancellationToken).ConfigureAwait(false);
+                    break;
+            }
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private async Task ReloadAsync(CancellationToken cancellationToken)
+    {
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            SetOperation("Loading settings…", busy: true, error: false);
+            PlatformSettingsDocument settings;
+            var settingsValid = true;
+            string? warning = null;
+            try
+            {
+                settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (PlatformSettingsException exception)
+            {
+                settings = PlatformSettingsDocument.Default;
+                settingsValid = false;
+                warning = $"Settings were invalid ({exception.Code}); safe defaults are shown";
+            }
+
+            ThemeCatalogSnapshot themes;
+            try
+            {
+                themes = _catalog.Discover();
+            }
+            catch (PlatformSettingsException exception)
+            {
+                var builtIn = _catalog.BuiltInDefault;
+                themes = new ThemeCatalogSnapshot(
+                    [new ThemeCatalogEntry(builtIn.Descriptor, builtIn.IsValid, builtIn.Diagnostics)]);
+                warning ??= $"Theme catalog unavailable ({exception.Code}); default theme only";
+            }
+
+            var selectedInstalled = themes.Themes.Any(entry =>
+                entry.IsValid &&
+                string.Equals(entry.Descriptor.Id, settings.Appearance.ThemeId, StringComparison.Ordinal) &&
+                string.Equals(entry.Descriptor.Version.ToString(), settings.Appearance.ThemeVersion, StringComparison.Ordinal));
+            if (!selectedInstalled)
+                warning ??= "Selected theme is unavailable; choose an installed theme";
+            lock (_stateLock)
+            {
+                _settings = settings;
+                _settingsValid = settingsValid;
+                _themes = themes;
+                _themePage = Math.Clamp(_themePage, 0, LastThemePage(themes));
+                _busy = false;
+                _error = warning is not null;
+                _status = warning ?? "Ready";
+            }
+            Invalidate();
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private async Task ChangeAppearanceAsync(
+        Func<AppearanceSettings, AppearanceSettings> mutation,
+        string success,
+        CancellationToken cancellationToken)
+    {
+        await PersistAsync(
+            current => current with { Appearance = mutation(current.Appearance) },
+            success,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SelectThemeAsync(int index, CancellationToken cancellationToken)
+    {
+        ThemeCatalogEntry? entry;
+        lock (_stateLock)
+            entry = index >= 0 && index < _themes.Themes.Count ? _themes.Themes[index] : null;
+        if (entry is null || !entry.IsValid) return;
+        await ChangeAppearanceAsync(
+            appearance => appearance with
+            {
+                ThemeId = entry.Descriptor.Id,
+                ThemeVersion = entry.Descriptor.Version.ToString(),
+            },
+            $"Theme set to {entry.Descriptor.Name}",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ResetAsync(CancellationToken cancellationToken)
+    {
+        SetOperation("Resetting settings…", busy: true, error: false);
+        try
+        {
+            var saved = await _store.ReplaceAsync(
+                PlatformSettingsDocument.Default,
+                cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _settings = saved;
+                _settingsValid = true;
+                _page = SettingsPage.Root;
+                _themePage = 0;
+                _busy = false;
+                _error = false;
+                _status = "Settings reset to defaults";
+            }
+        }
+        catch (PlatformSettingsException exception)
+        {
+            SetOperation($"Reset failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private async Task PersistAsync(
+        Func<PlatformSettingsDocument, PlatformSettingsDocument> mutation,
+        string success,
+        CancellationToken cancellationToken)
+    {
+        SetOperation("Saving…", busy: true, error: false);
+        try
+        {
+            PlatformSettingsDocument saved;
+            bool valid;
+            PlatformSettingsDocument fallback;
+            lock (_stateLock)
+            {
+                valid = _settingsValid;
+                fallback = _settings;
+            }
+            if (valid)
+                saved = await _store.UpdateAsync(mutation, cancellationToken).ConfigureAwait(false);
+            else
+                saved = await _store.ReplaceAsync(mutation(fallback), cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _settings = saved;
+                _settingsValid = true;
+                _busy = false;
+                _error = false;
+                _status = success;
+            }
+        }
+        catch (PlatformSettingsException exception)
+        {
+            SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private static WidgetView RenderRoot(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        bool busy)
+    {
+        var appearance = UI.Button("Appearance", "open.appearance", "category.appearance")
+            .FocusDown("category.accessibility").Busy(busy).Classes("category-card");
+        var accessibility = UI.Button("Accessibility", "open.accessibility", "category.accessibility")
+            .FocusUp("category.appearance").FocusDown("category.overlay").Busy(busy).Classes("category-card");
+        var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
+            .FocusUp("category.accessibility").FocusDown("category.diagnostics").Busy(busy).Classes("category-card");
+        var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
+            .FocusUp("category.overlay").FocusDown("category.reset").Classes("category-card");
+        var reset = UI.Button("Reset", "open.reset", "category.reset")
+            .FocusUp("category.diagnostics").Classes("category-card", "danger-card");
+        return View(
+            header,
+            UI.Stack("settings.categories",
+                UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
+                    "settings.summary", "Selected theme").Classes("settings-summary"),
+                appearance, accessibility, overlay, diagnostics, reset).Classes("category-list"),
+            "category.appearance",
+            "settings-root");
+    }
+
+    private static WidgetView RenderAppearance(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        ThemeCatalogSnapshot themes,
+        bool busy)
+    {
+        var selected = themes.Themes.FirstOrDefault(entry =>
+            entry.IsValid && entry.Descriptor.Id == settings.Appearance.ThemeId &&
+            entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion);
+        var label = selected is null
+            ? $"Theme: unavailable ({settings.Appearance.ThemeId})"
+            : $"Theme: {selected.Descriptor.Name}";
+        var content = PageScope("appearance.page",
+            UI.Text("Appearance", "appearance.heading", "Appearance settings").Classes("page-heading"),
+            UI.Button(label, "open.themes", "appearance.theme")
+                .Busy(busy).Classes("setting-row"),
+            UI.Text("Choose a versioned theme package. Invalid packages remain visible but cannot be selected.",
+                "appearance.help", "Theme picker help").Classes("page-help"));
+        return View(header, content, "appearance.theme", "appearance.page");
+    }
+
+    private static WidgetView RenderAccessibility(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        bool busy)
+    {
+        var appearance = settings.Appearance;
+        var text = LinkStepper(
+            UI.Stepper("Text size", Percent(appearance.TextScale), "text.decrease", "text.increase", "text.stepper",
+                appearance.TextScale > AppearanceSettings.MinimumTextScale,
+                appearance.TextScale < AppearanceSettings.MaximumTextScale),
+            up: null, down: "motion.system", busy: busy);
+        var system = UI.ToggleButton("Follow Windows motion", appearance.Motion == MotionPreference.System,
+                "motion.system", "motion.system")
+            .FocusUp("text.stepper.decrement").FocusDown("motion.reduced").Busy(busy);
+        var reduced = UI.ToggleButton("Reduced motion", appearance.Motion == MotionPreference.Reduced,
+                "motion.reduced", "motion.reduced")
+            .FocusUp("motion.system").Busy(busy);
+        return View(header,
+            PageScope("accessibility.page",
+                UI.Text("Accessibility", "accessibility.heading", "Accessibility settings").Classes("page-heading"),
+                text, system, reduced),
+            "text.stepper.decrement", "accessibility.page");
+    }
+
+    private static WidgetView RenderOverlay(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        bool busy)
+    {
+        var appearance = settings.Appearance;
+        var interfaceScale = LinkStepper(
+            UI.Stepper("Interface size", Percent(appearance.InterfaceScale),
+                "interface.decrease", "interface.increase", "interface.stepper",
+                appearance.InterfaceScale > AppearanceSettings.MinimumInterfaceScale,
+                appearance.InterfaceScale < AppearanceSettings.MaximumInterfaceScale),
+            up: null, down: "opacity.stepper.decrement", busy: busy);
+        var opacity = LinkStepper(
+            UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity),
+                "opacity.decrease", "opacity.increase", "opacity.stepper",
+                appearance.BackdropOpacity > AppearanceSettings.MinimumBackdropOpacity,
+                appearance.BackdropOpacity < AppearanceSettings.MaximumBackdropOpacity),
+            up: "interface.stepper.decrement", down: null, busy: busy);
+        return View(header,
+            PageScope("overlay.page",
+                UI.Text("Overlay", "overlay.heading", "Overlay settings").Classes("page-heading"),
+                interfaceScale, opacity,
+                UI.Text("Changes are stored atomically and applied by the host theme pipeline.",
+                    "overlay.help", "Overlay settings help").Classes("page-help")),
+            "interface.stepper.decrement", "overlay.page");
+    }
+
+    private static WidgetView RenderDiagnostics(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        ThemeCatalogSnapshot themes,
+        bool settingsValid)
+    {
+        var invalidThemes = themes.Themes.Count(theme => !theme.IsValid);
+        return View(header,
+            PageScope("diagnostics.page",
+                UI.Text("Diagnostics", "diagnostics.heading", "Settings diagnostics").Classes("page-heading"),
+                UI.Text(settingsValid ? "Settings file: valid" : "Settings file: invalid; defaults shown",
+                    "diagnostics.settings", "Settings file status").Classes(settingsValid ? "diagnostic-ok" : "diagnostic-error"),
+                UI.Text($"Theme packages: {themes.Themes.Count} total, {invalidThemes} invalid",
+                    "diagnostics.themes", "Theme package status").Classes("diagnostic-line"),
+                UI.Text($"Schema: {settings.SchemaVersion}", "diagnostics.schema", "Settings schema version").Classes("diagnostic-line"),
+                UI.Button("Back", "back", "diagnostics.back").Classes("secondary-button")),
+            "diagnostics.back", "diagnostics.page");
+    }
+
+    private static WidgetView RenderReset(StackElement header, bool busy) => View(
+        header,
+        PageScope("reset.page",
+            UI.Text("Reset settings?", "reset.heading", "Reset settings confirmation").Classes("page-heading"),
+            UI.Text("This restores the built-in theme, sizing, backdrop, and motion defaults.",
+                "reset.warning", "Reset warning").Classes("page-help"),
+            UI.Row("reset.actions",
+                UI.Button("Reset", "reset.confirm", "reset.confirm")
+                    .FocusRight("reset.cancel").Busy(busy).Classes("danger-button"),
+                UI.Button("Cancel", "reset.cancel", "reset.cancel")
+                    .FocusLeft("reset.confirm").Classes("secondary-button")).Classes("reset-actions")),
+        "reset.cancel", "reset.page");
+
+    private static WidgetView RenderThemes(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        ThemeCatalogSnapshot themes,
+        int page,
+        bool busy)
+    {
+        var lastPage = LastThemePage(themes);
+        page = Math.Clamp(page, 0, lastPage);
+        var start = page * ThemesPerPage;
+        var items = themes.Themes.Skip(start).Take(ThemesPerPage).ToArray();
+        var buttons = new List<WidgetElement>
+        {
+            UI.Row("theme.pagination",
+                UI.Text($"Page {page + 1} of {lastPage + 1}", "theme.page-label", "Theme page").Classes("page-counter")),
+        };
+        for (var offset = 0; offset < items.Length; offset++)
+        {
+            var index = start + offset;
+            var entry = items[offset];
+            var selected = entry.IsValid &&
+                entry.Descriptor.Id == settings.Appearance.ThemeId &&
+                entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion;
+            var diagnostic = entry.Diagnostics.FirstOrDefault()?.Code;
+            var label = entry.IsValid
+                ? $"{entry.Descriptor.Name}  {entry.Descriptor.Version}"
+                : $"Invalid · {entry.Descriptor.Name} · {diagnostic ?? "validation error"}";
+            var button = UI.Button(label, $"theme.select.{index}", $"theme.item.{index}")
+                .Selected(selected).Disabled(!entry.IsValid).Busy(busy)
+                .Classes("theme-item", entry.IsValid ? "is-valid" : "is-invalid", selected ? "is-selected" : "is-unselected");
+            if (offset > 0) button = button.FocusUp($"theme.item.{index - 1}");
+            if (offset + 1 < items.Length) button = button.FocusDown($"theme.item.{index + 1}");
+            buttons.Add(button);
+        }
+        var scope = UI.Stack("theme.picker", buttons.ToArray())
+            .InputScope("theme.picker")
+            .Shortcut(ControllerButton.B, "back")
+            .Classes("theme-picker");
+        if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "theme.previous-page");
+        if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "theme.next-page");
+        return View(header, scope, $"theme.item.{start}", "theme.picker");
+    }
+
+    private static StackElement PageScope(string id, params WidgetElement[] children) =>
+        UI.Stack(id, children).InputScope(id).Shortcut(ControllerButton.B, "back").Classes("settings-page");
+
+    private static WidgetView View(
+        StackElement header,
+        WidgetElement content,
+        string initialFocus,
+        string activeScope) => new(
+            UI.Stack("settings-root", header, content).Classes("settings-widget"),
+            initialFocus,
+            ActiveInputScopeId: activeScope);
+
+    private static RowElement LinkStepper(RowElement stepper, string? up, string? down, bool busy)
+    {
+        var children = stepper.Children.Select(child => child switch
+        {
+            ButtonElement button => button with
+            {
+                IsBusy = busy ? true : null,
+                FocusNeighbors = (button.FocusNeighbors ?? new FocusNeighbors()) with
+                {
+                    Up = up,
+                    Down = down,
+                },
+            },
+            _ => child,
+        }).ToArray();
+        return stepper with { Children = children };
+    }
+
+    private void Navigate(SettingsPage page)
+    {
+        lock (_stateLock)
+        {
+            _page = page;
+            if (page == SettingsPage.ThemePicker)
+            {
+                var selected = _themes.Themes
+                    .Select((entry, index) => (entry, index))
+                    .FirstOrDefault(item =>
+                        item.entry.Descriptor.Id == _settings.Appearance.ThemeId &&
+                        item.entry.Descriptor.Version.ToString() == _settings.Appearance.ThemeVersion);
+                _themePage = selected.entry is null ? 0 : selected.index / ThemesPerPage;
+            }
+        }
+        Invalidate();
+    }
+
+    private void ChangeThemePage(int delta)
+    {
+        lock (_stateLock)
+            _themePage = Math.Clamp(_themePage + delta, 0, LastThemePage(_themes));
+        Invalidate();
+    }
+
+    private void SetOperation(string status, bool busy, bool error)
+    {
+        lock (_stateLock)
+        {
+            _status = status;
+            _busy = busy;
+            _error = error;
+        }
+        Invalidate();
+    }
+
+    private static SettingsPage ParentPage(SettingsPage page) => page switch
+    {
+        SettingsPage.ThemePicker => SettingsPage.Appearance,
+        SettingsPage.Root => SettingsPage.Root,
+        _ => SettingsPage.Root,
+    };
+
+    private static int LastThemePage(ThemeCatalogSnapshot themes) =>
+        Math.Max(0, (themes.Themes.Count - 1) / ThemesPerPage);
+
+    private static bool TryThemeIndex(string action, out int index)
+    {
+        index = -1;
+        return action.StartsWith("theme.select.", StringComparison.Ordinal) &&
+               int.TryParse(action["theme.select.".Length..], NumberStyles.None,
+                   CultureInfo.InvariantCulture, out index);
+    }
+
+    private static double Step(double current, double delta, double minimum, double maximum) =>
+        Math.Clamp(Math.Round(current + delta, 2, MidpointRounding.AwayFromZero), minimum, maximum);
+
+    private static string Percent(double value) =>
+        $"{Math.Round(value * 100, MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture)}%";
+}

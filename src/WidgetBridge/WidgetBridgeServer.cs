@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Text.Json;
+using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
@@ -10,13 +11,15 @@ namespace GameBarAlternative.WidgetBridge;
 public sealed class WidgetBridgeServer(
     string pipeName,
     BridgeCatalog catalog,
-    int maximumMessageBytes = BridgeProtocol.DefaultMaximumMessageBytes) : IAsyncDisposable
+    int maximumMessageBytes = BridgeProtocol.DefaultMaximumMessageBytes,
+    PlatformAppearanceService? appearance = null) : IAsyncDisposable
 {
     private readonly string _pipeName = ValidatePipeName(pipeName);
     private readonly BridgeCatalog _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
     private readonly int _maximumMessageBytes = maximumMessageBytes is >= 256 and <= BridgeProtocol.AbsoluteMaximumMessageBytes
         ? maximumMessageBytes
         : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
+    private readonly PlatformAppearanceService? _appearance = appearance;
     private readonly ConcurrentDictionary<string, WidgetProcessClient> _clients = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private BridgeFrameChannel? _channel;
@@ -52,6 +55,7 @@ public sealed class WidgetBridgeServer(
             Payload = BridgeJson.ToElement(new { }),
         }, cancellationToken).ConfigureAwait(false);
 
+        if (_appearance is not null) _appearance.Changed += OnAppearanceChanged;
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -79,6 +83,7 @@ public sealed class WidgetBridgeServer(
         }
         finally
         {
+            if (_appearance is not null) _appearance.Changed -= OnAppearanceChanged;
             _channel = null;
             await DisposeClientsAsync().ConfigureAwait(false);
         }
@@ -100,12 +105,24 @@ public sealed class WidgetBridgeServer(
             await ReplyAsync(BridgeMessageTypes.Widgets, request.RequestId,
                     new { widgets = _catalog.Widgets }, cancellationToken).ConfigureAwait(false);
             break;
+        case BridgeMessageTypes.GetPlatformAppearance:
+            if (_appearance is null)
+                throw new BridgeProtocolException("Platform appearance service is unavailable.");
+            await ReplyAsync(
+                BridgeMessageTypes.PlatformAppearance,
+                request.RequestId,
+                _appearance.CreatePayload(),
+                cancellationToken).ConfigureAwait(false);
+            break;
         case BridgeMessageTypes.GetSnapshot:
             var snapshotRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
             var snapshotClient = GetClient(snapshotRequest.WidgetId);
             var snapshot = await snapshotClient.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
             var configuredForStyle = _catalog.GetConfigured(snapshotRequest.WidgetId);
-            var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, configuredForStyle.CompiledTheme);
+            var theme = _appearance is null
+                ? configuredForStyle.CompiledTheme
+                : _appearance.ResolveWidgetTheme(configuredForStyle.Id, configuredForStyle.StylePackage);
+            var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, theme);
             var snapshotBytes = SnapshotJson.Serialize(snapshot);
             using (var document = JsonDocument.Parse(snapshotBytes))
             {
@@ -227,6 +244,11 @@ public sealed class WidgetBridgeServer(
             // The main request loop owns native-host disconnect handling.
         }
     }
+
+    private void OnAppearanceChanged(object? sender, ThemeSnapshot snapshot) =>
+        _ = SendEventAsync(
+            BridgeMessageTypes.AppearanceChanged,
+            new BridgeAppearanceChanged(snapshot.Revision));
 
     private Task ReplyAsync<T>(string type, long requestId, T payload, CancellationToken cancellationToken) =>
         SendAsync(new BridgeEnvelope

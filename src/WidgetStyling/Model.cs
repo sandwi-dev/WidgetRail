@@ -160,6 +160,14 @@ public sealed record GbssCompileOptions
         });
 }
 
+/// <summary>
+/// A trusted cascade layer. Rules in a higher-priority layer override rules in a
+/// lower-priority layer before selector specificity is considered.
+/// </summary>
+public sealed record GbssThemeLayer(
+    int Priority,
+    IReadOnlyList<GbssDocument> Documents);
+
 public sealed record GbssCompileResult(
     GbssTheme? Theme,
     IReadOnlyList<GbssDiagnostic> Diagnostics)
@@ -187,7 +195,12 @@ public sealed class GbssTheme
             if (specificity is null) continue;
             foreach (var declaration in rule.Declarations)
             {
-                var candidate = new Winner(declaration.Value, specificity.Value, rule.CascadeOrder, declaration.Order);
+                var candidate = new Winner(
+                    declaration.Value,
+                    rule.LayerPriority,
+                    specificity.Value,
+                    rule.CascadeOrder,
+                    declaration.Order);
                 if (!winners.TryGetValue(declaration.Property, out var existing) || candidate.Beats(existing))
                     winners[declaration.Property] = candidate;
             }
@@ -202,12 +215,20 @@ public sealed class GbssTheme
     internal sealed record CompiledRule(
         IReadOnlyList<GbssSelector> Selectors,
         IReadOnlyList<CompiledDeclaration> Declarations,
+        int LayerPriority,
         int CascadeOrder);
-    private sealed record Winner(GbssComputedValue Value, int Specificity, int RuleOrder, int DeclarationOrder)
+    private sealed record Winner(
+        GbssComputedValue Value,
+        int LayerPriority,
+        int Specificity,
+        int RuleOrder,
+        int DeclarationOrder)
     {
         public bool Beats(Winner other) =>
-            Specificity > other.Specificity ||
-            Specificity == other.Specificity && RuleOrder > other.RuleOrder ||
-            Specificity == other.Specificity && RuleOrder == other.RuleOrder && DeclarationOrder > other.DeclarationOrder;
+            LayerPriority > other.LayerPriority ||
+            LayerPriority == other.LayerPriority && Specificity > other.Specificity ||
+            LayerPriority == other.LayerPriority && Specificity == other.Specificity && RuleOrder > other.RuleOrder ||
+            LayerPriority == other.LayerPriority && Specificity == other.Specificity && RuleOrder == other.RuleOrder &&
+            DeclarationOrder > other.DeclarationOrder;
     }
 }

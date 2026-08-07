@@ -18,16 +18,30 @@ public static class GbssThemeCompiler
         GbssCompileOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
+        return Compile([new GbssThemeLayer(0, documents.ToArray())], options);
+    }
+
+    public static GbssCompileResult Compile(
+        IEnumerable<GbssThemeLayer> layers,
+        GbssCompileOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(layers);
         options ??= new GbssCompileOptions();
-        var sourceDocuments = documents.ToArray();
+        var sourceDocuments = layers
+            .Select((layer, index) => new { Layer = layer, Index = index })
+            .OrderBy(item => item.Layer.Priority)
+            .ThenBy(item => item.Index)
+            .SelectMany(item => item.Layer.Documents.Select(document =>
+                new LayeredDocument(document, item.Layer.Priority)))
+            .ToArray();
         var diagnostics = new List<GbssDiagnostic>();
         var variables = new Dictionary<string, VariableDefinition>(StringComparer.Ordinal);
         foreach (var (name, value) in options.BuiltinVariables.OrderBy(item => item.Key, StringComparer.Ordinal))
             variables[name] = new VariableDefinition(value, new GbssSourceLocation("<host>", 1, 1));
 
-        foreach (var document in sourceDocuments)
+        foreach (var sourceDocument in sourceDocuments)
         {
-            foreach (var rule in document.Statements.OfType<GbssRule>())
+            foreach (var rule in sourceDocument.Document.Statements.OfType<GbssRule>())
             {
                 var root = rule.Selectors.Count != 0 && rule.Selectors.All(selector => selector.IsRoot);
                 foreach (var declaration in rule.Declarations.Where(item => item.Property.StartsWith("--", StringComparison.Ordinal)))
@@ -48,9 +62,9 @@ public static class GbssThemeCompiler
 
         var compiledRules = new List<GbssTheme.CompiledRule>();
         var cascadeOrder = 0;
-        foreach (var document in sourceDocuments)
+        foreach (var sourceDocument in sourceDocuments)
         {
-            foreach (var rule in document.Statements.OfType<GbssRule>())
+            foreach (var rule in sourceDocument.Document.Statements.OfType<GbssRule>())
             {
                 if (rule.Selectors.All(selector => selector.IsRoot)) continue;
                 var declarations = new List<GbssTheme.CompiledDeclaration>();
@@ -72,7 +86,11 @@ public static class GbssThemeCompiler
                         Add(declaration.Location, "value_clamped", $"{declaration.Property} was clamped to {computed!.Text}.", GbssDiagnosticSeverity.Warning);
                     declarations.Add(new GbssTheme.CompiledDeclaration(declaration.Property, computed!, declaration.Order));
                 }
-                compiledRules.Add(new GbssTheme.CompiledRule(rule.Selectors.Where(item => !item.IsRoot).ToArray(), declarations, cascadeOrder++));
+                compiledRules.Add(new GbssTheme.CompiledRule(
+                    rule.Selectors.Where(item => !item.IsRoot).ToArray(),
+                    declarations,
+                    sourceDocument.LayerPriority,
+                    cascadeOrder++));
             }
         }
 
@@ -229,4 +247,5 @@ public static class GbssThemeCompiler
     }
 
     private sealed record VariableDefinition(string Value, GbssSourceLocation Location);
+    private sealed record LayeredDocument(GbssDocument Document, int LayerPriority);
 }

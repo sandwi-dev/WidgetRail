@@ -15,6 +15,8 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.Row(id, children)` | `row` | Horizontal semantic container. |
 | `UI.Text(text, id, accessibilityLabel?)` | `text` | Non-interactive text. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include a semantic glyph. |
+| `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |
+| `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |
 | `UI.Progress(value, maximum, id, accessibilityLabel?)` | `progress` | Bounded progress where `0 <= value <= maximum` and `maximum > 0`. |
 | `UI.Spacer(id)` | `spacer` | Layout spacing node. |
 | `UI.Image(httpsSource, id, accessibilityLabel, fit?)` | `image` | HTTPS image with required accessible alternative text. |
@@ -48,6 +50,53 @@ UI.Button("Play", "toggle", "play")
 action semantics. Supplying an accessibility label replaces the button's
 optional explicit label; otherwise the visible button text remains its name.
 Glyphs are valid only on `icon` and `button` nodes.
+
+## Controller-ready setting composites
+
+`ToggleButton` and `Stepper` are SDK composition helpers, not new protocol node
+kinds. They produce the same bounded semantic nodes as hand-authored UI, so
+focus, validation, GBSS, accessibility, and controller dispatch do not need a
+special renderer path.
+
+```csharp
+UI.Stack("appearance-settings",
+    UI.ToggleButton(
+        "Reduced motion",
+        isOn: _reducedMotion,
+        action: "toggle-reduced-motion",
+        id: "reduced-motion"),
+    UI.Stepper(
+        "Text scale",
+        $"{_textScale:P0}",
+        decrementAction: "text-scale-down",
+        incrementAction: "text-scale-up",
+        id: "text-scale",
+        canDecrement: _textScale > 0.85,
+        canIncrement: _textScale < 1.50))
+```
+
+`ToggleButton` renders visible `On`/`Off` text, a matching accessibility label,
+the semantic Check glyph, `.setting-toggle`, and selected state while on. The
+widget still owns the value: handle its action, update state, and call
+`Invalidate()`.
+
+`Stepper` creates stable child IDs by appending `.label`, `.decrement`,
+`.value`, and `.increment` to its base ID. Keep the resulting IDs within the
+128-character protocol limit and never change the base ID when the displayed
+value changes. The two buttons expose independent action IDs, explicit
+left/right focus neighbors, accessible `Decrease <label>` / `Increase <label>`
+names, and disabled state at a bound. Its semantic classes are:
+
+- `.setting-stepper` on the row;
+- `.setting-stepper-label` and `.setting-stepper-value` on text;
+- `.setting-stepper-button` on both buttons; and
+- `.setting-stepper-decrement` / `.setting-stepper-increment` on the respective
+  action.
+
+The helper does not parse, clamp, persist, or mutate the displayed value.
+Validate the domain in widget/host logic, then rebuild the composite from that
+authoritative value. A remains the activation button; D-pad and analog focus
+navigation continue through the normal host routing.
 
 ## Stable IDs and limits
 

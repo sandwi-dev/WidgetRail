@@ -22,12 +22,13 @@ flowchart LR
 
 | Component | Implemented responsibility |
 | --- | --- |
-| `src/OverlayHost` | Win32/Direct2D panel/backdrop shell, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, and the current YT Music reference integration. |
-| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted catalog loading, worker supervision, controller forwarding, invalidation/failure events, and computed GBSS styles. |
+| `src/OverlayHost` | Win32/Direct2D panel/backdrop shell, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, live platform shell appearance, and generic reference-widget rendering. |
+| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted catalog loading, worker supervision, controller forwarding, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
 | `src/WidgetRuntime` | Lazy worker process client/server, random named pipes, bounded length-prefixed JSON, strict envelopes, timeouts, crash reporting, and limited restart. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, and state helpers. |
-| `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, bounded typed properties, and source-located diagnostics. |
+| `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
+| `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, and last-good reload. The bridge/native shell consume its live revisions, including bounded text scale for shell and generic widget layout. |
 | `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence as a library API. |
 | `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, and catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
 
@@ -87,6 +88,32 @@ terminal `Destroying`. The planned policy choices are default `keep-alive`,
 plus `suspend-when-hidden` and `unload-after-idle` when selected by
 manifest/user policy. The host must not invent an idle timeout or resource
 heuristic. Policy enforcement is not implemented in the current prototype.
+
+## Settings and theme ownership
+
+The host owns appearance selection, accessibility policy, persistence, and the
+final style presented by the renderer. The Settings worker, strict store,
+immutable-ready `<theme-id>/<version>` development catalog, and bridge are
+connected through the generic public widget path. The bridge watches the
+settings file/theme tree without polling, debounces events, retains last-good
+revisions, and resolves platform → widget → user layers before returning a
+snapshot. User layer priority wins before selector specificity.
+
+The bridge also publishes bounded semantic shell styles and persisted
+interface/text scale, backdrop opacity, and motion. The native client consumes
+the initial payload and later revision events, ignores stale revisions, retains
+the last good value on failure, and applies supported shell styles, interface
+geometry, shell DirectWrite text scale, backdrop, and motion without launching
+or restarting widget workers. The generic declarative renderer receives the
+same bounded text scale through the host accessibility policy after style
+resolution, scales font size/letter spacing, and reflows without compounding
+inherited `em` values. The full 150% visual matrix remains an evidence gap.
+There is also no theme distribution installer or complete accessibility
+preference system.
+
+The implemented contract and remaining native/tooling boundary are documented in
+[settings and global themes](settings-and-themes.md). Theme changes must remain
+presentation-only and independent from worker lifecycle.
 
 ## Window and input behavior
 

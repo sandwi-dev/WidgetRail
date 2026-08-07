@@ -1,0 +1,117 @@
+:root {
+  --settings-accent: #8f80ff;
+  --settings-danger: #ff5d73;
+  --settings-surface: rgba(23, 26, 34, 0.98);
+  --settings-row: rgba(44, 49, 62, 0.92);
+}
+
+.settings-widget {
+  gap: 16px;
+  padding: 24px 28px;
+  background: var(--settings-surface);
+  color: var(--text);
+}
+
+.settings-header,
+.settings-page,
+.category-list,
+.theme-picker {
+  gap: 10px;
+}
+
+.settings-title,
+.page-heading {
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 700;
+  max-lines: 1;
+}
+
+.settings-status,
+.settings-summary,
+.page-help,
+.diagnostic-line,
+.page-counter {
+  color: var(--text-muted);
+  font-size: 13px;
+  max-lines: 2;
+}
+
+.settings-status.is-error,
+.diagnostic-error,
+.theme-item.is-invalid {
+  color: var(--settings-danger);
+}
+
+.settings-status.is-busy {
+  color: var(--warning);
+}
+
+.category-card,
+.setting-row,
+.setting-toggle,
+.theme-item,
+.secondary-button,
+.danger-button,
+.setting-stepper-button {
+  min-height: 44px;
+  padding: 11px 15px;
+  background: var(--settings-row);
+  border-width: 0;
+  corner-radius: 11px;
+  transition-duration: 100ms;
+  transition-easing: ease-out;
+}
+
+.category-card:focused,
+.setting-row:focused,
+.setting-toggle:focused,
+.theme-item:focused,
+.secondary-button:focused,
+.setting-stepper-button:focused {
+  background: var(--surface-raised);
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -3px;
+  scale: 1.02;
+}
+
+.setting-toggle:selected,
+.theme-item.is-selected {
+  color: var(--settings-accent);
+}
+
+.setting-stepper,
+.reset-actions {
+  gap: 10px;
+  align: center;
+}
+
+.setting-stepper-label {
+  min-width: 180px;
+  color: var(--text);
+}
+
+.setting-stepper-value {
+  min-width: 64px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.setting-stepper-button {
+  width: 44px;
+  height: 44px;
+}
+
+.danger-card,
+.danger-button {
+  color: var(--settings-danger);
+}
+
+.danger-button:focused {
+  background: var(--settings-danger);
+  color: var(--text);
+  outline-color: #ff9aaa;
+  outline-width: 2px;
+  outline-offset: -3px;
+}

@@ -472,6 +472,13 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         if (data->background) data->background->alpha = 1;
     }
     if (accessibility.reducedMotion) data->transitionDuration = 0;
+    float textScale = accessibility.textScale;
+    if (!std::isfinite(textScale) || textScale < 0.85F || textScale > 1.5F) {
+        Add(L"<accessibility>", L"Text scale was outside its platform safety bounds; 100% was used.");
+        textScale = 1.0F;
+    }
+    data->fontSize = std::clamp(data->fontSize * textScale, 8.0F, 256.0F);
+    data->letterSpacing = std::clamp(data->letterSpacing * textScale, -64.0F, 256.0F);
     const NativeColor background = data->background.value_or(NativeColor{0, 0, 0, 1});
     const auto ApplyContrast = [&](std::optional<NativeColor>& color, std::wstring_view property) {
         if (!color || !accessibility.contrastHook) return;

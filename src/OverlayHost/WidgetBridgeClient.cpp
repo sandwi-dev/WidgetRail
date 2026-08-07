@@ -11,11 +11,13 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <initializer_list>
 #include <cmath>
 #include <cwctype>
 #include <limits>
 #include <unordered_set>
 #include <thread>
+#include <utility>
 
 namespace gba {
 namespace {
@@ -31,6 +33,59 @@ constexpr uint32_t kMaximumDescriptorQuickActions = 16;
 constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
+constexpr uint32_t kMaximumShellStyles = 12;
+constexpr uint32_t kMaximumShellProperties = 64;
+constexpr std::size_t kMaximumStyleValueTextLength = 4096;
+constexpr std::size_t kMaximumStyleUnitLength = 16;
+
+constexpr std::array<std::wstring_view, 12> kShellStyleKeys{
+    L"canvas", L"backdrop", L"panel", L"tray", L"tray-item",
+    L"tray-item:selected", L"tray-item:focused", L"tray-item:selected:focused",
+    L"title", L"body", L"hint", L"status"};
+
+bool HasOnlyProperties(
+    const JsonObject& object,
+    const std::initializer_list<std::wstring_view> expected) {
+    if (object.Size() != expected.size()) return false;
+    return std::all_of(expected.begin(), expected.end(), [&](const std::wstring_view property) {
+        return object.HasKey(winrt::hstring(property));
+    });
+}
+
+bool IsComputedValueKind(const std::wstring_view value) noexcept {
+    static constexpr std::array<std::wstring_view, 9> kinds{
+        L"color", L"length", L"lengthList", L"number", L"integer", L"ratio",
+        L"duration", L"keyword", L"fontFamily"};
+    return std::find(kinds.begin(), kinds.end(), value) != kinds.end();
+}
+
+bool IsCanonicalThemeVersion(const std::wstring_view value) noexcept {
+    if (value.empty() || value.size() > 64) return false;
+    std::size_t segments = 0;
+    std::size_t start = 0;
+    while (start < value.size()) {
+        const auto end = value.find(L'.', start);
+        const auto length = (end == std::wstring_view::npos ? value.size() : end) - start;
+        if (length == 0 || length > 10 ||
+            (length > 1 && value[start] == L'0') ||
+            !std::all_of(value.begin() + static_cast<std::ptrdiff_t>(start),
+                         value.begin() + static_cast<std::ptrdiff_t>(start + length),
+                         [](const wchar_t character) { return character >= L'0' && character <= L'9'; })) {
+            return false;
+        }
+        ++segments;
+        if (end == std::wstring_view::npos) break;
+        start = end + 1;
+    }
+    return segments >= 2 && segments <= 4;
+}
+
+bool IsWidgetGlyph(const std::wstring_view value) noexcept {
+    static constexpr std::array<std::wstring_view, 14> glyphs{
+        L"music", L"play", L"pause", L"previous", L"next", L"refresh", L"shuffle",
+        L"like", L"dislike", L"repeat", L"settings", L"warning", L"check", L"connection"};
+    return std::find(glyphs.begin(), glyphs.end(), value) != glyphs.end();
+}
 
 std::wstring Quote(const std::filesystem::path& path) {
     return L"\"" + path.wstring() + L"\"";
@@ -142,6 +197,17 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
             !ReadDescriptorString(source, L"instanceId", descriptor.instanceId, true, error)) {
             return std::nullopt;
         }
+        if (source.HasKey(L"icon")) {
+            if (source.GetNamedValue(L"icon").ValueType() != JsonValueType::String) {
+                error = L"Widget descriptor property 'icon' must be a string.";
+                return std::nullopt;
+            }
+            descriptor.icon = std::wstring(std::wstring_view(source.GetNamedString(L"icon")));
+            if (!IsWidgetGlyph(descriptor.icon)) {
+                error = L"Widget descriptor property 'icon' is not a supported WidgetGlyph.";
+                return std::nullopt;
+            }
+        }
         if (!widgetIds.emplace(descriptor.id).second) {
             error = L"WidgetBridge returned duplicate widget ID '" + descriptor.id + L"'.";
             return std::nullopt;
@@ -199,6 +265,149 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
         result.push_back(std::move(descriptor));
     }
     return result;
+}
+
+std::optional<WidgetStyleValue> ParseShellStyleValue(
+    const JsonObject& source,
+    const std::wstring_view property,
+    std::wstring& error) {
+    if (!HasOnlyProperties(source, {L"kind", L"text", L"number", L"unit"}) ||
+        source.GetNamedValue(L"kind").ValueType() != JsonValueType::String ||
+        source.GetNamedValue(L"text").ValueType() != JsonValueType::String) {
+        error = L"Platform appearance style '" + std::wstring(property) +
+                L"' has an invalid computed value shape.";
+        return std::nullopt;
+    }
+    WidgetStyleValue value;
+    value.kind = std::wstring(std::wstring_view(source.GetNamedString(L"kind")));
+    value.text = std::wstring(std::wstring_view(source.GetNamedString(L"text")));
+    if (!IsComputedValueKind(value.kind) || value.text.size() > kMaximumStyleValueTextLength ||
+        std::any_of(value.text.begin(), value.text.end(), [](const wchar_t character) {
+            return std::iswcntrl(character) != 0;
+        })) {
+        error = L"Platform appearance style '" + std::wstring(property) +
+                L"' has an invalid computed value.";
+        return std::nullopt;
+    }
+    const auto number = source.GetNamedValue(L"number");
+    if (number.ValueType() == JsonValueType::Number) {
+        const double parsed = number.GetNumber();
+        if (!std::isfinite(parsed)) {
+            error = L"Platform appearance contains a non-finite style number.";
+            return std::nullopt;
+        }
+        value.number = parsed;
+    } else if (number.ValueType() != JsonValueType::Null) {
+        error = L"Platform appearance style number must be numeric or null.";
+        return std::nullopt;
+    }
+    const auto unit = source.GetNamedValue(L"unit");
+    if (unit.ValueType() == JsonValueType::String) {
+        value.unit = std::wstring(std::wstring_view(unit.GetString()));
+        if (value.unit.size() > kMaximumStyleUnitLength ||
+            std::any_of(value.unit.begin(), value.unit.end(), [](const wchar_t character) {
+                return !((character >= L'a' && character <= L'z') || character == L'%');
+            })) {
+            error = L"Platform appearance style unit is invalid.";
+            return std::nullopt;
+        }
+    } else if (unit.ValueType() != JsonValueType::Null) {
+        error = L"Platform appearance style unit must be a string or null.";
+        return std::nullopt;
+    }
+    return value;
+}
+
+std::optional<PlatformAppearance> ParsePlatformAppearance(
+    const JsonObject& payload,
+    std::wstring& error) {
+    if (!HasOnlyProperties(payload,
+            {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
+             L"backdropOpacity", L"motion", L"shellStyles"})) {
+        error = L"Platform appearance payload has missing or unknown properties.";
+        return std::nullopt;
+    }
+    const auto IsNumber = [&](const wchar_t* property) {
+        return payload.GetNamedValue(property).ValueType() == JsonValueType::Number;
+    };
+    if (!IsNumber(L"revision") || !IsNumber(L"interfaceScale") || !IsNumber(L"textScale") ||
+        !IsNumber(L"backdropOpacity") ||
+        payload.GetNamedValue(L"themeId").ValueType() != JsonValueType::String ||
+        payload.GetNamedValue(L"themeVersion").ValueType() != JsonValueType::String ||
+        payload.GetNamedValue(L"motion").ValueType() != JsonValueType::String ||
+        payload.GetNamedValue(L"shellStyles").ValueType() != JsonValueType::Object) {
+        error = L"Platform appearance payload has invalid property types.";
+        return std::nullopt;
+    }
+
+    PlatformAppearance appearance;
+    const double revision = payload.GetNamedNumber(L"revision");
+    appearance.interfaceScale = payload.GetNamedNumber(L"interfaceScale");
+    appearance.textScale = payload.GetNamedNumber(L"textScale");
+    appearance.backdropOpacity = payload.GetNamedNumber(L"backdropOpacity");
+    appearance.themeId = std::wstring(std::wstring_view(payload.GetNamedString(L"themeId")));
+    appearance.themeVersion = std::wstring(std::wstring_view(payload.GetNamedString(L"themeVersion")));
+    if (!std::isfinite(revision) || revision < 0 ||
+        revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
+        !std::isfinite(appearance.interfaceScale) || appearance.interfaceScale < 0.8 ||
+        appearance.interfaceScale > 1.25 ||
+        !std::isfinite(appearance.textScale) || appearance.textScale < 0.85 ||
+        appearance.textScale > 1.5 ||
+        !std::isfinite(appearance.backdropOpacity) || appearance.backdropOpacity < 0.35 ||
+        appearance.backdropOpacity > 0.8 ||
+        !IsIdentifier(appearance.themeId) || !IsCanonicalThemeVersion(appearance.themeVersion)) {
+        error = L"Platform appearance scalar values are outside their safety bounds.";
+        return std::nullopt;
+    }
+    appearance.revision = static_cast<long long>(revision);
+    const std::wstring motion(std::wstring_view(payload.GetNamedString(L"motion")));
+    if (motion == L"system") appearance.motion = PlatformMotionPreference::System;
+    else if (motion == L"full") appearance.motion = PlatformMotionPreference::Full;
+    else if (motion == L"reduced") appearance.motion = PlatformMotionPreference::Reduced;
+    else {
+        error = L"Platform appearance motion preference is invalid.";
+        return std::nullopt;
+    }
+
+    const auto styles = payload.GetNamedObject(L"shellStyles");
+    if (styles.Size() > kMaximumShellStyles) {
+        error = L"Platform appearance contains too many shell styles.";
+        return std::nullopt;
+    }
+    std::size_t totalProperties = 0;
+    for (const auto& pair : styles) {
+        const std::wstring key(std::wstring_view(pair.Key()));
+        if (std::find(kShellStyleKeys.begin(), kShellStyleKeys.end(), key) ==
+                kShellStyleKeys.end() ||
+            pair.Value().ValueType() != JsonValueType::Object) {
+            error = L"Platform appearance contains an unknown or invalid shell style.";
+            return std::nullopt;
+        }
+        const auto properties = pair.Value().GetObject();
+        if (properties.Size() > kMaximumShellProperties ||
+            totalProperties + properties.Size() >
+                static_cast<std::size_t>(kMaximumShellStyles * kMaximumShellProperties)) {
+            error = L"Platform appearance shell style property count exceeds its safety bound.";
+            return std::nullopt;
+        }
+        totalProperties += properties.Size();
+        WidgetComputedStyle computed;
+        computed.reserve(properties.Size());
+        for (const auto& property : properties) {
+            const std::wstring propertyName(std::wstring_view(property.Key()));
+            if (!IsIdentifier(propertyName) || propertyName.size() > kMaximumIdentifierLength ||
+                property.Value().ValueType() != JsonValueType::Object) {
+                error = L"Platform appearance contains an invalid shell property.";
+                return std::nullopt;
+            }
+            auto value = ParseShellStyleValue(
+                property.Value().GetObject(), propertyName, error);
+            if (!value) return std::nullopt;
+            computed.emplace(propertyName, std::move(*value));
+        }
+        appearance.shellStyles.emplace(key, std::move(computed));
+    }
+    return appearance;
 }
 
 bool ReadRequestId(const JsonObject& response, long long& requestId) {
@@ -334,7 +543,106 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     return snapshot;
 }
 
+bool HandleAsyncEvent(
+    const JsonObject& event,
+    WidgetInvalidationQueue& invalidations,
+    PlatformAppearanceRevisionTracker& appearanceChanges,
+    std::wstring& status) {
+    if (!event.HasKey(L"type") ||
+        event.GetNamedValue(L"type").ValueType() != JsonValueType::String ||
+        !event.HasKey(L"payload") ||
+        event.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
+        status = L"WidgetBridge returned an invalid asynchronous event.";
+        return false;
+    }
+    const std::wstring type(std::wstring_view(event.GetNamedString(L"type")));
+    const auto payload = event.GetNamedObject(L"payload");
+    if (type == L"platform-appearance-changed") {
+        if (!HasOnlyProperties(payload, {L"revision"}) ||
+            payload.GetNamedValue(L"revision").ValueType() != JsonValueType::Number) {
+            status = L"WidgetBridge appearance event has an invalid revision.";
+            return false;
+        }
+        const double revision = payload.GetNamedNumber(L"revision");
+        if (!std::isfinite(revision) || revision < 0 ||
+            revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
+            !appearanceChanges.Notify(static_cast<long long>(revision))) {
+            status = L"WidgetBridge appearance event has an invalid revision.";
+            return false;
+        }
+        status.clear();
+        return true;
+    }
+    const auto widgetId = OptionalString(payload, L"widgetId");
+    if (!IsIdentifier(widgetId)) {
+        status = L"WidgetBridge asynchronous event has an invalid widget ID.";
+        return false;
+    }
+    if (type == L"widget-invalidated") {
+        if (!payload.HasKey(L"revision") ||
+            payload.GetNamedValue(L"revision").ValueType() != JsonValueType::Number) {
+            status = L"WidgetBridge invalidation has an invalid revision.";
+            return false;
+        }
+        const double revision = payload.GetNamedNumber(L"revision");
+        if (!std::isfinite(revision) || revision < 0 ||
+            revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision) {
+            status = L"WidgetBridge invalidation has an invalid revision.";
+            return false;
+        }
+        if (!invalidations.Push(widgetId)) {
+            status = L"WidgetBridge invalidation could not be queued.";
+            return false;
+        }
+        status.clear();
+        return true;
+    }
+    if (type == L"widget-failed") {
+        status = L"Widget '" + widgetId +
+                 L"' worker failed and will be restarted on demand.";
+        return true;
+    }
+    status = L"WidgetBridge returned an unknown asynchronous event.";
+    return false;
+}
+
 } // namespace
+
+bool WidgetInvalidationQueue::Push(std::wstring widgetId) {
+    if (!IsIdentifier(widgetId)) return false;
+    if (known_.contains(widgetId)) return true;
+    if (queued_.size() == MaximumWidgetIds) {
+        known_.erase(queued_.front());
+        queued_.erase(queued_.begin());
+    }
+    known_.emplace(widgetId);
+    queued_.push_back(std::move(widgetId));
+    return true;
+}
+
+std::vector<std::wstring> WidgetInvalidationQueue::Take() noexcept {
+    known_.clear();
+    return std::exchange(queued_, {});
+}
+
+bool PlatformAppearanceRevisionTracker::Notify(const long long revision) noexcept {
+    if (revision < 0 || revision > 9'007'199'254'740'991LL) return false;
+    if (!pending_ || revision > *pending_) pending_ = revision;
+    return true;
+}
+
+std::optional<long long> PlatformAppearanceRevisionTracker::Take() noexcept {
+    return std::exchange(pending_, std::nullopt);
+}
+
+bool PlatformAppearanceState::Publish(PlatformAppearance appearance) {
+    if (appearance.revision < 0 ||
+        (current_ && appearance.revision <= current_->revision)) {
+        return false;
+    }
+    current_ = std::move(appearance);
+    return true;
+}
 
 WidgetBridgeClient::~WidgetBridgeClient() {
     Stop();
@@ -427,6 +735,8 @@ void WidgetBridgeClient::Stop() noexcept {
     }
     processId_ = 0;
     nextRequestId_ = 0;
+    (void)invalidations_.Take();
+    (void)appearanceChanges_.Take();
 }
 
 std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
@@ -464,13 +774,12 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
                 return std::nullopt;
             }
             if (responseId == 0) {
-                if (type == L"widget-invalidated") invalidated_ = true;
-                else if (type == L"widget-failed")
-                    lastError_ = L"The widget worker failed and will be restarted on demand.";
-                else {
-                    Fail(L"WidgetBridge returned an unknown asynchronous event.");
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                    Fail(std::move(status));
                     return std::nullopt;
                 }
+                if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
             if (responseId != requestId) {
@@ -501,6 +810,76 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge catalog JSON: " + std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
+    if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
+    try {
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"get-platform-appearance"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
+        envelope.Insert(L"payload", JsonObject{});
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            if (!response.HasKey(L"protocolVersion") ||
+                response.GetNamedValue(L"protocolVersion").ValueType() != JsonValueType::Number ||
+                response.GetNamedNumber(L"protocolVersion") != 1 ||
+                !response.HasKey(L"type") ||
+                response.GetNamedValue(L"type").ValueType() != JsonValueType::String) {
+                Fail(L"WidgetBridge returned an invalid platform appearance response envelope.");
+                return std::nullopt;
+            }
+            const std::wstring type(std::wstring_view(response.GetNamedString(L"type")));
+            if (type.empty() || type.size() > 64) {
+                Fail(L"WidgetBridge returned an invalid platform appearance response type.");
+                return std::nullopt;
+            }
+            long long responseId = 0;
+            if (!ReadRequestId(response, responseId)) {
+                Fail(L"WidgetBridge returned an invalid platform appearance request ID.");
+                return std::nullopt;
+            }
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
+                continue;
+            }
+            if (responseId != requestId) {
+                Fail(L"WidgetBridge returned a mismatched platform appearance request ID.");
+                return std::nullopt;
+            }
+            if (type == L"error") {
+                Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            if (type != L"platform-appearance" || !response.HasKey(L"payload") ||
+                response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
+                Fail(L"WidgetBridge returned an unexpected platform appearance response.");
+                return std::nullopt;
+            }
+            std::wstring parseError;
+            auto appearance = ParsePlatformAppearance(
+                response.GetNamedObject(L"payload"), parseError);
+            if (!appearance) {
+                Fail(std::move(parseError));
+                return std::nullopt;
+            }
+            lastError_.clear();
+            return appearance;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge platform appearance JSON: " +
+             std::wstring(error.message()));
     }
     return std::nullopt;
 }
@@ -537,9 +916,12 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
             }
             const auto type = response.GetNamedString(L"type");
             if (responseId == 0) {
-                if (type == L"widget-invalidated") invalidated_ = true;
-                else if (type == L"widget-failed")
-                    lastError_ = L"The widget worker failed and will be restarted on demand.";
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
             if (responseId != requestId) {
@@ -578,7 +960,12 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
             const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
-                invalidated_ = response.GetNamedString(L"type") == L"widget-invalidated" || invalidated_;
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
             if (responseId != requestId) {
@@ -591,6 +978,10 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
                 return std::nullopt;
             }
             const auto responsePayload = response.GetNamedObject(L"payload");
+            if (OptionalString(responsePayload, L"widgetId") != widgetId) {
+                Fail(L"WidgetBridge returned a snapshot for a different widget ID.");
+                return std::nullopt;
+            }
             auto snapshot = ParseSnapshot(responsePayload.GetNamedObject(L"snapshot"));
             if (responsePayload.HasKey(L"renderStyles")) {
                 ApplyComputedStyles(snapshot.root,
@@ -646,7 +1037,12 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
-                invalidated_ = response.GetNamedString(L"type") == L"widget-invalidated" || invalidated_;
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
             if (responseId != requestId) return std::nullopt;
@@ -732,12 +1128,12 @@ bool WidgetBridgeClient::PumpEvents() {
                 Fail(L"WidgetBridge produced an unexpected unclaimed response.");
                 return consumed;
             }
-            const auto type = message.GetNamedString(L"type");
-            if (type == L"widget-invalidated") {
-                invalidated_ = true;
-            } else if (type == L"widget-failed") {
-                lastError_ = L"The widget worker failed and will be restarted on demand.";
+            std::wstring status;
+            if (!HandleAsyncEvent(message, invalidations_, appearanceChanges_, status)) {
+                Fail(std::move(status));
+                return consumed;
             }
+            if (!status.empty()) lastError_ = std::move(status);
             consumed = true;
         }
     } catch (const winrt::hresult_error& error) {
@@ -746,10 +1142,13 @@ bool WidgetBridgeClient::PumpEvents() {
     return consumed;
 }
 
-bool WidgetBridgeClient::takeInvalidated() noexcept {
-    const bool value = invalidated_;
-    invalidated_ = false;
-    return value;
+std::vector<std::wstring> WidgetBridgeClient::TakeInvalidatedWidgetIds() noexcept {
+    return invalidations_.Take();
+}
+
+std::optional<long long>
+WidgetBridgeClient::TakePlatformAppearanceChangedRevision() noexcept {
+    return appearanceChanges_.Take();
 }
 
 } // namespace gba
@@ -765,6 +1164,19 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
         return gba::ParseWidgetDescriptors(payload, error);
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget descriptor JSON: " + std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<PlatformAppearance> ParsePlatformAppearance(
+    const std::string_view payloadUtf8,
+    std::wstring& error) {
+    try {
+        const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
+        return gba::ParsePlatformAppearance(payload, error);
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid platform appearance JSON: " +
+                std::wstring(exception.message());
         return std::nullopt;
     }
 }

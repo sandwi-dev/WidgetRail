@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.firstparty.settings",
+  "publisher": "org.gbar.firstparty",
+  "name": "Settings",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/SettingsWidget.dll",
+    "type": "GameBarAlternative.FirstPartyWidgets.Settings.SettingsWidget"
+  },
+  "permissions": [],
+  "optionalPermissions": [],
+  "backgroundPolicy": "suspend",
+  "resourceRequest": {
+    "memoryMb": 32,
+    "updateHz": 1
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}

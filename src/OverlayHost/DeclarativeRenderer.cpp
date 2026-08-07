@@ -333,13 +333,18 @@ struct DeclarativeRenderer::RenderPass final {
         }
         element.stretchCrossAxis = element.crossAxisAlignment == declarative::CrossAxisAlignment::Stretch;
         element.children.reserve(node.children.size());
+        const float textScale = std::isfinite(options.accessibility.textScale) &&
+                options.accessibility.textScale >= 0.85F &&
+                options.accessibility.textScale <= 1.5F
+            ? options.accessibility.textScale
+            : 1.0F;
         for (const auto& child : node.children) {
             element.children.push_back(PrepareNode(
                 child,
                 narrowId,
                 parentWidth,
                 parentHeight,
-                style.fontSizePx()));
+                style.fontSizePx() / textScale));
         }
         return element;
     }

@@ -1,0 +1,24 @@
+:root {
+  --canvas: #010203;
+  --canvas-veil: rgba(0, 0, 0, 0.64);
+  --accent: #8f80ff;
+  --surface: rgba(23, 26, 34, 0.98);
+  --surface-raised: rgba(33, 37, 48, 0.98);
+  --text: #f7f7fa;
+  --text-muted: #aeb5c3;
+  --focus: #ff7898;
+  --success: #48d597;
+}
+
+canvas { background: var(--canvas); color: var(--text); }
+backdrop { background: var(--canvas-veil); }
+panel, tray { background: var(--surface); color: var(--text); corner-radius: 18px; }
+tray-item { background: transparent; color: var(--text-muted); corner-radius: 16px; }
+tray-item:selected { background: var(--surface-raised); color: var(--text); }
+tray-item:focused { outline-color: var(--focus); outline-width: 2px; }
+title { color: var(--text); font-size: 30px; font-weight: 700; }
+body { color: var(--text); font-size: 16px; }
+hint { color: var(--text-muted); font-size: 13px; }
+button { background: var(--surface-raised); color: var(--text); corner-radius: 12px; }
+button:focused { outline-color: var(--focus); outline-width: 2px; scale: 1.03; }
+progress { background: var(--surface-raised); color: var(--accent); }

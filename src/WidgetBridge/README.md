@@ -38,7 +38,8 @@ be `hello` with `{ "clientName": "OverlayHost" }`; the bridge responds with
 
 | Type | Payload | Response |
 | --- | --- | --- |
-| `list-widgets` | `{}` | `widgets` with public descriptors and quick actions |
+| `list-widgets` | `{}` | `widgets` with public descriptors, semantic icons, and quick actions |
+| `get-platform-appearance` | `{}` | `platform-appearance` with revision, selected theme, bounded settings, and typed shell styles |
 | `get-snapshot` | `{ "widgetId": "clock" }` | `snapshot` with `widgetId`, validated protocol snapshot, and computed `renderStyles` |
 | `set-widget-lifecycle` | `{ "widgetId": "clock", "state": "visible" }` | `acknowledged` |
 | `action` | `{ "widgetId": "clock", "action": WidgetActionEvent }` | `acknowledged` |
@@ -90,13 +91,58 @@ manifest/user policy, not a bridge heuristic. The current bridge does not
 enforce those policies or background capabilities.
 
 Asynchronous `widget-invalidated` and `widget-failed` events identify the widget
-by catalog ID. Worker executable paths and arguments are never returned to the
-native process.
+by catalog ID. `platform-appearance-changed` instead contains only the newly
+published global revision. Worker executable paths and arguments are never
+returned to the native process.
+
+## Platform appearance and live theme revisions
+
+At startup the bridge loads strict current-user appearance settings and an
+exact theme ID/version through `PlatformSettings`. It watches only
+`platform-settings.json` and the versioned theme tree with `FileSystemWatcher`;
+there is no scan or timer poll while files are unchanged. Write/create/delete/
+rename bursts are coalesced for 200 ms.
+
+A valid reload publishes one immutable revision, clears per-widget layered-
+theme caches, and emits:
+
+```json
+{
+  "protocolVersion": 1,
+  "type": "platform-appearance-changed",
+  "requestId": 0,
+  "payload": { "revision": 4 }
+}
+```
+
+Invalid settings, missing/invalid theme versions, unsafe imports, or GBSS
+errors retain the last valid appearance and revision. A client retrieves the
+complete current value with `get-platform-appearance`; the response includes
+the exact theme ID/version, finite bounded interface/text scale and backdrop
+opacity, motion preference, and typed maps for 12 semantic shell states. This
+request never launches a widget worker.
+
+For widget snapshots, the bridge compiles explicit platform → widget → user
+layers. Higher layer priority wins before selector specificity, so a user
+semantic-role rule can override a widget ID rule. Static selected/disabled
+snapshot state participates in both complete `base` and `focused` maps. The
+cache key includes the global revision.
+
+The native client consumes the initial platform appearance and later revision
+events, coalesces the latest announced revision, ignores stale values, and
+retains its last good state after a failed refresh. It applies supported shell
+styles, interface geometry, shell DirectWrite text scale, backdrop opacity, and
+motion without launching or restarting widget workers. It also passes bounded
+platform text scale through the native post-style accessibility policy into
+generic declarative widget text and layout, preserving non-compounding `em`
+inheritance. A global change reaches widget pixels when the host requests that
+widget's next snapshot.
 
 ## Computed render styles
 
-Native code never reads or parses GBSS. The bridge loads and compiles each
-configured theme once when it loads the catalog. Every `snapshot` response has
+Native code never reads or parses GBSS. The bridge loads each configured widget
+style package, layers it with the current platform/user theme, and compiles
+typed results per global revision. Every `snapshot` response has
 this exact additional shape:
 
 ```json
@@ -155,6 +201,7 @@ strings, and the negotiated length-prefixed message ceiling.
     "id": "clock",
     "name": "Clock",
     "instanceId": "clock.default",
+    "icon": "connection",
     "workerExecutable": "workers/ClockWidget.Worker.exe",
     "workerArguments": [],
     "styleFile": "workers/styles/default.gbss",
@@ -176,6 +223,11 @@ sources, unsafe imports, and invalid GBSS. A configured invalid theme prevents
 bridge startup with bounded relative-file, line, column, code, and single-line
 diagnostics; absolute package paths are not disclosed. Widgets without a style
 file receive empty `base` and `focused` maps for every node.
+
+`icon` is an optional closed `WidgetGlyph` semantic value (`music`, `settings`,
+`connection`, and the other SDK glyphs). It defaults to `connection`. Unknown
+values fail catalog loading; widgets cannot supply SVG, font, file, or drawing
+payloads through the descriptor.
 
 Catalog configuration is trusted installation state, not a marketplace format.
 Production integration still needs signed-package resolution, Job Objects,

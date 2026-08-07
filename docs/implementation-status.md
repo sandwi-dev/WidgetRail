@@ -40,17 +40,23 @@ deterministic rendered geometry as a fallback, without wraparound.
   glyphs, explicit active controller scopes and snapshot correlation, and
   button selected/disabled/busy state.
 - `WidgetSdk`: typed Stack, Row, Text, Button, Progress, Spacer, Image, and Icon
-  authoring; button glyphs; focus/shortcut/state helpers; scoped shortcut
-  routing; invalidation; five-state lifecycle hooks/tokens; and bounded,
-  non-overlapping Visible/Interactive tickers.
+  authoring; controller-ready ToggleButton/Stepper composites; button glyphs;
+  focus/shortcut/state helpers; scoped shortcut routing; invalidation;
+  five-state lifecycle hooks/tokens; and bounded, non-overlapping
+  Visible/Interactive tickers.
 - `WidgetRuntime`: lazy out-of-process workers over random named pipes with
   bounded framed JSON, explicit lifecycle transitions, timeouts, failure
   reporting, and limited restart.
 - `WidgetBridge`: current-user-only native sidecar pipe, trusted catalog,
   worker forwarding, quick actions, controller input, invalidation/failure
-  events, and computed GBSS styles.
+  events, no-poll platform-appearance watching/revisions, globally layered
+  widget themes, bounded shell appearance, and computed GBSS styles.
 - `WidgetStyling`: bounded GBSS parsing, safe package-relative imports,
-  variables, deterministic cascade, typed allowlisted values, and diagnostics.
+  variables, explicit trusted cascade layers, typed allowlisted values, and
+  diagnostics.
+- `PlatformSettings`: strict atomic/cross-process appearance persistence,
+  version-pinned development themes, built-in default, safe theme discovery,
+  layer composition, and last-good snapshots.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, immutable versions,
   discovery, enablement, and order persistence as a managed library.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
@@ -58,8 +64,14 @@ deterministic rendered geometry as a fallback, without wraparound.
   `enable`, and `disable` commands. Remote acquisition requires SHA-256 pinning,
   reports the actual digest, and installs disabled pending explicit review.
 
-`samples/ClockWidget` and `samples/YtMusicWidget` are reference widgets. YT
-Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
+The first-party Settings worker and the Clock/YT Music samples are reference
+widgets. Settings is packaged and registered beside YT Music, renders through
+the generic SDK/bridge/native path, uses nested controller scopes, persists
+bounded appearance values, pages valid/invalid themes, exposes diagnostics,
+and requires confirmation before reset. It loads once per active lifetime and
+does not poll in Background.
+
+YT Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
 connection attempt, and renders media metadata, artwork, transport state, and
 dashboard quick actions through the declarative protocol. It auto-connects on
 first entry into Visible/Interactive, interpolates progress there at four Hz,
@@ -67,6 +79,28 @@ reconciles the companion every two seconds, and uses bounded optimistic transpor
 updates with rollback on command failure. Like, dislike, shuffle, and repeat
 publish immediate semantic selected/busy feedback, preserve independent pending
 features through stale polls, and clear or roll back on reconciliation.
+
+### Settings and global theme pipeline
+
+The first-party Settings widget controls text/interface scale, backdrop
+opacity, System/Full/Reduced motion, exact theme ID/version selection, and
+confirmed reset. `PlatformAppearanceService` watches settings and theme files
+with event notifications plus a 200 ms debounce—there is no polling loop.
+Valid reloads increment an immutable revision, clear per-widget layered-theme
+caches, and emit a bridge appearance-change event. Invalid reloads keep the
+prior snapshot and revision.
+
+The bridge resolves platform → widget → user layers, with layer priority
+stronger than selector specificity. It publishes globally layered widget
+`base`/`focused` styles and a bounded shell appearance containing scale,
+backdrop, motion, and semantic shell styles without launching widget workers.
+The native client consumes the initial shell appearance and live revision
+events, rejects stale revisions, retains its last good state on failure, and
+applies supported shell styles, interface scale, shell DirectWrite text scale,
+backdrop opacity, and motion. It also propagates bounded platform text scale
+through the post-style accessibility policy into generic declarative widget
+font size/letter spacing and layout, preserving non-compounding `em`
+inheritance.
 
 ### Worker lifecycle
 
@@ -108,9 +142,13 @@ pass or a claim about hidden, GPU, wakeup, or multi-widget cost.
 ### Test coverage
 
 The repository verification script builds and runs managed suites for the SDK,
-protocol, YT Music, runtime, CLI, styling, catalog, and bridge. Native build
+protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
+settings/themes, catalog, and bridge. Native build
 verification covers the overlay plus state-machine, remote-image, declarative
-layout, and semantic-icon tests where integrated.
+layout, semantic-icon, and native-style tests where integrated. Current Release
+native-style coverage verifies 150% font-size/letter-spacing scaling and safe
+fallback for an invalid non-finite scale; the full native suite passes. The
+broader 150% multi-resolution visual matrix remains an evidence gap.
 
 Run managed verification:
 
@@ -127,9 +165,10 @@ with C++ installed:
 
 ## Honest limitations
 
-- The native renderer remains a prototype. The YT Music reference path is
-  integrated, while complete generic rendering/layout/styling for arbitrary
-  packages is still being finished.
+- The generic native renderer handles the current declarative node kinds and
+  now renders both YT Music and Settings through catalog descriptors. Broad
+  arbitrary-package, resolution/DPI, accessibility, and visual regression
+  evidence is still incomplete.
 - Local and bounded remote package/catalog commands are implemented. There is
   no graphical installer, native-host discovery from the user catalog,
   automatic release/update discovery, signed publisher workflow, or
@@ -153,9 +192,22 @@ with C++ installed:
 - Background worker processes intentionally remain resident by default.
   Visible/Interactive work is canceled; background permission enforcement and
   opt-in suspend/unload lifecycle policies are not implemented yet.
-- GBSS compilation is implemented. The bridge currently publishes `base` and
-  `focused` computed maps; all additional semantic state maps are not yet
-  connected end to end.
+- GBSS compilation and bridge-global layering are implemented. `selected` and
+  `disabled` snapshot state participates in the complete `base`/`focused` maps;
+  a full separate family for pressed/busy and every dynamic semantic state is
+  not connected end to end.
+- Controller Settings, strict persistence, version-pinned theme selection,
+  no-poll watching, last-good revisions, and globally layered widget styles are
+  implemented. Native shell style/interface-scale/backdrop/motion revisions are
+  also applied, including shell DirectWrite text scaling. Theme package
+  install/scaffold/preview tooling, the full 150% text-scale visual matrix, and
+  the complete high-contrast/bold/reduced-transparency/auto-scroll accessibility
+  system are not. See [settings and global themes](settings-and-themes.md).
+- Audio Mixer and Network Controls are planned first-party public-SDK examples,
+  not implemented widgets. Their event-driven Core Audio and WLAN/network
+  providers, brokered capability contracts, consent, and generic host
+  integration remain future work. Initial Network Controls explicitly excludes
+  password entry and profile creation.
 
 ## Diagnostics
 
@@ -171,10 +223,12 @@ and [troubleshooting](troubleshooting.md).
 
 ## Next vertical slices
 
-1. Finish the generic native renderer for all validated node kinds and typed
-   computed styles.
-2. Connect the safe user catalog to host discovery and add a user-facing
-   install/review workflow.
+1. Complete resolution/DPI/accessibility/visual-regression evidence, including
+   the 150% text-scale matrix for the generic renderer and themed shell.
+2. Add safe theme install/scaffold/validate/preview tooling and connect the
+   widget user catalog to a user-facing install/review workflow.
 3. Implement signing/trust, capability brokering, and production worker
    containment before supporting untrusted community binaries.
-4. Run the documented controller/game compatibility and performance matrix.
+4. Build Audio Mixer and Network Controls as event-driven, out-of-process
+   public-SDK reference packages through the generic path.
+5. Run the documented controller/game compatibility and performance matrix.

@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Visual nodes require accessibility and semantic data", VisualNodeRequirementsAreEnforced),
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
     ("Buttons expose closed semantic icons without action-ID inference", ButtonIconsRoundTrip),
+    ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Interaction states reject invalid node combinations", InvalidInteractionStatesAreRejected),
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
     ("Null protocol collections report validation errors", NullCollectionsAreRejected),
@@ -313,6 +314,31 @@ static Task ButtonIconsRoundTrip()
     Assert.True(
         ViewSnapshotValidator.Validate(invalid).Any(error => error.Code == "invalid_glyph"),
         "Buttons must use the same closed semantic glyph set as icon nodes.");
+    return Task.CompletedTask;
+}
+
+static Task SettingsCompositesAreSemantic()
+{
+    var snapshot = new WidgetView(
+        UI.Stack("settings-root",
+            UI.ToggleButton("Reduced motion", true, "toggle-motion", "motion-toggle"),
+            UI.Stepper("Text scale", "110%", "text-smaller", "text-larger", "text-scale",
+                canDecrement: false)),
+        "motion-toggle").CreateSnapshot("settings.test", 1);
+
+    var toggle = Find(snapshot.Root, "motion-toggle");
+    Assert.Equal("Reduced motion: On", toggle.Text);
+    Assert.Equal("Reduced motion, On", toggle.AccessibilityLabel);
+    Assert.Equal(true, toggle.IsSelected);
+    Assert.Equal(WidgetGlyph.Check, toggle.Glyph);
+    Assert.Equal("setting-toggle", toggle.StyleClasses.Single());
+
+    var decrement = Find(snapshot.Root, "text-scale.decrement");
+    var increment = Find(snapshot.Root, "text-scale.increment");
+    Assert.Equal(true, decrement.IsDisabled);
+    Assert.Equal("text-scale.increment", decrement.Focus!.Right);
+    Assert.Equal("text-scale.decrement", increment.Focus!.Left);
+    Assert.Equal("Text scale: 110%", Find(snapshot.Root, "text-scale.value").AccessibilityLabel);
     return Task.CompletedTask;
 }
 

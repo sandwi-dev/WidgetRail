@@ -54,6 +54,16 @@ The runtime's out-of-process worker and timeout/restart behavior improve
 reliability. They do not by themselves prevent a normal desktop process from
 accessing the current user's files, network, or credentials.
 
+The managed development theme catalog has strict manifests, version-pinned
+directories, package-relative GBSS imports, bounds, reparse/containment checks,
+and sanitized diagnostics. The bridge watches only the settings file and
+current-user theme tree, debounces notifications, and republishes only a fully
+valid last-good snapshot. It only reads data consumed by the allowlisted GBSS
+compiler. There is still no supported theme distribution package, installer,
+signature, or publisher trust decision. Future distribution must never turn
+themes into a route for DLLs, scripts, remote resources, fonts, shaders, or
+arbitrary paths. See [settings and global themes](settings-and-themes.md).
+
 ## Trust decision today
 
 Only run widgets that you wrote, reviewed, or obtained from a developer you

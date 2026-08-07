@@ -19,7 +19,11 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 - A native Win32/D2D overlay shell with Guide toggle, controller navigation, reorder mode, last-widget restoration, and hidden-state resource teardown
 - A versioned declarative widget protocol, typed C# SDK, lazy worker runtime, and managed native bridge
 - Safe GBSS compilation, typed computed styles, HTTPS images, semantic icons, and controller-aware interaction state
-- Controller-first Clock and YT Music reference widgets
+- A verified controller Settings worker plus strict appearance store,
+  version-pinned themes, platform/widget/user cascade, no-poll reload, and live
+  native shell style/interface/text-scale/backdrop/motion revisions
+- Controller-first Settings, Clock, and YT Music reference widgets through the
+  same declarative worker path
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
@@ -45,6 +49,7 @@ The complete verification command requires Visual Studio's Desktop development w
 - [Platform architecture](docs/platform-architecture.md)
 - [Widget quickstart](docs/widget-quickstart.md)
 - [Declarative UI](docs/declarative-ui.md) and [GBSS](docs/gbss.md)
+- [Settings and global themes](docs/settings-and-themes.md)
 - [Controller input](docs/controller-input.md)
 - [Publishing, installation](docs/publishing-and-installation.md), and [security](docs/security-and-trust.md)
 - [Troubleshooting](docs/troubleshooting.md)

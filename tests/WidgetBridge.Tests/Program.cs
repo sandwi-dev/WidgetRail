@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Text.Json;
+using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
@@ -13,9 +14,13 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
+    ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
     ("Catalog rejects invalid GBSS with safe diagnostics", InvalidThemeIsRejected),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
+    ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
+    ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
+    ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
@@ -68,6 +73,15 @@ static Task StrictCatalogRejectsUnknownProperties()
     return Task.CompletedTask;
 }
 
+static Task CatalogGlyphIsClosed()
+{
+    using var fallback = TemporaryCatalog.Create(icon: null);
+    Assert.Equal(WidgetGlyph.Connection, BridgeCatalog.Load(fallback.Path).Widgets.Single().Icon);
+    using var invalid = TemporaryCatalog.Create(icon: "arbitrary-svg");
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(invalid.Path));
+    return Task.CompletedTask;
+}
+
 static Task InvalidThemeIsRejected()
 {
     using var catalog = TemporaryCatalog.Create(invalidStyle: true);
@@ -96,11 +110,12 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["id", "instanceId", "name", "quickActions"],
+    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "quickActions"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
     Assert.Equal("test.instance", descriptor.GetProperty("instanceId").GetString());
+    Assert.Equal("music", descriptor.GetProperty("icon").GetString());
     var quickAction = descriptor.GetProperty("quickActions")[0];
     Assert.SequenceEqual(["actionId", "controllerButton", "id", "label", "sourceElementId"],
         quickAction.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
@@ -111,6 +126,64 @@ static async Task EnumerationIsLazy()
     Assert.Equal("x", quickAction.GetProperty("controllerButton").GetString());
     Assert.False(descriptor.TryGetProperty("workerExecutable", out _),
         "Native descriptors must not expose worker paths.");
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+
+static async Task PlatformAppearanceIsLazy()
+{
+    await using var harness = await BridgeHarness.StartAsync(withAppearance: true);
+    var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
+    Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
+    Assert.SequenceEqual(
+        ["backdropOpacity", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion"],
+        response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+    Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
+    Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
+    Assert.Equal(1.1D, response.Payload.GetProperty("interfaceScale").GetDouble());
+    Assert.Equal(1.2D, response.Payload.GetProperty("textScale").GetDouble());
+    Assert.Equal(0.7D, response.Payload.GetProperty("backdropOpacity").GetDouble());
+    Assert.Equal("reduced", response.Payload.GetProperty("motion").GetString());
+    var shellStyles = response.Payload.GetProperty("shellStyles");
+    Assert.Equal(12, shellStyles.EnumerateObject().Count());
+    Assert.True(shellStyles.GetProperty("tray-item:focused")
+        .TryGetProperty("outline-color", out _), "Focused tray style was not resolved.");
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+
+static async Task UserThemeOverridesWidgetStyles()
+{
+    await using var harness = await BridgeHarness.StartAsync(withAppearance: true);
+    var response = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, response.Type);
+    var button = response.Payload.GetProperty("renderStyles").GetProperty("button").GetProperty("base");
+    Assert.Equal("#2468ac", button.GetProperty("color").GetProperty("text").GetString());
+    Assert.Equal(0.55D, button.GetProperty("opacity").GetProperty("number").GetDouble());
+}
+
+static async Task AppearanceReloadIsLastGood()
+{
+    await using var harness = await BridgeHarness.StartAsync(withAppearance: true);
+    var before = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
+    var revision = before.Payload.GetProperty("revision").GetInt64();
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+
+    await harness.Appearance!.WriteThemeAsync("button { color: definitely-not-a-color; }");
+    var invalid = await harness.Appearance.Service.ReloadNowAsync();
+    Assert.False(invalid.Published, "Invalid appearance unexpectedly replaced the last-good snapshot.");
+    Assert.Equal(revision, invalid.Current.Revision);
+    var retained = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
+    Assert.Equal(revision, retained.Payload.GetProperty("revision").GetInt64());
+
+    await harness.Appearance.WriteThemeAsync("title { color: #abcdef; } button { color: #13579b; }");
+    var valid = await harness.Appearance.Service.ReloadNowAsync();
+    Assert.True(valid.Published, "Valid appearance reload did not publish.");
+    var changed = await harness.Client.ReadEventAsync(BridgeMessageTypes.AppearanceChanged);
+    Assert.Equal(valid.Current.Revision, changed.Payload.GetProperty("revision").GetInt64());
+    var after = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
+    Assert.Equal(valid.Current.Revision, after.Payload.GetProperty("revision").GetInt64());
+    Assert.Equal("#abcdef", after.Payload.GetProperty("shellStyles").GetProperty("title")
+        .GetProperty("color").GetProperty("text").GetString());
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 }
 
@@ -293,7 +366,8 @@ file sealed class TemporaryCatalog : IDisposable
     public static TemporaryCatalog Create(
         bool addUnknownProperty = false,
         bool invalidStyle = false,
-        string styleFile = "styles/default.gbss")
+        string styleFile = "styles/default.gbss",
+        string? icon = "music")
     {
         var directory = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(), $"gba-bridge-tests-{Guid.NewGuid():N}");
@@ -316,6 +390,7 @@ file sealed class TemporaryCatalog : IDisposable
                     id = "test-widget",
                     name = "Test Widget",
                     instanceId = "test.instance",
+                    icon,
                     workerExecutable = executable,
                     styleFile,
                     workerArguments = Array.Empty<string>(),
@@ -349,36 +424,43 @@ file sealed class TemporaryCatalog : IDisposable
 file sealed class BridgeHarness : IAsyncDisposable
 {
     private readonly TemporaryCatalog _temporaryCatalog;
+    private readonly TemporaryAppearance? _appearance;
     private readonly Task _serverTask;
     public WidgetBridgeServer Server { get; }
     public BridgeTestClient Client { get; }
+    public TemporaryAppearance? Appearance => _appearance;
 
     private BridgeHarness(
         TemporaryCatalog temporaryCatalog,
+        TemporaryAppearance? appearance,
         WidgetBridgeServer server,
         BridgeTestClient client,
         Task serverTask)
     {
         _temporaryCatalog = temporaryCatalog;
+        _appearance = appearance;
         Server = server;
         Client = client;
         _serverTask = serverTask;
     }
 
-    public static async Task<BridgeHarness> StartAsync()
+    public static async Task<BridgeHarness> StartAsync(bool withAppearance = false)
     {
         var temporary = TemporaryCatalog.Create();
+        TemporaryAppearance? appearance = null;
         try
         {
+            if (withAppearance) appearance = await TemporaryAppearance.CreateAsync();
             var catalog = BridgeCatalog.Load(temporary.Path);
             var pipeName = $"gba-bridge-test-{Guid.NewGuid():N}";
-            var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024);
+            var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024, appearance?.Service);
             var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
             var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
-            return new BridgeHarness(temporary, server, client, serverTask);
+            return new BridgeHarness(temporary, appearance, server, client, serverTask);
         }
         catch
         {
+            if (appearance is not null) await appearance.DisposeAsync();
             temporary.Dispose();
             throw;
         }
@@ -395,8 +477,64 @@ file sealed class BridgeHarness : IAsyncDisposable
         {
             await Client.DisposeAsync();
             await Server.DisposeAsync();
+            if (_appearance is not null) await _appearance.DisposeAsync();
             _temporaryCatalog.Dispose();
         }
+    }
+}
+
+file sealed class TemporaryAppearance : IAsyncDisposable
+{
+    private readonly string _directory;
+    private readonly string _themeFile;
+    public PlatformAppearanceService Service { get; }
+
+    private TemporaryAppearance(string directory, string themeFile, PlatformAppearanceService service)
+    {
+        _directory = directory;
+        _themeFile = themeFile;
+        Service = service;
+    }
+
+    public static async Task<TemporaryAppearance> CreateAsync()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"gba-bridge-appearance-{Guid.NewGuid():N}");
+        var paths = new PlatformSettingsPaths(directory);
+        var themeDirectory = Path.Combine(paths.ThemesDirectory, "dev.example.bridge", "1.0.0");
+        Directory.CreateDirectory(themeDirectory);
+        var themeFile = Path.Combine(themeDirectory, "theme.gbss");
+        await File.WriteAllTextAsync(Path.Combine(themeDirectory, "theme.json"),
+            "{\"schemaVersion\":1,\"id\":\"dev.example.bridge\",\"name\":\"Bridge Test\",\"version\":\"1.0.0\",\"entryFile\":\"theme.gbss\"}");
+        await File.WriteAllTextAsync(themeFile,
+            "button { color: #2468ac; opacity: 0.55; } title { color: #fedcba; }");
+        var store = new PlatformSettingsStore(paths);
+        await store.ReplaceAsync(new PlatformSettingsDocument
+        {
+            SchemaVersion = PlatformSettingsDocument.CurrentSchemaVersion,
+            Appearance = AppearanceSettings.Default with
+            {
+                ThemeId = "dev.example.bridge",
+                ThemeVersion = "1.0.0",
+                InterfaceScale = 1.1,
+                TextScale = 1.2,
+                BackdropOpacity = 0.7,
+                Motion = MotionPreference.Reduced,
+            },
+        });
+        var service = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));
+        var result = await service.ReloadNowAsync();
+        Assert.True(result.Published, "Initial bridge appearance did not load.");
+        return new TemporaryAppearance(directory, themeFile, service);
+    }
+
+    public Task WriteThemeAsync(string source) => File.WriteAllTextAsync(_themeFile, source);
+
+    public async ValueTask DisposeAsync()
+    {
+        await Service.DisposeAsync();
+        try { Directory.Delete(_directory, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }
 

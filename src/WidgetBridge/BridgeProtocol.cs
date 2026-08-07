@@ -17,6 +17,9 @@ internal static class BridgeMessageTypes
     public const string HelloAccepted = "hello-accepted";
     public const string ListWidgets = "list-widgets";
     public const string Widgets = "widgets";
+    public const string GetPlatformAppearance = "get-platform-appearance";
+    public const string PlatformAppearance = "platform-appearance";
+    public const string AppearanceChanged = "platform-appearance-changed";
     public const string GetSnapshot = "get-snapshot";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
@@ -48,6 +51,7 @@ internal sealed record BridgeActionRequest(string WidgetId, GameBarAlternative.W
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(string WidgetId, GameBarAlternative.WidgetSdk.ControllerInputEvent Input);
 internal sealed record BridgeInvalidation(string WidgetId, long Revision);
+internal sealed record BridgeAppearanceChanged(long Revision);
 internal sealed record BridgeError(string Code, string Message);
 
 internal static class BridgeJson

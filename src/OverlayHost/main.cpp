@@ -4,6 +4,7 @@
 #include "GuideInputCompatibility.h"
 #include "FocusNavigation.h"
 #include "NativeIcons.h"
+#include "NativeStyle.h"
 #include "OverlayPlacement.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
@@ -30,6 +31,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -53,6 +56,17 @@ constexpr UINT kSnapshotRefreshMessage = WM_APP + 4;
 constexpr UINT kForegroundChangedMessage = WM_APP + 5;
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
+
+D2D1_COLOR_F D2DColor(const gba::NativeColor& color) noexcept {
+    return D2D1::ColorF(color.red, color.green, color.blue, color.alpha);
+}
+
+COLORREF GdiColor(const gba::NativeColor& color) noexcept {
+    const auto channel = [](const float value) {
+        return static_cast<BYTE>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
+    };
+    return RGB(channel(color.red), channel(color.green), channel(color.blue));
+}
 
 struct BuiltInWidget final {
     std::wstring_view id;
@@ -371,6 +385,16 @@ public:
             AppendDiagnostic(L"XInput Guide compatibility adapter unavailable");
         }
 
+        // Platform appearance is bridge-owned but does not cross the lazy
+        // widget-worker boundary. Fetch it once at host startup, then only in
+        // response to a revision event.
+        if (bridge_.EnsureStarted(installationDirectory_)) {
+            RefreshPlatformAppearance();
+        } else {
+            AppendDiagnostic(L"Platform appearance unavailable at startup: " +
+                             bridge_.lastError());
+        }
+
         (void)showCommand;
         bool startShown = false;
         for (int i = 1; i < __argc; ++i) {
@@ -445,7 +469,9 @@ private:
         case WM_PAINT: {
             PAINTSTRUCT paint{};
             const HDC dc = BeginPaint(window, &paint);
-            FillRect(dc, &paint.rcPaint, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+            FillRect(dc, &paint.rcPaint,
+                     app->backdropBrush_ ? app->backdropBrush_
+                                         : static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
             EndPaint(window, &paint);
             return 0;
         }
@@ -502,17 +528,19 @@ private:
             Dispatch(gba::Command::ToggleOverlay);
             return 0;
         case kImageReadyMessage:
-            artworkBitmap_.Reset();
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kCatalogRefreshMessage:
             RefreshWidgetCatalog();
+            RefreshCurrentBridgeSnapshot();
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kSnapshotRefreshMessage:
-            RefreshYtMusicSnapshot();
-            ShowOverlay();
-            InvalidateRect(window_, nullptr, FALSE);
+            RefreshCurrentBridgeSnapshot();
+            if (state_.surface() != gba::Surface::Hidden) {
+                ShowOverlay();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
             return 0;
         case kForegroundChangedMessage:
             if (state_.surface() != gba::Surface::Hidden) {
@@ -528,16 +556,31 @@ private:
             if (wParam == kControllerTimer) {
                 PollController();
                 (void)bridge_.PumpEvents();
-                if (bridge_.takeInvalidated() &&
-                    ((state_.surface() == gba::Surface::Widget && state_.activeWidget() == L"yt-music") ||
-                     (state_.surface() == gba::Surface::Dashboard && state_.selectedWidget() == L"yt-music"))) {
-                    const int priorHeight = DesiredHeightDip();
-                    RefreshYtMusicSnapshot();
-                    // Repaint-only invalidations (progress, metadata, button
-                    // state) must not churn HWND placement. Resize only when
-                    // the widget changes between compact/expanded surfaces.
-                    if (DesiredHeightDip() != priorHeight) ShowOverlay();
-                    InvalidateRect(window_, nullptr, FALSE);
+                if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
+                    const auto& current = appearanceState_.current();
+                    if (!current || *revision > current->revision) {
+                        RefreshPlatformAppearance();
+                    }
+                }
+                for (auto& invalidatedWidget : bridge_.TakeInvalidatedWidgetIds()) {
+                    const auto currentWidget = state_.surface() == gba::Surface::Widget
+                        ? state_.activeWidget()
+                        : state_.selectedWidget();
+                    if (state_.surface() != gba::Surface::Hidden &&
+                        currentWidget == invalidatedWidget) {
+                        const int priorHeight = DesiredHeightDip();
+                        RefreshWidgetSnapshot(invalidatedWidget);
+                        // Repaint-only invalidations must not churn HWND
+                        // placement. Resize only when the generic surface size
+                        // class changes.
+                        if (DesiredHeightDip() != priorHeight) ShowOverlay();
+                        InvalidateRect(window_, nullptr, FALSE);
+                    } else {
+                        // Preserve the event's widget identity. An offscreen
+                        // cache is invalidated and will be fetched on selection.
+                        widgetSnapshots_.erase(invalidatedWidget);
+                        renderedSnapshotSequences_.erase(invalidatedWidget);
+                    }
                 }
             } else if (wParam == kGuideCompatibilityTimer) {
                 const auto slots = guideCompatibility_.PollRisingEdges();
@@ -653,6 +696,10 @@ private:
             DestroyWindow(backdropWindow_);
             backdropWindow_ = nullptr;
         }
+        if (backdropBrush_) {
+            DeleteObject(backdropBrush_);
+            backdropBrush_ = nullptr;
+        }
         if (gameInput_ && guideCallback_ != 0) {
             gameInput_->StopCallback(guideCallback_);
             gameInput_->UnregisterCallback(guideCallback_);
@@ -669,6 +716,9 @@ private:
         const auto priorSurface = state_.surface();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
+        if (priorSurface == gba::Surface::Widget && IsBridgeWidget(priorActive)) {
+            RememberCurrentFocus(priorActive);
+        }
         const auto before = state_.persistent();
         if (!state_.Dispatch(command)) {
             return;
@@ -679,25 +729,151 @@ private:
             SavePersistentState(state_.persistent());
         }
         SyncWidgetActivity();
+        if (priorSurface != state_.surface() || priorActive != state_.activeWidget()) {
+            focusedElementId_.clear();
+            lastWidgetRenderResult_ = {};
+        }
 
         if (state_.surface() == gba::Surface::Hidden) {
             HideOverlay();
         } else {
-            const bool enteredYtMusic =
-                state_.surface() == gba::Surface::Widget && state_.activeWidget() == L"yt-music" &&
-                (priorSurface != gba::Surface::Widget || priorActive != L"yt-music");
-            const bool hoveredYtMusic =
-                state_.surface() == gba::Surface::Dashboard && state_.selectedWidget() == L"yt-music" &&
-                (priorSurface != gba::Surface::Dashboard || priorSelected != L"yt-music");
+            const bool enteredBridgeWidget =
+                state_.surface() == gba::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
+                (priorSurface != gba::Surface::Widget || priorActive != state_.activeWidget());
+            const bool hoveredBridgeWidget =
+                state_.surface() == gba::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
+                (priorSurface != gba::Surface::Dashboard || priorSelected != state_.selectedWidget());
             ShowOverlay();
             InvalidateRect(window_, nullptr, FALSE);
             if (priorSurface == gba::Surface::Hidden) {
                 PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
             }
-            if (enteredYtMusic || hoveredYtMusic) {
+            if (priorSurface != gba::Surface::Hidden &&
+                (enteredBridgeWidget || hoveredBridgeWidget)) {
                 PostMessageW(window_, kSnapshotRefreshMessage, 0, 0);
             }
         }
+    }
+
+    const gba::WidgetComputedStyle& ShellComputedStyle(
+        const std::wstring_view key) const noexcept {
+        static const gba::WidgetComputedStyle empty;
+        const auto& current = appearanceState_.current();
+        if (!current) return empty;
+        const auto found = current->shellStyles.find(std::wstring(key));
+        return found == current->shellStyles.end() ? empty : found->second;
+    }
+
+    gba::NativeRenderStyle AdaptShellStyle(
+        const std::wstring_view key,
+        const bool focused = false) const {
+        gba::NativeStyleContext context;
+        context.viewportWidthPx = static_cast<float>(kPanelWidth);
+        context.viewportHeightPx = static_cast<float>(kWidgetPanelHeight);
+        context.parentWidthPx = context.viewportWidthPx;
+        context.parentHeightPx = context.viewportHeightPx;
+        context.parentFontSizePx = 16.0F;
+        context.rootFontSizePx = 16.0F;
+        context.focused = focused;
+        gba::NativeAccessibilityPolicy accessibility;
+        const auto& current = appearanceState_.current();
+        accessibility.reducedMotion = current &&
+            current->motion == gba::PlatformMotionPreference::Reduced;
+        auto result = gba::NativeStyleAdapter::Adapt(
+            ShellComputedStyle(key), context, accessibility);
+        for (const auto& diagnostic : result.diagnostics) {
+            AppendDiagnostic(L"Platform shell style " + std::wstring(key) + L" " +
+                             diagnostic.property + L": " + diagnostic.message);
+        }
+        return std::move(result.style);
+    }
+
+    void RebuildShellStyles() {
+        canvasStyle_ = AdaptShellStyle(L"canvas");
+        backdropStyle_ = AdaptShellStyle(L"backdrop");
+        panelStyle_ = AdaptShellStyle(L"panel");
+        trayStyle_ = AdaptShellStyle(L"tray");
+        trayItemStyle_ = AdaptShellStyle(L"tray-item");
+        trayItemSelectedStyle_ = AdaptShellStyle(L"tray-item:selected");
+        trayItemFocusedStyle_ = AdaptShellStyle(L"tray-item:focused", true);
+        trayItemSelectedFocusedStyle_ =
+            AdaptShellStyle(L"tray-item:selected:focused", true);
+        titleStyle_ = AdaptShellStyle(L"title");
+        bodyStyle_ = AdaptShellStyle(L"body");
+        hintStyle_ = AdaptShellStyle(L"hint");
+        statusStyle_ = AdaptShellStyle(L"status");
+    }
+
+    void ApplyPlatformAppearance() {
+        const auto& current = appearanceState_.current();
+        if (!current) return;
+        RebuildShellStyles();
+
+        const auto backdropColor = backdropStyle_.background().value_or(
+            gba::NativeColor{0, 0, 0, 1});
+        if (HBRUSH replacement = CreateSolidBrush(GdiColor(backdropColor))) {
+            if (backdropBrush_) DeleteObject(backdropBrush_);
+            backdropBrush_ = replacement;
+        }
+        const BYTE opacity = static_cast<BYTE>(std::lround(
+            std::clamp(current->backdropOpacity, 0.35, 0.8) * 255.0));
+        SetLayeredWindowAttributes(backdropWindow_, 0, opacity, LWA_ALPHA);
+        InvalidateRect(backdropWindow_, nullptr, TRUE);
+
+        BOOL disableTransitions = FALSE;
+        if (current->motion == gba::PlatformMotionPreference::Reduced) {
+            disableTransitions = TRUE;
+        } else if (current->motion == gba::PlatformMotionPreference::System) {
+            BOOL animationsEnabled = TRUE;
+            if (!SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0,
+                                       &animationsEnabled, 0) || !animationsEnabled) {
+                disableTransitions = TRUE;
+            }
+        }
+        (void)DwmSetWindowAttribute(window_, DWMWA_TRANSITIONS_FORCEDISABLED,
+                                    &disableTransitions, sizeof(disableTransitions));
+        (void)DwmSetWindowAttribute(backdropWindow_, DWMWA_TRANSITIONS_FORCEDISABLED,
+                                    &disableTransitions, sizeof(disableTransitions));
+
+        // Worker snapshots contain bridge-computed widget styles derived from
+        // the same platform revision. Drop every cached snapshot, then refresh
+        // only the already active/visible worker; background workers remain
+        // untouched and lazily rebuild when selected later.
+        const std::wstring visibleWidget = state_.surface() == gba::Surface::Widget
+            ? std::wstring(state_.activeWidget())
+            : std::wstring(state_.selectedWidget());
+        const bool hadVisibleSnapshot = widgetSnapshots_.contains(visibleWidget);
+        widgetSnapshots_.clear();
+        renderedSnapshotSequences_.clear();
+        if (state_.surface() != gba::Surface::Hidden && hadVisibleSnapshot &&
+            IsBridgeWidget(visibleWidget)) {
+            RefreshWidgetSnapshot(visibleWidget);
+        }
+
+        DiscardGraphicsResources();
+        if (state_.surface() != gba::Surface::Hidden) {
+            ShowOverlay();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        AppendDiagnostic(L"Applied platform appearance revision " +
+                         std::to_wstring(current->revision) + L" theme=" +
+                         current->themeId + L"@" + current->themeVersion);
+    }
+
+    void RefreshPlatformAppearance() {
+        auto appearance = bridge_.GetPlatformAppearance();
+        if (!appearance) {
+            AppendDiagnostic(L"Platform appearance refresh failed; retaining last good state: " +
+                             bridge_.lastError());
+            return;
+        }
+        const long long revision = appearance->revision;
+        if (!appearanceState_.Publish(std::move(*appearance))) {
+            AppendDiagnostic(L"Ignored stale platform appearance revision " +
+                             std::to_wstring(revision));
+            return;
+        }
+        ApplyPlatformAppearance();
     }
 
     void RefreshWidgetCatalog() {
@@ -711,6 +887,21 @@ private:
             return;
         }
         widgetDescriptors_ = std::move(*descriptors);
+        std::unordered_set<std::wstring> bridgeIds;
+        bridgeIds.reserve(widgetDescriptors_.size());
+        for (const auto& descriptor : widgetDescriptors_) bridgeIds.emplace(descriptor.id);
+        std::erase_if(widgetSnapshots_, [&](const auto& entry) {
+            const auto descriptor = std::find_if(
+                widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                [&](const gba::WidgetDescriptor& candidate) {
+                    return candidate.id == entry.first;
+                });
+            return descriptor == widgetDescriptors_.end() ||
+                   descriptor->instanceId != entry.second.instanceId;
+        });
+        std::erase_if(renderedSnapshotSequences_, [&](const auto& entry) {
+            return !bridgeIds.contains(entry.first);
+        });
         std::vector<std::wstring> ids;
         ids.reserve(kBuiltInWidgets.size() + widgetDescriptors_.size());
         for (const auto& widget : kBuiltInWidgets) ids.emplace_back(widget.id);
@@ -778,6 +969,17 @@ private:
         return descriptor == widgetDescriptors_.end() ? WidgetName(id) : descriptor->name;
     }
 
+    gba::icons::NativeIcon DisplayWidgetIcon(const std::wstring_view id) const noexcept {
+        const auto descriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
+        if (descriptor != widgetDescriptors_.end()) {
+            gba::icons::NativeIcon icon{};
+            if (gba::icons::TryParseNativeIcon(descriptor->icon, icon)) return icon;
+        }
+        return WidgetIcon(id);
+    }
+
     void ShowOverlay() {
         const bool wasVisible = IsWindowVisible(window_) != FALSE;
         if (!wasVisible) {
@@ -802,9 +1004,13 @@ private:
             }
         }
         const int desiredHeightDip = DesiredHeightDip();
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
         const auto placement = gba::ComputeOverlayPlacement(
             {work.left, work.top, work.right, work.bottom}, dpi,
-            static_cast<float>(kPanelWidth), static_cast<float>(desiredHeightDip));
+            static_cast<float>(kPanelWidth) * interfaceScale,
+            static_cast<float>(desiredHeightDip) * interfaceScale);
         if (!placement) {
             AppendDiagnostic(L"Unable to compute a safe overlay placement");
             return;
@@ -858,11 +1064,7 @@ private:
 
     int DesiredHeightDip() const {
         if (state_.surface() != gba::Surface::Widget) return kDashboardHeight;
-        if (state_.activeWidget() == L"yt-music" &&
-            (!ytMusicSnapshot_ ||
-             !FindWidgetNode(ytMusicSnapshot_->root, L"track-title"))) {
-            return 540;
-        }
+        if (IsBridgeWidget(state_.activeWidget()) && !SnapshotFor(state_.activeWidget())) return 540;
         return kWidgetPanelHeight;
     }
 
@@ -1041,64 +1243,79 @@ private:
         rightTriggerPressed_ = rightTriggerPressed;
     }
 
-    static const gba::WidgetNode* FindWidgetNode(const gba::WidgetNode& node,
-                                                 const std::wstring_view id) {
-        if (node.id == id) return &node;
-        for (const auto& child : node.children) {
-            if (const auto* match = FindWidgetNode(child, id)) return match;
-        }
-        return nullptr;
+    const gba::WidgetSnapshot* SnapshotFor(const std::wstring_view widgetId) const noexcept {
+        const auto snapshot = widgetSnapshots_.find(std::wstring(widgetId));
+        return snapshot == widgetSnapshots_.end() ? nullptr : &snapshot->second;
     }
 
     void RememberCurrentFocus(const std::wstring_view widgetId) {
-        if (!ytMusicSnapshot_ || focusedElementId_.empty()) return;
-        focusMemory_.Remember(widgetId, *ytMusicSnapshot_, focusedElementId_);
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!snapshot || focusedElementId_.empty()) return;
+        focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
     }
 
     void RestoreFocusForActiveSurface(const std::wstring_view widgetId) {
-        focusedElementId_ = ytMusicSnapshot_
-            ? focusMemory_.Restore(widgetId, *ytMusicSnapshot_)
+        const auto* snapshot = SnapshotFor(widgetId);
+        focusedElementId_ = snapshot
+            ? focusMemory_.Restore(widgetId, *snapshot)
             : std::wstring{};
     }
 
-    void RefreshYtMusicSnapshot() {
+    void RefreshCurrentBridgeSnapshot() {
+        if (state_.surface() == gba::Surface::Hidden) return;
+        const std::wstring_view widgetId = state_.surface() == gba::Surface::Widget
+            ? state_.activeWidget()
+            : state_.selectedWidget();
+        if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
+    }
+
+    void RefreshWidgetSnapshot(const std::wstring_view widgetId) {
+        if (!IsBridgeWidget(widgetId)) return;
         if (!bridge_.EnsureStarted(installationDirectory_)) {
-            lastActionMessage_ = L"YT Music unavailable: " + bridge_.lastError();
+            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                                 L" unavailable: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
             AppendDiagnostic(lastActionMessage_);
             return;
         }
-        auto snapshot = bridge_.GetSnapshot(L"yt-music");
+        auto snapshot = bridge_.GetSnapshot(widgetId);
         if (!snapshot) {
-            lastActionMessage_ = L"YT Music failed: " + bridge_.lastError();
+            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                                 L" failed: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
             AppendDiagnostic(lastActionMessage_);
             return;
         }
-        RememberCurrentFocus(L"yt-music");
-        ytMusicSnapshot_ = std::move(snapshot);
-        if (const auto* artwork = FindWidgetNode(ytMusicSnapshot_->root, L"album-artwork");
-            artwork && !artwork->imageSource.empty()) {
-            if (artworkUrl_ != artwork->imageSource) {
-                artworkUrl_ = artwork->imageSource;
-                artworkBitmap_.Reset();
-            }
-            if (imageCache_) (void)imageCache_->Request(artworkUrl_);
-        } else {
-            artworkUrl_.clear();
-            artworkBitmap_.Reset();
+        const auto descriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [widgetId](const gba::WidgetDescriptor& candidate) {
+                return candidate.id == widgetId;
+            });
+        if (descriptor == widgetDescriptors_.end() || snapshot->instanceId != descriptor->instanceId) {
+            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                                 L" returned a mismatched widget instance";
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            AppendDiagnostic(lastActionMessage_);
+            return;
         }
-        RestoreFocusForActiveSurface(L"yt-music");
+        const auto currentWidget = state_.surface() == gba::Surface::Widget
+            ? state_.activeWidget()
+            : state_.selectedWidget();
+        if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
+        widgetSnapshots_.insert_or_assign(std::wstring(widgetId), std::move(*snapshot));
+        if (currentWidget == widgetId) RestoreFocusForActiveSurface(widgetId);
     }
 
     void MoveWidgetFocus(const std::wstring_view direction) {
-        if (state_.surface() != gba::Surface::Widget ||
-            !ytMusicSnapshot_ || focusedElementId_.empty()) {
+        if (state_.surface() != gba::Surface::Widget || focusedElementId_.empty()) {
             return;
         }
-        const auto activeScope = std::wstring_view(ytMusicSnapshot_->activeInputScopeId);
+        const std::wstring_view widgetId = state_.activeWidget();
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!snapshot) return;
+        const auto activeScope = std::wstring_view(snapshot->activeInputScopeId);
         const auto* focused = gba::input::FindNodeInInputScope(
-            *ytMusicSnapshot_, focusedElementId_, activeScope);
+            *snapshot, focusedElementId_, activeScope);
         if (!focused) return;
         const std::wstring* target = nullptr;
         if (direction == L"up") target = &focused->focusUp;
@@ -1106,11 +1323,11 @@ private:
         else if (direction == L"left") target = &focused->focusLeft;
         else if (direction == L"right") target = &focused->focusRight;
         const auto* explicitTarget = target && !target->empty()
-            ? gba::input::FindNodeInInputScope(*ytMusicSnapshot_, *target, activeScope)
+            ? gba::input::FindNodeInInputScope(*snapshot, *target, activeScope)
             : nullptr;
         if (explicitTarget && !explicitTarget->isDisabled && !explicitTarget->isBusy) {
             focusedElementId_ = explicitTarget->id;
-            focusMemory_.Remember(L"yt-music", *ytMusicSnapshot_, focusedElementId_);
+            focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
@@ -1124,7 +1341,7 @@ private:
         if (const auto fallback = gba::input::FindGeometricFocusTarget(
                 focusedElementId_, navigationDirection, lastWidgetRenderResult_)) {
             focusedElementId_ = *fallback;
-            focusMemory_.Remember(L"yt-music", *ytMusicSnapshot_, focusedElementId_);
+            focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
         }
     }
@@ -1154,28 +1371,33 @@ private:
             ? state_.activeWidget()
             : state_.selectedWidget();
 
-        if (widget == L"yt-music") {
-            if (!ytMusicSnapshot_) RefreshYtMusicSnapshot();
+        if (IsBridgeWidget(widget)) {
+            if (!SnapshotFor(widget)) RefreshWidgetSnapshot(widget);
             const auto protocolButton = ProtocolButton(button);
-            if (protocolButton.empty() || !ytMusicSnapshot_) return;
+            const auto* snapshot = SnapshotFor(widget);
+            if (protocolButton.empty() || !snapshot) return;
             const bool isOpen = state_.surface() == gba::Surface::Widget;
             const auto handled = bridge_.SendControllerInput(
-                L"yt-music", protocolButton,
+                widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
                 isOpen ? std::wstring_view(focusedElementId_) : std::wstring_view{},
-                ytMusicSnapshot_->activeInputScopeId,
-                ytMusicSnapshot_->sequence,
+                snapshot->activeInputScopeId,
+                snapshot->sequence,
                 ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000));
             if (!handled) {
-                lastActionMessage_ = L"YT Music input failed: " + bridge_.lastError();
+                lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
+                                     L" input failed: " + bridge_.lastError();
             } else if (*handled) {
-                lastActionMessage_ = L"YT Music handled " + std::wstring(button);
-                RefreshYtMusicSnapshot();
+                lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
+                                     L" handled " + std::wstring(button);
+                RefreshWidgetSnapshot(widget);
             } else {
-                lastActionMessage_ = L"YT Music has no " + std::wstring(button) + L" action here";
+                lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
+                                     L" has no " + std::wstring(button) + L" action here";
+                snapshot = SnapshotFor(widget);
                 if (isOpen && button == L"B" &&
-                    std::wstring_view(ytMusicSnapshot_->activeInputScopeId) ==
-                        gba::input::RootInputScope(*ytMusicSnapshot_)) {
+                    snapshot && std::wstring_view(snapshot->activeInputScopeId) ==
+                        gba::input::RootInputScope(*snapshot)) {
                     Dispatch(gba::Command::SampleWidgetBack);
                     return;
                 }
@@ -1217,34 +1439,104 @@ private:
         renderTarget_->SetDpi(windowDpi > 0 ? windowDpi : 96.0F,
                               windowDpi > 0 ? windowDpi : 96.0F);
 
-        renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0x10131A), backgroundBrush_.ReleaseAndGetAddressOf());
-        renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0x1B1F29), cardBrush_.ReleaseAndGetAddressOf());
-        renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0xF7F7FA), textBrush_.ReleaseAndGetAddressOf());
-        renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0x9BA3B3), secondaryBrush_.ReleaseAndGetAddressOf());
-        renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0xFC3F6C), accentBrush_.ReleaseAndGetAddressOf());
-        renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0x45D483), successBrush_.ReleaseAndGetAddressOf());
+        const auto colorOr = [](const std::optional<gba::NativeColor>& value,
+                                const gba::NativeColor fallback) {
+            return value.value_or(fallback);
+        };
+        const gba::NativeColor defaultCanvas{0x10 / 255.0F, 0x13 / 255.0F,
+                                              0x1A / 255.0F, 1};
+        const gba::NativeColor defaultPanel{0x1B / 255.0F, 0x1F / 255.0F,
+                                             0x29 / 255.0F, 1};
+        const gba::NativeColor defaultText{0xF7 / 255.0F, 0xF7 / 255.0F,
+                                            0xFA / 255.0F, 1};
+        const gba::NativeColor defaultSecondary{0x9B / 255.0F, 0xA3 / 255.0F,
+                                                 0xB3 / 255.0F, 1};
+        const gba::NativeColor defaultAccent{0xFC / 255.0F, 0x3F / 255.0F,
+                                              0x6C / 255.0F, 1};
+        const gba::NativeColor defaultSuccess{0x45 / 255.0F, 0xD4 / 255.0F,
+                                               0x83 / 255.0F, 1};
+        const auto canvasBackground = colorOr(canvasStyle_.background(), defaultCanvas);
+        const auto trayBackground = colorOr(trayStyle_.background(), canvasBackground);
+        const auto panelBackground = colorOr(panelStyle_.background(), defaultPanel);
+        const auto foreground = colorOr(titleStyle_.foreground(),
+            colorOr(canvasStyle_.foreground(), defaultText));
+        const auto secondary = colorOr(hintStyle_.foreground(),
+            colorOr(bodyStyle_.foreground(), defaultSecondary));
+        const auto selectedBackground = colorOr(
+            trayItemSelectedFocusedStyle_.background(),
+            colorOr(trayItemSelectedStyle_.background(), defaultAccent));
+        const auto itemBackground = colorOr(trayItemStyle_.background(), trayBackground);
+        const auto selectedForeground = colorOr(
+            trayItemSelectedFocusedStyle_.foreground(),
+            colorOr(trayItemSelectedStyle_.foreground(), foreground));
+        const auto focusColor = colorOr(
+            trayItemSelectedFocusedStyle_.outlineColor(),
+            colorOr(trayItemFocusedStyle_.outlineColor(), defaultAccent));
 
-        writeFactory_->CreateTextFormat(L"Segoe UI Variable Display", nullptr,
-                                        DWRITE_FONT_WEIGHT_SEMI_BOLD,
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(trayBackground), backgroundBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(panelBackground), cardBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(foreground), textBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(secondary), secondaryBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(selectedBackground), accentBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(colorOr(statusStyle_.foreground(), defaultSuccess)),
+            successBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(itemBackground), trayItemBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(selectedForeground), selectedTextBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(focusColor), focusBrush_.ReleaseAndGetAddressOf());
+
+        const auto hasProperty = [&](const std::wstring_view role,
+                                     const std::wstring_view property) {
+            return ShellComputedStyle(role).contains(std::wstring(property));
+        };
+        const float textScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->textScale)
+            : 1.0F;
+        const auto fontSize = [&](const std::wstring_view role,
+                                  const gba::NativeRenderStyle& style,
+                                  const float fallback) {
+            return (hasProperty(role, L"font-size") ? style.fontSizePx() : fallback) *
+                   textScale;
+        };
+        const auto fontFamily = [&](const std::wstring_view role,
+                                    const gba::NativeRenderStyle& style,
+                                    const wchar_t* fallback) -> const wchar_t* {
+            return hasProperty(role, L"font-family") ? style.fontFamily().c_str() : fallback;
+        };
+        const auto fontWeight = [&](const std::wstring_view role,
+                                    const gba::NativeRenderStyle& style,
+                                    const DWRITE_FONT_WEIGHT fallback) {
+            return hasProperty(role, L"font-weight")
+                ? static_cast<DWRITE_FONT_WEIGHT>(std::clamp(style.fontWeight(), 100, 950))
+                : fallback;
+        };
+
+        writeFactory_->CreateTextFormat(fontFamily(L"title", titleStyle_, L"Segoe UI Variable Display"), nullptr,
+                                        fontWeight(L"title", titleStyle_, DWRITE_FONT_WEIGHT_SEMI_BOLD),
                                         DWRITE_FONT_STYLE_NORMAL,
                                         DWRITE_FONT_STRETCH_NORMAL,
-                                        25.0F, L"en-us", titleFormat_.ReleaseAndGetAddressOf());
-        writeFactory_->CreateTextFormat(L"Segoe UI Variable Text", nullptr,
-                                        DWRITE_FONT_WEIGHT_NORMAL,
+                                        fontSize(L"title", titleStyle_, 25.0F), L"en-us",
+                                        titleFormat_.ReleaseAndGetAddressOf());
+        writeFactory_->CreateTextFormat(fontFamily(L"body", bodyStyle_, L"Segoe UI Variable Text"), nullptr,
+                                        fontWeight(L"body", bodyStyle_, DWRITE_FONT_WEIGHT_NORMAL),
                                         DWRITE_FONT_STYLE_NORMAL,
                                         DWRITE_FONT_STRETCH_NORMAL,
-                                        16.0F, L"en-us", bodyFormat_.ReleaseAndGetAddressOf());
-        writeFactory_->CreateTextFormat(L"Segoe UI Variable Text", nullptr,
-                                        DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                                        fontSize(L"body", bodyStyle_, 16.0F), L"en-us",
+                                        bodyFormat_.ReleaseAndGetAddressOf());
+        writeFactory_->CreateTextFormat(fontFamily(L"hint", hintStyle_, L"Segoe UI Variable Text"), nullptr,
+                                        fontWeight(L"hint", hintStyle_, DWRITE_FONT_WEIGHT_SEMI_BOLD),
                                         DWRITE_FONT_STYLE_NORMAL,
                                         DWRITE_FONT_STRETCH_NORMAL,
-                                        14.0F, L"en-us", hintFormat_.ReleaseAndGetAddressOf());
+                                        fontSize(L"hint", hintStyle_, 14.0F), L"en-us",
+                                        hintFormat_.ReleaseAndGetAddressOf());
         writeFactory_->CreateTextFormat(L"Segoe UI Variable Display", nullptr,
                                         DWRITE_FONT_WEIGHT_SEMI_BOLD,
                                         DWRITE_FONT_STYLE_NORMAL,
@@ -1254,18 +1546,31 @@ private:
             iconFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
             iconFormat_->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
         }
+        panelCornerRadius_ = hasProperty(L"panel", L"corner-radius")
+            ? panelStyle_.cornerRadiusPx() : 18.0F;
+        trayCornerRadius_ = hasProperty(L"tray", L"corner-radius")
+            ? trayStyle_.cornerRadiusPx() : 22.0F;
+        trayItemCornerRadius_ = hasProperty(L"tray-item", L"corner-radius")
+            ? trayItemStyle_.cornerRadiusPx() : 16.0F;
+        focusOutlineWidth_ = hasProperty(L"tray-item:selected:focused", L"outline-width")
+            ? trayItemSelectedFocusedStyle_.outlineWidthPx()
+            : hasProperty(L"tray-item:focused", L"outline-width")
+                ? trayItemFocusedStyle_.outlineWidthPx() : 2.0F;
         return backgroundBrush_ && cardBrush_ && textBrush_ && secondaryBrush_ &&
                accentBrush_ && successBrush_ && titleFormat_ && bodyFormat_ &&
-               hintFormat_ && iconFormat_;
+               hintFormat_ && iconFormat_ && trayItemBrush_ && selectedTextBrush_ &&
+               focusBrush_;
     }
 
     void DiscardGraphicsResources() {
         if (declarativeRenderer_) declarativeRenderer_->DiscardTargetResources();
-        artworkBitmap_.Reset();
         iconFormat_.Reset();
         hintFormat_.Reset();
         bodyFormat_.Reset();
         titleFormat_.Reset();
+        focusBrush_.Reset();
+        selectedTextBrush_.Reset();
+        trayItemBrush_.Reset();
         accentBrush_.Reset();
         successBrush_.Reset();
         secondaryBrush_.Reset();
@@ -1300,7 +1605,11 @@ private:
         const float height = static_cast<float>(client.bottom - client.top) * 96.0F / dpiY;
         const float designWidth = static_cast<float>(kPanelWidth);
         const float designHeight = static_cast<float>(DesiredHeightDip());
-        const float scale = std::min({1.0F, width / designWidth, height / designHeight});
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const float scale = std::min(
+            {interfaceScale, width / designWidth, height / designHeight});
         const float offsetX = (width - designWidth * scale) / 2.0F;
         const float offsetY = height - designHeight * scale;
         renderTarget_->BeginDraw();
@@ -1342,7 +1651,7 @@ private:
         const float stripTop = height - 112.0F;
         const D2D1_ROUNDED_RECT strip{
             D2D1::RectF(stripLeft, stripTop, stripLeft + stripWidth, height - 14.0F),
-            22.0F, 22.0F};
+            trayCornerRadius_, trayCornerRadius_};
         renderTarget_->FillRoundedRectangle(strip, backgroundBrush_.Get());
 
         for (std::size_t visibleIndex = 0; visibleIndex < visibleCount; ++visibleIndex) {
@@ -1350,26 +1659,29 @@ private:
             const float x = stripLeft + 14.0F + static_cast<float>(visibleIndex) * (tileWidth + gap);
             const float top = stripTop + 16.0F;
             const D2D1_ROUNDED_RECT tile{
-                D2D1::RectF(x, top, x + tileWidth, top + tileHeight), 16.0F, 16.0F};
+                D2D1::RectF(x, top, x + tileWidth, top + tileHeight),
+                trayItemCornerRadius_, trayItemCornerRadius_};
             renderTarget_->FillRoundedRectangle(
-                tile, slot == state_.selectedSlot() ? cardBrush_.Get()
-                                                    : backgroundBrush_.Get());
+                tile, slot == state_.selectedSlot() ? accentBrush_.Get()
+                                                    : trayItemBrush_.Get());
             if (slot == state_.selectedSlot()) {
                 const D2D1_ROUNDED_RECT indicator{
                     D2D1::RectF(x + 18.0F, top + tileHeight - 4.0F,
                                 x + tileWidth - 18.0F, top + tileHeight),
                     2.0F, 2.0F};
-                renderTarget_->FillRoundedRectangle(indicator, accentBrush_.Get());
+                renderTarget_->FillRoundedRectangle(indicator, selectedTextBrush_.Get());
                 if (state_.reorderMode()) {
-                    renderTarget_->DrawRoundedRectangle(tile, accentBrush_.Get(), 2.0F);
+                    renderTarget_->DrawRoundedRectangle(
+                        tile, focusBrush_.Get(), focusOutlineWidth_);
                 }
             }
 
             const std::wstring_view widget = state_.order()[slot];
             (void)gba::icons::DrawNativeIcon(
-                renderTarget_.Get(), WidgetIcon(widget),
+                renderTarget_.Get(), DisplayWidgetIcon(widget),
                 D2D1::RectF(x + 15, top + 15, x + tileWidth - 15, top + tileHeight - 15),
-                textBrush_.Get(), 2.35F);
+                slot == state_.selectedSlot() ? selectedTextBrush_.Get() : textBrush_.Get(),
+                2.35F);
         }
     }
 
@@ -1396,10 +1708,11 @@ private:
         if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty()) {
             return lastActionMessage_;
         }
-        if (state_.selectedWidget() == L"yt-music" && ytMusicSnapshot_ &&
-            !ytMusicSnapshot_->quickActions.empty()) {
+        const auto* snapshot = SnapshotFor(state_.selectedWidget());
+        if (IsBridgeWidget(state_.selectedWidget()) && snapshot &&
+            !snapshot->quickActions.empty()) {
             std::wstring prompt;
-            for (const auto& action : ytMusicSnapshot_->quickActions) {
+            for (const auto& action : snapshot->quickActions) {
                 if (!prompt.empty()) prompt += L"     ";
                 prompt += DisplayButton(action.button);
                 prompt += L"  ";
@@ -1426,125 +1739,6 @@ private:
                      secondaryBrush_.Get());
     }
 
-    const gba::WidgetNode* YtNode(const std::wstring_view id) const {
-        return ytMusicSnapshot_ ? FindWidgetNode(ytMusicSnapshot_->root, id) : nullptr;
-    }
-
-    void DrawWidgetButtonRow(const gba::WidgetNode* row,
-                             const float left,
-                             const float top,
-                             const float width,
-                             const float height) {
-        if (!row || row->children.empty()) return;
-        constexpr float gap = 10.0F;
-        const float buttonWidth =
-            (width - gap * static_cast<float>(row->children.size() - 1)) /
-            static_cast<float>(row->children.size());
-        for (std::size_t index = 0; index < row->children.size(); ++index) {
-            const auto& button = row->children[index];
-            const float x = left + static_cast<float>(index) * (buttonWidth + gap);
-            const D2D1_ROUNDED_RECT rectangle{
-                D2D1::RectF(x, top, x + buttonWidth, top + height), 12.0F, 12.0F};
-            renderTarget_->FillRoundedRectangle(
-                rectangle, button.id == focusedElementId_ ? accentBrush_.Get()
-                                                          : backgroundBrush_.Get());
-            if (button.id == focusedElementId_) {
-                renderTarget_->DrawRoundedRectangle(rectangle, textBrush_.Get(), 2.0F);
-            }
-            DrawTextLine(button.text, hintFormat_.Get(),
-                         D2D1::RectF(x + 12, top + 14, x + buttonWidth - 10,
-                                     top + height - 8),
-                         button.id == focusedElementId_ ? textBrush_.Get()
-                                                        : secondaryBrush_.Get());
-        }
-    }
-
-    static gba::icons::NativeIcon MediaIcon(const gba::WidgetNode& button) {
-        if (button.id == L"play-pause") {
-            return button.text == L"Pause" ? gba::icons::NativeIcon::Pause
-                                             : gba::icons::NativeIcon::Play;
-        }
-        gba::icons::NativeIcon icon{};
-        if (gba::icons::TryParseNativeIcon(button.glyph, icon) ||
-            gba::icons::TryParseNativeIcon(button.actionId, icon) ||
-            gba::icons::TryParseNativeIcon(button.id, icon)) {
-            return icon;
-        }
-        return gba::icons::NativeIcon::Connection;
-    }
-
-    void DrawMediaCircle(const gba::WidgetNode& button,
-                         const float centerX,
-                         const float centerY,
-                         const float radius,
-                         const bool primary = false) {
-        const D2D1_ELLIPSE ellipse{D2D1::Point2F(centerX, centerY), radius, radius};
-        renderTarget_->FillEllipse(ellipse, primary ? accentBrush_.Get()
-                                                    : backgroundBrush_.Get());
-        renderTarget_->DrawEllipse(
-            ellipse,
-            button.id == focusedElementId_ ? textBrush_.Get() : secondaryBrush_.Get(),
-            button.id == focusedElementId_ ? 2.5F : 0.75F);
-        (void)gba::icons::DrawNativeIcon(
-            renderTarget_.Get(), MediaIcon(button),
-            D2D1::RectF(centerX - radius * 0.46F, centerY - radius * 0.46F,
-                        centerX + radius * 0.46F, centerY + radius * 0.46F),
-            textBrush_.Get(), primary ? 2.4F : 1.8F);
-    }
-
-    void DrawAlbumArtwork(const D2D1_ROUNDED_RECT& destination) {
-        renderTarget_->FillRoundedRectangle(destination, backgroundBrush_.Get());
-        if (!artworkBitmap_ && imageCache_ && !artworkUrl_.empty()) {
-            (void)imageCache_->CreateBitmap(renderTarget_.Get(), artworkUrl_,
-                                            artworkBitmap_.ReleaseAndGetAddressOf());
-        }
-        if (artworkBitmap_) {
-            const D2D1_SIZE_F imageSize = artworkBitmap_->GetSize();
-            const float destinationWidth = destination.rect.right - destination.rect.left;
-            const float destinationHeight = destination.rect.bottom - destination.rect.top;
-            const float destinationAspect = destinationWidth / destinationHeight;
-            const float imageAspect = imageSize.width / imageSize.height;
-            D2D1_RECT_F source = D2D1::RectF(0, 0, imageSize.width, imageSize.height);
-            if (imageAspect > destinationAspect) {
-                const float croppedWidth = imageSize.height * destinationAspect;
-                const float offset = (imageSize.width - croppedWidth) / 2.0F;
-                source.left = offset;
-                source.right = offset + croppedWidth;
-            } else if (imageAspect < destinationAspect) {
-                const float croppedHeight = imageSize.width / destinationAspect;
-                const float offset = (imageSize.height - croppedHeight) / 2.0F;
-                source.top = offset;
-                source.bottom = offset + croppedHeight;
-            }
-
-            ComPtr<ID2D1RoundedRectangleGeometry> geometry;
-            ComPtr<ID2D1Layer> layer;
-            if (SUCCEEDED(d2dFactory_->CreateRoundedRectangleGeometry(
-                    destination, geometry.ReleaseAndGetAddressOf())) &&
-                SUCCEEDED(renderTarget_->CreateLayer(nullptr, layer.ReleaseAndGetAddressOf()))) {
-                D2D1_LAYER_PARAMETERS parameters{};
-                parameters.contentBounds = destination.rect;
-                parameters.geometricMask = geometry.Get();
-                parameters.maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
-                parameters.maskTransform = D2D1::Matrix3x2F::Identity();
-                parameters.opacity = 1.0F;
-                parameters.layerOptions = D2D1_LAYER_OPTIONS_NONE;
-                renderTarget_->PushLayer(parameters, layer.Get());
-                renderTarget_->DrawBitmap(artworkBitmap_.Get(), destination.rect, 1.0F,
-                                          D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, source);
-                renderTarget_->PopLayer();
-            } else {
-                renderTarget_->DrawBitmap(artworkBitmap_.Get(), destination.rect, 1.0F,
-                                          D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, source);
-            }
-        } else {
-            (void)gba::icons::DrawNativeIcon(
-                renderTarget_.Get(), gba::icons::NativeIcon::Music,
-                destination.rect, secondaryBrush_.Get(), 2.0F);
-        }
-        renderTarget_->DrawRoundedRectangle(destination, secondaryBrush_.Get(), 0.75F);
-    }
-
     static void CollectShortcutPrompts(
         const gba::WidgetNode& node,
         std::vector<std::pair<std::wstring, std::wstring>>& prompts) {
@@ -1563,9 +1757,10 @@ private:
     }
 
     std::wstring OpenWidgetPrompt() const {
-        if (!ytMusicSnapshot_) return L"A  Select";
+        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        if (!snapshot) return L"A  Select";
         std::vector<std::pair<std::wstring, std::wstring>> prompts;
-        CollectShortcutPrompts(ytMusicSnapshot_->root, prompts);
+        CollectShortcutPrompts(snapshot->root, prompts);
         const auto order = [](const std::wstring_view button) {
             if (button == L"x") return 0;
             if (button == L"leftBumper") return 1;
@@ -1604,184 +1799,51 @@ private:
                      secondaryBrush_.Get());
     }
 
-    void DrawYtMusicPanel(const float panelLeft,
-                          const float panelWidth,
-                          const float panelBottom) {
-        if (!ytMusicSnapshot_) {
-            DrawTextLine(L"YT MUSIC", hintFormat_.Get(),
-                         D2D1::RectF(panelLeft + 42, 48, panelLeft + panelWidth - 30, 76),
-                         textBrush_.Get());
-            renderTarget_->FillRoundedRectangle(
-                D2D1::RoundedRect(D2D1::RectF(panelLeft + 30, 47, panelLeft + 34, 72),
-                                  2.0F, 2.0F),
-                accentBrush_.Get());
-            DrawTextLine(lastActionMessage_.empty() ? L"Starting isolated widget…"
-                                                     : std::wstring_view(lastActionMessage_),
-                         bodyFormat_.Get(),
-                         D2D1::RectF(panelLeft + 30, 94,
-                                     panelLeft + panelWidth - 30, 150),
-                         secondaryBrush_.Get());
-            return;
-        }
-
-        const auto* status = YtNode(L"connection-status");
-        renderTarget_->FillRoundedRectangle(
-            D2D1::RoundedRect(D2D1::RectF(panelLeft + 30, 47, panelLeft + 34, 72),
-                              2.0F, 2.0F),
-            accentBrush_.Get());
-        DrawTextLine(L"YT MUSIC", hintFormat_.Get(),
-                     D2D1::RectF(panelLeft + 44, 48, panelLeft + panelWidth - 100, 76),
-                     textBrush_.Get());
-        if (status) {
-            const bool connected = YtNode(L"track-title") != nullptr;
-            renderTarget_->FillEllipse(
-                D2D1::Ellipse(D2D1::Point2F(panelLeft + 36, 91), 4.0F, 4.0F),
-                connected ? successBrush_.Get() : secondaryBrush_.Get());
-            DrawTextLine(status->text, hintFormat_.Get(),
-                         D2D1::RectF(panelLeft + 48, 78,
-                                     panelLeft + panelWidth - 100, 104),
-                         secondaryBrush_.Get());
-        }
-        const auto* trackTitle = YtNode(L"track-title");
-        if (trackTitle) {
-            const auto* artist = YtNode(L"track-artist");
-            const auto* album = YtNode(L"track-album");
-            const float artworkLeft = panelLeft + 34;
-            const float artworkTop = 128.0F;
-            const float artworkSize = 184.0F;
-            const D2D1_ROUNDED_RECT artwork{
-                D2D1::RectF(artworkLeft, artworkTop,
-                            artworkLeft + artworkSize, artworkTop + artworkSize),
-                14.0F, 14.0F};
-            DrawAlbumArtwork(artwork);
-
-            const float contentLeft = panelLeft + 238;
-            const float contentRight = panelLeft + panelWidth - 34;
-            DrawTextLine(trackTitle->text, titleFormat_.Get(),
-                         D2D1::RectF(contentLeft, 128, contentRight, 164),
-                         textBrush_.Get());
-            if (artist) {
-                DrawTextLine(artist->text, bodyFormat_.Get(),
-                             D2D1::RectF(contentLeft, 166, contentRight, 192),
-                             secondaryBrush_.Get());
-            }
-            if (album) {
-                DrawTextLine(album->text, hintFormat_.Get(),
-                             D2D1::RectF(contentLeft, 194, contentRight, 218),
-                             secondaryBrush_.Get());
-            }
-            if (const auto* progress = YtNode(L"track-progress");
-                progress && progress->hasProgress && progress->maximum > 0) {
-                const float progressLeft = contentLeft;
-                const float progressRight = contentRight;
-                const float ratio = static_cast<float>(
-                    std::clamp(progress->value / progress->maximum, 0.0, 1.0));
-                const D2D1_ROUNDED_RECT track{
-                    D2D1::RectF(progressLeft, 226, progressRight, 231), 2.5F, 2.5F};
-                const D2D1_ROUNDED_RECT fill{
-                    D2D1::RectF(progressLeft, 226,
-                                progressLeft + (progressRight - progressLeft) * ratio, 231),
-                    2.5F, 2.5F};
-                renderTarget_->FillRoundedRectangle(track, backgroundBrush_.Get());
-                renderTarget_->FillRoundedRectangle(fill, accentBrush_.Get());
-            }
-            if (const auto* position = YtNode(L"position-text")) {
-                DrawTextLine(position->text, hintFormat_.Get(),
-                             D2D1::RectF(contentLeft, 235, contentLeft + 80, 258),
-                             secondaryBrush_.Get());
-            }
-            if (const auto* duration = YtNode(L"duration-text")) {
-                DrawTextLine(duration->text, hintFormat_.Get(),
-                             D2D1::RectF(contentRight - 64, 235, contentRight, 258),
-                             secondaryBrush_.Get());
-            }
-
-            if (const auto* primary = YtNode(L"primary-actions")) {
-                float centerX = contentLeft + 30;
-                for (const auto& button : primary->children) {
-                    if (button.id == L"refresh") continue;
-                    const bool play = button.id == L"play-pause";
-                    DrawMediaCircle(button, centerX, 294, play ? 32.0F : 25.0F, play);
-                    centerX += play ? 76.0F : 66.0F;
-                }
-            }
-            if (const auto* secondary = YtNode(L"secondary-actions")) {
-                float centerX = contentLeft + 20;
-                for (const auto& button : secondary->children) {
-                    DrawMediaCircle(button, centerX, 362, 19.0F);
-                    centerX += 50.0F;
-                }
-            }
-            if (const auto* refresh = YtNode(L"refresh")) {
-                DrawMediaCircle(*refresh, contentLeft + 220, 362, 19.0F);
-            }
-        } else {
-            const auto* help = YtNode(L"connection-help");
-            const auto* loading = YtNode(L"loading-detail");
-            const auto* pairingCode = YtNode(L"pairing-code");
-            const auto* detail = help ? help : loading;
-            if (detail) {
-                DrawTextLine(detail->text, bodyFormat_.Get(),
-                             D2D1::RectF(panelLeft + 34, 130,
-                                         panelLeft + panelWidth - 34, 184),
-                             secondaryBrush_.Get());
-            }
-            if (pairingCode) {
-                DrawTextLine(pairingCode->text, titleFormat_.Get(),
-                             D2D1::RectF(panelLeft + 34, 188,
-                                         panelLeft + panelWidth - 34, 230),
-                             accentBrush_.Get());
-            }
-            DrawWidgetButtonRow(YtNode(L"connection-actions"), panelLeft + 34, 238,
-                                panelWidth - 68, 58);
-        }
-
-        renderTarget_->DrawLine(
-            D2D1::Point2F(panelLeft + 30, panelBottom - 54),
-            D2D1::Point2F(panelLeft + panelWidth - 30, panelBottom - 54),
-            secondaryBrush_.Get(), 0.5F);
-        const std::wstring prompt = OpenWidgetPrompt();
-        DrawTextLine(prompt, hintFormat_.Get(),
-                     D2D1::RectF(panelLeft + 30, panelBottom - 40,
-                                 panelLeft + panelWidth - 150, panelBottom - 12),
-                     secondaryBrush_.Get());
-        DrawTextLine(L"Guide  Close", hintFormat_.Get(),
-                     D2D1::RectF(panelLeft + panelWidth - 130, panelBottom - 40,
-                                 panelLeft + panelWidth - 24, panelBottom - 12),
-                     secondaryBrush_.Get());
-    }
-
     void DrawWidget(const float width, const float height) {
         const std::wstring_view widget = state_.activeWidget();
-        const float panelWidth = std::min(widget == L"yt-music" ? 880.0F : 720.0F, width - 72.0F);
+        const bool bridgeWidget = IsBridgeWidget(widget);
+        const float panelWidth = std::min(bridgeWidget ? 880.0F : 720.0F, width - 72.0F);
         const float panelLeft = (width - panelWidth) / 2.0F;
         const float panelBottom = height - 158.0F;
         const D2D1_ROUNDED_RECT panel{
             D2D1::RectF(panelLeft, 20.0F, panelLeft + panelWidth, panelBottom),
-            18.0F, 18.0F};
+            panelCornerRadius_, panelCornerRadius_};
         renderTarget_->FillRoundedRectangle(panel, cardBrush_.Get());
 
-        if (widget == L"yt-music") {
-            if (ytMusicSnapshot_ && declarativeRenderer_) {
+        if (bridgeWidget) {
+            const auto* snapshot = SnapshotFor(widget);
+            if (snapshot && declarativeRenderer_) {
                 const gba::declarative::Rect viewport{
                     panelLeft + 1.0F,
                     21.0F,
                     panelWidth - 2.0F,
                     panelBottom - 76.0F,
                 };
+                gba::DeclarativeRenderOptions options;
+                if (const auto& appearance = appearanceState_.current()) {
+                    options.accessibility.textScale =
+                        static_cast<float>(appearance->textScale);
+                    options.accessibility.reducedMotion =
+                        appearance->motion == gba::PlatformMotionPreference::Reduced;
+                }
                 auto result = declarativeRenderer_->Render(
-                    renderTarget_.Get(), *ytMusicSnapshot_, focusedElementId_, viewport);
+                    renderTarget_.Get(), *snapshot, focusedElementId_, viewport, options);
                 lastWidgetRenderResult_ = result;
-                if (ytMusicSnapshot_->sequence != lastRenderedSnapshotSequence_) {
+                const auto lastSequence = renderedSnapshotSequences_.find(std::wstring(widget));
+                if (lastSequence == renderedSnapshotSequences_.end() ||
+                    lastSequence->second != snapshot->sequence) {
                     for (const auto& diagnostic : result.diagnostics) {
                         AppendDiagnostic(
-                            L"Renderer " + diagnostic.code + L" [" + diagnostic.nodeId +
+                            L"Renderer " + std::wstring(widget) + L" " + diagnostic.code + L" [" + diagnostic.nodeId +
                             L"] " + diagnostic.message);
                     }
-                    lastRenderedSnapshotSequence_ = ytMusicSnapshot_->sequence;
+                    renderedSnapshotSequences_.insert_or_assign(
+                        std::wstring(widget), snapshot->sequence);
                 }
             } else {
-                DrawTextLine(L"Starting isolated YT Music widget…", bodyFormat_.Get(),
+                DrawTextLine(L"Starting isolated " + std::wstring(DisplayWidgetName(widget)) +
+                                 L" widget…",
+                             bodyFormat_.Get(),
                              D2D1::RectF(panelLeft + 30, 52,
                                          panelLeft + panelWidth - 30, 110),
                              secondaryBrush_.Get());
@@ -1821,6 +1883,7 @@ private:
     HWND window_{};
     HWND previousForeground_{};
     HWND backdropWindow_{};
+    HBRUSH backdropBrush_{};
     HWINEVENTHOOK foregroundHook_{};
     inline static OverlayApp* foregroundEventApp_{};
     std::wstring initializationError_;
@@ -1836,16 +1899,32 @@ private:
     ULONGLONG lastGuideDispatchAt_{};
     std::wstring focusedElementId_;
     gba::input::WidgetSurfaceFocusMemory focusMemory_;
-    std::optional<gba::WidgetSnapshot> ytMusicSnapshot_;
+    std::unordered_map<std::wstring, gba::WidgetSnapshot> widgetSnapshots_;
     gba::WidgetBridgeClient bridge_;
+    gba::PlatformAppearanceState appearanceState_;
+    gba::NativeRenderStyle canvasStyle_;
+    gba::NativeRenderStyle backdropStyle_;
+    gba::NativeRenderStyle panelStyle_;
+    gba::NativeRenderStyle trayStyle_;
+    gba::NativeRenderStyle trayItemStyle_;
+    gba::NativeRenderStyle trayItemSelectedStyle_;
+    gba::NativeRenderStyle trayItemFocusedStyle_;
+    gba::NativeRenderStyle trayItemSelectedFocusedStyle_;
+    gba::NativeRenderStyle titleStyle_;
+    gba::NativeRenderStyle bodyStyle_;
+    gba::NativeRenderStyle hintStyle_;
+    gba::NativeRenderStyle statusStyle_;
+    float panelCornerRadius_{18.0F};
+    float trayCornerRadius_{22.0F};
+    float trayItemCornerRadius_{16.0F};
+    float focusOutlineWidth_{2.0F};
     std::vector<gba::WidgetDescriptor> widgetDescriptors_;
     std::wstring lifecycleBridgeWidget_;
     std::optional<gba::WidgetLifecycleState> lifecycleBridgeState_;
     std::unique_ptr<gba::RemoteImageCache> imageCache_;
     std::unique_ptr<gba::DeclarativeRenderer> declarativeRenderer_;
-    std::wstring artworkUrl_;
     bool runtimeInitialized_{};
-    long long lastRenderedSnapshotSequence_{-1};
+    std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
 
     ComPtr<IGameInput> gameInput_;
@@ -1854,13 +1933,15 @@ private:
     ComPtr<ID2D1Factory> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
     ComPtr<ID2D1HwndRenderTarget> renderTarget_;
-    ComPtr<ID2D1Bitmap> artworkBitmap_;
     ComPtr<ID2D1SolidColorBrush> backgroundBrush_;
     ComPtr<ID2D1SolidColorBrush> cardBrush_;
     ComPtr<ID2D1SolidColorBrush> textBrush_;
     ComPtr<ID2D1SolidColorBrush> secondaryBrush_;
     ComPtr<ID2D1SolidColorBrush> accentBrush_;
     ComPtr<ID2D1SolidColorBrush> successBrush_;
+    ComPtr<ID2D1SolidColorBrush> trayItemBrush_;
+    ComPtr<ID2D1SolidColorBrush> selectedTextBrush_;
+    ComPtr<ID2D1SolidColorBrush> focusBrush_;
     ComPtr<IDWriteTextFormat> titleFormat_;
     ComPtr<IDWriteTextFormat> bodyFormat_;
     ComPtr<IDWriteTextFormat> hintFormat_;

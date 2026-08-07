@@ -5,8 +5,19 @@
       "id": "yt-music",
       "name": "YT Music",
       "instanceId": "yt-music.default",
+      "icon": "music",
       "workerExecutable": "runtime/YtMusic/YtMusicWidget.Worker.exe",
       "styleFile": "runtime/YtMusic/styles/default.gbss",
+      "workerArguments": [],
+      "quickActions": []
+    },
+    {
+      "id": "settings",
+      "name": "Settings",
+      "instanceId": "settings.default",
+      "icon": "settings",
+      "workerExecutable": "runtime/Settings/SettingsWidget.Worker.exe",
+      "styleFile": "runtime/Settings/styles/default.gbss",
       "workerArguments": [],
       "quickActions": []
     }

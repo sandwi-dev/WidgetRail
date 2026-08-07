@@ -19,6 +19,7 @@ public sealed record BridgeWidgetDescriptor
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string InstanceId { get; init; }
+    public required WidgetGlyph Icon { get; init; }
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
 }
 
@@ -27,18 +28,22 @@ internal sealed record ConfiguredWidget
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string InstanceId { get; init; }
+    public WidgetGlyph Icon { get; init; } = WidgetGlyph.Connection;
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
     [JsonIgnore]
     public GbssTheme? CompiledTheme { get; init; }
+    [JsonIgnore]
+    public GbssPackageResult StylePackage { get; init; } = new([], []);
 
     public BridgeWidgetDescriptor PublicDescriptor() => new()
     {
         Id = Id,
         Name = Name,
         InstanceId = InstanceId,
+        Icon = Icon,
         QuickActions = QuickActions,
     };
 }
@@ -107,7 +112,7 @@ public sealed class BridgeCatalog
             var executable = Path.GetFullPath(source.WorkerExecutable, directory);
             if (!File.Exists(executable))
                 throw new BridgeCatalogException($"Worker executable for '{source.Id}' does not exist.");
-            var theme = CompileTheme(source, directory);
+            var style = CompileTheme(source, directory);
             var quickActionIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var action in source.QuickActions)
             {
@@ -121,16 +126,17 @@ public sealed class BridgeCatalog
             if (!widgets.TryAdd(source.Id, source with
                 {
                     WorkerExecutable = executable,
-                    CompiledTheme = theme,
+                    CompiledTheme = style.Theme,
+                    StylePackage = style.Package,
                 }))
                 throw new BridgeCatalogException($"Widget ID '{source.Id}' is duplicated.");
         }
         return new BridgeCatalog(widgets);
     }
 
-    private static GbssTheme? CompileTheme(ConfiguredWidget source, string packageRoot)
+    private static CompiledWidgetStyle CompileTheme(ConfiguredWidget source, string packageRoot)
     {
-        if (source.StyleFile is null) return null;
+        if (source.StyleFile is null) return new(new GbssPackageResult([], []), null);
         if (!GbssPackageLoader.IsSafePackagePath(source.StyleFile))
             throw new BridgeCatalogException(
                 $"Widget '{source.Id}' styleFile must be a normalized package-relative .gbss path.");
@@ -138,7 +144,7 @@ public sealed class BridgeCatalog
             source.StyleFile,
             new GbssFileSourceProvider(packageRoot));
         var compiled = GbssThemeCompiler.Compile(package);
-        if (compiled.IsValid) return compiled.Theme!;
+        if (compiled.IsValid) return new(package, compiled.Theme!);
 
         var diagnostics = compiled.Diagnostics
             .Where(item => item.Severity == GbssDiagnosticSeverity.Error)
@@ -151,6 +157,8 @@ public sealed class BridgeCatalog
             : string.Join("; ", diagnostics);
         throw new BridgeCatalogException($"Widget '{source.Id}' style is invalid: {summary}");
     }
+
+    private sealed record CompiledWidgetStyle(GbssPackageResult Package, GbssTheme? Theme);
 
     private static string SafeDiagnostic(string value)
     {

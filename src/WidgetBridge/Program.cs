@@ -1,4 +1,5 @@
 using System.Globalization;
+using GameBarAlternative.PlatformSettings;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -14,13 +15,20 @@ internal static class Program
             var maximumBytes = OptionalInt(args, "--max-message-bytes",
                 BridgeProtocol.DefaultMaximumMessageBytes, 256, BridgeProtocol.AbsoluteMaximumMessageBytes);
             var catalog = BridgeCatalog.Load(catalogPath);
-            await using var server = new WidgetBridgeServer(pipeName, catalog, maximumBytes);
             using var shutdown = new CancellationTokenSource();
             Console.CancelKeyPress += (_, eventArgs) =>
             {
                 eventArgs.Cancel = true;
                 shutdown.Cancel();
             };
+            var settingsPaths = PlatformSettingsPaths.CreateDefault();
+            var settingsStore = new PlatformSettingsStore(settingsPaths);
+            await using var appearance = new PlatformAppearanceService(
+                settingsPaths,
+                new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
+            await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
+            await using var server = new WidgetBridgeServer(
+                pipeName, catalog, maximumBytes, appearance);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;
@@ -51,4 +59,3 @@ internal static class Program
         return value;
     }
 }
-

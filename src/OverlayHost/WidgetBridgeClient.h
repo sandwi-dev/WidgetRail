@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace gba {
@@ -24,7 +25,25 @@ struct WidgetDescriptor final {
     std::wstring id;
     std::wstring name;
     std::wstring instanceId;
+    std::wstring icon{L"connection"};
     std::vector<WidgetDescriptorQuickAction> quickActions;
+};
+
+/// Preserves the identity and arrival order of asynchronous widget
+/// invalidations while coalescing repeated IDs. The bound matches the maximum
+/// public bridge catalog size, preventing an untrusted peer from growing host
+/// memory without limit.
+class WidgetInvalidationQueue final {
+public:
+    static constexpr std::size_t MaximumWidgetIds = 256;
+
+    [[nodiscard]] bool Push(std::wstring widgetId);
+    [[nodiscard]] std::vector<std::wstring> Take() noexcept;
+    [[nodiscard]] std::size_t size() const noexcept { return queued_.size(); }
+
+private:
+    std::vector<std::wstring> queued_;
+    std::unordered_set<std::wstring> known_;
 };
 
 struct WidgetQuickAction final {
@@ -85,6 +104,43 @@ struct WidgetSnapshot final {
     WidgetNode root;
 };
 
+enum class PlatformMotionPreference { System, Full, Reduced };
+
+struct PlatformAppearance final {
+    long long revision{};
+    std::wstring themeId;
+    std::wstring themeVersion;
+    double interfaceScale{1.0};
+    double textScale{1.0};
+    double backdropOpacity{0.64};
+    PlatformMotionPreference motion{PlatformMotionPreference::System};
+    std::unordered_map<std::wstring, WidgetComputedStyle> shellStyles;
+};
+
+class PlatformAppearanceRevisionTracker final {
+public:
+    [[nodiscard]] bool Notify(long long revision) noexcept;
+    [[nodiscard]] std::optional<long long> Take() noexcept;
+    [[nodiscard]] const std::optional<long long>& pending() const noexcept { return pending_; }
+
+private:
+    std::optional<long long> pending_;
+};
+
+/// Atomically retains the last accepted appearance. Callers parse into a
+/// temporary value first, then publish; rejected or malformed updates cannot
+/// partially replace the currently rendered platform state.
+class PlatformAppearanceState final {
+public:
+    [[nodiscard]] bool Publish(PlatformAppearance appearance);
+    [[nodiscard]] const std::optional<PlatformAppearance>& current() const noexcept {
+        return current_;
+    }
+
+private:
+    std::optional<PlatformAppearance> current_;
+};
+
 class WidgetBridgeClient final {
 public:
     WidgetBridgeClient() = default;
@@ -96,6 +152,10 @@ public:
     void Stop() noexcept;
     /// Enumerates public widget descriptors without starting widget workers.
     [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
+    /// Retrieves immutable platform appearance without launching a widget worker.
+    [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance();
+    /// Coalesced latest revision announced by platform-appearance-changed events.
+    [[nodiscard]] std::optional<long long> TakePlatformAppearanceChangedRevision() noexcept;
     /// Sends the worker's explicit background, visible, or interactive state.
     [[nodiscard]] std::optional<bool> SetWidgetLifecycle(
         std::wstring_view widgetId,
@@ -113,7 +173,7 @@ public:
     [[nodiscard]] const std::wstring& lastError() const noexcept { return lastError_; }
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
-    [[nodiscard]] bool takeInvalidated() noexcept;
+    [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
 
 private:
     [[nodiscard]] bool Launch(const std::wstring& installationDirectory);
@@ -128,7 +188,8 @@ private:
     std::wstring pipeName_;
     std::wstring lastError_;
     long long nextRequestId_{};
-    bool invalidated_{};
+    WidgetInvalidationQueue invalidations_;
+    PlatformAppearanceRevisionTracker appearanceChanges_;
 };
 
 } // namespace gba
@@ -136,6 +197,9 @@ private:
 #ifdef GBA_WIDGET_BRIDGE_CLIENT_TESTING
 namespace gba::testing {
 [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
+    std::string_view payloadUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<PlatformAppearance> ParsePlatformAppearance(
     std::string_view payloadUtf8,
     std::wstring& error);
 }

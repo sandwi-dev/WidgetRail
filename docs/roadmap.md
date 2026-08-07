@@ -115,7 +115,6 @@ Developer mode is local and unsigned but remains isolated. Public distribution r
 - AppContainer/Win32 isolation and capability broker
 - Signed packages, atomic update, rollback, and crash-loop disable
 - Malicious/abusive widget test corpus
-- Audio sessions widget
 - Performance widget
 - Media controls
 - Recent apps/games
@@ -123,6 +122,60 @@ Developer mode is local and unsigned but remains isolated. Public distribution r
 - Discord proof after eligibility and production communications access are confirmed
 
 Every first-party widget contributes a focused SDK example and regression suite.
+
+### First-party system-control reference widgets
+
+Audio Mixer and Network Controls begin only after the generic declarative widget
+path, controller Settings/global-theme foundation, and brokered capability
+boundary work end to end. They must be ordinary first-party packages built on
+the public SDK—not special panels hard-coded into `OverlayHost`. Any primitive
+or broker API they need becomes documented, testable platform surface that
+community widgets can request under the same permission policy.
+
+**Audio Mixer** uses Windows Core Audio notifications and callbacks rather than
+a high-frequency polling loop. Its production scope is:
+
+- master/output volume and mute;
+- output-device discovery and switching;
+- per-application audio sessions with volume and mute;
+- microphone mute and level where the broker can expose them safely; and
+- up to three context-appropriate dashboard quick actions, such as master mute
+  and bounded volume down/up.
+
+The host broker owns OS handles, COM lifetime, device/session observation,
+permission policy, and sanitized identity. The widget receives bounded semantic
+models/events and invokes narrow commands; it never receives a raw endpoint,
+session, or microphone handle. It must demonstrate device/session arrival and
+removal, default-device changes, application churn, communication-device
+policy, and recovery without keeping Visible/Interactive polling alive in
+`Background`.
+
+**Network Controls** uses Windows WLAN/network change notifications rather than
+continuously polling adapters. Its initial production scope is:
+
+- Ethernet and Wi-Fi connection state;
+- current network and Wi-Fi signal quality;
+- controller selection among already saved Wi-Fi profiles; and
+- narrowly reviewed quick controls that cannot silently disclose credentials
+  or connect to an unreviewed network.
+
+Password entry, editing/creating Wi-Fi profiles, captive-portal interaction,
+and exposing stored network keys are explicitly outside the initial scope. The
+broker owns WLAN/network handles and returns sanitized state/events. Switching
+uses an existing saved profile only, requires clear focus/feedback, and must
+handle adapter removal, airplane/radio state, connection failure, and Ethernet
+priority without trapping controller focus.
+
+Exit criteria for both widgets:
+
+- the worker uses only published SDK and declared brokered capabilities;
+- the same package runs out of process through the generic catalog/bridge path;
+- dashboard quick actions and the open surface follow standard input scopes;
+- hidden/background CPU and wakeups are measured with no presentation polling;
+- capability denial, service/device loss, worker restart, and stale-event races
+  have deterministic controller-readable states; and
+- source, contract documentation, simulator fixtures, and regression tests are
+  suitable as production SDK examples.
 
 ## Phase 4: ecosystem
 
@@ -158,5 +211,12 @@ Every first-party widget contributes a focused SDK example and regression suite.
 4. Measure native rendering against the budgets.
 5. Prove one crashing out-of-process declarative widget.
 6. Review the evidence and accept or revise the proposed architecture.
+
+After the current prototype foundation, the product order is: finish generic
+widget rendering/catalog discovery; finish controller Settings and the global
+theme contract; establish capability consent/brokering and containment; then
+build Audio Mixer and Network Controls through those public surfaces. Do not
+use either widget to justify a private host API that external widgets cannot
+exercise.
 
 The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.

@@ -270,7 +270,9 @@ Planned tooling:
 - Resource-budget and responsiveness test harness
 - Accessibility and controller-only conformance suite
 - `gbar pack` creates a reproducible bundle and content manifest
-- First-party Audio and SDK Gallery widgets as reference projects
+- First-party Audio Mixer, Network Controls, and SDK Gallery widgets as
+  production reference projects; system integration remains behind public,
+  brokered capabilities rather than private host UI
 
 Developer mode permits unsigned local packages but keeps process isolation, displays a persistent warning, and disables automatic background activation.
 

@@ -2,7 +2,9 @@
 
 See the [declarative UI reference](declarative-ui.md) for node kinds, stable
 IDs, classes, and interaction state. See [troubleshooting](troubleshooting.md)
-for common validation and renderer-integration problems.
+for common validation and renderer-integration problems. The separate
+[settings and global themes](settings-and-themes.md) guide distinguishes this
+implemented widget-local language from the in-progress host-wide cascade.
 
 GBSS is the safe, renderer-neutral styling language for the overlay and host-rendered widgets. The production parser/model lives in `src/WidgetStyling`; the `gbar validate` command consumes the same library.
 
@@ -53,10 +55,25 @@ Untrusted input is bounded before publication: source bytes/characters, statemen
 
 GBSS never evaluates browser content. It rejects URLs and URI schemes, `expression`, `calc`, script/eval functions, JavaScript/VBScript, declaration-level imports, shader/native code, and unknown functions/properties. Images and fonts cannot be loaded by path or URL in this version; future assets must use a verified host asset broker.
 
-Diagnostics provide source, one-based line/column, severity, stable code, and a readable message. Parse and compile away from the render thread, then atomically publish only a valid `GbssTheme`. Keep the previous valid theme after an error. The host applies accessibility overrides after theme resolution, so GBSS cannot suppress focus visibility, text scaling, high contrast, or reduced motion.
+Diagnostics provide source, one-based line/column, severity, stable code, and a
+readable message. The compiler publishes a `GbssTheme` only for a valid result.
+The managed `PlatformSettings` foundation adds explicit platform, widget, and
+user layers; higher layer priority wins before specificity. Its explicit reload
+manager atomically publishes only a complete valid snapshot and retains the
+last valid revision on failure. The bridge now watches settings/theme files
+without polling, debounces changes, globally layers widget snapshots, and
+publishes bounded shell appearance revisions. The native host consumes those
+revisions and applies supported shell styles, interface scale, backdrop, and
+motion while retaining its last good value on failure. It also multiplies shell
+DirectWrite role sizes by platform text scale. The host applies supported
+accessibility policy after widget style resolution: bounded text scale adjusts
+generic widget font size/letter spacing and layout without compounding inherited
+`em` values. High contrast, other preferences, and the full 150% visual matrix
+remain incomplete.
 
 The current bridge response publishes complete computed `base` and `focused`
-maps for every node. The language parses `:pressed`, `:selected`, and
-`:disabled`, but end-to-end native publication/rendering of those additional
-state maps is still planned. Do not depend on them visually yet; semantic
+maps for every node. Snapshot `selected` and `disabled` state participates while
+computing both maps, so those rules can affect the current render. The language
+also parses `:pressed`, but there is no complete separate pressed/busy/dynamic
+state-map pipeline. Do not depend on transient pressed theming yet; semantic
 button state remains available to accessibility and controller routing.

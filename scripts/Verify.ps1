@@ -46,6 +46,15 @@ try {
     Invoke-Checked -Description 'Build and test shared GBSS engine' -Command {
         dotnet run --project 'tests\WidgetStyling.Tests\WidgetStyling.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test platform settings and themes' -Command {
+        dotnet run --project 'tests\PlatformSettings.Tests\PlatformSettings.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test first-party Settings widget' -Command {
+        dotnet run --project 'tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build first-party Settings isolated worker' -Command {
+        dotnet build 'src\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj' --configuration $Configuration --nologo
+    }
     Invoke-Checked -Description 'Build and test widget package catalog' -Command {
         dotnet run --project 'tests\WidgetCatalog.Tests\WidgetCatalog.Tests.csproj' --configuration $Configuration
     }

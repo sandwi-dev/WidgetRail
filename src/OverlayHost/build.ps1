@@ -141,6 +141,7 @@ if ($LASTEXITCODE -ne 0) {
 if (-not $SkipPackaging) {
     $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
     $ytMusicOutput = Join-Path $outputDirectory 'runtime\YtMusic'
+    $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
@@ -150,6 +151,31 @@ if (-not $SkipPackaging) {
         --configuration $Configuration --no-self-contained --nologo --output $ytMusicOutput
     if ($LASTEXITCODE -ne 0) {
         throw "YT Music worker publish failed with exit code $LASTEXITCODE."
+    }
+    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $settingsOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Settings worker publish failed with exit code $LASTEXITCODE."
+    }
+    $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
+    $settingsStylesOutput = Join-Path $settingsOutput 'styles'
+    $settingsPayloadOutput = Join-Path $settingsOutput 'payload'
+    New-Item -ItemType Directory -Force -Path $settingsStylesOutput, $settingsPayloadOutput | Out-Null
+    Copy-Item -LiteralPath (Join-Path $settingsProject 'manifest.json') `
+        -Destination (Join-Path $settingsOutput 'manifest.json') -Force
+    Copy-Item -LiteralPath (Join-Path $settingsProject 'styles\default.gbss') `
+        -Destination (Join-Path $settingsStylesOutput 'default.gbss') -Force
+    Copy-Item -LiteralPath (Join-Path $settingsOutput 'SettingsWidget.dll') `
+        -Destination (Join-Path $settingsPayloadOutput 'SettingsWidget.dll') -Force
+    foreach ($requiredSettingsFile in @(
+        'SettingsWidget.Worker.exe',
+        'manifest.json',
+        'styles\default.gbss',
+        'payload\SettingsWidget.dll'
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $settingsOutput $requiredSettingsFile))) {
+            throw "Settings deployment is missing $requiredSettingsFile."
+        }
     }
     Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
         -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force

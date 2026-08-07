@@ -93,6 +93,28 @@ int main() {
     Near(3, accessibleStyle.outlineWidthPx());
     assert((accessibleStyle.outlineColor() == NativeColor{1, 1, 0, 1}));
 
+    WidgetComputedStyle zoomedText{
+        {L"font-size", Length(20, L"px")},
+        {L"letter-spacing", Length(2, L"px")},
+    };
+    NativeAccessibilityPolicy textZoom;
+    textZoom.textScale = 1.5F;
+    const auto zoomedStyle = NativeStyleAdapter::Adapt(
+        zoomedText,
+        NativeStyleContext{1920, 1080, 800, 400, 16, 16, false},
+        textZoom);
+    Near(30, zoomedStyle.style.fontSizePx());
+    Near(3, zoomedStyle.style.letterSpacingPx());
+
+    NativeAccessibilityPolicy invalidTextZoom;
+    invalidTextZoom.textScale = std::numeric_limits<float>::infinity();
+    const auto safeTextZoom = NativeStyleAdapter::Adapt(
+        zoomedText,
+        NativeStyleContext{1920, 1080, 800, 400, 16, 16, false},
+        invalidTextZoom);
+    Near(20, safeTextZoom.style.fontSizePx());
+    assert(!safeTextZoom.diagnostics.empty());
+
     WidgetComputedStyle malformed{
         {L"width", {L"length", L"nanpx", std::numeric_limits<double>::quiet_NaN(), L"px"}},
         {L"padding", {L"lengthList", L"1px 2px 3px 4px 5px", std::nullopt, {}}},
@@ -108,6 +130,31 @@ int main() {
     Near(1, defensive.style.opacity());
     assert(defensive.style.fontFamily() == L"Segoe UI Variable Text");
     assert(defensive.diagnostics.size() >= 6);
+
+    // Platform shell roles use the same immutable adapter as widget nodes.
+    // Exercise the primitives consumed by OverlayHost so themes cannot bypass
+    // its bounds or accessibility policy.
+    WidgetComputedStyle shellPanel{
+        {L"background", {L"color", L"#18202bcc", std::nullopt, {}}},
+        {L"color", {L"color", L"#f4f7ff", std::nullopt, {}}},
+        {L"corner-radius", Length(18, L"px")},
+        {L"outline-width", Length(1.5, L"px")},
+        {L"outline-color", {L"color", L"#68a8ff", std::nullopt, {}}},
+        {L"font-size", Length(24, L"px")},
+        {L"font-weight", Number(L"integer", 650)},
+        {L"font-family", {L"fontFamily", L"Segoe UI Variable Display", std::nullopt, {}}},
+    };
+    const auto shellResult = NativeStyleAdapter::Adapt(
+        shellPanel, NativeStyleContext{1180, 700, 1180, 700, 16, 16, true});
+    assert(shellResult.diagnostics.empty());
+    Near(0x18 / 255.0F, shellResult.style.background()->red);
+    Near(0xcc / 255.0F, shellResult.style.background()->alpha);
+    Near(18, shellResult.style.cornerRadiusPx());
+    // Focused shell items inherit the host's minimum two-DIP focus ring.
+    Near(2.0F, shellResult.style.outlineWidthPx());
+    Near(24, shellResult.style.fontSizePx());
+    assert(shellResult.style.fontWeight() == 650);
+    assert(shellResult.style.fontFamily() == L"Segoe UI Variable Display");
 
     std::cout << "NativeStyleTests passed\n";
 }

@@ -15,6 +15,10 @@ guarantees that are available now.
   images, icons, state, invalidation, and protocol limits.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
   properties, imports, and diagnostics.
+- [Settings and global themes](settings-and-themes.md) — the controller Settings
+  widget, persisted appearance, versioned themes, live bridge/native cascade,
+  remaining accessibility preferences/visual evidence, and authoring
+  requirements.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
 
