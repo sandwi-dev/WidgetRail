@@ -251,20 +251,39 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             _stopping = false;
             Interlocked.Exchange(ref _failureReported, 0);
             var currentSession = Interlocked.Increment(ref _sessionId);
-            var pipeName = $"gba-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
-            _pipe = new NamedPipeServerStream(
-                pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
-                4096, 4096);
+            using var appContainer = _options.IsolationPolicy ==
+                WidgetWorkerIsolationPolicy.RequireAppContainer
+                    ? WindowsAppContainer.OpenOrCreate(_options.IsolationKey!)
+                    : null;
+            if (appContainer is not null)
+            {
+                var executableDirectory = Path.GetDirectoryName(
+                    Path.GetFullPath(_options.ExecutablePath))
+                    ?? throw new WidgetProcessException("Worker executable directory is unavailable.");
+                appContainer.GrantReadAndExecute(
+                    new[] { executableDirectory }.Concat(_options.ReadOnlyPaths));
+            }
+            var pipeSuffix = $"gba-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
+            var pipeName = pipeSuffix;
+            var serverPipeName = pipeName;
+            _pipe = appContainer is null
+                ? new NamedPipeServerStream(
+                    serverPipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
+                    4096, 4096)
+                : appContainer.CreatePipe(serverPipeName, 4096);
             _channel = new LengthPrefixedJsonChannel(_pipe, _options.MaximumMessageBytes);
             _sessionCancellation = new CancellationTokenSource();
 
             if (_options.CompanionSessionFactory is not null)
             {
-                _companion = _options.CompanionSessionFactory()
+                var companionContext = new WidgetProcessCompanionContext(
+                    _options.IsolationPolicy,
+                    _options.IsolationKey,
+                    appContainer?.Sid);
+                _companion = _options.CompanionSessionFactory(companionContext)
                     ?? throw new WidgetProcessException("Companion session factory returned null.");
-                ValidateCompanionArguments(_companion.WorkerArguments);
-                _companionTask = _companion.RunAsync(_sessionCancellation.Token);
+                ValidateCompanionArguments(_companion.WorkerArguments, companionContext);
             }
 
             var startInfo = new ProcessStartInfo(_options.ExecutablePath)
@@ -292,7 +311,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 var job = WindowsWorkerJob.Create(_options.MemoryLimitBytes);
                 try
                 {
-                    _process = job.StartProcess(startInfo);
+                    _process = job.StartProcess(startInfo, appContainer);
                     _windowsJob = job;
                 }
                 catch
@@ -306,6 +325,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 _process = Process.Start(startInfo)
                     ?? throw new WidgetProcessException("Worker process did not start.");
             }
+            if (_companion is not null)
+            {
+                _companion.BindWorkerProcess(_process.Id);
+                _companionTask = _companion.RunAsync(_sessionCancellation.Token);
+            }
             _process.EnableRaisingEvents = true;
             _process.Exited += (_, _) => OnProcessExited(currentSession);
             if (isRestart) Interlocked.Increment(ref _restartAttempts);
@@ -314,6 +338,10 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(_options.ConnectTimeout);
             await _pipe.WaitForConnectionAsync(timeout.Token).ConfigureAwait(false);
+            if (OperatingSystem.IsWindows())
+                WindowsAppContainer.VerifyPipeClientProcess(
+                    _pipe,
+                    _process?.Id ?? throw new WidgetProcessException("Worker process identity is unavailable."));
             var hello = await _channel.ReadAsync(timeout.Token).ConfigureAwait(false);
             if (hello.Type != MessageTypes.Hello || hello.RequestId != 0)
                 throw new WidgetProtocolViolationException("Worker handshake was malformed.");
@@ -340,12 +368,24 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            int? exitCode = null;
+            try
+            {
+                if (_process?.HasExited == true) exitCode = _process.ExitCode;
+            }
+            catch (InvalidOperationException)
+            {
+            }
             ReportFailure(exception is WidgetProtocolViolationException
                 ? WidgetFailureReason.ProtocolViolation
                 : WidgetFailureReason.ConnectionFailed, exception);
             TerminateWorker();
             await DisposeSessionAsync().ConfigureAwait(false);
-            throw new WidgetProcessException("Widget worker connection failed.", exception);
+            throw new WidgetProcessException(
+                exitCode is null
+                    ? "Widget worker connection failed."
+                    : $"Widget worker exited with code {exitCode} before connecting.",
+                exception);
         }
         finally
         {
@@ -512,13 +552,34 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
     }
 
-    private static void ValidateCompanionArguments(IReadOnlyList<string> arguments)
+    private static void ValidateCompanionArguments(
+        IReadOnlyList<string> arguments,
+        WidgetProcessCompanionContext context)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         if (arguments.Count > 32 || arguments.Any(argument =>
                 argument is null || argument.Length == 0 || argument.Length > 4096))
             throw new WidgetProcessException("Companion worker arguments are invalid.");
+        if (context.IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer) return;
+        var pipeIndex = -1;
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            if (!string.Equals(arguments[index], "--broker-pipe", StringComparison.Ordinal)) continue;
+            pipeIndex = index;
+            break;
+        }
+        if (pipeIndex < 0 || pipeIndex + 1 >= arguments.Count ||
+            string.IsNullOrWhiteSpace(context.AppContainerSid) ||
+            !IsPlainPipeName(arguments[pipeIndex + 1]))
+            throw new WidgetProcessException(
+                "An AppContainer worker companion must use a host-secured plain pipe name.");
     }
+
+    private static bool IsPlainPipeName(string value) =>
+        value.Length is > 0 and <= 200 &&
+        !value.Contains('\\') &&
+        !value.Contains('/') &&
+        !value.Any(char.IsControl);
 
     private static void ValidateHostState(WidgetLifecycleState state)
     {

@@ -216,8 +216,12 @@ internal sealed record WidgetWorkerLaunchArguments(
 
     private static void ValidatePipeName(string value, string label)
     {
+        const string localPrefix = "LOCAL\\";
+        var suffix = value.StartsWith(localPrefix, StringComparison.Ordinal)
+            ? value[localPrefix.Length..]
+            : value;
         if (string.IsNullOrWhiteSpace(value) || value.Length > 200 ||
-            value.Contains('\\') || value.Any(char.IsControl))
+            string.IsNullOrWhiteSpace(suffix) || suffix.Contains('\\') || value.Any(char.IsControl))
             throw new ArgumentException($"{label} pipe name is invalid.");
     }
 

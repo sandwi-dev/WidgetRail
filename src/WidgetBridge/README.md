@@ -97,9 +97,12 @@ publisher, instance, declarations, consent store, backend, random pipe, and
 nonce are bridge-owned. The runtime propagates only host lifecycle to its
 `BrokerPipeServer`; worker messages cannot promote broker lifecycle. The worker
 bootstrap authenticates the nonce/full identity and attaches typed
-`WidgetHostServices` before widget creation. The production bridge currently
-uses `SimulatedPlatformBrokerBackend`, not Core Audio or WLAN. See [widget
-capabilities](../../docs/capabilities.md).
+`WidgetHostServices` before widget creation. For installed/community workers,
+the companion pipe is additionally ACLed to the runtime's exact AppContainer
+SID, labeled for Low-integrity access, and bound to the exact started PID before
+accept. The production bridge composes the narrow real Core Audio and Windows
+network providers; deterministic tests use `SimulatedPlatformBrokerBackend`.
+See [widget capabilities](../../docs/capabilities.md).
 
 Asynchronous `widget-invalidated` and `widget-failed` events identify the widget
 by catalog ID. `platform-appearance-changed` instead contains only the newly
@@ -247,23 +250,39 @@ payloads through the descriptor.
 The JSON catalog above is trusted bundled installation state. At startup the
 bridge also discovers the current-user `WidgetCatalog` and joins enabled,
 host/architecture-compatible packages in persisted order. It assigns each a
-fixed trusted 64 MiB worker policy and the packaged `WidgetWorkerHost`; listing
-the catalog remains lazy and does not launch workers. Disabled packages stay
-inert. A malformed catalog falls back to bundled widgets, while a conflicting,
-tampered, incompatible, unsupported-capability, or invalid-GBSS installed
-package is skipped with a bounded warning. Supported required and optional
-manifest declarations are combined into the fixed broker channel declaration
-set; neither kind is auto-granted.
+fixed trusted 64 MiB worker policy, mandatory host-owned AppContainer identity,
+exact read-only package root, and the packaged `WidgetWorkerHost`; no manifest
+or worker message can request the trusted Job-only policy. Listing the catalog
+remains lazy and does not launch workers. Disabled packages stay inert. A
+malformed catalog falls back to bundled widgets, while a conflicting, tampered,
+incompatible, unsupported-capability, or invalid-GBSS installed package is
+skipped with a bounded warning. Supported required and optional manifest
+declarations are combined into the fixed broker channel declaration set;
+neither kind is auto-granted.
 
 `WidgetWorkerHost` loads the manifest entrypoint only from the immutable package
 root, rejects path escape/reparse points, requires a public concrete SDK
-`Widget` type, and resolves dependencies inside the package. It runs behind the
-same random-pipe protocol and pre-launch Job Object containment as first-party
-workers. The native host and bridge never load the widget assembly.
+`Widget` type, and resolves dependencies inside the package. Installed package
+workers run in a package-specific, capability-free Low-integrity AppContainer
+with a stripped environment, explicit read/execute runtime and package grants,
+and Job Object memory/process/UI/cleanup restrictions. Main and
+broker pipes verify the exact worker PID in addition to their protocol
+authentication. Isolation setup is fail-closed; there is no Job-only fallback.
+The native host and bridge never load the widget assembly.
 
-The installed catalog snapshot is read only at bridge startup, so an install,
-enable, or disable requires an overlay/bridge restart. This integration is not
-a marketplace or trust guarantee. Production still needs signatures/publisher
-verification, AppContainer-equivalent isolation, live catalog reload, broker
-security audit/history, and real provider backends. Typed transport and
-controller consent are implemented against the simulator.
+Win32k system-call disable is not active: testing that mitigation caused
+CoreCLR DLL initialization failure (`0xC0000142`). Job Object UI restrictions
+remain enabled.
+
+Trusted bundled Settings and YT Music entries temporarily remain Job-only
+because they require desktop-user resources not yet brokered. This exception is
+bundled host policy and cannot be introduced through catalog JSON or a package
+manifest.
+
+The bridge watches current-user catalog state and package changes without
+polling, publishes complete semantic revisions, preserves compatible workers,
+and retires workers whose identity, code, declarations, or isolation policy
+changes. Reload/list remains lazy. This integration is still not a marketplace
+or publisher-trust guarantee: production needs package signatures/revocation,
+CPU quotas, disk/profile quotas and cleanup, and a broker security audit/history
+surface.

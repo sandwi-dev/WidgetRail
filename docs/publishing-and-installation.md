@@ -288,9 +288,11 @@ Remote acquisition is deliberately smaller than a package manager:
   installer applies the archive, manifest, path, expansion, and immutable
   catalog checks documented in the [packaging contract](widget-packaging.md).
 
-These controls limit common downloader and archive attacks. They do not make
-remote widget code trustworthy or sandbox it. Review [security and
-trust](security-and-trust.md) before installing a third-party package.
+These controls limit common downloader and archive attacks. They do not prove a
+remote package's publisher or intent. Runtime AppContainer isolation is a
+separate mandatory execution boundary applied only if an installed/community
+worker is later launched. Review [security and trust](security-and-trust.md)
+before installing a third-party package.
 
 A direct URL is an explicit user-authorized network destination, not a
 host-curated allowlist. Literal-address checks reduce obvious local-network
@@ -346,13 +348,22 @@ The intended flow is explicitly **planned**:
    permissions, and revocation before the existing atomic installation.
 4. The user reviews permissions and enables the widget.
 5. The bridge resolves the installed version through the generic worker host;
-   the current lazy path and Job Object containment are retained under stronger
-   production isolation.
+   the current lazy path requires the package-specific capability-free
+   AppContainer, Job Object restrictions, and PID/nonce/identity-authenticated
+   main and broker pipes with no desktop-token fallback.
 
-Update checks, version removal/garbage collection, cross-process install
-locking, signature chains, and revocation are also planned. The implemented
-Settings and CLI pin/rollback flows deliberately do not remove immutable
-versions or discover updates automatically.
+Until publisher signing exists, the host gives every exact immutable unsigned
+version a derived authority identity. A newly selected update receives a new
+AppContainer profile and no inherited capability decisions, so Settings must
+review its grants separately. Rolling back restores only the identity and
+decisions previously associated with that exact installed version. This blocks
+silent unsigned-update authority inheritance but does not prove who published
+either version.
+
+Update checks, version removal/garbage collection, signature chains,
+revocation, CPU quotas, disk/profile quotas and cleanup, and an audit UI are
+also planned. The implemented Settings and CLI pin/rollback flows deliberately
+do not remove immutable versions or discover updates automatically.
 
 Read [security and trust](security-and-trust.md) before running a package you
 did not build yourself.

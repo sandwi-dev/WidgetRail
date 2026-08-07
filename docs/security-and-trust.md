@@ -1,7 +1,7 @@
 # Security and trust
 
-Status: strong validation and process-separation prototypes; untrusted public
-widgets are not yet supported safely
+Status: mandatory AppContainer isolation is implemented for installed/community
+workers; unsigned public distribution is not yet supported safely
 
 The platform uses defense in depth, but several production boundaries remain
 planned. A structurally valid package is not necessarily trustworthy.
@@ -18,13 +18,26 @@ planned. A structurally valid package is not necessarily trustworthy.
 - Native rendering uses semantic elements and a closed icon set; widgets
   cannot supply native handles, SVG, font glyphs, or arbitrary paths.
 - The native host never loads third-party managed assemblies.
-- Bridge and worker communication uses random local named pipes, strict
-  versioned envelopes, message ceilings, bounded waits, and failure events.
+- Bridge and worker communication uses random named pipes, strict versioned
+  envelopes, message ceilings, bounded waits, and failure events. Isolated
+  worker endpoints are single-client global pipes whose ACL names only the
+  desktop host and the exact AppContainer SID and whose mandatory label permits
+  Low-integrity access.
 - On Windows, each worker is created suspended, assigned to a per-worker Job
-  Object, and only then resumed. Trusted bridge policy applies a 16–256 MiB
-  aggregate job-memory ceiling, one-active-process limit, kill-on-close, and
-  die-on-unhandled-exception behavior. Timeout, restart, failure, and disposal
-  paths release the job and its process.
+  Object, and only then resumed. Trusted bridge policy applies a bounded job-
+  memory ceiling, one-active-process limit, kill-on-close, die-on-unhandled-
+  exception behavior, and the complete basic UI-restriction set. Timeout,
+  restart, failure, and disposal paths release the job and its process.
+- Every installed/community worker must start in a stable host-derived,
+  exact-version-specific, capability-free AppContainer at Low integrity. For
+  unsigned packages, the authority ID hashes the asserted publisher, package
+  ID, and immutable version, so another version receives a new profile and no
+  inherited broker consent. The launch
+  passes a small allowlisted environment, grants
+  read/execute only to the generic runtime and exact immutable package roots,
+  verifies the resulting token's SID/integrity/zero-capability shape before
+  resume, and has no desktop-token fallback. Failure to create or verify any
+  isolation component prevents the worker from running.
 - The managed capability broker has four closed versioned
   audio/network grants. It binds a session to package, publisher, and instance
   identity and rechecks the manifest declaration, durable consent decision,
@@ -34,7 +47,9 @@ planned. A structurally valid package is not necessarily trustworthy.
   Its nonce handshake binds the worker to bridge-selected identity,
   declarations, consent store, and backend. Widget code receives typed
   `HostServices` audio/network APIs; it cannot select a broker identity,
-  declaration, or provider through widget protocol messages.
+  declaration, or provider through widget protocol messages. The isolated main
+  and broker pipes additionally verify the connecting process ID before the
+  existing nonce/package/publisher/instance authentication proceeds.
 - Broker consent storage is strict, size/entry bounded, reparse-point rejecting,
   cross-process locked, and atomically replaced. Event subscriptions are
   bounded/coalescing. A coalesced cross-process file watcher reconciles changes;
@@ -84,9 +99,13 @@ The following are **not implemented as a complete public security boundary**:
 
 - publisher signatures, certificate validation, transparency, or revocation;
 - a public SDK/package signing service or curated marketplace;
-- AppContainer launch for community workers;
 - CPU-rate/time and broader resource quotas beyond the current Job Object
   memory/single-process/cleanup policy;
+- disk/profile size quotas, AppContainer profile garbage collection, and a
+  user-facing profile/storage-management surface;
+- Win32k system-call disable for managed workers; testing it caused CoreCLR DLL
+  initialization failure (`0xC0000142`), so Job Object UI restrictions remain
+  enabled but that stronger mitigation is not;
 - production hardening/hardware/privacy evidence for the narrow Core Audio and
   Windows network providers, and a security audit/history UI;
 - secure token brokering for third-party integrations;
@@ -94,11 +113,14 @@ The following are **not implemented as a complete public security boundary**:
 - a graphical/file-picker installer and safe automatic updates;
 - universal anti-cheat or controller-containment compatibility.
 
-The runtime's out-of-process worker and Job Object policy improve reliability
-and bound memory/process count. They do not prevent a normal desktop process
-from accessing the current user's files, network, or credentials. AppContainer
-or an equivalent least-privilege token boundary is still required before
-untrusted public widget binaries are safe.
+The runtime now prevents installed/community widgets from falling back to a
+normal desktop token. A community worker has a package-specific AppContainer
+SID, Low integrity, zero OS capability SIDs, no network capability, explicit
+read/execute grants for only its runtime/package inputs, a stripped launch
+environment, and the Job Object limits above. This materially
+reduces direct file, network, credential, process-spawn, and desktop/UI attack
+surface. It does not prove the package publisher or make arbitrary code safe in
+the broader software-supply-chain sense.
 
 The bridge discovers enabled packages from the current-user catalog, watches
 bounded catalog inputs without polling, and launches workers lazily through the
@@ -113,8 +135,17 @@ boundary. Catalog enablement has no signature or publisher proof. In-place
 package tampering is not made trustworthy by a watcher or semantic revision.
 Closed declared capabilities receive an authenticated broker channel, and the
 production bridge composes the narrow real Core Audio and Windows network
-backends. None of that is AppContainer isolation, publisher trust, a security
-audit, or proof across the hardware/privacy matrix.
+backends. The capability-free worker token cannot use those OS APIs directly;
+the trusted broker performs only declared, consented, lifecycle-valid closed
+operations. This is still not publisher trust, a security audit, CPU/disk quota
+coverage, profile cleanup, or proof across the hardware/privacy matrix.
+
+Trusted bundled workers are a temporary exception to the community policy.
+Settings and YT Music currently use the host-trusted Job-only launch because
+they need desktop-user resources not yet exposed through narrow brokers. That
+exception is selected by bundled host policy, never by a package manifest or
+worker argument. An installed/community package cannot opt out of AppContainer
+isolation.
 
 The managed theme catalog has strict manifests, version-pinned directories,
 package-relative GBSS imports, bounds, reparse/containment checks, and sanitized
@@ -164,13 +195,16 @@ Settings stores decisions by package, publisher, and capability; the channel
 also binds the concrete instance. Missing decisions fail closed, including for
 required capabilities, and no package is auto-granted.
 
-This permission system constrains access through the typed broker, not arbitrary
-desktop code. Without AppContainer or an equivalent restricted token, a
-malicious worker can access user-writable files, inspect its own process, or
-call Windows APIs directly. It may therefore bypass the broker or tamper with
-the current-user consent file. Do not treat the implemented UI/transport as a
-production sandbox for untrusted widgets. See [widget
-capabilities](capabilities.md) for the exact developer and transport contract.
+For installed/community workers, the capability-free AppContainer constrains
+direct desktop authority while this permission system controls the separate
+trusted broker. The container receives no network or other OS capability SID
+and cannot request one through its manifest, arguments, or protocol. Audio and
+network access therefore remains available only through the typed broker's
+declaration, durable consent, lifecycle, identity, and operation checks. This
+does not replace publisher signing/revocation, CPU and disk/profile quotas,
+profile cleanup, or an audit UI; do not treat unsigned public distribution as
+production-safe yet. See [widget capabilities](capabilities.md) for the exact
+developer and transport contract.
 
 ## Reporting security problems
 

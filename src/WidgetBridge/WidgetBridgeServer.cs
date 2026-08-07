@@ -229,6 +229,11 @@ public sealed class WidgetBridgeServer(
                 MaximumMessageBytes = _maximumMessageBytes,
                 MaximumRestartAttempts = 2,
                 MemoryLimitBytes = checked((long)configured.MemoryLimitMb * 1024 * 1024),
+                IsolationPolicy = configured.RequiresAppContainer
+                    ? WidgetWorkerIsolationPolicy.RequireAppContainer
+                    : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
+                IsolationKey = configured.IsolationKey,
+                ReadOnlyPaths = configured.ReadOnlyPaths,
                 CompanionSessionFactory = configured.DeclaredCapabilities.Count == 0
                     ? null
                     : CreateCompanionFactory(configured),
@@ -272,18 +277,20 @@ public sealed class WidgetBridgeServer(
         }
     }
 
-    private Func<IWidgetProcessCompanionSession> CreateCompanionFactory(ConfiguredWidget configured)
+    private Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>
+        CreateCompanionFactory(ConfiguredWidget configured)
     {
         if (_consentStore is null || _platformBackend is null)
             throw new BridgeProtocolException(
                 $"Widget '{configured.Id}' requires platform capabilities, but the broker is unavailable.");
-        return () => new BrokerWidgetProcessCompanion(
+        return context => new BrokerWidgetProcessCompanion(
             configured.PackageId,
             configured.PublisherId,
             configured.InstanceId,
             configured.DeclaredCapabilities,
             _consentStore,
-            _platformBackend);
+            _platformBackend,
+            context);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)

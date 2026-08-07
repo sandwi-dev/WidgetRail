@@ -42,6 +42,16 @@ internal sealed record ConfiguredWidget
     public string? StyleFile { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
     public IReadOnlyList<string> DeclaredCapabilities { get; init; } = [];
+    /// <summary>
+    /// Trusted host policy. This member is never read from catalog JSON or a
+    /// widget manifest; installed community packages are marked during merge.
+    /// </summary>
+    [JsonIgnore]
+    public bool RequiresAppContainer { get; init; }
+    [JsonIgnore]
+    public string? IsolationKey { get; init; }
+    [JsonIgnore]
+    public IReadOnlyList<string> ReadOnlyPaths { get; init; } = [];
     /// <summary>Trusted host policy; worker manifests and IPC cannot override it.</summary>
     public int MemoryLimitMb { get; init; } = 64;
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
@@ -210,6 +220,7 @@ public sealed class BridgeCatalog
                 break;
             }
             var manifest = widget.ActiveVersion.Manifest;
+            var authorityPublisherId = InstalledWidgetAuthority.PublisherId(manifest);
             if (!IsBridgeIdentifier(manifest.Id) || !IsBridgeLabel(manifest.Name))
             {
                 warnings.Add("An enabled installed widget had an ID or name outside bridge bounds and was ignored.");
@@ -272,7 +283,7 @@ public sealed class BridgeCatalog
             {
                 Id = manifest.Id,
                 PackageId = manifest.Id,
-                PublisherId = manifest.Publisher,
+                PublisherId = authorityPublisherId,
                 Name = manifest.Name,
                 InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
                 Icon = WidgetGlyph.Connection,
@@ -284,6 +295,9 @@ public sealed class BridgeCatalog
                     "--widget-type", manifest.Entrypoint.Type,
                 ],
                 DeclaredCapabilities = declaredCapabilities,
+                RequiresAppContainer = true,
+                IsolationKey = CommunityIsolationKey(authorityPublisherId, manifest.Id),
+                ReadOnlyPaths = [packageRoot],
                 StyleFile = styleFile,
                 // Community manifests describe expected usage but do not set
                 // enforcement policy. The trusted host owns this fixed cap.
@@ -307,6 +321,9 @@ public sealed class BridgeCatalog
             source.WorkerExecutable,
             .. source.WorkerArguments,
             .. source.DeclaredCapabilities,
+            source.RequiresAppContainer ? "appcontainer-required" : "host-trusted-job-only",
+            source.IsolationKey ?? string.Empty,
+            .. source.ReadOnlyPaths,
             source.MemoryLimitMb.ToString(System.Globalization.CultureInfo.InvariantCulture),
         ]);
         var catalogFingerprint = Fingerprint(
@@ -371,6 +388,9 @@ public sealed class BridgeCatalog
         }
         return Convert.ToHexString(hash.GetHashAndReset());
     }
+
+    private static string CommunityIsolationKey(string publisherId, string packageId) =>
+        $"community-v2\n{publisherId}\n{packageId}";
 
     private static CompiledWidgetStyle CompileTheme(ConfiguredWidget source, string packageRoot)
     {

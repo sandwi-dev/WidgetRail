@@ -25,6 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing entrypoint assemblies are rejected", MissingEntrypointIsRejected),
     ("Tampered installed directory identity is rejected", TamperedInstallIsRejected),
     ("Host compatibility is deterministic across API and architecture", HostCompatibility),
+    ("Unsigned authority is stable only for one exact package version", UnsignedAuthorityIsVersionBound),
 };
 
 var failures = new List<string>();
@@ -427,6 +428,30 @@ static Task HostCompatibility()
         manifest, new WidgetHostContext(2, "x64")).Code);
     Assert.Equal("unsupported_architecture", WidgetHostCompatibility.Evaluate(
         manifest, new WidgetHostContext(1, "arm64")).Code);
+    return Task.CompletedTask;
+}
+
+static Task UnsignedAuthorityIsVersionBound()
+{
+    var manifest = new WidgetManifest
+    {
+        Id = "dev.test.authority",
+        Publisher = "dev.test",
+        Name = "Authority",
+        Version = "1.0.0",
+        HostApi = new HostApiRange("1.0", 1),
+        Entrypoint = new WidgetEntrypoint("dotnet-worker", "payload/Widget.dll", "Example.Widget"),
+        Permissions = [],
+    };
+    var first = InstalledWidgetAuthority.PublisherId(manifest);
+    Assert.Equal(first, InstalledWidgetAuthority.PublisherId(manifest));
+    Assert.True(!string.Equals(
+            first,
+            InstalledWidgetAuthority.PublisherId(manifest with { Version = "2.0.0" }),
+            StringComparison.Ordinal),
+        "A different unsigned package version inherited the same authority identity.");
+    Assert.True(!string.Equals(first, manifest.Publisher, StringComparison.Ordinal),
+        "Unsigned authority trusted the self-asserted publisher label directly.");
     return Task.CompletedTask;
 }
 

@@ -3,8 +3,8 @@
 Status: integrated Phase 0 platform prototype, 2026-08-07
 
 This repository contains working native and managed components. It is not yet
-a production overlay, public plugin security boundary, end-user installer, or
-marketplace.
+a production overlay, signed public-distribution trust boundary, end-user
+installer, or marketplace.
 
 ## Implemented
 
@@ -50,25 +50,28 @@ deterministic rendered geometry as a fallback, without wraparound.
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network services, descriptors, DTOs, events, and errors.
-- `WidgetRuntime`: lazy out-of-process workers over random named pipes with
-  bounded framed JSON, explicit lifecycle transitions, per-start host-owned
-  companion sessions, timeouts, failure reporting, limited restart, and
-  pre-launch Windows Job Object containment. Public custom workers use
+- `WidgetRuntime`: lazy out-of-process workers over bounded framed JSON with
+  explicit lifecycle transitions, per-start host-owned companion sessions,
+  timeouts, failure reporting, and limited restart. Installed/community workers
+  require stable host-derived capability-free Low-integrity AppContainers,
+  stripped environments, explicit read/execute roots, PID-bound isolated
+  pipes, and pre-launch Job Object memory/process/UI/cleanup
+  containment. Public custom workers use
   `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
   optional broker before constructing the widget, attaches host services before
   creation, and owns cancellation and transport disposal.
 - `WidgetBridge`: current-user-only native sidecar pipe, trusted plus installed
   catalog discovery, no-poll last-good catalog monitoring/semantic revisions,
   compatible-worker preservation and changed-worker retirement, worker
-  forwarding, quick actions, controller input, identity/declaration-bound
-  broker companions, invalidation/failure events, no-poll platform-appearance
-  revisions, globally layered widget themes, bounded shell appearance, and
-  computed GBSS styles.
+  forwarding, quick actions, controller input, host-owned mandatory community
+  isolation selection, PID/identity/declaration-bound broker companions,
+  invalidation/failure events, no-poll platform-appearance revisions, globally
+  layered widget themes, bounded shell appearance, and computed GBSS styles.
 - `WidgetWorkerHost`: a packaged generic worker executable that loads one
   installed package's public concrete SDK `Widget` entrypoint and contained
-  dependencies, authenticates an optional broker channel, attaches typed host
-  services before creation, then serves the standard isolated snapshot/action/
-  lifecycle protocol.
+  dependencies inside the mandatory package AppContainer, authenticates an
+  optional broker channel, attaches typed host services before creation, then
+  serves the standard isolated snapshot/action/lifecycle protocol.
 - `WidgetStyling`: bounded GBSS parsing, safe package-relative imports,
   variables, explicit trusted cascade layers, typed allowlisted values, and
   diagnostics.
@@ -80,11 +83,12 @@ deterministic rendered geometry as a fallback, without wraparound.
   enablement, and pin-preserving order persistence. Enabled compatible packages
   join complete validated live bridge revisions and remain lazy until first use.
 - `PlatformBroker`: a version-1 audio-session/network capability foundation with
-  four closed grants, nonce/identity-bound named-pipe transport, manifest/
-  consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent
-  persistence, bounded/coalesced subscriptions, and a deterministic simulator.
-  It is connected to widget `HostServices`; the trusted bridge now composes the
-  real Windows audio and network backends.
+  four closed grants, SID/Low-label/PID-bound isolated endpoints plus nonce/
+  identity authentication, manifest/consent/lifecycle enforcement, strict
+  bounded DTOs/events, atomic consent persistence, bounded/coalesced
+  subscriptions, and a deterministic simulator. It is connected to widget
+  `HostServices`; the trusted bridge composes the real Windows audio and network
+  backends.
 - `WindowsAudioProvider`: an event-driven Core Audio backend for sanitized
   per-application sessions on the current default multimedia render endpoint.
   A dedicated MTA owns native objects; callbacks only enqueue coalesced refresh
@@ -103,8 +107,11 @@ deterministic rendered geometry as a fallback, without wraparound.
   acquisition requires SHA-256 pinning, reports the actual digest, and installs
   disabled pending explicit review.
 
-The first-party Settings, Audio Mixer, and Network Controls widgets and the
-Clock/YT Music samples are reference widgets. Settings is packaged and
+The first-party Settings, Audio Mixer, and Network Controls references and the
+Clock/YT Music samples exercise the public widget path. Audio Mixer and Network
+Controls are bounded integration slices for the larger controller-first Audio
+Control and Network Control roadmap items; their presence here does not mean
+those product widgets are complete or shipped. Settings is packaged and
 registered beside YT Music, renders through
 the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
@@ -120,9 +127,9 @@ The same public compatibility evaluator gates Bridge and Settings: details show
 host API/architectures and a bounded reason, incompatible enablement is blocked,
 and disable remains available for recovery.
 
-Audio Mixer is the implemented first-party integration reference. It is
-packaged and registered through the same catalog/bridge/worker path as the
-other widgets. Its widget code uses only the public typed audio service,
+The current Audio Mixer reference slice is packaged and registered through the
+same catalog/bridge/worker path as the other widgets. Its widget code uses only
+the public typed audio service,
 fetches once on activation, then
 reacts to provider events rather than polling. It offers controller session
 selection plus optimistic per-session volume/mute controls in Interactive and
@@ -130,9 +137,10 @@ renders explicit permission, lifecycle, empty, unavailable, and failure states.
 Broader hardware/churn coverage and end-to-end hidden/visible performance evidence
 remain open; this is not yet an end-user release claim.
 
-Network Controls is implemented as an out-of-process first-party SDK widget and
-worker with trusted catalog and Release-build packaging wiring. It requires the
-network read capability, makes saved-profile switching optional and
+The current Network Controls reference slice runs as an out-of-process
+first-party SDK widget and worker with trusted catalog and Release-build
+packaging wiring. It requires the network read capability, makes saved-profile
+switching optional and
 Interactive-only, opens its acknowledged status subscription before snapshots,
 and never polls. Dashboard LB/RB actions only change local profile selection;
 the open widget uses LB/RB selection plus X or focused A to request a switch.
@@ -279,8 +287,13 @@ The repository verification script builds and runs managed suites for the SDK,
 protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
 settings/themes, catalog, bridge, the generic worker host, broker, and Windows
 providers/reference widgets. The runtime covers suspended pre-containment
-launch, memory/process limits, kill-on-close, and restart cleanup. The current
-Settings Release suite passes 28/28, including paginated identity review,
+launch, memory/process/UI limits, kill-on-close, restart cleanup, and mandatory
+community AppContainer authority. Its focused Release harness passes 24/24;
+the isolation probe verifies distinct stable SIDs, Low integrity, zero
+capability SIDs, allowed package reads, denied package writes/host and other-
+profile reads/network, stripped secrets, private-profile write/isolation, and
+bounded cleanup. The current Settings Release suite passes 28/28, including
+paginated identity review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
@@ -289,14 +302,24 @@ schema-1 theme compatibility. CLI passes 35/35, including version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, catalog limits, immutable
-versions, and adversarial package cases. Catalog passes 20/20, including
+versions, and adversarial package cases. Catalog passes 21/21, including
 schema-1 state migration, exact active-version pins and disabled repair,
 linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
-pin-preserving reorder, and shared host-API/architecture evaluation. Bridge
-passes 22/22, including
-semantic catalog revisions/last-good/catch-up reload, atomic presentation
-metadata replacement, and compatible-worker reconciliation.
+pin-preserving reorder, shared host-API/architecture evaluation, and exact-
+version unsigned authority derivation. Bridge
+passes 22/22, including semantic catalog revisions/last-good/catch-up reload,
+atomic presentation metadata replacement, compatible-worker reconciliation,
+trusted built-in Job-only policy, and mandatory installed-package isolation
+metadata. PlatformBroker passes 22/22, including closed isolated-client SID/
+pipe scopes, nonce/full-identity authentication, bounded requests/events,
+consent/lifecycle gates, and revocation. An actual AppContainer-to-broker
+request integration also passes with the exact SID, Low-label global endpoint,
+expected PID, nonce, and widget identity checks in force.
+The generic worker-host suite passes 9/9, including that real typed broker
+request from an AppContainer worker.
+Pre-resume native fault injection and an installed package launched through the
+published Bridge/catalog layout remain explicit release-test gaps.
 Network Controls and its Windows provider retain their focused 13/13 and 17/17
 coverage for controller/focus, lifecycle/no-poll subscription ordering,
 privacy/explicit state, optimistic command reconciliation, opaque identity,
@@ -342,15 +365,22 @@ with C++ installed:
   bridge publishes accepted catalog changes live with last-good retention and
   safe worker reconciliation. Closed capability declarations are connected to
   the separate Settings consent flow.
-- Publisher signatures, AppContainer, CPU quotas, provider hardening, and the
-  security audit/history UI are not production-ready. The narrow Core Audio and
-  Windows network backends are implemented, but still need broader hardware/
-  privacy/churn and hidden-state performance evidence. Job Object containment
-  plus capability transport/consent are implemented but do not form a complete
-  untrusted-widget boundary.
+- Mandatory capability-free AppContainer isolation is implemented for every
+  installed/community worker, while trusted bundled Settings and YT Music
+  temporarily remain Job-only for desktop-user dependencies. Publisher
+  signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
+  hardening, and the security audit/history UI are not production-ready. The
+  narrow Core Audio and Windows network backends still need broader hardware/
+  privacy/churn and hidden-state performance evidence. Isolation plus
+  capability transport/consent does not establish a public publisher-trust
+  boundary.
+- Win32k system-call disable is not enabled for managed workers because the
+  tested mitigation caused CoreCLR DLL initialization failure (`0xC0000142`).
+  Job Object UI restrictions remain enabled.
 - Closed audio/network manifest permissions are enforced through the broker.
-  Resource requests and arbitrary direct desktop API/file/network access are
-  not constrained without the planned restricted worker token.
+  Community AppContainers have zero OS capabilities/network authority and no
+  general desktop token; direct resource access is limited to explicit
+  read/execute runtime/package grants. OS capability APIs remain brokered.
 - The CLI's DLL render command executes trusted development code in the CLI
   process; it is not a sandbox.
 - Universal controller suppression is unresolved for games using background
@@ -380,19 +410,18 @@ with C++ installed:
   and the physical combined 150% accessibility matrix are not. See [settings
   and global themes](settings-and-themes.md) and [theme packaging and
   distribution](theme-packaging.md).
-- Audio Mixer is the implemented first-party public-SDK example: its widget,
+- Audio Mixer is a bounded first-party public-SDK reference slice: its widget,
   package/catalog integration, and event-driven per-session Core Audio provider
-  exist, while broader hardware and performance evidence remain open. Its
-  **Audio Control** production roadmap adds supported output/default-role
-  selection and explicit-capability microphone mute/level only after provider,
-  privacy, and hardware review. Network Controls is the second implemented
-  integration: its real provider, widget, worker, catalog, and packaging hooks
-  exist and focused/packaged gates pass, while hardware/privacy/performance
-  gates remain open. Its **Network Control** production roadmap adds privacy-
-  gated identity/link details, bounded IP/gateway/DNS summaries, measured
-  throughput/latency/loss diagnostics, and reviewed recovery actions. Version 1
-  explicitly excludes password entry, profile creation, scans, radio controls,
-  and automatic current SSID/signal access. See
+  exist, while the controller-first **Audio Control** roadmap remains
+  incomplete. That roadmap adds supported output/default-role selection and
+  explicit-capability microphone mute/level only after provider, privacy,
+  hardware, and performance review. Network Controls is likewise a bounded
+  reference slice with provider, worker, catalog, controller, and packaging
+  evidence—not a completed **Network Control** product widget. Its roadmap adds
+  privacy-gated identity/link details, bounded IP/gateway/DNS summaries,
+  measured throughput/latency/loss diagnostics, and reviewed recovery actions.
+  Version 1 explicitly excludes password entry, profile creation, scans, radio
+  controls, and automatic current SSID/signal access. See
   [widget capabilities](capabilities.md) and [Windows provider
   architecture](windows-provider-architecture.md) and [Network Controls
   reference](network-controls.md).
@@ -417,8 +446,12 @@ and [troubleshooting](troubleshooting.md).
    comparable baselines, latency scenarios, and per-widget resource diagnostics.
 3. Add native graphical theme preview, package remove/update discovery, and
    `gbar dev` (Settings and CLI exact-version rollback are implemented).
-4. Implement signing/trust, crash quarantine, and AppContainer-equivalent
-   isolation before supporting untrusted community binaries.
-5. Continue Audio Mixer/Network Controls hardware evidence, then non-auth
-   Performance, general media, recent apps/games, and capture references.
+4. Implement publisher signing/revocation, crash quarantine, CPU and disk/
+   profile quotas/cleanup, and security audit UI before public community
+   distribution; migrate trusted built-ins as their desktop dependencies become
+   brokered.
+5. Advance the controller-first Audio Control and Network Control roadmap from
+   their bounded reference slices through hardware/privacy/performance gates,
+   then continue non-auth Performance, general media, recent apps/games, and
+   capture references.
 6. Run the documented controller/game/presentation/anti-cheat matrix.

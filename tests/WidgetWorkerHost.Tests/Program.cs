@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Loads a public package Widget entrypoint", () => Run(LoadsWidget)),
     ("Runs a package through the isolated worker protocol", RunsIsolatedWorker),
     ("Bootstrap authenticates capabilities before widget lifecycle creation", BrokerServicesPrecedeWidgetCreation),
+    ("AppContainer worker uses a PID-bound broker capability channel", AppContainerBrokerIsBound),
     ("Rejects entrypoint path escape", () => Run(RejectsPathEscape)),
     ("Rejects missing and non-Widget types", () => Run(RejectsInvalidTypes)),
     ("Rejects invalid assemblies without leaking paths", () => Run(RejectsInvalidAssembly)),
@@ -107,6 +108,52 @@ static async Task BrokerServicesPrecedeWidgetCreation()
     Assert.Equal("available", snapshot.Root.Text);
     await client.StopAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static async Task AppContainerBrokerIsBound()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temporary = new TemporaryDirectory();
+    const string instanceId = "worker-host.appcontainer-broker";
+    var identity = new BrokerWidgetIdentity("dev.test.isolated", "dev.test", instanceId);
+    var consent = new ConsentStore(temporary.Path);
+    await consent.SetDecisionAsync(
+        identity,
+        PlatformCapabilities.AudioSessionsReadV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAudioSessions([new("isolated-audio", "Isolated game", 0.5, false, true)]);
+
+    var root = Path.GetDirectoryName(typeof(WidgetAssemblyLoader).Assembly.Location)!;
+    var executable = Path.Combine(root, "WidgetWorkerHost.exe");
+    var assembly = typeof(AppContainerBrokerProbeWidget).Assembly.Location;
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = executable,
+        Arguments =
+        [
+            "--package-root", Path.GetDirectoryName(assembly)!,
+            "--widget-assembly", assembly,
+            "--widget-type", typeof(AppContainerBrokerProbeWidget).FullName!,
+        ],
+        WidgetInstanceId = instanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(8),
+        RequestTimeout = TimeSpan.FromSeconds(3),
+        MaximumRestartAttempts = 0,
+        MemoryLimitBytes = 96L * 1024 * 1024,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = "community-v1\ndev.test\ndev.test.isolated",
+        ReadOnlyPaths = [Path.GetDirectoryName(assembly)!],
+        CompanionSessionFactory = context => new IsolatedBrokerCompanion(
+            identity,
+            consent,
+            backend,
+            context),
+    });
+
+    var snapshot = await client.GetSnapshotAsync();
+    Assert.Equal("Isolated game", snapshot.Root.Text);
+    await client.StopAsync();
 }
 
 static Task Run(Action action)
@@ -261,6 +308,59 @@ file sealed class TemporaryDirectory : IDisposable
     public void Dispose() { try { Directory.Delete(Path, true); } catch (IOException) { } }
 }
 
+file sealed class IsolatedBrokerCompanion : IWidgetProcessCompanionSession
+{
+    private readonly BrokerPipeServer _server;
+
+    public IsolatedBrokerCompanion(
+        BrokerWidgetIdentity identity,
+        ConsentStore consent,
+        IPlatformBrokerBackend backend,
+        WidgetProcessCompanionContext context)
+    {
+        if (context.IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer ||
+            string.IsNullOrWhiteSpace(context.AppContainerSid))
+            throw new InvalidOperationException("The test broker requires an AppContainer SID.");
+        var pipeName = $"gba-worker-isolated-broker-{Guid.NewGuid():N}";
+        _server = new BrokerPipeServer(
+            pipeName,
+            identity,
+            [PlatformCapabilities.AudioSessionsReadV1],
+            consent,
+            backend,
+            new BrokerPipeTransportOptions
+            {
+                AcceptTimeout = TimeSpan.FromSeconds(8),
+                HandshakeTimeout = TimeSpan.FromSeconds(3),
+                RequestTimeout = TimeSpan.FromSeconds(2),
+            },
+            isolatedClientAppContainerSid: context.AppContainerSid);
+        _server.SetLifecycle(BrokerLifecycleState.Visible);
+        WorkerArguments =
+        [
+            "--broker-pipe", pipeName,
+            "--broker-package", identity.PackageId,
+            "--broker-publisher", identity.PublisherId,
+            "--broker-instance", identity.InstanceId,
+            "--broker-nonce", _server.ChannelNonce,
+        ];
+    }
+
+    public IReadOnlyList<string> WorkerArguments { get; }
+    public void BindWorkerProcess(int processId) =>
+        _server.BindExpectedIsolatedClientProcess(processId);
+    public Task RunAsync(CancellationToken cancellationToken) =>
+        _server.RunAsync(cancellationToken);
+    public Task SetLifecycleStateAsync(
+        WidgetLifecycleState state,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+    public ValueTask DisposeAsync() => _server.DisposeAsync();
+}
+
 file static class Assert
 {
     public static void True(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
@@ -289,4 +389,19 @@ public sealed class BootstrapCapabilityProbeWidget : Widget
     }
 
     public override WidgetView Render() => new(UI.Text(_state, "capability-state"));
+}
+
+public sealed class AppContainerBrokerProbeWidget : Widget
+{
+    private string _state = "not-created";
+
+    protected override async ValueTask OnCreatedAsync(CancellationToken widgetLifetime)
+    {
+        var sessions = await HostServices.Audio
+            .GetSessionsAsync(widgetLifetime)
+            .ConfigureAwait(false);
+        _state = sessions.Single().DisplayName;
+    }
+
+    public override WidgetView Render() => new(UI.Text(_state, "broker-result"));
 }

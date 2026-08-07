@@ -11,7 +11,7 @@ windows, draw arbitrary paths, inject into games, or ship browser UI.
 flowchart LR
     Controller["Controller"] --> Host["Native OverlayHost"]
     Host <-->|"bounded local IPC"| Bridge["Managed WidgetBridge"]
-    Bridge <-->|"one lazy worker connection"| Worker["Widget worker"]
+    Bridge <-->|"PID-bound authenticated IPC"| Worker["Widget worker<br/>AppContainer for installed/community packages"]
     Worker --> SDK["WidgetSdk + WidgetProtocol"]
     Bridge --> Styling["WidgetStyling / GBSS"]
     Worker <-->|"typed authenticated capability IPC"| Broker["PlatformBroker"]
@@ -26,9 +26,9 @@ flowchart LR
 | Component | Implemented responsibility |
 | --- | --- |
 | `src/OverlayHost` | Per-Monitor-V2 Win32/Direct2D panel/backdrop shell, active-monitor/work-area/DPI retargeting, responsive logical viewport, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, live catalog/appearance revisions, and generic reference-widget rendering. |
-| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, last-good no-poll catalog monitoring with semantic revisions, worker preservation/retirement, controller forwarding, capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
-| `src/WidgetRuntime` | Lazy worker process client/server, per-start host-owned companion sessions, random named pipes, bounded length-prefixed JSON, strict envelopes, lifecycle propagation, timeouts, crash reporting, limited restart, and pre-launch Windows Job Object memory/process/cleanup policy. |
-| `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies after containment, connects an optional authenticated broker client, attaches typed host services before creation, then serves the normal runtime protocol. |
+| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, last-good no-poll catalog monitoring with semantic revisions, trusted host selection of mandatory community AppContainer policy, worker preservation/retirement, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
+| `src/WidgetRuntime` | Lazy worker process client/server, stable host-derived AppContainer profiles for installed/community packages, explicit read/execute grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch Job Object memory/process/UI/cleanup policy. |
+| `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies inside the mandatory AppContainer, connects an authenticated broker client when declared, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network services/DTOs. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
@@ -102,9 +102,30 @@ are reported through the runtime and bridge.
 On Windows the runtime creates each worker suspended, assigns it to a dedicated
 Job Object, then resumes it. Trusted bridge catalog policy supplies a bounded
 memory ceiling; the job permits one active process and terminates the worker on
-job close. This contains process count, memory, and cleanup, but does not
-restrict the desktop worker's file/network/credential access or impose a CPU
-budget.
+job close, rejects unhandled-exception continuation, and applies the complete
+basic UI-restriction set.
+
+Installed/community workers additionally require a package-version-specific
+AppContainer. Until signing exists, the host hashes the asserted publisher,
+package ID, and exact immutable version into a separate unsigned authority ID;
+different versions cannot inherit profiles or consent. Before resume,
+the runtime grants its exact SID read/execute access to the generic executable
+and immutable package roots, creates a small allowlisted environment, and
+verifies the process is Low integrity with the expected
+AppContainer SID and zero capability SIDs. With no network capability, OS work
+continues through the trusted typed broker. Random global main and broker pipes
+ACL only the desktop host and that SID, allow Low-integrity access, verify the
+expected worker PID, and then perform protocol nonce/identity authentication.
+Any failure aborts startup; there is no desktop-token fallback.
+
+Trusted bundled Settings and YT Music workers remain a temporary Job-only host
+policy because they still require desktop-user resources. A package manifest
+or worker message cannot select that exception. Job memory containment is not
+a CPU quota, and AppContainer creation does not yet provide disk/profile size
+quotas, stale-profile cleanup, or a user-facing audit surface.
+Win32k system-call disable is not active because its test configuration caused
+CoreCLR DLL initialization failure (`0xC0000142`); the Job Object UI
+restrictions remain.
 
 The host sends an explicit stable lifecycle state through the bridge and
 runtime. In the current integration, a selected bridge card is `Visible`, its
@@ -190,13 +211,14 @@ then deterministic geometry from the last render.
   file-picker installer, automatic update discovery, version removal, or
   signature verification. Supported capability declarations receive the authenticated
   broker path; unknown IDs cause that package to be skipped.
-- Job Object memory/process-count/cleanup policy, typed capability IPC, consent
-  UI, and prompt fail-closed revocation are implemented and tested. Publisher
-  signatures/package revocation, AppContainer launch, CPU quotas, security
-  audit/history, and production hardening/evidence for the Windows providers
-  remain planned. The narrow Core Audio and network backends are implemented,
-  but the current pieces are not a
-  complete public-widget security boundary.
+- Mandatory capability-free AppContainer launch for installed/community
+  workers, Job Object memory/process/UI/cleanup policy, PID-bound typed
+  capability IPC, consent UI, and prompt fail-closed revocation are implemented
+  and tested. Publisher signatures/package revocation, CPU quotas, disk/profile
+  quotas and cleanup, security audit/history, migration of trusted built-ins,
+  and production hardening/evidence for the Windows providers remain planned.
+  The current pieces are therefore not a complete public-distribution trust
+  boundary.
 - The bundled bridge catalog remains trusted deployment configuration. The
   joined current-user catalog is not a marketplace feed or signed package
   index; enabling a package is not a publisher-trust guarantee.

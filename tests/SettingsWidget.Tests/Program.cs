@@ -578,6 +578,7 @@ static async Task GrantAndRevoke()
     var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
     WriteInstalledWidget(catalogRoot, "dev.test.audio", "dev.publisher.audio", "Audio",
         [PlatformCapabilities.AudioSessionsReadV1], []);
+    var authority = InstalledAuthority(catalogRoot, "dev.test.audio");
     var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
     var invalidations = 0;
     widget.Invalidated += (_, _) => invalidations++;
@@ -597,6 +598,9 @@ static async Task GrantAndRevoke()
     var beforeGrant = invalidations;
     await Action(widget, "capability.grant");
     Assert.Equal(ConsentDecision.Grant, await consent.GetDecisionAsync(
+        new("dev.test.audio", authority, "test"),
+        PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Equal((ConsentDecision?)null, await consent.GetDecisionAsync(
         new("dev.test.audio", "dev.publisher.audio", "test"),
         PlatformCapabilities.AudioSessionsReadV1));
     Assert.Contains("Granted", Text(Snapshot(widget).Root, "capability.state").Text!);
@@ -604,7 +608,7 @@ static async Task GrantAndRevoke()
 
     await Action(widget, "capability.deny");
     Assert.Equal(ConsentDecision.Deny, await consent.GetDecisionAsync(
-        new("dev.test.audio", "dev.publisher.audio", "test"),
+        new("dev.test.audio", authority, "test"),
         PlatformCapabilities.AudioSessionsReadV1));
     Assert.Contains("Denied", Text(Snapshot(widget).Root, "capability.state").Text!);
 }
@@ -617,6 +621,7 @@ static async Task PublisherIsolation()
     const string packageId = "dev.test.network";
     WriteInstalledWidget(catalogRoot, packageId, "dev.publisher.real", "Network",
         [PlatformCapabilities.NetworkReadV1], []);
+    var authority = InstalledAuthority(catalogRoot, packageId);
     await consent.SetDecisionAsync(new(packageId, "dev.publisher.impostor", "test"),
         PlatformCapabilities.NetworkReadV1, ConsentDecision.Grant);
     var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
@@ -627,7 +632,7 @@ static async Task PublisherIsolation()
     await Action(widget, "capability.select.0");
     await Action(widget, "capability.grant");
     Assert.Equal(ConsentDecision.Grant, await consent.GetDecisionAsync(
-        new(packageId, "dev.publisher.real", "test"), PlatformCapabilities.NetworkReadV1));
+        new(packageId, authority, "test"), PlatformCapabilities.NetworkReadV1));
     Assert.Equal(ConsentDecision.Grant, await consent.GetDecisionAsync(
         new(packageId, "dev.publisher.impostor", "test"), PlatformCapabilities.NetworkReadV1));
     Assert.Equal(2, (await consent.LoadAsync()).Entries.Count);
@@ -726,6 +731,17 @@ static async Task FirstPartyIsNotAutoGranted()
     await Action(widget, "open.permissions");
     await Action(widget, "permission.select.0");
     Assert.Contains("Not decided", Button(Snapshot(widget).Root, "capability.item.0").Text!);
+}
+
+static string InstalledAuthority(
+    string catalogRoot,
+    string packageId,
+    string version = "1.0.0")
+{
+    var manifestPath = Path.Combine(
+        catalogRoot, "packages", packageId, version, "manifest.json");
+    return InstalledWidgetAuthority.PublisherId(
+        ManifestJson.Deserialize(File.ReadAllBytes(manifestPath)));
 }
 
 static async Task BundledPermissionsAreDiscovered()

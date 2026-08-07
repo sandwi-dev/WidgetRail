@@ -270,7 +270,12 @@ public sealed class WidgetWorkerServer
 
     private static string ValidatePipeName(string value)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 200 || value.Contains('\\'))
+        const string localPrefix = "LOCAL\\";
+        var suffix = value.StartsWith(localPrefix, StringComparison.Ordinal)
+            ? value[localPrefix.Length..]
+            : value;
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 200 ||
+            string.IsNullOrWhiteSpace(suffix) || suffix.Contains('\\') || value.Any(char.IsControl))
             throw new ArgumentException("Pipe name is invalid.", nameof(value));
         return value;
     }

@@ -18,6 +18,7 @@ public sealed partial class SettingsWidget
     private sealed record PermissionPackage(
         string Id,
         string Publisher,
+        string AuthorityPublisher,
         string Name,
         IReadOnlyList<DeclaredCapability> Capabilities);
 
@@ -48,7 +49,8 @@ public sealed partial class SettingsWidget
             {
                 foreach (var manifest in DiscoverBundledManifests(_bundledWidgetRoot))
                 {
-                    var package = CreatePermissionPackage(manifest, ref unknownDeclarations);
+                    var package = CreatePermissionPackage(
+                        manifest, installed: false, ref unknownDeclarations);
                     if (package.Capabilities.Count != 0)
                         discovered.TryAdd(package.Id, package);
                 }
@@ -56,7 +58,8 @@ public sealed partial class SettingsWidget
             foreach (var widget in catalog.Widgets.Take(MaximumPermissionPackages))
             {
                 var manifest = widget.ActiveVersion.Manifest;
-                var package = CreatePermissionPackage(manifest, ref unknownDeclarations);
+                var package = CreatePermissionPackage(
+                    manifest, installed: true, ref unknownDeclarations);
                 if (package.Capabilities.Count != 0)
                     discovered.TryAdd(package.Id, package);
             }
@@ -110,7 +113,7 @@ public sealed partial class SettingsWidget
 
         var declaredKeys = packages
             .SelectMany(package => package.Capabilities.Select(capability =>
-                ConsentKey(package.Id, package.Publisher, capability.Id)))
+                ConsentKey(package.Id, package.AuthorityPublisher, capability.Id)))
             .ToHashSet(StringComparer.Ordinal);
         var hiddenConsentEntries = consent.Entries.Count(entry =>
             !declaredKeys.Contains(ConsentKey(
@@ -156,6 +159,7 @@ public sealed partial class SettingsWidget
 
     private static PermissionPackage CreatePermissionPackage(
         WidgetManifest manifest,
+        bool installed,
         ref int unknownDeclarations)
     {
         var capabilities = new List<DeclaredCapability>();
@@ -177,6 +181,9 @@ public sealed partial class SettingsWidget
         return new PermissionPackage(
             manifest.Id,
             manifest.Publisher,
+            installed
+                ? InstalledWidgetAuthority.PublisherId(manifest)
+                : manifest.Publisher,
             manifest.Name,
             capabilities.OrderByDescending(capability => capability.IsRequired)
                 .ThenBy(capability => capability.Id, StringComparer.Ordinal)
@@ -464,7 +471,7 @@ public sealed partial class SettingsWidget
                 index < 0 || index >= _permissionPackages.Count) return;
             var package = _permissionPackages[index];
             _selectedPackageId = package.Id;
-            _selectedPublisherId = package.Publisher;
+            _selectedPublisherId = package.AuthorityPublisher;
             _selectedCapabilityId = null;
             _capabilityPage = 0;
             _page = SettingsPage.PackageCapabilities;
@@ -510,16 +517,18 @@ public sealed partial class SettingsWidget
     }
 
     private PermissionPackage? SelectedPackageLocked() => _permissionPackages.FirstOrDefault(package =>
-        package.Id == _selectedPackageId && package.Publisher == _selectedPublisherId);
+        package.Id == _selectedPackageId &&
+        package.AuthorityPublisher == _selectedPublisherId);
 
     private static ConsentDecision? FindDecision(
         ConsentDocument consent, PermissionPackage package, string capabilityId) =>
         consent.Entries.FirstOrDefault(entry =>
-            entry.PackageId == package.Id && entry.PublisherId == package.Publisher &&
+            entry.PackageId == package.Id &&
+            entry.PublisherId == package.AuthorityPublisher &&
             entry.CapabilityId == capabilityId)?.Decision;
 
     private static BrokerWidgetIdentity ConsentIdentity(PermissionPackage package) =>
-        new(package.Id, package.Publisher, "settings-consent");
+        new(package.Id, package.AuthorityPublisher, "settings-consent");
 
     private static string ConsentKey(string packageId, string publisherId, string capabilityId) =>
         packageId + "\n" + publisherId + "\n" + capabilityId;

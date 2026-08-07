@@ -11,6 +11,7 @@ namespace GameBarAlternative.WidgetBridge;
 internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSession
 {
     private readonly BrokerPipeServer _server;
+    private readonly bool _isolated;
 
     public BrokerWidgetProcessCompanion(
         string packageId,
@@ -18,16 +19,23 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
         string instanceId,
         IReadOnlyList<string> declaredCapabilities,
         ConsentStore consentStore,
-        IPlatformBrokerBackend backend)
+        IPlatformBrokerBackend backend,
+        WidgetProcessCompanionContext context)
     {
+        ArgumentNullException.ThrowIfNull(context);
         var identity = new BrokerWidgetIdentity(packageId, publisherId, instanceId);
+        _isolated = context.IsolationPolicy == WidgetWorkerIsolationPolicy.RequireAppContainer;
+        if (_isolated && string.IsNullOrWhiteSpace(context.AppContainerSid))
+            throw new InvalidOperationException(
+                "An isolated widget broker requires the runtime AppContainer SID.");
         var pipeName = $"gba-broker-{Environment.ProcessId}-{Guid.NewGuid():N}";
         _server = new BrokerPipeServer(
             pipeName,
             identity,
             declaredCapabilities,
             consentStore,
-            backend);
+            backend,
+            isolatedClientAppContainerSid: context.AppContainerSid);
         WorkerArguments =
         [
             "--broker-pipe", pipeName,
@@ -39,6 +47,11 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
     }
 
     public IReadOnlyList<string> WorkerArguments { get; }
+
+    public void BindWorkerProcess(int processId)
+    {
+        if (_isolated) _server.BindExpectedIsolatedClientProcess(processId);
+    }
 
     public Task RunAsync(CancellationToken cancellationToken) =>
         _server.RunAsync(cancellationToken);

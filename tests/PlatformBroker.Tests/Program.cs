@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Consent revocation terminates subscriptions", RevocationTerminatesSubscriptions),
     ("Lifecycle gates read control and destroying states", LifecycleGatesOperations),
     ("Cancellation reaches the broker boundary", CancellationIsObserved),
+    ("Broker pipe scopes and isolated client SIDs are closed", BrokerPipeScopesAreClosed),
     ("Pipe framing rejects oversized payloads before allocation", PipeFramesAreBounded),
     ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
     ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
@@ -58,6 +59,31 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(!PlatformCapabilities.TryGet("system.full-access.v1", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.audio.sessions.read.v2", out _));
     return Task.CompletedTask;
+}
+
+static async Task BrokerPipeScopesAreClosed()
+{
+    BrokerPipeNames.Validate("gba-broker-test");
+    BrokerPipeNames.ValidateAppContainerSid("S-1-15-2-1-2-3-4-5-6-7");
+
+    Assert.Throws<ArgumentException>(() =>
+        BrokerPipeNames.Validate(@"LOCAL\nested\pipe"));
+    Assert.Throws<ArgumentException>(() => BrokerPipeNames.Validate("gba-broker\nested"));
+    Assert.Throws<ArgumentException>(() => BrokerPipeNames.Validate("gba-broker\ncontrol"));
+    Assert.Throws<ArgumentException>(() =>
+        BrokerPipeNames.ValidateAppContainerSid("S-1-5-21-1"));
+    Assert.Throws<ArgumentException>(() =>
+        BrokerPipeNames.ValidateAppContainerSid("S-1-15-2-1\\other"));
+
+    using var temporary = new TemporaryDirectory();
+    await using var isolated = new BrokerPipeServer(
+        $"gba-isolated-unbound-{Guid.NewGuid():N}",
+        Identity(),
+        [PlatformCapabilities.AudioSessionsReadV1],
+        new ConsentStore(temporary.Path),
+        new SimulatedPlatformBrokerBackend(),
+        isolatedClientAppContainerSid: "S-1-15-2-1-2-3-4-5-6-7");
+    await Assert.ThrowsAsync<InvalidOperationException>(() => isolated.RunAsync());
 }
 
 static async Task CompositeProviderDomainsAreSeparated()

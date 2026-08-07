@@ -168,6 +168,26 @@ Enablement is not capability consent. If the package declares a brokered
 service, review and grant it separately under Settings → Permissions &
 capabilities. Invalid catalog updates retain the last-good running catalog.
 
+On first use, every installed/community package is launched in a mandatory
+package-specific AppContainer selected by trusted host policy. It is Low
+integrity, has no OS capability SIDs or network access, receives a stripped
+environment, and can read/execute only the generic worker runtime and its exact
+immutable package root. Job Object policy limits memory, active processes,
+desktop UI access, and cleanup. A manifest or widget
+argument cannot opt into the temporary Job-only policy used by trusted bundled
+Settings and YT Music workers. If isolation or authenticated IPC cannot be
+established, the widget does not start; there is no desktop-token fallback.
+
+Author against the SDK boundary: do not depend on arbitrary user-profile paths,
+ambient environment secrets, direct sockets, raw Core Audio/WLAN calls, child
+processes, or desktop UI. Request only published `HostServices` capabilities
+and handle unavailable/denied states. The AppContainer profile may retain
+private OS-managed data, but it is not yet a portable storage API and currently
+has no platform disk quota or user-facing cleanup control.
+Win32k system-call disable is not active because it prevents CoreCLR from
+initializing in the tested configuration (`0xC0000142`); do not mistake Job UI
+restrictions for that stronger mitigation.
+
 Installed package versions are immutable and coexist. Before changing the
 active version, disable the widget. In Settings → Installed widgets, open the
 package, choose **Manage versions**, select the exact version, return to

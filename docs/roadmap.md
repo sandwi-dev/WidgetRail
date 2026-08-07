@@ -78,9 +78,12 @@ Exit criteria:
 - Worker failure never terminates or blocks the shell
 - Lazy cold start is acceptable or hidden by a cached snapshot
 - Job Object accounting and termination work (**initial memory, one-process,
-  pre-launch assignment, and kill-on-close policy implemented and tested**)
-- AppContainer communication is proven on the chosen minimum Windows versions
-- The initial trust/support policy for Windows 10 versus Windows 11 is explicit
+  pre-launch assignment, kill-on-close, and UI restrictions implemented and
+  tested**)
+- Mandatory capability-free AppContainer launch plus exact-SID/Low-label/PID-
+  bound main and broker communication is implemented and tested end to end
+- The supported Windows/version/architecture matrix and profile cleanup policy
+  are explicit before public distribution
 
 ## Phase 1: shell vertical slice
 
@@ -115,11 +118,16 @@ Developer mode is local and unsigned but remains isolated. Public distribution r
 
 ## Phase 3: security and useful first-party widgets
 
-- AppContainer/Win32 isolation and real provider security work (the typed v1
-  SDK, authenticated broker transport, controller consent, and simulator path
-  are implemented)
+- Finish isolation hardening/support work: installed/community AppContainer and
+  authenticated broker integration are implemented; Win32k-disable
+  compatibility, trusted-built-in migration, disk/profile quotas/cleanup, and
+  broader Windows evidence remain. Add pre-resume launcher fault injection and
+  a published-layout installed-catalog/AppContainer smoke before release
 - Signed packages, atomic update, rollback, and crash-loop disable
 - Malicious/abusive widget test corpus
+- Controller-first Audio Control widget, beginning with per-application mixing
+- Controller-first Network Control widget, beginning with connection state and
+  saved-network actions
 - Performance widget
 - Media controls
 - Recent apps/games
@@ -130,16 +138,17 @@ Every first-party widget contributes a focused SDK example and regression suite.
 
 ### First-party system-control reference widgets
 
-Implementation order: **Audio Mixer and Network Controls are implemented and
-packaged as the first two system-control references. Their automated Release
-gates pass; broader hardware/privacy/performance evidence remains open.** Both
-remain ordinary SDK widgets rather than privileged shell panels.
+**Audio Control** and **Network Control** are explicit first-party widget
+roadmap items. They occupy the same useful system-utility category as the Xbox
+Game Bar audio and network surfaces, but their interaction design is
+controller-first and belongs to this platform: dashboard summaries, focused
+open panels, predictable D-pad/analog navigation, widget-owned shortcuts, and
+clear busy/error/permission feedback. They are not privileged shell panels.
 
-The product roadmap names their production expansions **Audio Control** and
-**Network Control**. These are not two additional hidden shell features: they
-extend the existing packages and public broker contracts. “Implemented” below
-means the bounded version-1 integration exists; it does not mean the expanded
-scope or production-readiness evidence is complete.
+The repository has bounded Audio Mixer and Network Controls reference slices
+that validate parts of the SDK, broker, provider, packaging, and controller
+design. Those slices are evidence for the roadmap, not a claim that either
+full product widget below is implemented, shipped, or production-ready.
 
 The generic declarative path, controller Settings/global-theme foundation, and
 typed broker/consent path support both integrations. They remain behind their
@@ -149,29 +158,33 @@ packages built on the public SDK—not special panels hard-coded into
 testable platform surface that community widgets can request under the same
 permission policy.
 
-**Audio Mixer (implemented)** is packaged as the first system-control
-reference widget; broader hardware and performance evidence remains open. Its
-provider scope is deliberately narrow:
+**Audio Control roadmap** starts with a deliberately narrow Audio Mixer slice:
 
 - enumerate sanitized per-application audio sessions on the current default
   multimedia render endpoint;
 - observe session/default-endpoint changes through Core Audio callbacks;
 - set volume or mute for one opaque session while the widget is Interactive;
-  and
+- expose a compact dashboard summary and a controller-first session list where
+  focus, adjustment, mute, and error feedback remain unambiguous; and
 - publish bounded, coalesced session-change events without a timer polling
   loop.
 
-**Audio Control expansion (roadmapped atop Audio Mixer)** adds, in evidence-
-gated increments:
+Later Audio Control phases add, in evidence-gated increments:
 
 - controller-first output-device selection where a supported documented
   Windows setter is available;
-- the implemented per-session volume/mute surface, refined with broader device,
+- the per-session volume/mute surface, refined with broader device,
   communications, and application-churn coverage;
 - microphone mute and input level behind separate explicit capabilities;
 - default multimedia/communications-device visibility and, only where a
   supported setter exists, controlled selection; and
 - live device/session/default-role updates without a background polling loop.
+
+Audio phase dependencies are: declarative list/slider/toggle states and stable
+controller focus; typed read/control grants and Settings consent; an
+event-driven Core Audio provider; then hardware/churn/performance evidence.
+Output switching and microphone work additionally require supported Windows
+APIs, separate permissions, privacy review, and unmistakable device feedback.
 
 Endpoint master controls, output selection, microphone controls, and default
 communications-device changes are not implemented today. Each requires a
@@ -198,16 +211,18 @@ does not provide a system-default setter. Do not ship an undocumented
 supported API passes the spike, default-device switching leaves the initial
 scope.
 
-**Network Controls (implemented integration)** follows Audio Mixer. It uses
-Windows WLAN/network change notifications rather than continuously polling
-adapters. Its initial production scope is:
+**Network Control roadmap** follows the Audio Control foundation. Its first
+slice uses Windows WLAN/network change notifications rather than continuously
+polling adapters and targets:
 
 - Ethernet and Wi-Fi connection state;
 - coarse active transport and Wi-Fi adapter/service/radio availability;
 - current Wi-Fi identity and signal only after a future explicit Windows
   privacy-access flow passes review; otherwise a clear privacy-restricted
   state with those fields omitted;
-- controller selection among already saved Wi-Fi profiles; and
+- controller selection among already saved Wi-Fi profiles;
+- a compact dashboard summary plus a focused open panel with explicit
+  Connecting, Connected, Failed, permission, and unavailable states; and
 - dashboard LB/RB selection is local/read-only; no capability-backed network
   control runs while merely Visible. Any future dashboard connect control needs
   separate host-mediated authority and must not silently disclose credentials
@@ -232,7 +247,7 @@ documented API facts, threading/lifetime rules, privacy boundary, and simulator
 matrix, and the [Network Controls reference](network-controls.md) for the
 author-facing contract and completion evidence.
 
-**Network Control expansion (roadmapped atop Network Controls)** adds:
+Later Network Control phases add:
 
 - sanitized active-adapter state and Ethernet/Wi-Fi identity;
 - SSID and signal/link quality only through an explicit Windows privacy-access
@@ -243,6 +258,12 @@ author-facing contract and completion evidence.
   ownership, frequency bounds, cancellation, and visible resource cost; and
 - safe reconnect/renew/diagnostic actions only after capability and failure-
   recovery review.
+
+Network phase dependencies are: bounded status/profile models and controller
+focus; separate read and Interactive-only saved-profile-switch grants; the
+event-driven IP Helper/Native Wi-Fi provider; then Windows privacy decisions,
+hardware matrices, and measured diagnostic sampling. Identity/address details
+and recovery commands do not enter the public contract before those reviews.
 
 It does not initially include Wi-Fi password entry, profile creation/editing,
 stored-key access, captive-portal automation, arbitrary adapter configuration,
@@ -286,7 +307,7 @@ packages are the canonical templates for event-driven system-control widgets.
 | Guide conflict or unavailable system button | Critical | Controller/client matrix | GameInput callback, conflict onboarding, controller-only fallback |
 | Overlay not visible in true FSE | High | Presentation matrix | Do not support true FSE initially; no injection |
 | Native UI scope expands uncontrollably | High | Three-card implementation effort and accessibility audit | Small primitive set; renderer-independent widget protocol; compare WinUI only with data |
-| Community widget compromises user | Critical | AppContainer and broker abuse tests | No public executable widgets before isolation passes |
+| Community widget compromises user | Critical | AppContainer/broker abuse tests plus signing, quota, and audit evidence | Mandatory capability-free isolation is implemented; no public executable widgets before publisher trust and residual gates pass |
 | Worker model feels slow or heavy | High | Cold-start and working-set measurements | Lazy first launch, resident-Background measurement, explicit user lifecycle choices, resource labels |
 | GBSS updates break themes | Medium | Theme compatibility fixtures | Stable semantic selectors, typed allowlist, versioned tokens |
 | Discord rejects overlay use case | High for social only | Written eligibility/production access | Keep Discord as optional first-party integration, not a core dependency |
@@ -310,9 +331,10 @@ The current product order is:
    controller/game/presentation matrix;
 2. extend the bounded process sampler with ETW/PresentMon tooling and continue
    Audio Control/Network Control hardware/privacy/performance evidence;
-3. implement AppContainer-equivalent worker isolation, publisher signing,
-   automated recovery/crash quarantine, and malicious-widget tests before
-   expanding community distribution or shipping public binaries;
+3. complete publisher signing/revocation, CPU and disk/profile quotas/cleanup,
+   audit UI, automated recovery/crash quarantine, trusted-built-in isolation
+   migration, and malicious-widget tests before expanding community
+   distribution or shipping public binaries;
 4. add native graphical theme preview, package remove/update discovery, and
    `gbar dev` (Settings and CLI exact-version rollback are implemented); and
 5. continue non-auth first-party references: Performance/self-diagnostics,

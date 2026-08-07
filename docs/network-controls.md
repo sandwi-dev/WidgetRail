@@ -485,7 +485,12 @@ item 8 remains open:
    tested Windows/controller/network configuration.
 
 Passing this milestone does not make arbitrary downloaded widgets safe.
-Publisher signing, certificate/revocation infrastructure, AppContainer or an
-equivalent restricted-token boundary, CPU quotas, a graphical install/review
-flow, live catalog reload, and a security audit/history UI remain separate
-release gates. See [security and trust](security-and-trust.md).
+Mandatory capability-free AppContainer launch and the exact-SID/Low-label/PID-
+bound authenticated broker request path are implemented for installed/community
+workers. Publisher signing/certificate/revocation infrastructure, CPU quotas,
+disk/profile quotas and cleanup, a graphical/file-picker installer, safe
+automatic updates, and a security audit/history UI remain separate release
+gates. Win32k system-call disable is also not active because it prevents CoreCLR
+initialization in the tested configuration. Controller package/permission
+review and live catalog reload are already present; none of these establishes
+publisher trust. See [security and trust](security-and-trust.md).

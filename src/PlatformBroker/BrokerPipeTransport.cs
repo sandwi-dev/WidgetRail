@@ -188,6 +188,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private readonly BrokerWidgetIdentity _identity;
     private readonly HashSet<string> _declaredCapabilities;
     private readonly BrokerPipeTransportOptions _options;
+    private readonly string? _isolatedClientAppContainerSid;
     private readonly PlatformCapabilityBroker _broker;
     private readonly ConsentChangeMonitor _consentMonitor;
     private readonly CancellationTokenSource _lifetime = new();
@@ -198,6 +199,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private NamedPipeServerStream? _pipe;
     private BrokerPipeFrameChannel? _channel;
     private int _runStarted;
+    private int _expectedIsolatedClientProcessId;
     private long _taskId;
     private bool _disposed;
 
@@ -208,11 +210,13 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         ConsentStore consentStore,
         IPlatformBrokerBackend backend,
         BrokerPipeTransportOptions? options = null,
-        string? channelNonce = null)
+        string? channelNonce = null,
+        string? isolatedClientAppContainerSid = null)
     {
-        if (string.IsNullOrWhiteSpace(pipeName) || pipeName.Length > 200 || pipeName.Contains('\\'))
-            throw new ArgumentException("Broker pipe name is invalid.", nameof(pipeName));
+        BrokerPipeNames.Validate(pipeName);
+        BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
         _pipeName = pipeName;
+        _isolatedClientAppContainerSid = isolatedClientAppContainerSid;
         _identity = authenticatedIdentity ?? throw new ArgumentNullException(nameof(authenticatedIdentity));
         _identity.Validate();
         ArgumentNullException.ThrowIfNull(declaredCapabilities);
@@ -235,6 +239,26 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         new HashSet<string>(_declaredCapabilities, StringComparer.Ordinal);
 
     /// <summary>
+    /// Binds an AppContainer broker endpoint to the worker process created by
+    /// the trusted host. This must happen before <see cref="RunAsync"/>.
+    /// </summary>
+    public void BindExpectedIsolatedClientProcess(int processId)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_isolatedClientAppContainerSid is null)
+            throw new InvalidOperationException(
+                "Only an isolated broker endpoint accepts a worker process binding.");
+        if (processId <= 0) throw new ArgumentOutOfRangeException(nameof(processId));
+        if (Volatile.Read(ref _runStarted) != 0 ||
+            Interlocked.CompareExchange(
+                ref _expectedIsolatedClientProcessId,
+                processId,
+                0) != 0)
+            throw new InvalidOperationException(
+                "The isolated broker worker process is already bound or running.");
+    }
+
+    /// <summary>
     /// Host-owned lifecycle gate. The connected worker cannot elevate its own
     /// capability access by sending transport messages.
     /// </summary>
@@ -247,23 +271,26 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        var expectedIsolatedClientProcessId =
+            Volatile.Read(ref _expectedIsolatedClientProcessId);
+        if (_isolatedClientAppContainerSid is not null &&
+            expectedIsolatedClientProcessId <= 0)
+            throw new InvalidOperationException(
+                "An isolated broker endpoint requires an expected worker process before it runs.");
         if (Interlocked.Exchange(ref _runStarted, 1) != 0)
             throw new InvalidOperationException("A broker pipe server accepts exactly one client.");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, _lifetime.Token);
-        _pipe = new NamedPipeServerStream(
-            _pipeName,
-            PipeDirection.InOut,
-            1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
-            4096,
-            4096);
+        _pipe = BrokerPipeNames.CreateServer(_pipeName, _isolatedClientAppContainerSid);
         using (var accept = CancellationTokenSource.CreateLinkedTokenSource(linked.Token))
         {
             accept.CancelAfter(_options.AcceptTimeout);
             await _pipe.WaitForConnectionAsync(accept.Token).ConfigureAwait(false);
         }
+        if (_isolatedClientAppContainerSid is not null)
+            WindowsIsolatedPipeFactory.VerifyClientProcess(
+                _pipe,
+                expectedIsolatedClientProcessId);
         _channel = new BrokerPipeFrameChannel(_pipe, _options.MaximumFrameBytes);
         await HandshakeAsync(linked.Token).ConfigureAwait(false);
 
@@ -591,8 +618,7 @@ public sealed class BrokerPipeClient : IAsyncDisposable
         string channelNonce,
         BrokerPipeTransportOptions? options = null)
     {
-        if (string.IsNullOrWhiteSpace(pipeName) || pipeName.Length > 200 || pipeName.Contains('\\'))
-            throw new ArgumentException("Broker pipe name is invalid.", nameof(pipeName));
+        BrokerPipeNames.Validate(pipeName);
         _pipeName = pipeName;
         _identity = identity ?? throw new ArgumentNullException(nameof(identity));
         _identity.Validate();
@@ -605,8 +631,8 @@ public sealed class BrokerPipeClient : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_pipe is not null) throw new InvalidOperationException("Broker client is already connected.");
-        _pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        _pipe = new NamedPipeClientStream(
+            ".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         timeout.CancelAfter(_options.AcceptTimeout);
         await _pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);

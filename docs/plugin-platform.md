@@ -17,11 +17,24 @@ This is less visually unconstrained than giving every widget a browser or native
 
 ### Built-in modules
 
-Trusted, signed, and shipped with the host. They may run in-process for efficiency but implement the public widget interfaces. Privileged OS and service integrations remain behind internal providers.
+Trusted and shipped with the host. They implement the public widget interfaces;
+bundled Settings and YT Music temporarily run out of process under the trusted
+Job-only policy because they need desktop-user resources not yet brokered.
+Privileged OS and service integrations remain behind internal providers.
 
 ### Community executable widgets
 
-Run lazily in a dedicated `WidgetRunner` process per package. The process boundary provides crash isolation; AppContainer/Win32 app isolation and capability brokering provide the security boundary. A Job Object accounts for and limits the process tree.
+Run lazily in a dedicated generic worker process per package. Every installed/
+community worker requires a stable host-derived package AppContainer at Low
+integrity with zero capability SIDs/network authority, explicit read/execute
+runtime/package grants, a stripped environment, and no trusted-token fallback.
+A Job Object limits memory and active process count, applies UI
+restrictions, and kills the worker on close. Direct OS capability work remains
+in the authenticated trusted broker.
+
+Win32k system-call disable is an explicit residual rather than an implemented
+control: the tested mitigation caused CoreCLR DLL initialization failure
+(`0xC0000142`).
 
 ### Declarative-only packages
 
@@ -129,10 +142,12 @@ the v1 decision that tooling and documentation must target.
 
 Pipe requirements:
 
-- Random per-launch name and nonce handshake
-- Explicit ACL restricted to the current logon/session and expected AppContainer identity
-- Local-only namespace; deny network access
-- Mutual protocol and package identity validation
+- Random per-launch global name and single-client endpoint
+- Explicit ACL naming only the desktop host and exact AppContainer SID, plus a
+  Low mandatory label and remote-client rejection
+- Exact started-PID verification before protocol processing
+- Runtime hello validation and broker nonce/package/publisher/instance
+  authentication after the OS identity checks
 - Maximum frame size, string length, collection size, image size, and message rate
 - Deadlines and cancellation for every request
 - Strict JSON member/casing validation; unknown or duplicate members fail the
@@ -301,7 +316,9 @@ Remaining tooling:
 - native graphical theme preview plus package remove/update discovery; and
 - an SDK Gallery widget covering the complete public primitive/state matrix.
 
-Developer mode permits unsigned local packages but keeps process isolation, displays a persistent warning, and disables automatic background activation.
+A future `gbar dev` mode may permit unsigned local packages only while retaining
+the same mandatory isolation, displaying a persistent warning, and disabling
+automatic background activation.
 
 ## Versioning and distribution
 
@@ -314,10 +331,12 @@ Developer mode permits unsigned local packages but keeps process isolation, disp
 - Persist an exact active-version pin and retain installed older versions for
   CLI rollback; a missing pin fails closed
 - Production executable packages require publisher identity and tamper-evident signing
-- Start with local sideloading; add a curated catalog only after security and rollback are proven
+- Start with local sideloading; add a curated catalog only after publisher
+  trust/revocation, resource quotas, auditability, and rollback are proven
 - A future catalog can link to Microsoft Store or WinGet packages rather than becoming an immediate hosting/payment platform
 
-Signing proves publisher identity and integrity, not safety. Sandboxing and permissions remain mandatory.
+Signing proves publisher identity and integrity, not safety. Mandatory
+AppContainer isolation and broker permissions remain independent requirements.
 
 ## Explicitly rejected initial designs
 
@@ -331,10 +350,12 @@ Signing proves publisher identity and integrity, not safety. Sandboxing and perm
 
 ## Open questions for prototypes
 
-1. Can AppContainer workers communicate through the selected named-pipe setup on every supported Windows version?
-2. What worker cold-start latency is achievable with a framework-dependent .NET runtime?
-3. Is a cached widget tree sufficient to make on-demand workers feel instantaneous?
-4. Which UI primitives cover the first-party widgets without encouraging bespoke escape hatches?
-5. Can a first-party module use the same public contract in-process without divergent behavior?
-6. Should Windows 10 allow only trusted executable plugins if Windows 11 isolation is materially stronger?
-7. Which permissions can be safely brokered without elevating the host?
+1. What worker cold-start latency does profile creation/lookup and AppContainer
+   launch add across the supported Windows matrix?
+2. Is a cached widget tree sufficient to make on-demand workers feel instantaneous?
+3. Which UI primitives cover the first-party widgets without encouraging bespoke escape hatches?
+4. Which remaining trusted built-in dependencies should become brokered so
+   Settings and YT Music can move from Job-only to AppContainer policy?
+5. Which additional permissions can be safely brokered without elevating the host?
+6. What disk/profile quotas, stale-profile cleanup, and user controls are
+   required before public distribution?

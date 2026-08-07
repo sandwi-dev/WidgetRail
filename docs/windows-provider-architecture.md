@@ -251,6 +251,10 @@ on the owner thread. No provider timer runs while the system is unchanged.
   capability covers access to the microphone audio feed, and users can revoke
   sensitive-resource access. See
   [app capability declarations](https://learn.microsoft.com/en-us/windows/uwp/packaging/app-capability-declarations).
+- Community widget AppContainers deliberately receive zero Windows capability
+  SIDs, including no network/microphone authority. The trusted broker process,
+  not the widget worker, owns the provider APIs and returns only the narrow
+  declared/consented/lifecycle-valid typed results.
 - WLAN operations can return `ERROR_ACCESS_DENIED`; all-user saved profiles
   require execute access. Current Wi-Fi identity/scan surfaces are also subject
   to Windows location consent, and MSM notifications require `wiFiControl`.
@@ -312,22 +316,28 @@ request/result/event contracts, nonce/identity-bound pipe transport, a closed
 capability vocabulary, manifest/consent/lifecycle checks, controller grant/
 deny/revoke UI, sanitized DTO validation, durable consent storage, coalesced
 subscriptions, and an initial simulator. Windows workers also have pre-launch
-Job Object containment with a trusted memory ceiling, one-process limit, and
-kill-on-close cleanup. The audio implementation adds a lazy, event-driven Core
-Audio session backend on top of those pieces; this is still not a complete
-hostile-code sandbox or production-support claim.
+Job Object containment with a trusted memory ceiling, one-process limit, UI
+restrictions, and kill-on-close cleanup. Installed/community workers require a
+capability-free Low-integrity AppContainer and exact-SID/Low-label/PID-bound
+broker endpoint in addition to nonce/full-identity authentication. The audio
+implementation adds a lazy, event-driven Core Audio session backend on top of
+those pieces; publisher trust and production-support evidence remain separate.
 
 Both providers remain deliberately limited prototypes while these production
 gates are open:
 
 1. stale-revision command rules and a security audit/history surface;
-2. production provider identity and stronger community-worker isolation,
-   including the AppContainer decision;
+2. publisher signing/revocation, CPU and disk/profile quotas/cleanup, and
+   broader AppContainer/broker abuse evidence;
 3. the full denial/churn/race simulator matrix above;
 4. opt-in Windows hardware tests and hidden/background wakeup measurements;
 5. a public supported output-routing decision; and
 6. privacy review proving that raw OS identifiers and secrets cannot cross the
    broker.
+
+Win32k system-call disable is not an active mitigation because its tested
+configuration prevented CoreCLR DLL initialization (`0xC0000142`); Job Object
+UI restrictions remain enabled.
 
 Audio Mixer and Network Controls are implemented first-party integration
 references that exercise the real Core Audio and network backends. They do not

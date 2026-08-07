@@ -89,6 +89,8 @@ static Task CatalogMemoryPolicyIsTrusted()
     using var valid = TemporaryCatalog.Create(memoryLimitMb: 48);
     var configured = BridgeCatalog.Load(valid.Path).GetConfigured("test-widget");
     Assert.Equal(48, configured.MemoryLimitMb);
+    Assert.True(!configured.RequiresAppContainer,
+        "Trusted built-in catalog workers must remain explicitly host-owned.");
     using var tooSmall = TemporaryCatalog.Create(memoryLimitMb: 15);
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(tooSmall.Path));
     using var tooLarge = TemporaryCatalog.Create(memoryLimitMb: 257);
@@ -169,9 +171,25 @@ static async Task InstalledWidgetsJoinCatalog()
     Assert.SequenceEqual(["test-widget", "dev.example.enabled"],
         load.Catalog.Widgets.Select(widget => widget.Id));
     var installed = load.Catalog.GetConfigured("dev.example.enabled");
+    var installedManifest = (await catalog.DiscoverAsync()).Widgets
+        .Single(widget => widget.Id == "dev.example.enabled")
+        .ActiveVersion.Manifest;
     Assert.Equal(64, installed.MemoryLimitMb);
     Assert.Equal(Environment.ProcessPath, installed.WorkerExecutable);
     Assert.Equal("styles/default.gbss", installed.StyleFile);
+    Assert.True(installed.RequiresAppContainer,
+        "Installed community workers must require AppContainer isolation.");
+    Assert.True(!string.IsNullOrWhiteSpace(installed.IsolationKey),
+        "Installed community workers need a stable host-owned isolation identity.");
+    Assert.Equal(
+        InstalledWidgetAuthority.PublisherId(installedManifest),
+        installed.PublisherId);
+    Assert.True(!string.Equals(
+            installedManifest.Publisher,
+            installed.PublisherId,
+            StringComparison.Ordinal),
+        "Installed authority trusted the manifest publisher label directly.");
+    Assert.SequenceEqual([installed.WorkerArguments[1]], installed.ReadOnlyPaths);
     Assert.SequenceEqual(
         ["--package-root", installed.WorkerArguments[1], "--widget-assembly",
          installed.WorkerArguments[3], "--widget-type", "Example.EnabledWidget"],

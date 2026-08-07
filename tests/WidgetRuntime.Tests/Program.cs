@@ -1,6 +1,10 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using Microsoft.Win32.SafeHandles;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
@@ -22,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
     ("Windows Job Object kill-on-close cleans up its process", WindowsJobCleansUpProcess),
     ("Windows worker Job Object allows only one active process", WindowsJobIsSingleProcess),
+    ("Community workers have package-specific AppContainer authority", AppContainerIsolation),
     ("Lifecycle callbacks and lifetime tokens follow exact transition order", LifecycleContract),
     ("Runtime-owned lifecycle states cannot be host targets", InvalidLifecycleTargets),
     ("Widget activation transitions are idempotent and cancel their lifetime", ActivationTransitions),
@@ -69,7 +74,14 @@ static async Task<int> RunWorkerAsync(string[] arguments)
 
     Widget widget = arguments.Contains("--hanging-destroy", StringComparer.Ordinal)
         ? new HangingDestroyWidget()
-        : new TestWidget();
+        : arguments.Contains("--isolation-probe", StringComparer.Ordinal)
+            ? new IsolationProbeWidget(
+                RequiredValue(arguments, "--probe-readable-path"),
+                RequiredValue(arguments, "--probe-denied-path"),
+                OptionalValue(arguments, "--probe-other-profile-path"),
+                int.Parse(RequiredValue(arguments, "--probe-network-port"), CultureInfo.InvariantCulture),
+                RequiredValue(arguments, "--probe-secret-name"))
+            : new TestWidget();
     await new WidgetWorkerServer(widget, instance, pipe, maximumBytes).RunAsync();
     return 0;
 }
@@ -193,6 +205,130 @@ static async Task WindowsJobIsSingleProcess()
         job.Terminate();
         await first.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
     }
+}
+
+static async Task AppContainerIsolation()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temp = new TemporaryDirectory();
+    var packageA = Path.Combine(temp.Path, "package-a");
+    var packageB = Path.Combine(temp.Path, "package-b");
+    Directory.CreateDirectory(packageA);
+    Directory.CreateDirectory(packageB);
+    var readableA = Path.Combine(packageA, "payload.txt");
+    var readableB = Path.Combine(packageB, "payload.txt");
+    var privateUserFile = Path.Combine(temp.Path, "host-private.txt");
+    await File.WriteAllTextAsync(readableA, "package-a");
+    await File.WriteAllTextAsync(readableB, "package-b");
+    await File.WriteAllTextAsync(privateUserFile, "host-private");
+
+    const string secretName = "GBA_ISOLATION_TEST_SECRET";
+    var priorSecret = Environment.GetEnvironmentVariable(secretName);
+    Environment.SetEnvironmentVariable(secretName, "must-not-cross-token-boundary");
+    var listener = new TcpListener(IPAddress.Loopback, 0);
+    listener.Start();
+    var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+    try
+    {
+        using var firstProfile = WindowsAppContainer.OpenOrCreate("publisher-a/package-a");
+        var firstProfilePrivate = Path.Combine(firstProfile.ProfilePath, "host-seeded-private.txt");
+        await File.WriteAllTextAsync(firstProfilePrivate, "package-a-private");
+        await using var first = CreateIsolatedClient(
+            "publisher-a/package-a",
+            packageA,
+            readableA,
+            privateUserFile,
+            null,
+            port,
+            secretName);
+        var firstSnapshot = await first.GetSnapshotAsync();
+        AssertIsolationProbe(firstSnapshot, "package-a");
+        var firstSid = Find(firstSnapshot.Root, "probe-sid").Text;
+        Assert.Equal(firstProfile.Sid, firstSid);
+        Assert.True(!string.IsNullOrWhiteSpace(Find(firstSnapshot.Root, "probe-profile-file").Text),
+            "First AppContainer did not report its writable virtualized profile file.");
+
+        await using var second = CreateIsolatedClient(
+            "publisher-b/package-b",
+            packageB,
+            readableB,
+            readableA,
+            firstProfilePrivate,
+            port,
+            secretName);
+        var secondSnapshot = await second.GetSnapshotAsync();
+        AssertIsolationProbe(secondSnapshot, "package-b");
+        Assert.Equal("denied", Find(secondSnapshot.Root, "probe-other-profile-read").Text);
+        var secondSid = Find(secondSnapshot.Root, "probe-sid").Text;
+        Assert.True(!string.Equals(firstSid, secondSid, StringComparison.Ordinal),
+            "Distinct host isolation keys produced the same AppContainer SID.");
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await Task.WhenAll(first.StopAsync(), second.StopAsync());
+        stopwatch.Stop();
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(3.5),
+            $"Isolated worker cleanup was not bounded ({stopwatch.Elapsed.TotalMilliseconds:0} ms).");
+        Assert.True(!first.IsRunning && !second.IsRunning,
+            "Bounded cleanup left an isolated worker running.");
+    }
+    finally
+    {
+        listener.Stop();
+        Environment.SetEnvironmentVariable(secretName, priorSecret);
+    }
+}
+
+static void AssertIsolationProbe(ViewSnapshot snapshot, string expectedContent)
+{
+    Assert.Equal("true", Find(snapshot.Root, "probe-appcontainer").Text);
+    Assert.Equal("low", Find(snapshot.Root, "probe-integrity").Text);
+    Assert.Equal("0", Find(snapshot.Root, "probe-capabilities").Text);
+    Assert.Equal(expectedContent, Find(snapshot.Root, "probe-readable").Text);
+    Assert.Equal("denied", Find(snapshot.Root, "probe-package-write").Text);
+    Assert.Equal("denied", Find(snapshot.Root, "probe-denied-read").Text);
+    Assert.Equal("denied", Find(snapshot.Root, "probe-network").Text);
+    Assert.Equal("absent", Find(snapshot.Root, "probe-secret").Text);
+    Assert.True(!string.IsNullOrWhiteSpace(Find(snapshot.Root, "probe-sid").Text),
+        "Worker did not report its AppContainer SID.");
+}
+
+static WidgetProcessClient CreateIsolatedClient(
+    string isolationKey,
+    string packageRoot,
+    string readablePath,
+    string deniedPath,
+    string? otherProfilePath,
+    int networkPort,
+    string secretName)
+{
+    var arguments = new List<string>
+    {
+        "--isolation-probe",
+        "--probe-readable-path", readablePath,
+        "--probe-denied-path", deniedPath,
+        "--probe-network-port", networkPort.ToString(CultureInfo.InvariantCulture),
+        "--probe-secret-name", secretName,
+    };
+    if (otherProfilePath is not null)
+    {
+        arguments.Add("--probe-other-profile-path");
+        arguments.Add(otherProfilePath);
+    }
+    var executable = Environment.ProcessPath
+        ?? throw new InvalidOperationException("Test process path is unavailable.");
+    return new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = executable,
+        Arguments = arguments,
+        WidgetInstanceId = "runtime.test",
+        ConnectTimeout = TimeSpan.FromSeconds(8),
+        RequestTimeout = TimeSpan.FromSeconds(3),
+        MaximumMessageBytes = 64 * 1024,
+        MemoryLimitBytes = 96L * 1024 * 1024,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = isolationKey,
+        ReadOnlyPaths = [packageRoot],
+    });
 }
 
 static System.Diagnostics.ProcessStartInfo SleeperStartInfo()
@@ -548,7 +684,7 @@ static async Task CompanionSessionsFollowWorkerRestarts()
     var sessions = new List<ProbeCompanionSession>();
     var client = CreateClient(
         maximumRestarts: 1,
-        companionFactory: () =>
+        companionFactory: _ =>
         {
             var session = new ProbeCompanionSession();
             sessions.Add(session);
@@ -558,6 +694,9 @@ static async Task CompanionSessionsFollowWorkerRestarts()
     {
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
         Assert.Equal(1, sessions.Count);
+        Assert.Equal(client.WorkerProcessId, sessions[0].BoundWorkerProcessId);
+        Assert.True(sessions[0].RunStartedAfterBinding,
+            "Companion started accepting IPC before its worker PID was bound.");
         Assert.SequenceEqual(
             new[] { WidgetLifecycleState.Visible },
             sessions[0].LifecycleStates);
@@ -568,6 +707,9 @@ static async Task CompanionSessionsFollowWorkerRestarts()
 
         Assert.Equal(2, sessions.Count);
         Assert.True(sessions[0].Disposed, "Restart did not dispose the previous companion session.");
+        Assert.Equal(client.WorkerProcessId, sessions[1].BoundWorkerProcessId);
+        Assert.True(sessions[1].RunStartedAfterBinding,
+            "Restarted companion started accepting IPC before PID binding.");
         Assert.SequenceEqual(
             new[] { WidgetLifecycleState.Visible },
             sessions[1].LifecycleStates);
@@ -613,7 +755,7 @@ static WidgetProcessClient CreateClient(
     TimeSpan? requestTimeout = null,
     IReadOnlyList<string>? extraArguments = null,
     long memoryLimitBytes = 64L * 1024 * 1024,
-    Func<IWidgetProcessCompanionSession>? companionFactory = null)
+    Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>? companionFactory = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
     return new WidgetProcessClient(new WidgetProcessOptions
@@ -635,6 +777,12 @@ static string RequiredValue(string[] values, string name)
     var index = Array.IndexOf(values, name);
     if (index < 0 || index + 1 >= values.Length) throw new ArgumentException($"Missing {name}.");
     return values[index + 1];
+}
+
+static string? OptionalValue(string[] values, string name)
+{
+    var index = Array.IndexOf(values, name);
+    return index < 0 ? null : RequiredValue(values, name);
 }
 
 static ViewNode Find(ViewNode node, string id)
@@ -739,6 +887,205 @@ file sealed class TestWidget : Widget
     }
 }
 
+file sealed class IsolationProbeWidget(
+    string readablePath,
+    string deniedPath,
+    string? otherProfilePath,
+    int networkPort,
+    string secretName) : Widget
+{
+    private IsolationTokenResult _token = new(false, string.Empty, false, uint.MaxValue);
+    private string _readable = "unprobed";
+    private string _packageWrite = "unprobed";
+    private string _deniedRead = "unprobed";
+    private string _otherProfileRead = "not-requested";
+    private string _network = "unprobed";
+    private string _secret = "unprobed";
+    private string _profileFile = string.Empty;
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Text(_token.IsAppContainer ? "true" : "false", "probe-appcontainer"),
+            UI.Text(_token.Sid, "probe-sid"),
+            UI.Text(_token.IsLowIntegrity ? "low" : "not-low", "probe-integrity"),
+            UI.Text(_token.CapabilityCount.ToString(CultureInfo.InvariantCulture), "probe-capabilities"),
+            UI.Text(_readable, "probe-readable"),
+            UI.Text(_packageWrite, "probe-package-write"),
+            UI.Text(_deniedRead, "probe-denied-read"),
+            UI.Text(_otherProfileRead, "probe-other-profile-read"),
+            UI.Text(_network, "probe-network"),
+            UI.Text(_secret, "probe-secret"),
+            UI.Text(_profileFile, "probe-profile-file")));
+
+    protected override async ValueTask OnCreatedAsync(CancellationToken widgetLifetime)
+    {
+        _token = IsolationTokenInspector.Read();
+        _readable = await File.ReadAllTextAsync(readablePath, widgetLifetime);
+        _packageWrite = await TryWriteAsync(
+            Path.Combine(Path.GetDirectoryName(readablePath)!, "unauthorized-write.tmp"),
+            widgetLifetime);
+        _deniedRead = await TryReadAsync(deniedPath, widgetLifetime);
+        if (otherProfilePath is not null)
+            _otherProfileRead = await TryReadAsync(otherProfilePath, widgetLifetime);
+        _secret = Environment.GetEnvironmentVariable(secretName) is null ? "absent" : "present";
+        var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA")
+            ?? throw new InvalidOperationException("AppContainer LOCALAPPDATA is unavailable.");
+        _profileFile = Path.Combine(localAppData, "isolation-probe-private.txt");
+        await File.WriteAllTextAsync(_profileFile, _token.Sid, widgetLifetime);
+
+        using var client = new TcpClient();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(widgetLifetime);
+        timeout.CancelAfter(TimeSpan.FromSeconds(1));
+        try
+        {
+            await client.ConnectAsync(IPAddress.Loopback, networkPort, timeout.Token);
+            _network = "connected";
+        }
+        catch (Exception exception) when (
+            exception is SocketException or OperationCanceledException or UnauthorizedAccessException)
+        {
+            _network = "denied";
+        }
+    }
+
+    private static async Task<string> TryReadAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await File.ReadAllTextAsync(path, cancellationToken);
+            return "readable";
+        }
+        catch (Exception exception) when (
+            exception is UnauthorizedAccessException or IOException)
+        {
+            return "denied";
+        }
+    }
+
+    private static async Task<string> TryWriteAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await File.WriteAllTextAsync(path, "unauthorized", cancellationToken);
+            return "writable";
+        }
+        catch (Exception exception) when (
+            exception is UnauthorizedAccessException or IOException)
+        {
+            return "denied";
+        }
+    }
+}
+
+file sealed record IsolationTokenResult(
+    bool IsAppContainer,
+    string Sid,
+    bool IsLowIntegrity,
+    uint CapabilityCount);
+
+file static class IsolationTokenInspector
+{
+    public static IsolationTokenResult Read()
+    {
+        const uint tokenQuery = 0x0008;
+        const int tokenIntegrityLevel = 25;
+        const int tokenIsAppContainer = 29;
+        const int tokenCapabilities = 30;
+        const int tokenAppContainerSid = 31;
+        if (!NativeMethods.OpenProcessToken(
+                NativeMethods.GetCurrentProcess(), tokenQuery, out var token))
+            throw new InvalidOperationException("Could not open the isolation probe token.");
+        using (token)
+        using (var isAppContainer = Read(token, tokenIsAppContainer))
+        using (var appContainer = Read(token, tokenAppContainerSid))
+        using (var integrity = Read(token, tokenIntegrityLevel))
+        using (var capabilities = Read(token, tokenCapabilities))
+        {
+            var sid = Marshal.ReadIntPtr(appContainer.Pointer);
+            return new IsolationTokenResult(
+                Marshal.ReadInt32(isAppContainer.Pointer) == 1,
+                SidToString(sid),
+                IntegrityRid(Marshal.ReadIntPtr(integrity.Pointer)) == 0x00001000,
+                unchecked((uint)Marshal.ReadInt32(capabilities.Pointer)));
+        }
+    }
+
+    private static uint IntegrityRid(IntPtr sid)
+    {
+        var countPointer = NativeMethods.GetSidSubAuthorityCount(sid);
+        var count = countPointer == IntPtr.Zero ? (byte)0 : Marshal.ReadByte(countPointer);
+        var rid = count == 0 ? IntPtr.Zero : NativeMethods.GetSidSubAuthority(sid, (uint)(count - 1));
+        return rid == IntPtr.Zero ? uint.MaxValue : unchecked((uint)Marshal.ReadInt32(rid));
+    }
+
+    private static string SidToString(IntPtr sid)
+    {
+        if (sid == IntPtr.Zero || !NativeMethods.ConvertSidToStringSidW(sid, out var value))
+            throw new InvalidOperationException("Could not stringify the isolation probe SID.");
+        try { return Marshal.PtrToStringUni(value) ?? string.Empty; }
+        finally { _ = NativeMethods.LocalFree(value); }
+    }
+
+    private static TokenBuffer Read(SafeAccessTokenHandle token, int informationClass)
+    {
+        _ = NativeMethods.GetTokenInformation(token, informationClass, IntPtr.Zero, 0u, out var required);
+        if (required == 0) throw new InvalidOperationException("Could not size isolation token data.");
+        var pointer = Marshal.AllocHGlobal(checked((int)required));
+        if (!NativeMethods.GetTokenInformation(token, informationClass, pointer, required, out _))
+        {
+            Marshal.FreeHGlobal(pointer);
+            throw new InvalidOperationException("Could not read isolation token data.");
+        }
+        return new TokenBuffer(pointer);
+    }
+
+    private sealed class TokenBuffer(IntPtr pointer) : IDisposable
+    {
+        public IntPtr Pointer { get; private set; } = pointer;
+        public void Dispose()
+        {
+            if (Pointer == IntPtr.Zero) return;
+            Marshal.FreeHGlobal(Pointer);
+            Pointer = IntPtr.Zero;
+        }
+    }
+
+    private static class NativeMethods
+    {
+        [DllImport("kernel32.dll")]
+        internal static extern IntPtr GetCurrentProcess();
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool OpenProcessToken(
+            IntPtr process, uint desiredAccess, out SafeAccessTokenHandle token);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetTokenInformation(
+            SafeAccessTokenHandle token,
+            int informationClass,
+            IntPtr tokenInformation,
+            uint tokenInformationLength,
+            out uint returnLength);
+
+        [DllImport("advapi32.dll")]
+        internal static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
+
+        [DllImport("advapi32.dll")]
+        internal static extern IntPtr GetSidSubAuthority(IntPtr sid, uint subAuthority);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool ConvertSidToStringSidW(IntPtr sid, out IntPtr stringSid);
+
+        [DllImport("kernel32.dll")]
+        internal static extern IntPtr LocalFree(IntPtr memory);
+    }
+}
+
 file sealed class LifecycleProbeWidget : Widget
 {
     public int Activations { get; private set; }
@@ -826,9 +1173,14 @@ file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
     public IReadOnlyList<string> WorkerArguments { get; } = [];
     public List<WidgetLifecycleState> LifecycleStates { get; } = [];
     public bool Disposed { get; private set; }
+    public int? BoundWorkerProcessId { get; private set; }
+    public bool RunStartedAfterBinding { get; private set; }
+
+    public void BindWorkerProcess(int processId) => BoundWorkerProcessId = processId;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        RunStartedAfterBinding = BoundWorkerProcessId is > 0;
         try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
@@ -846,6 +1198,23 @@ file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
     {
         Disposed = true;
         return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class TemporaryDirectory : IDisposable
+{
+    public TemporaryDirectory()
+    {
+        Path = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), $"gba-runtime-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path);
+    }
+
+    public string Path { get; }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
     }
 }
 

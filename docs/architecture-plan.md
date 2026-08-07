@@ -5,8 +5,10 @@ Status: research baseline; Phase 0 now implements a narrower prototype subset,
 
 Current behavior is tracked in [implementation status](implementation-status.md)
 and [platform architecture](platform-architecture.md). Proposed D3D11,
-DirectComposition, Protobuf, sandboxing, and broker components below are not
-claims about the current Win32/Direct2D and JSON named-pipe prototype.
+DirectComposition, and Protobuf components below are not claims about the
+current Win32/Direct2D and JSON named-pipe prototype. The narrower mandatory
+AppContainer worker and typed broker design has since been implemented; use the
+current documents above rather than this research baseline for its contract.
 
 ## Recommendation
 

@@ -46,8 +46,11 @@ unbounded caches, or unnecessary helper processes.
   read and reconcile from bounded events. YT Music limits its visible progress
   interpolation and companion reconciliation rates.
 
-Job memory containment is not a CPU quota, network quota, or hostile-code
-sandbox. See [security and trust](security-and-trust.md).
+Job memory containment is not a CPU or disk/profile quota. Installed/community
+workers separately have mandatory capability-free AppContainer isolation with
+network denied; trusted bundled Settings and YT Music remain temporarily Job-
+only. Isolation does not establish publisher trust. See [security and
+trust](security-and-trust.md).
 
 ## Lifecycle and background work
 
@@ -67,8 +70,11 @@ and user policy; the host must not infer eviction from an idle timer. General
 residency-policy enforcement is not implemented yet.
 
 The capability broker independently rejects operations/subscriptions in
-`Background`. That prevents brokered OS work but cannot stop arbitrary desktop
-APIs until restricted worker isolation exists.
+`Background`. Installed/community workers cannot bypass that denial with a
+desktop token or AppContainer network/OS capabilities; their direct authority
+is limited to explicit read/execute runtime/package grants. Trusted bundled
+Job-only workers remain a temporary exception, so their background behavior
+must still be treated as trusted platform code and measured separately.
 
 ## Widget author checklist
 

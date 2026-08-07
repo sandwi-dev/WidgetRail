@@ -242,6 +242,24 @@ duplicate IDs/actions, invalid styles, malformed JSON, or message ceilings can
 prevent startup. `src/WidgetBridge/README.md` documents its protocol and
 catalog shape.
 
+Installed/community workers never fall back to the desktop token. A startup
+failure can therefore mean the host could not open/create the stable package
+AppContainer profile, grant read/execute access to the generic runtime and
+exact package root, verify the Low-integrity exact-SID/zero-capability token, or
+establish the SID/Low-label/PID-bound main or broker pipe. Inspect the bounded
+worker failure and `%LOCALAPPDATA%\GameBarAlternative\overlay.log`; do not work
+around the failure by launching the package DLL directly.
+
+Direct sockets and arbitrary desktop-user files are intentionally unavailable
+to installed/community code. Use declared typed `HostServices` audio/network
+operations and grant them separately in Settings. A broker request still fails
+closed on missing declaration/consent, Background lifecycle, wrong PID, nonce,
+or package/publisher/instance identity. Bundled Settings and YT Music are a
+temporary trusted Job-only exception, not evidence that packages can opt out.
+Win32k disable is not enabled because its tested configuration caused CoreCLR
+DLL initialization failure (`0xC0000142`); Job Object UI restrictions are the
+active UI containment control.
+
 ## A widget keeps polling while in Background
 
 Lifecycle state is explicit; worker process lifetime is not visibility. The

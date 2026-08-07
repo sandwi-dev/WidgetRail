@@ -199,6 +199,43 @@ The native host coalesces revision events, atomically reloads descriptors,
 invalidates affected presentation caches, clears runtime focus/lifecycle when
 required, and safely leaves a disabled/removed active widget.
 
+## Installed-worker isolation
+
+Every package joined from the current-user catalog is marked by trusted bridge
+policy as requiring AppContainer isolation. For unsigned packages, the host
+derives an authority ID from the asserted publisher, package ID, and exact
+immutable version. Each version therefore receives a distinct profile and
+consent identity; rollback returns to that exact version's prior authority,
+while an update cannot silently inherit it. Future signing will replace the
+self-asserted provenance input with verified publisher identity. Neither
+`manifest.json`, catalog state, worker arguments, nor widget protocol messages
+can select or weaken the isolation policy.
+
+Before a package worker runs, the Windows runtime opens or creates that exact
+capability-free profile, grants its SID read/execute access to the generic
+worker runtime and selected immutable package root, supplies a stripped
+environment, and launches at Low integrity. Token SID, integrity, and zero-
+capability state are verified before resume. The Job Object
+also enforces the trusted memory ceiling, one active process, kill-on-close,
+die-on-unhandled-exception, and basic UI restrictions.
+
+The random global main and optional broker pipes allow only the desktop host
+and exact AppContainer SID, carry a Low mandatory label, accept one local
+client, and verify the expected worker PID before the runtime hello or broker
+nonce/package/publisher/instance handshake. Any profile, ACL, token, launch,
+PID, or protocol-authentication failure aborts startup; there is no trusted-
+token fallback for an installed package.
+
+This execution boundary is independent of archive validation and publisher
+trust. A well-contained unsigned package is still unsigned. Public distribution
+still requires signing/revocation, CPU quotas, disk/profile quotas and cleanup,
+and a security audit/history surface. Trusted bundled Settings and YT Music
+workers temporarily remain Job-only because they require desktop-user
+resources; packages cannot request that exception.
+Win32k system-call disable is not enabled because the tested mitigation caused
+CoreCLR DLL initialization failure (`0xC0000142`); Job Object UI restrictions
+remain part of the enforced boundary.
+
 The native client retains an announced revision as in-flight until an atomic
 descriptor list parses and reconciles successfully. A transient failure retries
 the same genuine change event at bounded 250, 500, and 1000 ms delays. Hiding
@@ -258,5 +295,6 @@ use `version select` to move forward to a newer installed version.
   CLI installation)
 
 Until signing is implemented, successful structural validation proves package
-shape and containment—not publisher authenticity or code safety. Executable
-widgets must still run through the isolated worker and capability model.
+shape and archive containment—not publisher authenticity or benign behavior.
+Executable installed/community widgets still run through the mandatory
+AppContainer worker and brokered-capability model.

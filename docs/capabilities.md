@@ -16,6 +16,9 @@ Capabilities are narrow host services for operating-system work that should
 not become native overlay code or raw widget process access. Widget authors use
 typed `HostServices` methods. They do not create broker requests, serialize
 broker JSON, choose pipe names/nonces, or construct capability/operation IDs.
+Installed/community code also cannot request AppContainer capability SIDs or a
+desktop-token launch. Its worker is capability-free and network-denied; direct
+audio/network Windows APIs are not an alternative to the typed broker.
 
 ## Declare the smallest authority
 
@@ -241,14 +244,35 @@ subscriptions, waits, DTOs, strings, percentages, and opaque IDs are bounded.
 The SDK API deliberately exposes only typed DTOs and services—not pipe/nonce,
 raw JSON, OS handles, raw OS identifiers, process IDs, paths, or credentials.
 Session/profile targets are broker-issued bounded opaque IDs.
-However, this is not yet a hostile-code sandbox. Widget assemblies are ordinary
-desktop code inside their worker process; without AppContainer or an equivalent
-restricted token they may inspect their process, access the user's files or
-network, modify user-writable state, or call Windows APIs directly instead of
-using the broker. Job Objects bound memory/process count and cleanup, not OS
-authority. Publisher signing, AppContainer-equivalent isolation, and real
-provider security testing remain mandatory before untrusted public widgets are
-supported.
+Installed/community assemblies run in a mandatory package-specific
+AppContainer selected from a host-computed authority key bound to the asserted
+publisher, package ID, and exact immutable unsigned version. Updates therefore
+receive a different profile and require fresh broker consent; selecting the
+same reviewed version during rollback restores only that version's identity. The token
+is Low integrity and has zero capability SIDs, including no network capability;
+the process receives a stripped environment and explicit read/execute access
+only to its generic runtime and exact package roots. Job Object policy adds
+bounded memory, one active process, kill-on-close,
+die-on-unhandled-exception, and UI restrictions. Isolation establishment and
+token verification fail closed with no desktop-token fallback.
+
+The main widget and capability-broker endpoints are separate random global
+single-client pipes. Their ACLs name only the desktop host and exact
+AppContainer SID and carry a Low mandatory label; the host also verifies the
+worker PID. Runtime hello validation and broker nonce plus package, publisher,
+instance, declaration, consent, and lifecycle checks remain mandatory after
+the OS boundary. The broker—not the AppContainer worker—owns Core Audio and
+Windows network access.
+
+This materially constrains hostile widget authority, but community
+distribution still requires publisher signing/revocation, CPU-rate controls,
+disk/profile quotas and cleanup, a security audit/history UI, and broader real-
+provider evidence. Trusted bundled Settings and YT Music workers temporarily
+remain Job-only because their desktop-user resource dependencies have not yet
+been brokered; installed/community packages cannot select that exception.
+Win32k system-call disable is also not active: the tested mitigation prevented
+CoreCLR DLL initialization with `0xC0000142`, so compatibility currently relies
+on the AppContainer token plus Job Object UI restrictions instead.
 
 For the implemented audio and network backends and their privacy
 constraints, see

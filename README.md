@@ -8,8 +8,9 @@ The product direction is closer to a console control center than a collection of
 - Once a widget is active, it owns every other controller input.
 - Widgets can be reordered and the last widget is restored; deeper focus/state restoration remains incremental.
 - Users can replace the visual language through a safe CSS-like theme format.
-- Widget logic runs outside the resident native shell; typed brokered
-  capabilities are implemented, while hostile-code sandboxing remains planned.
+- Widget logic runs outside the resident native shell. Installed/community
+  workers run in mandatory capability-free Low-integrity AppContainers; typed
+  OS access remains available only through authenticated brokered capabilities.
 - A cold hidden start launches no third-party workers. Once used, Background
   workers remain resident by default while Visible/Interactive work is canceled.
 
@@ -31,10 +32,11 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
   immutable version pin/rollback commands; accepted catalog changes reconcile
   live and workers still start lazily
-- A generic installed-widget worker host, pre-launch Windows Job Object memory/
-  process containment, controller permission review, and typed authenticated
-  audio/network capability transport backed by deterministic simulators and
-  narrow event-driven Windows Core Audio/WLAN providers
+- A generic installed-widget worker host with mandatory capability-free
+  AppContainer isolation, pre-launch Job Object memory/process/UI containment,
+  controller permission review, and typed authenticated audio/network
+  capability transport backed by deterministic simulators and narrow
+  event-driven Windows Core Audio/WLAN providers
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
 - A bounded hidden/visible Windows process-tree performance observation harness
 - Managed contract suites plus native state, image-cache, layout, and icon tests
@@ -72,9 +74,13 @@ Direct2D/DirectWrite, and GameInput. Do not inject into games and do not embed
 Chromium in the resident host. Widget logic launches lazily out of process,
 remains resident in Background by default, and sends a declarative UI tree over
 versioned local IPC. Typed capability brokering is connected to simulators and
-narrow Windows providers; broader hardware/privacy evidence, production
-AppContainer-equivalent sandboxing, lifecycle-policy enforcement, and signing
-are still required before accepting untrusted widgets.
+narrow Windows providers. Installed/community workers fail closed unless their
+host-owned AppContainer, executable/package grants, and authenticated IPC can
+be established. Trusted bundled Settings and YT Music workers temporarily
+remain Job-only because they require desktop-user resources. Publisher
+signing/revocation, CPU and disk/profile quotas/cleanup, audit UI, broader
+hardware/privacy evidence, and lifecycle-policy enforcement remain required
+before public community distribution is safe.
 
 The remaining evidence gates include:
 

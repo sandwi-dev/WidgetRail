@@ -10,10 +10,34 @@ namespace GameBarAlternative.WidgetRuntime;
 public interface IWidgetProcessCompanionSession : IAsyncDisposable
 {
     IReadOnlyList<string> WorkerArguments { get; }
+    /// <summary>
+    /// Binds an already-created host endpoint to the exact worker PID before
+    /// the companion begins accepting IPC. Implementations that expose no IPC
+    /// may retain the default no-op behavior.
+    /// </summary>
+    void BindWorkerProcess(int processId) { }
     Task RunAsync(CancellationToken cancellationToken);
     Task SetLifecycleStateAsync(
         WidgetLifecycleState state,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Trusted launch context supplied by the runtime to a host-owned companion
+/// factory. Community workers receive a per-platform AppContainer SID and the
+/// exact SID needed to ACL its host-created plain named-pipe endpoint.
+/// </summary>
+public sealed record WidgetProcessCompanionContext(
+    WidgetWorkerIsolationPolicy IsolationPolicy,
+    string? IsolationKey,
+    string? AppContainerSid);
+
+public enum WidgetWorkerIsolationPolicy
+{
+    /// <summary>For platform-owned workers that require the desktop user's authority.</summary>
+    HostTrustedJobOnly,
+    /// <summary>Requires a capability-free AppContainer in addition to Job Object limits.</summary>
+    RequireAppContainer,
 }
 
 public sealed record WidgetProcessOptions
@@ -29,7 +53,25 @@ public sealed record WidgetProcessOptions
     /// Trusted host factory invoked once for every worker start or restart.
     /// Widget packages and worker protocol messages cannot provide this value.
     /// </summary>
-    public Func<IWidgetProcessCompanionSession>? CompanionSessionFactory { get; init; }
+    public Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>?
+        CompanionSessionFactory { get; init; }
+    /// <summary>
+    /// Host-owned isolation decision. Package manifests and worker arguments
+    /// never control this value.
+    /// </summary>
+    public WidgetWorkerIsolationPolicy IsolationPolicy { get; init; } =
+        WidgetWorkerIsolationPolicy.HostTrustedJobOnly;
+    /// <summary>
+    /// Host-policy authority identity used to derive a distinct AppContainer
+    /// profile. Never accept a raw widget-supplied key; unsigned installations
+    /// must at least bind the asserted identity to the exact immutable version.
+    /// </summary>
+    public string? IsolationKey { get; init; }
+    /// <summary>
+    /// Additional package/data roots exposed read-only to an AppContainer
+    /// worker. The executable directory is granted separately by the runtime.
+    /// </summary>
+    public IReadOnlyList<string> ReadOnlyPaths { get; init; } = [];
     /// <summary>
     /// Trusted host policy applied to the Windows Job Object. This value is
     /// never accepted from the worker process or its protocol messages.
@@ -57,6 +99,28 @@ public sealed record WidgetProcessOptions
             throw new ArgumentOutOfRangeException(nameof(MemoryLimitBytes));
         if (Arguments.Any(argument => argument is null))
             throw new ArgumentException("Worker arguments cannot contain null entries.", nameof(Arguments));
+        if (!Enum.IsDefined(IsolationPolicy))
+            throw new ArgumentOutOfRangeException(nameof(IsolationPolicy));
+        if (IsolationPolicy == WidgetWorkerIsolationPolicy.RequireAppContainer &&
+            (string.IsNullOrWhiteSpace(IsolationKey) || IsolationKey.Length > 512))
+            throw new ArgumentException(
+                "AppContainer workers require a bounded host-owned isolation key.", nameof(IsolationKey));
+        if (IsolationPolicy == WidgetWorkerIsolationPolicy.HostTrustedJobOnly && IsolationKey is not null)
+            throw new ArgumentException(
+                "Isolation keys apply only to AppContainer workers.", nameof(IsolationKey));
+        if (ReadOnlyPaths is null || ReadOnlyPaths.Any(path => string.IsNullOrWhiteSpace(path)))
+            throw new ArgumentException("Read-only paths cannot contain null or blank entries.", nameof(ReadOnlyPaths));
+        foreach (var path in ReadOnlyPaths)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
+                throw new FileNotFoundException("A worker read-only path was not found.", fullPath);
+            if ((File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
+                throw new ArgumentException("Worker read-only roots cannot be reparse points.", nameof(ReadOnlyPaths));
+        }
+        if (IsolationPolicy == WidgetWorkerIsolationPolicy.HostTrustedJobOnly && ReadOnlyPaths.Count != 0)
+            throw new ArgumentException(
+                "Read-only paths apply only to AppContainer workers.", nameof(ReadOnlyPaths));
     }
 }
 

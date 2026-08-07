@@ -36,8 +36,29 @@ messages remain the only way to transition a running widget.
 inert; the configured worker starts on the first render, action, controller
 input, or activation request. Deactivation of an unstarted worker is the one
 transition that stays inert. Each worker receives one random, current-user-only
-named pipe and must run
-`WidgetWorkerServer` with the supplied command-line values.
+named pipe in the trusted Job-only path, or one random SID/Low-label global pipe
+in the installed/community AppContainer path, and must run `WidgetWorkerServer`
+with the supplied command-line values.
+
+`WidgetProcessOptions.IsolationPolicy` is trusted host policy, never manifest or
+worker input. `RequireAppContainer` also requires a bounded host-owned
+`IsolationKey`; for unsigned installations the bridge derives it from a
+host-computed authority ID bound to the asserted publisher, package ID, and
+exact immutable version, then supplies that version root through
+`ReadOnlyPaths`. A different unsigned version receives a different profile and
+cannot inherit the prior version's broker consent.
+`HostTrustedJobOnly` remains a temporary platform-owned exception for bundled
+Settings and YT Music workers that need desktop-user resources. The generic
+installed-package bridge path always selects `RequireAppContainer`; a community
+package cannot request the exception.
+
+On Windows, `RequireAppContainer` opens or creates one stable profile derived
+from that isolation key, grants its SID read/execute access only to the worker
+executable directory and explicit read-only roots, and launches with a stripped
+allowlisted environment. The token must be Low integrity, carry the exact
+AppContainer SID, and contain zero capability SIDs; network is therefore denied.
+Any profile, ACL, launch, or token-verification failure aborts startup with no
+Job-only or desktop-token fallback.
 
 The transport is little-endian 32-bit length-prefixed JSON. Both the runtime
 envelope and renderer-neutral snapshots are independently versioned and reject
@@ -128,10 +149,14 @@ or resource heuristic. The current manifest's `none`/`suspend` strings remain
 validated metadata rather than enforcement of these final policy names.
 
 `WidgetBridge` is the narrow native-facing sidecar around
-`WidgetProcessClient`. Windows workers are created suspended, assigned to their
-Job Object before any worker code runs, and then resumed. AppContainer launch,
-CPU quotas, publisher verification, and lifecycle residency-policy enforcement
-are not claimed by this transport.
+`WidgetProcessClient`. Windows workers are created suspended. Their token is
+verified, they are assigned to a Job Object, and only then are they resumed.
+The job enforces the trusted memory limit, one active process, kill-on-close,
+die-on-unhandled-exception, and basic UI restrictions. Win32k system-call
+disable was tested but is not enabled because CoreCLR failed DLL initialization
+with `0xC0000142`. CPU quotas, disk/profile quotas and profile cleanup,
+publisher verification/revocation, audit UI, and lifecycle residency-policy
+enforcement are not claimed by this transport.
 
 `WidgetProcessOptions.CompanionSessionFactory` is trusted host policy invoked
 afresh for every worker start/restart. The bridge uses it to create an
@@ -141,3 +166,12 @@ lifecycle request. The generic worker authenticates that channel and attaches
 typed SDK host services before widget lifecycle creation. Widget protocol messages cannot
 provide a companion or choose its identity/backend. See [widget
 capabilities](../../docs/capabilities.md).
+
+For an AppContainer session the companion receives the runtime-derived SID and
+must expose a host-secured plain pipe name. Both the main and broker endpoints
+are random global, single-client pipes whose ACLs name only the desktop host and
+that SID and whose mandatory label permits Low-integrity access. The runtime
+binds the companion to the exact started PID before either server accepts a
+client. PID checks are additive to the main runtime hello and broker nonce plus
+package/publisher/instance authentication; they do not replace protocol
+identity validation.
