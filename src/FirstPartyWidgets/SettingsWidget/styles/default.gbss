@@ -51,6 +51,7 @@
 .setting-row,
 .setting-toggle,
 .theme-item,
+.primary-button,
 .secondary-button,
 .danger-button,
 .setting-stepper-button {
@@ -67,6 +68,7 @@
 .setting-row:focused,
 .setting-toggle:focused,
 .theme-item:focused,
+.primary-button:focused,
 .secondary-button:focused,
 .setting-stepper-button:focused {
   background: var(--surface-raised);
@@ -77,8 +79,19 @@
 }
 
 .setting-toggle:selected,
-.theme-item.is-selected {
+.theme-item.is-selected,
+.setting-row.is-enabled {
   color: var(--settings-accent);
+}
+
+.primary-button {
+  background: var(--settings-accent);
+  color: #ffffff;
+}
+
+.primary-button:focused {
+  background: #a99eff;
+  color: #ffffff;
 }
 
 .setting-stepper,

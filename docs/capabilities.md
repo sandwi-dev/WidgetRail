@@ -7,9 +7,9 @@ bridge composes both real providers. Network hardware/privacy matrices plus
 broader performance evidence remain release gates; the current
 automated packaged Release suite passes.
 
-Network Controls is the active first-party integration milestone. Its
-saved-profile-only behavior, Windows privacy boundary, lifecycle pattern, and
-remaining test/release gates are documented in the [Network Controls
+Network Controls is the second implemented first-party integration milestone.
+Its saved-profile-only behavior, Windows privacy boundary, lifecycle pattern,
+and remaining hardware/release gates are documented in the [Network Controls
 reference](network-controls.md).
 
 Capabilities are narrow host services for operating-system work that should
@@ -48,10 +48,16 @@ are essential versus degradable; authors must still render a useful unavailable
 state. An installed package declaring an unknown capability is skipped by the
 bridge rather than receiving an open-ended permission.
 
-The bridge reads package declarations at startup. Installing, enabling,
-disabling, updating, or changing a manifest requires an overlay/bridge restart
-before the running catalog/channel changes. Consent decisions themselves are
-stored independently and do not require a restart.
+The bridge watches the installed package catalog without polling. After a
+complete validated reload, an enable/disable, install, update, manifest, or
+style change publishes a new semantic catalog revision. A worker whose fixed
+package/publisher/instance, process, declared capabilities, arguments, or
+memory policy changed is retired; a later use starts a fresh authenticated
+session with the new declaration set. Presentation-only changes preserve a
+compatible running worker while atomically replacing its validated style and
+quick-action metadata. Invalid catalog state retains the complete last-good
+revision. Consent decisions remain stored independently and take effect without
+a catalog or worker restart.
 
 ## Use typed host services
 

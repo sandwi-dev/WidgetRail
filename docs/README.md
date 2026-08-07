@@ -19,14 +19,20 @@ guarantees that are available now.
   widget, persisted appearance, versioned themes, live bridge/native cascade,
   remaining accessibility preferences/visual evidence, and authoring
   requirements.
+- [Display and resolution](display-and-resolution.md) — active-monitor
+  targeting, Per-Monitor-V2/DIP behavior, responsive widget rules,
+  deterministic resolution evidence, and physical mixed-monitor limitations.
+- [Performance](performance.md) — engineering budgets, implemented
+  low-overhead rules, widget lifecycle guidance, current measurements, and
+  remaining ETW/PresentMon evidence.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
 - [Widget capabilities](capabilities.md) — typed audio/network services,
   manifest declarations, lifecycle/consent behavior, errors, testing, and the
   current security boundary.
-- [Network Controls reference](network-controls.md) — active first-party
-  milestone, saved-profile-only scope, controller UX, privacy/location gates,
-  event-driven authoring, tests, and release evidence.
+- [Network Controls reference](network-controls.md) — implemented first-party
+  integration, saved-profile-only scope, controller UX, privacy/location
+  gates, event-driven authoring, tests, and remaining release evidence.
 
 ## Distribution and operations
 

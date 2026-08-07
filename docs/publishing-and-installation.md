@@ -1,13 +1,14 @@
 # Publishing and installation
 
 Status: deterministic pack/install/catalog commands and bounded HTTPS release
-downloads implemented; enabled-package bridge discovery is implemented at
-startup, while publisher signing and a production review/update flow are not
+downloads, live last-good bridge catalog revisions, and controller package
+review/enablement are implemented; publisher signing and a production update/
+rollback flow are not
 
 ## Recommended workflow today: share source and immutable releases on GitHub
 
-Until publisher signing and a graphical review flow exist, publish widget
-source in a dedicated GitHub repository:
+Until publisher signing and a curated production distribution flow exist,
+publish widget source in a dedicated GitHub repository:
 
 1. Include source, `manifest.json`, GBSS, assets, replay files, and a license.
 2. Document the required Game Bar Alternative commit or protocol/SDK version.
@@ -138,16 +139,22 @@ Remote installation leaves the widget disabled. If that widget ID is already
 installed and enabled, the command refuses the update without changing the
 working version; disable it explicitly before retrying. This prevents a failed
 download or extraction from changing the active widget's state. Review the
-source, manifest permissions, publisher, and reported digest before opting in:
+source, manifest permissions, publisher, and reported digest before opting in.
+The preferred controller flow is Settings → Installed widgets; the CLI remains
+available for scripted/test catalogs:
 
 ```powershell
 gbar list
 gbar disable dev.example.volume-control
 # Run the remote install command again when updating an enabled widget.
+# Prefer reviewing/enabling the result in Settings. CLI equivalent:
 gbar enable dev.example.volume-control
 ```
 
 If installation used `--catalog`, pass that same value to both commands.
+The packaged bridge and Settings widget read the default current-user catalog;
+an override is an alternate test/script catalog and is managed with matching
+CLI commands rather than appearing in the packaged overlay.
 
 ## Install from a local package
 
@@ -161,9 +168,10 @@ gbar enable dev.example.volume-control
 ```
 
 A newly discovered widget ID is disabled by default. Explicitly enable it after
-review. Installing another local version of an ID preserves that ID's existing
-catalog state. A remote update requires that ID to be disabled before the
-downloaded version can be installed.
+review in Settings → Installed widgets (or with the CLI for automation).
+Installing another local version of an ID preserves that ID's existing catalog
+state. A remote update requires that ID to be disabled before the downloaded
+version can be installed.
 
 The default catalog is
 `%LOCALAPPDATA%\GameBarAlternative\widgets`. Every catalog command accepts the
@@ -175,19 +183,35 @@ gbar list --catalog .\artifacts\test-catalog
 gbar disable dev.example.widget --catalog .\artifacts\test-catalog
 ```
 
-There is no graphical installer, automatic updater, signature verification, or
-marketplace client. At bridge startup the overlay joins enabled compatible
-packages from this default current-user catalog and launches them lazily through
-the generic worker host. Catalog changes are not watched yet, so install,
-enable, disable, update, or manifest changes require an overlay/bridge restart.
-Supported required/optional capability declarations join the authenticated
-broker path; unknown capability IDs cause that package to be skipped.
+There is no file-picker/graphical installer, automatic updater, signature
+verification, or marketplace client. The bridge watches the default
+current-user catalog without polling, validates a complete replacement, and
+publishes semantic changes live. Listing/reload never launches a worker.
+Invalid trusted or installed catalog state retains the last-good catalog;
+unsupported or invalid individual packages fail soft with bounded diagnostics.
 
-After restart, open Settings → Permissions & capabilities to review each
-package/publisher declaration. Required means the feature is core, not that it
-is automatically granted. Optional means the widget must degrade without it.
-Grant requires explicit confirmation; deny/revoke is immediate. Consent changes
-do not require a catalog restart. See [widget capabilities](capabilities.md).
+After CLI installation, open Settings → Installed widgets. The paginated
+controller surface shows package ID, publisher, active/installed versions,
+runtime, host-API range, architectures, compatibility result/reason, and
+required versus optional capability declarations before enable or disable. An
+incompatible package cannot be enabled, though an already enabled incompatible
+entry can be disabled for recovery/update. Enabling only joins a compatible
+widget to the overlay; it does **not** grant a capability. Open Settings →
+Permissions & capabilities separately to confirm a grant or immediately deny/
+revoke it. Required means the feature is core, not that it is automatically
+granted. Optional means the widget must degrade without it.
+
+An accepted catalog change invalidates native descriptors/caches. Compatible
+presentation-only changes preserve a running worker while atomically replacing
+its validated style/quick-action metadata; identity, executable, arguments,
+declared capabilities, instance, or memory-policy changes retire it and start a
+new authenticated worker lazily on next use. Disable/removal safely returns an
+active widget to an available dashboard selection. For a genuine in-flight
+change event, a transient native list/parse failure gets only the bounded 250,
+500, and 1000 ms retry sequence; hiding abandons it, and ordinary open-time
+failures never create polling. The same revision can be announced again and a
+later open/list catches up. No overlay restart is required. See [widget
+capabilities](capabilities.md).
 
 ## Remote acquisition safety boundary
 
@@ -225,8 +249,8 @@ trust, and never put credentials or tokens in an install URL.
 
 Installing a package only writes validated files and catalog state. It does
 not launch a worker, send lifecycle transitions, or change the lifecycle
-contract. After explicit enablement and the next overlay/bridge start, a
-compatible package joins the dashboard but remains unlaunched until first use.
+contract. After explicit enablement, a compatible package joins the live
+dashboard catalog but remains unlaunched until first use.
 The normal `Created`, `Background`, `Visible`, `Interactive`, and `Destroying`
 rules then apply unchanged.
 
@@ -246,8 +270,8 @@ var snapshot = await catalog.DiscoverAsync();
 CLI or library installation validates archive containment and manifest shape.
 It does not establish who published the code. The bridge combines its trusted
 deployment catalog with enabled compatible entries from the default user
-catalog at startup. This discovery is an execution path, not publisher proof;
-do not enable code you do not already trust.
+catalog, then maintains complete validated live revisions. This discovery/
+reload path is not publisher proof; do not enable code you do not already trust.
 
 ## Planned production flow
 

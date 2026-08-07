@@ -329,10 +329,9 @@ gates are open:
 6. privacy review proving that raw OS identifiers and secrets cannot cross the
    broker.
 
-Audio Mixer is the implemented first-party integration reference and now
-exercises the real Core Audio session backend. It does not imply master-volume,
-output-switch, microphone, or production security support. Network Controls is
-the active roadmap widget and now exercises the real event-driven provider;
-packaged, hardware/privacy, and performance gates remain. See the [Network
-Controls reference](network-controls.md) for its authoring, controller, test,
-and packaging contract.
+Audio Mixer and Network Controls are implemented first-party integration
+references that exercise the real Core Audio and network backends. They do not
+imply master-volume, output-switch, microphone, current-SSID privacy access, or
+production security support. Hardware/privacy/performance gates remain. See the
+[Network Controls reference](network-controls.md) for its authoring,
+controller, test, and packaging contract.

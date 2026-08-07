@@ -58,7 +58,8 @@ The closest architectural match is PowerToys Command Palette: current Microsoft 
 - Direct3D 11 device and a DXGI composition swap chain with premultiplied alpha
 - Direct2D and DirectWrite for controls, text, icons, and vector drawing
 - DirectComposition for visual transforms, opacity, and animations
-- One borderless, per-monitor-aware top-level window, topmost only while visible
+- A borderless Per-Monitor-V2 panel plus non-activating monitor backdrop,
+  topmost only while visible
 - Current Microsoft GameInput runtime and `RegisterSystemButtonCallback`
 - Event Tracing for Windows and PresentMon-based performance measurements
 
@@ -118,11 +119,15 @@ There is no documented universal user-mode switch for the second problem. A filt
 A normal topmost DWM-composed window should work over desktop applications, windowed games, borderless games, and modern Fullscreen Optimizations. Modern independent-flip presentation can return to composition when another window appears.
 
 The current feasibility shell uses a separate topmost panel and non-activating
-uniform dimming backdrop on the prior foreground app's monitor. It observes
-foreground/z-order changes and reasserts topmost state while visible; clicking
-the backdrop closes the overlay. This is best effort: Windows can deny focus,
-and secure desktop, higher-integrity windows, multi-monitor dimming, or
-exclusive/anti-cheat render paths are not covered.
+uniform dimming backdrop on the active external foreground app's nearest
+monitor. It re-reads monitor/work-area/DPI data for placement, retargets on
+visible foreground changes, responds to DPI/display/work-area changes, and
+uses a responsive logical viewport instead of shrinking a fixed canvas. It
+observes z-order changes and reasserts topmost state while visible; clicking the
+backdrop closes the overlay. This is best effort: Windows can deny focus, and
+secure desktop, higher-integrity windows, multi-monitor dimming, or exclusive/
+anti-cheat render paths are not covered. See [display and
+resolution](display-and-resolution.md) for the exact contract and evidence.
 
 True Fullscreen Exclusive is not an initial supported mode. Universal coverage usually requires intercepting or injecting into a game's rendering path. The project will prefer a clear compatibility message over an unsafe claim.
 

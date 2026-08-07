@@ -78,6 +78,7 @@ $layoutTestObjectDirectory = Join-Path $outputDirectory 'obj\layout-tests'
 $iconTestObjectDirectory = Join-Path $outputDirectory 'obj\icon-tests'
 $styleTestObjectDirectory = Join-Path $outputDirectory 'obj\style-tests'
 $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
+$targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
 $guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
 $navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
 $focusTestObjectDirectory = Join-Path $outputDirectory 'obj\focus-tests'
@@ -85,7 +86,7 @@ $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $placementTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -115,6 +116,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'NativeIcons.cpp'),
     (Join-Path $projectDirectory 'NativeStyle.cpp'),
     (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+    (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
     (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
@@ -356,6 +358,22 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'OverlayPlacementTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayPlacementTests failed with exit code $LASTEXITCODE."
+    }
+
+    $targetingTestArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+        "/Fo:$targetingTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayTargetingTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $targetingTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTargetingTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayTargetingTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTargetingTests failed with exit code $LASTEXITCODE."
     }
 
     $guideTestArguments = $common + @(

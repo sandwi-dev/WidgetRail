@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Publisher and package identity are enforced", IdentityIsEnforced),
     ("Missing entrypoint assemblies are rejected", MissingEntrypointIsRejected),
     ("Tampered installed directory identity is rejected", TamperedInstallIsRejected),
+    ("Host compatibility is deterministic across API and architecture", HostCompatibility),
 };
 
 var failures = new List<string>();
@@ -210,6 +211,31 @@ static async Task TamperedInstallIsRejected()
     Directory.Move(installed.InstallPath, wrongDirectory);
     var exception = await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.DiscoverAsync());
     Assert.Equal("identity_mismatch", exception.Code);
+}
+
+static Task HostCompatibility()
+{
+    var manifest = new WidgetManifest
+    {
+        Id = "dev.test.compatibility",
+        Publisher = "dev.test",
+        Name = "Compatibility",
+        Version = "1.0.0",
+        HostApi = new HostApiRange("1.0", 1),
+        Entrypoint = new WidgetEntrypoint("dotnet-worker", "payload/Widget.dll", "Example.Widget"),
+        Permissions = [],
+        Architectures = ["x64"],
+    };
+    var x64V1 = new WidgetHostContext(1, "x64");
+    Assert.True(WidgetHostCompatibility.Evaluate(manifest, x64V1).IsSupported,
+        "Matching host API and architecture were rejected.");
+    Assert.Equal("requires_newer_host_api", WidgetHostCompatibility.Evaluate(
+        manifest with { HostApi = new HostApiRange("2.0", 2) }, x64V1).Code);
+    Assert.Equal("unsupported_host_api", WidgetHostCompatibility.Evaluate(
+        manifest, new WidgetHostContext(2, "x64")).Code);
+    Assert.Equal("unsupported_architecture", WidgetHostCompatibility.Evaluate(
+        manifest, new WidgetHostContext(1, "arm64")).Code);
+    return Task.CompletedTask;
 }
 
 static string CreatePackage(

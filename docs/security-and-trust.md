@@ -58,11 +58,15 @@ planned. A structurally valid package is not necessarily trustworthy.
   before package installation, and every successful remote install reports the
   actual digest.
 - Newly discovered widget IDs default to disabled. A remote install explicitly
-  disables its widget ID and requires a separate user `gbar enable` decision.
-- At bridge startup, only enabled, host-compatible installed packages using the
-  closed capability vocabulary are joined. Conflicts, unsupported capability
-  declarations, malformed/tampered catalog entries, and invalid per-package
-  GBSS fail soft to the bundled trusted catalog.
+  disables its widget ID and requires a separate Settings or CLI enable
+  decision.
+- Only enabled, host-compatible installed packages using the closed capability
+  vocabulary are joined. The bridge watches the trusted catalog file plus the
+  installed catalog state/package tree, coalesces notifications, and publishes
+  only a complete validated semantic revision. Invalid reloads retain the
+  complete last-good catalog; conflicts, unsupported capability declarations,
+  malformed/tampered catalog entries, and invalid per-package GBSS fail soft.
+  Reload/list does not launch a worker.
 - The generic worker host rejects entrypoint/dependency path escape and reparse
   points, requires a public concrete SDK `Widget` type with a usable public
   constructor, and returns path-free errors for rejected assembly/type cases.
@@ -82,8 +86,7 @@ The following are **not implemented as a complete public security boundary**:
   Windows network providers, and a security audit/history UI;
 - secure token brokering for third-party integrations;
 - user-facing update review, rollback, or quarantine UI;
-- a graphical install/review flow, live bridge catalog reload, and safe
-  automatic updates;
+- a graphical/file-picker installer and safe automatic updates;
 - universal anti-cheat or controller-containment compatibility.
 
 The runtime's out-of-process worker and Job Object policy improve reliability
@@ -92,14 +95,21 @@ from accessing the current user's files, network, or credentials. AppContainer
 or an equivalent least-privilege token boundary is still required before
 untrusted public widget binaries are safe.
 
-The bridge now discovers enabled packages from the current-user catalog at
-startup and launches them lazily through the generic worker host. This is an
-execution path, not a complete trust boundary: catalog enablement has no
-signature or publisher proof, and package/manifest changes require an overlay/
-bridge restart. Closed declared capabilities receive an authenticated broker
-channel. The production bridge composes the narrow real Core Audio and Windows
-network backends. That provider composition is not AppContainer isolation,
-publisher trust, a security audit, or proof across the hardware/privacy matrix.
+The bridge discovers enabled packages from the current-user catalog, watches
+bounded catalog inputs without polling, and launches workers lazily through the
+generic worker host. File-system events are only hints: each publication comes
+from a complete validation and semantic comparison, while a malformed reload
+retains the last-good revision. Declaration/identity/process-policy changes
+retire the old client before a new authenticated session can start lazily;
+stale worker events are ignored.
+
+This is an execution path and safe reload boundary, not a complete trust
+boundary. Catalog enablement has no signature or publisher proof. In-place
+package tampering is not made trustworthy by a watcher or semantic revision.
+Closed declared capabilities receive an authenticated broker channel, and the
+production bridge composes the narrow real Core Audio and Windows network
+backends. None of that is AppContainer isolation, publisher trust, a security
+audit, or proof across the hardware/privacy matrix.
 
 The managed development theme catalog has strict manifests, version-pinned
 directories, package-relative GBSS imports, bounds, reparse/containment checks,

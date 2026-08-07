@@ -14,12 +14,17 @@ marketplace.
 polling/rendering while hidden, and presents a Win32/Direct2D controller
 dashboard. It supports reorder mode, last-widget/order persistence, focus
 routing for the reference widget, managed bridge startup, bounded HTTPS
-artwork, and fixed native semantic icon geometry.
+artwork, fixed native semantic icon geometry, responsive logical viewports,
+and per-monitor placement.
 
-The visible shell uses separate panel and dimming-backdrop windows on the prior
-foreground app's monitor. An outside backdrop click closes the overlay. Both
-windows are topmost only while visible, with foreground/z-order observation and
-best-effort reassertion. This is normal DWM windowing, not game injection.
+The visible shell uses separate panel and dimming-backdrop windows on the active
+external foreground app's nearest monitor. An outside backdrop click closes the
+overlay. Both windows are topmost only while visible, with foreground/z-order
+observation and best-effort reassertion. While visible, Alt+Tab/external
+foreground changes retarget the panel and full-monitor backdrop. DPI, display
+topology, work-area, and client-size messages recompute placement/resources;
+reentrant DPI placement is coalesced. This is normal DWM windowing, not game
+injection.
 
 Guide/Home shows or hides from any depth. Dashboard D-pad/left-stick movement,
 A, and Y are host-owned. Open widgets receive their other semantic actions; B
@@ -52,11 +57,13 @@ deterministic rendered geometry as a fallback, without wraparound.
   `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
   optional broker before constructing the widget, attaches host services before
   creation, and owns cancellation and transport disposal.
-- `WidgetBridge`: current-user-only native sidecar pipe, trusted catalog,
-  enabled-installed catalog discovery, worker forwarding, quick actions,
-  controller input, identity/declaration-bound broker companions, invalidation/
-  failure events, no-poll platform-appearance watching/revisions, globally
-  layered widget themes, bounded shell appearance, and computed GBSS styles.
+- `WidgetBridge`: current-user-only native sidecar pipe, trusted plus installed
+  catalog discovery, no-poll last-good catalog monitoring/semantic revisions,
+  compatible-worker preservation and changed-worker retirement, worker
+  forwarding, quick actions, controller input, identity/declaration-bound
+  broker companions, invalidation/failure events, no-poll platform-appearance
+  revisions, globally layered widget themes, bounded shell appearance, and
+  computed GBSS styles.
 - `WidgetWorkerHost`: a packaged generic worker executable that loads one
   installed package's public concrete SDK `Widget` entrypoint and contained
   dependencies, authenticates an optional broker channel, attaches typed host
@@ -69,8 +76,9 @@ deterministic rendered geometry as a fallback, without wraparound.
   version-pinned development themes, built-in default, safe theme discovery,
   layer composition, and last-good snapshots.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, immutable versions,
-  discovery, enablement, and order persistence. Enabled compatible packages now
-  join the bridge catalog at startup and remain lazy until first use.
+  discovery, enablement, and order persistence. Enabled compatible packages
+  join complete validated live bridge revisions and remain lazy until first
+  use.
 - `PlatformBroker`: a version-1 audio-session/network capability foundation with
   four closed grants, nonce/identity-bound named-pipe transport, manifest/
   consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent
@@ -98,11 +106,16 @@ Clock/YT Music samples are reference widgets. Settings is packaged and
 registered beside YT Music, renders through
 the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
-requires confirmation before reset, and provides package → capability → grant/
-deny review. Permission grants require explicit confirmation; deny/revoke is
-immediate, missing/invalid state fails closed, and first-party packages are not
-auto-granted. It reloads settings/themes/permissions once per active lifetime
-and does not poll in Background.
+requires confirmation before reset, and provides two separate controller
+flows: installed package identity/version/publisher/runtime/required-optional
+capability review plus enable/disable, then package → capability → grant/deny
+consent. Enablement is not consent. Permission grants require explicit
+confirmation; deny/revoke is immediate, missing/invalid state fails closed,
+and first-party packages are not auto-granted. It reloads settings/themes/
+catalog/permissions once per active lifetime and does not poll in Background.
+The same public compatibility evaluator gates Bridge and Settings: details show
+host API/architectures and a bounded reason, incompatible enablement is blocked,
+and disable remains available for recovery.
 
 Audio Mixer is the implemented first-party integration reference. It is
 packaged and registered through the same catalog/bridge/worker path as the
@@ -158,6 +171,33 @@ through the post-style accessibility policy into generic declarative widget
 font size/letter spacing and layout, preserving non-compounding `em`
 inheritance.
 
+### Live package catalog
+
+`BridgeCatalogMonitor` watches only the packaged trusted catalog plus the
+current-user `catalog-state.json` and packages subtree. A capacity-one channel
+coalesces file hints and debounces write bursts for 175 ms before a complete
+bounded reload. Staging, cross-process lock, and atomic temporary files are
+ignored. Semantic changes advance a bridge-lifetime revision; invalid trusted
+or installed catalog/state retains the complete last-good catalog/revision.
+Invalid individual styles or unsupported capabilities are isolated with
+bounded diagnostics. Reload/list never starts a worker.
+Starting the monitor schedules a complete catch-up reload after both watchers
+are active, closing the initial load-to-watch race.
+
+Presentation/order-only changes preserve compatible workers while atomically
+swapping their validated presentation/quick-action metadata. A package,
+publisher, instance, executable, argument, declared-capability, or memory-policy
+change retires the prior client; stale events are ignored and the next use
+starts/authenticates the replacement lazily. The native host coalesces catalog
+events, holds a revision in-flight until an atomic descriptor list parses and
+reconciles, and retries a genuine in-flight change event at bounded 250, 500,
+and 1000 ms delays. Hiding the overlay cancels and abandons that retry sequence;
+the same revision may be announced again, and a later open/list catches up.
+Ordinary open-time failures do not create polling. A new bridge session resets
+tracking. Reconciliation invalidates affected snapshot/style caches, clears
+every runtime-changed widget's focus/lifecycle independently of cache
+residency, and safely returns from a disabled/removed active widget.
+
 ### Worker lifecycle
 
 The implemented host-authoritative lifecycle separates presentation from
@@ -203,25 +243,30 @@ pass or a claim about hidden, GPU, wakeup, or multi-widget cost.
 
 The repository verification script builds and runs managed suites for the SDK,
 protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
-settings/themes, catalog, bridge, the generic worker host, and broker. The
-runtime suite covers suspended pre-containment launch, memory/process limits,
-kill-on-close, and restart cleanup. The generic host suite covers eight loader/
-protocol/capability cases; Settings covers twenty-one controller/permission cases;
-the SDK covers twenty-seven contracts; and the broker covers twenty-one
-capability, consent, identity, lifecycle/event, pipe, sanitization, and
-cancellation contracts. Bridge integration also covers installed-package
-fail-soft and capability companion behavior. Network Controls and its Windows
-widget and provider add thirteen and seventeen focused Release cases respectively, covering controller/focus,
-lifecycle/no-poll subscription ordering, privacy/explicit state, optimistic
-command reconciliation, opaque identity, native churn, cancellation, bounded
-failure, owner-thread disposal, responsive GBSS, and a privacy-safe real
-Windows read smoke.
-Native build verification covers the overlay plus state-machine, remote-image,
-declarative layout, semantic-icon, and native-style tests where integrated.
-Current Release native-style coverage verifies 150% font-size/letter-spacing
-scaling and safe fallback for an invalid non-finite scale; the full native
-suite passes. The broader 150% multi-resolution visual matrix remains an
-evidence gap.
+settings/themes, catalog, bridge, the generic worker host, broker, and Windows
+providers/reference widgets. The runtime covers suspended pre-containment
+launch, memory/process limits, kill-on-close, and restart cleanup. The current
+Settings Release suite passes 26/26, including paginated identity review,
+required/optional separation, enablement-versus-consent copy, fail-closed
+catalog/compatibility behavior, and no polling. Catalog passes 13/13, including
+shared host-API/architecture evaluation. Bridge passes 22/22, including
+semantic catalog revisions/last-good/catch-up reload, atomic presentation
+metadata replacement, and compatible-worker reconciliation.
+Network Controls and its Windows provider retain their focused 13/13 and 17/17
+coverage for controller/focus, lifecycle/no-poll subscription ordering,
+privacy/explicit state, optimistic command reconciliation, opaque identity,
+native churn, cancellation, bounded failure, owner-thread disposal, responsive
+GBSS, and privacy-safe real Windows read smoke.
+
+The full native aggregate passes. Display-sensitive evidence includes 175
+declarative-layout checks, 668 placement/render-metric/surface-geometry checks,
+and 18 foreground-target/reentrancy checks, alongside state-machine,
+remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer
+suites. It covers deterministic tiny/portrait/negative-coordinate/wide/4K and
+72–480-DPI math plus 150% font-size/letter-spacing adaptation. The packaged
+hidden startup smoke remained resident for its 1.2-second observation. Physical
+mixed-monitor migration/hot-plug screenshots and the broader 150% visual matrix
+remain evidence gaps.
 
 Run managed verification:
 
@@ -239,15 +284,17 @@ with C++ installed:
 ## Honest limitations
 
 - The generic native renderer handles the current declarative node kinds and
-  now renders both YT Music and Settings through catalog descriptors. Broad
-  arbitrary-package, resolution/DPI, accessibility, and visual regression
-  evidence is still incomplete.
+  renders YT Music, Settings, Audio Mixer, Network Controls, and installed
+  widgets through catalog descriptors. Responsive viewport/containment math is
+  covered broadly; physical mixed-DPI, localization, accessibility, and visual
+  regression evidence is still incomplete.
 - Local and bounded remote package/catalog commands are implemented. There is
-  no graphical installer, live bridge catalog reload, automatic release/update
-  discovery, signed publisher workflow, or marketplace yet. Enabled compatible
-  packages are discovered when the bridge starts, so install/enable/disable
-  or manifest changes require an overlay/bridge restart. Closed capability
-  declarations are connected to the broker and Settings consent flow.
+  no graphical/file-picker installer, automatic release/update discovery,
+  signed publisher workflow, rollback UI, or marketplace yet. Settings provides
+  controller identity review and enable/disable after CLI installation. The
+  bridge publishes accepted catalog changes live with last-good retention and
+  safe worker reconciliation. Closed capability declarations are connected to
+  the separate Settings consent flow.
 - Publisher signatures, AppContainer, CPU quotas, provider hardening, and the
   security audit/history UI are not production-ready. The narrow Core Audio and
   Windows network backends are implemented, but still need broader hardware/
@@ -263,9 +310,9 @@ with C++ installed:
   Raw Input or direct HID access.
 - The quarantined XInput Guide fallback depends on an undocumented system-DLL
   ordinal/bit and may vary by controller model, mode, firmware, and transport.
-- True Fullscreen Exclusive, HDR, broad mixed-DPI coverage, anti-cheat
-  compatibility, latency, and steady-state resource budgets need a larger
-  measured matrix.
+- True Fullscreen Exclusive, HDR, physical mixed-DPI/hot-plug coverage,
+  anti-cheat compatibility, latency, and steady-state resource budgets need a
+  larger measured matrix.
 - Topmost/foreground reassertion is best effort. Secure desktop, elevated
   windows, exclusive render paths, and multi-monitor backdrop coverage are not
   supported contracts.
@@ -287,10 +334,9 @@ with C++ installed:
 - Audio Mixer is the implemented first-party public-SDK example: its widget,
   package/catalog integration, and event-driven per-session Core Audio provider
   exist, while broader hardware and performance evidence remain open. Network
-  Controls is the active integrated prototype: its real provider, widget,
-  worker, catalog, and packaging hooks exist and focused suites pass, while the
-  automated packaged Release gate passes and hardware/privacy/performance gates
-  remain open. Version 1
+  Controls is the second implemented integration: its real provider, widget,
+  worker, catalog, and packaging hooks exist and focused/packaged gates pass,
+  while hardware/privacy/performance gates remain open. Version 1
   explicitly excludes password entry, profile creation, scans, radio controls,
   and automatic current SSID/signal access. See
   [widget capabilities](capabilities.md) and [Windows provider
@@ -311,12 +357,13 @@ and [troubleshooting](troubleshooting.md).
 
 ## Next vertical slices
 
-1. Complete resolution/DPI/accessibility/visual-regression evidence, including
-   the 150% text-scale matrix for the generic renderer and themed shell.
-2. Add safe theme install/scaffold/validate/preview tooling plus a user-facing
-   widget install/review flow and live catalog reload.
-3. Implement signing/trust and AppContainer-equivalent isolation before
-   supporting untrusted community binaries.
-4. Continue Audio Mixer and Network Controls hardware/privacy/performance
-   evidence through their shared event-driven, out-of-process public-SDK path.
-5. Run the documented controller/game compatibility and performance matrix.
+1. Complete physical mixed-DPI/accessibility/visual-regression evidence,
+   including the 150% text-scale matrix and controller focus reachability.
+2. Add repeatable ETW/PresentMon performance automation, stored baselines, and
+   per-widget resource diagnostics.
+3. Add safe theme install/scaffold/validate/preview tooling and `gbar dev`.
+4. Implement signing/trust, rollback/quarantine, and AppContainer-equivalent
+   isolation before supporting untrusted community binaries.
+5. Continue Audio Mixer/Network Controls hardware evidence, then non-auth
+   Performance, general media, recent apps/games, and capture references.
+6. Run the documented controller/game/presentation/anti-cheat matrix.

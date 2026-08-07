@@ -1,0 +1,142 @@
+# Performance contract and evidence
+
+Status: low-overhead architecture and bounded worker controls implemented;
+repeatable ETW/PresentMon release evidence and per-widget resource UI remain
+open
+
+Performance is a product feature because the overlay runs beside a game. This
+page separates enforceable platform behavior, author responsibilities, current
+measurements, and the evidence still required before release.
+
+## Engineering budgets
+
+These are validation gates, not current marketing claims:
+
+| Scenario | Initial target |
+| --- | --- |
+| Hidden steady-state CPU | p95 at or below 0.1% on the reference machine |
+| Hidden GPU activity | No continuous presentation or animation |
+| Hidden host private working set | At or below 50 MB |
+| Warm Guide-to-first-frame | p95 at or below 150 ms |
+| Cold Guide-to-interactive | p95 at or below 500 ms |
+| Controller-to-visual response | p95 at or below 50 ms |
+| Overlay frame pacing | 60 Hz without repeated game-frame spikes |
+| Default visible/interactive worker | Target at or below 64 MB; measured and user-visible |
+
+An approximately 200 MB total is acceptable for the current feature prototype.
+That iteration allowance does not excuse obvious polling, hidden presentation,
+unbounded caches, or unnecessary helper processes.
+
+## Implemented low-overhead rules
+
+- The native window stops presenting and releases dispensable graphics
+  resources while hidden.
+- Guide acquisition is callback-driven while hidden. Ordinary controller
+  polling runs only while the overlay is visible.
+- Widget workers start lazily; listing the catalog, rendering dashboard
+  metadata, changing themes, or reviewing permissions does not start them.
+- Each worker receives a host-owned Job Object before it resumes. Trusted
+  policy bounds aggregate memory to 16–256 MiB, limits the job to one active
+  process, and terminates it on job close.
+- IPC frames, snapshots, strings, images, update rates, subscriptions, and
+  retries are bounded.
+- Platform appearance, catalog, consent, Core Audio, and network changes use
+  callbacks/watchers with coalescing rather than timer scan loops.
+- The Audio Mixer and Network Controls references subscribe before their first
+  read and reconcile from bounded events. YT Music limits its visible progress
+  interpolation and companion reconciliation rates.
+
+Job memory containment is not a CPU quota, network quota, or hostile-code
+sandbox. See [security and trust](security-and-trust.md).
+
+## Lifecycle and background work
+
+The five-state lifecycle controls work ownership, not automatic eviction:
+
+- `Created` performs one-time initialization.
+- `Background` cancels state-specific presentation work; explicitly authored
+  widget-lifetime work may continue.
+- `Visible` permits the selected dashboard card and declared local quick
+  actions.
+- `Interactive` permits the open surface and scoped controller actions.
+- `Destroying` cancels widget-owned tokens and performs bounded cleanup.
+
+`keep-alive` is the current/default policy after first launch. Planned
+`suspend-when-hidden` and `unload-after-idle` choices must be explicit manifest
+and user policy; the host must not infer eviction from an idle timer. General
+residency-policy enforcement is not implemented yet.
+
+The capability broker independently rejects operations/subscriptions in
+`Background`. That prevents brokered OS work but cannot stop arbitrary desktop
+APIs until restricted worker isolation exists.
+
+## Widget author checklist
+
+- Keep `Render()` deterministic and free of network, device, and blocking file
+  work.
+- Open acknowledged event subscriptions before the first snapshot when a
+  fetch/subscription race is possible.
+- Tie UI work to the SDK's state or shared Visible/Interactive token.
+- Use `WidgetTicker` only for bounded visible interpolation; never create an
+  unowned infinite timer.
+- Coalesce provider bursts and call `Invalidate()` only when rendered state
+  changes.
+- Cancel command retries and subscriptions promptly on lifecycle transition.
+- Bound history, decoded image dimensions, caches, labels, and concurrent
+  operations.
+- Request the smallest honest manifest memory budget. A request is not
+  permission to exceed host policy.
+- Test denial, cancellation, device loss, worker restart, and stale events so
+  failure does not become a busy loop.
+
+The [widget quickstart](widget-quickstart.md), [declarative UI
+reference](declarative-ui.md), and first-party Audio/Network tests demonstrate
+these patterns.
+
+## Current measurement
+
+One visible prototype sample measured:
+
+| Process | Private working set |
+| --- | ---: |
+| `OverlayHost` | 93.2 MB |
+| `WidgetBridge` | 59.1 MB |
+| One widget worker | 51.5 MB |
+| **Total** | **203.8 MB** |
+
+Across a five-second CPU sample, `OverlayHost` accumulated 78.12 ms; bridge and
+worker deltas were below that sample's timer resolution. The current hidden
+startup smoke also proves that the packaged host remains resident for its
+1.2-second observation window without an initialization failure.
+
+These are smoke observations, not a budget pass. They do not establish p95
+latency, hidden steady state, GPU activity, wakeups, frame pacing, multi-widget
+cost, or long-run memory behavior.
+
+## Verification and remaining tooling
+
+Run functional/regression gates with:
+
+```powershell
+.\scripts\Verify.ps1 -Configuration Release
+```
+
+That command proves builds, bounded contracts, native tests, packaging, hidden
+startup, and input-probe smoke. It is not an ETW performance benchmark.
+
+The performance release gate still needs:
+
+- an automated Windows Performance Recorder/ETW and PresentMon harness;
+- stored machine/build metadata plus comparable baseline artifacts;
+- hidden/visible CPU, GPU, wakeup, private-working-set, and handle trends;
+- warm/cold Guide, controller-to-visual, and worker-start latency percentiles;
+- one-, three-, and many-widget background/interactive scenarios;
+- provider/device churn and catalog/theme reload burst measurements;
+- regression thresholds that account for measurement noise; and
+- a controller Settings/Performance surface showing per-widget CPU, working
+  set, wakeups, crash count, and network activity.
+
+Until those artifacts exist, do not describe the prototype as meeting the
+performance budgets. The next reference widget can expose measured resource
+data only through a reviewed, typed performance capability; it must not become
+a private host shortcut or imply that an unimplemented capability ID is public.

@@ -26,6 +26,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
+    ("Catalog monitor publishes semantic revisions and retains last good state", CatalogMonitorIsRevisionedAndLastGood),
+    ("Catalog monitor closes the startup notification window", CatalogMonitorStartupCatchUp),
+    ("Catalog reconciliation preserves compatible workers and retires changed workers", CatalogReconciliationPreservesCompatibleWorkers),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
     ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
@@ -130,11 +133,13 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "quickActions"],
+    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "presentationGeneration", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
     Assert.Equal("test.instance", descriptor.GetProperty("instanceId").GetString());
+    Assert.Equal(32, descriptor.GetProperty("runtimeGeneration").GetString()!.Length);
+    Assert.Equal(32, descriptor.GetProperty("presentationGeneration").GetString()!.Length);
     Assert.Equal("music", descriptor.GetProperty("icon").GetString());
     var quickAction = descriptor.GetProperty("quickActions")[0];
     Assert.SequenceEqual(["actionId", "controllerButton", "id", "label", "sourceElementId"],
@@ -244,6 +249,151 @@ static async Task InvalidInstalledStyleFailsSoft()
     Assert.Equal(1, load.Warnings.Count);
     Assert.True(load.Warnings[0].Contains("invalid styles", StringComparison.Ordinal),
         "Expected invalid installed styles to be isolated to their package.");
+}
+
+static async Task CatalogMonitorIsRevisionedAndLastGood()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-live-catalog");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    await InstallWidgetAsync(catalog, temporary.Path, "dev.example.alpha", enabled: true);
+    await InstallWidgetAsync(catalog, temporary.Path, "dev.example.beta", enabled: true);
+    var initial = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    await using var monitor = new BridgeCatalogMonitor(
+        trusted.Path, catalogRoot, Environment.ProcessPath!, initial.Catalog);
+    var revisions = new List<long>();
+    monitor.Changed += (_, change) => revisions.Add(change.Revision);
+
+    var unchanged = await monitor.ReloadNowAsync();
+    Assert.False(unchanged.Published, "An equivalent reload must not publish.");
+    Assert.Equal(0L, unchanged.Revision);
+
+    await catalog.SetOrderAsync(["dev.example.beta", "dev.example.alpha"]);
+    var reordered = await monitor.ReloadNowAsync();
+    Assert.True(reordered.Published, "Installed order change was not published.");
+    Assert.Equal(1L, reordered.Revision);
+    Assert.SequenceEqual(["test-widget", "dev.example.beta", "dev.example.alpha"],
+        reordered.Current.Widgets.Select(widget => widget.Id));
+
+    var replay = await monitor.ReloadNowAsync();
+    Assert.False(replay.Published, "Equivalent catalog replay advanced the revision.");
+    Assert.Equal(1L, replay.Revision);
+
+    await catalog.SetEnabledAsync("dev.example.beta", false);
+    var disabled = await monitor.ReloadNowAsync();
+    Assert.True(disabled.Published, "Disable change was not published.");
+    Assert.Equal(2L, disabled.Revision);
+    Assert.SequenceEqual(["test-widget", "dev.example.alpha"],
+        disabled.Current.Widgets.Select(widget => widget.Id));
+    var validState = await File.ReadAllBytesAsync(Path.Combine(catalogRoot, "catalog-state.json"));
+    var validTrusted = await File.ReadAllBytesAsync(trusted.Path);
+
+    await File.WriteAllTextAsync(trusted.Path, "{");
+    var invalidTrusted = await monitor.ReloadNowAsync();
+    Assert.True(invalidTrusted.RetainedLastGood, "Invalid trusted catalog replaced last-good state.");
+    Assert.Equal(2L, invalidTrusted.Revision);
+    Assert.SequenceEqual(["test-widget", "dev.example.alpha"],
+        invalidTrusted.Current.Widgets.Select(widget => widget.Id));
+
+    await File.WriteAllBytesAsync(trusted.Path, validTrusted);
+    await File.WriteAllTextAsync(Path.Combine(catalogRoot, "catalog-state.json"), "{");
+    var invalidInstalled = await monitor.ReloadNowAsync();
+    Assert.True(invalidInstalled.RetainedLastGood, "Invalid installed state replaced last-good state.");
+    Assert.Equal(2L, invalidInstalled.Revision);
+    await File.WriteAllBytesAsync(Path.Combine(catalogRoot, "catalog-state.json"), validState);
+
+    var watched = new TaskCompletionSource<BridgeCatalogChanged>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    monitor.Changed += (_, change) =>
+    {
+        if (change.Revision >= 3) watched.TrySetResult(change);
+    };
+    monitor.Start();
+    await catalog.SetEnabledAsync("dev.example.beta", true);
+    var fileSystemChange = await watched.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Assert.Equal(3L, fileSystemChange.Revision);
+    Assert.SequenceEqual(["test-widget", "dev.example.beta", "dev.example.alpha"],
+        fileSystemChange.Catalog.Widgets.Select(widget => widget.Id));
+    Assert.SequenceEqual([1L, 2L, 3L], revisions);
+}
+
+static async Task CatalogMonitorStartupCatchUp()
+{
+    using var trusted = TemporaryCatalog.Create(name: "Before Watch");
+    using var changed = TemporaryCatalog.Create(name: "Changed Before Watch");
+    using var temporary = new TemporaryDirectory("gba-bridge-catalog-catch-up");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var initial = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    await using var monitor = new BridgeCatalogMonitor(
+        trusted.Path, catalogRoot, Environment.ProcessPath!, initial.Catalog);
+    await File.WriteAllBytesAsync(trusted.Path, await File.ReadAllBytesAsync(changed.Path));
+
+    var published = new TaskCompletionSource<BridgeCatalogChanged>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    monitor.Changed += (_, change) => published.TrySetResult(change);
+    monitor.Start();
+    var catchUp = await published.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Assert.Equal(1L, catchUp.Revision);
+    Assert.Equal("Changed Before Watch", catchUp.Catalog.Widgets.Single().Name);
+}
+
+static async Task CatalogReconciliationPreservesCompatibleWorkers()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    var started = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, started.Type);
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+    var initial = await harness.Client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+    var initialDescriptor = initial.Payload.GetProperty("widgets")[0];
+    var initialRuntime = initialDescriptor.GetProperty("runtimeGeneration").GetString();
+    var initialPresentation = initialDescriptor.GetProperty("presentationGeneration").GetString();
+
+    using var renamedSource = TemporaryCatalog.Create(
+        name: "Renamed Widget",
+        styleSource: "button { color: #ffffff; font-size: 23px; }");
+    var renamed = BridgeCatalog.Load(renamedSource.Path);
+    harness.Server.ApplyCatalog(renamed, revision: 1);
+    var renamedEvent = await harness.Client.ReadEventAsync(BridgeMessageTypes.CatalogChanged);
+    Assert.Equal(1L, renamedEvent.Payload.GetProperty("revision").GetInt64());
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+    var renamedList = await harness.Client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+    var renamedDescriptor = renamedList.Payload.GetProperty("widgets")[0];
+    Assert.Equal("Renamed Widget", renamedDescriptor.GetProperty("name").GetString());
+    Assert.Equal(initialRuntime, renamedDescriptor.GetProperty("runtimeGeneration").GetString());
+    Assert.True(initialPresentation != renamedDescriptor.GetProperty("presentationGeneration").GetString(),
+        "Descriptor-only change did not advance presentation generation.");
+    var refreshedSnapshot = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(23D, refreshedSnapshot.Payload.GetProperty("renderStyles")
+        .GetProperty("button").GetProperty("base").GetProperty("font-size")
+        .GetProperty("number").GetDouble());
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+
+    harness.Server.ApplyCatalog(renamed, revision: 1);
+    _ = await harness.Client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+    Assert.Equal(0, harness.Client.PendingEventCount);
+    using var staleSource = TemporaryCatalog.Create(instanceId: "stale.instance");
+    harness.Server.ApplyCatalog(BridgeCatalog.Load(staleSource.Path), revision: 0);
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+
+    using var capabilitySource = TemporaryCatalog.Create(
+        name: "Renamed Widget",
+        declaredCapabilities: [PlatformCapabilities.AudioSessionsReadV1]);
+    var capabilityChanged = BridgeCatalog.Load(capabilitySource.Path);
+    harness.Server.ApplyCatalog(capabilityChanged, revision: 2);
+    var changedEvent = await harness.Client.ReadEventAsync(BridgeMessageTypes.CatalogChanged);
+    Assert.Equal(2L, changedEvent.Payload.GetProperty("revision").GetInt64());
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+    var changedList = await harness.Client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+    Assert.True(initialRuntime != changedList.Payload.GetProperty("widgets")[0]
+        .GetProperty("runtimeGeneration").GetString(),
+        "Worker-affecting declaration change did not advance runtime generation.");
 }
 
 static async Task<InstalledWidgetVersion> InstallWidgetAsync(
@@ -530,7 +680,11 @@ file sealed class TemporaryCatalog : IDisposable
         bool invalidStyle = false,
         string styleFile = "styles/default.gbss",
         string? icon = "music",
-        int? memoryLimitMb = null)
+        int? memoryLimitMb = null,
+        string name = "Test Widget",
+        string instanceId = "test.instance",
+        IReadOnlyList<string>? declaredCapabilities = null,
+        string? styleSource = null)
     {
         var directory = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(), $"gba-bridge-tests-{Guid.NewGuid():N}");
@@ -540,7 +694,7 @@ file sealed class TemporaryCatalog : IDisposable
         Directory.CreateDirectory(stylesDirectory);
         File.WriteAllText(System.IO.Path.Combine(stylesDirectory, "default.gbss"), invalidStyle
             ? "button { background: url(https://example.test/evil.png); }"
-            : "stack { gap: 12px; } button { color: #ffffff; font-size: 18px; } #button { opacity: 0.8; } .primary:selected { border-width: 3px; } .primary:focused { outline-color: #8b7cff; scale: 1.1; } .disabled:disabled { opacity: 0.4; }");
+            : styleSource ?? "stack { gap: 12px; } button { color: #ffffff; font-size: 18px; } #button { opacity: 0.8; } .primary:selected { border-width: 3px; } .primary:focused { outline-color: #8b7cff; scale: 1.1; } .disabled:disabled { opacity: 0.4; }");
         var executable = Environment.ProcessPath
             ?? throw new InvalidOperationException("Test process path is unavailable.");
         var json = JsonSerializer.Serialize(new
@@ -553,13 +707,13 @@ file sealed class TemporaryCatalog : IDisposable
                     id = "test-widget",
                     packageId = "dev.test.widget",
                     publisherId = "dev.test",
-                    name = "Test Widget",
-                    instanceId = "test.instance",
+                    name,
+                    instanceId,
                     icon,
                     workerExecutable = executable,
                     styleFile,
                     workerArguments = Array.Empty<string>(),
-                    declaredCapabilities = Array.Empty<string>(),
+                    declaredCapabilities = declaredCapabilities ?? Array.Empty<string>(),
                     memoryLimitMb,
                     quickActions = new[]
                     {
@@ -730,6 +884,7 @@ file sealed class BridgeTestClient : IAsyncDisposable
     private readonly BridgeFrameChannel _channel;
     private readonly Queue<BridgeEnvelope> _events = new();
     private long _requestId;
+    public int PendingEventCount => _events.Count;
 
     private BridgeTestClient(NamedPipeClientStream pipe, BridgeFrameChannel channel)
     {

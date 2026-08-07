@@ -51,7 +51,7 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 
 - Audio Mixer: event-driven per-application session volume/mute on the current
   default multimedia render endpoint through brokered Core Audio capabilities;
-  no master/output-switch/microphone control in the active milestone
+  no master/output-switch/microphone control in the initial integration
 - Network Controls: event-driven aggregate/Ethernet/Wi-Fi transport and adapter
   availability, saved-profile switching in its Interactive surface, and
   brokered WLAN/network capabilities; no password entry, automatic
@@ -66,12 +66,11 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 
 Discord is the only planned social provider initially. Its production use remains gated on Discord confirming this general-purpose overlay is an eligible Social SDK integration and approving communications capacity.
 
-Audio Mixer is the implemented system-control reference widget, backed by the
-narrow event-driven Core Audio session provider. Network Controls is the active
-milestone and now has an event-driven WLAN/IP Helper provider plus an
-out-of-process first-party package. Its automated packaged Release gate passes;
-hardware/privacy and performance gates remain. Both widgets use the same public
-SDK, controller input scope, lifecycle, permission, and packaging model.
+Audio Mixer and Network Controls are the first two implemented system-control
+reference widgets, backed by narrow event-driven Core Audio and WLAN/IP Helper
+providers. Their automated packaged Release gates pass; hardware/privacy and
+performance gates remain. Both widgets use the same public SDK, controller
+input scope, lifecycle, permission, and packaging model.
 Their Windows integrations belong behind narrow brokers;
 neither feature is a reason to hard-code an alternate UI or expose raw OS
 handles in the native host.

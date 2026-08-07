@@ -18,22 +18,22 @@ flowchart LR
     Broker --> Audio["Core Audio session provider"]
     Broker --> Network["IP Helper/WLAN provider"]
     Host --> State["Host-owned order and last-widget state"]
-    Catalog["Enabled installed WidgetCatalog snapshot"] --> Bridge
+    Catalog["Validated live WidgetCatalog revisions"] --> Bridge
 ```
 
 ## Components
 
 | Component | Implemented responsibility |
 | --- | --- |
-| `src/OverlayHost` | Win32/Direct2D panel/backdrop shell, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, live platform shell appearance, and generic reference-widget rendering. |
-| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted plus enabled-installed catalog loading, worker supervision, controller forwarding, capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
+| `src/OverlayHost` | Per-Monitor-V2 Win32/Direct2D panel/backdrop shell, active-monitor/work-area/DPI retargeting, responsive logical viewport, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, live catalog/appearance revisions, and generic reference-widget rendering. |
+| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, last-good no-poll catalog monitoring with semantic revisions, worker preservation/retirement, controller forwarding, capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
 | `src/WidgetRuntime` | Lazy worker process client/server, per-start host-owned companion sessions, random named pipes, bounded length-prefixed JSON, strict envelopes, lifecycle propagation, timeouts, crash reporting, limited restart, and pre-launch Windows Job Object memory/process/cleanup policy. |
 | `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies after containment, connects an optional authenticated broker client, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network services/DTOs. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, and last-good reload. The bridge/native shell consume its live revisions, including bounded text scale for shell and generic widget layout. |
-| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence. The bridge consumes enabled compatible packages at startup. |
+| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence. The bridge consumes enabled compatible packages through complete validated live revisions. |
 | `src/PlatformBroker` | Version-1 audio-session/network capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for sanitized per-application sessions on the default multimedia render endpoint, with per-session volume/mute. It does not expose master volume, output switching, or microphone control. |
 | `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse connectivity, explicit transport/radio/service/privacy/attempt state, sanitized saved profiles, and opaque saved-profile switching. It does not scan, handle credentials/profile XML, query current SSID/signal automatically, or expose native identities. |
@@ -72,9 +72,8 @@ third-party managed assemblies.
 
 ## Capability flow
 
-1. At bridge startup, trusted configuration or an installed manifest supplies
-   package ID, publisher ID, instance ID, and a closed required/optional
-   capability declaration set.
+1. A complete validated bridge catalog revision supplies package ID, publisher
+   ID, instance ID, and a closed required/optional capability declaration set.
 2. Each worker start/restart gets a new bridge-owned companion containing the
    fixed identity, declarations, consent store, backend, random pipe, and nonce.
 3. The generic worker bootstrap authenticates the complete nonce/identity
@@ -89,9 +88,9 @@ third-party managed assemblies.
 
 The worker cannot send broker lifecycle transitions or elevate itself. The
 runtime propagates only host-owned states to the companion server. The trusted
-bridge composes the real Core Audio session backend with the simulated network
-backend. Both remain behind the same typed, declared, consented contract. See
-[widget capabilities](capabilities.md).
+bridge composes the real Core Audio and Windows network backends. Both remain
+behind the same typed, declared, consented contract. See [widget
+capabilities](capabilities.md).
 
 ## Resource behavior
 
@@ -178,14 +177,15 @@ then deterministic geometry from the last render.
   Music path is integrated; complete generic rendering of every SDK node and
   every computed GBSS state is still being finished.
 - `.gbarwidget` pack/install/list/enable/disable work with the current-user
-  catalog. The bridge discovers enabled compatible packages on startup and
-  launches them lazily through the packaged generic worker host. Install accepts
-  local files, bounded absolute HTTPS URLs, and exact GitHub Release shorthand.
-  Remote sources require SHA-256 and install disabled. Catalog changes require
-  an overlay/bridge restart; there is no graphical installer, automatic update
-  discovery, signature verification, or live catalog reload yet. Supported
-  capability declarations receive the authenticated broker path; unknown IDs
-  cause that package to be skipped.
+  catalog. The bridge watches bounded catalog inputs, publishes complete
+  last-good semantic revisions, and launches enabled compatible packages lazily
+  through the packaged generic worker host. Install accepts local files,
+  bounded absolute HTTPS URLs, and exact GitHub Release shorthand. Remote
+  sources require SHA-256 and install disabled. Settings provides controller
+  package identity/capability review plus enable/disable after CLI installation;
+  there is no file-picker installer, automatic update discovery, or signature
+  verification. Supported capability declarations receive the authenticated
+  broker path; unknown IDs cause that package to be skipped.
 - Job Object memory/process-count/cleanup policy, typed capability IPC, consent
   UI, and prompt fail-closed revocation are implemented and tested. Publisher
   signatures/package revocation, AppContainer launch, CPU quotas, security
@@ -198,11 +198,15 @@ then deterministic geometry from the last render.
   index; enabling a package is not a publisher-trust guarantee.
 - The host does not universally suppress controller input seen through every
   game input API. See [controller input](controller-input.md).
-- Topmost behavior is best effort and covers one selected monitor. True
-  Fullscreen Exclusive, secure desktop/UAC, higher-integrity windows, and
-  injection-based or anti-cheat render compatibility are outside the current
-  support target.
+- Topmost behavior is best effort and covers one selected monitor. Responsive
+  per-monitor placement, DPI/work-area/topology handling, and deterministic
+  tiny/portrait/ultrawide math are implemented. Physical mixed-DPI hot-plug/
+  migration and visual-regression evidence remain open. True Fullscreen
+  Exclusive, secure desktop/UAC, higher-integrity windows, and injection-based
+  or anti-cheat render compatibility are outside the current support target.
 
 See [security and trust](security-and-trust.md) before executing third-party
-widgets, and [architecture research](architecture-plan.md) for the longer-term
-technology rationale.
+widgets, [display and resolution](display-and-resolution.md) for the monitor/
+viewport contract, [performance](performance.md) for evidence gates, and
+[architecture research](architecture-plan.md) for the longer-term technology
+rationale.

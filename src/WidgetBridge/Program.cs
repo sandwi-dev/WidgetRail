@@ -26,14 +26,25 @@ internal static class Program
             var settingsPaths = PlatformSettingsPaths.CreateDefault();
             var installationRoot = Path.GetDirectoryName(Path.GetFullPath(catalogPath))
                 ?? Environment.CurrentDirectory;
+            var installedCatalogRoot = Path.Combine(settingsPaths.RootDirectory, "widgets");
+            var workerHostExecutable = Path.Combine(
+                installationRoot, "runtime", "WidgetWorkerHost", "WidgetWorkerHost.exe");
             var catalogLoad = await BridgeCatalog.LoadWithInstalledAsync(
                 catalogPath,
-                Path.Combine(settingsPaths.RootDirectory, "widgets"),
-                Path.Combine(installationRoot, "runtime", "WidgetWorkerHost", "WidgetWorkerHost.exe"),
+                installedCatalogRoot,
+                workerHostExecutable,
                 shutdown.Token).ConfigureAwait(false);
             foreach (var warning in catalogLoad.Warnings)
                 Console.Error.WriteLine($"Widget catalog warning: {warning}");
             var catalog = catalogLoad.Catalog;
+            await using var catalogMonitor = new BridgeCatalogMonitor(
+                catalogPath, installedCatalogRoot, workerHostExecutable, catalog);
+            catalogMonitor.Diagnostics += (_, warnings) =>
+            {
+                foreach (var warning in warnings)
+                    Console.Error.WriteLine($"Widget catalog warning: {warning}");
+            };
+            catalogMonitor.Start();
             var settingsStore = new PlatformSettingsStore(settingsPaths);
             await using var appearance = new PlatformAppearanceService(
                 settingsPaths,
@@ -45,7 +56,8 @@ internal static class Program
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend());
             await using var server = new WidgetBridgeServer(
-                pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend);
+                pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
+                catalogMonitor);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

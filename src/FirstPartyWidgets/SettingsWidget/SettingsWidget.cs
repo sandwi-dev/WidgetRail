@@ -4,6 +4,7 @@ using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
+using GameBarAlternative.WidgetCatalog;
 using CatalogService = GameBarAlternative.WidgetCatalog.WidgetCatalog;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings;
@@ -15,6 +16,8 @@ public enum SettingsPage
     ThemePicker,
     Accessibility,
     Overlay,
+    InstalledWidgets,
+    InstalledWidgetDetails,
     Permissions,
     PackageCapabilities,
     CapabilityDecision,
@@ -36,6 +39,11 @@ public sealed partial class SettingsWidget : Widget
     private readonly object _stateLock = new();
     private PlatformSettingsDocument _settings = PlatformSettingsDocument.Default;
     private ThemeCatalogSnapshot _themes;
+    private WidgetCatalogSnapshot _installedWidgets = new([]);
+    private bool _installedWidgetCatalogValid = true;
+    private string? _installedWidgetDiagnostic;
+    private int _installedWidgetPage;
+    private string? _selectedInstalledWidgetId;
     private SettingsPage _page;
     private int _themePage;
     private int _activationLoadCount;
@@ -107,6 +115,8 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.ThemePicker => RenderThemes(header, settings, themes, themePage, busy),
             SettingsPage.Accessibility => RenderAccessibility(header, settings, busy),
             SettingsPage.Overlay => RenderOverlay(header, settings, busy),
+            SettingsPage.InstalledWidgets => RenderInstalledWidgets(header, busy),
+            SettingsPage.InstalledWidgetDetails => RenderInstalledWidgetDetails(header, busy),
             SettingsPage.Permissions => RenderPermissionPackages(header, busy),
             SettingsPage.PackageCapabilities => RenderPackageCapabilities(header, busy),
             SettingsPage.CapabilityDecision => RenderCapabilityDecision(header, busy),
@@ -135,6 +145,7 @@ public sealed partial class SettingsWidget : Widget
                 case "open.appearance": Navigate(SettingsPage.Appearance); break;
                 case "open.accessibility": Navigate(SettingsPage.Accessibility); break;
                 case "open.overlay": Navigate(SettingsPage.Overlay); break;
+                case "open.installed-widgets": Navigate(SettingsPage.InstalledWidgets); break;
                 case "open.permissions": Navigate(SettingsPage.Permissions); break;
                 case "open.diagnostics": Navigate(SettingsPage.Diagnostics); break;
                 case "open.reset": Navigate(SettingsPage.Reset); break;
@@ -142,6 +153,10 @@ public sealed partial class SettingsWidget : Widget
                 case "back": Navigate(ParentPage(CurrentPage)); break;
                 case "theme.previous-page": ChangeThemePage(-1); break;
                 case "theme.next-page": ChangeThemePage(1); break;
+                case "installed.previous-page": ChangeInstalledWidgetPage(-1); break;
+                case "installed.next-page": ChangeInstalledWidgetPage(1); break;
+                case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
+                    .ConfigureAwait(false); break;
                 case "permission.previous-page": ChangePermissionPackagePage(-1); break;
                 case "permission.next-page": ChangePermissionPackagePage(1); break;
                 case "capability.previous-page": ChangeCapabilityPage(-1); break;
@@ -199,6 +214,8 @@ public sealed partial class SettingsWidget : Widget
                 default:
                     if (TryThemeIndex(action.ActionId, out var index))
                         await SelectThemeAsync(index, cancellationToken).ConfigureAwait(false);
+                    else if (TryIndexedAction(action.ActionId, "installed.select.", out index))
+                        SelectInstalledWidget(index);
                     else if (TryIndexedAction(action.ActionId, "permission.select.", out index))
                         SelectPermissionPackage(index);
                     else if (TryIndexedAction(action.ActionId, "capability.select.", out index))
@@ -251,6 +268,9 @@ public sealed partial class SettingsWidget : Widget
                 string.Equals(entry.Descriptor.Version.ToString(), settings.Appearance.ThemeVersion, StringComparison.Ordinal));
             if (!selectedInstalled)
                 warning ??= "Selected theme is unavailable; choose an installed theme";
+            var installedWarning = await ReloadInstalledWidgetsAsync(cancellationToken)
+                .ConfigureAwait(false);
+            warning ??= installedWarning;
             var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
                 .ConfigureAwait(false);
             warning ??= permissionWarning;
@@ -373,9 +393,11 @@ public sealed partial class SettingsWidget : Widget
         var accessibility = UI.Button("Accessibility", "open.accessibility", "category.accessibility")
             .FocusUp("category.appearance").FocusDown("category.overlay").Busy(busy).Classes("category-card");
         var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
-            .FocusUp("category.accessibility").FocusDown("category.permissions").Busy(busy).Classes("category-card");
+            .FocusUp("category.accessibility").FocusDown("category.installed-widgets").Busy(busy).Classes("category-card");
+        var installedWidgets = UI.Button("Installed widgets", "open.installed-widgets", "category.installed-widgets")
+            .FocusUp("category.overlay").FocusDown("category.permissions").Busy(busy).Classes("category-card");
         var permissions = UI.Button("Permissions & capabilities", "open.permissions", "category.permissions")
-            .FocusUp("category.overlay").FocusDown("category.diagnostics").Busy(busy).Classes("category-card");
+            .FocusUp("category.installed-widgets").FocusDown("category.diagnostics").Busy(busy).Classes("category-card");
         var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
             .FocusUp("category.permissions").FocusDown("category.reset").Classes("category-card");
         var reset = UI.Button("Reset", "open.reset", "category.reset")
@@ -385,7 +407,7 @@ public sealed partial class SettingsWidget : Widget
             UI.Stack("settings.categories",
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
                     "settings.summary", "Selected theme").Classes("settings-summary"),
-                appearance, accessibility, overlay, permissions, diagnostics, reset).Classes("category-list"),
+                appearance, accessibility, overlay, installedWidgets, permissions, diagnostics, reset).Classes("category-list"),
             "category.appearance",
             "settings-root");
     }
@@ -606,6 +628,7 @@ public sealed partial class SettingsWidget : Widget
     private static SettingsPage ParentPage(SettingsPage page) => page switch
     {
         SettingsPage.ThemePicker => SettingsPage.Appearance,
+        SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
         SettingsPage.PackageCapabilities => SettingsPage.Permissions,
         SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,
         SettingsPage.Root => SettingsPage.Root,

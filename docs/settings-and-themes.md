@@ -37,6 +37,7 @@ Accessibility policy remains host-owned and wins after every theme layer.
 | Platform → widget → user cascade | Implemented in bridge snapshots | Explicit user-layer priority beats widget selector specificity. |
 | No-poll reload and last-good revision | Implemented in bridge | `FileSystemWatcher` events are debounced; invalid reloads retain the prior snapshot. |
 | Controller Settings widget | Implemented | Open the first-party Settings card; it uses the generic worker/SDK/renderer path. |
+| Installed widget review/enablement | Implemented | Install with the CLI, then review identity, versions, runtime, and required/optional capabilities in Settings; enablement is separate from consent. |
 | Select a discovered theme | Implemented | Settings pins an exact valid ID/version; there is still no theme installer CLI. |
 | Native shell appearance | Implemented | `OverlayHost` applies live shell styles, interface scale, shell DirectWrite text scale, backdrop opacity, and motion. |
 | Declarative widget text scale | Implemented | The host applies bounded text scale after GBSS resolution and remeasures/reflows generic widget content without compounding inherited `em` sizes. |
@@ -126,6 +127,10 @@ The implemented root categories are:
   motion. With neither motion toggle selected, the explicit preference is
   `full`.
 - **Overlay:** interface scale and backdrop darkness in 5% steps.
+- **Installed widgets:** paginated installed packages with explicit package ID,
+  publisher, active/installed versions, runtime, host-API range, architectures,
+  compatibility reason, and required versus optional capability review before
+  enable/disable.
 - **Permissions & capabilities:** installed packages, their supported required/
   optional declarations, and explicit Grant/Deny/Not decided state.
 - **Diagnostics:** settings validity, total/invalid themes, and schema version.
@@ -148,6 +153,17 @@ Controller behavior follows the platform model:
 The Settings surface requires no mouse, keyboard, hover state, or text entry.
 Each nested page owns B to return one level. Guide/Home remains the only
 overlay-wide close control.
+
+The Installed widgets page shows five packages per page. LB/RB page inside its
+nested scope, A opens package details, and the details page enables or disables
+the reviewed identity. Install itself remains a CLI operation; Settings has no
+file picker. A shared catalog evaluator matches bridge host-API/architecture
+gating: an incompatible package shows a bounded reason and cannot be enabled,
+while an already enabled incompatible package can still be disabled for
+recovery. Enabling makes a compatible package available to the overlay but does
+not grant any declared capability. Required and optional declarations are shown
+separately, and consent remains the next explicit Permissions & capabilities
+decision.
 
 The SDK now provides verified `UI.ToggleButton(...)` and `UI.Stepper(...)`
 helpers for this interaction model. They are available to any widget and are
@@ -173,11 +189,14 @@ unknown declarations and stale/undeclared decisions are hidden. Required
 capabilities are not auto-granted, including for first-party packages.
 
 Installed package/permission state is refreshed with the other Settings state
-on activation, not by a polling loop. Manifest/catalog changes still require an
-overlay/bridge restart before they change a running worker's authenticated
-declaration set. Consent decisions are separate and do not require restart.
-See [widget capabilities](capabilities.md) for author behavior and the security
-boundary.
+on activation, not by a polling loop. The bridge independently watches catalog
+changes and publishes a complete validated semantic revision without a restart.
+A process/identity/declaration policy change retires the old worker and binds
+the next lazy start to the new declarations; presentation-only changes preserve
+a compatible worker while atomically replacing validated style/quick-action
+metadata. Invalid reloads retain last-good state. Consent decisions are separate
+and take effect without a catalog or worker restart. See [widget
+capabilities](capabilities.md) for author behavior and the security boundary.
 
 The manifest requests no permissions, budgets 32 MB and 1 Hz, and declares
 `suspend` background policy metadata. Lifecycle-policy enforcement remains a
@@ -379,9 +398,9 @@ at the same time.
 ## Resolution and monitor behavior
 
 A global theme describes logical presentation, not a fixed screenshot. It must
-remain valid when the host recomputes its centered stage for the active
+remain valid when the host recomputes the responsive viewport for the active
 monitor. Theme authors must not assume 1920×1080 physical pixels, one DPI, a
-16:9 monitor, or a fixed widget width.
+16:9 monitor, a fixed widget width, or positive desktop coordinates.
 
 Use bounded logical dimensions, min/max constraints, flex behavior, line
 limits, and supported `vw`/`vh` units. Test at minimum:
@@ -392,9 +411,14 @@ limits, and supported `vw`/`vh` units. Test at minimum:
 - compact widths and long localized labels; and
 - every accessibility combination listed above.
 
-The current host has per-monitor DPI and responsive layout primitives, but broad
-mixed-DPI, ultrawide, and compact-mode behavior remains an evidence gap. A
-successful GBSS compile is not proof of this matrix.
+The current host has Per-Monitor-V2 placement, active-foreground monitor
+retargeting, live DPI/display/work-area handling, a responsive logical viewport,
+and deterministic containment/compact tests from pathological tiny and portrait
+inputs through 4K/wide clients at varied DPI and interface scale. Physical
+mixed-DPI migration/hot-plug screenshots, long localization, combined
+accessibility, and broad on-hardware visual evidence remain gaps. A successful
+GBSS compile is not proof of that matrix. See [display and
+resolution](display-and-resolution.md) for the exact contract and evidence.
 
 ## Authoring and test workflow
 
@@ -414,8 +438,8 @@ contributors:
 dotnet run --project .\tests\PlatformSettings.Tests\PlatformSettings.Tests.csproj -c Release
 ```
 
-It currently covers 12 contracts including strict persistence, concurrency,
-theme safety/discovery, layer precedence, version pinning, and last-good reload.
+It covers strict persistence, concurrency, theme safety/discovery, layer
+precedence, version pinning, and last-good reload.
 
 The first-party Settings and bridge suites cover the controller surface and
 appearance transport:
@@ -425,10 +449,12 @@ dotnet run --project .\tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj -c
 dotnet run --project .\tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj -c Release
 ```
 
-The current Release results are 13/13 Settings contracts and 14/14 bridge
-contracts. They cover nested B scopes, paged theme selection, bounds, busy/
-error/reset behavior, lifecycle/no polling, global selector precedence,
-last-good revisions, bounded shell appearance, and lazy worker behavior.
+They cover nested B scopes, paged theme/package/permission selection, explicit
+enablement-versus-consent review, bounds, busy/error/reset behavior, lifecycle/
+no polling, global selector precedence, last-good appearance/catalog revisions,
+bounded shell appearance, and lazy worker behavior. Current exact evidence is
+recorded in [implementation status](implementation-status.md), not duplicated
+as a drifting count here.
 
 Native Release verification also covers the post-style accessibility adapter's
 150% font-size/letter-spacing scaling and safe fallback for a non-finite scale.
@@ -450,8 +476,9 @@ needs provider-owned tooling for:
 - installing/removing a theme without editing the development catalog;
 - replaying controller navigation through Settings;
 - completing the 150% text-scale resolution/reflow matrix and deterministic
-  shell/widget visual regression tests; and
-- running the resolution/DPI/accessibility matrix with deterministic evidence.
+  shell/widget screenshot regression tests; and
+- running the physical mixed-monitor/DPI/accessibility matrix with retained
+  visual evidence.
 
 Trusted advanced users may populate the documented development directory for
 local testing. Do not present manual copies as an installed, immutable, signed,

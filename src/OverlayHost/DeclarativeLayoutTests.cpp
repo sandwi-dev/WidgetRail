@@ -201,6 +201,64 @@ void IntrinsicAndCompactMode() {
     Near(result.Find("text")->borderBox.height, 500.0F, "default cross-axis stretch remains deterministic");
 }
 
+void TinyAndPortraitWidgetContainment() {
+    auto title = Element("title");
+    title.flexBasis = 40.0F;
+    title.flexShrink = 0.0F;
+    auto primary = Element("primary");
+    primary.flexBasis = 220.0F;
+    primary.minHeight = 120.0F;
+    auto actions = Element("actions", LayoutDirection::Row);
+    actions.flexBasis = 56.0F;
+    actions.minHeight = 44.0F;
+    actions.gap = 12.0F;
+    for (int index = 0; index < 3; ++index) {
+        auto action = Element("action-" + std::to_string(index));
+        action.flexBasis = 64.0F;
+        action.minWidth = 44.0F;
+        actions.children.push_back(std::move(action));
+    }
+
+    auto root = Element("widget");
+    root.padding = BoxSpacing::One(16.0F);
+    root.gap = 12.0F;
+    root.overflow = OverflowBehavior::Clip;
+    root.children = {title, primary, actions};
+
+    for (const auto viewport : {
+             Rect{0, 0, 1, 1},
+             Rect{0, 0, 238, 45},
+             Rect{0, 0, 256, 545},
+             Rect{0, 0, 718, 78},
+             Rect{0, 0, 878, 446},
+         }) {
+        gba::declarative::LayoutOptions options;
+        options.pixelScale = 1.875F;
+        const float snapTolerance = 0.5F / options.pixelScale + 0.001F;
+        const auto result = ComputeLayout(root, viewport, {}, options);
+        Check(result.valid(), "tiny and portrait widget layout remains valid");
+        Check(result.compactMode, "constrained widget viewport activates compact mode");
+        for (const auto& [id, box] : result.boxes) {
+            (void)id;
+            Check(std::isfinite(box.visibleBox.x) && std::isfinite(box.visibleBox.y) &&
+                  std::isfinite(box.visibleBox.width) && std::isfinite(box.visibleBox.height),
+                  "constrained visible geometry remains finite");
+            Check(box.visibleBox.width >= 0 && box.visibleBox.height >= 0,
+                  "constrained visible geometry never inverts");
+            const bool horizontalContainment = box.visibleBox.width <= 0.0F ||
+                (box.visibleBox.x >= viewport.x - snapTolerance &&
+                 box.visibleBox.x + box.visibleBox.width <=
+                     viewport.x + viewport.width + snapTolerance);
+            const bool verticalContainment = box.visibleBox.height <= 0.0F ||
+                (box.visibleBox.y >= viewport.y - snapTolerance &&
+                 box.visibleBox.y + box.visibleBox.height <=
+                     viewport.y + viewport.height + snapTolerance);
+            Check(horizontalContainment && verticalContainment,
+                  "clipped widget geometry remains inside responsive viewport");
+        }
+    }
+}
+
 void AxisAlignment() {
     auto first = Element("first");
     first.width = 40.0F;
@@ -291,6 +349,7 @@ int main() {
     OverflowClipping();
     ResponsiveViewports();
     IntrinsicAndCompactMode();
+    TinyAndPortraitWidgetContainment();
     AxisAlignment();
     PixelSnapAndSafeMath();
     DuplicateIdsFailClosed();

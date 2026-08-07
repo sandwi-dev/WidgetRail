@@ -125,6 +125,43 @@ WidgetCatalogSnapshot snapshot = await catalog.DiscoverAsync();
 `SetOrderAsync` moves the supplied installed IDs to the front and preserves
 the relative order of remaining widgets.
 
+## Live bridge consumption
+
+The packaged bridge watches only the trusted `widget-catalog.json`,
+`catalog-state.json`, and the installed `packages` subtree. Staging, lock, and
+atomic temporary files are ignored. File-system notifications enter a
+capacity-one coalescing channel, wait for a 175 ms write burst to settle, and
+then trigger a complete bounded discovery/validation. The watcher is a change
+hint, never catalog authority.
+
+A semantically different complete catalog publishes a monotonically increasing
+revision for the lifetime of that bridge process. Invalid trusted JSON or
+invalid installed catalog/state retains the complete last-good catalog and
+revision. Invalid individual styles or unsupported capabilities omit only that
+package with bounded diagnostics. Reload and list never start workers.
+Watcher startup schedules one catch-up reload after both watchers are active,
+closing the load-to-watch mutation window.
+
+Descriptor, style, quick-action, or order-only changes preserve a compatible
+running worker while atomically replacing its validated presentation and
+quick-action authority. A fixed worker identity/process policy change—package,
+publisher, instance, executable, arguments, declared capabilities, or memory
+ceiling—retires the old client. Its replacement starts lazily with a fresh
+authenticated broker session.
+The native host coalesces revision events, atomically reloads descriptors,
+invalidates affected presentation caches, clears runtime focus/lifecycle when
+required, and safely leaves a disabled/removed active widget.
+
+The native client retains an announced revision as in-flight until an atomic
+descriptor list parses and reconciles successfully. A transient failure retries
+the same genuine change event at bounded 250, 500, and 1000 ms delays. Hiding
+the overlay cancels and abandons the sequence, after which the same revision can
+be announced again and a later open/list can catch up. An ordinary open-time
+failure does not start a retry loop. A new bridge session resets revision
+tracking, and stale lists cannot replace newer state. Bridge-side revision
+numbering also resets when the bridge process restarts. The current watcher and
+semantic comparison do not provide package signing or code-integrity proof.
+
 ## Remote acquisition
 
 The `gbar install` command can acquire an exact package from an absolute HTTPS
@@ -140,6 +177,8 @@ for the command grammar and limits.
 - Publisher signature and certificate-chain verification
 - Online catalog metadata, release discovery, automatic updates, and revocation
 - Rollback/pinning UI and garbage collection of old versions
+- A graphical/file-picker installer (controller review/enablement exists after
+  CLI installation)
 
 Until signing is implemented, successful structural validation proves package
 shape and containment—not publisher authenticity or code safety. Executable

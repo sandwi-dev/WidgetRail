@@ -20,6 +20,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Diagnostics report invalid theme packages", InvalidThemeDiagnostics),
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
+    ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
+    ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
+    ("Malformed installed widget catalogs fail closed", InstalledWidgetCatalogFailure),
+    ("Installed widget review reloads only on activation", InstalledWidgetActivationReload),
+    ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
     ("Permissions use nested controller scopes and bounded package pages", PermissionScopesAndPagination),
     ("Capability grant confirms and deny revokes atomically", GrantAndRevoke),
     ("Consent decisions isolate package publisher identities", PublisherIsolation),
@@ -56,7 +61,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.permissions", "category.diagnostics", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.permissions", "category.diagnostics", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
@@ -281,6 +286,145 @@ static async Task StableBoundFocus()
     Assert.Equal(true, Button(overlay.Root, "interface.stepper.increment").IsDisabled);
     Assert.Equal(true, Button(overlay.Root, "opacity.stepper.decrement").IsDisabled);
     Assert.Valid(overlay);
+}
+
+static async Task InstalledWidgetReview()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    for (var index = 0; index < 6; index++)
+        WriteInstalledWidget(catalogRoot, $"dev.test.installed{index}", $"dev.publisher{index}",
+            $"Installed {index}", [PlatformCapabilities.AudioSessionsReadV1],
+            [PlatformCapabilities.AudioSessionsControlV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+
+    var first = Snapshot(widget);
+    Assert.Equal("installed.widgets", first.ActiveInputScopeId);
+    Assert.HasShortcut(first.Root, "installed.widgets", ControllerButton.B, "back");
+    Assert.HasShortcut(first.Root, "installed.widgets", ControllerButton.RightBumper,
+        "installed.next-page");
+    Assert.Equal(5, Buttons(first.Root).Count(button =>
+        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)));
+    Assert.Contains("review required", Button(first.Root, "installed.item.0").Text!);
+
+    await Action(widget, "installed.next-page");
+    var second = Snapshot(widget);
+    Assert.Equal("installed.item.5", second.InitialFocusId);
+    Assert.HasShortcut(second.Root, "installed.widgets", ControllerButton.LeftBumper,
+        "installed.previous-page");
+    await Action(widget, "installed.select.5");
+    var details = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    Assert.Equal("installed.details", details.ActiveInputScopeId);
+    Assert.HasShortcut(details.Root, "installed.details", ControllerButton.B, "back");
+    Assert.Contains("dev.test.installed5", Text(details.Root, "installed.details.id").Text!);
+    Assert.Contains("dev.publisher5", Text(details.Root, "installed.details.publisher").Text!);
+    Assert.Contains(PlatformCapabilities.AudioSessionsReadV1,
+        Text(details.Root, "installed.details.required-permissions").Text!);
+    Assert.Contains(PlatformCapabilities.AudioSessionsControlV1,
+        Text(details.Root, "installed.details.optional-permissions").Text!);
+    Assert.Contains("Enable reviewed widget", Button(details.Root, "installed.details.toggle").Text!);
+    Assert.Valid(first);
+    Assert.Valid(second);
+    Assert.Valid(details);
+}
+
+static async Task InstalledWidgetToggle()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    const string widgetId = "dev.test.toggle";
+    WriteInstalledWidget(catalogRoot, widgetId, "dev.publisher.toggle", "Toggle",
+        [PlatformCapabilities.NetworkReadV1], []);
+    var catalog = new WidgetCatalog(catalogRoot);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.select.0");
+    await Action(widget, "installed.toggle");
+    Assert.Equal(true, (await catalog.DiscoverAsync()).Widgets.Single().Enabled);
+    var enabled = Snapshot(widget);
+    Assert.Contains("Disable widget", Button(enabled.Root, "installed.details.toggle").Text!);
+    Assert.Contains("Toggle enabled", Text(enabled.Root, "settings.status").Text!);
+
+    await Action(widget, "installed.toggle");
+    Assert.Equal(false, (await catalog.DiscoverAsync()).Widgets.Single().Enabled);
+    var disabled = Snapshot(widget);
+    Assert.Contains("Enable reviewed widget", Button(disabled.Root, "installed.details.toggle").Text!);
+    Assert.Contains("Toggle disabled", Text(disabled.Root, "settings.status").Text!);
+    Assert.Valid(enabled);
+    Assert.Valid(disabled);
+}
+
+static async Task InstalledWidgetCatalogFailure()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var package = Path.Combine(catalogRoot, "packages", "dev.test.bad", "1.0.0");
+    Directory.CreateDirectory(package);
+    await File.WriteAllTextAsync(Path.Combine(package, "manifest.json"), "{ invalid");
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    var snapshot = Snapshot(widget);
+    Assert.Contains("invalid_manifest", Text(snapshot.Root, "installed.help").Text!);
+    Assert.True(!Buttons(snapshot.Root).Any(button =>
+        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+        "Malformed catalog exposed an installed-widget action.");
+    Assert.Equal("installed.back", snapshot.InitialFocusId);
+    Assert.Valid(snapshot);
+}
+
+static async Task InstalledWidgetActivationReload()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    Assert.True(!Buttons(Snapshot(widget).Root).Any(button =>
+        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+        "Empty catalog unexpectedly contained an installed package.");
+
+    WriteInstalledWidget(catalogRoot, "dev.test.later-review", "dev.publisher.later", "Later",
+        [PlatformCapabilities.NetworkReadV1], []);
+    await Task.Delay(80);
+    Assert.True(!Buttons(Snapshot(widget).Root).Any(button =>
+        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+        "Settings polled the package catalog while already visible.");
+
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    Assert.True(Buttons(Snapshot(widget).Root).Any(button => button.Id == "installed.item.0"),
+        "Installed package review did not reload on the next activation.");
+}
+
+static async Task IncompatibleInstalledWidget()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(catalogRoot, "dev.test.incompatible", "dev.publisher.future", "Future",
+        [], [], hostApi: new HostApiRange("2.0", 2));
+    var catalog = new WidgetCatalog(catalogRoot);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    Assert.Contains("Incompatible", Button(Snapshot(widget).Root, "installed.item.0").Text!);
+    await Action(widget, "installed.select.0");
+    var details = Snapshot(widget);
+    Assert.Equal(true, Button(details.Root, "installed.details.toggle").IsDisabled);
+    Assert.Equal("installed.details.back", details.InitialFocusId);
+    Assert.Contains("Requires host API 2", Text(details.Root, "installed.details.compatibility").Text!);
+    await Action(widget, "installed.toggle");
+    Assert.Equal(false, (await catalog.DiscoverAsync()).Widgets.Single().Enabled);
+    Assert.Valid(details);
 }
 
 static async Task PermissionScopesAndPagination()
@@ -613,7 +757,9 @@ static void WriteInstalledWidget(
     string publisher,
     string name,
     IReadOnlyList<string> required,
-    IReadOnlyList<string> optional)
+    IReadOnlyList<string> optional,
+    HostApiRange? hostApi = null,
+    IReadOnlyList<string>? architectures = null)
 {
     const string version = "1.0.0";
     var directory = Path.Combine(catalogRoot, "packages", id, version);
@@ -625,13 +771,13 @@ static void WriteInstalledWidget(
         Publisher = publisher,
         Name = name,
         Version = version,
-        HostApi = new("1.0", 1),
+        HostApi = hostApi ?? new("1.0", 1),
         Entrypoint = new("dotnet-worker", "payload/Widget.dll", "Dev.Test.Widget"),
         Permissions = required,
         OptionalPermissions = optional,
         BackgroundPolicy = "suspend",
         ResourceRequest = new(32, 1),
-        Architectures = ["x64"],
+        Architectures = architectures ?? ["x64"],
     };
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));

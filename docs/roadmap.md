@@ -130,21 +130,18 @@ Every first-party widget contributes a focused SDK example and regression suite.
 
 ### First-party system-control reference widgets
 
-Implementation order: **Audio Mixer is implemented and packaged as the first
-system-control reference. Network Controls is the active integrated prototype:
-provider, widget, worker, catalog, packaging hooks, and focused tests exist,
-the automated packaged Release gate passes, and hardware/privacy/performance
-gates remain open.** Both
+Implementation order: **Audio Mixer and Network Controls are implemented and
+packaged as the first two system-control references. Their automated Release
+gates pass; broader hardware/privacy/performance evidence remains open.** Both
 remain ordinary SDK widgets rather than privileged shell panels.
 
-The generic declarative path, controller Settings/global-theme foundation,
-typed broker/consent path, and Audio Mixer reference now support Network
-Controls development. Network Controls remains behind its hardware/privacy and
-performance evidence gates. Both must
-remain ordinary first-party packages built on the public SDK—not special panels
-hard-coded into `OverlayHost`. Any primitive or broker API they need becomes
-documented, testable platform surface that community widgets can request under
-the same permission policy.
+The generic declarative path, controller Settings/global-theme foundation, and
+typed broker/consent path support both integrations. They remain behind their
+hardware/privacy/performance evidence gates and must stay ordinary first-party
+packages built on the public SDK—not special panels hard-coded into
+`OverlayHost`. Any primitive or broker API they need becomes documented,
+testable platform surface that community widgets can request under the same
+permission policy.
 
 **Audio Mixer (implemented)** is packaged as the first system-control
 reference widget; broader hardware and performance evidence remains open. Its
@@ -182,7 +179,7 @@ does not provide a system-default setter. Do not ship an undocumented
 supported API passes the spike, default-device switching leaves the initial
 scope.
 
-**Network Controls (active, integrated prototype)** follows Audio Mixer. It uses
+**Network Controls (implemented integration)** follows Audio Mixer. It uses
 Windows WLAN/network change notifications rather than continuously polling
 adapters. Its initial production scope is:
 
@@ -253,7 +250,7 @@ Exit criteria for both widgets:
 | Anti-cheat reacts to overlay | High | Representative signed/unsigned game tests | No injection, no game-memory access, compatibility matrix |
 | Feature creep recreates bloatware | High | Continuous resource regression tests | Budgets in CI; every background capability justified |
 
-## Immediate implementation order
+## Original Phase 0 implementation order
 
 1. Create the native solution and diagnostics harness.
 2. Complete Guide-button and input-containment spikes before polishing UI.
@@ -262,12 +259,22 @@ Exit criteria for both widgets:
 5. Prove one crashing out-of-process declarative widget.
 6. Review the evidence and accept or revise the proposed architecture.
 
-After the current prototype foundation, the product order is: continue
-measuring the implemented Audio Mixer and Network Controls integrations; finish
-the installed-package
-review/live-reload experience and remaining accessibility/global-theme
-evidence; then add stronger worker isolation. Do not use either widget to
-justify a private host API that
-external widgets cannot exercise.
+The native foundation, isolated worker path, controller package review/live
+catalog reload, and responsive per-monitor geometry seams are now implemented.
+The current product order is:
+
+1. finish physical mixed-DPI/resolution/accessibility visual evidence and the
+   controller/game/presentation matrix;
+2. add repeatable ETW/PresentMon performance tooling and continue Audio Mixer/
+   Network Controls hardware/privacy/performance evidence;
+3. add safe theme scaffold/package/preview/install tooling and `gbar dev`;
+4. implement AppContainer-equivalent worker isolation, publisher signing,
+   rollback/quarantine, and malicious-widget tests before public binaries; and
+5. continue non-auth first-party references: Performance/self-diagnostics,
+   general media controls, recent apps/games, and the capture feasibility spike.
+
+Do not use a first-party widget to justify a private host API that external
+widgets cannot exercise. Discord/social work remains deferred until eligibility
+and production authentication/communications access exist.
 
 The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.

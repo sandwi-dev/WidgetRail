@@ -29,7 +29,8 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 The available commands are `new`, `validate`, `render`, `replay`, `pack`,
 `install`, `list`, `enable`, and `disable`. `install` accepts a local package,
 an absolute HTTPS URL, or a deterministic GitHub Release shorthand. There is
-no GitHub publisher, signing command, automatic updater, or marketplace client.
+no `gbar dev` watcher, GitHub publisher, signing command, automatic updater,
+or marketplace client.
 
 ## Create and build a widget
 
@@ -134,6 +135,36 @@ errors before host integration.
 6. Handle semantic action IDs in `OnActionAsync`.
 7. Call `Invalidate()` only when visible state changes.
 8. Rebuild, validate, render, and replay.
+
+Author in logical DIPs and responsive GBSS. Do not assume a fixed physical
+resolution, DPI, aspect ratio, widget width, or positive desktop coordinates.
+The host supplies the current viewport and owns monitor placement. See
+[display and resolution behavior](display-and-resolution.md).
+
+## Install and review locally
+
+First stage a clean package root containing `manifest.json`, the published
+assembly at the manifest's exact entrypoint path, and GBSS. The complete staging
+example is in [publishing and installation](publishing-and-installation.md).
+Then use the deterministic pack/install commands:
+
+```powershell
+& $gbar pack $packageRoot `
+  --output .\scratch\VolumeControl.gbarwidget
+& $gbar install .\scratch\VolumeControl.gbarwidget
+```
+
+New widget IDs are disabled. Open the overlay's Settings → Installed widgets
+page to review the package ID, publisher, version, runtime, and required versus
+optional capability declarations, host-API range, architectures, and
+compatibility result, then enable it. Incompatible packages remain disabled;
+Settings shows a bounded reason. There is no file-picker installer: acquisition
+remains a CLI workflow. The bridge watches accepted catalog changes and updates
+the overlay without a restart; listing/reload does not eagerly start the worker.
+
+Enablement is not capability consent. If the package declares a brokered
+service, review and grant it separately under Settings → Permissions &
+capabilities. Invalid catalog updates retain the last-good running catalog.
 
 The MVP accepts only Pressed shortcuts. A and D-pad are reserved for focused
 activation and navigation. Dashboard quick actions are separate: the host owns

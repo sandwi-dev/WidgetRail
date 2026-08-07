@@ -86,6 +86,15 @@ std::wstring WidgetSurfaceFocusMemory::Restore(
     return {};
 }
 
+void WidgetSurfaceFocusMemory::Forget(const std::wstring_view widgetId) {
+    if (widgetId.empty()) return;
+    std::wstring prefix(widgetId);
+    prefix.push_back(L'\x1f');
+    std::erase_if(entries_, [&](const auto& entry) {
+        return entry.first.starts_with(prefix);
+    });
+}
+
 std::wstring WidgetSurfaceFocusMemory::Key(
     const std::wstring_view widgetId,
     const std::wstring_view scopeId) {

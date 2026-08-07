@@ -6,6 +6,7 @@
 #include "NativeIcons.h"
 #include "NativeStyle.h"
 #include "OverlayPlacement.h"
+#include "OverlayTargeting.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetLifecycle.h"
@@ -49,11 +50,13 @@ constexpr int kWidgetPanelHeight = 700;
 constexpr UINT_PTR kControllerTimer = 1;
 constexpr UINT_PTR kGuideCompatibilityTimer = 2;
 constexpr UINT_PTR kZOrderSettleTimer = 3;
+constexpr UINT_PTR kCatalogRetryTimer = 4;
 constexpr UINT kGuideMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
 constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
 constexpr UINT kSnapshotRefreshMessage = WM_APP + 4;
 constexpr UINT kForegroundChangedMessage = WM_APP + 5;
+constexpr UINT kPlacementRefreshMessage = WM_APP + 6;
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
 
@@ -330,6 +333,9 @@ public:
         if (!backdropWindow_) {
             return FailWin32(L"CreateWindowExW(backdrop)", GetLastError());
         }
+        foregroundTarget_.SetOwnedWindows(
+            reinterpret_cast<std::uintptr_t>(window_),
+            reinterpret_cast<std::uintptr_t>(backdropWindow_));
         SetLayeredWindowAttributes(backdropWindow_, 0, kBackdropOpacity, LWA_ALPHA);
         const BOOL disableTransitions = TRUE;
         const BOOL excludeFromPeek = TRUE;
@@ -502,14 +508,15 @@ private:
     static void CALLBACK OnForegroundChanged(
         HWINEVENTHOOK,
         DWORD event,
-        HWND,
+        HWND foregroundWindow,
         LONG,
         LONG,
         DWORD,
         DWORD) {
         auto* app = foregroundEventApp_;
         if (event == EVENT_SYSTEM_FOREGROUND && app && app->window_) {
-            PostMessageW(app->window_, kForegroundChangedMessage, 0, 0);
+            PostMessageW(app->window_, kForegroundChangedMessage, 0,
+                         reinterpret_cast<LPARAM>(foregroundWindow));
         }
     }
 
@@ -531,9 +538,20 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kCatalogRefreshMessage:
-            RefreshWidgetCatalog();
-            RefreshCurrentBridgeSnapshot();
-            InvalidateRect(window_, nullptr, FALSE);
+            if (RefreshWidgetCatalog()) {
+                KillTimer(window_, kCatalogRetryTimer);
+                catalogRetryAttempts_ = 0;
+                RefreshCurrentBridgeSnapshot();
+                InvalidateRect(window_, nullptr, FALSE);
+            } else if (bridge_.HasWidgetCatalogChangedRevisionInFlight() &&
+                       state_.surface() != gba::Surface::Hidden &&
+                       catalogRetryAttempts_ < 3) {
+                const UINT delay = 250U << catalogRetryAttempts_++;
+                SetTimer(window_, kCatalogRetryTimer, delay, nullptr);
+            } else {
+                bridge_.AbandonWidgetCatalogChangedRevision();
+                catalogRetryAttempts_ = 0;
+            }
             return 0;
         case kSnapshotRefreshMessage:
             RefreshCurrentBridgeSnapshot();
@@ -544,7 +562,23 @@ private:
             return 0;
         case kForegroundChangedMessage:
             if (state_.surface() != gba::Surface::Hidden) {
+                const HWND foreground = reinterpret_cast<HWND>(lParam);
+                if (foregroundTarget_.Observe(
+                        reinterpret_cast<std::uintptr_t>(foreground),
+                        foreground && IsWindow(foreground))) {
+                    // A visible overlay follows the newly foregrounded app to
+                    // its monitor. This also recomputes work-area and DPI data
+                    // rather than merely restoring topmost z-order in place.
+                    ShowOverlay();
+                    InvalidateRect(window_, nullptr, FALSE);
+                }
                 SetTimer(window_, kZOrderSettleTimer, 80, nullptr);
+            }
+            return 0;
+        case kPlacementRefreshMessage:
+            if (state_.surface() != gba::Surface::Hidden) {
+                ShowOverlay();
+                InvalidateRect(window_, nullptr, FALSE);
             }
             return 0;
         case WM_KEYDOWN:
@@ -561,6 +595,12 @@ private:
                     if (!current || *revision > current->revision) {
                         RefreshPlatformAppearance();
                     }
+                }
+                if (const auto revision = bridge_.TakeWidgetCatalogChangedRevision()) {
+                    catalogRetryAttempts_ = 0;
+                    AppendDiagnostic(L"Reconciling widget catalog revision " +
+                                     std::to_wstring(*revision));
+                    PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
                 }
                 for (auto& invalidatedWidget : bridge_.TakeInvalidatedWidgetIds()) {
                     const auto currentWidget = state_.surface() == gba::Surface::Widget
@@ -592,6 +632,12 @@ private:
             } else if (wParam == kZOrderSettleTimer) {
                 KillTimer(window_, kZOrderSettleTimer);
                 ReassertOverlayZOrder();
+            } else if (wParam == kCatalogRetryTimer) {
+                KillTimer(window_, kCatalogRetryTimer);
+                bridge_.RetryWidgetCatalogChangedRevision();
+                if (bridge_.TakeWidgetCatalogChangedRevision()) {
+                    PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
+                }
             }
             return 0;
         case WM_ACTIVATEAPP:
@@ -603,8 +649,13 @@ private:
             Paint();
             return 0;
         case WM_SIZE:
-            if (renderTarget_) {
-                renderTarget_->Resize(D2D1::SizeU(LOWORD(lParam), HIWORD(lParam)));
+            if (renderTarget_ && wParam != SIZE_MINIMIZED &&
+                LOWORD(lParam) != 0 && HIWORD(lParam) != 0) {
+                // The viewport is an input to shell style resolution and
+                // declarative responsive layout, not merely a bitmap extent.
+                // Recreate on the next paint so vw/vh and pixel snapping use
+                // the new client geometry atomically.
+                DiscardGraphicsResources();
             }
             return 0;
         case WM_DPICHANGED:
@@ -615,8 +666,19 @@ private:
             }
             return 0;
         case WM_DISPLAYCHANGE:
+            if (state_.surface() != gba::Surface::Hidden) {
+                // Display topology, taskbar work area, and accessibility
+                // settings may change without a DPI transition. Recreate the
+                // target so viewport-relative shell styles use fresh metrics.
+                DiscardGraphicsResources();
+                ShowOverlay();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return 0;
         case WM_SETTINGCHANGE:
             if (state_.surface() != gba::Surface::Hidden) {
+                // A work-area change will produce WM_SIZE and recreate target
+                // resources only when geometry actually changed.
                 ShowOverlay();
                 InvalidateRect(window_, nullptr, FALSE);
             }
@@ -684,6 +746,7 @@ private:
             KillTimer(window_, kControllerTimer);
             KillTimer(window_, kGuideCompatibilityTimer);
             KillTimer(window_, kZOrderSettleTimer);
+            KillTimer(window_, kCatalogRetryTimer);
             UnregisterHotKey(window_, kDeveloperHotkey);
         }
         guideCompatibility_.Shutdown();
@@ -766,10 +829,12 @@ private:
 
     gba::NativeRenderStyle AdaptShellStyle(
         const std::wstring_view key,
-        const bool focused = false) const {
+        const bool focused = false,
+        const float viewportWidth = static_cast<float>(kPanelWidth),
+        const float viewportHeight = static_cast<float>(kWidgetPanelHeight)) const {
         gba::NativeStyleContext context;
-        context.viewportWidthPx = static_cast<float>(kPanelWidth);
-        context.viewportHeightPx = static_cast<float>(kWidgetPanelHeight);
+        context.viewportWidthPx = viewportWidth;
+        context.viewportHeightPx = viewportHeight;
         context.parentWidthPx = context.viewportWidthPx;
         context.parentHeightPx = context.viewportHeightPx;
         context.parentFontSizePx = 16.0F;
@@ -788,20 +853,25 @@ private:
         return std::move(result.style);
     }
 
-    void RebuildShellStyles() {
-        canvasStyle_ = AdaptShellStyle(L"canvas");
-        backdropStyle_ = AdaptShellStyle(L"backdrop");
-        panelStyle_ = AdaptShellStyle(L"panel");
-        trayStyle_ = AdaptShellStyle(L"tray");
-        trayItemStyle_ = AdaptShellStyle(L"tray-item");
-        trayItemSelectedStyle_ = AdaptShellStyle(L"tray-item:selected");
-        trayItemFocusedStyle_ = AdaptShellStyle(L"tray-item:focused", true);
+    void RebuildShellStyles(
+        const float viewportWidth = static_cast<float>(kPanelWidth),
+        const float viewportHeight = static_cast<float>(kWidgetPanelHeight)) {
+        canvasStyle_ = AdaptShellStyle(L"canvas", false, viewportWidth, viewportHeight);
+        backdropStyle_ = AdaptShellStyle(L"backdrop", false, viewportWidth, viewportHeight);
+        panelStyle_ = AdaptShellStyle(L"panel", false, viewportWidth, viewportHeight);
+        trayStyle_ = AdaptShellStyle(L"tray", false, viewportWidth, viewportHeight);
+        trayItemStyle_ = AdaptShellStyle(L"tray-item", false, viewportWidth, viewportHeight);
+        trayItemSelectedStyle_ = AdaptShellStyle(
+            L"tray-item:selected", false, viewportWidth, viewportHeight);
+        trayItemFocusedStyle_ = AdaptShellStyle(
+            L"tray-item:focused", true, viewportWidth, viewportHeight);
         trayItemSelectedFocusedStyle_ =
-            AdaptShellStyle(L"tray-item:selected:focused", true);
-        titleStyle_ = AdaptShellStyle(L"title");
-        bodyStyle_ = AdaptShellStyle(L"body");
-        hintStyle_ = AdaptShellStyle(L"hint");
-        statusStyle_ = AdaptShellStyle(L"status");
+            AdaptShellStyle(L"tray-item:selected:focused", true,
+                            viewportWidth, viewportHeight);
+        titleStyle_ = AdaptShellStyle(L"title", false, viewportWidth, viewportHeight);
+        bodyStyle_ = AdaptShellStyle(L"body", false, viewportWidth, viewportHeight);
+        hintStyle_ = AdaptShellStyle(L"hint", false, viewportWidth, viewportHeight);
+        statusStyle_ = AdaptShellStyle(L"status", false, viewportWidth, viewportHeight);
     }
 
     void ApplyPlatformAppearance() {
@@ -876,28 +946,56 @@ private:
         ApplyPlatformAppearance();
     }
 
-    void RefreshWidgetCatalog() {
+    bool RefreshWidgetCatalog() {
         if (!bridge_.EnsureStarted(installationDirectory_)) {
             AppendDiagnostic(L"Widget catalog unavailable: " + bridge_.lastError());
-            return;
+            return false;
         }
         auto descriptors = bridge_.ListWidgets();
         if (!descriptors) {
             AppendDiagnostic(L"Widget catalog failed: " + bridge_.lastError());
-            return;
+            return false;
         }
-        widgetDescriptors_ = std::move(*descriptors);
+        auto previousDescriptors = std::exchange(widgetDescriptors_, std::move(*descriptors));
+        const auto runtimeChanged = [&](const std::wstring_view id) {
+            const auto before = std::find_if(
+                previousDescriptors.begin(), previousDescriptors.end(),
+                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
+            const auto after = std::find_if(
+                widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
+            return before == previousDescriptors.end() || after == widgetDescriptors_.end() ||
+                   before->instanceId != after->instanceId ||
+                   before->runtimeGeneration != after->runtimeGeneration;
+        };
+        const auto presentationChanged = [&](const std::wstring_view id) {
+            const auto before = std::find_if(
+                previousDescriptors.begin(), previousDescriptors.end(),
+                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
+            const auto after = std::find_if(
+                widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
+            return before == previousDescriptors.end() || after == widgetDescriptors_.end() ||
+                   before->presentationGeneration != after->presentationGeneration;
+        };
         std::unordered_set<std::wstring> bridgeIds;
         bridgeIds.reserve(widgetDescriptors_.size());
         for (const auto& descriptor : widgetDescriptors_) bridgeIds.emplace(descriptor.id);
+        // Runtime identity owns focus memory independently of snapshot cache
+        // residency. Clear every replaced/removed runtime even when its
+        // offscreen snapshot was evicted earlier.
+        for (const auto& id : gba::ChangedWidgetRuntimeIds(
+                 previousDescriptors, widgetDescriptors_)) focusMemory_.Forget(id);
         std::erase_if(widgetSnapshots_, [&](const auto& entry) {
             const auto descriptor = std::find_if(
                 widgetDescriptors_.begin(), widgetDescriptors_.end(),
                 [&](const gba::WidgetDescriptor& candidate) {
                     return candidate.id == entry.first;
                 });
-            return descriptor == widgetDescriptors_.end() ||
-                   descriptor->instanceId != entry.second.instanceId;
+            const bool changed = descriptor == widgetDescriptors_.end() ||
+                                 descriptor->instanceId != entry.second.instanceId ||
+                                 presentationChanged(entry.first);
+            return changed;
         });
         std::erase_if(renderedSnapshotSequences_, [&](const auto& entry) {
             return !bridgeIds.contains(entry.first);
@@ -910,11 +1008,18 @@ private:
                 ids.push_back(descriptor.id);
             }
         }
+        if (!lifecycleBridgeWidget_.empty() && runtimeChanged(lifecycleBridgeWidget_)) {
+            lifecycleBridgeWidget_.clear();
+            lifecycleBridgeState_.reset();
+            focusedElementId_.clear();
+            lastWidgetRenderResult_ = {};
+        }
         const auto before = state_.persistent();
         if (state_.SetAvailableWidgets(std::move(ids)) && before != state_.persistent()) {
             SavePersistentState(state_.persistent());
         }
         SyncWidgetActivity();
+        return true;
     }
 
     [[nodiscard]] bool IsBridgeWidget(const std::wstring_view id) const noexcept {
@@ -981,27 +1086,49 @@ private:
     }
 
     void ShowOverlay() {
+        if (!placementRefreshGate_.TryEnter()) return;
+        struct PlacementScope final {
+            gba::PlacementRefreshGate& gate;
+            HWND notifyWindow;
+            ~PlacementScope() {
+                if (gate.Complete() && notifyWindow) {
+                    PostMessageW(notifyWindow, kPlacementRefreshMessage, 0, 0);
+                }
+            }
+        } placementScope{placementRefreshGate_, window_};
+
         const bool wasVisible = IsWindowVisible(window_) != FALSE;
         if (!wasVisible) {
             const HWND foreground = GetForegroundWindow();
-            if (foreground != window_) {
-                previousForeground_ = foreground;
-            }
+            (void)foregroundTarget_.Observe(
+                reinterpret_cast<std::uintptr_t>(foreground),
+                foreground && IsWindow(foreground));
         }
 
-        const HMONITOR monitor = MonitorFromWindow(
-            previousForeground_ ? previousForeground_ : window_, MONITOR_DEFAULTTOPRIMARY);
+        const HWND remembered = reinterpret_cast<HWND>(foregroundTarget_.remembered());
+        const HWND targetWindow = reinterpret_cast<HWND>(foregroundTarget_.Resolve(
+            reinterpret_cast<std::uintptr_t>(window_),
+            remembered && IsWindow(remembered)));
+        const HMONITOR monitor = MonitorFromWindow(targetWindow, MONITOR_DEFAULTTONEAREST);
+        if (!monitor) {
+            AppendDiagnostic(L"Unable to resolve target monitor for overlay");
+            return;
+        }
         MONITORINFO monitorInfo{sizeof(monitorInfo)};
-        GetMonitorInfoW(monitor, &monitorInfo);
+        if (!GetMonitorInfoW(monitor, &monitorInfo)) {
+            AppendDiagnostic(L"GetMonitorInfoW failed error=" +
+                             std::to_wstring(GetLastError()));
+            return;
+        }
         const RECT& work = monitorInfo.rcWork;
-        UINT dpi = previousForeground_ && IsWindow(previousForeground_)
-            ? GetDpiForWindow(previousForeground_)
-            : GetDpiForWindow(window_);
-        if (dpi == 0) {
-            UINT monitorDpiY = 96;
-            if (FAILED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi, &monitorDpiY))) {
-                dpi = 96;
-            }
+        // The foreground game may be DPI-unaware, in which case
+        // GetDpiForWindow(targetWindow) is virtualized to 96. The host is PMv2,
+        // so resolve the effective DPI from the destination monitor itself.
+        UINT dpi = 96;
+        UINT monitorDpiY = 96;
+        if (FAILED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi, &monitorDpiY)) ||
+            dpi == 0 || monitorDpiY == 0) {
+            dpi = 96;
         }
         const int desiredHeightDip = DesiredHeightDip();
         const float interfaceScale = appearanceState_.current()
@@ -1016,14 +1143,21 @@ private:
             return;
         }
 
-        SetWindowPos(backdropWindow_, HWND_TOPMOST,
-                     monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
-                     monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
-                     monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
-                     SWP_SHOWWINDOW | SWP_NOACTIVATE);
-        SetWindowPos(window_, HWND_TOPMOST, placement->x, placement->y,
-                     placement->width, placement->height,
-                     SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        const BOOL backdropPlaced = SetWindowPos(
+            backdropWindow_, HWND_TOPMOST,
+            monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+            monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+            monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+            SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        const BOOL overlayPlaced = SetWindowPos(
+            window_, HWND_TOPMOST, placement->x, placement->y,
+            placement->width, placement->height,
+            SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        if (!backdropPlaced || !overlayPlaced) {
+            AppendDiagnostic(L"Overlay placement failed error=" +
+                             std::to_wstring(GetLastError()));
+            return;
+        }
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
@@ -1036,6 +1170,9 @@ private:
 
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
+        KillTimer(window_, kCatalogRetryTimer);
+        bridge_.AbandonWidgetCatalogChangedRevision();
+        catalogRetryAttempts_ = 0;
         ShowWindow(window_, SW_HIDE);
         ShowWindow(backdropWindow_, SW_HIDE);
         SetWindowPos(window_, HWND_NOTOPMOST, 0, 0, 0, 0,
@@ -1043,8 +1180,9 @@ private:
         SetWindowPos(backdropWindow_, HWND_NOTOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         DiscardGraphicsResources();
-        if (previousForeground_ && IsWindow(previousForeground_)) {
-            SetForegroundWindow(previousForeground_);
+        const HWND restoreTarget = reinterpret_cast<HWND>(foregroundTarget_.remembered());
+        if (restoreTarget && IsWindow(restoreTarget)) {
+            SetForegroundWindow(restoreTarget);
         }
     }
 
@@ -1439,6 +1577,16 @@ private:
         renderTarget_->SetDpi(windowDpi > 0 ? windowDpi : 96.0F,
                               windowDpi > 0 ? windowDpi : 96.0F);
 
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        if (const auto metrics = gba::ComputeOverlayRenderMetrics(
+                static_cast<int>(size.width), static_cast<int>(size.height),
+                windowDpi > 0 ? static_cast<UINT>(windowDpi) : 96U,
+                interfaceScale)) {
+            RebuildShellStyles(metrics->viewportWidthDip, metrics->viewportHeightDip);
+        }
+
         const auto colorOr = [](const std::optional<gba::NativeColor>& value,
                                 const gba::NativeColor fallback) {
             return value.value_or(fallback);
@@ -1601,27 +1749,29 @@ private:
         float dpiX = 96.0F;
         float dpiY = 96.0F;
         renderTarget_->GetDpi(&dpiX, &dpiY);
-        const float width = static_cast<float>(client.right - client.left) * 96.0F / dpiX;
-        const float height = static_cast<float>(client.bottom - client.top) * 96.0F / dpiY;
-        const float designWidth = static_cast<float>(kPanelWidth);
-        const float designHeight = static_cast<float>(DesiredHeightDip());
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const float scale = std::min(
-            {interfaceScale, width / designWidth, height / designHeight});
-        const float offsetX = (width - designWidth * scale) / 2.0F;
-        const float offsetY = height - designHeight * scale;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            client.right - client.left,
+            client.bottom - client.top,
+            dpiX > 0 ? static_cast<UINT>(std::lround(dpiX)) : 96U,
+            interfaceScale);
+        if (!metrics) {
+            EndPaint(window_, &paint);
+            return;
+        }
         renderTarget_->BeginDraw();
         renderTarget_->Clear(D2D1::ColorF(1.0F / 255.0F, 2.0F / 255.0F,
                                           3.0F / 255.0F, 1.0F));
-        renderTarget_->SetTransform(D2D1::Matrix3x2F(scale, 0.0F, 0.0F, scale,
-                                                     offsetX, offsetY));
+        renderTarget_->SetTransform(D2D1::Matrix3x2F::Scale(
+            metrics->interfaceScale, metrics->interfaceScale));
 
         if (state_.surface() == gba::Surface::Widget) {
-            DrawWidget(designWidth, designHeight);
+            DrawWidget(metrics->viewportWidthDip, metrics->viewportHeightDip,
+                       metrics->physicalPixelsPerDip);
         } else {
-            DrawDashboard(designWidth, designHeight);
+            DrawDashboard(metrics->viewportWidthDip, metrics->viewportHeightDip);
         }
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
 
@@ -1633,41 +1783,57 @@ private:
     }
 
     void DrawIconStrip(const float width, const float height) {
-        if (state_.order().empty()) return;
-        constexpr float tileWidth = 64.0F;
-        constexpr float tileHeight = 64.0F;
+        if (state_.order().empty() || width <= 0.0F || height <= 0.0F) return;
+        constexpr float preferredTileSize = 64.0F;
         constexpr float gap = 14.0F;
+        const float stripTop = std::max(0.0F, height - 112.0F);
+        const float stripBottom = std::max(stripTop, height - 14.0F);
+        const float stripHeight = stripBottom - stripTop;
+        if (stripHeight <= 0.0F) return;
+        const float verticalPadding = std::min(
+            16.0F, std::max(0.0F, (stripHeight - preferredTileSize) * 0.5F));
+        const float horizontalPadding = std::min(14.0F, width * 0.15F);
+        const float tileSize = std::max(
+            1.0F, std::min({preferredTileSize,
+                            width - horizontalPadding * 2.0F,
+                            stripHeight - verticalPadding * 2.0F}));
+        const float stripPadding = std::min(
+            14.0F, std::max(0.0F, (width - tileSize) * 0.5F));
         const auto maximumVisible = static_cast<std::size_t>(std::max(
-            1.0F, std::floor((width - 80.0F + gap) / (tileWidth + gap))));
+            1.0F, std::floor((width - horizontalPadding * 2.0F + gap) /
+                             (preferredTileSize + gap))));
         const std::size_t visibleCount = std::min(state_.order().size(), maximumVisible);
         const std::size_t half = visibleCount / 2;
         const std::size_t maximumFirst = state_.order().size() - visibleCount;
         const std::size_t firstSlot = std::min(
             state_.selectedSlot() > half ? state_.selectedSlot() - half : 0U,
             maximumFirst);
-        const float stripWidth = tileWidth * static_cast<float>(visibleCount) +
-                                 gap * static_cast<float>(visibleCount - 1) + 28.0F;
+        const float stripWidth = tileSize * static_cast<float>(visibleCount) +
+                                 gap * static_cast<float>(visibleCount - 1) +
+                                 stripPadding * 2.0F;
         const float stripLeft = (width - stripWidth) / 2.0F;
-        const float stripTop = height - 112.0F;
         const D2D1_ROUNDED_RECT strip{
-            D2D1::RectF(stripLeft, stripTop, stripLeft + stripWidth, height - 14.0F),
+            D2D1::RectF(stripLeft, stripTop, stripLeft + stripWidth, stripBottom),
             trayCornerRadius_, trayCornerRadius_};
         renderTarget_->FillRoundedRectangle(strip, backgroundBrush_.Get());
 
         for (std::size_t visibleIndex = 0; visibleIndex < visibleCount; ++visibleIndex) {
             const std::size_t slot = firstSlot + visibleIndex;
-            const float x = stripLeft + 14.0F + static_cast<float>(visibleIndex) * (tileWidth + gap);
-            const float top = stripTop + 16.0F;
+            const float x = stripLeft + stripPadding +
+                            static_cast<float>(visibleIndex) * (tileSize + gap);
+            const float top = stripTop + verticalPadding;
             const D2D1_ROUNDED_RECT tile{
-                D2D1::RectF(x, top, x + tileWidth, top + tileHeight),
+                D2D1::RectF(x, top, x + tileSize, top + tileSize),
                 trayItemCornerRadius_, trayItemCornerRadius_};
             renderTarget_->FillRoundedRectangle(
                 tile, slot == state_.selectedSlot() ? accentBrush_.Get()
                                                     : trayItemBrush_.Get());
             if (slot == state_.selectedSlot()) {
+                const float indicatorInset = std::min(18.0F, tileSize * 0.28F);
+                const float indicatorHeight = std::min(4.0F, tileSize * 0.12F);
                 const D2D1_ROUNDED_RECT indicator{
-                    D2D1::RectF(x + 18.0F, top + tileHeight - 4.0F,
-                                x + tileWidth - 18.0F, top + tileHeight),
+                    D2D1::RectF(x + indicatorInset, top + tileSize - indicatorHeight,
+                                x + tileSize - indicatorInset, top + tileSize),
                     2.0F, 2.0F};
                 renderTarget_->FillRoundedRectangle(indicator, selectedTextBrush_.Get());
                 if (state_.reorderMode()) {
@@ -1677,9 +1843,11 @@ private:
             }
 
             const std::wstring_view widget = state_.order()[slot];
+            const float iconInset = std::min(15.0F, tileSize * 0.24F);
             (void)gba::icons::DrawNativeIcon(
                 renderTarget_.Get(), DisplayWidgetIcon(widget),
-                D2D1::RectF(x + 15, top + 15, x + tileWidth - 15, top + tileHeight - 15),
+                D2D1::RectF(x + iconInset, top + iconInset,
+                            x + tileSize - iconInset, top + tileSize - iconInset),
                 slot == state_.selectedSlot() ? selectedTextBrush_.Get() : textBrush_.Get(),
                 2.35F);
         }
@@ -1799,14 +1967,21 @@ private:
                      secondaryBrush_.Get());
     }
 
-    void DrawWidget(const float width, const float height) {
+    void DrawWidget(
+        const float width,
+        const float height,
+        const float physicalPixelsPerDip) {
         const std::wstring_view widget = state_.activeWidget();
         const bool bridgeWidget = IsBridgeWidget(widget);
-        const float panelWidth = std::min(bridgeWidget ? 880.0F : 720.0F, width - 72.0F);
-        const float panelLeft = (width - panelWidth) / 2.0F;
-        const float panelBottom = height - 158.0F;
+        const auto geometry = gba::ComputeOverlaySurfaceGeometry(
+            width, height, bridgeWidget ? 880.0F : 720.0F);
+        if (!geometry) return;
+        const float panelLeft = geometry->panelX;
+        const float panelTop = geometry->panelY;
+        const float panelWidth = geometry->panelWidth;
+        const float panelBottom = geometry->panelY + geometry->panelHeight;
         const D2D1_ROUNDED_RECT panel{
-            D2D1::RectF(panelLeft, 20.0F, panelLeft + panelWidth, panelBottom),
+            D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, panelBottom),
             panelCornerRadius_, panelCornerRadius_};
         renderTarget_->FillRoundedRectangle(panel, cardBrush_.Get());
 
@@ -1814,12 +1989,13 @@ private:
             const auto* snapshot = SnapshotFor(widget);
             if (snapshot && declarativeRenderer_) {
                 const gba::declarative::Rect viewport{
-                    panelLeft + 1.0F,
-                    21.0F,
-                    panelWidth - 2.0F,
-                    panelBottom - 76.0F,
+                    geometry->widgetViewportX,
+                    geometry->widgetViewportY,
+                    geometry->widgetViewportWidth,
+                    geometry->widgetViewportHeight,
                 };
                 gba::DeclarativeRenderOptions options;
+                options.pixelScale = physicalPixelsPerDip;
                 if (const auto& appearance = appearanceState_.current()) {
                     options.accessibility.textScale =
                         static_cast<float>(appearance->textScale);
@@ -1881,7 +2057,8 @@ private:
 
     HINSTANCE instance_{};
     HWND window_{};
-    HWND previousForeground_{};
+    gba::ForegroundTargetTracker foregroundTarget_;
+    gba::PlacementRefreshGate placementRefreshGate_;
     HWND backdropWindow_{};
     HBRUSH backdropBrush_{};
     HWINEVENTHOOK foregroundHook_{};
@@ -1901,6 +2078,7 @@ private:
     gba::input::WidgetSurfaceFocusMemory focusMemory_;
     std::unordered_map<std::wstring, gba::WidgetSnapshot> widgetSnapshots_;
     gba::WidgetBridgeClient bridge_;
+    unsigned int catalogRetryAttempts_{};
     gba::PlatformAppearanceState appearanceState_;
     gba::NativeRenderStyle canvasStyle_;
     gba::NativeRenderStyle backdropStyle_;

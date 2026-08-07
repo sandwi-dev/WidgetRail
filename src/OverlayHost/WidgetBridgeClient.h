@@ -25,9 +25,17 @@ struct WidgetDescriptor final {
     std::wstring id;
     std::wstring name;
     std::wstring instanceId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
     std::wstring icon{L"connection"};
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };
+
+/// Returns prior widget IDs whose runtime identity was removed or replaced,
+/// independent of any snapshot/focus cache residency.
+[[nodiscard]] std::vector<std::wstring> ChangedWidgetRuntimeIds(
+    const std::vector<WidgetDescriptor>& before,
+    const std::vector<WidgetDescriptor>& after);
 
 /// Preserves the identity and arrival order of asynchronous widget
 /// invalidations while coalescing repeated IDs. The bound matches the maximum
@@ -127,6 +135,27 @@ private:
     std::optional<long long> pending_;
 };
 
+/// Tracks the highest catalog revision observed from either an asynchronous
+/// change notification or an atomic list response. Replayed/stale events do not
+/// cause repeated catalog reconciliation.
+class WidgetCatalogRevisionTracker final {
+public:
+    [[nodiscard]] bool Notify(long long revision) noexcept;
+    [[nodiscard]] bool ObserveSnapshot(long long revision) noexcept;
+    [[nodiscard]] std::optional<long long> Take() noexcept;
+    void Retry() noexcept;
+    void Abandon() noexcept;
+    void Reset() noexcept;
+    [[nodiscard]] bool hasInFlight() const noexcept { return inFlight_.has_value(); }
+    [[nodiscard]] const std::optional<long long>& pending() const noexcept { return pending_; }
+    [[nodiscard]] long long observed() const noexcept { return observed_; }
+
+private:
+    long long observed_{};
+    std::optional<long long> pending_;
+    std::optional<long long> inFlight_;
+};
+
 /// Atomically retains the last accepted appearance. Callers parse into a
 /// temporary value first, then publish; rejected or malformed updates cannot
 /// partially replace the currently rendered platform state.
@@ -156,6 +185,12 @@ public:
     [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance();
     /// Coalesced latest revision announced by platform-appearance-changed events.
     [[nodiscard]] std::optional<long long> TakePlatformAppearanceChangedRevision() noexcept;
+    /// Coalesced latest catalog revision announced by widget-catalog-changed events.
+    [[nodiscard]] std::optional<long long> TakeWidgetCatalogChangedRevision() noexcept;
+    /// Requeues an announced revision after a transient list/parse failure.
+    void RetryWidgetCatalogChangedRevision() noexcept;
+    void AbandonWidgetCatalogChangedRevision() noexcept;
+    [[nodiscard]] bool HasWidgetCatalogChangedRevisionInFlight() const noexcept;
     /// Sends the worker's explicit background, visible, or interactive state.
     [[nodiscard]] std::optional<bool> SetWidgetLifecycle(
         std::wstring_view widgetId,
@@ -190,6 +225,7 @@ private:
     long long nextRequestId_{};
     WidgetInvalidationQueue invalidations_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
+    WidgetCatalogRevisionTracker catalogChanges_;
 };
 
 } // namespace gba

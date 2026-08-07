@@ -15,29 +15,38 @@ public sealed class WidgetBridgeServer(
     int maximumMessageBytes = BridgeProtocol.DefaultMaximumMessageBytes,
     PlatformAppearanceService? appearance = null,
     ConsentStore? consentStore = null,
-    IPlatformBrokerBackend? platformBackend = null) : IAsyncDisposable
+    IPlatformBrokerBackend? platformBackend = null,
+    BridgeCatalogMonitor? catalogMonitor = null) : IAsyncDisposable
 {
     private readonly string _pipeName = ValidatePipeName(pipeName);
-    private readonly BridgeCatalog _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+    private BridgeCatalog _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
     private readonly int _maximumMessageBytes = maximumMessageBytes is >= 256 and <= BridgeProtocol.AbsoluteMaximumMessageBytes
         ? maximumMessageBytes
         : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
     private readonly PlatformAppearanceService? _appearance = appearance;
     private readonly ConsentStore? _consentStore = consentStore;
     private readonly IPlatformBrokerBackend? _platformBackend = platformBackend;
-    private readonly ConcurrentDictionary<string, WidgetProcessClient> _clients = new(StringComparer.Ordinal);
+    private readonly BridgeCatalogMonitor? _catalogMonitor = catalogMonitor;
+    private readonly ConcurrentDictionary<string, ClientRegistration> _clients = new(StringComparer.Ordinal);
+    private readonly object _catalogGate = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private long _catalogRevision;
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
     private bool _disposed;
 
-    public int RunningWorkerCount => _clients.Values.Count(client => client.IsRunning);
+    public int RunningWorkerCount => _clients.Values.Count(registration => registration.Client.IsRunning);
 
     public async Task RunAsync(TimeSpan acceptTimeout, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (acceptTimeout <= TimeSpan.Zero || acceptTimeout > TimeSpan.FromMinutes(1))
             throw new ArgumentOutOfRangeException(nameof(acceptTimeout));
+        if (_catalogMonitor is not null)
+        {
+            _catalogMonitor.Changed += OnCatalogChanged;
+            ApplyCatalog(_catalogMonitor.Current, _catalogMonitor.Revision, publishEvent: false);
+        }
         await using var pipe = new NamedPipeServerStream(
             _pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, 4096, 4096);
@@ -88,6 +97,7 @@ public sealed class WidgetBridgeServer(
         }
         finally
         {
+            if (_catalogMonitor is not null) _catalogMonitor.Changed -= OnCatalogChanged;
             if (_appearance is not null) _appearance.Changed -= OnAppearanceChanged;
             _channel = null;
             await DisposeClientsAsync().ConfigureAwait(false);
@@ -107,8 +117,16 @@ public sealed class WidgetBridgeServer(
         switch (request.Type)
         {
         case BridgeMessageTypes.ListWidgets:
+            BridgeCatalog listCatalog;
+            long listRevision;
+            lock (_catalogGate)
+            {
+                listCatalog = _catalog;
+                listRevision = _catalogRevision;
+            }
             await ReplyAsync(BridgeMessageTypes.Widgets, request.RequestId,
-                    new { widgets = _catalog.Widgets }, cancellationToken).ConfigureAwait(false);
+                    new { revision = listRevision, widgets = listCatalog.Widgets }, cancellationToken)
+                .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.GetPlatformAppearance:
             if (_appearance is null)
@@ -121,9 +139,9 @@ public sealed class WidgetBridgeServer(
             break;
         case BridgeMessageTypes.GetSnapshot:
             var snapshotRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
-            var snapshotClient = GetClient(snapshotRequest.WidgetId);
-            var snapshot = await snapshotClient.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-            var configuredForStyle = _catalog.GetConfigured(snapshotRequest.WidgetId);
+            var snapshotRegistration = GetClient(snapshotRequest.WidgetId);
+            var snapshot = await snapshotRegistration.Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            var configuredForStyle = snapshotRegistration.Configured;
             var theme = _appearance is null
                 ? configuredForStyle.CompiledTheme
                 : _appearance.ResolveWidgetTheme(configuredForStyle.Id, configuredForStyle.StylePackage);
@@ -146,37 +164,35 @@ public sealed class WidgetBridgeServer(
             break;
         case BridgeMessageTypes.SetWidgetLifecycle:
             var lifecycleRequest = BridgeJson.FromElement<BridgeWidgetLifecycleRequest>(request.Payload);
-            _ = _catalog.GetConfigured(lifecycleRequest.WidgetId);
             ValidateHostState(lifecycleRequest.State);
-            await GetClient(lifecycleRequest.WidgetId)
+            await GetClient(lifecycleRequest.WidgetId).Client
                 .SetLifecycleStateAsync(lifecycleRequest.State, cancellationToken).ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.Action:
             var actionRequest = BridgeJson.FromElement<BridgeActionRequest>(request.Payload);
-            _ = _catalog.GetConfigured(actionRequest.WidgetId);
-            await GetClient(actionRequest.WidgetId).SendActionAsync(actionRequest.Action, cancellationToken)
+            await GetClient(actionRequest.WidgetId).Client.SendActionAsync(actionRequest.Action, cancellationToken)
                 .ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.ControllerInput:
             var controllerRequest = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
-            _ = _catalog.GetConfigured(controllerRequest.WidgetId);
             ValidateControllerInput(controllerRequest.Input);
-            var handled = await GetClient(controllerRequest.WidgetId)
+            var handled = await GetClient(controllerRequest.WidgetId).Client
                 .SendControllerInputAsync(controllerRequest.Input, cancellationToken).ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,
                     new { handled }, cancellationToken).ConfigureAwait(false);
             break;
         case BridgeMessageTypes.QuickAction:
             var quickRequest = BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload);
-            var configured = _catalog.GetConfigured(quickRequest.WidgetId);
+            var quickRegistration = GetClient(quickRequest.WidgetId);
+            var configured = quickRegistration.Configured;
             var quickAction = configured.QuickActions.SingleOrDefault(
                 action => string.Equals(action.Id, quickRequest.QuickActionId, StringComparison.Ordinal))
                 ?? throw new BridgeProtocolException($"Unknown quick action '{quickRequest.QuickActionId}'.");
-            await GetClient(quickRequest.WidgetId).SendActionAsync(new WidgetActionEvent(
+            await quickRegistration.Client.SendActionAsync(new WidgetActionEvent(
                 quickAction.ActionId,
                 quickAction.SourceElementId,
                 quickAction.ControllerButton,
@@ -191,11 +207,18 @@ public sealed class WidgetBridgeServer(
         }
     }
 
-    private WidgetProcessClient GetClient(string widgetId)
+    private ClientRegistration GetClient(string widgetId)
     {
-        var configured = _catalog.GetConfigured(widgetId);
-        return _clients.GetOrAdd(widgetId, _ =>
+        lock (_catalogGate)
         {
+            var configured = _catalog.GetConfigured(widgetId);
+            if (_clients.TryGetValue(widgetId, out var existing) &&
+                string.Equals(existing.Configured.WorkerFingerprint,
+                    configured.WorkerFingerprint, StringComparison.Ordinal))
+                return existing;
+            if (existing is not null && _clients.TryRemove(widgetId, out var replaced))
+                _ = DisposeRegistrationAsync(replaced);
+
             var client = new WidgetProcessClient(new WidgetProcessOptions
             {
                 ExecutablePath = configured.WorkerExecutable,
@@ -210,32 +233,43 @@ public sealed class WidgetBridgeServer(
                     ? null
                     : CreateCompanionFactory(configured),
             });
-            client.Invalidated += (_, revision) => _ = SendEventAsync(
-                BridgeMessageTypes.Invalidation,
-                new BridgeInvalidation(configured.Id, revision));
-            client.ControllerActionFailed += (_, failure) => _ = SendEventAsync(
-                BridgeMessageTypes.Failure,
-                new
-                {
-                    widgetId = configured.Id,
-                    reason = "controllerActionFailed",
-                    failure.ActionId,
-                    failure.SourceElementId,
-                    failure.Message,
-                    canRestart = false,
-                });
-            client.Failed += (_, failure) => _ = SendEventAsync(
-                BridgeMessageTypes.Failure,
-                new
-                {
-                    widgetId = configured.Id,
-                    reason = failure.Reason,
-                    failure.ExitCode,
-                    failure.RestartsUsed,
-                    failure.CanRestart,
-                });
-            return client;
-        });
+            var registration = new ClientRegistration(configured, client);
+            client.Invalidated += (_, revision) =>
+            {
+                if (IsCurrent(registration)) _ = SendEventAsync(
+                    BridgeMessageTypes.Invalidation,
+                    new BridgeInvalidation(configured.Id, revision));
+            };
+            client.ControllerActionFailed += (_, failure) =>
+            {
+                if (IsCurrent(registration)) _ = SendEventAsync(
+                    BridgeMessageTypes.Failure,
+                    new
+                    {
+                        widgetId = configured.Id,
+                        reason = "controllerActionFailed",
+                        failure.ActionId,
+                        failure.SourceElementId,
+                        failure.Message,
+                        canRestart = false,
+                    });
+            };
+            client.Failed += (_, failure) =>
+            {
+                if (IsCurrent(registration)) _ = SendEventAsync(
+                    BridgeMessageTypes.Failure,
+                    new
+                    {
+                        widgetId = configured.Id,
+                        reason = failure.Reason,
+                        failure.ExitCode,
+                        failure.RestartsUsed,
+                        failure.CanRestart,
+                    });
+            };
+            _clients[widgetId] = registration;
+            return registration;
+        }
     }
 
     private Func<IWidgetProcessCompanionSession> CreateCompanionFactory(ConfiguredWidget configured)
@@ -273,6 +307,53 @@ public sealed class WidgetBridgeServer(
             BridgeMessageTypes.AppearanceChanged,
             new BridgeAppearanceChanged(snapshot.Revision));
 
+    private void OnCatalogChanged(object? sender, BridgeCatalogChanged change) =>
+        ApplyCatalog(change.Catalog, change.Revision, publishEvent: true);
+
+    internal void ApplyCatalog(BridgeCatalog catalog, long revision, bool publishEvent = true)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        if (revision < 0) throw new ArgumentOutOfRangeException(nameof(revision));
+        var removed = new List<ClientRegistration>();
+        lock (_catalogGate)
+        {
+            if (revision < _catalogRevision ||
+                (revision == _catalogRevision && _catalog.IsEquivalentTo(catalog)))
+                return;
+            if (revision == _catalogRevision)
+                return; // Equal revisions are immutable and cannot replace prior state.
+            _catalog = catalog;
+            _catalogRevision = revision;
+            foreach (var pair in _clients.ToArray())
+            {
+                ConfiguredWidget? configured = null;
+                try { configured = catalog.GetConfigured(pair.Key); }
+                catch (BridgeProtocolException) { }
+                if (configured is not null && string.Equals(
+                        configured.WorkerFingerprint,
+                        pair.Value.Configured.WorkerFingerprint,
+                        StringComparison.Ordinal))
+                {
+                    // Keep the compatible process, but atomically replace its
+                    // presentation and quick-action authority with the newly
+                    // validated catalog entry.
+                    pair.Value.Configured = configured;
+                    continue;
+                }
+                if (_clients.TryRemove(pair.Key, out var registration)) removed.Add(registration);
+            }
+        }
+
+        foreach (var registration in removed) _ = DisposeRegistrationAsync(registration);
+        if (publishEvent) _ = SendEventAsync(
+            BridgeMessageTypes.CatalogChanged,
+            new BridgeCatalogChangedEvent(revision));
+    }
+
+    private bool IsCurrent(ClientRegistration registration) =>
+        _clients.TryGetValue(registration.Configured.Id, out var current) &&
+        ReferenceEquals(current, registration);
+
     private Task ReplyAsync<T>(string type, long requestId, T payload, CancellationToken cancellationToken) =>
         SendAsync(new BridgeEnvelope
         {
@@ -299,8 +380,17 @@ public sealed class WidgetBridgeServer(
     {
         foreach (var entry in _clients.ToArray())
         {
-            if (_clients.TryRemove(entry.Key, out var client))
-                await client.DisposeAsync().ConfigureAwait(false);
+            if (_clients.TryRemove(entry.Key, out var registration))
+                await registration.Client.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static async Task DisposeRegistrationAsync(ClientRegistration registration)
+    {
+        try { await registration.Client.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            // A replaced worker is already unreachable; disposal is best effort.
         }
     }
 
@@ -339,5 +429,18 @@ public sealed class WidgetBridgeServer(
         var message = exception.Message;
         if (message.Length > 512) message = message[..512];
         return message.Replace(Environment.NewLine, " ", StringComparison.Ordinal);
+    }
+
+    private sealed class ClientRegistration(
+        ConfiguredWidget configured,
+        WidgetProcessClient client)
+    {
+        private ConfiguredWidget _configured = configured;
+        public ConfiguredWidget Configured
+        {
+            get => Volatile.Read(ref _configured);
+            set => Volatile.Write(ref _configured, value);
+        }
+        public WidgetProcessClient Client { get; } = client;
     }
 }

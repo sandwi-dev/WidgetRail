@@ -195,7 +195,9 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
         WidgetDescriptor descriptor;
         if (!ReadDescriptorString(source, L"id", descriptor.id, true, error) ||
             !ReadDescriptorString(source, L"name", descriptor.name, false, error) ||
-            !ReadDescriptorString(source, L"instanceId", descriptor.instanceId, true, error)) {
+            !ReadDescriptorString(source, L"instanceId", descriptor.instanceId, true, error) ||
+            !ReadDescriptorString(source, L"runtimeGeneration", descriptor.runtimeGeneration, true, error) ||
+            !ReadDescriptorString(source, L"presentationGeneration", descriptor.presentationGeneration, true, error)) {
             return std::nullopt;
         }
         if (source.HasKey(L"icon")) {
@@ -548,6 +550,7 @@ bool HandleAsyncEvent(
     const JsonObject& event,
     WidgetInvalidationQueue& invalidations,
     PlatformAppearanceRevisionTracker& appearanceChanges,
+    WidgetCatalogRevisionTracker& catalogChanges,
     std::wstring& status) {
     if (!event.HasKey(L"type") ||
         event.GetNamedValue(L"type").ValueType() != JsonValueType::String ||
@@ -569,6 +572,22 @@ bool HandleAsyncEvent(
             revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
             !appearanceChanges.Notify(static_cast<long long>(revision))) {
             status = L"WidgetBridge appearance event has an invalid revision.";
+            return false;
+        }
+        status.clear();
+        return true;
+    }
+    if (type == L"widget-catalog-changed") {
+        if (!HasOnlyProperties(payload, {L"revision"}) ||
+            payload.GetNamedValue(L"revision").ValueType() != JsonValueType::Number) {
+            status = L"WidgetBridge catalog event has an invalid revision.";
+            return false;
+        }
+        const double revision = payload.GetNamedNumber(L"revision");
+        if (!std::isfinite(revision) || revision < 0 ||
+            revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
+            !catalogChanges.Notify(static_cast<long long>(revision))) {
+            status = L"WidgetBridge catalog event has an invalid revision.";
             return false;
         }
         status.clear();
@@ -621,6 +640,24 @@ bool WidgetInvalidationQueue::Push(std::wstring widgetId) {
     return true;
 }
 
+std::vector<std::wstring> ChangedWidgetRuntimeIds(
+    const std::vector<WidgetDescriptor>& before,
+    const std::vector<WidgetDescriptor>& after) {
+    std::vector<std::wstring> changed;
+    changed.reserve(before.size());
+    for (const auto& prior : before) {
+        const auto current = std::find_if(
+            after.begin(), after.end(), [&](const WidgetDescriptor& candidate) {
+                return candidate.id == prior.id;
+            });
+        if (current == after.end() || current->instanceId != prior.instanceId ||
+            current->runtimeGeneration != prior.runtimeGeneration) {
+            changed.push_back(prior.id);
+        }
+    }
+    return changed;
+}
+
 std::vector<std::wstring> WidgetInvalidationQueue::Take() noexcept {
     known_.clear();
     return std::exchange(queued_, {});
@@ -634,6 +671,45 @@ bool PlatformAppearanceRevisionTracker::Notify(const long long revision) noexcep
 
 std::optional<long long> PlatformAppearanceRevisionTracker::Take() noexcept {
     return std::exchange(pending_, std::nullopt);
+}
+
+bool WidgetCatalogRevisionTracker::Notify(const long long revision) noexcept {
+    if (revision < 0 || revision > 9'007'199'254'740'991LL) return false;
+    if (revision <= observed_) return true;
+    if (inFlight_ && revision <= *inFlight_) return true;
+    if (!pending_ || revision > *pending_) pending_ = revision;
+    return true;
+}
+
+bool WidgetCatalogRevisionTracker::ObserveSnapshot(const long long revision) noexcept {
+    if (revision < 0 || revision > 9'007'199'254'740'991LL) return false;
+    if (revision < observed_ || (inFlight_ && revision < *inFlight_)) return false;
+    if (revision > observed_) observed_ = revision;
+    if (inFlight_ && *inFlight_ <= observed_) inFlight_.reset();
+    if (pending_ && *pending_ <= observed_) pending_.reset();
+    return true;
+}
+
+std::optional<long long> WidgetCatalogRevisionTracker::Take() noexcept {
+    if (inFlight_ || !pending_) return std::nullopt;
+    inFlight_ = std::exchange(pending_, std::nullopt);
+    return inFlight_;
+}
+
+void WidgetCatalogRevisionTracker::Retry() noexcept {
+    if (!inFlight_) return;
+    if (!pending_ || *inFlight_ > *pending_) pending_ = *inFlight_;
+    inFlight_.reset();
+}
+
+void WidgetCatalogRevisionTracker::Abandon() noexcept {
+    inFlight_.reset();
+}
+
+void WidgetCatalogRevisionTracker::Reset() noexcept {
+    observed_ = 0;
+    pending_.reset();
+    inFlight_.reset();
 }
 
 bool PlatformAppearanceState::Publish(PlatformAppearance appearance) {
@@ -738,6 +814,7 @@ void WidgetBridgeClient::Stop() noexcept {
     nextRequestId_ = 0;
     (void)invalidations_.Take();
     (void)appearanceChanges_.Take();
+    catalogChanges_.Reset();
 }
 
 std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
@@ -776,7 +853,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -800,10 +877,26 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
                 Fail(L"WidgetBridge returned a widgets response without a valid payload.");
                 return std::nullopt;
             }
+            const auto payload = response.GetNamedObject(L"payload");
+            if (!payload.HasKey(L"revision") ||
+                payload.GetNamedValue(L"revision").ValueType() != JsonValueType::Number) {
+                Fail(L"WidgetBridge widgets response has an invalid catalog revision.");
+                return std::nullopt;
+            }
+            const double revision = payload.GetNamedNumber(L"revision");
+            if (!std::isfinite(revision) || revision < 0 ||
+                revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision) {
+                Fail(L"WidgetBridge widgets response has an invalid catalog revision.");
+                return std::nullopt;
+            }
             std::wstring parseError;
-            auto descriptors = ParseWidgetDescriptors(response.GetNamedObject(L"payload"), parseError);
+            auto descriptors = ParseWidgetDescriptors(payload, parseError);
             if (!descriptors) {
                 Fail(std::move(parseError));
+                return std::nullopt;
+            }
+            if (!catalogChanges_.ObserveSnapshot(static_cast<long long>(revision))) {
+                Fail(L"WidgetBridge widgets response is older than the requested catalog revision.");
                 return std::nullopt;
             }
             lastError_.clear();
@@ -848,7 +941,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -918,7 +1011,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
             const auto type = response.GetNamedString(L"type");
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -962,7 +1055,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1039,7 +1132,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1130,7 +1223,7 @@ bool WidgetBridgeClient::PumpEvents() {
                 return consumed;
             }
             std::wstring status;
-            if (!HandleAsyncEvent(message, invalidations_, appearanceChanges_, status)) {
+            if (!HandleAsyncEvent(message, invalidations_, appearanceChanges_, catalogChanges_, status)) {
                 Fail(std::move(status));
                 return consumed;
             }
@@ -1150,6 +1243,23 @@ std::vector<std::wstring> WidgetBridgeClient::TakeInvalidatedWidgetIds() noexcep
 std::optional<long long>
 WidgetBridgeClient::TakePlatformAppearanceChangedRevision() noexcept {
     return appearanceChanges_.Take();
+}
+
+std::optional<long long>
+WidgetBridgeClient::TakeWidgetCatalogChangedRevision() noexcept {
+    return catalogChanges_.Take();
+}
+
+void WidgetBridgeClient::RetryWidgetCatalogChangedRevision() noexcept {
+    catalogChanges_.Retry();
+}
+
+void WidgetBridgeClient::AbandonWidgetCatalogChangedRevision() noexcept {
+    catalogChanges_.Abandon();
+}
+
+bool WidgetBridgeClient::HasWidgetCatalogChangedRevisionInFlight() const noexcept {
+    return catalogChanges_.hasInFlight();
 }
 
 } // namespace gba

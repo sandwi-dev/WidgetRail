@@ -32,6 +32,9 @@ public:
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot) const;
 
+    /// Drops all remembered surfaces for a removed or runtime-replaced widget.
+    void Forget(std::wstring_view widgetId);
+
 private:
     [[nodiscard]] static std::wstring Key(
         std::wstring_view widgetId,

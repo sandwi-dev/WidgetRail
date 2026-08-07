@@ -19,11 +19,13 @@ add_executable(OverlayHost WIN32
     NativeIcons.cpp
     NativeStyle.cpp
     OverlayPlacement.cpp
+    OverlayTargeting.cpp
     DeclarativeRenderer.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
     FocusNavigation.cpp
     WidgetSurfaceFocus.cpp
+    WidgetLifecycle.cpp
 )
 
 target_compile_features(OverlayHost PRIVATE cxx_std_20)
@@ -63,6 +65,11 @@ if(GBA_BUILD_TESTS)
     target_compile_options(OverlayStateTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME OverlayStateTests COMMAND OverlayStateTests)
 
+    add_executable(DeclarativeLayoutTests DeclarativeLayoutTests.cpp DeclarativeLayout.cpp)
+    target_compile_features(DeclarativeLayoutTests PRIVATE cxx_std_20)
+    target_compile_options(DeclarativeLayoutTests PRIVATE /W4 /permissive- /EHsc)
+    add_test(NAME DeclarativeLayoutTests COMMAND DeclarativeLayoutTests)
+
     add_executable(NativeIconsTests NativeIconsTests.cpp NativeIcons.cpp)
     target_compile_features(NativeIconsTests PRIVATE cxx_std_20)
     target_compile_options(NativeIconsTests PRIVATE /W4 /permissive- /EHsc)
@@ -80,6 +87,11 @@ if(GBA_BUILD_TESTS)
     target_compile_features(OverlayPlacementTests PRIVATE cxx_std_20)
     target_compile_options(OverlayPlacementTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME OverlayPlacementTests COMMAND OverlayPlacementTests)
+
+    add_executable(OverlayTargetingTests OverlayTargetingTests.cpp OverlayTargeting.cpp)
+    target_compile_features(OverlayTargetingTests PRIVATE cxx_std_20)
+    target_compile_options(OverlayTargetingTests PRIVATE /W4 /permissive- /EHsc)
+    add_test(NAME OverlayTargetingTests COMMAND OverlayTargetingTests)
 
     add_executable(GuideInputCompatibilityTests
         GuideInputCompatibilityTests.cpp GuideInputCompatibility.cpp)

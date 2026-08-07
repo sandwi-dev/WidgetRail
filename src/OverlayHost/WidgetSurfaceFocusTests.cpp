@@ -72,6 +72,12 @@ int main() {
     Check(memory.Restore(L"widget", root) == L"root-second",
           "returning to root restores root focus");
 
+    memory.Forget(L"widget");
+    Check(memory.Restore(L"widget", root) == L"root-first",
+          "runtime replacement clears all remembered widget surfaces");
+    Check(memory.Restore(L"widget", modal) == L"modal-first",
+          "runtime replacement clears remembered modal focus");
+
     auto empty = Snapshot(L"empty");
     Check(memory.Restore(L"widget", empty).empty(),
           "focusless active surfaces remain valid");

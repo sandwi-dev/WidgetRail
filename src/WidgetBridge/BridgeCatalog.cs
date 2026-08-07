@@ -24,6 +24,8 @@ public sealed record BridgeWidgetDescriptor
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string InstanceId { get; init; }
+    public required string RuntimeGeneration { get; init; }
+    public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
 }
@@ -47,12 +49,18 @@ internal sealed record ConfiguredWidget
     public GbssTheme? CompiledTheme { get; init; }
     [JsonIgnore]
     public GbssPackageResult StylePackage { get; init; } = new([], []);
+    [JsonIgnore]
+    public string WorkerFingerprint { get; init; } = string.Empty;
+    [JsonIgnore]
+    public string CatalogFingerprint { get; init; } = string.Empty;
 
     public BridgeWidgetDescriptor PublicDescriptor() => new()
     {
         Id = Id,
         Name = Name,
         InstanceId = InstanceId,
+        RuntimeGeneration = WorkerFingerprint[..32].ToLowerInvariant(),
+        PresentationGeneration = CatalogFingerprint[..32].ToLowerInvariant(),
         Icon = Icon,
         QuickActions = QuickActions,
     };
@@ -68,11 +76,13 @@ public sealed class BridgeCatalog
 {
     private readonly IReadOnlyDictionary<string, ConfiguredWidget> _configured;
     private readonly IReadOnlyList<ConfiguredWidget> _ordered;
+    private readonly string _fingerprint;
 
     private BridgeCatalog(IEnumerable<ConfiguredWidget> configured)
     {
         _ordered = configured.ToArray();
         _configured = _ordered.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
+        _fingerprint = Fingerprint(_ordered.Select(widget => widget.CatalogFingerprint));
     }
 
     public IReadOnlyList<BridgeWidgetDescriptor> Widgets =>
@@ -84,6 +94,9 @@ public sealed class BridgeCatalog
             throw new BridgeProtocolException($"Unknown widget '{widgetId}'.");
         return widget;
     }
+
+    internal bool IsEquivalentTo(BridgeCatalog other) =>
+        string.Equals(_fingerprint, other._fingerprint, StringComparison.Ordinal);
 
     public static BridgeCatalog Load(string path)
     {
@@ -151,12 +164,13 @@ public sealed class BridgeCatalog
                 if (!quickActionIds.Add(action.Id))
                     throw new BridgeCatalogException($"Widget '{source.Id}' repeats quick action '{action.Id}'.");
             }
-            if (!widgets.TryAdd(source.Id, source with
+            var configured = WithFingerprints(source with
                 {
                     WorkerExecutable = executable,
                     CompiledTheme = style.Theme,
                     StylePackage = style.Package,
-                }))
+                });
+            if (!widgets.TryAdd(source.Id, configured))
                 throw new BridgeCatalogException($"Widget ID '{source.Id}' is duplicated.");
         }
         return new BridgeCatalog(widgets.Values);
@@ -183,7 +197,7 @@ public sealed class BridgeCatalog
         {
             var code = exception is WidgetPackageException package ? package.Code : "catalog_unavailable";
             warnings.Add($"Installed widget catalog was ignored ({SafeDiagnostic(code)}).");
-            return new BridgeCatalogLoadResult(trusted, warnings);
+            return new BridgeCatalogLoadResult(trusted, warnings, InstalledCatalogValid: false);
         }
 
         var combined = trusted._ordered.ToList();
@@ -206,7 +220,7 @@ public sealed class BridgeCatalog
                 warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' conflicts with a trusted widget and was ignored.");
                 continue;
             }
-            if (!SupportsCurrentHost(manifest))
+            if (!WidgetHostCompatibility.Evaluate(manifest).IsSupported)
             {
                 warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' is incompatible with this host and was ignored.");
                 continue;
@@ -254,7 +268,7 @@ public sealed class BridgeCatalog
                 warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' has invalid styles and was ignored.");
                 continue;
             }
-            combined.Add(new ConfiguredWidget
+            combined.Add(WithFingerprints(new ConfiguredWidget
             {
                 Id = manifest.Id,
                 PackageId = manifest.Id,
@@ -277,9 +291,85 @@ public sealed class BridgeCatalog
                 QuickActions = [],
                 CompiledTheme = style.Theme,
                 StylePackage = style.Package,
-            });
+            }));
         }
-        return new BridgeCatalogLoadResult(new BridgeCatalog(combined), warnings);
+        return new BridgeCatalogLoadResult(new BridgeCatalog(combined), warnings, InstalledCatalogValid: true);
+    }
+
+    private static ConfiguredWidget WithFingerprints(ConfiguredWidget source)
+    {
+        var workerFingerprint = Fingerprint(
+        [
+            source.Id,
+            source.PackageId,
+            source.PublisherId,
+            source.InstanceId,
+            source.WorkerExecutable,
+            .. source.WorkerArguments,
+            .. source.DeclaredCapabilities,
+            source.MemoryLimitMb.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ]);
+        var catalogFingerprint = Fingerprint(
+        [
+            workerFingerprint,
+            source.Name,
+            source.Icon.ToString(),
+            .. source.QuickActions.SelectMany(action => new[]
+            {
+                action.Id,
+                action.Label,
+                action.ActionId,
+                action.SourceElementId,
+                action.ControllerButton?.ToString() ?? string.Empty,
+            }),
+            .. CanonicalStyle(source.StylePackage),
+        ]);
+        return source with
+        {
+            WorkerFingerprint = workerFingerprint,
+            CatalogFingerprint = catalogFingerprint,
+        };
+    }
+
+    private static IEnumerable<string> CanonicalStyle(GbssPackageResult package)
+    {
+        foreach (var document in package.Documents)
+        {
+            yield return document.Source;
+            foreach (var statement in document.Statements)
+            {
+                switch (statement)
+                {
+                case GbssImport import:
+                    yield return "import";
+                    yield return import.Path;
+                    break;
+                case GbssRule rule:
+                    yield return "rule";
+                    foreach (var selector in rule.Selectors) yield return selector.Text;
+                    foreach (var declaration in rule.Declarations)
+                    {
+                        yield return declaration.Property;
+                        yield return declaration.Value;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    private static string Fingerprint(IEnumerable<string> values)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Span<byte> length = stackalloc byte[sizeof(int)];
+        foreach (var value in values)
+        {
+            var bytes = Encoding.UTF8.GetBytes(value);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(length, bytes.Length);
+            hash.AppendData(length);
+            hash.AppendData(bytes);
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
     }
 
     private static CompiledWidgetStyle CompileTheme(ConfiguredWidget source, string packageRoot)
@@ -344,21 +434,6 @@ public sealed class BridgeCatalog
     private static bool IsBridgeLabel(string value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= 256;
 
-    private static bool SupportsCurrentHost(WidgetManifest manifest)
-    {
-        if (!Version.TryParse(manifest.HostApi.Minimum, out var minimum) ||
-            minimum.Major > BridgeProtocol.CurrentVersion ||
-            manifest.HostApi.MaximumMajor < BridgeProtocol.CurrentVersion)
-            return false;
-        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
-        {
-            System.Runtime.InteropServices.Architecture.X64 => "x64",
-            System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
-            _ => string.Empty,
-        };
-        return architecture.Length != 0 && manifest.Architectures.Contains(architecture, StringComparer.Ordinal);
-    }
-
     private static string InstalledInstanceId(string id, string version)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{id}@{version}"));
@@ -368,7 +443,8 @@ public sealed class BridgeCatalog
 
 public sealed record BridgeCatalogLoadResult(
     BridgeCatalog Catalog,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    bool InstalledCatalogValid = true);
 
 public sealed class BridgeCatalogException(string message, Exception? innerException = null)
     : Exception(message, innerException);

@@ -43,7 +43,7 @@ manifest.json
 payload/
 assets/
 styles/
-signature.json
+signature.json          # reserved for the planned signing phase
 ```
 
 Example manifest:
@@ -62,14 +62,22 @@ Example manifest:
     "type": "Example.Clock.ClockWidget"
   },
   "permissions": [],
-  "optionalPermissions": ["network.client:time.example"],
+  "optionalPermissions": [],
   "backgroundPolicy": "none",
   "resourceRequest": { "memoryMb": 48, "updateHz": 1 },
   "architectures": ["x64", "arm64"]
 }
 ```
 
-The host validates schema, IDs, API compatibility, hashes, signature, permissions, asset limits, and resource requests before installation. Requested budgets are never permission to exceed host maximums.
+The current installer validates archive containment/bounds, manifest schema and
+identity, host-API declaration shape, entrypoint/style paths, and resource
+requests. Remote acquisition additionally requires a caller-supplied SHA-256
+pin before installation; local package installation does not require a digest.
+Bridge and Settings apply the shared host-API/architecture compatibility check,
+and Bridge accepts only its closed capability vocabulary before execution.
+Publisher signature/certificate/revocation validation and a signed content
+manifest are planned, not current enforcement. Requested budgets are never
+permission to exceed host maximums.
 
 ## Worker lifecycle
 
@@ -261,18 +269,29 @@ Rules:
 
 The SDK succeeds only if the safe path is also the easiest path.
 
-Planned tooling:
+Available now:
 
-- `gbar new widget` scaffolds a manifest, C# worker, test, and sample GBSS
-- `gbar dev` installs an unsigned development bundle, watches files, and restarts only that worker
-- Desktop/controller SDK simulator with input replay and focus-graph inspection
-- Manifest and theme schema validation in editors and CI
-- Resource-budget and responsiveness test harness
-- Accessibility and controller-only conformance suite
-- `gbar pack` creates a reproducible bundle and content manifest
-- First-party Audio Mixer, Network Controls, and SDK Gallery widgets as
-  production reference projects; system integration remains behind public,
-  brokered capabilities rather than private host UI
+- `gbar new widget` scaffolds a strict manifest, typed C# widget, test/replay,
+  and safe starter GBSS;
+- `gbar validate`, `render`, and `replay` exercise manifests, styles,
+  snapshots, focus, and controller actions;
+- `gbar pack` creates a deterministic `.gbarwidget` bundle;
+- local/HTTPS/GitHub Release install plus catalog list/enable/disable commands;
+- `WidgetWorkerBootstrap`, `WidgetTestHost`, and typed fake host services; and
+- first-party Audio Mixer and Network Controls projects as public-SDK,
+  brokered-capability reference implementations.
+
+Remaining tooling:
+
+- `gbar dev` for an unsigned development bundle, file watching, and restart of
+  only that worker;
+- desktop/controller simulation with visual focus-graph inspection;
+- manifest/theme schemas for editors and CI;
+- resource-budget, responsiveness, accessibility, and controller-only
+  conformance harnesses;
+- a published supported SDK/NuGet/template workflow outside this repository;
+- theme scaffold/package/preview/install/remove commands; and
+- an SDK Gallery widget covering the complete public primitive/state matrix.
 
 Developer mode permits unsigned local packages but keeps process isolation, displays a persistent warning, and disables automatic background activation.
 

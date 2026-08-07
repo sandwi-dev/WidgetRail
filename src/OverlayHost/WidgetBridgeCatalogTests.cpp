@@ -10,6 +10,8 @@ namespace {
 std::string Descriptor(const int index) {
     return "{\"id\":\"widget-" + std::to_string(index) +
         "\",\"name\":\"Widget\",\"instanceId\":\"instance-" +
+        std::to_string(index) + "\",\"runtimeGeneration\":\"runtime-" +
+        std::to_string(index) + "\",\"presentationGeneration\":\"presentation-" +
         std::to_string(index) + "\",\"quickActions\":[]}";
 }
 
@@ -44,6 +46,8 @@ int main() {
             "id": "dev.test.music",
             "name": "Music controls",
             "instanceId": "music.default",
+            "runtimeGeneration": "runtime-1",
+            "presentationGeneration": "presentation-1",
             "icon": "music",
             "quickActions": [{
                 "id": "refresh",
@@ -65,6 +69,8 @@ int main() {
     assert((*valid)[0].id == L"dev.test.music");
     assert((*valid)[0].name == L"Music controls");
     assert((*valid)[0].instanceId == L"music.default");
+    assert((*valid)[0].runtimeGeneration == L"runtime-1");
+    assert((*valid)[0].presentationGeneration == L"presentation-1");
     assert((*valid)[0].icon == L"music");
     assert((*valid)[0].quickActions.size() == 2);
     assert((*valid)[0].quickActions[0].controllerButton == L"x");
@@ -72,26 +78,26 @@ int main() {
 
     error.clear();
     const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(
-        R"json({"widgets":[{"id":"fallback","name":"Fallback","instanceId":"fallback","quickActions":[]}]})json",
+        R"json({"widgets":[{"id":"fallback","name":"Fallback","instanceId":"fallback","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error);
     assert(fallbackIcon && (*fallbackIcon)[0].icon == L"connection");
 
     error.clear();
     assert(!gba::testing::ParseWidgetDescriptors(
-        R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","icon":"arbitrary-svg","quickActions":[]}]})json",
+        R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","icon":"arbitrary-svg","quickActions":[]}]})json",
         error));
     assert(error.find(L"WidgetGlyph") != std::wstring::npos);
 
     error.clear();
     assert(!gba::testing::ParseWidgetDescriptors(
-        R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","icon":42,"quickActions":[]}]})json",
+        R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","icon":42,"quickActions":[]}]})json",
         error));
     assert(error.find(L"'icon'") != std::wstring::npos);
 
     error.clear();
     const auto duplicate = gba::testing::ParseWidgetDescriptors(R"json({"widgets":[
-        {"id":"same","name":"One","instanceId":"one","quickActions":[]},
-        {"id":"same","name":"Two","instanceId":"two","quickActions":[]}
+        {"id":"same","name":"One","instanceId":"one","runtimeGeneration":"runtime-one","presentationGeneration":"presentation-one","quickActions":[]},
+        {"id":"same","name":"Two","instanceId":"two","runtimeGeneration":"runtime-two","presentationGeneration":"presentation-two","quickActions":[]}
     ]})json", error);
     assert(!duplicate && error.find(L"duplicate") != std::wstring::npos);
 
@@ -106,7 +112,8 @@ int main() {
     assert(error.find(L"256") != std::wstring::npos);
 
     std::string tooManyActions = "{\"widgets\":[{\"id\":\"one\",\"name\":\"One\","
-        "\"instanceId\":\"one\",\"quickActions\":[";
+        "\"instanceId\":\"one\",\"runtimeGeneration\":\"runtime\","
+        "\"presentationGeneration\":\"presentation\",\"quickActions\":[";
     for (int index = 0; index < 17; ++index) {
         if (index != 0) tooManyActions += ',';
         tooManyActions += "{\"id\":\"action-" + std::to_string(index) +
@@ -120,13 +127,13 @@ int main() {
 
     error.clear();
     assert(!gba::testing::ParseWidgetDescriptors(
-        R"json({"widgets":[{"id":"bad/id","name":"Bad","instanceId":"one","quickActions":[]}]})json",
+        R"json({"widgets":[{"id":"bad/id","name":"Bad","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error));
     assert(error.find(L"'id'") != std::wstring::npos);
 
     error.clear();
     assert(!gba::testing::ParseWidgetDescriptors(
-        R"json({"widgets":[{"id":"one","name":"Bad\nLabel","instanceId":"one","quickActions":[]}]})json",
+        R"json({"widgets":[{"id":"one","name":"Bad\nLabel","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error));
     assert(error.find(L"'name'") != std::wstring::npos);
 
@@ -225,6 +232,49 @@ int main() {
     assert(revisions.pending() == 5);
     assert(revisions.Take() == 5);
     assert(!revisions.pending());
+
+    gba::WidgetCatalogRevisionTracker catalogRevisions;
+    assert(catalogRevisions.ObserveSnapshot(2));
+    assert(catalogRevisions.observed() == 2);
+    assert(catalogRevisions.Notify(2));
+    assert(!catalogRevisions.pending());
+    assert(catalogRevisions.Notify(4));
+    assert(catalogRevisions.Notify(3));
+    assert(catalogRevisions.pending() == 4);
+    assert(catalogRevisions.Take() == 4);
+    assert(catalogRevisions.observed() == 2);
+    assert(!catalogRevisions.Take());
+    assert(catalogRevisions.Notify(4));
+    assert(!catalogRevisions.pending());
+    catalogRevisions.Retry();
+    assert(catalogRevisions.pending() == 4);
+    assert(catalogRevisions.Take() == 4);
+    assert(!catalogRevisions.ObserveSnapshot(3));
+    assert(catalogRevisions.ObserveSnapshot(4));
+    assert(catalogRevisions.observed() == 4);
+    assert(catalogRevisions.Notify(4));
+    assert(!catalogRevisions.pending());
+    assert(!catalogRevisions.Notify(-1));
+    catalogRevisions.Reset();
+    assert(catalogRevisions.observed() == 0);
+    assert(catalogRevisions.ObserveSnapshot(0));
+    assert(catalogRevisions.Notify(1));
+    assert(catalogRevisions.Take() == 1);
+    catalogRevisions.Abandon();
+    assert(catalogRevisions.Notify(1));
+    assert(catalogRevisions.pending() == 1);
+
+    std::vector<gba::WidgetDescriptor> beforeRuntimes{
+        {.id = L"evicted", .instanceId = L"instance-1", .runtimeGeneration = L"runtime-1"},
+        {.id = L"stable", .instanceId = L"instance-2", .runtimeGeneration = L"runtime-2"},
+        {.id = L"removed", .instanceId = L"instance-3", .runtimeGeneration = L"runtime-3"},
+    };
+    std::vector<gba::WidgetDescriptor> afterRuntimes{
+        {.id = L"evicted", .instanceId = L"instance-1", .runtimeGeneration = L"runtime-new"},
+        {.id = L"stable", .instanceId = L"instance-2", .runtimeGeneration = L"runtime-2"},
+    };
+    const auto changedRuntimes = gba::ChangedWidgetRuntimeIds(beforeRuntimes, afterRuntimes);
+    assert((changedRuntimes == std::vector<std::wstring>{L"evicted", L"removed"}));
 
     gba::PlatformAppearanceState appearanceState;
     assert(appearanceState.Publish(*appearance));
