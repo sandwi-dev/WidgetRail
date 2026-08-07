@@ -39,6 +39,7 @@ foreach (var test in tests)
     {
         failures.Add($"FAIL {test.Name}: {exception.Message}");
         Console.Error.WriteLine(failures[^1]);
+        Console.Error.WriteLine(exception);
     }
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");

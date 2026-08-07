@@ -21,6 +21,8 @@ internal sealed class CatalogStateStore
 {
     private static readonly TimeSpan CrossProcessLockTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan CrossProcessLockRetryDelay = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan AtomicReplaceTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan AtomicReplaceRetryDelay = TimeSpan.FromMilliseconds(10);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -133,11 +135,33 @@ internal sealed class CatalogStateStore
                 await stream.FlushAsync(cancellationToken);
                 stream.Flush(flushToDisk: true);
             }
-            File.Move(temporary, _path, overwrite: true);
+            await ReplaceStateFileAsync(temporary, cancellationToken);
         }
         finally
         {
             if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+
+    private async Task ReplaceStateFileAsync(string temporary, CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow + AtomicReplaceTimeout;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                File.Move(temporary, _path, overwrite: true);
+                return;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException &&
+                DateTime.UtcNow < deadline)
+            {
+                // Windows can transiently deny replacement while a lock-free
+                // reader or filesystem observer still holds the old file.
+                await Task.Delay(AtomicReplaceRetryDelay, cancellationToken);
+            }
         }
     }
 
