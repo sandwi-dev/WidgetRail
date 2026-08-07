@@ -49,9 +49,10 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 
 ## Initial first-party widget candidates
 
-- Audio Mixer: event-driven master/output volume, output-device switching,
-  per-application sessions, microphone mute/level, and dashboard quick actions
-  through brokered Windows Core Audio capabilities
+- Audio Mixer: event-driven master/output volume, per-application sessions,
+  microphone mute/level, and dashboard quick actions through brokered Windows
+  Core Audio capabilities; output-device switching only if a supported public
+  Windows API passes the product's platform spike
 - Network Controls: event-driven Ethernet/Wi-Fi state, signal quality,
   saved-profile switching, and safe quick controls through brokered
   WLAN/network capabilities; no password entry in the initial scope
@@ -65,8 +66,9 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 Discord is the only planned social provider initially. Its production use remains gated on Discord confirming this general-purpose overlay is an eligible Social SDK integration and approving communications capacity.
 
 Audio Mixer and Network Controls are planned after the generic widget path,
-controller Settings/global themes, and the production capability broker. They
-must ship as out-of-process first-party packages using the same public SDK,
+controller Settings/global themes, and production connection of the existing
+broker contract/consent foundation. They must ship as out-of-process first-party
+packages using the same public SDK,
 controller input scopes, lifecycle, and permission model available to other
 developers. Their Windows integrations belong behind narrow brokers; neither
 feature is a reason to hard-code an alternate UI or expose raw OS handles in

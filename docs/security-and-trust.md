@@ -20,6 +20,19 @@ planned. A structurally valid package is not necessarily trustworthy.
 - The native host never loads third-party managed assemblies.
 - Bridge and worker communication uses random local named pipes, strict
   versioned envelopes, message ceilings, bounded waits, and failure events.
+- On Windows, each worker is created suspended, assigned to a per-worker Job
+  Object, and only then resumed. Trusted bridge policy applies a 16–256 MiB
+  aggregate job-memory ceiling, one-active-process limit, kill-on-close, and
+  die-on-unhandled-exception behavior. Timeout, restart, failure, and disposal
+  paths release the job and its process.
+- The isolated managed capability-broker foundation has four closed versioned
+  audio/network grants. It binds a session to package, publisher, and instance
+  identity and rechecks the manifest declaration, durable consent decision,
+  and lifecycle on every operation. Requests/results/events are strict and
+  bounded; public DTOs contain sanitized labels and opaque IDs.
+- Broker consent storage is strict, size/entry bounded, reparse-point rejecting,
+  cross-process locked, and atomically replaced. Event subscriptions are
+  bounded/coalescing and terminate on consent revocation or Destroying.
 - Package extraction rejects absolute/traversing/ambiguous Windows paths,
   links, reparse points, collisions, excessive entries, and zip expansion
   beyond configured limits.
@@ -34,6 +47,15 @@ planned. A structurally valid package is not necessarily trustworthy.
   actual digest.
 - Newly discovered widget IDs default to disabled. A remote install explicitly
   disables its widget ID and requires a separate user `gbar enable` decision.
+- At bridge startup, only enabled, host-compatible installed packages with no
+  currently unconnected capability requirement are joined. Conflicts,
+  malformed/tampered catalog entries, and invalid per-package GBSS fail soft to
+  the bundled trusted catalog.
+- The generic worker host rejects entrypoint/dependency path escape and reparse
+  points, requires a public concrete SDK `Widget` type with a usable public
+  constructor, and returns path-free errors for rejected assembly/type cases.
+  The assembly is loaded inside its already-contained worker, never into the
+  native host or bridge.
 
 ## Not yet a production guarantee
 
@@ -42,17 +64,28 @@ The following are **not implemented as a complete public security boundary**:
 - publisher signatures, certificate validation, transparency, or revocation;
 - a public SDK/package signing service or curated marketplace;
 - AppContainer launch for community workers;
-- Job Object CPU/memory/process-tree enforcement;
-- an implemented permission/capability broker for manifest permissions;
+- CPU-rate/time and broader resource quotas beyond the current Job Object
+  memory/single-process/cleanup policy;
+- authenticated bridge/worker exposure of the capability broker, real Core
+  Audio/WLAN providers, controller consent UI, and security audit UI;
 - secure token brokering for third-party integrations;
 - user-facing permission consent, update review, rollback, or quarantine UI;
-- a production installer that connects `WidgetCatalog` to native host
-  discovery; and
+- a graphical install/review flow, live bridge catalog reload, and safe
+  automatic updates;
 - universal anti-cheat or controller-containment compatibility.
 
-The runtime's out-of-process worker and timeout/restart behavior improve
-reliability. They do not by themselves prevent a normal desktop process from
-accessing the current user's files, network, or credentials.
+The runtime's out-of-process worker and Job Object policy improve reliability
+and bound memory/process count. They do not prevent a normal desktop process
+from accessing the current user's files, network, or credentials. AppContainer
+or an equivalent least-privilege token boundary is still required before
+untrusted public widget binaries are safe.
+
+The bridge now discovers enabled packages from the current-user catalog at
+startup and launches them lazily through the generic worker host. This is an
+execution path, not a trust boundary: catalog enablement has no signature or
+publisher proof, and changes require an overlay/bridge restart. Packages with
+declared capabilities are deliberately skipped until broker transport and
+controller consent are connected.
 
 The managed development theme catalog has strict manifests, version-pinned
 directories, package-relative GBSS imports, bounds, reparse/containment checks,
@@ -93,9 +126,11 @@ protection. Use only public origins you intended to contact.
 
 Manifests already model required and optional permission strings, background
 policy, architecture, and resource requests. Validation checks their syntax
-and bounds. Enforcement and user consent are planned; declaring a permission
-does not currently grant a safe brokered API or constrain arbitrary worker
-code.
+and bounds. The isolated broker prototype can enforce its four closed audio/
+network capability IDs against an authenticated identity, manifest declaration,
+stored decision, and lifecycle. It is not connected to widget IPC or a
+user-facing consent flow, and declaring a permission still does not grant a
+callable OS API or constrain arbitrary worker code.
 
 ## Reporting security problems
 

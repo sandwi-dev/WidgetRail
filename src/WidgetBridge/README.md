@@ -229,6 +229,24 @@ file receive empty `base` and `focused` maps for every node.
 values fail catalog loading; widgets cannot supply SVG, font, file, or drawing
 payloads through the descriptor.
 
-Catalog configuration is trusted installation state, not a marketplace format.
-Production integration still needs signed-package resolution, Job Objects,
-AppContainer launch, and the capability broker around worker processes.
+The JSON catalog above is trusted bundled installation state. At startup the
+bridge also discovers the current-user `WidgetCatalog` and joins enabled,
+host/architecture-compatible packages in persisted order. It assigns each a
+fixed trusted 64 MiB worker policy and the packaged `WidgetWorkerHost`; listing
+the catalog remains lazy and does not launch workers. Disabled packages stay
+inert. A malformed catalog falls back to bundled widgets, while a conflicting,
+tampered, incompatible, capability-requesting, or invalid-GBSS installed
+package is skipped with a bounded warning.
+
+`WidgetWorkerHost` loads the manifest entrypoint only from the immutable package
+root, rejects path escape/reparse points, requires a public concrete SDK
+`Widget` type, and resolves dependencies inside the package. It runs behind the
+same random-pipe protocol and pre-launch Job Object containment as first-party
+workers. The native host and bridge never load the widget assembly.
+
+The installed catalog snapshot is read only at bridge startup, so an install,
+enable, or disable requires an overlay/bridge restart. This integration is not
+a marketplace or trust guarantee. Production still needs signatures/publisher
+verification, AppContainer-equivalent isolation, live catalog reload, broker
+transport/consent UI, and real provider backends. Packages declaring required
+capabilities remain skipped until that broker path is connected.

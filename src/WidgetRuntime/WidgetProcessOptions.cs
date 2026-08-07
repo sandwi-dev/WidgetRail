@@ -9,6 +9,11 @@ public sealed record WidgetProcessOptions
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(2);
     public int MaximumMessageBytes { get; init; } = WidgetRuntimeProtocol.DefaultMaximumMessageBytes;
     public int MaximumRestartAttempts { get; init; } = 2;
+    /// <summary>
+    /// Trusted host policy applied to the Windows Job Object. This value is
+    /// never accepted from the worker process or its protocol messages.
+    /// </summary>
+    public long MemoryLimitBytes { get; init; } = 64L * 1024 * 1024;
 
     internal void Validate()
     {
@@ -27,6 +32,8 @@ public sealed record WidgetProcessOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumMessageBytes));
         if (MaximumRestartAttempts is < 0 or > 10)
             throw new ArgumentOutOfRangeException(nameof(MaximumRestartAttempts));
+        if (MemoryLimitBytes is < 16L * 1024 * 1024 or > 512L * 1024 * 1024)
+            throw new ArgumentOutOfRangeException(nameof(MemoryLimitBytes));
         if (Arguments.Any(argument => argument is null))
             throw new ArgumentException("Worker arguments cannot contain null entries.", nameof(Arguments));
     }

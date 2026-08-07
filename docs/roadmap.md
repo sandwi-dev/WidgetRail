@@ -77,7 +77,8 @@ Exit criteria:
 
 - Worker failure never terminates or blocks the shell
 - Lazy cold start is acceptable or hidden by a cached snapshot
-- Job Object accounting and termination work
+- Job Object accounting and termination work (**initial memory, one-process,
+  pre-launch assignment, and kill-on-close policy implemented and tested**)
 - AppContainer communication is proven on the chosen minimum Windows versions
 - The initial trust/support policy for Windows 10 versus Windows 11 is explicit
 
@@ -112,7 +113,8 @@ Developer mode is local and unsigned but remains isolated. Public distribution r
 
 ## Phase 3: security and useful first-party widgets
 
-- AppContainer/Win32 isolation and capability broker
+- AppContainer/Win32 isolation and production capability-broker integration
+  (the isolated v1 contract/consent/simulator foundation is implemented)
 - Signed packages, atomic update, rollback, and crash-loop disable
 - Malicious/abusive widget test corpus
 - Performance widget
@@ -136,7 +138,8 @@ community widgets can request under the same permission policy.
 a high-frequency polling loop. Its production scope is:
 
 - master/output volume and mute;
-- output-device discovery and switching;
+- output-device discovery and, only if a supported public Windows API passes a
+  packaging/minimum-version spike, switching;
 - per-application audio sessions with volume and mute;
 - microphone mute and level where the broker can expose them safely; and
 - up to three context-appropriate dashboard quick actions, such as master mute
@@ -149,6 +152,12 @@ session, or microphone handle. It must demonstrate device/session arrival and
 removal, default-device changes, application churn, communication-device
 policy, and recovery without keeping Visible/Interactive polling alive in
 `Background`.
+
+The documented `IMMDeviceEnumerator` surface reads the default endpoint but
+does not provide a system-default setter. Do not ship an undocumented
+`PolicyConfig` interface, registry write, or shell-automation workaround; if no
+supported API passes the spike, default-device switching leaves the initial
+scope.
 
 **Network Controls** uses Windows WLAN/network change notifications rather than
 continuously polling adapters. Its initial production scope is:
@@ -165,6 +174,15 @@ broker owns WLAN/network handles and returns sanitized state/events. Switching
 uses an existing saved profile only, requires clear focus/feedback, and must
 handle adapter removal, airplane/radio state, connection failure, and Ethernet
 priority without trapping controller focus.
+
+IP Helper notifications drive aggregate/Ethernet changes. Native Wi-Fi uses a
+long-lived WLAN client and asynchronous connection notifications; it does not
+scan continuously. SSID/current-connection/signal details that Windows treats
+as location-sensitive must degrade to permission-required/denied/revoked
+states, never trigger a retry loop or expose BSSID/profile XML/key material.
+See [Windows provider architecture](windows-provider-architecture.md) for the
+documented API facts, threading/lifetime rules, privacy boundary, and simulator
+matrix.
 
 Exit criteria for both widgets:
 
@@ -213,10 +231,10 @@ Exit criteria for both widgets:
 6. Review the evidence and accept or revise the proposed architecture.
 
 After the current prototype foundation, the product order is: finish generic
-widget rendering/catalog discovery; finish controller Settings and the global
-theme contract; establish capability consent/brokering and containment; then
-build Audio Mixer and Network Controls through those public surfaces. Do not
-use either widget to justify a private host API that external widgets cannot
-exercise.
+widget rendering and the installed-package review/reload experience; finish
+the remaining accessibility/global-theme evidence; connect capability consent/
+broker transport and stronger worker isolation; then build Audio Mixer and
+Network Controls through those public surfaces. Do not use either widget to
+justify a private host API that external widgets cannot exercise.
 
 The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.

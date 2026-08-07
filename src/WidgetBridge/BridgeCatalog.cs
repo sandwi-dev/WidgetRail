@@ -1,7 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
+using System.Text;
+using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetStyling;
+using CatalogService = GameBarAlternative.WidgetCatalog.WidgetCatalog;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -32,6 +36,8 @@ internal sealed record ConfiguredWidget
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
+    /// <summary>Trusted host policy; worker manifests and IPC cannot override it.</summary>
+    public int MemoryLimitMb { get; init; } = 64;
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
     [JsonIgnore]
     public GbssTheme? CompiledTheme { get; init; }
@@ -57,11 +63,16 @@ internal sealed record BridgeCatalogDocument
 public sealed class BridgeCatalog
 {
     private readonly IReadOnlyDictionary<string, ConfiguredWidget> _configured;
+    private readonly IReadOnlyList<ConfiguredWidget> _ordered;
 
-    private BridgeCatalog(IReadOnlyDictionary<string, ConfiguredWidget> configured) => _configured = configured;
+    private BridgeCatalog(IEnumerable<ConfiguredWidget> configured)
+    {
+        _ordered = configured.ToArray();
+        _configured = _ordered.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
+    }
 
     public IReadOnlyList<BridgeWidgetDescriptor> Widgets =>
-        _configured.Values.Select(widget => widget.PublicDescriptor()).ToArray();
+        _ordered.Select(widget => widget.PublicDescriptor()).ToArray();
 
     internal ConfiguredWidget GetConfigured(string widgetId)
     {
@@ -106,6 +117,9 @@ public sealed class BridgeCatalog
             if (source.WorkerArguments is null || source.WorkerArguments.Count > 64 ||
                 source.WorkerArguments.Any(argument => argument is null || argument.Length > 4096))
                 throw new BridgeCatalogException($"Widget '{source.Id}' has invalid worker arguments.");
+            if (source.MemoryLimitMb is < 16 or > 256)
+                throw new BridgeCatalogException(
+                    $"Widget '{source.Id}' memoryLimitMb must be between 16 and 256.");
             if (source.QuickActions is null || source.QuickActions.Count > 16)
                 throw new BridgeCatalogException($"Widget '{source.Id}' has too many quick actions.");
 
@@ -131,7 +145,116 @@ public sealed class BridgeCatalog
                 }))
                 throw new BridgeCatalogException($"Widget ID '{source.Id}' is duplicated.");
         }
-        return new BridgeCatalog(widgets);
+        return new BridgeCatalog(widgets.Values);
+    }
+
+    public static async Task<BridgeCatalogLoadResult> LoadWithInstalledAsync(
+        string trustedCatalogPath,
+        string installedCatalogRoot,
+        string workerHostExecutable,
+        CancellationToken cancellationToken = default)
+    {
+        var trusted = Load(trustedCatalogPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workerHostExecutable);
+        var workerHost = Path.GetFullPath(workerHostExecutable);
+        var warnings = new List<string>();
+        WidgetCatalogSnapshot installed;
+        try
+        {
+            installed = await new CatalogService(
+                installedCatalogRoot).DiscoverAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is WidgetPackageException or IOException or UnauthorizedAccessException)
+        {
+            var code = exception is WidgetPackageException package ? package.Code : "catalog_unavailable";
+            warnings.Add($"Installed widget catalog was ignored ({SafeDiagnostic(code)}).");
+            return new BridgeCatalogLoadResult(trusted, warnings);
+        }
+
+        var combined = trusted._ordered.ToList();
+        var known = combined.Select(widget => widget.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var widget in installed.Widgets.Where(item => item.Enabled))
+        {
+            if (combined.Count == 256)
+            {
+                warnings.Add("Enabled installed widgets exceeded the 256-widget host limit; remaining entries were ignored.");
+                break;
+            }
+            var manifest = widget.ActiveVersion.Manifest;
+            if (!IsBridgeIdentifier(manifest.Id) || !IsBridgeLabel(manifest.Name))
+            {
+                warnings.Add("An enabled installed widget had an ID or name outside bridge bounds and was ignored.");
+                continue;
+            }
+            if (!known.Add(manifest.Id))
+            {
+                warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' conflicts with a trusted widget and was ignored.");
+                continue;
+            }
+            if (!SupportsCurrentHost(manifest))
+            {
+                warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' is incompatible with this host and was ignored.");
+                continue;
+            }
+            if (manifest.Permissions.Count != 0)
+            {
+                warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' requires capabilities that are not yet broker-connected and was ignored.");
+                continue;
+            }
+            if (!File.Exists(workerHost))
+            {
+                warnings.Add("Installed widgets are enabled, but the generic worker host is not packaged.");
+                break;
+            }
+            var packageRoot = widget.ActiveVersion.InstallPath;
+            var assembly = Path.GetFullPath(
+                manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar),
+                packageRoot);
+            var styleFile = File.Exists(Path.Combine(packageRoot, "styles", "default.gbss"))
+                ? "styles/default.gbss"
+                : null;
+            CompiledWidgetStyle style;
+            try
+            {
+                style = CompileTheme(new ConfiguredWidget
+                {
+                    Id = manifest.Id,
+                    Name = manifest.Name,
+                    InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
+                    WorkerExecutable = workerHost,
+                    WorkerArguments = [],
+                    StyleFile = styleFile,
+                }, packageRoot);
+            }
+            catch (Exception exception) when (exception is BridgeCatalogException or IOException or UnauthorizedAccessException)
+            {
+                warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' has invalid styles and was ignored.");
+                continue;
+            }
+            combined.Add(new ConfiguredWidget
+            {
+                Id = manifest.Id,
+                Name = manifest.Name,
+                InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
+                Icon = WidgetGlyph.Connection,
+                WorkerExecutable = workerHost,
+                WorkerArguments =
+                [
+                    "--package-root", packageRoot,
+                    "--widget-assembly", assembly,
+                    "--widget-type", manifest.Entrypoint.Type,
+                ],
+                StyleFile = styleFile,
+                // Community manifests describe expected usage but do not set
+                // enforcement policy. The trusted host owns this fixed cap.
+                MemoryLimitMb = 64,
+                QuickActions = [],
+                CompiledTheme = style.Theme,
+                StylePackage = style.Package,
+            });
+        }
+        return new BridgeCatalogLoadResult(new BridgeCatalog(combined), warnings);
     }
 
     private static CompiledWidgetStyle CompileTheme(ConfiguredWidget source, string packageRoot)
@@ -178,7 +301,39 @@ public sealed class BridgeCatalog
         if (string.IsNullOrWhiteSpace(value) || value.Length > 256)
             throw new BridgeCatalogException($"The {label} is invalid.");
     }
+
+    private static bool IsBridgeIdentifier(string value) =>
+        value.Length is > 0 and <= 128 &&
+        value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.');
+
+    private static bool IsBridgeLabel(string value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 256;
+
+    private static bool SupportsCurrentHost(WidgetManifest manifest)
+    {
+        if (!Version.TryParse(manifest.HostApi.Minimum, out var minimum) ||
+            minimum.Major > BridgeProtocol.CurrentVersion ||
+            manifest.HostApi.MaximumMajor < BridgeProtocol.CurrentVersion)
+            return false;
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
+        {
+            System.Runtime.InteropServices.Architecture.X64 => "x64",
+            System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+            _ => string.Empty,
+        };
+        return architecture.Length != 0 && manifest.Architectures.Contains(architecture, StringComparer.Ordinal);
+    }
+
+    private static string InstalledInstanceId(string id, string version)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{id}@{version}"));
+        return $"installed.{Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant()}";
+    }
 }
+
+public sealed record BridgeCatalogLoadResult(
+    BridgeCatalog Catalog,
+    IReadOnlyList<string> Warnings);
 
 public sealed class BridgeCatalogException(string message, Exception? innerException = null)
     : Exception(message, innerException);

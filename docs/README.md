@@ -35,6 +35,9 @@ guarantees that are available now.
   containment rules, immutable installation, and catalog APIs.
 - [Implementation status](implementation-status.md) — verified components and
   honest limitations.
+- [Windows provider architecture](windows-provider-architecture.md) — researched
+  Core Audio/WLAN provider path, privacy boundary, and simulator gates for the
+  planned Audio Mixer and Network Controls widgets.
 
 ## Product and research
 

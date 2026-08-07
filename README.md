@@ -25,7 +25,11 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 - Controller-first Settings, Clock, and YT Music reference widgets through the
   same declarative worker path
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
-  bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning
+  bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
+  enabled compatible packages join the bridge lazily on its next startup
+- A generic installed-widget worker host, pre-launch Windows Job Object memory/
+  process containment, and an isolated versioned audio/network capability-
+  broker contract/simulator foundation
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
 - Managed contract suites plus native state, image-cache, layout, and icon tests
 

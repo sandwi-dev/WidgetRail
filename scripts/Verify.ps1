@@ -40,6 +40,9 @@ try {
     Invoke-Checked -Description 'Build and test isolated widget runtime' -Command {
         dotnet run --project 'tests\WidgetRuntime.Tests\WidgetRuntime.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test generic installed-widget worker host' -Command {
+        dotnet run --project 'tests\WidgetWorkerHost.Tests\WidgetWorkerHost.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build and test widget developer CLI' -Command {
         dotnet run --project 'tests\GbarCli.Tests\GbarCli.Tests.csproj' --configuration $Configuration
     }
@@ -48,6 +51,9 @@ try {
     }
     Invoke-Checked -Description 'Build and test platform settings and themes' -Command {
         dotnet run --project 'tests\PlatformSettings.Tests\PlatformSettings.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test capability broker contracts' -Command {
+        dotnet run --project 'tests\PlatformBroker.Tests\PlatformBroker.Tests.csproj' --configuration $Configuration
     }
     Invoke-Checked -Description 'Build and test first-party Settings widget' -Command {
         dotnet run --project 'tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj' --configuration $Configuration

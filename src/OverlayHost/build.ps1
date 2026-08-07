@@ -140,12 +140,19 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not $SkipPackaging) {
     $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
+    $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
     $ytMusicOutput = Join-Path $outputDirectory 'runtime\YtMusic'
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetBridge publish failed with exit code $LASTEXITCODE."
+    }
+    & dotnet publish (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $workerHostOutput
+    if ($LASTEXITCODE -ne 0 -or
+        -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
+        throw "Generic widget worker host publish failed with exit code $LASTEXITCODE."
     }
     & dotnet publish (Join-Path $projectDirectory '..\..\samples\YtMusicWidget.Worker\YtMusicWidget.Worker.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $ytMusicOutput

@@ -21,6 +21,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private NamedPipeServerStream? _pipe;
     private LengthPrefixedJsonChannel? _channel;
     private Process? _process;
+    private WindowsWorkerJob? _windowsJob;
     private CancellationTokenSource? _sessionCancellation;
     private Task? _readerTask;
     private long _requestId;
@@ -52,6 +53,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     }
 
     public int Starts => Volatile.Read(ref _starts);
+    internal int? WorkerProcessId => _process?.Id;
+    internal long? AppliedJobMemoryLimitBytes => _windowsJob?.MemoryLimitBytes;
+    internal uint? AppliedJobActiveProcessLimit => _windowsJob?.ActiveProcessLimit;
 
     public async Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
     {
@@ -241,7 +245,25 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             startInfo.ArgumentList.Add("--max-message-bytes");
             startInfo.ArgumentList.Add(_options.MaximumMessageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-            _process = Process.Start(startInfo) ?? throw new WidgetProcessException("Worker process did not start.");
+            if (OperatingSystem.IsWindows())
+            {
+                var job = WindowsWorkerJob.Create(_options.MemoryLimitBytes);
+                try
+                {
+                    _process = job.StartProcess(startInfo);
+                    _windowsJob = job;
+                }
+                catch
+                {
+                    job.Dispose();
+                    throw;
+                }
+            }
+            else
+            {
+                _process = Process.Start(startInfo)
+                    ?? throw new WidgetProcessException("Worker process did not start.");
+            }
             _process.EnableRaisingEvents = true;
             _process.Exited += (_, _) => OnProcessExited(currentSession);
             if (isRestart) Interlocked.Increment(ref _restartAttempts);
@@ -263,7 +285,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             }, timeout.Token).ConfigureAwait(false);
             _readerTask = ReadResponsesAsync(currentSession, _channel, _sessionCancellation.Token);
         }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or JsonException or WidgetProtocolViolationException)
+        catch (Exception exception) when (exception is IOException or OperationCanceledException or
+            JsonException or WidgetProtocolViolationException or System.ComponentModel.Win32Exception or
+            WidgetProcessException)
         {
             ReportFailure(exception is WidgetProtocolViolationException
                 ? WidgetFailureReason.ProtocolViolation
@@ -373,6 +397,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
 
     private void TerminateWorker()
     {
+        if (_windowsJob is not null)
+        {
+            try { _windowsJob.Terminate(); }
+            catch (System.ComponentModel.Win32Exception) { }
+        }
         try
         {
             if (_process is { HasExited: false }) _process.Kill(entireProcessTree: true);
@@ -388,12 +417,14 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         _sessionCancellation?.Cancel();
         _pipe?.Dispose();
         _process?.Dispose();
+        _windowsJob?.Dispose();
         _sessionCancellation?.Dispose();
         _sessionCancellation = null;
         _readerTask = null;
         _pipe = null;
         _channel = null;
         _process = null;
+        _windowsJob = null;
     }
 
     private static void ValidateHostState(WidgetLifecycleState state)

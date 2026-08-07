@@ -14,8 +14,10 @@ flowchart LR
     Bridge <-->|"one lazy worker connection"| Worker["Widget worker"]
     Worker --> SDK["WidgetSdk + WidgetProtocol"]
     Bridge --> Styling["WidgetStyling / GBSS"]
+    Worker -. "planned broker transport" .-> Broker["PlatformBroker"]
+    Broker -. "planned OS providers" .-> Windows["Core Audio + IP Helper/WLAN"]
     Host --> State["Host-owned order and last-widget state"]
-    Catalog["WidgetCatalog package library"] -. "planned host integration" .-> Bridge
+    Catalog["Enabled installed WidgetCatalog snapshot"] --> Bridge
 ```
 
 ## Components
@@ -23,19 +25,22 @@ flowchart LR
 | Component | Implemented responsibility |
 | --- | --- |
 | `src/OverlayHost` | Win32/Direct2D panel/backdrop shell, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, live platform shell appearance, and generic reference-widget rendering. |
-| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted catalog loading, worker supervision, controller forwarding, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
-| `src/WidgetRuntime` | Lazy worker process client/server, random named pipes, bounded length-prefixed JSON, strict envelopes, timeouts, crash reporting, and limited restart. |
+| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted plus enabled-installed catalog loading, worker supervision, controller forwarding, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
+| `src/WidgetRuntime` | Lazy worker process client/server, random named pipes, bounded length-prefixed JSON, strict envelopes, timeouts, crash reporting, limited restart, and pre-launch Windows Job Object memory/process/cleanup policy. |
+| `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies after containment, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, and state helpers. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, and last-good reload. The bridge/native shell consume its live revisions, including bounded text scale for shell and generic widget layout. |
-| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence as a library API. |
+| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence. The bridge consumes enabled compatible packages at startup. |
+| `src/PlatformBroker` | Isolated version-1 audio-session/network capability contracts, identity/manifest/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, and a deterministic simulator. It has no real Core Audio/WLAN backend or widget IPC connection yet. |
 | `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, and catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
 
 1. The native host requests a widget snapshot from the bridge.
-2. The bridge lazily starts the configured worker if necessary.
+2. The bridge lazily starts the configured first-party worker or the generic
+   installed-package worker host if necessary.
 3. The worker calls `Widget.Render()` and validates the resulting semantic
    tree before serializing it.
 4. The bridge resolves the widget's trusted GBSS file and returns typed render
@@ -68,6 +73,13 @@ The overlay starts hidden. It retains the Guide system-button callback but
 does not continuously render or perform ordinary controller polling while
 hidden. Workers start lazily on demand; unexpected exits and request timeouts
 are reported through the runtime and bridge.
+
+On Windows the runtime creates each worker suspended, assigns it to a dedicated
+Job Object, then resumes it. Trusted bridge catalog policy supplies a bounded
+memory ceiling; the job permits one active process and terminates the worker on
+job close. This contains process count, memory, and cleanup, but does not
+restrict the desktop worker's file/network/credential access or impose a CPU
+budget.
 
 The host sends an explicit stable lifecycle state through the bridge and
 runtime. In the current integration, a selected bridge card is `Visible`, its
@@ -140,14 +152,21 @@ then deterministic geometry from the last render.
   Music path is integrated; complete generic rendering of every SDK node and
   every computed GBSS state is still being finished.
 - `.gbarwidget` pack/install/list/enable/disable work with the current-user
-  catalog. Install accepts local files, bounded absolute HTTPS URLs, and exact
-  GitHub Release shorthand. Remote sources require SHA-256 and install disabled;
-  there is no graphical installer, automatic update discovery, signature
-  verification, or native-host discovery from that catalog yet.
-- Publisher signatures, revocation, AppContainer launch, Job Object resource
-  policy, and a capability broker are **planned**, not current guarantees.
-- The trusted bridge catalog is deployment configuration, not a marketplace
-  feed or signed package index.
+  catalog. The bridge discovers enabled compatible packages on startup and
+  launches them lazily through the packaged generic worker host. Install accepts
+  local files, bounded absolute HTTPS URLs, and exact GitHub Release shorthand.
+  Remote sources require SHA-256 and install disabled. Catalog changes require
+  an overlay/bridge restart; there is no graphical installer, automatic update
+  discovery, signature verification, or live catalog reload yet. Packages that
+  request capabilities are skipped until broker transport/consent is connected.
+- Job Object memory/process-count/cleanup policy and an isolated managed
+  capability-broker foundation are implemented and tested. Publisher
+  signatures, revocation, AppContainer launch, CPU quotas, broker IPC/consent
+  UI, and real Windows audio/network providers remain planned; the current
+  pieces are not a complete public-widget security boundary.
+- The bundled bridge catalog remains trusted deployment configuration. The
+  joined current-user catalog is not a marketplace feed or signed package
+  index; enabling a package is not a publisher-trust guarantee.
 - The host does not universally suppress controller input seen through every
   game input API. See [controller input](controller-input.md).
 - Topmost behavior is best effort and covers one selected monitor. True

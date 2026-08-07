@@ -5,6 +5,12 @@ using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
 
+if (args.Contains("--containment-sleeper", StringComparer.Ordinal))
+{
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+    return 0;
+}
+
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
 
@@ -12,6 +18,10 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Length framing rejects oversized input before allocation", OversizedFrameIsRejected),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
+    ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
+    ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
+    ("Windows Job Object kill-on-close cleans up its process", WindowsJobCleansUpProcess),
+    ("Windows worker Job Object allows only one active process", WindowsJobIsSingleProcess),
     ("Lifecycle callbacks and lifetime tokens follow exact transition order", LifecycleContract),
     ("Runtime-owned lifecycle states cannot be host targets", InvalidLifecycleTargets),
     ("Widget activation transitions are idempotent and cancel their lifetime", ActivationTransitions),
@@ -110,6 +120,92 @@ static async Task LazyLaunchAndSnapshot()
     Assert.Equal("runtime.test", snapshot.WidgetInstanceId);
     Assert.Equal("button", snapshot.InitialFocusId);
     await client.StopAsync();
+}
+
+static Task MemoryPolicyIsBounded()
+{
+    var executable = Environment.ProcessPath
+        ?? throw new InvalidOperationException("Test process path is unavailable.");
+    _ = Assert.Throws<ArgumentOutOfRangeException>(() => new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = executable,
+        WidgetInstanceId = "runtime.test",
+        MemoryLimitBytes = 15L * 1024 * 1024,
+    }));
+    _ = Assert.Throws<ArgumentOutOfRangeException>(() => new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = executable,
+        WidgetInstanceId = "runtime.test",
+        MemoryLimitBytes = 513L * 1024 * 1024,
+    }));
+    return Task.CompletedTask;
+}
+
+static async Task WindowsJobAppliesLimits()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    const long limit = 72L * 1024 * 1024;
+    await using var client = CreateClient(memoryLimitBytes: limit);
+    _ = await client.GetSnapshotAsync();
+    Assert.Equal(limit, client.AppliedJobMemoryLimitBytes);
+    Assert.Equal((uint)1, client.AppliedJobActiveProcessLimit);
+}
+
+static async Task WindowsJobCleansUpProcess()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var startInfo = SleeperStartInfo();
+    var job = WindowsWorkerJob.Create(64L * 1024 * 1024);
+    using var process = job.StartProcess(startInfo);
+    try
+    {
+        Assert.True(!process.HasExited, "Contained sleeper exited before cleanup test.");
+        job.Dispose();
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.True(process.HasExited, "Closing the Job Object left its worker alive.");
+    }
+    finally
+    {
+        job.Dispose();
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        }
+    }
+}
+
+static async Task WindowsJobIsSingleProcess()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var job = WindowsWorkerJob.Create(64L * 1024 * 1024);
+    using var first = job.StartProcess(SleeperStartInfo());
+    try
+    {
+        _ = Assert.Throws<System.ComponentModel.Win32Exception>(() =>
+        {
+            using var unexpected = job.StartProcess(SleeperStartInfo());
+        });
+    }
+    finally
+    {
+        job.Terminate();
+        await first.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+    }
+}
+
+static System.Diagnostics.ProcessStartInfo SleeperStartInfo()
+{
+    var executable = Environment.ProcessPath
+        ?? throw new InvalidOperationException("Test process path is unavailable.");
+    var startInfo = new System.Diagnostics.ProcessStartInfo(executable)
+    {
+        UseShellExecute = false,
+        CreateNoWindow = true,
+        WorkingDirectory = AppContext.BaseDirectory,
+    };
+    startInfo.ArgumentList.Add("--containment-sleeper");
+    return startInfo;
 }
 
 static async Task ActivationTransitions()
@@ -431,6 +527,7 @@ static async Task CrashRecovery()
 {
     await using var client = CreateClient(maximumRestarts: 1);
     _ = await client.GetSnapshotAsync();
+    var firstProcess = client.WorkerProcessId;
     var failed = new TaskCompletionSource<WidgetFailure>(TaskCreationOptions.RunContinuationsAsynchronously);
     client.Failed += (_, failure) => failed.TrySetResult(failure);
     await Assert.ThrowsAnyAsync(() =>
@@ -440,6 +537,9 @@ static async Task CrashRecovery()
     var recovered = await client.GetSnapshotAsync();
     Assert.Equal("runtime.test", recovered.WidgetInstanceId);
     Assert.Equal(2, client.Starts);
+    Assert.True(client.WorkerProcessId != firstProcess, "Restart reused the terminated worker process.");
+    if (OperatingSystem.IsWindows())
+        Assert.Equal((uint)1, client.AppliedJobActiveProcessLimit);
 }
 
 static async Task HungWorkerTimesOut()
@@ -474,7 +574,8 @@ static async Task DestroyIsBounded()
 static WidgetProcessClient CreateClient(
     int maximumRestarts = 2,
     TimeSpan? requestTimeout = null,
-    IReadOnlyList<string>? extraArguments = null)
+    IReadOnlyList<string>? extraArguments = null,
+    long memoryLimitBytes = 64L * 1024 * 1024)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
     return new WidgetProcessClient(new WidgetProcessOptions
@@ -486,6 +587,7 @@ static WidgetProcessClient CreateClient(
         RequestTimeout = requestTimeout ?? TimeSpan.FromSeconds(2),
         MaximumRestartAttempts = maximumRestarts,
         MaximumMessageBytes = 64 * 1024,
+        MemoryLimitBytes = memoryLimitBytes,
     });
 }
 
@@ -707,5 +809,12 @@ file static class Assert
         try { await action(); }
         catch { return; }
         throw new InvalidOperationException("Expected an exception.");
+    }
+
+    public static T Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T exception) { return exception; }
+        throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 }

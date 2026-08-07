@@ -83,8 +83,10 @@ Visible UI refresh work should use `RunPeriodicUpdatesWhileActiveAsync` or
 non-overlapping; cancellation completes normally, while callback failures fault
 the returned task and must be observed. Work exclusive to one state should use
 its state token. A widget with a legitimate background capability may own
-widget-lifetime work, but permission, resource, and lifecycle-policy enforcement
-are not implemented by this runtime spike yet.
+widget-lifetime work, but permission and lifecycle-policy enforcement are not
+implied by the lifecycle API. On Windows, trusted host policy separately
+applies a Job Object memory ceiling, one-active-process limit, and kill-on-close
+cleanup to every worker.
 
 The planned policy choices are `keep-alive` (default),
 `suspend-when-hidden`, and `unload-after-idle`. The latter two must be explicit
@@ -92,7 +94,9 @@ manifest/user choices. The supervisor must never infer idle unload from a timer
 or resource heuristic. The current manifest's `none`/`suspend` strings remain
 validated metadata rather than enforcement of these final policy names.
 
-The native overlay will eventually need a narrow C ABI or C++/CLI bridge around
-`WidgetProcessClient`. AppContainer launch, Job Object limits, publisher
-verification, and the permission broker are intentionally not claimed by this
-transport spike.
+`WidgetBridge` is the narrow native-facing sidecar around
+`WidgetProcessClient`. Windows workers are created suspended, assigned to their
+Job Object before any worker code runs, and then resumed. AppContainer launch,
+CPU quotas, publisher verification, lifecycle-policy enforcement, and widget
+IPC access to the isolated permission-broker foundation are not claimed by this
+transport.

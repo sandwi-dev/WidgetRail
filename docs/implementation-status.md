@@ -46,11 +46,16 @@ deterministic rendered geometry as a fallback, without wraparound.
   Visible/Interactive tickers.
 - `WidgetRuntime`: lazy out-of-process workers over random named pipes with
   bounded framed JSON, explicit lifecycle transitions, timeouts, failure
-  reporting, and limited restart.
+  reporting, limited restart, and pre-launch Windows Job Object containment.
 - `WidgetBridge`: current-user-only native sidecar pipe, trusted catalog,
-  worker forwarding, quick actions, controller input, invalidation/failure
-  events, no-poll platform-appearance watching/revisions, globally layered
-  widget themes, bounded shell appearance, and computed GBSS styles.
+  enabled-installed catalog discovery, worker forwarding, quick actions,
+  controller input, invalidation/failure events, no-poll platform-appearance
+  watching/revisions, globally layered widget themes, bounded shell appearance,
+  and computed GBSS styles.
+- `WidgetWorkerHost`: a packaged generic worker executable that loads one
+  installed package's public concrete SDK `Widget` entrypoint and contained
+  dependencies, then serves the standard isolated snapshot/action/lifecycle
+  protocol.
 - `WidgetStyling`: bounded GBSS parsing, safe package-relative imports,
   variables, explicit trusted cascade layers, typed allowlisted values, and
   diagnostics.
@@ -58,7 +63,13 @@ deterministic rendered geometry as a fallback, without wraparound.
   version-pinned development themes, built-in default, safe theme discovery,
   layer composition, and last-good snapshots.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, immutable versions,
-  discovery, enablement, and order persistence as a managed library.
+  discovery, enablement, and order persistence. Enabled compatible packages now
+  join the bridge catalog at startup and remain lazy until first use.
+- `PlatformBroker`: an isolated version-1 audio-session/network capability
+  foundation with four closed grants, identity/manifest/consent/lifecycle
+  enforcement, strict bounded DTOs/events, atomic consent persistence, and a
+  deterministic simulator. It is not connected to widget IPC or real Windows
+  providers yet.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
   `enable`, and `disable` commands. Remote acquisition requires SHA-256 pinning,
@@ -126,9 +137,11 @@ switched. Authors cannot request their own lifecycle transitions.
 
 Future lifecycle policy must be manifest/user controlled: `keep-alive` is the
 default, with opt-in `suspend-when-hidden` and `unload-after-idle`. The current
-host does not yet expose or enforce those choices, background permissions, or
-resource limits. Crash, hang, shutdown, and user-requested termination remain
-separate safety/administrative paths.
+host does not yet expose or enforce those choices or background permissions.
+Separately, trusted bridge policy now bounds each Windows worker with a Job
+Object memory ceiling and one-process limit regardless of lifecycle. Crash,
+hang, shutdown, and user-requested termination remain separate safety/
+administrative paths.
 
 ### Current visible resource sample
 
@@ -143,12 +156,18 @@ pass or a claim about hidden, GPU, wakeup, or multi-widget cost.
 
 The repository verification script builds and runs managed suites for the SDK,
 protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
-settings/themes, catalog, and bridge. Native build
-verification covers the overlay plus state-machine, remote-image, declarative
-layout, semantic-icon, and native-style tests where integrated. Current Release
-native-style coverage verifies 150% font-size/letter-spacing scaling and safe
-fallback for an invalid non-finite scale; the full native suite passes. The
-broader 150% multi-resolution visual matrix remains an evidence gap.
+settings/themes, catalog, bridge, the generic worker host, and broker. The
+runtime suite covers suspended pre-containment launch, memory/process limits,
+kill-on-close, and restart cleanup. The generic host suite covers five loader/
+protocol cases; the bridge suite covers eighteen cases including installed-
+package fail-soft behavior; and the broker suite covers eleven capability,
+consent, identity, lifecycle/event, sanitization, and cancellation contracts.
+Native build verification covers the overlay plus state-machine, remote-image,
+declarative layout, semantic-icon, and native-style tests where integrated.
+Current Release native-style coverage verifies 150% font-size/letter-spacing
+scaling and safe fallback for an invalid non-finite scale; the full native
+suite passes. The broader 150% multi-resolution visual matrix remains an
+evidence gap.
 
 Run managed verification:
 
@@ -170,11 +189,16 @@ with C++ installed:
   arbitrary-package, resolution/DPI, accessibility, and visual regression
   evidence is still incomplete.
 - Local and bounded remote package/catalog commands are implemented. There is
-  no graphical installer, native-host discovery from the user catalog,
-  automatic release/update discovery, signed publisher workflow, or
-  marketplace yet.
-- Publisher signatures, revocation, AppContainer, Job Object enforcement,
-  capability brokering, and user permission consent are not production-ready.
+  no graphical installer, live bridge catalog reload, automatic release/update
+  discovery, signed publisher workflow, or marketplace yet. Enabled compatible
+  packages are discovered when the bridge starts, so install/enable/disable
+  changes require an overlay/bridge restart. Packages requesting capabilities
+  are skipped until broker transport and consent UI are connected.
+- Publisher signatures, revocation, AppContainer, CPU quotas, end-to-end
+  capability-broker transport, and user permission UI are not production-ready.
+  Job Object memory/process/cleanup policy and the isolated managed broker
+  foundation are implemented but do not form a complete untrusted-widget
+  boundary.
 - Manifest permission strings and resource requests are validated metadata,
   not complete enforcement.
 - The CLI's DLL render command executes trusted development code in the CLI
@@ -205,9 +229,10 @@ with C++ installed:
   system are not. See [settings and global themes](settings-and-themes.md).
 - Audio Mixer and Network Controls are planned first-party public-SDK examples,
   not implemented widgets. Their event-driven Core Audio and WLAN/network
-  providers, brokered capability contracts, consent, and generic host
-  integration remain future work. Initial Network Controls explicitly excludes
-  password entry and profile creation.
+  providers, broker transport, consent UI, and generic host integration remain
+  future work. Initial version-1 broker contracts and a deterministic backend
+  exist. Initial Network Controls explicitly excludes password entry and
+  profile creation. See [Windows provider architecture](windows-provider-architecture.md).
 
 ## Diagnostics
 
@@ -225,10 +250,11 @@ and [troubleshooting](troubleshooting.md).
 
 1. Complete resolution/DPI/accessibility/visual-regression evidence, including
    the 150% text-scale matrix for the generic renderer and themed shell.
-2. Add safe theme install/scaffold/validate/preview tooling and connect the
-   widget user catalog to a user-facing install/review workflow.
-3. Implement signing/trust, capability brokering, and production worker
-   containment before supporting untrusted community binaries.
+2. Add safe theme install/scaffold/validate/preview tooling plus a user-facing
+   widget install/review flow and live catalog reload.
+3. Connect the capability broker and consent UI, then implement signing/trust
+   and AppContainer-equivalent isolation before supporting untrusted community
+   binaries.
 4. Build Audio Mixer and Network Controls as event-driven, out-of-process
    public-SDK reference packages through the generic path.
 5. Run the documented controller/game compatibility and performance matrix.

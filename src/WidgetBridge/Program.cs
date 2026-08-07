@@ -14,7 +14,6 @@ internal static class Program
             var acceptTimeout = OptionalInt(args, "--accept-timeout-ms", 10_000, 100, 60_000);
             var maximumBytes = OptionalInt(args, "--max-message-bytes",
                 BridgeProtocol.DefaultMaximumMessageBytes, 256, BridgeProtocol.AbsoluteMaximumMessageBytes);
-            var catalog = BridgeCatalog.Load(catalogPath);
             using var shutdown = new CancellationTokenSource();
             Console.CancelKeyPress += (_, eventArgs) =>
             {
@@ -22,6 +21,16 @@ internal static class Program
                 shutdown.Cancel();
             };
             var settingsPaths = PlatformSettingsPaths.CreateDefault();
+            var installationRoot = Path.GetDirectoryName(Path.GetFullPath(catalogPath))
+                ?? Environment.CurrentDirectory;
+            var catalogLoad = await BridgeCatalog.LoadWithInstalledAsync(
+                catalogPath,
+                Path.Combine(settingsPaths.RootDirectory, "widgets"),
+                Path.Combine(installationRoot, "runtime", "WidgetWorkerHost", "WidgetWorkerHost.exe"),
+                shutdown.Token).ConfigureAwait(false);
+            foreach (var warning in catalogLoad.Warnings)
+                Console.Error.WriteLine($"Widget catalog warning: {warning}");
+            var catalog = catalogLoad.Catalog;
             var settingsStore = new PlatformSettingsStore(settingsPaths);
             await using var appearance = new PlatformAppearanceService(
                 settingsPaths,

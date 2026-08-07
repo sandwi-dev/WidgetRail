@@ -1,8 +1,8 @@
 # Publishing and installation
 
 Status: deterministic pack/install/catalog commands and bounded HTTPS release
-downloads implemented; publisher signing and native-host catalog discovery are
-not production-ready
+downloads implemented; enabled-package bridge discovery is implemented at
+startup, while publisher signing and a production review/update flow are not
 
 ## Recommended workflow today: share source and immutable releases on GitHub
 
@@ -176,9 +176,11 @@ gbar disable dev.example.widget --catalog .\artifacts\test-catalog
 ```
 
 There is no graphical installer, automatic updater, signature verification, or
-marketplace client. The current native host does not automatically discover
-this user catalog; install/list/enablement currently exercise the safe catalog
-and future host-facing state.
+marketplace client. At bridge startup the overlay joins enabled compatible
+packages from this default current-user catalog and launches them lazily through
+the generic worker host. Catalog changes are not watched yet, so install,
+enable, or disable requires an overlay/bridge restart. Packages requesting
+capabilities are skipped until broker transport and consent UI are connected.
 
 ## Remote acquisition safety boundary
 
@@ -216,9 +218,10 @@ trust, and never put credentials or tokens in an install URL.
 
 Installing a package only writes validated files and catalog state. It does
 not launch a worker, send lifecycle transitions, or change the lifecycle
-contract. When host catalog discovery is implemented and the widget is later
-launched, the normal `Created`, `Background`, `Visible`, `Interactive`, and
-`Destroying` rules apply unchanged.
+contract. After explicit enablement and the next overlay/bridge start, a
+compatible package joins the dashboard but remains unlaunched until first use.
+The normal `Created`, `Background`, `Visible`, `Interactive`, and `Destroying`
+rules then apply unchanged.
 
 ## Programmatic catalog API
 
@@ -234,9 +237,10 @@ var snapshot = await catalog.DiscoverAsync();
 ```
 
 CLI or library installation validates archive containment and manifest shape.
-It does not establish who published the code. The current native host uses a
-trusted deployment catalog for its reference worker; it does not automatically
-discover the user catalog yet.
+It does not establish who published the code. The bridge combines its trusted
+deployment catalog with enabled compatible entries from the default user
+catalog at startup. This discovery is an execution path, not publisher proof;
+do not enable code you do not already trust.
 
 ## Planned production flow
 
@@ -248,8 +252,9 @@ The intended flow is explicitly **planned**:
 3. A future trust layer verifies publisher identity, host compatibility,
    permissions, and revocation before the existing atomic installation.
 4. The user reviews permissions and enables the widget.
-5. The host resolves the installed version into trusted bridge configuration
-   and launches it under production isolation.
+5. The bridge resolves the installed version through the generic worker host;
+   the current lazy path and Job Object containment are retained under stronger
+   production isolation.
 
 Rollback/pinning UI, update checks, garbage collection, cross-process install
 locking, signature chains, and revocation are also planned.

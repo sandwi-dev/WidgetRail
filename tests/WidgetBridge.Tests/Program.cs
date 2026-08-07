@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.IO.Pipes;
 using System.Text.Json;
 using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
@@ -14,10 +16,14 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
+    ("Catalog owns bounded worker memory policy", CatalogMemoryPolicyIsTrusted),
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
     ("Catalog rejects invalid GBSS with safe diagnostics", InvalidThemeIsRejected),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
+    ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
+    ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
+    ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
     ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
@@ -70,6 +76,18 @@ static Task StrictCatalogRejectsUnknownProperties()
 {
     using var catalog = TemporaryCatalog.Create(addUnknownProperty: true);
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(catalog.Path));
+    return Task.CompletedTask;
+}
+
+static Task CatalogMemoryPolicyIsTrusted()
+{
+    using var valid = TemporaryCatalog.Create(memoryLimitMb: 48);
+    var configured = BridgeCatalog.Load(valid.Path).GetConfigured("test-widget");
+    Assert.Equal(48, configured.MemoryLimitMb);
+    using var tooSmall = TemporaryCatalog.Create(memoryLimitMb: 15);
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(tooSmall.Path));
+    using var tooLarge = TemporaryCatalog.Create(memoryLimitMb: 257);
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(tooLarge.Path));
     return Task.CompletedTask;
 }
 
@@ -127,6 +145,114 @@ static async Task EnumerationIsLazy()
     Assert.False(descriptor.TryGetProperty("workerExecutable", out _),
         "Native descriptors must not expose worker paths.");
     Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+
+static async Task InstalledWidgetsJoinCatalog()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-installed");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    await InstallWidgetAsync(catalog, temporary.Path, "dev.example.enabled", enabled: true);
+    await InstallWidgetAsync(catalog, temporary.Path, "dev.example.disabled", enabled: false);
+
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    Assert.Equal(0, load.Warnings.Count);
+    Assert.SequenceEqual(["test-widget", "dev.example.enabled"],
+        load.Catalog.Widgets.Select(widget => widget.Id));
+    var installed = load.Catalog.GetConfigured("dev.example.enabled");
+    Assert.Equal(64, installed.MemoryLimitMb);
+    Assert.Equal(Environment.ProcessPath, installed.WorkerExecutable);
+    Assert.Equal("styles/default.gbss", installed.StyleFile);
+    Assert.SequenceEqual(
+        ["--package-root", installed.WorkerArguments[1], "--widget-assembly",
+         installed.WorkerArguments[3], "--widget-type", "Example.EnabledWidget"],
+        installed.WorkerArguments);
+    Assert.True(Path.IsPathFullyQualified(installed.WorkerArguments[1]),
+        "Installed package root must be canonical before worker launch.");
+    Assert.True(Path.IsPathFullyQualified(installed.WorkerArguments[3]),
+        "Installed assembly path must be canonical before worker launch.");
+}
+
+static async Task TamperedInstalledCatalogFailsSoft()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-tampered");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    var installed = await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.tampered", enabled: true);
+    await File.WriteAllTextAsync(Path.Combine(installed.InstallPath, "manifest.json"), "{}");
+
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    Assert.SequenceEqual(["test-widget"], load.Catalog.Widgets.Select(widget => widget.Id));
+    Assert.Equal(1, load.Warnings.Count);
+    Assert.True(load.Warnings[0].Contains("invalid_manifest", StringComparison.Ordinal),
+        "Expected a bounded stable installed-catalog warning.");
+}
+
+static async Task InvalidInstalledStyleFailsSoft()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-invalid-style");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.badstyle", enabled: true,
+        styleSource: "button { color: definitely-not-a-color; }");
+
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    Assert.SequenceEqual(["test-widget"], load.Catalog.Widgets.Select(widget => widget.Id));
+    Assert.Equal(1, load.Warnings.Count);
+    Assert.True(load.Warnings[0].Contains("invalid styles", StringComparison.Ordinal),
+        "Expected invalid installed styles to be isolated to their package.");
+}
+
+static async Task<InstalledWidgetVersion> InstallWidgetAsync(
+    GameBarAlternative.WidgetCatalog.WidgetCatalog catalog,
+    string packageDirectory,
+    string id,
+    bool enabled,
+    string styleSource = "button { color: #abcdef; }")
+{
+    var packagePath = Path.Combine(packageDirectory, $"{id}.gbarwidget");
+    var manifest = new WidgetManifest
+    {
+        Id = id,
+        Publisher = "dev.example",
+        Name = id.EndsWith("enabled", StringComparison.Ordinal) ? "Enabled Widget" : "Test Widget",
+        Version = "1.0.0",
+        HostApi = new HostApiRange("1.0", 1),
+        Entrypoint = new WidgetEntrypoint(
+            "dotnet-worker", "payload/Widget.dll", "Example.EnabledWidget"),
+        Permissions = [],
+        OptionalPermissions = [],
+        BackgroundPolicy = "none",
+        ResourceRequest = new WidgetResourceRequest(256, 60),
+        Architectures = [System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture ==
+            System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64"],
+    };
+    await using (var stream = new FileStream(packagePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+    using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: false))
+    {
+        WriteArchiveEntry(archive, "manifest.json", ManifestJson.Serialize(manifest));
+        WriteArchiveEntry(archive, "payload/Widget.dll", [0x4d, 0x5a]);
+        WriteArchiveEntry(archive, "styles/default.gbss",
+            System.Text.Encoding.UTF8.GetBytes(styleSource));
+    }
+    var installed = await catalog.CreateInstaller().InstallAsync(packagePath);
+    if (enabled) await catalog.SetEnabledAsync(id, true);
+    return installed;
+}
+
+static void WriteArchiveEntry(ZipArchive archive, string path, ReadOnlySpan<byte> content)
+{
+    var entry = archive.CreateEntry(path, CompressionLevel.NoCompression);
+    using var output = entry.Open();
+    output.Write(content);
 }
 
 static async Task PlatformAppearanceIsLazy()
@@ -367,7 +493,8 @@ file sealed class TemporaryCatalog : IDisposable
         bool addUnknownProperty = false,
         bool invalidStyle = false,
         string styleFile = "styles/default.gbss",
-        string? icon = "music")
+        string? icon = "music",
+        int? memoryLimitMb = null)
     {
         var directory = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(), $"gba-bridge-tests-{Guid.NewGuid():N}");
@@ -394,6 +521,7 @@ file sealed class TemporaryCatalog : IDisposable
                     workerExecutable = executable,
                     styleFile,
                     workerArguments = Array.Empty<string>(),
+                    memoryLimitMb,
                     quickActions = new[]
                     {
                         new
@@ -533,6 +661,25 @@ file sealed class TemporaryAppearance : IAsyncDisposable
     {
         await Service.DisposeAsync();
         try { Directory.Delete(_directory, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+}
+
+file sealed class TemporaryDirectory : IDisposable
+{
+    public string Path { get; }
+
+    public TemporaryDirectory(string prefix)
+    {
+        Path = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(Path, recursive: true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
     }

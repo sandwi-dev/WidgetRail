@@ -200,6 +200,7 @@ public sealed class WidgetBridgeServer(
                 RequestTimeout = TimeSpan.FromSeconds(2),
                 MaximumMessageBytes = _maximumMessageBytes,
                 MaximumRestartAttempts = 2,
+                MemoryLimitBytes = checked((long)configured.MemoryLimitMb * 1024 * 1024),
             });
             client.Invalidated += (_, revision) => _ = SendEventAsync(
                 BridgeMessageTypes.Invalidation,

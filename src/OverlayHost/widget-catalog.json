@@ -8,6 +8,7 @@
       "icon": "music",
       "workerExecutable": "runtime/YtMusic/YtMusicWidget.Worker.exe",
       "styleFile": "runtime/YtMusic/styles/default.gbss",
+      "memoryLimitMb": 64,
       "workerArguments": [],
       "quickActions": []
     },
@@ -18,6 +19,7 @@
       "icon": "settings",
       "workerExecutable": "runtime/Settings/SettingsWidget.Worker.exe",
       "styleFile": "runtime/Settings/styles/default.gbss",
+      "memoryLimitMb": 48,
       "workerArguments": [],
       "quickActions": []
     }
