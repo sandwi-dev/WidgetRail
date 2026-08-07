@@ -9,7 +9,8 @@ public sealed record ThemeDescriptor(
     string Id,
     string Name,
     Version Version,
-    bool IsBuiltIn);
+    bool IsBuiltIn,
+    string? Publisher = null);
 
 public sealed record ThemeCatalogEntry(
     ThemeDescriptor Descriptor,
@@ -26,15 +27,18 @@ public sealed record ThemeLoadResult(
     public IReadOnlyList<GbssDiagnostic> Diagnostics => Package.Diagnostics;
 }
 
-internal sealed record ThemeManifestDocument
+public sealed record ThemeManifestDocument
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int LegacySchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     [JsonRequired]
     public required int SchemaVersion { get; init; }
 
     [JsonRequired]
     public required string Id { get; init; }
+
+    public string? Publisher { get; init; }
 
     [JsonRequired]
     public required string Name { get; init; }
@@ -185,7 +189,8 @@ public sealed class ThemeCatalog
                 document.Id ?? directoryId,
                 document.Name ?? directoryId,
                 version ?? new Version(0, 0, 0),
-                IsBuiltIn: false);
+                IsBuiltIn: false,
+                Publisher: document.Publisher);
             if (manifestError is not null)
                 return Invalid(descriptor, manifestError.Value.Code, manifestError.Value.Message);
 
@@ -211,11 +216,22 @@ public sealed class ThemeCatalog
         out Version? version)
     {
         version = null;
-        if (document.SchemaVersion != ThemeManifestDocument.CurrentSchemaVersion)
+        if (document.SchemaVersion is not ThemeManifestDocument.LegacySchemaVersion and
+            not ThemeManifestDocument.CurrentSchemaVersion)
             return ("unsupported_theme_version",
-                $"Expected theme manifest version {ThemeManifestDocument.CurrentSchemaVersion}.");
+                $"Expected theme manifest version {ThemeManifestDocument.LegacySchemaVersion} or " +
+                $"{ThemeManifestDocument.CurrentSchemaVersion}.");
         if (!ThemeIdentity.IsValid(document.Id) || document.Id == ThemeIdentity.BuiltInDefault)
             return ("invalid_theme_id", "Theme manifest ID is invalid or reserved.");
+        if (document.SchemaVersion == ThemeManifestDocument.LegacySchemaVersion && document.Publisher is not null)
+            return ("unexpected_theme_publisher", "Schema version 1 themes cannot declare a publisher.");
+        if (document.SchemaVersion == ThemeManifestDocument.CurrentSchemaVersion &&
+            !ThemeIdentity.IsValidPublisher(document.Publisher))
+            return ("invalid_theme_publisher", "Theme publisher must be a lowercase reverse-DNS identifier.");
+        if (document.SchemaVersion == ThemeManifestDocument.CurrentSchemaVersion &&
+            !document.Id.Equals(document.Publisher, StringComparison.Ordinal) &&
+            !document.Id.StartsWith(document.Publisher + ".", StringComparison.Ordinal))
+            return ("theme_identity_mismatch", "Theme ID must be owned by its publisher namespace.");
         if (!string.Equals(document.Id, directoryId, StringComparison.Ordinal))
             return ("theme_identity_mismatch", "Theme manifest ID must exactly match its directory name.");
         if (string.IsNullOrWhiteSpace(document.Name) || document.Name.Length > 80 ||

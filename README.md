@@ -19,19 +19,23 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 
 - A native Win32/D2D overlay shell with Guide toggle, controller navigation, reorder mode, last-widget restoration, and hidden-state resource teardown
 - A versioned declarative widget protocol, typed C# SDK, lazy worker runtime, and managed native bridge
-- Safe GBSS compilation, typed computed styles, HTTPS images, semantic icons, and controller-aware interaction state
+- Safe GBSS compilation, typed computed styles, deterministic data-only theme
+  packages/tooling, HTTPS images, semantic icons, and controller-aware state
 - A verified controller Settings worker plus strict appearance store,
   version-pinned themes, platform/widget/user cascade, no-poll reload, and live
-  native shell style/interface/text-scale/backdrop/motion revisions
-- Controller-first Settings, Clock, and YT Music reference widgets through the
-  same declarative worker path
+  native shell appearance plus post-cascade text/contrast/motion/transparency
+  accessibility policy
+- Controller-first Settings, Clock, YT Music, Audio Mixer, and Network Controls
+  reference widgets through the same declarative worker path
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
-  enabled compatible packages join the bridge lazily on its next startup
+  accepted catalog changes reconcile live and workers still start lazily
 - A generic installed-widget worker host, pre-launch Windows Job Object memory/
   process containment, controller permission review, and typed authenticated
-  audio/network capability transport backed by a deterministic simulator
+  audio/network capability transport backed by deterministic simulators and
+  narrow event-driven Windows Core Audio/WLAN providers
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
+- A bounded hidden/visible Windows process-tree performance observation harness
 - Managed contract suites plus native state, image-cache, layout, and icon tests
 
 Start with the [documentation index](docs/README.md) or [widget quickstart](docs/widget-quickstart.md). See [implementation status](docs/implementation-status.md) for verified components and honest limitations.
@@ -55,6 +59,7 @@ The complete verification command requires Visual Studio's Desktop development w
 - [Widget quickstart](docs/widget-quickstart.md)
 - [Declarative UI](docs/declarative-ui.md) and [GBSS](docs/gbss.md)
 - [Settings and global themes](docs/settings-and-themes.md)
+- [Theme packaging and distribution](docs/theme-packaging.md)
 - [Controller input](docs/controller-input.md)
 - [Publishing, installation](docs/publishing-and-installation.md), and [security](docs/security-and-trust.md)
 - [Troubleshooting](docs/troubleshooting.md)
@@ -65,9 +70,10 @@ Continue with a small native Windows shell using C++20, Win32,
 Direct2D/DirectWrite, and GameInput. Do not inject into games and do not embed
 Chromium in the resident host. Widget logic launches lazily out of process,
 remains resident in Background by default, and sends a declarative UI tree over
-versioned local IPC. Typed capability brokering is connected to a simulator;
-production AppContainer-equivalent sandboxing, real providers, lifecycle-policy
-enforcement, and signing are still required before accepting untrusted widgets.
+versioned local IPC. Typed capability brokering is connected to simulators and
+narrow Windows providers; broader hardware/privacy evidence, production
+AppContainer-equivalent sandboxing, lifecycle-policy enforcement, and signing
+are still required before accepting untrusted widgets.
 
 The remaining evidence gates include:
 

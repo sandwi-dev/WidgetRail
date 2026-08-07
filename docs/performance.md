@@ -1,8 +1,8 @@
 # Performance contract and evidence
 
-Status: low-overhead architecture and bounded worker controls implemented;
-repeatable ETW/PresentMon release evidence and per-widget resource UI remain
-open
+Status: low-overhead architecture, bounded worker controls, and repeatable
+diagnostic process sampling implemented; ETW/PresentMon release evidence and
+per-widget resource UI remain open
 
 Performance is a product feature because the overlay runs beside a game. This
 page separates enforceable platform behavior, author responsibilities, current
@@ -124,9 +124,55 @@ Run functional/regression gates with:
 That command proves builds, bounded contracts, native tests, packaging, hidden
 startup, and input-probe smoke. It is not an ETW performance benchmark.
 
+For a repeatable, bounded local process observation, build the packaged Release
+overlay and run:
+
+```powershell
+.\scripts\Measure-OverlayPerformance.ps1 -Configuration Release
+```
+
+The safe default starts one hidden instance, waits for the host-resident plus
+bridge-child readiness proxy, warms up for three seconds, samples for 15
+seconds, and writes versioned JSON plus Markdown under
+`artifacts/performance`. It measures the spawned process tree's Windows private
+working set, private bytes, total working set, CPU-time deltas normalized by
+logical processor count, handles, and threads. Cleanup targets only the host
+and descendants whose exact PID and creation-time ticks were observed during
+that run.
+
+To include an independently launched visible-state observation:
+
+```powershell
+.\scripts\Measure-OverlayPerformance.ps1 `
+    -Configuration Release `
+    -Scenario Hidden,Visible `
+    -WarmupSeconds 5 `
+    -SampleSeconds 60
+```
+
+Visible mode deliberately displays and focuses the overlay. It does not inject
+controller or keyboard input. Its readiness proxy is a resident host, observed
+bridge child, and visible top-level window—not a presented first frame or proof
+of interactivity. Consequently the harness cannot automate warm activation
+without adding a supported host control seam.
+
+The report compares observations with relevant engineering targets, but labels
+every comparison `diagnostic-observation` and `releaseGate: false`. A short
+WMI/CIM sample is sensitive to machine state and creates its own external
+measurement load, so the script never fails a build based on those numbers.
+Nearest-rank p95 target comparisons require at least 20 observations; shorter
+runs are labeled `insufficient-samples` instead of treating one scheduler tick
+as a representative tail result.
+Validate the harness's deterministic helpers without launching the overlay via:
+
+```powershell
+.\scripts\Measure-OverlayPerformance.ps1 -SelfTest
+```
+
 The performance release gate still needs:
 
-- an automated Windows Performance Recorder/ETW and PresentMon harness;
+- an automated Windows Performance Recorder/ETW and PresentMon harness beyond
+  the bounded process sampler above;
 - stored machine/build metadata plus comparable baseline artifacts;
 - hidden/visible CPU, GPU, wakeup, private-working-set, and handle trends;
 - warm/cold Guide, controller-to-visual, and worker-start latency percentiles;

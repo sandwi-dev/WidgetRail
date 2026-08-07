@@ -287,7 +287,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         finally
         {
             _lifetime.Cancel();
-            foreach (var request in _requests.Values) request.Cancel();
+            foreach (var request in _requests.Values) CancelRequest(request);
             await DisposeSubscriptionsAsync().ConfigureAwait(false);
             var tasks = _requestTasks.Values.ToArray();
             if (tasks.Length != 0)
@@ -326,7 +326,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
                 break;
             case BrokerPipeMessageTypes.Cancel:
                 var cancel = BrokerPipeJson.Payload<BrokerPipeCancel>(message.Payload);
-                if (_requests.TryGetValue(cancel.RequestCorrelationId, out var request)) request.Cancel();
+                if (_requests.TryGetValue(cancel.RequestCorrelationId, out var request)) CancelRequest(request);
                 break;
             case BrokerPipeMessageTypes.Subscribe:
                 await SubscribeAsync(message, cancellationToken).ConfigureAwait(false);
@@ -520,13 +520,23 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             throw new BrokerException("invalid_subscription", "Subscription ID is invalid.");
     }
 
+    private static void CancelRequest(CancellationTokenSource request)
+    {
+        try { request.Cancel(); }
+        catch (ObjectDisposedException)
+        {
+            // ConcurrentDictionary enumeration and TryGetValue may retain a value
+            // after its request task has removed and disposed the source.
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
         _lifetime.Cancel();
         _pipe?.Dispose();
-        foreach (var request in _requests.Values) request.Cancel();
+        foreach (var request in _requests.Values) CancelRequest(request);
         await DisposeSubscriptionsAsync().ConfigureAwait(false);
         var requests = _requestTasks.Values.ToArray();
         if (requests.Length != 0)

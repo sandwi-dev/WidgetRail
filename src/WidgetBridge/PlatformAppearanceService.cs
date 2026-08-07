@@ -14,6 +14,9 @@ public sealed record BridgePlatformAppearance
     public required double TextScale { get; init; }
     public required double BackdropOpacity { get; init; }
     public required MotionPreference Motion { get; init; }
+    public required ContrastPreference Contrast { get; init; }
+    public required bool BoldText { get; init; }
+    public required TransparencyPreference Transparency { get; init; }
     public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>> ShellStyles { get; init; }
 }
 
@@ -98,6 +101,9 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             TextScale = appearance.TextScale,
             BackdropOpacity = appearance.BackdropOpacity,
             Motion = appearance.Motion,
+            Contrast = appearance.Contrast,
+            BoldText = appearance.BoldText,
+            Transparency = appearance.Transparency,
             ShellStyles = ResolveShellStyles(current.Theme),
         };
     }

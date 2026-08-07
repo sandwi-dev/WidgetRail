@@ -113,6 +113,8 @@ struct WidgetSnapshot final {
 };
 
 enum class PlatformMotionPreference { System, Full, Reduced };
+enum class PlatformContrastPreference { System, Standard, High };
+enum class PlatformTransparencyPreference { Full, Reduced };
 
 struct PlatformAppearance final {
     long long revision{};
@@ -122,6 +124,9 @@ struct PlatformAppearance final {
     double textScale{1.0};
     double backdropOpacity{0.64};
     PlatformMotionPreference motion{PlatformMotionPreference::System};
+    PlatformContrastPreference contrast{PlatformContrastPreference::System};
+    bool boldText{};
+    PlatformTransparencyPreference transparency{PlatformTransparencyPreference::Full};
     std::unordered_map<std::wstring, WidgetComputedStyle> shellStyles;
 };
 

@@ -459,6 +459,7 @@ static Task SettingsCompositesAreSemantic()
     var snapshot = new WidgetView(
         UI.Stack("settings-root",
             UI.ToggleButton("Reduced motion", true, "toggle-motion", "motion-toggle"),
+            UI.ToggleButton("Bold text", false, "toggle-bold", "bold-toggle"),
             UI.Stepper("Text scale", "110%", "text-smaller", "text-larger", "text-scale",
                 canDecrement: false)),
         "motion-toggle").CreateSnapshot("settings.test", 1);
@@ -467,8 +468,21 @@ static Task SettingsCompositesAreSemantic()
     Assert.Equal("Reduced motion: On", toggle.Text);
     Assert.Equal("Reduced motion, On", toggle.AccessibilityLabel);
     Assert.Equal(true, toggle.IsSelected);
-    Assert.Equal(WidgetGlyph.Check, toggle.Glyph);
+    Assert.Equal(null, toggle.Glyph);
     Assert.Equal("setting-toggle", toggle.StyleClasses.Single());
+
+    var offToggle = Find(snapshot.Root, "bold-toggle");
+    Assert.Equal("Bold text: Off", offToggle.Text);
+    Assert.Equal("Bold text, Off", offToggle.AccessibilityLabel);
+    Assert.Equal(null, offToggle.IsSelected);
+    Assert.Equal(null, offToggle.Glyph);
+
+    var explicitIcon = UI.Button("Liked", "like", "liked")
+        .Icon(WidgetGlyph.Like, "Like track")
+        .Selected()
+        .ToProtocolNode();
+    Assert.Equal(WidgetGlyph.Like, explicitIcon.Glyph);
+    Assert.Equal(true, explicitIcon.IsSelected);
 
     var decrement = Find(snapshot.Root, "text-scale.decrement");
     var increment = Find(snapshot.Root, "text-scale.increment");

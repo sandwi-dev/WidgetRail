@@ -290,6 +290,93 @@ GBA_STYLE_GETTER(NativeOverflow, overflow, overflow)
 GBA_STYLE_GETTER(NativeTextAlign, textAlign, textAlign)
 #undef GBA_STYLE_GETTER
 
+NativeAccessibilityPolicy CreateNativeAccessibilityPolicy(
+    const PlatformAppearance& appearance,
+    const bool systemHighContrast,
+    const bool systemAnimationsEnabled) {
+    NativeAccessibilityPolicy policy;
+    policy.reducedTransparency =
+        appearance.transparency == PlatformTransparencyPreference::Reduced;
+    policy.reducedMotion =
+        appearance.motion == PlatformMotionPreference::Reduced ||
+        (appearance.motion == PlatformMotionPreference::System &&
+         !systemAnimationsEnabled);
+    policy.textScale = static_cast<float>(appearance.textScale);
+    policy.minimumFontWeight = appearance.boldText ? 600 : 100;
+
+    const bool highContrast =
+        appearance.contrast == PlatformContrastPreference::High ||
+        (appearance.contrast == PlatformContrastPreference::System &&
+         systemHighContrast);
+    if (highContrast) {
+        // Retain a geometric focus cue and choose the extreme luminance that
+        // maximizes contrast against the resolved surface. The policy runs
+        // after every GBSS layer, so widgets cannot style around it.
+        policy.minimumFocusRingPx = 3.0F;
+        policy.contrastHook = [](NativeColor, const NativeColor background) {
+            const auto Linearize = [](const float channel) {
+                const float bounded = std::clamp(channel, 0.0F, 1.0F);
+                return bounded <= 0.04045F
+                    ? bounded / 12.92F
+                    : std::pow((bounded + 0.055F) / 1.055F, 2.4F);
+            };
+            const float luminance =
+                0.2126F * Linearize(background.red) +
+                0.7152F * Linearize(background.green) +
+                0.0722F * Linearize(background.blue);
+            const float blackContrast = (luminance + 0.05F) / 0.05F;
+            const float whiteContrast = 1.05F / (luminance + 0.05F);
+            return blackContrast >= whiteContrast
+                ? NativeColor{0, 0, 0, 1}
+                : NativeColor{1, 1, 1, 1};
+        };
+    }
+    return policy;
+}
+
+NativeColor CompositeNativeColor(
+    NativeColor foreground,
+    NativeColor background) noexcept {
+    const auto ClampChannel = [](const float value, const float fallback) {
+        return std::isfinite(value) ? std::clamp(value, 0.0F, 1.0F) : fallback;
+    };
+    foreground.red = ClampChannel(foreground.red, 0.0F);
+    foreground.green = ClampChannel(foreground.green, 0.0F);
+    foreground.blue = ClampChannel(foreground.blue, 0.0F);
+    foreground.alpha = ClampChannel(foreground.alpha, 0.0F);
+    background.red = ClampChannel(background.red, 0.0F);
+    background.green = ClampChannel(background.green, 0.0F);
+    background.blue = ClampChannel(background.blue, 0.0F);
+    background.alpha = ClampChannel(background.alpha, 1.0F);
+
+    const float outputAlpha = foreground.alpha +
+        background.alpha * (1.0F - foreground.alpha);
+    if (outputAlpha <= 0.0F) return NativeColor{0, 0, 0, 0};
+    const auto Channel = [&](const float source, const float destination) {
+        return (source * foreground.alpha +
+                destination * background.alpha * (1.0F - foreground.alpha)) /
+            outputAlpha;
+    };
+    return NativeColor{
+        Channel(foreground.red, background.red),
+        Channel(foreground.green, background.green),
+        Channel(foreground.blue, background.blue),
+        outputAlpha,
+    };
+}
+
+NativeColor ResolveNativeSurfaceColor(
+    const std::optional<NativeColor>& layer,
+    NativeColor inheritedSurface,
+    const float opacity) noexcept {
+    if (!layer) return inheritedSurface;
+    auto painted = *layer;
+    painted.alpha *= std::isfinite(opacity)
+        ? std::clamp(opacity, 0.0F, 1.0F)
+        : 1.0F;
+    return CompositeNativeColor(painted, inheritedSurface);
+}
+
 NativeStyleResult NativeStyleAdapter::Adapt(
     const WidgetComputedStyle& computed,
     const NativeStyleContext& requestedContext,
@@ -401,7 +488,7 @@ NativeStyleResult NativeStyleAdapter::Adapt(
             if (value.kind == L"keyword" && value.text == L"normal") data->fontWeight = 400;
             else if (value.kind == L"keyword" && value.text == L"bold") data->fontWeight = 700;
             else if (const auto item = Number(property, value, 100, 900))
-                data->fontWeight = static_cast<int>(std::round(*item / 100.0F) * 100);
+                data->fontWeight = static_cast<int>(std::round(*item));
             else Add(property, L"Font weight was invalid.");
         } else if (property == L"font-family") {
             const bool controls = std::any_of(value.text.begin(), value.text.end(),
@@ -472,6 +559,9 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         if (data->background) data->background->alpha = 1;
     }
     if (accessibility.reducedMotion) data->transitionDuration = 0;
+    data->fontWeight = std::max(
+        data->fontWeight,
+        std::clamp(accessibility.minimumFontWeight, 100, 900));
     float textScale = accessibility.textScale;
     if (!std::isfinite(textScale) || textScale < 0.85F || textScale > 1.5F) {
         Add(L"<accessibility>", L"Text scale was outside its platform safety bounds; 100% was used.");
@@ -479,11 +569,20 @@ NativeStyleResult NativeStyleAdapter::Adapt(
     }
     data->fontSize = std::clamp(data->fontSize * textScale, 8.0F, 256.0F);
     data->letterSpacing = std::clamp(data->letterSpacing * textScale, -64.0F, 256.0F);
-    const NativeColor background = data->background.value_or(NativeColor{0, 0, 0, 1});
-    const auto ApplyContrast = [&](std::optional<NativeColor>& color, std::wstring_view property) {
-        if (!color || !accessibility.contrastHook) return;
+    const NativeColor inheritedBackground =
+        context.effectiveBackground.value_or(NativeColor{0, 0, 0, 1});
+    const auto paintedBackground = data->background
+        ? data->background
+        : context.fallbackBackground;
+    const NativeColor background = ResolveNativeSurfaceColor(
+        paintedBackground, inheritedBackground, data->opacity);
+    const auto ApplyContrast = [&](std::optional<NativeColor>& color,
+                                   std::wstring_view property,
+                                   const bool synthesizeMissing = false) {
+        if (!accessibility.contrastHook || (!color && !synthesizeMissing)) return;
         try {
-            NativeColor adjusted = accessibility.contrastHook(*color, background);
+            NativeColor adjusted = accessibility.contrastHook(
+                color.value_or(DefaultContrastingColor(background)), background);
             if (std::isfinite(adjusted.red) && std::isfinite(adjusted.green) &&
                 std::isfinite(adjusted.blue) && std::isfinite(adjusted.alpha)) {
                 adjusted.red = std::clamp(adjusted.red, 0.0F, 1.0F);
@@ -494,7 +593,10 @@ NativeStyleResult NativeStyleAdapter::Adapt(
             } else Add(property, L"Contrast hook returned a non-finite color.");
         } catch (...) { Add(property, L"Contrast hook failed; the computed color was retained."); }
     };
-    ApplyContrast(data->foreground, L"color");
+    // High contrast must own implicit renderer colors as well as explicit
+    // GBSS colors. Materializing the foreground here prevents the renderer's
+    // normal-mode text/icon fallback from bypassing the accessibility layer.
+    ApplyContrast(data->foreground, L"color", true);
     if (context.focused) {
         data->outlineWidth = std::max(data->outlineWidth,
             ClampFinite(accessibility.minimumFocusRingPx, 2, 1, 16));

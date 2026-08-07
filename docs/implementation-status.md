@@ -152,8 +152,9 @@ features through stale polls, and clear or roll back on reconciliation.
 ### Settings and global theme pipeline
 
 The first-party Settings widget controls text/interface scale, backdrop
-opacity, System/Full/Reduced motion, exact theme ID/version selection, and
-confirmed reset. `PlatformAppearanceService` watches settings and theme files
+opacity, System/Full/Reduced motion, System/Standard/High contrast, bold text,
+reduced transparency, exact theme ID/version selection, and confirmed reset.
+`PlatformAppearanceService` watches settings and theme files
 with event notifications plus a 200 ms debounce—there is no polling loop.
 Valid reloads increment an immutable revision, clear per-widget layered-theme
 caches, and emit a bridge appearance-change event. Invalid reloads keep the
@@ -162,14 +163,25 @@ prior snapshot and revision.
 The bridge resolves platform → widget → user layers, with layer priority
 stronger than selector specificity. It publishes globally layered widget
 `base`/`focused` styles and a bounded shell appearance containing scale,
-backdrop, motion, and semantic shell styles without launching widget workers.
+backdrop, motion, contrast, bold-text, transparency, and semantic shell styles
+without launching widget workers.
 The native client consumes the initial shell appearance and live revision
 events, rejects stale revisions, retains its last good state on failure, and
-applies supported shell styles, interface scale, shell DirectWrite text scale,
-backdrop opacity, and motion. It also propagates bounded platform text scale
-through the post-style accessibility policy into generic declarative widget
-font size/letter spacing and layout, preserving non-compounding `em`
-inheritance.
+applies supported shell styles and the complete bounded appearance record. The
+host-owned policy runs after every shell/widget GBSS layer: text scale
+remeasures/reflows without compounding inherited `em`, reduced motion removes
+transitions, reduced transparency removes blur and makes node surfaces opaque,
+bold text enforces minimum weight 600, and System/forced high contrast corrects
+text/focus against inherited surfaces with a geometric focus ring. Windows
+setting changes reapply System contrast and motion immediately.
+
+The CLI provides `gbar theme new|validate|preview|pack|inspect|install|list`.
+Schema-version-2 `.gbartheme` packages are data-only, deterministic, bounded,
+publisher-namespaced, digest-addressable, revalidated through the production
+compiler, and installed as immutable ID/version directories through staged
+atomic moves. Remote HTTPS/GitHub release installs require a pinned SHA-256.
+Preview is computed terminal output, not native pixels; signing, revocation,
+remove/update/rollback, asset support, and graphical preview remain open.
 
 ### Live package catalog
 
@@ -239,6 +251,16 @@ memory** in total. Across a five-second CPU sample, `OverlayHost` accumulated
 resolution. This is a single prototype observation, not a steady-state budget
 pass or a claim about hidden, GPU, wakeup, or multi-widget cost.
 
+`scripts\Measure-OverlayPerformance.ps1` provides a repeatable bounded Windows
+process-tree observation for packaged hidden and optional independently
+launched visible states. It writes versioned JSON/Markdown with machine/build
+metadata, CPU-time deltas normalized by logical processors, working/private
+memory, handles, threads, percentiles, readiness proxies, and non-gating target
+comparisons. Its deterministic helpers run under `-SelfTest` in verification.
+This CIM/performance-counter sampler is diagnostic only: it does not measure
+GPU, wakeups, presented-frame or controller latency and does not replace the
+planned ETW/PresentMon release harness.
+
 ### Test coverage
 
 The repository verification script builds and runs managed suites for the SDK,
@@ -246,9 +268,15 @@ protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
 settings/themes, catalog, bridge, the generic worker host, broker, and Windows
 providers/reference widgets. The runtime covers suspended pre-containment
 launch, memory/process limits, kill-on-close, and restart cleanup. The current
-Settings Release suite passes 26/26, including paginated identity review,
+Settings Release suite passes 27/27, including paginated identity review,
 required/optional separation, enablement-versus-consent copy, fail-closed
-catalog/compatibility behavior, and no polling. Catalog passes 13/13, including
+catalog/compatibility behavior, nested visual-accessibility controls, legacy
+appearance defaults, and no polling. The platform settings/themes suite passes
+13/13, including legacy schema-1 theme compatibility. CLI passes 34/34,
+including theme scaffold, production validation/computed preview,
+deterministic packaging/inspection, local and pinned-GitHub installation,
+catalog limits, immutable versions, and adversarial package cases. Catalog
+passes 13/13, including
 shared host-API/architecture evaluation. Bridge passes 22/22, including
 semantic catalog revisions/last-good/catch-up reload, atomic presentation
 metadata replacement, and compatible-worker reconciliation.
@@ -326,17 +354,24 @@ with C++ installed:
   not connected end to end.
 - Controller Settings, strict persistence, version-pinned theme selection,
   no-poll watching, last-good revisions, and globally layered widget styles are
-  implemented. Native shell style/interface-scale/backdrop/motion revisions are
-  also applied, including shell DirectWrite text scaling. Theme package
-  install/scaffold/preview tooling, the full 150% text-scale visual matrix, and
-  the complete high-contrast/bold/reduced-transparency/auto-scroll accessibility
-  system are not. See [settings and global themes](settings-and-themes.md).
+  implemented. Safe theme scaffold/validate/computed-preview/pack/inspect/
+  install/list tooling and native post-cascade contrast/bold/reduced-
+  transparency policy are implemented. Native graphical preview, signing,
+  removal/update/rollback, auto-scroll, screen-reader/magnification integration,
+  and the physical combined 150% accessibility matrix are not. See [settings
+  and global themes](settings-and-themes.md) and [theme packaging and
+  distribution](theme-packaging.md).
 - Audio Mixer is the implemented first-party public-SDK example: its widget,
   package/catalog integration, and event-driven per-session Core Audio provider
-  exist, while broader hardware and performance evidence remain open. Network
-  Controls is the second implemented integration: its real provider, widget,
-  worker, catalog, and packaging hooks exist and focused/packaged gates pass,
-  while hardware/privacy/performance gates remain open. Version 1
+  exist, while broader hardware and performance evidence remain open. Its
+  **Audio Control** production roadmap adds supported output/default-role
+  selection and explicit-capability microphone mute/level only after provider,
+  privacy, and hardware review. Network Controls is the second implemented
+  integration: its real provider, widget, worker, catalog, and packaging hooks
+  exist and focused/packaged gates pass, while hardware/privacy/performance
+  gates remain open. Its **Network Control** production roadmap adds privacy-
+  gated identity/link details, bounded IP/gateway/DNS summaries, measured
+  throughput/latency/loss diagnostics, and reviewed recovery actions. Version 1
   explicitly excludes password entry, profile creation, scans, radio controls,
   and automatic current SSID/signal access. See
   [widget capabilities](capabilities.md) and [Windows provider
@@ -359,9 +394,9 @@ and [troubleshooting](troubleshooting.md).
 
 1. Complete physical mixed-DPI/accessibility/visual-regression evidence,
    including the 150% text-scale matrix and controller focus reachability.
-2. Add repeatable ETW/PresentMon performance automation, stored baselines, and
-   per-widget resource diagnostics.
-3. Add safe theme install/scaffold/validate/preview tooling and `gbar dev`.
+2. Extend the bounded process sampler with ETW/PresentMon automation, stored
+   comparable baselines, latency scenarios, and per-widget resource diagnostics.
+3. Add native graphical theme preview, remove/update/rollback, and `gbar dev`.
 4. Implement signing/trust, rollback/quarantine, and AppContainer-equivalent
    isolation before supporting untrusted community binaries.
 5. Continue Audio Mixer/Network Controls hardware evidence, then non-auth

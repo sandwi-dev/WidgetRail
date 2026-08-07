@@ -118,6 +118,12 @@ int main() {
         Check(geometry->panelX + geometry->panelWidth <= width + 0.001F &&
               geometry->panelY + geometry->panelHeight <= height + 0.001F,
               "panel remains fully contained");
+        Check(geometry->trayY >= 0 && geometry->trayHeight >= 0 &&
+              geometry->trayY + geometry->trayHeight <= height + 0.001F,
+              "persistent tray band remains fully contained");
+        Check(geometry->panelY + geometry->panelHeight <=
+                  geometry->trayY + 0.001F,
+              "floating widget panel never overlaps persistent tray band");
         Check(geometry->widgetViewportX >= geometry->panelX &&
               geometry->widgetViewportY >= geometry->panelY,
               "widget viewport begins inside panel");
@@ -127,6 +133,15 @@ int main() {
                   geometry->panelY + geometry->panelHeight + 0.001F,
               "widget viewport remains contained by panel");
     }
+
+    const auto standardSurface = ComputeOverlaySurfaceGeometry(1180, 700, 880);
+    Check(standardSurface.has_value(), "standard widget surface produces geometry");
+    Check(std::abs(standardSurface->trayY - 588.0F) < 0.001F &&
+          std::abs(standardSurface->trayHeight - 98.0F) < 0.001F,
+          "standard widget surface preserves the persistent tray band");
+    Check(standardSurface->panelY + standardSurface->panelHeight <
+              standardSurface->trayY,
+          "standard widget panel floats above the persistent tray");
     Check(!ComputeOverlaySurfaceGeometry(0, 700, 880),
           "zero surface width fails closed");
     Check(!ComputeOverlaySurfaceGeometry(1180, 700, -1),

@@ -52,7 +52,15 @@ Run `gbar validate <manifest.json>` for the precise JSON path and diagnostic.
 
 ## GBSS fails or a theme does not appear
 
-Run `gbar validate <style.gbss>`. Check that:
+For widget-local GBSS, run `gbar validate <style.gbss>`. For a global theme,
+run:
+
+```powershell
+gbar theme validate <directory-or-file.gbartheme>
+gbar theme preview <directory-or-file.gbartheme>
+```
+
+Check that:
 
 - imports precede rules and stay package-relative;
 - every property appears in the safe allowlist;
@@ -61,12 +69,13 @@ Run `gbar validate <style.gbss>`. Check that:
   functions; and
 - variables resolve without a missing value or cycle.
 
-The bridge publishes typed `base` and `focused` maps today. The language can
-parse `:pressed`, `:selected`, and `:disabled`, but complete native rendering
-of all state maps is still under integration. See [GBSS](gbss.md).
+The bridge publishes typed `base` and `focused` maps today. Static snapshot
+`selected` and `disabled` state participates in those maps; complete separate
+maps for transient pressed/busy/dynamic state are still under integration. See
+[GBSS](gbss.md).
 
-The first-party Settings widget, managed appearance store, versioned
-development themes, and bridge watcher are connected. Check these boundaries:
+The first-party Settings widget, managed appearance store, immutable versioned
+themes, and bridge watcher are connected. Check these boundaries:
 
 - Settings is a catalog widget. If its card is missing, rebuild/package
   `OverlayHost` and verify `runtime\Settings\SettingsWidget.Worker.exe`, its
@@ -79,7 +88,7 @@ development themes, and bridge watcher are connected. Check these boundaries:
   `%LOCALAPPDATA%\GameBarAlternative\platform-settings.json`. Invalid JSON
   displays safe defaults and an error; use the confirmed Reset page to replace
   it safely rather than editing while the overlay is open.
-- Development themes live under
+- Installed themes live under
   `%LOCALAPPDATA%\GameBarAlternative\themes\<id>\<version>\` with exact-case
   `theme.json` and its package-relative GBSS entry. The manifest ID/version must
   exactly match both directories. Invalid themes remain visible but disabled
@@ -88,21 +97,22 @@ development themes, and bridge watcher are connected. Check these boundaries:
   last-good revision after an invalid edit, and does not poll. Correct the
   reported manifest/GBSS diagnostic; do not repeatedly touch files to force a
   fallback.
-- Theme shell styles, interface scale, backdrop, and motion should update after
-  the bridge publishes a valid newer revision; the host ignores stale revisions
-  and retains the last good appearance after an invalid edit. `textScale`
-  updates shell title/body/hint DirectWrite sizes and generic declarative widget
-  text/layout after style resolution. Globally layered widget styles update
-  when a new snapshot is requested.
+- Theme shell styles and appearance/accessibility preferences should update
+  after the bridge publishes a valid newer revision; the host ignores stale
+  revisions and retains the last good appearance after an invalid edit.
+  `textScale`, contrast, bold text, reduced transparency, and motion are applied
+  after GBSS; globally layered widget styles update when a new snapshot is
+  requested. Windows setting changes also reapply System contrast/motion.
 - If a valid shell change does not appear, inspect the host diagnostic log for
   `Applied platform appearance revision` or a retained-last-good refresh error,
   then verify the settings/theme diagnostic rather than restarting workers.
   The host log is `%LOCALAPPDATA%\GameBarAlternative\overlay.log`.
 
-There is still no supported theme archive, install/scaffold/preview command, or
-signed theme distribution workflow. `gbar validate` checks GBSS syntax/imports
-but does not install a global theme. Track exact limits in [settings and global
-themes](settings-and-themes.md).
+If install fails, run `gbar theme inspect <file.gbartheme>` and compare the
+reported digest. Remote installs require `--sha256`, existing versions are not
+overwritten, and the installed catalog is capped at 128 user-theme versions.
+Publisher signing is not implemented. Track exact commands and limits in
+[theme packaging and distribution](theme-packaging.md).
 
 ## Snapshot validation fails
 

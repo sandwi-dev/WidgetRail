@@ -3,6 +3,8 @@
 For an end-to-end walkthrough, see the repository
 [widget quickstart](../../docs/widget-quickstart.md). For package and trust
 limitations, see [publishing and installation](../../docs/publishing-and-installation.md).
+Global-theme authors should use [theme packaging and
+distribution](../../docs/theme-packaging.md).
 
 The prototype CLI makes the controller-widget development loop usable before
 the graphical simulator exists. It has no third-party runtime dependencies.
@@ -18,6 +20,14 @@ gbar install github:example/widgets@v1.0.0/volume-control.gbarwidget --sha256 <6
 gbar list
 gbar disable dev.example.volume-control
 gbar enable dev.example.volume-control
+
+gbar theme new "Ocean Night" --id dev.example.ocean-night --publisher dev.example
+gbar theme validate .\OceanNight
+gbar theme preview .\OceanNight
+gbar theme pack .\OceanNight --output .\dev.example.ocean-night-1.0.0.gbartheme
+gbar theme inspect .\dev.example.ocean-night-1.0.0.gbartheme
+gbar theme install .\dev.example.ocean-night-1.0.0.gbartheme
+gbar theme list
 ```
 
 ## Commands
@@ -56,6 +66,68 @@ gbar enable dev.example.volume-control
   `%LOCALAPPDATA%\\GameBarAlternative\\widgets` location for every catalog
   command.
 
+### Theme authoring and distribution
+
+`gbar theme` is the supported global-theme workflow. It uses the production
+`PlatformSettings` catalog and `WidgetStyling` compiler, so validation and
+preview do not approximate GBSS with a browser or a second parser.
+
+- `theme new` scaffolds a schema-version-2 `theme.json` and safe starter GBSS.
+  A theme ID must belong to its declared publisher namespace and its version is
+  canonical dotted numeric notation.
+- `theme validate` validates either a source directory or `.gbartheme`. It
+  follows package-relative imports, compiles typed values and variables, and
+  rejects unreachable GBSS files rather than silently shipping dead content.
+- `theme preview` prints deterministic computed properties for the semantic
+  canvas, backdrop, panel, tray, tray-item states, text, button states, and
+  progress roles. It includes the built-in platform layer. It is intentionally
+  non-GUI: it is useful in terminals and CI, but does not replace physical
+  resolution, contrast, text-scale, or mixed-DPI visual review.
+- `theme pack` creates a deterministic `.gbartheme` ZIP with ordinal paths,
+  fixed timestamps, fixed metadata, and a printed SHA-256 digest.
+- `theme inspect` reports the exact identity, publisher claim, version, entry,
+  expanded size, and archive SHA-256 without executing anything.
+- `theme install` accepts a local package, an absolute HTTPS URL, or
+  `github:owner/repository@tag/asset.gbartheme`. Remote installation requires
+  `--sha256`. Installation validates through the same compiler, stages on the
+  settings volume under a random directory, holds a bounded cross-process
+  lock, and atomically publishes a new immutable `<id>/<version>` directory.
+  Existing versions are never overwritten, and installation stops at the
+  platform catalog limit of 128 user-theme versions.
+- `theme list` reports built-in and installed versions, publisher claims,
+  validity, and the first safe diagnostic. `--settings-root <root>` gives all
+  theme catalog commands an isolated root for testing; otherwise they use
+  `%LOCALAPPDATA%\GameBarAlternative`.
+
+The package format is data-only. A `.gbartheme` contains exact-case root
+`theme.json` plus UTF-8 `.gbss` files; assemblies, scripts, executables, images,
+fonts, browser content, and arbitrary assets are rejected. Validation also
+rejects archive traversal, explicit directory and symbolic-link entries,
+reparse points in source/install paths, Unicode/path ambiguity, case
+collisions, unsafe Windows names, malformed or duplicate JSON, unsupported
+manifest members, invalid imports, and bounded-size/count violations. Current
+limits are 65 files, 240 characters per archive path, 4 MiB per entry, 4 MiB
+expanded total, and 4 MiB compressed archive size.
+
+Schema-version-2 manifests have this strict shape:
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "dev.example.ocean-night",
+  "publisher": "dev.example",
+  "name": "Ocean Night",
+  "version": "1.0.0",
+  "entryFile": "theme.gbss"
+}
+```
+
+Publisher is a claim, not proof. A digest proves exact bytes, not publisher
+identity; obtain it through an independent trusted channel. Packages are not
+signed and there is no revocation service yet. Legacy schema-version-1 local
+theme directories remain readable by the runtime, but `theme pack` accepts
+only the publisher-bearing public schema.
+
 Packaging and catalog commands only inspect bytes and metadata; they never load
 or execute a widget assembly. Packages are not signed, and a digest proves
 integrity rather than publisher identity, so compare the required remote digest
@@ -64,15 +136,16 @@ until explicitly enabled after review. Remote updates of an enabled widget are
 rejected without changing the installed version; disable the widget explicitly,
 retry the install, review it, and then re-enable it.
 
-The remote downloader permits HTTPS on port 443 only, rejects credentials,
+The shared remote downloader permits HTTPS on port 443 only, rejects credentials,
 fragments, localhost, and obvious private or link-local IP literals, and checks
 every redirect against the same policy. It accepts at most five redirects and
-72 MiB, with the byte limit enforced both from `Content-Length` and while
-streaming. The default connect, response, and overall limits are 10, 20, and 120
-seconds. Responses must use identity content encoding. A random temporary file
-is write-protected through validation and installation, then removed on success
-or failure. These controls do not make an untrusted widget safe and do not claim
-to prevent DNS rebinding; only install packages from publishers you trust.
+72 MiB for widgets or 4 MiB for themes, with the selected byte limit enforced
+both from `Content-Length` and while streaming. The default connect, response,
+and overall limits are 10, 20, and 120 seconds. Responses must use identity
+content encoding. A random temporary file remains exclusively locked through
+validation and is removed on success or failure. These controls do not make an
+untrusted widget safe and do not claim to prevent DNS rebinding; install only
+from publishers you trust.
 
 The DLL renderer is development tooling, not the production worker host or
 security boundary. Do not use it to inspect untrusted widget binaries.

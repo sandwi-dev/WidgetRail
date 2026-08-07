@@ -54,8 +54,20 @@ struct ImagePlacement final {
 struct DeclarativeRenderOptions final {
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
+    std::optional<NativeColor> surfaceBackground;
     NativeAccessibilityPolicy accessibility;
 };
+
+/// Accessibility-safe state presentation. High contrast and reduced
+/// transparency retain semantic state cues without fading content below the
+/// contrast selected by NativeStyleAdapter.
+[[nodiscard]] float DeclarativeStateOpacityFactor(
+    bool disabled,
+    bool busy,
+    const NativeAccessibilityPolicy& accessibility) noexcept;
+
+[[nodiscard]] bool UseAccessibleDeclarativeStateCue(
+    const NativeAccessibilityPolicy& accessibility) noexcept;
 
 class DeclarativeRenderer final {
 public:

@@ -43,6 +43,11 @@ struct OverlaySurfaceGeometry final {
     float panelY{};
     float panelWidth{};
     float panelHeight{};
+    // The persistent, host-rendered icon tray occupies this band while a
+    // widget is open. It is visual context only; widget input ownership is
+    // independent of this geometry.
+    float trayY{};
+    float trayHeight{};
     float widgetViewportX{};
     float widgetViewportY{};
     float widgetViewportWidth{};

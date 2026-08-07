@@ -41,16 +41,22 @@ internal sealed class RemotePackageDownloader : IDisposable
         _client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("gbar", "1.0"));
     }
 
-    public async Task<DownloadedPackage> DownloadAsync(Uri source, byte[]? expectedSha256, CancellationToken cancellationToken)
+    public async Task<DownloadedPackage> DownloadAsync(
+        Uri source,
+        byte[]? expectedSha256,
+        CancellationToken cancellationToken,
+        string temporaryExtension = ".gbarwidget")
     {
         ValidateRemoteUri(source, "Remote package URL");
+        if (temporaryExtension is not ".gbarwidget" and not ".gbartheme")
+            throw new ArgumentException("Temporary package extension is unsupported.", nameof(temporaryExtension));
         using var overall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         overall.CancelAfter(_options.OverallTimeout);
 
         var downloadRoot = _options.TemporaryDirectoryRoot ??
             Path.Combine(Path.GetTempPath(), "GameBarAlternative", "downloads");
         var directory = Path.Combine(downloadRoot, Guid.NewGuid().ToString("N"));
-        var packagePath = Path.Combine(directory, "package.gbarwidget");
+        var packagePath = Path.Combine(directory, "package" + temporaryExtension);
         Directory.CreateDirectory(directory);
         FileStream? integrityGuard = null;
 
@@ -259,10 +265,12 @@ internal static partial class RemotePackageSource
 {
     private static readonly Regex GitHubSegment = GitHubSegmentRegex();
 
-    public static Uri? Resolve(string source)
+    public static Uri? Resolve(string source, string requiredExtension = ".gbarwidget")
     {
+        if (requiredExtension is not ".gbarwidget" and not ".gbartheme")
+            throw new ArgumentException("Remote package extension is unsupported.", nameof(requiredExtension));
         if (source.StartsWith("github:", StringComparison.OrdinalIgnoreCase))
-            return ResolveGitHub(source["github:".Length..]);
+            return ResolveGitHub(source["github:".Length..], requiredExtension);
 
         if (source.StartsWith("https:", StringComparison.OrdinalIgnoreCase))
         {
@@ -278,13 +286,13 @@ internal static partial class RemotePackageSource
         return null;
     }
 
-    private static Uri ResolveGitHub(string shorthand)
+    private static Uri ResolveGitHub(string shorthand, string requiredExtension)
     {
         var slash = shorthand.IndexOf('/');
         var at = shorthand.IndexOf('@');
         var assetSlash = at < 0 ? -1 : shorthand.IndexOf('/', at + 1);
         if (slash <= 0 || at <= slash + 1 || assetSlash <= at + 1 || assetSlash == shorthand.Length - 1)
-            throw GitHubUsage();
+            throw GitHubUsage(requiredExtension);
 
         var owner = shorthand[..slash];
         var repository = shorthand[(slash + 1)..at];
@@ -292,8 +300,8 @@ internal static partial class RemotePackageSource
         var asset = shorthand[(assetSlash + 1)..];
         if (!IsSafeGitHubSegment(owner) || !IsSafeGitHubSegment(repository) ||
             !IsSafeGitHubSegment(tag) || !IsSafeGitHubSegment(asset) ||
-            !asset.EndsWith(".gbarwidget", StringComparison.OrdinalIgnoreCase))
-            throw GitHubUsage();
+            !asset.EndsWith(requiredExtension, StringComparison.OrdinalIgnoreCase))
+            throw GitHubUsage(requiredExtension);
 
         var url = $"https://github.com/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repository)}" +
                   $"/releases/download/{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(asset)}";
@@ -303,8 +311,8 @@ internal static partial class RemotePackageSource
     private static bool IsSafeGitHubSegment(string value) =>
         value.Length is > 0 and <= 128 && GitHubSegment.IsMatch(value) && value is not "." and not "..";
 
-    private static CliUsageException GitHubUsage() => new(
-        "GitHub source must use github:owner/repository@tag/asset.gbarwidget with safe, non-empty segments.");
+    private static CliUsageException GitHubUsage(string extension) => new(
+        $"GitHub source must use github:owner/repository@tag/asset{extension} with safe, non-empty segments.");
 
     [GeneratedRegex("\\A[A-Za-z0-9._-]+\\z", RegexOptions.CultureInvariant)]
     private static partial Regex GitHubSegmentRegex();

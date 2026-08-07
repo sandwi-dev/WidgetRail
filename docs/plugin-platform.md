@@ -277,6 +277,8 @@ Available now:
   snapshots, focus, and controller actions;
 - `gbar pack` creates a deterministic `.gbarwidget` bundle;
 - local/HTTPS/GitHub Release install plus catalog list/enable/disable commands;
+- `gbar theme new|validate|preview|pack|inspect|install|list` for deterministic,
+  bounded, data-only global themes;
 - `WidgetWorkerBootstrap`, `WidgetTestHost`, and typed fake host services; and
 - first-party Audio Mixer and Network Controls projects as public-SDK,
   brokered-capability reference implementations.
@@ -290,7 +292,7 @@ Remaining tooling:
 - resource-budget, responsiveness, accessibility, and controller-only
   conformance harnesses;
 - a published supported SDK/NuGet/template workflow outside this repository;
-- theme scaffold/package/preview/install/remove commands; and
+- native graphical theme preview plus remove/update/rollback commands; and
 - an SDK Gallery widget covering the complete public primitive/state matrix.
 
 Developer mode permits unsigned local packages but keeps process isolation, displays a persistent warning, and disables automatic background activation.

@@ -93,6 +93,141 @@ int main() {
     Near(3, accessibleStyle.outlineWidthPx());
     assert((accessibleStyle.outlineColor() == NativeColor{1, 1, 0, 1}));
 
+    PlatformAppearance accessibilityAppearance;
+    accessibilityAppearance.textScale = 1.25;
+    accessibilityAppearance.motion = PlatformMotionPreference::System;
+    accessibilityAppearance.contrast = PlatformContrastPreference::High;
+    accessibilityAppearance.boldText = true;
+    accessibilityAppearance.transparency = PlatformTransparencyPreference::Reduced;
+    const auto resolvedPolicy = CreateNativeAccessibilityPolicy(
+        accessibilityAppearance,
+        false,
+        false);
+    assert(resolvedPolicy.reducedTransparency);
+    assert(resolvedPolicy.reducedMotion);
+    assert(resolvedPolicy.minimumFontWeight == 600);
+    Near(1.25F, resolvedPolicy.textScale);
+    Near(3.0F, resolvedPolicy.minimumFocusRingPx);
+    assert(static_cast<bool>(resolvedPolicy.contrastHook));
+    const auto policyStyle = NativeStyleAdapter::Adapt(
+        accessible,
+        NativeStyleContext{1920, 1080, 800, 400, 16, 16, true},
+        resolvedPolicy).style;
+    assert(policyStyle.fontWeight() == 600);
+    Near(1, policyStyle.opacity());
+    Near(0, policyStyle.backgroundBlurPx());
+    Near(0, policyStyle.transitionDurationMilliseconds());
+    Near(1, policyStyle.background()->alpha);
+    Near(3, policyStyle.outlineWidthPx());
+
+    WidgetComputedStyle inheritedSurfaceText{
+        {L"color", {L"color", L"#777777", std::nullopt, {}}},
+    };
+    const auto inheritedContrast = NativeStyleAdapter::Adapt(
+        inheritedSurfaceText,
+        NativeStyleContext{
+            1920, 1080, 800, 400, 16, 16, false,
+            NativeColor{0.95F, 0.95F, 0.95F, 1}},
+        resolvedPolicy).style;
+    assert((inheritedContrast.foreground() == NativeColor{0, 0, 0, 1}));
+
+    const auto midToneContrast = NativeStyleAdapter::Adapt(
+        inheritedSurfaceText,
+        NativeStyleContext{
+            1920, 1080, 800, 400, 16, 16, false,
+            NativeColor{0.5F, 0.5F, 0.5F, 1}},
+        resolvedPolicy).style;
+    assert((midToneContrast.foreground() == NativeColor{0, 0, 0, 1}));
+
+    // An omitted `color` still receives the final accessibility foreground;
+    // DeclarativeRenderer must never fall back to its normal-mode white text
+    // after high contrast has been requested.
+    const auto implicitOnLight = NativeStyleAdapter::Adapt(
+        {},
+        NativeStyleContext{
+            1920, 1080, 800, 400, 16, 16, false,
+            NativeColor{0.95F, 0.95F, 0.95F, 1}},
+        resolvedPolicy).style;
+    assert((implicitOnLight.foreground() == NativeColor{0, 0, 0, 1}));
+
+    // Contrast is selected against source-over compositing, not the local
+    // RGB triplet. Translucent white over black is a dark effective surface.
+    WidgetComputedStyle translucentLight{
+        {L"background", {L"color", L"rgba(255, 255, 255, 0.25)", std::nullopt, {}}},
+    };
+    auto compositingPolicy = resolvedPolicy;
+    compositingPolicy.reducedTransparency = false;
+    const auto compositedText = NativeStyleAdapter::Adapt(
+        translucentLight,
+        NativeStyleContext{
+            1920, 1080, 800, 400, 16, 16, false,
+            NativeColor{0, 0, 0, 1}},
+        compositingPolicy).style;
+    assert((compositedText.foreground() == NativeColor{1, 1, 1, 1}));
+
+    // A semantic fallback surface participates in the same compositing. This
+    // covers focused buttons whose renderer-owned fill is translucent.
+    const auto fallbackFocus = NativeStyleAdapter::Adapt(
+        {},
+        NativeStyleContext{
+            1920, 1080, 800, 400, 16, 16, true,
+            NativeColor{1, 1, 1, 1},
+            NativeColor{0, 0, 0, 0.25F}},
+        compositingPolicy).style;
+    assert((fallbackFocus.foreground() == NativeColor{0, 0, 0, 1}));
+    assert((fallbackFocus.outlineColor() == NativeColor{0, 0, 0, 1}));
+    Near(3.0F, fallbackFocus.outlineWidthPx());
+
+    // Shell root colors are resolved over an opaque safety fallback before
+    // Clear, and nested translucent surfaces then compose over that exact
+    // effective parent rather than over their raw theme declarations.
+    const auto effectiveCanvas = ResolveNativeSurfaceColor(
+        NativeColor{1, 1, 1, 0.25F}, NativeColor{0, 0, 0, 1});
+    Near(0.25F, effectiveCanvas.red);
+    Near(0.25F, effectiveCanvas.green);
+    Near(0.25F, effectiveCanvas.blue);
+    Near(1.0F, effectiveCanvas.alpha);
+    const auto effectivePanel = ResolveNativeSurfaceColor(
+        NativeColor{1, 0, 0, 0.5F}, effectiveCanvas, 0.5F);
+    Near(0.4375F, effectivePanel.red);
+    Near(0.1875F, effectivePanel.green);
+    Near(0.1875F, effectivePanel.blue);
+    Near(1.0F, effectivePanel.alpha);
+    const auto unchangedSurface = ResolveNativeSurfaceColor(
+        std::nullopt, effectivePanel, 0.0F);
+    assert(unchangedSurface == effectivePanel);
+
+    // Shell roles that share one GBSS selector still adapt separately for
+    // their real paint surfaces: dashboard/canvas, tray, and widget/panel.
+    const auto canvasText = NativeStyleAdapter::Adapt(
+        {}, NativeStyleContext{1920, 1080, 800, 400, 16, 16, false,
+                               NativeColor{0.95F, 0.95F, 0.95F, 1}},
+        compositingPolicy).style;
+    const auto trayText = NativeStyleAdapter::Adapt(
+        {}, NativeStyleContext{1920, 1080, 800, 400, 16, 16, false,
+                               NativeColor{0.5F, 0.5F, 0.5F, 1}},
+        compositingPolicy).style;
+    const auto panelText = NativeStyleAdapter::Adapt(
+        {}, NativeStyleContext{1920, 1080, 800, 400, 16, 16, false,
+                               NativeColor{0.05F, 0.05F, 0.05F, 1}},
+        compositingPolicy).style;
+    assert((canvasText.foreground() == NativeColor{0, 0, 0, 1}));
+    assert((trayText.foreground() == NativeColor{0, 0, 0, 1}));
+    assert((panelText.foreground() == NativeColor{1, 1, 1, 1}));
+
+    accessibilityAppearance.motion = PlatformMotionPreference::Full;
+    accessibilityAppearance.contrast = PlatformContrastPreference::Standard;
+    accessibilityAppearance.boldText = false;
+    accessibilityAppearance.transparency = PlatformTransparencyPreference::Full;
+    const auto explicitStandard = CreateNativeAccessibilityPolicy(
+        accessibilityAppearance,
+        true,
+        false);
+    assert(!explicitStandard.reducedTransparency);
+    assert(!explicitStandard.reducedMotion);
+    assert(explicitStandard.minimumFontWeight == 100);
+    assert(!explicitStandard.contrastHook);
+
     WidgetComputedStyle zoomedText{
         {L"font-size", Length(20, L"px")},
         {L"letter-spacing", Length(2, L"px")},

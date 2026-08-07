@@ -28,7 +28,6 @@ public static class UI
         return new ButtonElement(id, $"{label}: {state}", action)
         {
             AccessibilityLabel = $"{label}, {state}",
-            Glyph = WidgetGlyph.Check,
             IsSelected = isOn ? true : null,
             StyleClasses = ["setting-toggle"],
         };

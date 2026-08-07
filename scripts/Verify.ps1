@@ -25,6 +25,9 @@ function Invoke-Checked {
 
 Push-Location $repositoryRoot
 try {
+    Write-Host "`n== Validate bounded performance harness helpers =="
+    & 'scripts\Measure-OverlayPerformance.ps1' -SelfTest
+
     Invoke-Checked -Description 'Build widget protocol, SDK, sample, and tests' -Command {
         dotnet build 'tests\WidgetSdk.Tests\WidgetSdk.Tests.csproj' --configuration $Configuration --nologo
     }

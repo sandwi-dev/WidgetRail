@@ -135,6 +135,12 @@ packaged as the first two system-control references. Their automated Release
 gates pass; broader hardware/privacy/performance evidence remains open.** Both
 remain ordinary SDK widgets rather than privileged shell panels.
 
+The product roadmap names their production expansions **Audio Control** and
+**Network Control**. These are not two additional hidden shell features: they
+extend the existing packages and public broker contracts. “Implemented” below
+means the bounded version-1 integration exists; it does not mean the expanded
+scope or production-readiness evidence is complete.
+
 The generic declarative path, controller Settings/global-theme foundation, and
 typed broker/consent path support both integrations. They remain behind their
 hardware/privacy/performance evidence gates and must stay ordinary first-party
@@ -155,10 +161,23 @@ provider scope is deliberately narrow:
 - publish bounded, coalesced session-change events without a timer polling
   loop.
 
-Endpoint master volume/mute, output-device selection, and microphone controls
-are not in this milestone. Each needs an explicit capability and provider/API
-review before it can enter the roadmap. In particular, no undocumented
-`PolicyConfig`, registry, or shell-automation output switch is acceptable.
+**Audio Control expansion (roadmapped atop Audio Mixer)** adds, in evidence-
+gated increments:
+
+- controller-first output-device selection where a supported documented
+  Windows setter is available;
+- the implemented per-session volume/mute surface, refined with broader device,
+  communications, and application-churn coverage;
+- microphone mute and input level behind separate explicit capabilities;
+- default multimedia/communications-device visibility and, only where a
+  supported setter exists, controlled selection; and
+- live device/session/default-role updates without a background polling loop.
+
+Endpoint master controls, output selection, microphone controls, and default
+communications-device changes are not implemented today. Each requires a
+separate capability, privacy/feedback design, and provider/API review. No
+undocumented `PolicyConfig`, registry write, or shell-automation output switch
+is acceptable.
 
 Version-1 broker control grants are Interactive-only. Do not route master mute,
 volume, saved-network switching, or another general control through a Visible
@@ -213,6 +232,24 @@ documented API facts, threading/lifetime rules, privacy boundary, and simulator
 matrix, and the [Network Controls reference](network-controls.md) for the
 author-facing contract and completion evidence.
 
+**Network Control expansion (roadmapped atop Network Controls)** adds:
+
+- sanitized active-adapter state and Ethernet/Wi-Fi identity;
+- SSID and signal/link quality only through an explicit Windows privacy-access
+  flow with required/denied/revoked states;
+- bounded IP address, gateway, and DNS summaries that never expose credentials
+  or raw provider handles;
+- throughput, latency, and packet-loss diagnostics with explicit sampling
+  ownership, frequency bounds, cancellation, and visible resource cost; and
+- safe reconnect/renew/diagnostic actions only after capability and failure-
+  recovery review.
+
+It does not initially include Wi-Fi password entry, profile creation/editing,
+stored-key access, captive-portal automation, arbitrary adapter configuration,
+or privileged troubleshooting scripts. Diagnostic sampling must stop outside
+its declared lifecycle state and must be measured against the overlay's CPU,
+network, wakeup, and memory budgets.
+
 Exit criteria for both widgets:
 
 - the worker uses only published SDK and declared brokered capabilities;
@@ -223,6 +260,12 @@ Exit criteria for both widgets:
   have deterministic controller-readable states; and
 - source, contract documentation, simulator fixtures, and regression tests are
   suitable as production SDK examples.
+
+Before either package is labeled production-ready, complete controller polish,
+physical hardware/device/router matrices, privacy and denial UX, long-running
+churn/recovery tests, and hidden/background resource measurements. Every new
+primitive or capability must remain reusable by community widgets; these two
+packages are the canonical templates for event-driven system-control widgets.
 
 ## Phase 4: ecosystem
 
@@ -265,9 +308,9 @@ The current product order is:
 
 1. finish physical mixed-DPI/resolution/accessibility visual evidence and the
    controller/game/presentation matrix;
-2. add repeatable ETW/PresentMon performance tooling and continue Audio Mixer/
-   Network Controls hardware/privacy/performance evidence;
-3. add safe theme scaffold/package/preview/install tooling and `gbar dev`;
+2. extend the bounded process sampler with ETW/PresentMon tooling and continue
+   Audio Control/Network Control hardware/privacy/performance evidence;
+3. add native graphical theme preview, remove/update/rollback, and `gbar dev`;
 4. implement AppContainer-equivalent worker isolation, publisher signing,
    rollback/quarantine, and malicious-widget tests before public binaries; and
 5. continue non-auth first-party references: Performance/self-diagnostics,

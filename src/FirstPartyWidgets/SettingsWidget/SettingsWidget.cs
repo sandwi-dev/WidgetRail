@@ -15,6 +15,7 @@ public enum SettingsPage
     Appearance,
     ThemePicker,
     Accessibility,
+    AccessibilityVisual,
     Overlay,
     InstalledWidgets,
     InstalledWidgetDetails,
@@ -114,6 +115,7 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.Appearance => RenderAppearance(header, settings, themes, busy),
             SettingsPage.ThemePicker => RenderThemes(header, settings, themes, themePage, busy),
             SettingsPage.Accessibility => RenderAccessibility(header, settings, busy),
+            SettingsPage.AccessibilityVisual => RenderVisualAccessibility(header, settings, busy),
             SettingsPage.Overlay => RenderOverlay(header, settings, busy),
             SettingsPage.InstalledWidgets => RenderInstalledWidgets(header, busy),
             SettingsPage.InstalledWidgetDetails => RenderInstalledWidgetDetails(header, busy),
@@ -144,6 +146,7 @@ public sealed partial class SettingsWidget : Widget
             {
                 case "open.appearance": Navigate(SettingsPage.Appearance); break;
                 case "open.accessibility": Navigate(SettingsPage.Accessibility); break;
+                case "open.visual-accessibility": Navigate(SettingsPage.AccessibilityVisual); break;
                 case "open.overlay": Navigate(SettingsPage.Overlay); break;
                 case "open.installed-widgets": Navigate(SettingsPage.InstalledWidgets); break;
                 case "open.permissions": Navigate(SettingsPage.Permissions); break;
@@ -209,6 +212,30 @@ public sealed partial class SettingsWidget : Widget
                             ? MotionPreference.Full
                             : MotionPreference.Reduced,
                     }, "Motion preference saved", cancellationToken).ConfigureAwait(false); break;
+                case "contrast.system": await ChangeAppearanceAsync(
+                    appearance => appearance with
+                    {
+                        Contrast = appearance.Contrast == ContrastPreference.System
+                            ? ContrastPreference.Standard
+                            : ContrastPreference.System,
+                    }, "Contrast preference saved", cancellationToken).ConfigureAwait(false); break;
+                case "contrast.high": await ChangeAppearanceAsync(
+                    appearance => appearance with
+                    {
+                        Contrast = appearance.Contrast == ContrastPreference.High
+                            ? ContrastPreference.Standard
+                            : ContrastPreference.High,
+                    }, "Contrast preference saved", cancellationToken).ConfigureAwait(false); break;
+                case "bold-text.toggle": await ChangeAppearanceAsync(
+                    appearance => appearance with { BoldText = !appearance.BoldText },
+                    "Bold text preference saved", cancellationToken).ConfigureAwait(false); break;
+                case "transparency.reduced": await ChangeAppearanceAsync(
+                    appearance => appearance with
+                    {
+                        Transparency = appearance.Transparency == TransparencyPreference.Reduced
+                            ? TransparencyPreference.Full
+                            : TransparencyPreference.Reduced,
+                    }, "Transparency preference saved", cancellationToken).ConfigureAwait(false); break;
                 case "reset.confirm": await ResetAsync(cancellationToken).ConfigureAwait(false); break;
                 case "reset.cancel": Navigate(SettingsPage.Root); break;
                 default:
@@ -449,12 +476,47 @@ public sealed partial class SettingsWidget : Widget
             .FocusUp("text.stepper.decrement").FocusDown("motion.reduced").Busy(busy);
         var reduced = UI.ToggleButton("Reduced motion", appearance.Motion == MotionPreference.Reduced,
                 "motion.reduced", "motion.reduced")
-            .FocusUp("motion.system").Busy(busy);
+            .FocusUp("motion.system").FocusDown("accessibility.visual").Busy(busy);
+        var visual = UI.Button("Contrast and visibility", "open.visual-accessibility",
+                "accessibility.visual")
+            .FocusUp("motion.reduced").Busy(busy).Classes("setting-row");
         return View(header,
             PageScope("accessibility.page",
                 UI.Text("Accessibility", "accessibility.heading", "Accessibility settings").Classes("page-heading"),
-                text, system, reduced),
+                text, system, reduced, visual),
             "text.stepper.decrement", "accessibility.page");
+    }
+
+    private static WidgetView RenderVisualAccessibility(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        bool busy)
+    {
+        var appearance = settings.Appearance;
+        var systemContrast = UI.ToggleButton(
+                "Follow Windows high contrast", appearance.Contrast == ContrastPreference.System,
+                "contrast.system", "contrast.system")
+            .FocusDown("contrast.high").Busy(busy);
+        var highContrast = UI.ToggleButton(
+                "High contrast", appearance.Contrast == ContrastPreference.High,
+                "contrast.high", "contrast.high")
+            .FocusUp("contrast.system").FocusDown("bold-text.toggle").Busy(busy);
+        var boldText = UI.ToggleButton(
+                "Bold text", appearance.BoldText,
+                "bold-text.toggle", "bold-text.toggle")
+            .FocusUp("contrast.high").FocusDown("transparency.reduced").Busy(busy);
+        var reducedTransparency = UI.ToggleButton(
+                "Reduced transparency", appearance.Transparency == TransparencyPreference.Reduced,
+                "transparency.reduced", "transparency.reduced")
+            .FocusUp("bold-text.toggle").Busy(busy);
+        return View(header,
+            PageScope("accessibility.visual.page",
+                UI.Text("Contrast and visibility", "accessibility.visual.heading",
+                    "Contrast and visibility settings").Classes("page-heading"),
+                systemContrast, highContrast, boldText, reducedTransparency,
+                UI.Text("Accessibility overrides every theme and widget style.",
+                    "accessibility.visual.help", "Accessibility policy help").Classes("page-help")),
+            "contrast.system", "accessibility.visual.page");
     }
 
     private static WidgetView RenderOverlay(
@@ -628,6 +690,7 @@ public sealed partial class SettingsWidget : Widget
     private static SettingsPage ParentPage(SettingsPage page) => page switch
     {
         SettingsPage.ThemePicker => SettingsPage.Appearance,
+        SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
         SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
         SettingsPage.PackageCapabilities => SettingsPage.Permissions,
         SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,

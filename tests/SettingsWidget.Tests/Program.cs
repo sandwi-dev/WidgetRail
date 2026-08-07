@@ -11,6 +11,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Root exposes all first-party settings categories", RootCategories),
     ("Nested pages own scoped B navigation", NestedScopesAndBack),
     ("Settings composites expose controller semantics", CompositeControls),
+    ("Visual accessibility preferences persist through a nested controller scope", VisualAccessibilityPersistence),
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
     ("Theme picker paginates valid and invalid packages", ThemePagination),
     ("Theme selection atomically pins ID and version", ThemeSelection),
@@ -97,8 +98,50 @@ static async Task CompositeControls()
     Assert.Equal("Increase Text size", buttons["text.stepper.increment"].AccessibilityLabel);
     Assert.Equal("Follow Windows motion: On", buttons["motion.system"].Text);
     Assert.Equal(true, buttons["motion.system"].IsSelected);
+    Assert.Equal(null, buttons["motion.system"].Glyph);
+    Assert.Equal(null, buttons["motion.reduced"].Glyph);
     Assert.Equal("motion.reduced", buttons["motion.system"].Focus!.Down);
+    Assert.Equal("accessibility.visual", buttons["motion.reduced"].Focus!.Down);
     Assert.Valid(snapshot);
+}
+
+static async Task VisualAccessibilityPersistence()
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    await Action(widget, "open.accessibility");
+    await Action(widget, "open.visual-accessibility");
+
+    var initial = Snapshot(widget);
+    Assert.Equal("accessibility.visual.page", initial.ActiveInputScopeId);
+    Assert.Equal("contrast.system", initial.InitialFocusId);
+    Assert.HasShortcut(initial.Root, "accessibility.visual.page", ControllerButton.B, "back");
+    Assert.Equal(true, Button(initial.Root, "contrast.system").IsSelected);
+    Assert.Equal(null, Button(initial.Root, "contrast.system").Glyph);
+    Assert.Equal(null, Button(initial.Root, "contrast.high").Glyph);
+    Assert.Equal(null, Button(initial.Root, "bold-text.toggle").Glyph);
+    Assert.Equal(null, Button(initial.Root, "transparency.reduced").Glyph);
+    Assert.Equal("contrast.high", Button(initial.Root, "contrast.system").Focus!.Down);
+    Assert.Equal("bold-text.toggle", Button(initial.Root, "contrast.high").Focus!.Down);
+    Assert.Equal("transparency.reduced", Button(initial.Root, "bold-text.toggle").Focus!.Down);
+    Assert.Valid(initial);
+
+    await Action(widget, "contrast.high");
+    await Action(widget, "bold-text.toggle");
+    await Action(widget, "transparency.reduced");
+    var saved = await Store(temp.Path).LoadAsync();
+    Assert.Equal(ContrastPreference.High, saved.Appearance.Contrast);
+    Assert.Equal(true, saved.Appearance.BoldText);
+    Assert.Equal(TransparencyPreference.Reduced, saved.Appearance.Transparency);
+
+    var updated = Snapshot(widget);
+    Assert.True(Button(updated.Root, "contrast.system").IsSelected is not true,
+        "System contrast remained selected after choosing high contrast.");
+    Assert.Equal(true, Button(updated.Root, "contrast.high").IsSelected);
+    Assert.Equal(true, Button(updated.Root, "bold-text.toggle").IsSelected);
+    Assert.Equal(true, Button(updated.Root, "transparency.reduced").IsSelected);
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.Accessibility, widget.CurrentPage);
 }
 
 static async Task BoundedPersistence()

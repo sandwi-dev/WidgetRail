@@ -11,6 +11,21 @@ public enum MotionPreference
     Reduced,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<ContrastPreference>))]
+public enum ContrastPreference
+{
+    System,
+    Standard,
+    High,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<TransparencyPreference>))]
+public enum TransparencyPreference
+{
+    Full,
+    Reduced,
+}
+
 public sealed record AppearanceSettings
 {
     public const double MinimumInterfaceScale = 0.8;
@@ -38,6 +53,18 @@ public sealed record AppearanceSettings
     [JsonRequired]
     public required MotionPreference Motion { get; init; }
 
+    /// <summary>
+    /// Host-owned contrast policy. This is intentionally additive to schema
+    /// version 1 so settings written by older builds remain readable.
+    /// </summary>
+    public ContrastPreference Contrast { get; init; } = ContrastPreference.System;
+
+    /// <summary>Raises rendered text to at least semibold after GBSS resolution.</summary>
+    public bool BoldText { get; init; }
+
+    /// <summary>Removes blur, translucent surfaces, and partial node opacity.</summary>
+    public TransparencyPreference Transparency { get; init; } = TransparencyPreference.Full;
+
     public static AppearanceSettings Default { get; } = new()
     {
         ThemeId = ThemeIdentity.BuiltInDefault,
@@ -46,6 +73,9 @@ public sealed record AppearanceSettings
         TextScale = 1,
         BackdropOpacity = 0.64,
         Motion = MotionPreference.System,
+        Contrast = ContrastPreference.System,
+        BoldText = false,
+        Transparency = TransparencyPreference.Full,
     };
 }
 
@@ -77,6 +107,9 @@ public static partial class ThemeIdentity
         value is not "." and not ".." &&
         ThemeIdRegex().IsMatch(value);
 
+    public static bool IsValidPublisher(string? value) =>
+        value is { Length: > 0 and <= MaximumLength } && PublisherIdRegex().IsMatch(value);
+
     public static bool TryParseCanonicalVersion(string? value, out Version? version)
     {
         version = null;
@@ -87,6 +120,9 @@ public static partial class ThemeIdentity
 
     [GeneratedRegex("\\A[a-z0-9](?:[a-z0-9._-]{0,127})\\z", RegexOptions.CultureInvariant)]
     private static partial Regex ThemeIdRegex();
+
+    [GeneratedRegex("\\A[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex PublisherIdRegex();
 }
 
 public static class PlatformSettingsValidator
@@ -119,6 +155,10 @@ public static class PlatformSettingsValidator
             AppearanceSettings.MaximumBackdropOpacity, "$.appearance.backdropOpacity");
         if (!Enum.IsDefined(appearance.Motion))
             Add("$.appearance.motion", "invalid_enum", "Motion preference is invalid.");
+        if (!Enum.IsDefined(appearance.Contrast))
+            Add("$.appearance.contrast", "invalid_enum", "Contrast preference is invalid.");
+        if (!Enum.IsDefined(appearance.Transparency))
+            Add("$.appearance.transparency", "invalid_enum", "Transparency preference is invalid.");
         return errors;
 
         void Range(double value, double minimum, double maximum, string path)

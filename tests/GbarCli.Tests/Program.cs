@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using GameBarAlternative.GbarCli;
+using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
@@ -13,6 +14,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Help describes the complete workflow", HelpWorks),
     ("New scaffolds a token-free controller widget", NewScaffolds),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
+    ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
+    ("Theme validation rejects unsafe content and unreachable styles", ThemeValidationSafety),
+    ("Theme archives reject traversal collisions and executable content", ThemeArchiveSafety),
+    ("Theme installation is immutable and catalog-compatible", ThemeInstallIsImmutable),
+    ("Remote theme installation requires and verifies a pinned release asset", ThemeRemoteInstall),
     ("Validate accepts a scaffolded widget", ValidateScaffold),
     ("Validate rejects unsafe GBSS", ValidateRejectsUnsafeGbss),
     ("Validate rejects malformed manifest", ValidateRejectsManifest),
@@ -64,6 +70,10 @@ static async Task HelpWorks()
     Assert.Equal(0, result.Code);
     foreach (var command in new[] { "new", "validate", "render", "replay", "pack", "install", "list", "enable", "disable" })
         Assert.Contains(command, result.Output);
+    var theme = await RunCli("theme", "help");
+    Assert.Equal(0, theme.Code);
+    foreach (var command in new[] { "new", "validate", "preview", "pack", "inspect", "install", "list" })
+        Assert.Contains($"theme {command}", theme.Output);
 }
 
 static async Task NewScaffolds()
@@ -91,6 +101,200 @@ static async Task NewRejectsIdentity()
         "--publisher", "Not-A.Namespace");
     Assert.Equal(2, result.Code);
     Assert.True(!Directory.Exists(destination), "An invalid scaffold must not leave a partial directory.");
+}
+
+static async Task ThemeWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var source = Path.Combine(temp.Path, "Ocean Theme");
+    var created = await RunCli("theme", "new", "Ocean Night", "--output", source,
+        "--id", "dev.test.ocean-night", "--publisher", "dev.test", "--version", "2.3.4");
+    Assert.Equal(0, created.Code);
+    Assert.Contains("dev.test.ocean-night 2.3.4", created.Output);
+    Assert.True(File.Exists(Path.Combine(source, "theme.json")), "Theme manifest was not scaffolded.");
+    Assert.True(File.Exists(Path.Combine(source, "theme.gbss")), "Starter GBSS was not scaffolded.");
+
+    var validated = await RunCli("theme", "validate", source);
+    Assert.Equal(0, validated.Code);
+    Assert.Contains("Valid theme: dev.test.ocean-night 2.3.4 by dev.test", validated.Output);
+    var preview = await RunCli("theme", "preview", source);
+    Assert.Equal(0, preview.Code);
+    Assert.Contains("Computed preview: Ocean Night", preview.Output);
+    Assert.Contains("tray-item:focused:", preview.Output);
+    Assert.Contains("button:focused:", preview.Output);
+    Assert.Contains("accessibility overrides are not simulated", preview.Output);
+
+    var first = Path.Combine(temp.Path, "first.gbartheme");
+    var second = Path.Combine(temp.Path, "second.gbartheme");
+    Assert.Equal(0, (await RunCli("theme", "pack", source, "--output", first)).Code);
+    foreach (var file in Directory.EnumerateFiles(source)) File.SetLastWriteTimeUtc(file, DateTime.UnixEpoch);
+    Assert.Equal(0, (await RunCli("theme", "pack", source, "--output", second)).Code);
+    Assert.SequenceEqual(await File.ReadAllBytesAsync(first), await File.ReadAllBytesAsync(second));
+    using (var archive = ZipFile.OpenRead(first))
+    {
+        Assert.SequenceEqual(["theme.gbss", "theme.json"], archive.Entries.Select(entry => entry.FullName));
+        Assert.True(archive.Entries.All(entry => entry.LastWriteTime.DateTime == new DateTime(1980, 1, 1)),
+            "Theme package timestamps are not reproducible.");
+    }
+    var inspect = await RunCli("theme", "inspect", first);
+    Assert.Equal(0, inspect.Code);
+    Assert.Contains("Publisher: dev.test", inspect.Output);
+    Assert.Contains("publisher identity is not authenticated", inspect.Output);
+}
+
+static async Task ThemeValidationSafety()
+{
+    using var temp = new TemporaryDirectory();
+    var source = await CreateThemeSourceAsync(temp.Path, "dev.test.safe", "dev.test", "1.0.0");
+    await File.WriteAllTextAsync(Path.Combine(source, "unused.gbss"), "button { color: #123456; }");
+    var unused = await RunCli("theme", "validate", source);
+    Assert.Equal(1, unused.Code);
+    Assert.Contains("unreferenced_style", unused.Error);
+
+    File.Delete(Path.Combine(source, "unused.gbss"));
+    await File.WriteAllTextAsync(Path.Combine(source, "theme.gbss"), "button { background: url(https://bad.example/x); }");
+    var unsafeStyle = await RunCli("theme", "validate", source);
+    Assert.Equal(1, unsafeStyle.Code);
+    Assert.Contains("unsafe_value", unsafeStyle.Error);
+
+    await File.WriteAllTextAsync(Path.Combine(source, "theme.gbss"), "button { color: #ffffff; }");
+    await File.WriteAllTextAsync(Path.Combine(source, "payload.exe"), "not executable");
+    var executable = await RunCli("theme", "validate", source);
+    Assert.Equal(1, executable.Code);
+    Assert.Contains("unsupported_theme_file", executable.Error);
+
+    var invalidIdentity = await RunCli("theme", "new", "Bad", "--output", Path.Combine(temp.Path, "bad"),
+        "--id", "org.other.bad", "--publisher", "dev.test");
+    Assert.Equal(2, invalidIdentity.Code);
+    Assert.Contains("owned by its publisher", invalidIdentity.Error);
+    var invalidPublisher = await RunCli("theme", "new", "Bad Publisher",
+        "--output", Path.Combine(temp.Path, "bad-publisher"), "--publisher", "dev..test");
+    Assert.Equal(2, invalidPublisher.Code);
+    Assert.Contains("reverse-DNS", invalidPublisher.Error);
+}
+
+static async Task ThemeArchiveSafety()
+{
+    using var temp = new TemporaryDirectory();
+    var manifest = ThemeManifestBytes("dev.test.attack", "dev.test", "1.0.0");
+    var traversal = Path.Combine(temp.Path, "traversal.gbartheme");
+    using (var archive = ZipFile.Open(traversal, ZipArchiveMode.Create))
+    {
+        WriteArchiveEntry(archive, "theme.json", manifest);
+        WriteArchiveEntry(archive, "theme.gbss", "button { color: #fff; }"u8.ToArray());
+        WriteArchiveEntry(archive, "../escape.gbss", "button { color: #000; }"u8.ToArray());
+    }
+    var traversalResult = await RunCli("theme", "validate", traversal);
+    Assert.Equal(1, traversalResult.Code);
+    Assert.Contains("invalid_path", traversalResult.Error);
+
+    var collision = Path.Combine(temp.Path, "collision.gbartheme");
+    using (var archive = ZipFile.Open(collision, ZipArchiveMode.Create))
+    {
+        WriteArchiveEntry(archive, "theme.json", manifest);
+        WriteArchiveEntry(archive, "theme.gbss", "button { color: #fff; }"u8.ToArray());
+        WriteArchiveEntry(archive, "THEME.GBSS", "button { color: #000; }"u8.ToArray());
+    }
+    var collisionResult = await RunCli("theme", "validate", collision);
+    Assert.Equal(1, collisionResult.Code);
+    Assert.Contains("path_collision", collisionResult.Error);
+
+    var executable = Path.Combine(temp.Path, "executable.gbartheme");
+    using (var archive = ZipFile.Open(executable, ZipArchiveMode.Create))
+    {
+        WriteArchiveEntry(archive, "theme.json", manifest);
+        WriteArchiveEntry(archive, "theme.gbss", "button { color: #fff; }"u8.ToArray());
+        WriteArchiveEntry(archive, "theme.dll", [0x4d, 0x5a]);
+    }
+    var executableResult = await RunCli("theme", "validate", executable);
+    Assert.Equal(1, executableResult.Code);
+    Assert.Contains("unsupported_theme_file", executableResult.Error);
+
+    var symlink = Path.Combine(temp.Path, "symlink.gbartheme");
+    using (var archive = ZipFile.Open(symlink, ZipArchiveMode.Create))
+    {
+        WriteArchiveEntry(archive, "theme.json", manifest);
+        WriteArchiveEntry(archive, "theme.gbss", "button { color: #fff; }"u8.ToArray());
+        var link = archive.CreateEntry("linked.gbss");
+        link.ExternalAttributes = unchecked((int)(0xA1FFu << 16));
+        using var stream = link.Open();
+        stream.Write("theme.gbss"u8);
+    }
+    var symlinkResult = await RunCli("theme", "validate", symlink);
+    Assert.Equal(1, symlinkResult.Code);
+    Assert.Contains("symlink_entry", symlinkResult.Error);
+    Assert.True(!File.Exists(Path.Combine(temp.Path, "escape.gbss")), "Theme traversal wrote outside validation.");
+}
+
+static async Task ThemeInstallIsImmutable()
+{
+    using var temp = new TemporaryDirectory();
+    var source = await CreateThemeSourceAsync(temp.Path, "dev.test.installed", "dev.test", "4.0.0");
+    var package = Path.Combine(temp.Path, "installed.gbartheme");
+    Assert.Equal(0, (await RunCli("theme", "pack", source, "--output", package)).Code);
+    var settingsRoot = Path.Combine(temp.Path, "settings");
+    var install = await RunCli("theme", "install", package, "--settings-root", settingsRoot);
+    Assert.Equal(0, install.Code);
+    var installedFile = Path.Combine(settingsRoot, "themes", "dev.test.installed", "4.0.0", "theme.gbss");
+    Assert.True(File.Exists(installedFile), "Theme entry was not installed.");
+    var installedBytes = await File.ReadAllBytesAsync(installedFile);
+    var listed = await RunCli("theme", "list", "--settings-root", settingsRoot);
+    Assert.Equal(0, listed.Code);
+    Assert.Contains("valid    dev.test.installed  4.0.0", listed.Output);
+    Assert.Contains("[dev.test]", listed.Output);
+    var duplicate = await RunCli("theme", "install", package, "--settings-root", settingsRoot);
+    Assert.Equal(1, duplicate.Code);
+    Assert.Contains("version_exists", duplicate.Error);
+    Assert.SequenceEqual(installedBytes, await File.ReadAllBytesAsync(installedFile));
+
+    for (var index = 0; index < ThemeCatalog.MaximumThemes - 1; index++)
+    {
+        var id = $"dev.test.filler-{index}";
+        var directory = Path.Combine(settingsRoot, "themes", id, "1.0.0");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllBytesAsync(Path.Combine(directory, "theme.json"), ThemeManifestBytes(id, "dev.test", "1.0.0"));
+        await File.WriteAllTextAsync(Path.Combine(directory, "theme.gbss"), "button { color: #ffffff; }");
+    }
+    var overflowSource = await CreateThemeSourceAsync(temp.Path, "dev.test.overflow", "dev.test", "1.0.0");
+    var overflowPackage = Path.Combine(temp.Path, "overflow.gbartheme");
+    Assert.Equal(0, (await RunCli("theme", "pack", overflowSource, "--output", overflowPackage)).Code);
+    var overflow = await RunCli("theme", "install", overflowPackage, "--settings-root", settingsRoot);
+    Assert.Equal(1, overflow.Code);
+    Assert.Contains("too_many_themes", overflow.Error);
+}
+
+static async Task ThemeRemoteInstall()
+{
+    using var temp = new TemporaryDirectory();
+    var source = await CreateThemeSourceAsync(temp.Path, "dev.test.remote-theme", "dev.test", "1.2.0");
+    var package = Path.Combine(temp.Path, "remote.gbartheme");
+    Assert.Equal(0, (await RunCli("theme", "pack", source, "--output", package)).Code);
+    var payload = await File.ReadAllBytesAsync(package);
+    var hash = Convert.ToHexString(SHA256.HashData(payload));
+    var requests = 0;
+    string? requestedUri = null;
+    using var handler = new StubHttpHandler((request, _) =>
+    {
+        requests++;
+        requestedUri = request.RequestUri!.AbsoluteUri;
+        return Task.FromResult(Response(HttpStatusCode.OK, payload));
+    });
+    var settings = Path.Combine(temp.Path, "settings");
+
+    var missingHash = await RunCliWithHandler(handler, "theme", "install",
+        "https://themes.example/remote.gbartheme", "--settings-root", settings);
+    Assert.Equal(2, missingHash.Code);
+    Assert.Contains("requires --sha256", missingHash.Error);
+    Assert.Equal(0, requests);
+
+    var installed = await RunCliWithHandler(handler, "theme", "install",
+        "github:sample-org/themes@v1.2.0/remote.gbartheme",
+        "--sha256", hash, "--settings-root", settings);
+    Assert.Equal(0, installed.Code);
+    Assert.Contains("Installed dev.test.remote-theme 1.2.0", installed.Output);
+    Assert.Contains($"Downloaded SHA-256: {hash.ToLowerInvariant()}", installed.Output);
+    Assert.Equal("https://github.com/sample-org/themes/releases/download/v1.2.0/remote.gbartheme", requestedUri);
+    Assert.Equal(1, requests);
 }
 
 static async Task ValidateScaffold()
@@ -604,6 +808,28 @@ static string CreatePackageSource(string root, string id, string publisher, stri
     File.WriteAllText(Path.Combine(source, "styles", "default.gbss"), "text { color: #ffffff; }");
     return source;
 }
+
+static async Task<string> CreateThemeSourceAsync(string root, string id, string publisher, string version)
+{
+    var source = Path.Combine(root, $"theme-source-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(source);
+    await File.WriteAllBytesAsync(Path.Combine(source, "theme.json"),
+        ThemeManifestBytes(id, publisher, version));
+    await File.WriteAllTextAsync(Path.Combine(source, "theme.gbss"),
+        "panel { background: #10131a; } button:focused { outline-color: #ff7898; outline-width: 2px; }");
+    return source;
+}
+
+static byte[] ThemeManifestBytes(string id, string publisher, string version) =>
+    JsonSerializer.SerializeToUtf8Bytes(new ThemeManifestDocument
+    {
+        SchemaVersion = ThemeManifestDocument.CurrentSchemaVersion,
+        Id = id,
+        Publisher = publisher,
+        Name = "CLI Test Theme",
+        Version = version,
+        EntryFile = "theme.gbss",
+    }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
 static async Task<string> CreatePackedPackageAsync(string root, string id, string version)
 {

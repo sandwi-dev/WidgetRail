@@ -16,15 +16,17 @@ guarantees that are available now.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
   properties, imports, and diagnostics.
 - [Settings and global themes](settings-and-themes.md) — the controller Settings
-  widget, persisted appearance, versioned themes, live bridge/native cascade,
-  remaining accessibility preferences/visual evidence, and authoring
-  requirements.
+  widget, persisted appearance, live bridge/native cascade, host-owned
+  accessibility overrides, and authoring requirements.
+- [Theme packaging and distribution](theme-packaging.md) — scaffold,
+  validate, computed preview, deterministic `.gbartheme` packaging, GitHub/
+  HTTPS installation, format limits, and trust semantics.
 - [Display and resolution](display-and-resolution.md) — active-monitor
   targeting, Per-Monitor-V2/DIP behavior, responsive widget rules,
   deterministic resolution evidence, and physical mixed-monitor limitations.
 - [Performance](performance.md) — engineering budgets, implemented
-  low-overhead rules, widget lifecycle guidance, current measurements, and
-  remaining ETW/PresentMon evidence.
+  low-overhead rules, widget lifecycle guidance, bounded Windows process
+  observations, current measurements, and remaining ETW/PresentMon evidence.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
 - [Widget capabilities](capabilities.md) — typed audio/network services,

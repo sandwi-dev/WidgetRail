@@ -130,23 +130,25 @@ heuristic. Policy enforcement is not implemented in the current prototype.
 
 The host owns appearance selection, accessibility policy, persistence, and the
 final style presented by the renderer. The Settings worker, strict store,
-immutable-ready `<theme-id>/<version>` development catalog, and bridge are
+immutable versioned theme catalog, data-only `.gbartheme` installer/tooling,
+and bridge are
 connected through the generic public widget path. The bridge watches the
 settings file/theme tree without polling, debounces events, retains last-good
 revisions, and resolves platform → widget → user layers before returning a
 snapshot. User layer priority wins before selector specificity.
 
 The bridge also publishes bounded semantic shell styles and persisted
-interface/text scale, backdrop opacity, and motion. The native client consumes
+interface/text scale, backdrop opacity, motion, contrast, bold-text, and
+transparency. The native client consumes
 the initial payload and later revision events, ignores stale revisions, retains
 the last good value on failure, and applies supported shell styles, interface
-geometry, shell DirectWrite text scale, backdrop, and motion without launching
-or restarting widget workers. The generic declarative renderer receives the
-same bounded text scale through the host accessibility policy after style
-resolution, scales font size/letter spacing, and reflows without compounding
-inherited `em` values. The full 150% visual matrix remains an evidence gap.
-There is also no theme distribution installer or complete accessibility
-preference system.
+geometry, backdrop, and accessibility policy without launching or restarting
+widget workers. After style resolution, that policy applies non-compounding
+text scale, reduced motion/transparency, minimum bold weight, and System/forced
+high-contrast text/focus correction to both shell and declarative widgets. The
+physical combined 150% visual matrix, auto-scroll, and assistive-technology
+integration remain evidence gaps; native graphical theme preview, signing,
+removal, and update/rollback are also not implemented.
 
 The implemented contract and remaining native/tooling boundary are documented in
 [settings and global themes](settings-and-themes.md). Theme changes must remain

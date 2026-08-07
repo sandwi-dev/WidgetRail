@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />
+    <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />

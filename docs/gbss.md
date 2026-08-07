@@ -4,7 +4,8 @@ See the [declarative UI reference](declarative-ui.md) for node kinds, stable
 IDs, classes, and interaction state. See [troubleshooting](troubleshooting.md)
 for common validation and renderer-integration problems. The separate
 [settings and global themes](settings-and-themes.md) guide distinguishes this
-implemented widget-local language from the in-progress host-wide cascade.
+implemented widget-local language from the global cascade and data-only theme
+package workflow.
 
 GBSS is the safe, renderer-neutral styling language for the overlay and host-rendered widgets. The production parser/model lives in `src/WidgetStyling`; the `gbar validate` command consumes the same library.
 
@@ -66,10 +67,18 @@ publishes bounded shell appearance revisions. The native host consumes those
 revisions and applies supported shell styles, interface scale, backdrop, and
 motion while retaining its last good value on failure. It also multiplies shell
 DirectWrite role sizes by platform text scale. The host applies supported
-accessibility policy after widget style resolution: bounded text scale adjusts
-generic widget font size/letter spacing and layout without compounding inherited
-`em` values. High contrast, other preferences, and the full 150% visual matrix
-remain incomplete.
+accessibility policy after shell/widget style resolution: bounded text scale
+adjusts font size/letter spacing and layout without compounding inherited `em`
+values; reduced motion removes transitions; reduced transparency removes blur
+and makes node surfaces opaque; bold text enforces a minimum weight; and
+System/forced high contrast corrects text/focus against the inherited surface
+with a geometric focus cue. Themes cannot override that policy. The full
+physical 150% text and combined-accessibility visual matrix remains incomplete.
+
+Global themes use the same parser and typed property contract. Use `gbar theme
+new|validate|preview|pack|inspect|install|list` and read [theme packaging and
+distribution](theme-packaging.md); do not hand-author installed directories or
+substitute browser CSS tooling.
 
 The current bridge response publishes complete computed `base` and `focused`
 maps for every node. Snapshot `selected` and `disabled` state participates while

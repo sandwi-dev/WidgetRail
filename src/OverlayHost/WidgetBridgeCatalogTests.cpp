@@ -23,6 +23,9 @@ constexpr std::string_view ValidAppearance = R"json({
     "textScale": 1.25,
     "backdropOpacity": 0.62,
     "motion": "reduced",
+    "contrast": "high",
+    "boldText": true,
+    "transparency": "reduced",
     "shellStyles": {
         "canvas": {
             "background": {"kind":"color","text":"#101820","number":null,"unit":null}
@@ -162,6 +165,9 @@ int main() {
     assert(appearance->textScale == 1.25);
     assert(appearance->backdropOpacity == 0.62);
     assert(appearance->motion == gba::PlatformMotionPreference::Reduced);
+    assert(appearance->contrast == gba::PlatformContrastPreference::High);
+    assert(appearance->boldText);
+    assert(appearance->transparency == gba::PlatformTransparencyPreference::Reduced);
     assert(appearance->shellStyles.size() == 3);
     assert(appearance->shellStyles.at(L"panel").at(L"corner-radius").number == 18.0);
     assert(appearance->shellStyles.at(L"title").at(L"font-family").text ==
@@ -171,15 +177,39 @@ int main() {
     assert(!gba::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"cinematic","shellStyles":{}
+        "motion":"cinematic","contrast":"system","boldText":false,"transparency":"full","shellStyles":{}
     })json", error));
     assert(error.find(L"motion") != std::wstring::npos);
 
     error.clear();
     assert(!gba::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
+        "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
+        "motion":"system","contrast":"extreme","boldText":false,"transparency":"full","shellStyles":{}
+    })json", error));
+    assert(error.find(L"contrast") != std::wstring::npos);
+
+    error.clear();
+    assert(!gba::testing::ParsePlatformAppearance(R"json({
+        "revision":0,"themeId":"default","themeVersion":"1.0.0",
+        "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
+        "motion":"system","contrast":"system","boldText":false,"transparency":"blurred","shellStyles":{}
+    })json", error));
+    assert(error.find(L"transparency") != std::wstring::npos);
+
+    error.clear();
+    assert(!gba::testing::ParsePlatformAppearance(R"json({
+        "revision":0,"themeId":"default","themeVersion":"1.0.0",
+        "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
+        "motion":"system","contrast":"system","boldText":"yes","transparency":"full","shellStyles":{}
+    })json", error));
+    assert(error.find(L"types") != std::wstring::npos);
+
+    error.clear();
+    assert(!gba::testing::ParsePlatformAppearance(R"json({
+        "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":2,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","shellStyles":{}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{}
     })json", error));
     assert(error.find(L"bounds") != std::wstring::npos);
 
@@ -187,7 +217,7 @@ int main() {
     assert(!gba::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","shellStyles":{"unknown":{}}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{"unknown":{}}
     })json", error));
     assert(error.find(L"unknown") != std::wstring::npos);
 
@@ -195,7 +225,7 @@ int main() {
     assert(!gba::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","shellStyles":{"canvas":{
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{"canvas":{
             "background":{"kind":"script","text":"unsafe","number":null,"unit":null}
         }}
     })json", error));
@@ -205,14 +235,15 @@ int main() {
     assert(!gba::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","shellStyles":{},"unexpected":true
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{},"unexpected":true
     })json", error));
     assert(error.find(L"unknown properties") != std::wstring::npos);
 
     std::string tooManyStyleProperties =
         "{\"revision\":0,\"themeId\":\"default\",\"themeVersion\":\"1.0.0\","
         "\"interfaceScale\":1,\"textScale\":1,\"backdropOpacity\":0.64,"
-        "\"motion\":\"system\",\"shellStyles\":{\"canvas\":{";
+        "\"motion\":\"system\",\"contrast\":\"system\",\"boldText\":false,"
+        "\"transparency\":\"full\",\"shellStyles\":{\"canvas\":{";
     for (int index = 0; index < 65; ++index) {
         if (index != 0) tooManyStyleProperties += ',';
         tooManyStyleProperties += "\"property-" + std::to_string(index) +

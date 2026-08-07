@@ -47,11 +47,35 @@ struct NativeStyleContext final {
     float parentFontSizePx{16.0F};
     float rootFontSizePx{16.0F};
     bool focused{};
+    /// Opaque/effective surface inherited from the parent when this style
+    /// does not declare its own background.
+    std::optional<NativeColor> effectiveBackground;
+    /// Renderer-owned background used when a semantic control paints a
+    /// built-in surface without declaring `background` in GBSS (for example,
+    /// the default button fill). Accessibility contrast is resolved against
+    /// this painted fallback, not the inherited surface behind it.
+    std::optional<NativeColor> fallbackBackground;
 };
+
+/// Composites an unassociated-alpha foreground over a background. Renderers
+/// use this alongside NativeStyleAdapter so descendants and accessibility
+/// policy agree on the surface that is actually visible.
+[[nodiscard]] NativeColor CompositeNativeColor(
+    NativeColor foreground,
+    NativeColor background) noexcept;
+
+/// Resolves an optional painted layer, including its style opacity, over an
+/// already-effective parent surface. An absent layer preserves the parent.
+[[nodiscard]] NativeColor ResolveNativeSurfaceColor(
+    const std::optional<NativeColor>& layer,
+    NativeColor inheritedSurface,
+    float opacity = 1.0F) noexcept;
 
 struct NativeAccessibilityPolicy final {
     bool reducedTransparency{};
     bool reducedMotion{};
+    /// Host-owned minimum text weight applied after every theme layer.
+    int minimumFontWeight{100};
     /// Host-owned text zoom applied after widget/theme style resolution.
     /// The platform settings contract bounds this to 0.85 through 1.5.
     float textScale{1.0F};
@@ -59,6 +83,14 @@ struct NativeAccessibilityPolicy final {
     /// Called last for text and focused outline colors. Arguments are foreground/background.
     std::function<NativeColor(NativeColor, NativeColor)> contrastHook;
 };
+
+/// Resolves persisted preferences together with documented Windows system
+/// accessibility state into the renderer-owned policy that is applied after
+/// GBSS. The boolean inputs keep OS querying out of render/layout tests.
+[[nodiscard]] NativeAccessibilityPolicy CreateNativeAccessibilityPolicy(
+    const PlatformAppearance& appearance,
+    bool systemHighContrast,
+    bool systemAnimationsEnabled);
 
 struct NativeStyleDiagnostic final {
     std::wstring property;

@@ -447,7 +447,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["backdropOpacity", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion"],
+        ["backdropOpacity", "boldText", "contrast", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -455,6 +455,9 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(1.2D, response.Payload.GetProperty("textScale").GetDouble());
     Assert.Equal(0.7D, response.Payload.GetProperty("backdropOpacity").GetDouble());
     Assert.Equal("reduced", response.Payload.GetProperty("motion").GetString());
+    Assert.Equal("high", response.Payload.GetProperty("contrast").GetString());
+    Assert.Equal(true, response.Payload.GetProperty("boldText").GetBoolean());
+    Assert.Equal("reduced", response.Payload.GetProperty("transparency").GetString());
     var shellStyles = response.Payload.GetProperty("shellStyles");
     Assert.Equal(12, shellStyles.EnumerateObject().Count());
     Assert.True(shellStyles.GetProperty("tray-item:focused")
@@ -840,6 +843,9 @@ file sealed class TemporaryAppearance : IAsyncDisposable
                 TextScale = 1.2,
                 BackdropOpacity = 0.7,
                 Motion = MotionPreference.Reduced,
+                Contrast = ContrastPreference.High,
+                BoldText = true,
+                Transparency = TransparencyPreference.Reduced,
             },
         });
         var service = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));

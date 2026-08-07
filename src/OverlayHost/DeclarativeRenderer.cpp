@@ -190,6 +190,20 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
 
 } // namespace
 
+bool UseAccessibleDeclarativeStateCue(
+    const NativeAccessibilityPolicy& accessibility) noexcept {
+    return accessibility.reducedTransparency ||
+        static_cast<bool>(accessibility.contrastHook);
+}
+
+float DeclarativeStateOpacityFactor(
+    const bool disabled,
+    const bool busy,
+    const NativeAccessibilityPolicy& accessibility) noexcept {
+    if (UseAccessibleDeclarativeStateCue(accessibility)) return 1.0F;
+    return disabled ? 0.45F : (busy ? 0.72F : 1.0F);
+}
+
 struct DeclarativeRenderer::PreparedNode final {
     const WidgetNode* node{};
     NativeRenderStyle baseStyle;
@@ -238,7 +252,8 @@ struct DeclarativeRenderer::RenderPass final {
         const bool focused,
         const float parentWidth,
         const float parentHeight,
-        const float parentFontSize) {
+        const float parentFontSize,
+        const std::optional<NativeColor>& inheritedBackground) {
         auto adapted = NativeStyleAdapter::Adapt(
             MergeComputedStyles(node, focused),
             NativeStyleContext{
@@ -249,6 +264,10 @@ struct DeclarativeRenderer::RenderPass final {
                 parentFontSize,
                 options.rootFontSizePx,
                 focused,
+                inheritedBackground,
+                node.kind == L"button"
+                    ? std::optional<NativeColor>{kDefaultButton}
+                    : std::nullopt,
             },
             options.accessibility);
         for (const auto& diagnostic : adapted.diagnostics) {
@@ -263,7 +282,8 @@ struct DeclarativeRenderer::RenderPass final {
         const std::string_view parentId,
         const float fallbackParentWidth,
         const float fallbackParentHeight,
-        const float parentFontSize) {
+        const float parentFontSize,
+        const std::optional<NativeColor>& inheritedBackground) {
         auto parentWidth = fallbackParentWidth;
         auto parentHeight = fallbackParentHeight;
         if (!parentId.empty()) {
@@ -273,9 +293,10 @@ struct DeclarativeRenderer::RenderPass final {
             }
         }
         const auto focused = node.id == focusedId;
-        auto base = Adapt(node, false, parentWidth, parentHeight, parentFontSize);
+        auto base = Adapt(
+            node, false, parentWidth, parentHeight, parentFontSize, inheritedBackground);
         auto paint = focused
-            ? Adapt(node, true, parentWidth, parentHeight, parentFontSize)
+            ? Adapt(node, true, parentWidth, parentHeight, parentFontSize, inheritedBackground)
             : base;
         const auto narrowId = NarrowStableId(node.id);
         if (narrowId.empty()) {
@@ -285,6 +306,13 @@ struct DeclarativeRenderer::RenderPass final {
         prepared[narrowId] = {&node, base.style, paint.style, narrowId};
 
         const auto& style = base.style;
+        auto paintedBackground = style.background();
+        if (!paintedBackground && node.kind == L"button")
+            paintedBackground = kDefaultButton;
+        std::optional<NativeColor> effectiveBackground = ResolveNativeSurfaceColor(
+            paintedBackground,
+            inheritedBackground.value_or(NativeColor{0, 0, 0, 1}),
+            style.opacity());
         LayoutElement element;
         element.id = narrowId;
         const auto semanticRow = node.kind == L"row";
@@ -344,7 +372,8 @@ struct DeclarativeRenderer::RenderPass final {
                 narrowId,
                 parentWidth,
                 parentHeight,
-                style.fontSizePx() / textScale));
+                style.fontSizePx() / textScale,
+                effectiveBackground));
         }
         return element;
     }
@@ -477,7 +506,8 @@ struct DeclarativeRenderer::RenderPass final {
             {},
             viewport.width,
             viewport.height,
-            options.rootFontSizePx);
+            options.rootFontSizePx,
+            options.surfaceBackground);
         LayoutOptions layoutOptions;
         layoutOptions.pixelScale = options.pixelScale;
         layoutOptions.responsiveViewport = Size{viewport.width, viewport.height};
@@ -496,7 +526,8 @@ struct DeclarativeRenderer::RenderPass final {
             {},
             viewport.width,
             viewport.height,
-            options.rootFontSizePx);
+            options.rootFontSizePx,
+            options.surfaceBackground);
         layout = declarative::ComputeLayout(
             correctedRoot,
             viewport,
@@ -773,7 +804,10 @@ struct DeclarativeRenderer::RenderPass final {
         } else if (node.isSelected) {
             DrawSemanticIcon(node, style, cue, opacity, L"check");
         } else if (node.isDisabled) {
-            auto brush = Brush(target, WithOpacity(kMutedText, opacity));
+            const auto cueColor = UseAccessibleDeclarativeStateCue(options.accessibility)
+                ? style.foreground().value_or(kMutedText)
+                : kMutedText;
+            auto brush = Brush(target, WithOpacity(cueColor, opacity));
             if (brush) target->DrawLine(
                 D2D1::Point2F(cue.x, cue.y + cue.height),
                 D2D1::Point2F(cue.x + cue.width, cue.y),
@@ -794,7 +828,8 @@ struct DeclarativeRenderer::RenderPass final {
         if (preparedNode == prepared.end() || !box) return;
         const auto& style = preparedNode->second.paintStyle;
         const auto focused = node.id == focusedId;
-        const auto disabledFactor = node.isDisabled ? 0.45F : (node.isBusy ? 0.72F : 1.0F);
+        const auto disabledFactor = DeclarativeStateOpacityFactor(
+            node.isDisabled, node.isBusy, options.accessibility);
         const auto opacity = style.opacity() * disabledFactor;
         const auto paintRect = ScaleRect(box->borderBox, style.scale());
 

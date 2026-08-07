@@ -7,6 +7,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
+    ("Legacy schema-one settings receive additive accessibility defaults", LegacyAccessibilityDefaults),
     ("Malformed duplicate unknown and oversized settings fail closed", StrictSettingsFailClosed),
     ("Settings ranges and enums are enforced", SettingsRangesAreEnforced),
     ("Failed mutations preserve the prior atomic document", FailedMutationPreservesState),
@@ -52,6 +53,9 @@ static Task DefaultsAreSafe()
         Assert.Equal(1D, settings.Appearance.TextScale);
         Assert.Equal(0.64D, settings.Appearance.BackdropOpacity);
         Assert.Equal(MotionPreference.System, settings.Appearance.Motion);
+        Assert.Equal(ContrastPreference.System, settings.Appearance.Contrast);
+        Assert.Equal(false, settings.Appearance.BoldText);
+        Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
     }
 }
@@ -70,6 +74,9 @@ static async Task SettingsRoundTrip()
             TextScale = 1.2,
             BackdropOpacity = 0.7,
             Motion = MotionPreference.Reduced,
+            Contrast = ContrastPreference.High,
+            BoldText = true,
+            Transparency = TransparencyPreference.Reduced,
         },
     });
     Assert.Equal("dev.example.slate", updated.Appearance.ThemeId);
@@ -79,8 +86,23 @@ static async Task SettingsRoundTrip()
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
     Assert.Contains("\"schemaVersion\": 1", source);
     Assert.Contains("\"motion\": \"reduced\"", source);
+    Assert.Contains("\"contrast\": \"high\"", source);
+    Assert.Contains("\"boldText\": true", source);
+    Assert.Contains("\"transparency\": \"reduced\"", source);
     Assert.True(!Directory.EnumerateFiles(temp.Path, ".platform-settings.*.tmp").Any(),
         "Atomic settings temporary file leaked.");
+}
+
+static async Task LegacyAccessibilityDefaults()
+{
+    using var temp = new TemporaryDirectory();
+    var paths = new PlatformSettingsPaths(temp.Path);
+    Directory.CreateDirectory(temp.Path);
+    await File.WriteAllTextAsync(paths.SettingsFile, SettingsJson());
+    var loaded = await new PlatformSettingsStore(paths).LoadAsync();
+    Assert.Equal(ContrastPreference.System, loaded.Appearance.Contrast);
+    Assert.Equal(false, loaded.Appearance.BoldText);
+    Assert.Equal(TransparencyPreference.Full, loaded.Appearance.Transparency);
 }
 
 static async Task StrictSettingsFailClosed()
@@ -126,6 +148,9 @@ static async Task SettingsRangesAreEnforced()
         SettingsJson(themeId: "Upper.Case"),
         SettingsJson(themeVersion: "01.0"),
         SettingsJson(motion: "unknown"),
+        SettingsJson(appearanceExtra: ",\"contrast\":\"future\""),
+        SettingsJson(appearanceExtra: ",\"transparency\":\"future\""),
+        SettingsJson(appearanceExtra: ",\"boldText\":1"),
         SettingsJson(schemaVersion: 2),
     })
     {
@@ -347,9 +372,10 @@ static string SettingsJson(
     string textScale = "1",
     string backdropOpacity = "0.64",
     string motion = "system",
-    string extra = "") =>
+    string extra = "",
+    string appearanceExtra = "") =>
     $$"""
-      {"schemaVersion":{{schemaVersion}},"appearance":{"themeId":"{{themeId}}","themeVersion":"{{themeVersion}}","interfaceScale":{{interfaceScale}},"textScale":{{textScale}},"backdropOpacity":{{backdropOpacity}},"motion":"{{motion}}"}{{extra}}}
+      {"schemaVersion":{{schemaVersion}},"appearance":{"themeId":"{{themeId}}","themeVersion":"{{themeVersion}}","interfaceScale":{{interfaceScale}},"textScale":{{textScale}},"backdropOpacity":{{backdropOpacity}},"motion":"{{motion}}"{{appearanceExtra}}}{{extra}}}
       """;
 
 static GbssPackageResult Package(string sourceName, string source)

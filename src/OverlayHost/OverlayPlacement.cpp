@@ -110,9 +110,14 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     const float panelWidth = std::min(
         preferredPanelWidthDip, std::max(0.0F, viewportWidthDip - sideInset * 2.0F));
     const float panelX = (viewportWidthDip - panelWidth) * 0.5F;
-    const float panelY = std::min(20.0F, viewportHeightDip * 0.05F);
+    const float trayY = std::max(0.0F, viewportHeightDip - 112.0F);
+    const float trayBottom = std::max(trayY, viewportHeightDip - 14.0F);
+    const float panelY = std::min(
+        std::min(20.0F, viewportHeightDip * 0.05F), trayY);
     const float trayReservation = std::min(158.0F, viewportHeightDip * 0.45F);
-    const float panelBottom = std::max(panelY, viewportHeightDip - trayReservation);
+    const float preferredPanelBottom = std::max(
+        panelY, viewportHeightDip - trayReservation);
+    const float panelBottom = std::min(preferredPanelBottom, trayY);
     const float panelHeight = panelBottom - panelY;
 
     const float contentInset = std::min(
@@ -126,6 +131,8 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
         panelY,
         panelWidth,
         panelHeight,
+        trayY,
+        trayBottom - trayY,
         panelX + contentInset,
         panelY + contentInset,
         widgetViewportWidth,

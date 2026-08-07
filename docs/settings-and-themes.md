@@ -1,16 +1,14 @@
 # Settings and global themes
 
-Status: **controller Settings and global shell appearance pipeline
-implemented**. The first-party Settings worker,
-strict settings store, versioned development-theme catalog, explicit cascade
-layers, no-poll watcher, last-good revisions, and globally layered widget
-styles are implemented and covered by Release tests. The native host consumes
-live shell styles, interface scale, shell text scale, backdrop opacity, and
-motion revisions. A theme installer/distribution package, scaffold/preview
-tooling, and complete accessibility preferences are not implemented. The full
-150% text-scale visual matrix is not yet verified.
-Sections labeled **Target contract** remain requirements, not supported
-commands.
+Status: **controller Settings, data-only theme distribution, and the global
+appearance pipeline are implemented**. The first-party Settings worker, strict
+settings store, versioned theme catalog, explicit cascade layers, no-poll
+watcher, last-good revisions, globally layered widget styles, and safe
+`.gbartheme` tooling are covered by Release tests. The native host consumes
+live shell styles and host-owned interface scale, text scale, backdrop,
+motion, contrast, bold-text, and transparency preferences. Native graphical
+theme preview, signing/revocation, theme removal/update UI, auto-scroll, and
+the full physical accessibility/resolution matrix are not implemented.
 
 This page separates three concerns that must not be conflated:
 
@@ -33,23 +31,25 @@ Accessibility policy remains host-owned and wins after every theme layer.
 | Widget-computed `base` and `focused` styles | Implemented | Use semantic roles, stable IDs, and classes; see current renderer limits. |
 | Controller toggle and stepper composites | Implemented | Use `UI.ToggleButton` and `UI.Stepper`; state and persistence remain the caller's responsibility. |
 | Strict appearance settings store | Implemented | The first-party Settings worker persists through it and the shell consumes its bounded appearance revision. |
-| Versioned theme directory discovery | Implemented library | There is no public install command; this is not a distribution workflow. |
+| Versioned theme discovery and immutable install | Implemented | Use `gbar theme install`; an existing ID/version is never overwritten. |
 | Platform → widget → user cascade | Implemented in bridge snapshots | Explicit user-layer priority beats widget selector specificity. |
 | No-poll reload and last-good revision | Implemented in bridge | `FileSystemWatcher` events are debounced; invalid reloads retain the prior snapshot. |
 | Controller Settings widget | Implemented | Open the first-party Settings card; it uses the generic worker/SDK/renderer path. |
 | Installed widget review/enablement | Implemented | Install with the CLI, then review identity, versions, runtime, and required/optional capabilities in Settings; enablement is separate from consent. |
-| Select a discovered theme | Implemented | Settings pins an exact valid ID/version; there is still no theme installer CLI. |
+| Scaffold, validate, preview, pack, inspect, install, and list themes | Implemented | Use the `gbar theme` command group and the data-only `.gbartheme` format. |
+| Select a discovered theme | Implemented | Settings pins an exact valid ID/version after controller review. |
 | Native shell appearance | Implemented | `OverlayHost` applies live shell styles, interface scale, shell DirectWrite text scale, backdrop opacity, and motion. |
 | Declarative widget text scale | Implemented | The host applies bounded text scale after GBSS resolution and remeasures/reflows generic widget content without compounding inherited `em` sizes. |
-| Accessibility preferences UI | Partial | Text scale and motion controls exist; high contrast, bold text, reduced transparency, and auto-scroll do not. |
+| Accessibility preferences UI | Implemented subset | Text scale, motion, System/Standard/High contrast, bold text, and reduced transparency are available; auto-scroll is not. |
 
 ## Current contract: widget GBSS
 
 The current bridge loads the trusted `styleFile` configured for a widget,
 resolves package-relative imports, compiles the bounded language, and returns
 typed property maps to the native host. The current end-to-end bridge publishes
-`base` and `focused` maps; complete native publication of `pressed`, `selected`,
-and `disabled` maps remains incomplete.
+`base` and `focused` maps. Static snapshot `selected` and `disabled` state
+participates in those maps; a separate complete family for transient
+pressed/busy/dynamic states remains incomplete.
 
 GBSS is deliberately not CSS. It cannot fetch a URL, load a font or file by
 path, execute a script, invoke a command, provide a shader, or create native
@@ -87,7 +87,10 @@ The implemented document is equivalent to:
     "interfaceScale": 1.0,
     "textScale": 1.0,
     "backdropOpacity": 0.64,
-    "motion": "system"
+    "motion": "system",
+    "contrast": "system",
+    "boldText": false,
+    "transparency": "full"
   }
 }
 ```
@@ -100,15 +103,19 @@ The implemented document is equivalent to:
 | `textScale` | Finite 0.85–1.50 | 1.0 |
 | `backdropOpacity` | Finite 0.35–0.80 | 0.64 |
 | `motion` | `system`, `full`, `reduced` | `system` |
+| `contrast` | `system`, `standard`, `high` | `system` |
+| `boldText` | Boolean | `false` |
+| `transparency` | `full`, `reduced` | `full` |
 
 These values are persisted and validated by the managed library. The native
-overlay applies theme shell styles, interface scale, backdrop opacity, motion,
-and `textScale`; the latter multiplies themed or fallback DirectWrite font sizes
-for the shell's title/body/hint roles. The same bounded value enters the native
-accessibility policy after widget/theme style resolution, scales generic widget
-font size and letter spacing, and participates in layout remeasurement/reflow.
-Inherited `em` context is adjusted so descendants do not compound the platform
-scale. Editing the JSON is not a supported end-user settings experience.
+overlay applies the complete appearance record. Text scale multiplies themed
+or fallback DirectWrite role sizes and enters the native accessibility policy
+after widget/theme style resolution. It scales generic widget font size and
+letter spacing and participates in layout remeasurement/reflow without
+compounding inherited `em` sizes. Schema-version-1 files written before the
+additive contrast, bold-text, and transparency fields existed still load with
+the safe defaults. Editing the JSON is not a supported end-user settings
+experience.
 
 ## Current controller Settings widget
 
@@ -123,9 +130,12 @@ The implemented root categories are:
 
 - **Appearance:** current theme and a versioned theme picker. Valid themes can
   be selected; invalid themes remain visible but disabled with a diagnostic.
-- **Accessibility:** text scale in 5% steps, Follow Windows motion, and Reduced
-  motion. With neither motion toggle selected, the explicit preference is
-  `full`.
+- **Accessibility:** text scale in 5% steps, Follow Windows motion, Reduced
+  motion, and a nested **Contrast and visibility** page. With neither motion
+  toggle selected, the explicit preference is `full`.
+- **Contrast and visibility:** Follow Windows high contrast, forced High
+  contrast, Bold text, and Reduced transparency. With neither contrast toggle
+  selected, the explicit preference is `standard`.
 - **Overlay:** interface scale and backdrop darkness in 5% steps.
 - **Installed widgets:** paginated installed packages with explicit package ID,
   publisher, active/installed versions, runtime, host-API range, architectures,
@@ -135,7 +145,7 @@ The implemented root categories are:
   optional declarations, and explicit Grant/Deny/Not decided state.
 - **Diagnostics:** settings validity, total/invalid themes, and schema version.
 - **Reset:** a confirmation surface that atomically restores built-in theme,
-  sizing, backdrop, and motion defaults.
+  sizing, backdrop, motion, contrast, bold-text, and transparency defaults.
 
 The theme picker shows at most five entries per page. LB/RB move between pages
 inside its nested input scope; they never change the dashboard widget. The
@@ -202,67 +212,70 @@ The manifest requests no permissions, budgets 32 MB and 1 Hz, and declares
 `suspend` background policy metadata. Lifecycle-policy enforcement remains a
 separate platform limitation; the widget itself performs no background loop.
 
-## Current development theme directory
+## Theme authoring and distribution
 
-`ThemeCatalog` implements bounded discovery for a built-in `builtin.default`
-1.0.0 theme and development directories with this exact layout:
+`gbar theme` is the supported data-only theme workflow:
 
-```text
-%LOCALAPPDATA%\GameBarAlternative\themes\
-  dev.example.slate\
-    1.2.3\
-      theme.json
-      theme.gbss
-      tokens.gbss
+```powershell
+gbar theme new "Slate" --id dev.example.slate --publisher dev.example
+gbar theme validate .\Slate
+gbar theme preview .\Slate
+gbar theme pack .\Slate --output .\dev.example.slate-1.2.3.gbartheme
+gbar theme inspect .\dev.example.slate-1.2.3.gbartheme
+gbar theme install .\dev.example.slate-1.2.3.gbartheme
+gbar theme list
 ```
 
-The version directory and strict `theme.json` identity must agree:
+A public package has exact-case root `theme.json` plus only the UTF-8 `.gbss`
+files reachable from its entry file. Its strict schema-version-2 manifest is:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "dev.example.slate",
+  "publisher": "dev.example",
   "name": "Slate",
   "version": "1.2.3",
   "entryFile": "theme.gbss"
 }
 ```
 
-The manifest is limited to 64 KiB, rejects duplicate/unknown/wrong-case
-properties, uses a printable 1–80-character name, and requires a normalized
-package-relative `.gbss` entry. ID/version directories, manifests, entries,
-and imports are checked against reparse points and containment. Discovery is
-bounded to 128 versioned user themes and returns sanitized diagnostics instead
-of executing theme content.
+The publisher is a lowercase reverse-DNS claim. The theme ID must belong to
+that namespace, the version must use canonical dotted numeric notation, and
+the entry must be a normalized package-relative `.gbss` path. Runtime discovery
+continues to read legacy schema-version-1 local directories, but public packing
+accepts schema version 2 only.
 
-This is an immutable-ready read contract, not a theme installer. There is no
-supported archive extension, pack/install/select CLI, staging workflow,
-signature, or product UI. Do not distribute a hand-built theme directory as if
-it were a stable public package.
+`theme pack` produces deterministic ordinal ZIP entries with fixed timestamps
+and metadata and prints the SHA-256 digest. `theme inspect` reports identity,
+the publisher claim, sizes, and digest without executing content. `theme
+preview` compiles the real built-in-plus-user cascade and prints computed
+semantic shell/widget roles for terminal or CI review. It is not a native
+graphical preview and does not simulate accessibility, physical resolution, or
+DPI behavior.
 
-## Target contract: safe theme distribution package
+Installation revalidates through the production catalog/compiler, stages on
+the settings volume under a random path while holding a bounded cross-process
+lock, and atomically publishes `%LOCALAPPDATA%\GameBarAlternative\themes\<id>\<version>`.
+An existing version is never overwritten. Remote installation accepts absolute
+HTTPS or `github:owner/repository@tag/asset.gbartheme` and requires a pinned
+SHA-256 digest; the GitHub shorthand names one exact release asset and never
+uses `latest`, clones source, or builds a repository. Select the installed
+version through Settings → Appearance.
 
-The future distribution format must be data-only and immutable. At minimum it must
-provide:
+The package boundary rejects traversal, unsafe Windows names, backslashes,
+non-NFC or case-colliding paths, explicit directory and symlink entries,
+reparse-point source/install paths, malformed/duplicate/unknown JSON, orphan
+GBSS, invalid imports/types/variables, and any script, assembly, executable,
+font, image, or arbitrary asset. Current package limits are 65 files, 240
+characters per path, 4 MiB per entry, 4 MiB expanded total, and a 4 MiB
+archive; tighter GBSS compiler limits still apply.
 
-- a strict root manifest with format version, reverse-DNS theme ID, publisher,
-  canonical version, display name, and one package-relative GBSS entry;
-- exact-case, normalized archive paths and immutable installation by
-  `<id>/<version>`;
-- the same containment, collision, reparse-point, entry-count, path-length,
-  expanded-size, staging, and atomic-move defenses as `.gbarwidget` packages;
-- GBSS imports that cannot leave the theme package; and
-- no executable assemblies, scripts, commands, browser content, native
-  extensions, shaders, arbitrary filesystem paths, or remote style resources.
-
-Images, custom fonts, and other theme assets are out of scope until a verified
-host asset broker defines type, decoded-size, dimension, and lifetime limits.
-Adding `url()` or general file paths to GBSS is not an acceptable workaround.
-
-Theme validation establishes structure and bounded data; it does not establish
-publisher identity. Distribution must eventually use the same integrity,
-review, signing, and revocation principles described in [security and
-trust](security-and-trust.md).
+Validation establishes bounded data and a digest establishes exact bytes.
+Neither authenticates the publisher. There is no signature, revocation,
+automatic update, remove command, theme gallery, graphical preview, or asset
+broker yet. Read the complete command, format, security, and GitHub workflow in
+[theme packaging and distribution](theme-packaging.md).
 
 ## Current global cascade and ownership
 
@@ -290,10 +303,10 @@ that payload without starting a widget worker, adapts it through the native
 style policy, and applies supported colors, typography, radii, and focus
 outlines.
 
-The native widget style resolver applies its supported accessibility policy after
-computed style resolution. Complete host integration must preserve that final,
-non-GBSS safety layer so no theme selector can defeat an accessibility
-invariant.
+The native resolver applies host-owned accessibility policy after computed
+styles for both shell and generic widget nodes. No GBSS selector can bypass
+text scale, reduced motion/transparency, bold-text minimum weight, or the
+high-contrast focus/text correction.
 
 The implementation still needs to freeze:
 
@@ -308,27 +321,18 @@ participates in those maps. A separate complete family of pressed, busy,
 selected, and disabled runtime maps is not published; pressed-state theming and
 all dynamic semantic-state transitions remain incomplete.
 
-## Current persistence and remaining accessibility settings
+## Current persistence and accessibility settings
 
 The managed store already provides versioning, strict validation, bounded
 cross-process updates, and atomic replacement. Theme selection is pinned by ID
 and canonical version rather than a loose path. Monitor-specific pixel
 coordinates are not settings fields.
 
-The visual specification additionally defines these target preferences, which
-are not in schema version 1:
-
-| Setting | Target values | Safe default |
-| --- | --- | --- |
-| Bold text | Off, On | Off |
-| High contrast | Off, On | Off |
-| Reduced transparency | Off, On | Off |
-| Auto-scroll | Off, Slow, Medium, Fast | Off |
-
-These targets come from the [visual design system](visual-design-system.md).
-Adding them requires a schema evolution, controller UI, renderer application,
-and combined accessibility tests. Migration must be explicit by document
-version; silently reinterpreting a value is not allowed.
+Contrast, bold text, and transparency are additive optional members of the
+strict schema-version-1 appearance record. Missing fields use the defaults,
+which preserves earlier files without silently reinterpreting existing values.
+Auto-scroll remains a future preference; screen-reader/magnification integration
+and combined localization/visual evidence are also open.
 
 ## Current no-poll reload and last-good behavior
 
@@ -344,8 +348,8 @@ the settings file and versioned theme tree. It coalesces write/create/delete/
 rename bursts for 200 ms, then asks the manager to reload. A valid publication
 clears layered-widget caches and emits `platform-appearance-changed` with the
 new revision. An appearance query returns the exact theme ID/version, scales,
-backdrop opacity, motion preference, and bounded typed shell styles without
-launching any widget worker.
+backdrop opacity, motion, contrast, bold-text, transparency, and bounded typed
+shell styles without launching any widget worker.
 
 An invalid edit produces bounded diagnostics and retains the prior immutable
 snapshot/revision. Watcher errors schedule the same safe reload path. There is
@@ -354,46 +358,48 @@ no timer or scan loop while files are unchanged.
 The native client parses `platform-appearance-changed`, coalesces the latest
 announced revision, requests a complete appearance only when it is newer, and
 ignores stale revisions. The host retains its last good appearance on bridge or
-parse failure, rebuilds native shell styles, applies bounded interface scale,
-shell DirectWrite text scale, backdrop color/opacity, and motion policy, then
-repositions/repaints the visible overlay without restarting widget workers.
+parse failure, rebuilds native shell styles, applies the bounded appearance and
+accessibility policy, then repositions/repaints the visible overlay without
+restarting widget workers. A Windows settings change reapplies the current
+immutable appearance revision so System contrast and motion follow the
+operating system immediately.
 Globally layered widget styles use the same revision and are recomputed when
 their next snapshot is requested.
 
 Platform `textScale` is applied after style resolution to both shell text and
 generic declarative widget content. The renderer remeasures/reflows with the
 scaled font size and letter spacing while preserving non-compounding `em`
-inheritance. Complete accessibility-policy application and broad visual
-evidence still remain.
+inheritance. Broad physical visual evidence still remains.
 
 An invalid edit must produce source, line, column, severity, stable diagnostic
 code, and message in Settings and the host log. It must not flash the built-in
 theme, partially apply declarations, restart widget workers, change widget
 lifecycle state, or block controller input.
 
-Installed release themes should remain immutable. The current watcher is for
-the current-user development catalog; a future installer must stage and switch
-versions rather than mutate an installed release in place.
+Installed releases are immutable. The installer stages and publishes a new
+version directory; selection switches the exact pinned ID/version rather than
+mutating an installed release in place.
 
 ## Accessibility overrides
 
-The native style resolver already has primitives for minimum focus-ring width,
-reduced motion, reduced transparency, and an optional contrast adjustment hook.
-That is not the same as a complete accessible Settings implementation.
+The final host layer enforces these guarantees after every GBSS layer:
 
-The host-owned final layer must guarantee:
+- bounded text scaling with native remeasurement/reflow;
+- reduced motion forces widget transition durations to zero; System motion
+  follows `SPI_GETCLIENTAREAANIMATION` for both widgets and the shell;
+- reduced transparency removes blur and makes shell/widget node surfaces and
+  opacity opaque, while leaving the separately bounded full-screen backdrop
+  darkness under user control;
+- bold text raises rendered text to at least weight 600; and
+- forced High contrast, or Windows high contrast while preference is System,
+  chooses black or white text/focus color for maximum contrast against the
+  actual inherited surface and preserves a geometric focus ring at least 3
+  DIPs wide. Standard explicitly ignores Windows high contrast.
 
-- visible focus that does not rely on color alone;
-- contrast correction after theme colors are resolved;
-- platform text scaling and remeasurement/reflow (implemented), plus future
-  bold-text remeasurement/reflow;
-- zero or bounded opacity-only motion under reduced motion;
-- opaque fallback surfaces and no blur under reduced transparency; and
-- explicit selected/enabled semantics in addition to accent color.
-
-Widget and theme authors cannot opt out. The host must test combined settings,
-especially 150% text, high contrast, reduced motion, and reduced transparency
-at the same time.
+Widget and theme authors cannot opt out. Remaining work is physical combined
+visual evidence at 150% text, high contrast, reduced motion, and reduced
+transparency; long/localized copy; auto-scroll; and screen-reader/magnification
+integration.
 
 ## Resolution and monitor behavior
 
@@ -431,6 +437,11 @@ gbar validate .\styles\default.gbss
 gbar validate .\MyWidgetPackage
 ```
 
+For a global theme, use the complete `gbar theme` workflow shown in
+[theme packaging and distribution](theme-packaging.md). `theme preview`
+exercises the production compiler/cascade in a terminal; use native screenshots
+and physical display/accessibility checks for pixel evidence.
+
 The managed settings/theme contract suite is also available to platform
 contributors:
 
@@ -457,34 +468,29 @@ recorded in [implementation status](implementation-status.md), not duplicated
 as a drifting count here.
 
 Native Release verification also covers the post-style accessibility adapter's
-150% font-size/letter-spacing scaling and safe fallback for a non-finite scale.
-The full native suite passes, but those contract tests are not a substitute for
-the remaining multi-resolution 150% visual/reflow matrix.
+150% font-size/letter-spacing scaling and safe fallback, System/forced contrast,
+minimum focus geometry, minimum bold weight, reduced transparency, and reduced
+motion. Those contract tests are not a substitute for the remaining physical
+multi-resolution and combined-accessibility visual matrix.
 
 Keep theme-like tokens in `:root`, exercise semantic roles/classes in widget
 snapshot and bridge tests, and use native renderer tests for properties that
 must affect pixels. Treat warnings such as clamping as release-review items.
 
-### Remaining distribution, preview, and native evidence
+### Remaining preview and native evidence
 
-Global themes are supported in bridge-computed widget styles. The platform still
-needs provider-owned tooling for:
+Theme scaffold, validation, computed preview, deterministic packaging,
+inspection, immutable install, and catalog listing are available. Remaining
+tooling/evidence includes:
 
-- scaffolding a strict theme manifest and safe starter GBSS;
-- validating a complete theme package and proposed global selectors;
-- previewing shell, dashboard, Settings, and representative widget fixtures;
-- installing/removing a theme without editing the development catalog;
-- replaying controller navigation through Settings;
-- completing the 150% text-scale resolution/reflow matrix and deterministic
-  shell/widget screenshot regression tests; and
-- running the physical mixed-monitor/DPI/accessibility matrix with retained
-  visual evidence.
-
-Trusted advanced users may populate the documented development directory for
-local testing. Do not present manual copies as an installed, immutable, signed,
-or generally distributable theme. Until supported package tooling exists, use
-`gbar validate` for GBSS plus the diagnostics in
-[troubleshooting](troubleshooting.md).
+- a native graphical or screenshot preview covering the shell, dashboard,
+  Settings, and representative widgets;
+- remove/update/rollback commands and controller UI;
+- publisher signing, revocation, and a curated gallery;
+- `gbar dev` live authoring orchestration;
+- deterministic screenshot regression and the full 150% text-scale/reflow
+  matrix; and
+- the physical mixed-monitor/DPI/accessibility matrix with retained evidence.
 
 ## Security and lifecycle invariants
 

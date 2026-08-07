@@ -26,11 +26,12 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar help
 ```
 
-The available commands are `new`, `validate`, `render`, `replay`, `pack`,
-`install`, `list`, `enable`, and `disable`. `install` accepts a local package,
-an absolute HTTPS URL, or a deterministic GitHub Release shorthand. There is
-no `gbar dev` watcher, GitHub publisher, signing command, automatic updater,
-or marketplace client.
+The widget commands are `new`, `validate`, `render`, `replay`, `pack`,
+`install`, `list`, `enable`, and `disable`. The separate `theme` group provides
+`new`, `validate`, `preview`, `pack`, `inspect`, `install`, and `list` for
+data-only global themes. Remote install accepts an absolute HTTPS URL or a
+deterministic GitHub Release shorthand. There is no `gbar dev` watcher, GitHub
+publisher, signing command, automatic updater, or marketplace client.
 
 ## Create and build a widget
 
@@ -175,4 +176,5 @@ Continue with the [declarative UI reference](declarative-ui.md), [controller
 input model](controller-input.md), [widget capabilities](capabilities.md), and
 [GBSS reference](gbss.md). For packaging, GitHub Release publishing, hash
 pinning, and local or remote installation, read [publishing and
-installation](publishing-and-installation.md).
+installation](publishing-and-installation.md). Theme authors should instead use
+the dedicated [theme packaging and distribution](theme-packaging.md) workflow.

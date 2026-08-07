@@ -326,7 +326,8 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     std::wstring& error) {
     if (!HasOnlyProperties(payload,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
-             L"backdropOpacity", L"motion", L"shellStyles"})) {
+             L"backdropOpacity", L"motion", L"contrast", L"boldText",
+             L"transparency", L"shellStyles"})) {
         error = L"Platform appearance payload has missing or unknown properties.";
         return std::nullopt;
     }
@@ -338,6 +339,9 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         payload.GetNamedValue(L"themeId").ValueType() != JsonValueType::String ||
         payload.GetNamedValue(L"themeVersion").ValueType() != JsonValueType::String ||
         payload.GetNamedValue(L"motion").ValueType() != JsonValueType::String ||
+        payload.GetNamedValue(L"contrast").ValueType() != JsonValueType::String ||
+        payload.GetNamedValue(L"boldText").ValueType() != JsonValueType::Boolean ||
+        payload.GetNamedValue(L"transparency").ValueType() != JsonValueType::String ||
         payload.GetNamedValue(L"shellStyles").ValueType() != JsonValueType::Object) {
         error = L"Platform appearance payload has invalid property types.";
         return std::nullopt;
@@ -369,6 +373,25 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     else if (motion == L"reduced") appearance.motion = PlatformMotionPreference::Reduced;
     else {
         error = L"Platform appearance motion preference is invalid.";
+        return std::nullopt;
+    }
+    const std::wstring contrast(std::wstring_view(payload.GetNamedString(L"contrast")));
+    if (contrast == L"system") appearance.contrast = PlatformContrastPreference::System;
+    else if (contrast == L"standard") appearance.contrast = PlatformContrastPreference::Standard;
+    else if (contrast == L"high") appearance.contrast = PlatformContrastPreference::High;
+    else {
+        error = L"Platform appearance contrast preference is invalid.";
+        return std::nullopt;
+    }
+    appearance.boldText = payload.GetNamedBoolean(L"boldText");
+    const std::wstring transparency(
+        std::wstring_view(payload.GetNamedString(L"transparency")));
+    if (transparency == L"full")
+        appearance.transparency = PlatformTransparencyPreference::Full;
+    else if (transparency == L"reduced")
+        appearance.transparency = PlatformTransparencyPreference::Reduced;
+    else {
+        error = L"Platform appearance transparency preference is invalid.";
         return std::nullopt;
     }
 

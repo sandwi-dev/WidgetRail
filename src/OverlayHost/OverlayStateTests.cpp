@@ -38,6 +38,18 @@ int main() {
     Check(firstRun.activeWidget() == L"yt-music", "selected stable widget ID activates");
     Send(firstRun, Command::NavigateRight);
     Check(firstRun.activeWidget() == L"yt-music", "widget owns navigation input");
+    const auto widgetSlot = firstRun.selectedSlot();
+    const auto widgetOrder = firstRun.order();
+    Send(firstRun, Command::NavigateLeft);
+    Send(firstRun, Command::Activate);
+    Send(firstRun, Command::Cancel);
+    Send(firstRun, Command::ToggleReorder);
+    Check(firstRun.surface() == Surface::Widget &&
+          firstRun.activeWidget() == L"yt-music" &&
+          firstRun.selectedSlot() == widgetSlot &&
+          firstRun.order() == widgetOrder &&
+          !firstRun.reorderMode(),
+          "open widget retains host navigation and action ownership");
     Send(firstRun, Command::SampleWidgetBack);
     Check(firstRun.surface() == Surface::Dashboard, "widget Back returns to dashboard");
     Send(firstRun, Command::ToggleOverlay);

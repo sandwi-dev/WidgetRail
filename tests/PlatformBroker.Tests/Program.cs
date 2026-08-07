@@ -456,11 +456,14 @@ static async Task PipeCancellationIsObserved()
         TransportOptions(requestTimeout: TimeSpan.FromSeconds(2)));
     await client.ConnectAsync();
     server.SetLifecycle(BrokerLifecycleState.Visible);
-    using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(80));
-    await Assert.ThrowsAsync<OperationCanceledException>(() => client.RequestAsync(
+    using var cancellation = new CancellationTokenSource();
+    var request = client.RequestAsync(
         PlatformCapabilities.AudioSessionsReadV1,
         PlatformCapabilities.AudioSessionsList,
-        new { }, cancellation.Token));
+        new { }, cancellation.Token);
+    await backend.RequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    cancellation.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() => request);
     await backend.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
     await client.DisposeAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
@@ -695,12 +698,15 @@ sealed class BrokerPipeHarness : IAsyncDisposable
 sealed class BlockingBrokerBackend : IPlatformBrokerBackend
 {
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
+    public TaskCompletionSource RequestStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource CancellationObserved { get; } = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(
         CancellationToken cancellationToken)
     {
+        RequestStarted.TrySetResult();
         try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
         catch (OperationCanceledException)
         {

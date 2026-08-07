@@ -37,6 +37,7 @@ public static class CliApplication
                 "list" => await ListCommand.RunAsync(args[1..], output),
                 "enable" => await EnabledCommand.RunAsync(args[1..], output, enabled: true),
                 "disable" => await EnabledCommand.RunAsync(args[1..], output, enabled: false),
+                "theme" => await ThemeCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'. Run 'gbar help'."),
             };
         }
@@ -46,6 +47,16 @@ public static class CliApplication
             return 2;
         }
         catch (WidgetPackageException exception)
+        {
+            await error.WriteLineAsync($"error {exception.Code}: {exception.Message}");
+            return 1;
+        }
+        catch (ThemePackageException exception)
+        {
+            await error.WriteLineAsync($"error {exception.Code}: {exception.Message}");
+            return 1;
+        }
+        catch (PlatformSettings.PlatformSettingsException exception)
         {
             await error.WriteLineAsync($"error {exception.Code}: {exception.Message}");
             return 1;
@@ -81,6 +92,13 @@ public static class CliApplication
           gbar list [--catalog <root>]
           gbar enable <widget-id> [--catalog <root>]
           gbar disable <widget-id> [--catalog <root>]
+          gbar theme new <Name> [--output <directory>] [--id <id>] [--publisher <id>] [--version <version>]
+          gbar theme validate <theme-directory|file.gbartheme>
+          gbar theme pack <theme-directory> [--output <file.gbartheme>]
+          gbar theme inspect <file.gbartheme>
+          gbar theme preview <theme-directory|file.gbartheme>
+          gbar theme install <file.gbartheme|https-url|github:owner/repository@tag/asset.gbartheme> [--sha256 <64-hex>] [--settings-root <root>]
+          gbar theme list [--settings-root <root>]
 
         Exit codes: 0 success, 1 validation/runtime failure, 2 command usage error, 130 cancelled.
         """;

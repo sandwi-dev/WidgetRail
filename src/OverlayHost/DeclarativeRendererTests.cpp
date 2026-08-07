@@ -82,6 +82,32 @@ void ImagePlacementMath() {
     Near(invalid.source.width, 0.0F, "invalid source is empty");
 }
 
+void AccessibleStatePresentation() {
+    gba::NativeAccessibilityPolicy normal;
+    Near(gba::DeclarativeStateOpacityFactor(true, false, normal), 0.45F,
+         "standard disabled content remains muted");
+    Near(gba::DeclarativeStateOpacityFactor(false, true, normal), 0.72F,
+         "standard busy content remains muted");
+    Check(!gba::UseAccessibleDeclarativeStateCue(normal),
+          "standard presentation retains muted disabled cue");
+
+    gba::NativeAccessibilityPolicy reducedTransparency;
+    reducedTransparency.reducedTransparency = true;
+    Near(gba::DeclarativeStateOpacityFactor(true, false, reducedTransparency), 1.0F,
+         "reduced transparency does not fade disabled content");
+    Check(gba::UseAccessibleDeclarativeStateCue(reducedTransparency),
+          "reduced transparency uses resolved disabled cue foreground");
+
+    gba::NativeAccessibilityPolicy highContrast;
+    highContrast.contrastHook = [](gba::NativeColor color, gba::NativeColor) {
+        return color;
+    };
+    Near(gba::DeclarativeStateOpacityFactor(false, true, highContrast), 1.0F,
+         "high contrast does not fade busy content");
+    Check(gba::UseAccessibleDeclarativeStateCue(highContrast),
+          "high contrast uses policy-owned disabled cue foreground");
+}
+
 void PlanningMetadataAndKinds() {
     WidgetSnapshot snapshot;
     snapshot.root = Node(L"root", L"stack");
@@ -187,7 +213,12 @@ void RealDirect2DSmoke() {
     auto button = Node(L"confirm", L"button");
     button.text = L"Confirm";
     button.glyph = L"check";
-    snapshot.root.children.push_back(button);
+    auto selectedToggle = Node(L"toggle-on", L"button");
+    selectedToggle.text = L"Reduced motion: On";
+    selectedToggle.isSelected = true;
+    auto offToggle = Node(L"toggle-off", L"button");
+    offToggle.text = L"Bold text: Off";
+    snapshot.root.children = {button, selectedToggle, offToggle};
 
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
     target->BeginDraw();
@@ -197,6 +228,8 @@ void RealDirect2DSmoke() {
     Check(SUCCEEDED(target->EndDraw()), "complete Direct2D draw");
     Check(result.succeeded, "real Direct2D render succeeds");
     Check(result.currentFocusRect.has_value(), "real render returns focused geometry");
+    Check(result.hitRegions.size() == 3,
+          "buttons with selected state cues render without requiring primary glyphs");
 }
 
 } // namespace
@@ -205,6 +238,7 @@ int main() {
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
     ImagePlacementMath();
+    AccessibleStatePresentation();
     PlanningMetadataAndKinds();
     ClippedControlsAreNotFocusCandidates();
     RealDirect2DSmoke();

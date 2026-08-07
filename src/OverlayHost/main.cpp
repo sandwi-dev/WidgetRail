@@ -59,6 +59,14 @@ constexpr UINT kForegroundChangedMessage = WM_APP + 5;
 constexpr UINT kPlacementRefreshMessage = WM_APP + 6;
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
+constexpr gba::NativeColor kSafeCanvasFallback{
+    1.0F / 255.0F, 2.0F / 255.0F, 3.0F / 255.0F, 1.0F};
+constexpr gba::NativeColor kDefaultCanvas{
+    0x10 / 255.0F, 0x13 / 255.0F, 0x1A / 255.0F, 1.0F};
+constexpr gba::NativeColor kDefaultPanel{
+    0x1B / 255.0F, 0x1F / 255.0F, 0x29 / 255.0F, 1.0F};
+constexpr gba::NativeColor kDefaultAccent{
+    0xFC / 255.0F, 0x3F / 255.0F, 0x6C / 255.0F, 1.0F};
 
 D2D1_COLOR_F D2DColor(const gba::NativeColor& color) noexcept {
     return D2D1::ColorF(color.red, color.green, color.blue, color.alpha);
@@ -677,10 +685,10 @@ private:
             return 0;
         case WM_SETTINGCHANGE:
             if (state_.surface() != gba::Surface::Hidden) {
-                // A work-area change will produce WM_SIZE and recreate target
-                // resources only when geometry actually changed.
-                ShowOverlay();
-                InvalidateRect(window_, nullptr, FALSE);
+                // System high-contrast and animation settings are resolved at
+                // render time. Reapply the same immutable appearance revision
+                // so both shell and widget policy update immediately.
+                ApplyPlatformAppearance();
             }
             return 0;
         case WM_WINDOWPOSCHANGED:
@@ -827,11 +835,31 @@ private:
         return found == current->shellStyles.end() ? empty : found->second;
     }
 
+    gba::NativeAccessibilityPolicy CurrentAccessibilityPolicy() const {
+        const auto& current = appearanceState_.current();
+        if (!current) return {};
+
+        HIGHCONTRASTW highContrast{sizeof(highContrast)};
+        const bool systemHighContrast =
+            SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(highContrast),
+                                  &highContrast, 0) &&
+            (highContrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+        BOOL animationsEnabled = TRUE;
+        if (!SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0,
+                                   &animationsEnabled, 0)) {
+            animationsEnabled = TRUE;
+        }
+        return gba::CreateNativeAccessibilityPolicy(
+            *current, systemHighContrast, animationsEnabled != FALSE);
+    }
+
     gba::NativeRenderStyle AdaptShellStyle(
         const std::wstring_view key,
         const bool focused = false,
         const float viewportWidth = static_cast<float>(kPanelWidth),
-        const float viewportHeight = static_cast<float>(kWidgetPanelHeight)) const {
+        const float viewportHeight = static_cast<float>(kWidgetPanelHeight),
+        const std::optional<gba::NativeColor>& inheritedBackground = std::nullopt,
+        const std::optional<gba::NativeColor>& fallbackBackground = std::nullopt) const {
         gba::NativeStyleContext context;
         context.viewportWidthPx = viewportWidth;
         context.viewportHeightPx = viewportHeight;
@@ -840,10 +868,9 @@ private:
         context.parentFontSizePx = 16.0F;
         context.rootFontSizePx = 16.0F;
         context.focused = focused;
-        gba::NativeAccessibilityPolicy accessibility;
-        const auto& current = appearanceState_.current();
-        accessibility.reducedMotion = current &&
-            current->motion == gba::PlatformMotionPreference::Reduced;
+        context.effectiveBackground = inheritedBackground;
+        context.fallbackBackground = fallbackBackground;
+        const auto accessibility = CurrentAccessibilityPolicy();
         auto result = gba::NativeStyleAdapter::Adapt(
             ShellComputedStyle(key), context, accessibility);
         for (const auto& diagnostic : result.diagnostics) {
@@ -856,22 +883,58 @@ private:
     void RebuildShellStyles(
         const float viewportWidth = static_cast<float>(kPanelWidth),
         const float viewportHeight = static_cast<float>(kWidgetPanelHeight)) {
-        canvasStyle_ = AdaptShellStyle(L"canvas", false, viewportWidth, viewportHeight);
+        canvasStyle_ = AdaptShellStyle(
+            L"canvas", false, viewportWidth, viewportHeight,
+            kSafeCanvasFallback, kDefaultCanvas);
+        effectiveCanvasBackground_ = gba::ResolveNativeSurfaceColor(
+            canvasStyle_.background().has_value()
+                ? canvasStyle_.background()
+                : std::optional<gba::NativeColor>{kDefaultCanvas},
+            kSafeCanvasFallback,
+            canvasStyle_.opacity());
         backdropStyle_ = AdaptShellStyle(L"backdrop", false, viewportWidth, viewportHeight);
-        panelStyle_ = AdaptShellStyle(L"panel", false, viewportWidth, viewportHeight);
-        trayStyle_ = AdaptShellStyle(L"tray", false, viewportWidth, viewportHeight);
-        trayItemStyle_ = AdaptShellStyle(L"tray-item", false, viewportWidth, viewportHeight);
+        panelStyle_ = AdaptShellStyle(
+            L"panel", false, viewportWidth, viewportHeight,
+            effectiveCanvasBackground_, kDefaultPanel);
+        effectivePanelBackground_ = gba::ResolveNativeSurfaceColor(
+            panelStyle_.background().has_value()
+                ? panelStyle_.background()
+                : std::optional<gba::NativeColor>{kDefaultPanel},
+            effectiveCanvasBackground_,
+            panelStyle_.opacity());
+        trayStyle_ = AdaptShellStyle(
+            L"tray", false, viewportWidth, viewportHeight,
+            effectiveCanvasBackground_, effectiveCanvasBackground_);
+        const auto trayLayer = trayStyle_.background().has_value()
+            ? trayStyle_.background()
+            : std::optional<gba::NativeColor>{effectiveCanvasBackground_};
+        effectiveTrayBackground_ = gba::ResolveNativeSurfaceColor(
+            trayLayer, effectiveCanvasBackground_, trayStyle_.opacity());
+        trayItemStyle_ = AdaptShellStyle(
+            L"tray-item", false, viewportWidth, viewportHeight,
+            effectiveTrayBackground_, trayLayer);
         trayItemSelectedStyle_ = AdaptShellStyle(
-            L"tray-item:selected", false, viewportWidth, viewportHeight);
+            L"tray-item:selected", false, viewportWidth, viewportHeight,
+            effectiveTrayBackground_, kDefaultAccent);
         trayItemFocusedStyle_ = AdaptShellStyle(
-            L"tray-item:focused", true, viewportWidth, viewportHeight);
+            L"tray-item:focused", true, viewportWidth, viewportHeight,
+            effectiveTrayBackground_, kDefaultAccent);
         trayItemSelectedFocusedStyle_ =
             AdaptShellStyle(L"tray-item:selected:focused", true,
-                            viewportWidth, viewportHeight);
-        titleStyle_ = AdaptShellStyle(L"title", false, viewportWidth, viewportHeight);
-        bodyStyle_ = AdaptShellStyle(L"body", false, viewportWidth, viewportHeight);
-        hintStyle_ = AdaptShellStyle(L"hint", false, viewportWidth, viewportHeight);
-        statusStyle_ = AdaptShellStyle(L"status", false, viewportWidth, viewportHeight);
+                            viewportWidth, viewportHeight,
+                            effectiveTrayBackground_, kDefaultAccent);
+        titleStyle_ = AdaptShellStyle(
+            L"title", false, viewportWidth, viewportHeight, effectivePanelBackground_);
+        bodyStyle_ = AdaptShellStyle(
+            L"body", false, viewportWidth, viewportHeight, effectivePanelBackground_);
+        hintStyle_ = AdaptShellStyle(
+            L"hint", false, viewportWidth, viewportHeight, effectivePanelBackground_);
+        statusStyle_ = AdaptShellStyle(
+            L"status", false, viewportWidth, viewportHeight, effectivePanelBackground_);
+        dashboardTitleStyle_ = AdaptShellStyle(
+            L"title", false, viewportWidth, viewportHeight, effectiveCanvasBackground_);
+        dashboardHintStyle_ = AdaptShellStyle(
+            L"hint", false, viewportWidth, viewportHeight, effectiveCanvasBackground_);
     }
 
     void ApplyPlatformAppearance() {
@@ -890,16 +953,9 @@ private:
         SetLayeredWindowAttributes(backdropWindow_, 0, opacity, LWA_ALPHA);
         InvalidateRect(backdropWindow_, nullptr, TRUE);
 
-        BOOL disableTransitions = FALSE;
-        if (current->motion == gba::PlatformMotionPreference::Reduced) {
-            disableTransitions = TRUE;
-        } else if (current->motion == gba::PlatformMotionPreference::System) {
-            BOOL animationsEnabled = TRUE;
-            if (!SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0,
-                                       &animationsEnabled, 0) || !animationsEnabled) {
-                disableTransitions = TRUE;
-            }
-        }
+        const BOOL disableTransitions = CurrentAccessibilityPolicy().reducedMotion
+            ? TRUE
+            : FALSE;
         (void)DwmSetWindowAttribute(window_, DWMWA_TRANSITIONS_FORCEDISABLED,
                                     &disableTransitions, sizeof(disableTransitions));
         (void)DwmSetWindowAttribute(backdropWindow_, DWMWA_TRANSITIONS_FORCEDISABLED,
@@ -1591,35 +1647,50 @@ private:
                                 const gba::NativeColor fallback) {
             return value.value_or(fallback);
         };
-        const gba::NativeColor defaultCanvas{0x10 / 255.0F, 0x13 / 255.0F,
-                                              0x1A / 255.0F, 1};
-        const gba::NativeColor defaultPanel{0x1B / 255.0F, 0x1F / 255.0F,
-                                             0x29 / 255.0F, 1};
         const gba::NativeColor defaultText{0xF7 / 255.0F, 0xF7 / 255.0F,
                                             0xFA / 255.0F, 1};
         const gba::NativeColor defaultSecondary{0x9B / 255.0F, 0xA3 / 255.0F,
                                                  0xB3 / 255.0F, 1};
-        const gba::NativeColor defaultAccent{0xFC / 255.0F, 0x3F / 255.0F,
-                                              0x6C / 255.0F, 1};
         const gba::NativeColor defaultSuccess{0x45 / 255.0F, 0xD4 / 255.0F,
                                                0x83 / 255.0F, 1};
-        const auto canvasBackground = colorOr(canvasStyle_.background(), defaultCanvas);
-        const auto trayBackground = colorOr(trayStyle_.background(), canvasBackground);
-        const auto panelBackground = colorOr(panelStyle_.background(), defaultPanel);
+        const auto PaintedLayer = [](const std::optional<gba::NativeColor>& configured,
+                                     const gba::NativeColor fallback,
+                                     const float opacity) {
+            auto result = configured.value_or(fallback);
+            result.alpha *= std::isfinite(opacity)
+                ? std::clamp(opacity, 0.0F, 1.0F)
+                : 1.0F;
+            return result;
+        };
+        const auto trayBackground = PaintedLayer(
+            trayStyle_.background(), effectiveCanvasBackground_, trayStyle_.opacity());
+        const auto panelBackground = PaintedLayer(
+            panelStyle_.background(), kDefaultPanel, panelStyle_.opacity());
         const auto foreground = colorOr(titleStyle_.foreground(),
             colorOr(canvasStyle_.foreground(), defaultText));
         const auto secondary = colorOr(hintStyle_.foreground(),
             colorOr(bodyStyle_.foreground(), defaultSecondary));
-        const auto selectedBackground = colorOr(
-            trayItemSelectedFocusedStyle_.background(),
-            colorOr(trayItemSelectedStyle_.background(), defaultAccent));
-        const auto itemBackground = colorOr(trayItemStyle_.background(), trayBackground);
+        const auto dashboardForeground = colorOr(
+            dashboardTitleStyle_.foreground(),
+            colorOr(canvasStyle_.foreground(), defaultText));
+        const auto dashboardSecondary = colorOr(
+            dashboardHintStyle_.foreground(),
+            colorOr(canvasStyle_.foreground(), defaultSecondary));
+        const auto selectedBackground = trayItemSelectedFocusedStyle_.background()
+            ? PaintedLayer(trayItemSelectedFocusedStyle_.background(), kDefaultAccent,
+                           trayItemSelectedFocusedStyle_.opacity())
+            : PaintedLayer(trayItemSelectedStyle_.background(), kDefaultAccent,
+                           trayItemSelectedStyle_.opacity());
+        const auto itemBackground = PaintedLayer(
+            trayItemStyle_.background(), trayBackground, trayItemStyle_.opacity());
+        const auto trayItemForeground = colorOr(
+            trayItemStyle_.foreground(), dashboardForeground);
         const auto selectedForeground = colorOr(
             trayItemSelectedFocusedStyle_.foreground(),
             colorOr(trayItemSelectedStyle_.foreground(), foreground));
         const auto focusColor = colorOr(
             trayItemSelectedFocusedStyle_.outlineColor(),
-            colorOr(trayItemFocusedStyle_.outlineColor(), defaultAccent));
+            colorOr(trayItemFocusedStyle_.outlineColor(), kDefaultAccent));
 
         renderTarget_->CreateSolidColorBrush(
             D2DColor(trayBackground), backgroundBrush_.ReleaseAndGetAddressOf());
@@ -1630,12 +1701,21 @@ private:
         renderTarget_->CreateSolidColorBrush(
             D2DColor(secondary), secondaryBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
+            D2DColor(dashboardForeground),
+            dashboardTextBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(dashboardSecondary),
+            dashboardSecondaryBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
             D2DColor(selectedBackground), accentBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
             D2DColor(colorOr(statusStyle_.foreground(), defaultSuccess)),
             successBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
             D2DColor(itemBackground), trayItemBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(trayItemForeground),
+            trayItemTextBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
             D2DColor(selectedForeground), selectedTextBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
@@ -1705,6 +1785,7 @@ private:
             : hasProperty(L"tray-item:focused", L"outline-width")
                 ? trayItemFocusedStyle_.outlineWidthPx() : 2.0F;
         return backgroundBrush_ && cardBrush_ && textBrush_ && secondaryBrush_ &&
+               dashboardTextBrush_ && dashboardSecondaryBrush_ && trayItemTextBrush_ &&
                accentBrush_ && successBrush_ && titleFormat_ && bodyFormat_ &&
                hintFormat_ && iconFormat_ && trayItemBrush_ && selectedTextBrush_ &&
                focusBrush_;
@@ -1718,11 +1799,14 @@ private:
         titleFormat_.Reset();
         focusBrush_.Reset();
         selectedTextBrush_.Reset();
+        trayItemTextBrush_.Reset();
         trayItemBrush_.Reset();
         accentBrush_.Reset();
         successBrush_.Reset();
         secondaryBrush_.Reset();
         textBrush_.Reset();
+        dashboardSecondaryBrush_.Reset();
+        dashboardTextBrush_.Reset();
         cardBrush_.Reset();
         backgroundBrush_.Reset();
         renderTarget_.Reset();
@@ -1762,8 +1846,7 @@ private:
             return;
         }
         renderTarget_->BeginDraw();
-        renderTarget_->Clear(D2D1::ColorF(1.0F / 255.0F, 2.0F / 255.0F,
-                                          3.0F / 255.0F, 1.0F));
+        renderTarget_->Clear(D2DColor(effectiveCanvasBackground_));
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Scale(
             metrics->interfaceScale, metrics->interfaceScale));
 
@@ -1782,12 +1865,19 @@ private:
         EndPaint(window_, &paint);
     }
 
-    void DrawIconStrip(const float width, const float height) {
+    void DrawIconStrip(
+        const float width,
+        const float height,
+        const gba::OverlaySurfaceGeometry* surfaceGeometry = nullptr) {
         if (state_.order().empty() || width <= 0.0F || height <= 0.0F) return;
         constexpr float preferredTileSize = 64.0F;
         constexpr float gap = 14.0F;
-        const float stripTop = std::max(0.0F, height - 112.0F);
-        const float stripBottom = std::max(stripTop, height - 14.0F);
+        const float stripTop = surfaceGeometry
+            ? surfaceGeometry->trayY
+            : std::max(0.0F, height - 112.0F);
+        const float stripBottom = surfaceGeometry
+            ? surfaceGeometry->trayY + surfaceGeometry->trayHeight
+            : std::max(stripTop, height - 14.0F);
         const float stripHeight = stripBottom - stripTop;
         if (stripHeight <= 0.0F) return;
         const float verticalPadding = std::min(
@@ -1848,7 +1938,9 @@ private:
                 renderTarget_.Get(), DisplayWidgetIcon(widget),
                 D2D1::RectF(x + iconInset, top + iconInset,
                             x + tileSize - iconInset, top + tileSize - iconInset),
-                slot == state_.selectedSlot() ? selectedTextBrush_.Get() : textBrush_.Get(),
+                slot == state_.selectedSlot()
+                    ? selectedTextBrush_.Get()
+                    : trayItemTextBrush_.Get(),
                 2.35F);
         }
     }
@@ -1898,13 +1990,13 @@ private:
             : DisplayWidgetName(state_.selectedWidget());
         DrawTextLine(title, titleFormat_.Get(),
                      D2D1::RectF(34, 10, width - 34, 44),
-                     textBrush_.Get());
+                     dashboardTextBrush_.Get());
         DrawIconStrip(width, height);
 
         const std::wstring hint = DashboardHint();
         DrawTextLine(hint, hintFormat_.Get(),
                      D2D1::RectF(34, 44, width - 34, 66),
-                     secondaryBrush_.Get());
+                     dashboardSecondaryBrush_.Get());
     }
 
     static void CollectShortcutPrompts(
@@ -1996,12 +2088,9 @@ private:
                 };
                 gba::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
-                if (const auto& appearance = appearanceState_.current()) {
-                    options.accessibility.textScale =
-                        static_cast<float>(appearance->textScale);
-                    options.accessibility.reducedMotion =
-                        appearance->motion == gba::PlatformMotionPreference::Reduced;
-                }
+                options.surfaceBackground = effectivePanelBackground_;
+                if (appearanceState_.current())
+                    options.accessibility = CurrentAccessibilityPolicy();
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot, focusedElementId_, viewport, options);
                 lastWidgetRenderResult_ = result;
@@ -2025,7 +2114,7 @@ private:
                              secondaryBrush_.Get());
             }
             DrawWidgetFooter(panelLeft, panelWidth, panelBottom);
-            DrawIconStrip(width, height);
+            DrawIconStrip(width, height, &*geometry);
             return;
         }
 
@@ -2046,13 +2135,13 @@ private:
         renderTarget_->FillRoundedRectangle(action, accentBrush_.Get());
         DrawTextLine(L"A  Sample action", titleFormat_.Get(),
                      D2D1::RectF(panelLeft + 54, 243, panelLeft + 278, 280),
-                     textBrush_.Get());
+                     selectedTextBrush_.Get());
         DrawTextLine(L"B  Back to icons                       Guide  Close overlay",
                      hintFormat_.Get(),
                      D2D1::RectF(panelLeft + 30, panelBottom - 40,
                                  panelLeft + panelWidth - 30, panelBottom - 14),
                      secondaryBrush_.Get());
-        DrawIconStrip(width, height);
+        DrawIconStrip(width, height, &*geometry);
     }
 
     HINSTANCE instance_{};
@@ -2084,6 +2173,9 @@ private:
     gba::NativeRenderStyle backdropStyle_;
     gba::NativeRenderStyle panelStyle_;
     gba::NativeRenderStyle trayStyle_;
+    gba::NativeColor effectiveCanvasBackground_{kDefaultCanvas};
+    gba::NativeColor effectivePanelBackground_{kDefaultPanel};
+    gba::NativeColor effectiveTrayBackground_{kDefaultCanvas};
     gba::NativeRenderStyle trayItemStyle_;
     gba::NativeRenderStyle trayItemSelectedStyle_;
     gba::NativeRenderStyle trayItemFocusedStyle_;
@@ -2092,6 +2184,8 @@ private:
     gba::NativeRenderStyle bodyStyle_;
     gba::NativeRenderStyle hintStyle_;
     gba::NativeRenderStyle statusStyle_;
+    gba::NativeRenderStyle dashboardTitleStyle_;
+    gba::NativeRenderStyle dashboardHintStyle_;
     float panelCornerRadius_{18.0F};
     float trayCornerRadius_{22.0F};
     float trayItemCornerRadius_{16.0F};
@@ -2115,9 +2209,12 @@ private:
     ComPtr<ID2D1SolidColorBrush> cardBrush_;
     ComPtr<ID2D1SolidColorBrush> textBrush_;
     ComPtr<ID2D1SolidColorBrush> secondaryBrush_;
+    ComPtr<ID2D1SolidColorBrush> dashboardTextBrush_;
+    ComPtr<ID2D1SolidColorBrush> dashboardSecondaryBrush_;
     ComPtr<ID2D1SolidColorBrush> accentBrush_;
     ComPtr<ID2D1SolidColorBrush> successBrush_;
     ComPtr<ID2D1SolidColorBrush> trayItemBrush_;
+    ComPtr<ID2D1SolidColorBrush> trayItemTextBrush_;
     ComPtr<ID2D1SolidColorBrush> selectedTextBrush_;
     ComPtr<ID2D1SolidColorBrush> focusBrush_;
     ComPtr<IDWriteTextFormat> titleFormat_;
