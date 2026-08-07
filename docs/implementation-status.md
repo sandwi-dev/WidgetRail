@@ -54,7 +54,9 @@ deterministic rendered geometry as a fallback, without wraparound.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, immutable versions,
   discovery, enablement, and order persistence as a managed library.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
-  `pack`, and local `install`, `list`, `enable`, and `disable` commands.
+  `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
+  `enable`, and `disable` commands. Remote acquisition requires SHA-256 pinning,
+  reports the actual digest, and installs disabled pending explicit review.
 
 `samples/ClockWidget` and `samples/YtMusicWidget` are reference widgets. YT
 Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
@@ -128,9 +130,10 @@ with C++ installed:
 - The native renderer remains a prototype. The YT Music reference path is
   integrated, while complete generic rendering/layout/styling for arbitrary
   packages is still being finished.
-- Local package/catalog commands are implemented. There is no graphical
-  installer, native-host discovery from the user catalog, URL downloader,
-  signed publisher workflow, or marketplace yet.
+- Local and bounded remote package/catalog commands are implemented. There is
+  no graphical installer, native-host discovery from the user catalog,
+  automatic release/update discovery, signed publisher workflow, or
+  marketplace yet.
 - Publisher signatures, revocation, AppContainer, Job Object enforcement,
   capability brokering, and user permission consent are not production-ready.
 - Manifest permission strings and resource requests are validated metadata,

@@ -20,7 +20,8 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 - A versioned declarative widget protocol, typed C# SDK, lazy worker runtime, and managed native bridge
 - Safe GBSS compilation, typed computed styles, HTTPS images, semantic icons, and controller-aware interaction state
 - Controller-first Clock and YT Music reference widgets
-- A strict `.gbarwidget` package/catalog library and `gbar` developer CLI
+- A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
+  bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
 - Managed contract suites plus native state, image-cache, layout, and icon tests
 

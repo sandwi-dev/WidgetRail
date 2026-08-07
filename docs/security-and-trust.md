@@ -24,6 +24,16 @@ planned. A structurally valid package is not necessarily trustworthy.
   links, reparse points, collisions, excessive entries, and zip expansion
   beyond configured limits.
 - Installed versions are immutable and staged before atomic move.
+- Remote acquisition accepts only credential-free, fragment-free HTTPS URLs on
+  port 443, revalidates up to five HTTPS redirects, rejects obvious localhost
+  and private/loopback/link-local address literals, and applies connection,
+  response, total-operation, and 72 MiB compressed-download limits.
+- Remote downloads use unique temporary files that are deleted on every exit
+  path. Remote sources require an expected SHA-256 digest, comparison occurs
+  before package installation, and every successful remote install reports the
+  actual digest.
+- Newly discovered widget IDs default to disabled. A remote install explicitly
+  disables its widget ID and requires a separate user `gbar enable` decision.
 
 ## Not yet a production guarantee
 
@@ -52,8 +62,22 @@ with `gbar render`: that command loads code in the CLI process and is explicitly
 development tooling, not a sandbox.
 
 `gbar validate` proves syntax and bounded declarative resources. Package
-validation proves archive containment and identity consistency. Neither proves
-publisher identity or benign executable behavior.
+validation proves archive containment and identity consistency. HTTPS protects
+transport to the resolved servers, and `--sha256` can pin exact bytes. None of
+these proves publisher identity or benign executable behavior. A digest is a
+useful trust signal only when its expected value comes through an independent,
+authenticated channel.
+
+Remote install is acquisition plus the existing package validation; it is not
+a repository installer. GitHub shorthand selects one exact Release asset and
+does not invoke the GitHub API, select `latest`, clone, build, or run scripts.
+Avoid URLs containing secrets in query parameters: credentials are rejected,
+but command lines and shell history are still inappropriate places for tokens.
+
+Direct HTTPS URLs are destinations the user explicitly authorizes. Rejection
+of localhost and private address literals is not a complete server-side request
+forgery boundary: the downloader does not claim DNS pinning or DNS-rebinding
+protection. Use only public origins you intended to contact.
 
 ## Permissions
 

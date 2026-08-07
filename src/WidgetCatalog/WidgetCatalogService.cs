@@ -46,7 +46,7 @@ public sealed class WidgetCatalog
                 return new CatalogWidget(
                     group.Key,
                     active.Manifest.Name,
-                    hasState ? saved!.Enabled : true,
+                    hasState ? saved!.Enabled : false,
                     hasState ? saved!.Order : newIdOrder[group.Key],
                     active,
                     orderedVersions);

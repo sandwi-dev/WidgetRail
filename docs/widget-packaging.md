@@ -1,6 +1,6 @@
-# Widget packaging and local catalog
+# Widget packaging and catalog
 
-Status: implemented prototype contract
+Status: implemented prototype package and catalog contract
 
 For the current GitHub sharing workflow and missing user-facing commands, see
 [publishing and installation](publishing-and-installation.md). For the trust
@@ -101,10 +101,11 @@ fails closed when installed content is missing, malformed, reparse-backed, or
 identity-mismatched. Widget IDs use ordinal ordering; versions use descending
 `System.Version` ordering.
 
-`catalog-state.json` stores only enablement and presentation order. New IDs
-are enabled by default and appended in ordinal ID order. State updates serialize
-through an instance lock, flush a uniquely named sibling temporary file, and
-atomically replace the state file. Package contents remain immutable.
+`catalog-state.json` stores only enablement and presentation order. New IDs are
+disabled by default and appended in ordinal ID order. State updates serialize
+through an in-process lock and a bounded cross-process catalog lock, flush a
+uniquely named sibling temporary file, and atomically replace the state file.
+Package contents remain immutable.
 
 ## API sketch
 
@@ -124,12 +125,21 @@ WidgetCatalogSnapshot snapshot = await catalog.DiscoverAsync();
 `SetOrderAsync` moves the supplied installed IDs to the front and preserves
 the relative order of remaining widgets.
 
+## Remote acquisition
+
+The `gbar install` command can acquire an exact package from an absolute HTTPS
+URL or a deterministic GitHub Release shorthand before calling this same
+installer. The downloader adds transport, redirect, compressed-size, timeout,
+temporary-file, and required remote SHA-256 controls; it does not weaken or replace
+any archive rule on this page. See [publishing and
+installation](publishing-and-installation.md#remote-acquisition-safety-boundary)
+for the command grammar and limits.
+
 ## Deliberately deferred
 
 - Publisher signature and certificate-chain verification
-- Online catalog metadata, downloads, updates, and revocation
+- Online catalog metadata, release discovery, automatic updates, and revocation
 - Rollback/pinning UI and garbage collection of old versions
-- Cross-process locking for concurrent host and installer processes
 
 Until signing is implemented, successful structural validation proves package
 shape and containment—not publisher authenticity or code safety. Executable

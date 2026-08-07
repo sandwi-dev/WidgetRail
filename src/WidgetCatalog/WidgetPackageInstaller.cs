@@ -27,7 +27,18 @@ public sealed class WidgetPackageInstaller
         ArgumentException.ThrowIfNullOrWhiteSpace(packagePath);
         cancellationToken.ThrowIfCancellationRequested();
         using var archive = OpenArchive(packagePath);
-        var plan = InspectArchive(archive, cancellationToken);
+        var plan = InspectArchiveSafe(archive, cancellationToken);
+        return Task.FromResult(plan.Inspection);
+    }
+
+    public Task<WidgetPackageInspection> ValidateAsync(
+        Stream packageStream,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(packageStream);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var archive = OpenArchive(packageStream);
+        var plan = InspectArchiveSafe(archive, cancellationToken);
         return Task.FromResult(plan.Inspection);
     }
 
@@ -36,6 +47,23 @@ public sealed class WidgetPackageInstaller
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packagePath);
+        using var archive = OpenArchive(packagePath);
+        return await InstallArchiveAsync(archive, cancellationToken);
+    }
+
+    public async Task<InstalledWidgetVersion> InstallAsync(
+        Stream packageStream,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(packageStream);
+        using var archive = OpenArchive(packageStream);
+        return await InstallArchiveAsync(archive, cancellationToken);
+    }
+
+    private async Task<InstalledWidgetVersion> InstallArchiveAsync(
+        ZipArchive archive,
+        CancellationToken cancellationToken)
+    {
         Directory.CreateDirectory(_root);
         Directory.CreateDirectory(_packagesRoot);
         Directory.CreateDirectory(_stagingRoot);
@@ -47,11 +75,15 @@ public sealed class WidgetPackageInstaller
         Directory.CreateDirectory(stage);
         try
         {
-            PackagePlan plan;
-            using (var archive = OpenArchive(packagePath))
+            var plan = InspectArchiveSafe(archive, cancellationToken);
+            try
             {
-                plan = InspectArchive(archive, cancellationToken);
                 await ExtractAsync(plan, stage, cancellationToken);
+            }
+            catch (InvalidDataException exception)
+            {
+                throw new WidgetPackageException(
+                    "invalid_archive", "Package content is not a valid ZIP archive.", exception);
             }
 
             FileSystemSafety.EnsureTreeContainsNoReparsePoints(_root, stage);
@@ -93,6 +125,22 @@ public sealed class WidgetPackageInstaller
         try
         {
             return ZipFile.OpenRead(fullPath);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new WidgetPackageException("invalid_archive", "Package is not a valid ZIP archive.", exception);
+        }
+    }
+
+    private static ZipArchive OpenArchive(Stream packageStream)
+    {
+        if (!packageStream.CanRead || !packageStream.CanSeek)
+            throw new WidgetPackageException(
+                "invalid_archive_stream", "Widget package streams must be readable and seekable.");
+        try
+        {
+            packageStream.Position = 0;
+            return new ZipArchive(packageStream, ZipArchiveMode.Read, leaveOpen: true);
         }
         catch (InvalidDataException exception)
         {
@@ -159,6 +207,18 @@ public sealed class WidgetPackageInstaller
         return new PackagePlan(
             entries,
             new WidgetPackageInspection(manifest.Id, version, manifest, entries.Count, totalBytes));
+    }
+
+    private PackagePlan InspectArchiveSafe(ZipArchive archive, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return InspectArchive(archive, cancellationToken);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new WidgetPackageException("invalid_archive", "Package is not a valid ZIP archive.", exception);
+        }
     }
 
     private WidgetManifest ReadAndValidateManifest(byte[] payload)

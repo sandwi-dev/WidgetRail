@@ -29,7 +29,7 @@ flowchart LR
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, and state helpers. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, bounded typed properties, and source-located diagnostics. |
 | `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence as a library API. |
-| `tools/GbarCli` | Widget scaffolding/validation/render/replay plus deterministic package creation and local catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
+| `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, and catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
 
@@ -112,9 +112,11 @@ then deterministic geometry from the last render.
 - The native renderer is still a reference/prototype implementation. The YT
   Music path is integrated; complete generic rendering of every SDK node and
   every computed GBSS state is still being finished.
-- `.gbarwidget` pack/install/list/enable/disable work for local files and the
-  current-user catalog. There is no graphical installer, URL downloader,
-  signature verification, or native-host discovery from that catalog yet.
+- `.gbarwidget` pack/install/list/enable/disable work with the current-user
+  catalog. Install accepts local files, bounded absolute HTTPS URLs, and exact
+  GitHub Release shorthand. Remote sources require SHA-256 and install disabled;
+  there is no graphical installer, automatic update discovery, signature
+  verification, or native-host discovery from that catalog yet.
 - Publisher signatures, revocation, AppContainer launch, Job Object resource
   policy, and a capability broker are **planned**, not current guarantees.
 - The trusted bridge catalog is deployment configuration, not a marketplace

@@ -1,4 +1,7 @@
 using System.IO.Compression;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using GameBarAlternative.GbarCli;
@@ -20,6 +23,20 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pack rejects invalid identity without publishing an archive", PackRejectsInvalidManifest),
     ("Pack rejects source reparse points", PackRejectsReparsePoints),
     ("Install rejects traversal archives through the CLI", InstallRejectsTraversal),
+    ("Remote install verifies a pinned package and leaves it disabled", RemoteDistributionWorkflow),
+    ("Remote updates require explicit disable and preserve enabled versions on failure", RemoteUpdateRequiresDisable),
+    ("GitHub shorthand resolves directly to a release asset", GitHubShorthandResolves),
+    ("Remote install requires a valid SHA-256 pin before network access", RemoteRequiresHash),
+    ("Remote sources reject unsafe schemes authorities and literals", RemoteRejectsUnsafeSources),
+    ("Remote downloader follows bounded HTTPS redirects", RemoteRedirectsAreBounded),
+    ("Remote downloader enforces declared and streamed byte limits", RemoteDownloadIsBounded),
+    ("Remote downloader rejects encoded payloads", RemoteRejectsContentEncoding),
+    ("Remote installer reports malformed archives without crashing", RemoteRejectsMalformedArchive),
+    ("Remote downloader removes temporary files after integrity failure", RemoteHashMismatchCleansUp),
+    ("Remote package remains write-locked until installation completes", RemotePackageHasIntegrityGuard),
+    ("Remote downloader enforces response and overall timeouts", RemoteTimeoutsAreBounded),
+    ("Remote request failures redact signed URL secrets", RemoteFailuresRedactSecrets),
+    ("Caller cancellation stops remote installation", RemoteCancellationIsBounded),
     ("Catalog state commands report missing widgets", StateCommandRejectsMissingWidget),
     ("Unknown commands return usage errors", UnknownCommand),
 };
@@ -180,7 +197,9 @@ static async Task LocalDistributionWorkflow()
 
     var listed = await RunCli("list", "--catalog", catalog);
     Assert.Equal(0, listed.Code);
-    Assert.Contains("enabled   dev.test.local  2.0.0", listed.Output);
+    Assert.Contains("disabled  dev.test.local  2.0.0", listed.Output);
+    Assert.Equal(0, (await RunCli("enable", "dev.test.local", "--catalog", catalog)).Code);
+    Assert.Contains("enabled   dev.test.local", (await RunCli("list", "--catalog", catalog)).Output);
     Assert.Equal(0, (await RunCli("disable", "dev.test.local", "--catalog", catalog)).Code);
     Assert.Contains("disabled  dev.test.local", (await RunCli("list", "--catalog", catalog)).Output);
     Assert.Equal(0, (await RunCli("enable", "dev.test.local", "--catalog", catalog)).Code);
@@ -234,6 +253,314 @@ static async Task InstallRejectsTraversal()
     Assert.True(!File.Exists(Path.Combine(temp.Path, "escaped.txt")), "Traversal archive escaped the catalog.");
 }
 
+static async Task RemoteDistributionWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var package = await CreatePackedPackageAsync(temp.Path, "dev.test.remote", "3.1.4");
+    var payload = await File.ReadAllBytesAsync(package);
+    var hash = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+    var requests = new List<string>();
+    using var handler = new StubHttpHandler((request, _) =>
+    {
+        requests.Add(request.RequestUri!.AbsoluteUri);
+        Assert.Contains("identity", string.Join(',', request.Headers.AcceptEncoding.Select(value => value.Value)));
+        return Task.FromResult(Response(HttpStatusCode.OK, payload));
+    });
+
+    var catalog = Path.Combine(temp.Path, "catalog");
+    var result = await RunCliWithHandler(handler, "install", "https://widgets.example/release.gbarwidget",
+        "--sha256", hash.ToUpperInvariant(), "--catalog", catalog);
+    Assert.Equal(0, result.Code);
+    Assert.Contains("Installed dev.test.remote 3.1.4", result.Output);
+    Assert.Contains("(disabled)", result.Output);
+    Assert.Contains($"Downloaded SHA-256: {hash}", result.Output);
+    Assert.SequenceEqual(["https://widgets.example/release.gbarwidget"], requests);
+    var listed = await RunCli("list", "--catalog", catalog);
+    Assert.Contains("disabled  dev.test.remote", listed.Output);
+}
+
+static async Task RemoteUpdateRequiresDisable()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = Path.Combine(temp.Path, "catalog");
+    var first = await CreatePackedPackageAsync(temp.Path, "dev.test.remote-update", "1.0.0");
+    Assert.Equal(0, (await RunCli("install", first, "--catalog", catalog)).Code);
+    Assert.Equal(0, (await RunCli("enable", "dev.test.remote-update", "--catalog", catalog)).Code);
+
+    var update = await CreatePackedPackageAsync(temp.Path, "dev.test.remote-update", "2.0.0");
+    var payload = await File.ReadAllBytesAsync(update);
+    var hash = Convert.ToHexString(SHA256.HashData(payload));
+    using var handler = new StubHttpHandler((_, _) =>
+        Task.FromResult(Response(HttpStatusCode.OK, payload)));
+
+    var result = await RunCliWithHandler(handler, "install", "https://widgets.example/update.gbarwidget",
+        "--sha256", hash, "--catalog", catalog);
+    Assert.Equal(1, result.Code);
+    Assert.Contains("Disable it before installing a remote update", result.Error);
+    var preserved = await RunCli("list", "--catalog", catalog);
+    Assert.Contains("enabled   dev.test.remote-update  1.0.0", preserved.Output);
+
+    Assert.Equal(0, (await RunCli("disable", "dev.test.remote-update", "--catalog", catalog)).Code);
+    var retry = await RunCliWithHandler(handler, "install", "https://widgets.example/update.gbarwidget",
+        "--sha256", hash, "--catalog", catalog);
+    Assert.Equal(0, retry.Code);
+    var updated = await RunCli("list", "--catalog", catalog);
+    Assert.Contains("disabled  dev.test.remote-update  2.0.0", updated.Output);
+}
+
+static async Task GitHubShorthandResolves()
+{
+    using var temp = new TemporaryDirectory();
+    var package = await CreatePackedPackageAsync(temp.Path, "dev.test.github", "1.0.0");
+    var payload = await File.ReadAllBytesAsync(package);
+    var hash = Convert.ToHexString(SHA256.HashData(payload));
+    string? requested = null;
+    using var handler = new StubHttpHandler((request, _) =>
+    {
+        requested = request.RequestUri!.AbsoluteUri;
+        return Task.FromResult(Response(HttpStatusCode.OK, payload));
+    });
+    var result = await RunCliWithHandler(handler, "install", "github:sample-org/game-bar-widget@v1.0.0/music.gbarwidget",
+        "--sha256", hash, "--catalog", Path.Combine(temp.Path, "catalog"));
+    Assert.Equal(0, result.Code);
+    Assert.Equal(
+        "https://github.com/sample-org/game-bar-widget/releases/download/v1.0.0/music.gbarwidget",
+        requested);
+
+    var malformed = await RunCliWithHandler(handler, "install", "github:owner/repo@latest",
+        "--sha256", hash, "--catalog", Path.Combine(temp.Path, "unused"));
+    Assert.Equal(2, malformed.Code);
+    Assert.Contains("github:owner/repository@tag/asset.gbarwidget", malformed.Error);
+}
+
+static async Task RemoteRequiresHash()
+{
+    var requests = 0;
+    using var handler = new StubHttpHandler((_, _) =>
+    {
+        requests++;
+        return Task.FromResult(Response(HttpStatusCode.OK, []));
+    });
+    var missing = await RunCliWithHandler(handler, "install", "https://widgets.example/x.gbarwidget");
+    Assert.Equal(2, missing.Code);
+    Assert.Contains("requires --sha256", missing.Error);
+    var malformed = await RunCliWithHandler(handler, "install", "https://widgets.example/x.gbarwidget", "--sha256", "1234");
+    Assert.Equal(2, malformed.Code);
+    Assert.Contains("exactly 64 hexadecimal", malformed.Error);
+    Assert.Equal(0, requests);
+}
+
+static async Task RemoteRejectsUnsafeSources()
+{
+    using var handler = new StubHttpHandler((_, _) => throw new InvalidOperationException("Unsafe URL reached the network."));
+    var hash = new string('0', 64);
+    var unsafeSources = new[]
+    {
+        "http://widgets.example/x.gbarwidget",
+        "ftp://widgets.example/x.gbarwidget",
+        "https://user:secret@widgets.example/x.gbarwidget",
+        "https://widgets.example/x.gbarwidget#fragment",
+        "https://widgets.example:8443/x.gbarwidget",
+        "https://localhost/x.gbarwidget",
+        "https://127.0.0.1/x.gbarwidget",
+        "https://10.1.2.3/x.gbarwidget",
+        "https://169.254.1.1/x.gbarwidget",
+        "https://172.20.1.1/x.gbarwidget",
+        "https://192.168.1.1/x.gbarwidget",
+        "https://[::1]/x.gbarwidget",
+        "https://[fe80::1]/x.gbarwidget",
+        "https://[fd00::1]/x.gbarwidget",
+    };
+    foreach (var source in unsafeSources)
+    {
+        var result = await RunCliWithHandler(handler, "install", source, "--sha256", hash);
+        Assert.Equal(2, result.Code);
+    }
+}
+
+static async Task RemoteRedirectsAreBounded()
+{
+    var calls = 0;
+    using var redirectHandler = new StubHttpHandler((_, _) =>
+    {
+        calls++;
+        var response = Response(HttpStatusCode.Found, []);
+        response.Headers.Location = new Uri($"https://cdn.example/{calls}.gbarwidget");
+        return Task.FromResult(response);
+    });
+    using var downloader = new RemotePackageDownloader(redirectHandler, new RemoteDownloadOptions
+    {
+        MaximumRedirects = 2,
+    });
+    var exception = await Assert.ThrowsAsync<CliOperationException>(() => downloader.DownloadAsync(
+        new Uri("https://widgets.example/start.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("2-redirect limit", exception.Message);
+    Assert.Equal(3, calls);
+
+    using var unsafeRedirectHandler = new StubHttpHandler((_, _) =>
+    {
+        var response = Response(HttpStatusCode.Found, []);
+        response.Headers.Location = new Uri("http://cdn.example/package.gbarwidget");
+        return Task.FromResult(response);
+    });
+    using var unsafeDownloader = new RemotePackageDownloader(unsafeRedirectHandler);
+    var unsafeException = await Assert.ThrowsAsync<CliUsageException>(() => unsafeDownloader.DownloadAsync(
+        new Uri("https://widgets.example/start.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("absolute HTTPS", unsafeException.Message);
+}
+
+static async Task RemoteDownloadIsBounded()
+{
+    using var temp = new TemporaryDirectory();
+    using var headerHandler = new StubHttpHandler((_, _) =>
+    {
+        var response = Response(HttpStatusCode.OK, [1]);
+        response.Content.Headers.ContentLength = 9;
+        return Task.FromResult(response);
+    });
+    using var headerDownloader = new RemotePackageDownloader(headerHandler, TestDownloadOptions(temp.Path, 8));
+    var headerException = await Assert.ThrowsAsync<CliOperationException>(() => headerDownloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("Content-Length: 9", headerException.Message);
+
+    using var streamHandler = new StubHttpHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StreamContent(new RepeatingReadStream(9)),
+    }));
+    using var streamDownloader = new RemotePackageDownloader(streamHandler, TestDownloadOptions(temp.Path, 8));
+    var streamException = await Assert.ThrowsAsync<CliOperationException>(() => streamDownloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("8-byte download limit", streamException.Message);
+
+    using var emptyHandler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, [])));
+    using var emptyDownloader = new RemotePackageDownloader(emptyHandler, TestDownloadOptions(temp.Path, 8));
+    var emptyException = await Assert.ThrowsAsync<CliOperationException>(() => emptyDownloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("response was empty", emptyException.Message);
+    Assert.True(!Directory.EnumerateFileSystemEntries(temp.Path).Any(), "Bounded downloads leaked temporary files.");
+}
+
+static async Task RemoteRejectsContentEncoding()
+{
+    using var handler = new StubHttpHandler((_, _) =>
+    {
+        var response = Response(HttpStatusCode.OK, [1, 2, 3]);
+        response.Content.Headers.ContentEncoding.Add("gzip");
+        return Task.FromResult(response);
+    });
+    using var downloader = new RemotePackageDownloader(handler);
+    var exception = await Assert.ThrowsAsync<CliOperationException>(() => downloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("identity content encoding", exception.Message);
+}
+
+static async Task RemoteRejectsMalformedArchive()
+{
+    var payload = "not a widget archive"u8.ToArray();
+    var hash = Convert.ToHexString(SHA256.HashData(payload));
+    using var handler = new StubHttpHandler((_, _) =>
+        Task.FromResult(Response(HttpStatusCode.OK, payload)));
+    using var temp = new TemporaryDirectory();
+
+    var result = await RunCliWithHandler(handler, "install", "https://widgets.example/broken.gbarwidget",
+        "--sha256", hash, "--catalog", Path.Combine(temp.Path, "catalog"));
+    Assert.Equal(1, result.Code);
+    Assert.Contains("invalid_archive", result.Error);
+}
+
+static async Task RemoteHashMismatchCleansUp()
+{
+    using var temp = new TemporaryDirectory();
+    using var handler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, [1, 2, 3])));
+    using var downloader = new RemotePackageDownloader(handler, TestDownloadOptions(temp.Path, 32));
+    var exception = await Assert.ThrowsAsync<CliOperationException>(() => downloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), new byte[32], CancellationToken.None));
+    Assert.Contains("SHA-256 mismatch", exception.Message);
+    Assert.True(!Directory.EnumerateFileSystemEntries(temp.Path).Any(), "Integrity failure leaked a package or directory.");
+}
+
+static async Task RemotePackageHasIntegrityGuard()
+{
+    using var temp = new TemporaryDirectory();
+    var bytes = new byte[] { 1, 2, 3 };
+    using var handler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, bytes)));
+    using var downloader = new RemotePackageDownloader(handler, TestDownloadOptions(temp.Path, 32));
+    var downloaded = await downloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), SHA256.HashData(bytes), CancellationToken.None);
+    Assert.True(File.Exists(downloaded.PackagePath), "Downloaded package is missing.");
+    await Assert.ThrowsAsync<IOException>(async () =>
+    {
+        await using var write = new FileStream(downloaded.PackagePath, FileMode.Open, FileAccess.Write, FileShare.Read);
+    });
+    await downloaded.DisposeAsync();
+    Assert.True(!File.Exists(downloaded.PackagePath), "Disposed download was not deleted.");
+    Assert.True(!Directory.EnumerateFileSystemEntries(temp.Path).Any(), "Disposed download directory was not deleted.");
+}
+
+static async Task RemoteTimeoutsAreBounded()
+{
+    using var responseHandler = new StubHttpHandler(async (_, token) =>
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        return Response(HttpStatusCode.OK, []);
+    });
+    using var responseDownloader = new RemotePackageDownloader(responseHandler, new RemoteDownloadOptions
+    {
+        ResponseTimeout = TimeSpan.FromMilliseconds(20),
+        OverallTimeout = TimeSpan.FromSeconds(2),
+    });
+    var responseException = await Assert.ThrowsAsync<CliOperationException>(() => responseDownloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("response timeout", responseException.Message);
+
+    using var overallHandler = new StubHttpHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StreamContent(new BlockingReadStream()),
+    }));
+    using var overallDownloader = new RemotePackageDownloader(overallHandler, new RemoteDownloadOptions
+    {
+        ResponseTimeout = TimeSpan.FromSeconds(2),
+        OverallTimeout = TimeSpan.FromMilliseconds(20),
+    });
+    var overallException = await Assert.ThrowsAsync<CliOperationException>(() => overallDownloader.DownloadAsync(
+        new Uri("https://widgets.example/x.gbarwidget"), null, CancellationToken.None));
+    Assert.Contains("overall timeout", overallException.Message);
+}
+
+static async Task RemoteFailuresRedactSecrets()
+{
+    const string secret = "super-secret-token";
+    using var handler = new StubHttpHandler((_, _) =>
+        Task.FromException<HttpResponseMessage>(new HttpRequestException(
+            $"GET https://widgets.example/release.gbarwidget?token={secret} failed")));
+    var result = await RunCliWithHandler(handler, "install", "https://widgets.example/release.gbarwidget",
+        "--sha256", new string('0', 64));
+    Assert.Equal(1, result.Code);
+    Assert.Contains("Remote package request failed", result.Error);
+    Assert.DoesNotContain(secret, result.Error);
+    Assert.DoesNotContain("?token=", result.Error);
+}
+
+static async Task RemoteCancellationIsBounded()
+{
+    using var handler = new StubHttpHandler(async (_, token) =>
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        return Response(HttpStatusCode.OK, []);
+    });
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(25));
+    using var output = new StringWriter();
+    using var error = new StringWriter();
+    var code = await CliApplication.RunAsync(
+        ["install", "https://widgets.example/release.gbarwidget", "--sha256", new string('0', 64)],
+        output,
+        error,
+        handler,
+        cancellation.Token);
+    Assert.Equal(130, code);
+    Assert.Contains("operation cancelled", error.ToString());
+}
+
 static async Task StateCommandRejectsMissingWidget()
 {
     using var temp = new TemporaryDirectory();
@@ -278,6 +605,26 @@ static string CreatePackageSource(string root, string id, string publisher, stri
     return source;
 }
 
+static async Task<string> CreatePackedPackageAsync(string root, string id, string version)
+{
+    var source = CreatePackageSource(root, id, "dev.test", version);
+    var package = Path.Combine(root, $"{id}-{version}-{Guid.NewGuid():N}.gbarwidget");
+    var result = await RunCli("pack", source, "--output", package);
+    Assert.Equal(0, result.Code);
+    return package;
+}
+
+static HttpResponseMessage Response(HttpStatusCode status, byte[] content) => new(status)
+{
+    Content = new ByteArrayContent(content),
+};
+
+static RemoteDownloadOptions TestDownloadOptions(string root, long maximumBytes) => new()
+{
+    MaximumBytes = maximumBytes,
+    TemporaryDirectoryRoot = root,
+};
+
 static WidgetManifest BuildManifest(string id, string publisher, string version) => new()
 {
     Id = id,
@@ -304,7 +651,78 @@ static async Task<CliResult> RunCli(params string[] args)
     return new CliResult(code, output.ToString(), error.ToString());
 }
 
+static async Task<CliResult> RunCliWithHandler(HttpMessageHandler handler, params string[] args)
+{
+    using var output = new StringWriter();
+    using var error = new StringWriter();
+    var code = await CliApplication.RunAsync(args, output, error, handler);
+    return new CliResult(code, output.ToString(), error.ToString());
+}
+
 file sealed record CliResult(int Code, string Output, string Error);
+
+file sealed class StubHttpHandler(
+    Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        send(request, cancellationToken);
+}
+
+file sealed class RepeatingReadStream : Stream
+{
+    private readonly long _length;
+    private long _remaining;
+
+    public RepeatingReadStream(long length)
+    {
+        _length = length;
+        _remaining = length;
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => _length;
+    public override long Position { get => _length - _remaining; set => throw new NotSupportedException(); }
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var read = (int)Math.Min(count, _remaining);
+        Array.Fill(buffer, (byte)0x5A, offset, read);
+        _remaining -= read;
+        return read;
+    }
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var read = (int)Math.Min(buffer.Length, _remaining);
+        buffer.Span[..read].Fill(0x5A);
+        _remaining -= read;
+        return ValueTask.FromResult(read);
+    }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
+file sealed class BlockingReadStream : Stream
+{
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        return 0;
+    }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
 
 file sealed class TemporaryDirectory : IDisposable
 {
@@ -350,5 +768,17 @@ file static class Assert
     {
         if (!expected.SequenceEqual(actual))
             throw new InvalidOperationException($"Expected [{string.Join(", ", expected)}], got [{string.Join(", ", actual)}].");
+    }
+
+    public static async Task<TException> ThrowsAsync<TException>(Func<Task> action) where TException : Exception
+    {
+        try { await action(); }
+        catch (TException exception) { return exception; }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                $"Expected {typeof(TException).Name}, got {exception.GetType().Name}: {exception.Message}");
+        }
+        throw new InvalidOperationException($"Expected {typeof(TException).Name}, but no exception was thrown.");
     }
 }

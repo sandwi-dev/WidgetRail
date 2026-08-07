@@ -7,6 +7,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Install and discovery are deterministic across IDs and versions", InstallAndDiscover),
     ("Enable and order state persists atomically", StatePersists),
+    ("Independent catalog clients serialize state mutations", ConcurrentStatePersists),
     ("Reinstall never overwrites an immutable version", ReinstallDoesNotOverwrite),
     ("Traversal paths are rejected before extraction", TraversalIsRejected),
     ("Case-colliding paths are rejected", CaseCollisionIsRejected),
@@ -51,6 +52,8 @@ static async Task InstallAndDiscover()
     Assert.SequenceEqual(["dev.test.alpha", "dev.test.zeta"], snapshot.Widgets.Select(widget => widget.Id));
     Assert.SequenceEqual(["2.0.0", "1.0.0"], snapshot.Widgets[0].Versions.Select(item => item.Version.ToString()));
     Assert.Equal("2.0.0", snapshot.Widgets[0].ActiveVersion.Version.ToString());
+    Assert.True(snapshot.Widgets.All(widget => !widget.Enabled),
+        "Newly installed widget IDs must remain disabled until the user explicitly enables them.");
 }
 
 static async Task StatePersists()
@@ -61,12 +64,33 @@ static async Task StatePersists()
     await catalog.CreateInstaller().InstallAsync(CreatePackage(temp.Path, "dev.test.alpha", "dev.test", "1.0.0"));
     await catalog.CreateInstaller().InstallAsync(CreatePackage(temp.Path, "dev.test.beta", "dev.test", "1.0.0"));
 
-    await catalog.SetEnabledAsync("dev.test.beta", false);
+    await catalog.SetEnabledAsync("dev.test.alpha", true);
     await catalog.SetOrderAsync(["dev.test.beta"]);
     var reloaded = await new WidgetCatalog(root).DiscoverAsync();
     Assert.SequenceEqual(["dev.test.beta", "dev.test.alpha"], reloaded.Widgets.Select(widget => widget.Id));
     Assert.True(!reloaded.Widgets[0].Enabled, "Disabled state was not persisted.");
+    Assert.True(reloaded.Widgets[1].Enabled, "Explicitly enabled state was not persisted.");
     Assert.True(!Directory.EnumerateFiles(root, ".catalog-state.*.tmp").Any(), "Atomic state temporary file leaked.");
+}
+
+static async Task ConcurrentStatePersists()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var first = new WidgetCatalog(root);
+    await first.CreateInstaller().InstallAsync(CreatePackage(temp.Path, "dev.test.alpha", "dev.test", "1.0.0"));
+    await first.CreateInstaller().InstallAsync(CreatePackage(temp.Path, "dev.test.beta", "dev.test", "1.0.0"));
+
+    var second = new WidgetCatalog(root);
+    await Task.WhenAll(
+        first.SetEnabledAsync("dev.test.alpha", true),
+        second.SetEnabledAsync("dev.test.beta", true));
+
+    var reloaded = await new WidgetCatalog(root).DiscoverAsync();
+    Assert.True(reloaded.Widgets.Single(widget => widget.Id == "dev.test.alpha").Enabled,
+        "The first concurrent state mutation was lost.");
+    Assert.True(reloaded.Widgets.Single(widget => widget.Id == "dev.test.beta").Enabled,
+        "The second concurrent state mutation was lost.");
 }
 
 static async Task ReinstallDoesNotOverwrite()

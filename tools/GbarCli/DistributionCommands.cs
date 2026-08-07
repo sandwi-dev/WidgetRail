@@ -25,15 +25,50 @@ internal static class PackCommand
 
 internal static class InstallCommand
 {
-    public static async Task<int> RunAsync(string[] args, TextWriter output)
+    public static async Task<int> RunAsync(
+        string[] args,
+        TextWriter output,
+        HttpMessageHandler? remoteHttpHandler,
+        CancellationToken cancellationToken)
     {
-        var parsed = new CommandArguments(args, "--catalog");
+        var parsed = new CommandArguments(args, "--catalog", "--sha256");
         if (parsed.Positionals.Count != 1)
-            throw new CliUsageException("Usage: gbar install <file.gbarwidget> [--catalog <root>]");
+            throw new CliUsageException(
+                "Usage: gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> " +
+                "[--sha256 <64-hex>] [--catalog <root>]");
 
+        var source = parsed.Positionals[0];
+        var expectedSha256 = PackageIntegrity.ParseExpectedSha256(parsed.Option("--sha256"));
         var catalog = new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog")));
-        var installed = await catalog.CreateInstaller().InstallAsync(parsed.Positionals[0]);
-        await output.WriteLineAsync($"Installed {installed.Id} {installed.Version} to {installed.InstallPath}.");
+        var remoteUri = RemotePackageSource.Resolve(source);
+        if (remoteUri is null)
+        {
+            if (expectedSha256 is not null)
+            {
+                var actualSha256 = await PackageIntegrity.HashFileAsync(source, cancellationToken);
+                PackageIntegrity.Verify(expectedSha256, actualSha256);
+            }
+            var installed = await catalog.CreateInstaller().InstallAsync(source, cancellationToken);
+            await output.WriteLineAsync($"Installed {installed.Id} {installed.Version} to {installed.InstallPath}.");
+            return 0;
+        }
+
+        if (expectedSha256 is null)
+            throw new CliUsageException("Remote widget installation requires --sha256 <64-hex>.");
+        using var downloader = new RemotePackageDownloader(remoteHttpHandler);
+        await using var downloaded = await downloader.DownloadAsync(remoteUri, expectedSha256, cancellationToken);
+        var installer = catalog.CreateInstaller();
+        var inspection = await installer.ValidateAsync(downloaded.PackageStream, cancellationToken);
+        var existing = (await catalog.DiscoverAsync(cancellationToken)).Widgets
+            .SingleOrDefault(widget => widget.Id == inspection.Id);
+        if (existing?.Enabled == true)
+            throw new CliOperationException(
+                $"Widget '{inspection.Id}' is enabled. Disable it before installing a remote update so a failed update cannot change its active state.");
+        var remoteInstalled = await installer.InstallAsync(downloaded.PackageStream, cancellationToken);
+        await output.WriteLineAsync(
+            $"Installed {remoteInstalled.Id} {remoteInstalled.Version} to {remoteInstalled.InstallPath} (disabled)." +
+            " Review it, then run gbar enable when ready.");
+        await output.WriteLineAsync($"Downloaded SHA-256: {Convert.ToHexString(downloaded.Sha256).ToLowerInvariant()}");
         return 0;
     }
 }

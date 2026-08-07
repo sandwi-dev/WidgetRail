@@ -79,7 +79,7 @@ a Stack or Row only when a nested surface needs to reuse bindings independently.
 Use `gbar render <snapshot.json>` to preview an existing snapshot. Use DLL
 rendering only for code you trust.
 
-## Package or local catalog command fails
+## Package, download, or catalog command fails
 
 - `gbar pack` requires a clean directory with exact-case root `manifest.json`
   and the manifest's `entrypoint.assembly` at that exact relative path/casing.
@@ -88,11 +88,36 @@ rendering only for code you trust.
 - Output must end in `.gbarwidget`.
 - Installed versions are immutable. Bump the canonical dotted manifest version
   instead of reinstalling or overwriting the same `<id>/<version>`.
-- `gbar install` accepts a local file, not a URL.
+- `gbar install` accepts a local `.gbarwidget`, an absolute HTTPS URL, or
+  `github:<owner>/<repository>@<tag>/<asset.gbarwidget>`.
+- GitHub shorthand identifies one exact Release asset. It cannot use `latest`,
+  query the GitHub API, clone a repository, or build a widget from source.
+- Remote URLs cannot contain embedded credentials or fragments. HTTP and any
+  redirect to HTTP are rejected. HTTPS must use port 443. Localhost names and
+  private, loopback, unspecified, or link-local IP literals are rejected.
+- A remote response may redirect at most five times and may transfer at most
+  72 MiB of compressed package bytes. Connection, response-header, and overall
+  time limits are 10, 20, and 120 seconds respectively. Encoded HTTP responses
+  are rejected; release servers must return the asset with identity encoding.
+- Every remote source requires `--sha256`, with exactly 64 hexadecimal
+  characters. A mismatch means the downloaded bytes are not the pinned asset;
+  verify the release, tag, asset name, and independently published digest
+  instead of bypassing the check.
+- The CLI prints the actual SHA-256 after every successful remote install. A
+  mismatch diagnostic also reports the received digest. For other failures,
+  inspect the network/redirect diagnostic. Temporary download files are removed
+  on success and failure.
 - `gbar list`, `enable`, and `disable` must use the same `--catalog` value as
   install. The default is `%LOCALAPPDATA%\GameBarAlternative\widgets`.
 - The prototype native host does not yet discover this user catalog. A
   successful install followed by no new dashboard card is currently expected.
+- Newly discovered widget IDs are disabled. A remote update refuses to replace
+  an enabled ID; run `gbar disable <widget-id>`, retry installation, review the
+  result, then run `gbar enable <widget-id>` with the same `--catalog`.
+
+Remote acquisition does not launch the widget. A successful download therefore
+cannot create lifecycle logs by itself; lifecycle begins only when a configured
+host launches the installed worker.
 
 ## Controller input is not handled
 

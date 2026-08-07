@@ -27,8 +27,9 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 ```
 
 The available commands are `new`, `validate`, `render`, `replay`, `pack`,
-`install`, `list`, `enable`, and `disable`. There is no URL downloader,
-GitHub-specific publisher, signing command, or marketplace client.
+`install`, `list`, `enable`, and `disable`. `install` accepts a local package,
+an absolute HTTPS URL, or a deterministic GitHub Release shorthand. There is
+no GitHub publisher, signing command, automatic updater, or marketplace client.
 
 ## Create and build a widget
 
@@ -116,5 +117,6 @@ A, Y, D-pad/analog, and Guide, while cards may expose B, X, bumpers, triggers,
 stick clicks, Menu, or View.
 
 Continue with the [declarative UI reference](declarative-ui.md), [controller
-input model](controller-input.md), and [GBSS reference](gbss.md). For sharing,
-read [publishing and installation](publishing-and-installation.md).
+input model](controller-input.md), and [GBSS reference](gbss.md). For packaging,
+GitHub Release publishing, hash pinning, and local or remote installation, read
+[publishing and installation](publishing-and-installation.md).

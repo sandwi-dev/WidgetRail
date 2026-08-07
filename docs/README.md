@@ -21,8 +21,8 @@ guarantees that are available now.
 ## Distribution and operations
 
 - [Publishing and installation](publishing-and-installation.md) — sharing
-  source and `.gbarwidget` releases through GitHub, deterministic packing, and
-  local catalog install/list/enable/disable.
+  source and `.gbarwidget` releases through GitHub, deterministic packing,
+  SHA-256 pinning, bounded remote acquisition, and catalog management.
 - [Security and trust](security-and-trust.md) — package validation, process
   boundaries, missing production isolation, and the current trust decision.
 - [Troubleshooting](troubleshooting.md) — CLI, worker, bridge, controller,

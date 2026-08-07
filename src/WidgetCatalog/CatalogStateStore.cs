@@ -12,12 +12,14 @@ internal sealed record CatalogState
 internal sealed record CatalogStateEntry
 {
     public required string Id { get; init; }
-    public bool Enabled { get; init; } = true;
+    public bool Enabled { get; init; }
     public required int Order { get; init; }
 }
 
 internal sealed class CatalogStateStore
 {
+    private static readonly TimeSpan CrossProcessLockTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CrossProcessLockRetryDelay = TimeSpan.FromMilliseconds(50);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -28,12 +30,14 @@ internal sealed class CatalogStateStore
 
     private readonly string _root;
     private readonly string _path;
+    private readonly string _lockPath;
     private readonly SemaphoreSlim _mutex = new(1, 1);
 
     public CatalogStateStore(string root)
     {
         _root = root;
         _path = Path.Combine(root, "catalog-state.json");
+        _lockPath = Path.Combine(root, ".catalog-state.lock");
     }
 
     public async Task<CatalogState> LoadAsync(CancellationToken cancellationToken)
@@ -58,6 +62,7 @@ internal sealed class CatalogStateStore
         await _mutex.WaitAsync(cancellationToken);
         try
         {
+            await using var crossProcessLock = await AcquireCrossProcessLockAsync(cancellationToken);
             var current = await LoadAsync(cancellationToken);
             var updated = mutation(current);
             ValidateState(updated);
@@ -66,6 +71,38 @@ internal sealed class CatalogStateStore
         finally
         {
             _mutex.Release();
+        }
+    }
+
+    private async Task<FileStream> AcquireCrossProcessLockAsync(CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(_root);
+        FileSystemSafety.EnsureNoReparsePoints(_root, _root);
+        var deadline = DateTime.UtcNow + CrossProcessLockTimeout;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(
+                    _lockPath,
+                    FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite,
+                    FileShare.None,
+                    bufferSize: 1,
+                    FileOptions.Asynchronous | FileOptions.WriteThrough);
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(CrossProcessLockRetryDelay, cancellationToken);
+            }
+            catch (IOException exception)
+            {
+                throw new WidgetPackageException(
+                    "catalog_busy",
+                    "The widget catalog is busy in another process. Wait for the other operation to finish and retry.",
+                    exception);
+            }
         }
     }
 

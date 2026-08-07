@@ -5,6 +5,14 @@ using GameBarAlternative.WidgetCatalog;
 public static class CliApplication
 {
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextWriter error)
+        => await RunAsync(args, output, error, remoteHttpHandler: null, CancellationToken.None);
+
+    public static async Task<int> RunAsync(
+        string[] args,
+        TextWriter output,
+        TextWriter error,
+        HttpMessageHandler? remoteHttpHandler,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -25,7 +33,7 @@ public static class CliApplication
                 "render" => await RenderCommand.RunAsync(args[1..], output),
                 "replay" => await ReplayCommand.RunAsync(args[1..], output),
                 "pack" => await PackCommand.RunAsync(args[1..], output),
-                "install" => await InstallCommand.RunAsync(args[1..], output),
+                "install" => await InstallCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
                 "list" => await ListCommand.RunAsync(args[1..], output),
                 "enable" => await EnabledCommand.RunAsync(args[1..], output, enabled: true),
                 "disable" => await EnabledCommand.RunAsync(args[1..], output, enabled: false),
@@ -52,6 +60,11 @@ public static class CliApplication
             await error.WriteLineAsync($"error: {exception.Message}");
             return 1;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await error.WriteLineAsync("error: operation cancelled.");
+            return 130;
+        }
     }
 
     public const string HelpText = """
@@ -64,12 +77,12 @@ public static class CliApplication
           gbar render <widget.dll> --type <Namespace.Widget> [--output <snapshot.json>] [--instance <id>]
           gbar replay <snapshot.json> <input-replay.json>
           gbar pack <widget-directory> [--output <file.gbarwidget>]
-          gbar install <file.gbarwidget> [--catalog <root>]
+          gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> [--sha256 <64-hex>] [--catalog <root>]
           gbar list [--catalog <root>]
           gbar enable <widget-id> [--catalog <root>]
           gbar disable <widget-id> [--catalog <root>]
 
-        Exit codes: 0 success, 1 validation/runtime failure, 2 command usage error.
+        Exit codes: 0 success, 1 validation/runtime failure, 2 command usage error, 130 cancelled.
         """;
 }
 
