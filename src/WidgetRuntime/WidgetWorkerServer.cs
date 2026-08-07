@@ -6,22 +6,33 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.WidgetRuntime;
 
-public sealed class WidgetWorkerServer(
-    Widget widget,
-    string widgetInstanceId,
-    string pipeName,
-    int maximumMessageBytes = WidgetRuntimeProtocol.DefaultMaximumMessageBytes)
+public sealed class WidgetWorkerServer
 {
-    private readonly Widget _widget = widget ?? throw new ArgumentNullException(nameof(widget));
-    private readonly string _widgetInstanceId = ValidateIdentifier(widgetInstanceId);
-    private readonly string _pipeName = ValidatePipeName(pipeName);
-    private readonly int _maximumMessageBytes = maximumMessageBytes is >= 256 and <= WidgetRuntimeProtocol.AbsoluteMaximumMessageBytes
-        ? maximumMessageBytes
-        : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
+    private readonly Widget _widget;
+    private readonly string _widgetInstanceId;
+    private readonly string _pipeName;
+    private readonly int _maximumMessageBytes;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private LengthPrefixedJsonChannel? _channel;
     private CancellationToken _runCancellation;
     private long _sequence;
+
+    public WidgetWorkerServer(
+        Widget widget,
+        string widgetInstanceId,
+        string pipeName,
+        int maximumMessageBytes = WidgetRuntimeProtocol.DefaultMaximumMessageBytes,
+        IWidgetCapabilityClient? capabilityClient = null)
+    {
+        _widget = widget ?? throw new ArgumentNullException(nameof(widget));
+        _widgetInstanceId = ValidateIdentifier(widgetInstanceId);
+        _pipeName = ValidatePipeName(pipeName);
+        _maximumMessageBytes = maximumMessageBytes is >= 256 and <= WidgetRuntimeProtocol.AbsoluteMaximumMessageBytes
+            ? maximumMessageBytes
+            : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
+        _widget.AttachHostServices(new WidgetHostServices(
+            capabilityClient ?? UnavailableWidgetCapabilityClient.Instance));
+    }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {

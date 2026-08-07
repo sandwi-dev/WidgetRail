@@ -8,6 +8,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\..\PlatformSettings\PlatformSettings.csproj" />
+    <ProjectReference Include="..\..\PlatformBroker\PlatformBroker.csproj" />
+    <ProjectReference Include="..\..\WidgetCatalog\WidgetCatalog.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />

@@ -21,6 +21,9 @@ guarantees that are available now.
   requirements.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
+- [Widget capabilities](capabilities.md) — typed audio/network services,
+  manifest declarations, lifecycle/consent behavior, errors, testing, and the
+  current security boundary.
 
 ## Distribution and operations
 

@@ -32,6 +32,9 @@ public sealed class ConsentStore
     private readonly string _lockFile;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    internal string RootDirectory => _root;
+    internal string DocumentFile => _documentFile;
+
     public ConsentStore(string rootDirectory)
     {
         if (string.IsNullOrWhiteSpace(rootDirectory))
@@ -112,6 +115,13 @@ public sealed class ConsentStore
             entry.PackageId == identity.PackageId &&
             entry.PublisherId == identity.PublisherId &&
             entry.CapabilityId == capabilityId)?.Decision;
+    }
+
+    internal void PrepareForMonitoring()
+    {
+        Directory.CreateDirectory(_root);
+        EnsureSafeExistingPath(_root);
+        RejectReparsePoint(_documentFile);
     }
 
     private async Task<FileStream> AcquireLockAsync(CancellationToken cancellationToken)

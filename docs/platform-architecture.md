@@ -14,7 +14,7 @@ flowchart LR
     Bridge <-->|"one lazy worker connection"| Worker["Widget worker"]
     Worker --> SDK["WidgetSdk + WidgetProtocol"]
     Bridge --> Styling["WidgetStyling / GBSS"]
-    Worker -. "planned broker transport" .-> Broker["PlatformBroker"]
+    Worker <-->|"typed authenticated capability IPC"| Broker["PlatformBroker"]
     Broker -. "planned OS providers" .-> Windows["Core Audio + IP Helper/WLAN"]
     Host --> State["Host-owned order and last-widget state"]
     Catalog["Enabled installed WidgetCatalog snapshot"] --> Bridge
@@ -25,15 +25,15 @@ flowchart LR
 | Component | Implemented responsibility |
 | --- | --- |
 | `src/OverlayHost` | Win32/Direct2D panel/backdrop shell, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus, dashboard/reorder state, last-widget persistence, managed-bridge client, live platform shell appearance, and generic reference-widget rendering. |
-| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted plus enabled-installed catalog loading, worker supervision, controller forwarding, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
-| `src/WidgetRuntime` | Lazy worker process client/server, random named pipes, bounded length-prefixed JSON, strict envelopes, timeouts, crash reporting, limited restart, and pre-launch Windows Job Object memory/process/cleanup policy. |
-| `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies after containment, then serves the normal runtime protocol. |
+| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, trusted plus enabled-installed catalog loading, worker supervision, controller forwarding, capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
+| `src/WidgetRuntime` | Lazy worker process client/server, per-start host-owned companion sessions, random named pipes, bounded length-prefixed JSON, strict envelopes, lifecycle propagation, timeouts, crash reporting, limited restart, and pre-launch Windows Job Object memory/process/cleanup policy. |
+| `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies after containment, connects an optional authenticated broker client, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
-| `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, and state helpers. |
+| `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network services/DTOs. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, and last-good reload. The bridge/native shell consume its live revisions, including bounded text scale for shell and generic widget layout. |
 | `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement, and order persistence. The bridge consumes enabled compatible packages at startup. |
-| `src/PlatformBroker` | Isolated version-1 audio-session/network capability contracts, identity/manifest/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, and a deterministic simulator. It has no real Core Audio/WLAN backend or widget IPC connection yet. |
+| `src/PlatformBroker` | Version-1 audio-session/network capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, and a deterministic simulator. It has no real Core Audio/WLAN backend yet. |
 | `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, and catalog install/list/enable/disable commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
@@ -66,6 +66,29 @@ scope remains valid and can use a Stack/Row-level shortcut such as modal B.
 All transport messages have explicit size limits, protocol versions, strict
 camel-case JSON, and unknown-member rejection. The native process never loads
 third-party managed assemblies.
+
+## Capability flow
+
+1. At bridge startup, trusted configuration or an installed manifest supplies
+   package ID, publisher ID, instance ID, and a closed required/optional
+   capability declaration set.
+2. Each worker start/restart gets a new bridge-owned companion containing the
+   fixed identity, declarations, consent store, backend, random pipe, and nonce.
+3. The generic worker bootstrap authenticates the complete nonce/identity
+   hello and attaches `WidgetHostServices` before `OnCreatedAsync`. Widget code
+   receives typed audio/network services, not raw broker JSON.
+4. Every operation rechecks the server-fixed declaration, durable grant, closed
+   operation shape, and host-owned lifecycle. Read is Visible/Interactive;
+   control is Interactive-only.
+5. Event subscriptions are capacity-one/coalescing. Background retains only the
+   newest pending event; returning Visible/Interactive releases it. Destroying,
+   disposal, or reconciled consent revocation terminates the subscription.
+
+The worker cannot send broker lifecycle transitions or elevate itself. The
+runtime propagates only host-owned states to the companion server. The current
+production bridge uses `SimulatedPlatformBrokerBackend`, so the typed contracts
+are connected end to end without touching Core Audio or WLAN yet. See [widget
+capabilities](capabilities.md).
 
 ## Resource behavior
 
@@ -157,13 +180,14 @@ then deterministic geometry from the last render.
   local files, bounded absolute HTTPS URLs, and exact GitHub Release shorthand.
   Remote sources require SHA-256 and install disabled. Catalog changes require
   an overlay/bridge restart; there is no graphical installer, automatic update
-  discovery, signature verification, or live catalog reload yet. Packages that
-  request capabilities are skipped until broker transport/consent is connected.
-- Job Object memory/process-count/cleanup policy and an isolated managed
-  capability-broker foundation are implemented and tested. Publisher
-  signatures, revocation, AppContainer launch, CPU quotas, broker IPC/consent
-  UI, and real Windows audio/network providers remain planned; the current
-  pieces are not a complete public-widget security boundary.
+  discovery, signature verification, or live catalog reload yet. Supported
+  capability declarations receive the authenticated broker path; unknown IDs
+  cause that package to be skipped.
+- Job Object memory/process-count/cleanup policy, typed capability IPC, consent
+  UI, and prompt fail-closed revocation are implemented and tested. Publisher
+  signatures/package revocation, AppContainer launch, CPU quotas, security
+  audit/history, and real Windows audio/network providers remain planned; the
+  current pieces are not a complete public-widget security boundary.
 - The bundled bridge catalog remains trusted deployment configuration. The
   joined current-user catalog is not a marketplace feed or signed package
   index; enabling a package is not a publisher-trust guarantee.

@@ -1,4 +1,20 @@
+using GameBarAlternative.WidgetSdk;
+
 namespace GameBarAlternative.WidgetRuntime;
+
+/// <summary>
+/// A host-owned service channel that is created afresh for each worker process.
+/// The worker receives only the bounded launch arguments; it cannot select the
+/// companion identity or implementation.
+/// </summary>
+public interface IWidgetProcessCompanionSession : IAsyncDisposable
+{
+    IReadOnlyList<string> WorkerArguments { get; }
+    Task RunAsync(CancellationToken cancellationToken);
+    Task SetLifecycleStateAsync(
+        WidgetLifecycleState state,
+        CancellationToken cancellationToken = default);
+}
 
 public sealed record WidgetProcessOptions
 {
@@ -9,6 +25,11 @@ public sealed record WidgetProcessOptions
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(2);
     public int MaximumMessageBytes { get; init; } = WidgetRuntimeProtocol.DefaultMaximumMessageBytes;
     public int MaximumRestartAttempts { get; init; } = 2;
+    /// <summary>
+    /// Trusted host factory invoked once for every worker start or restart.
+    /// Widget packages and worker protocol messages cannot provide this value.
+    /// </summary>
+    public Func<IWidgetProcessCompanionSession>? CompanionSessionFactory { get; init; }
     /// <summary>
     /// Trusted host policy applied to the Windows Job Object. This value is
     /// never accepted from the worker process or its protocol messages.

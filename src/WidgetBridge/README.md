@@ -88,7 +88,18 @@ cancels the shared Visible/Interactive lifetime used by periodic UI updates,
 but explicitly permitted widget-lifetime background work may continue. Future
 `suspend-when-hidden` or `unload-after-idle` behavior must be an opt-in
 manifest/user policy, not a bridge heuristic. The current bridge does not
-enforce those policies or background capabilities.
+enforce those residency policies. The current capability broker separately
+denies every audio/network capability in Background.
+
+For a widget with closed declared capabilities, the bridge creates a fresh
+`BrokerWidgetProcessCompanion` on every worker start/restart. Package,
+publisher, instance, declarations, consent store, backend, random pipe, and
+nonce are bridge-owned. The runtime propagates only host lifecycle to its
+`BrokerPipeServer`; worker messages cannot promote broker lifecycle. The worker
+bootstrap authenticates the nonce/full identity and attaches typed
+`WidgetHostServices` before widget creation. The production bridge currently
+uses `SimulatedPlatformBrokerBackend`, not Core Audio or WLAN. See [widget
+capabilities](../../docs/capabilities.md).
 
 Asynchronous `widget-invalidated` and `widget-failed` events identify the widget
 by catalog ID. `platform-appearance-changed` instead contains only the newly
@@ -199,11 +210,15 @@ strings, and the negotiated length-prefixed message ceiling.
   "catalogVersion": 1,
   "widgets": [{
     "id": "clock",
+    "packageId": "dev.example.clock",
+    "publisherId": "dev.example",
     "name": "Clock",
     "instanceId": "clock.default",
     "icon": "connection",
     "workerExecutable": "workers/ClockWidget.Worker.exe",
     "workerArguments": [],
+    "declaredCapabilities": [],
+    "memoryLimitMb": 64,
     "styleFile": "workers/styles/default.gbss",
     "quickActions": [{
       "id": "refresh",
@@ -235,8 +250,10 @@ host/architecture-compatible packages in persisted order. It assigns each a
 fixed trusted 64 MiB worker policy and the packaged `WidgetWorkerHost`; listing
 the catalog remains lazy and does not launch workers. Disabled packages stay
 inert. A malformed catalog falls back to bundled widgets, while a conflicting,
-tampered, incompatible, capability-requesting, or invalid-GBSS installed
-package is skipped with a bounded warning.
+tampered, incompatible, unsupported-capability, or invalid-GBSS installed
+package is skipped with a bounded warning. Supported required and optional
+manifest declarations are combined into the fixed broker channel declaration
+set; neither kind is auto-granted.
 
 `WidgetWorkerHost` loads the manifest entrypoint only from the immutable package
 root, rejects path escape/reparse points, requires a public concrete SDK
@@ -248,5 +265,5 @@ The installed catalog snapshot is read only at bridge startup, so an install,
 enable, or disable requires an overlay/bridge restart. This integration is not
 a marketplace or trust guarantee. Production still needs signatures/publisher
 verification, AppContainer-equivalent isolation, live catalog reload, broker
-transport/consent UI, and real provider backends. Packages declaring required
-capabilities remain skipped until that broker path is connected.
+security audit/history, and real provider backends. Typed transport and
+controller consent are implemented against the simulator.

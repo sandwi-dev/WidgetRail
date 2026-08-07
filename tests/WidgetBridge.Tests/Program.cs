@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.IO.Pipes;
 using System.Text.Json;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetBridge;
@@ -22,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
+    ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
@@ -175,6 +177,39 @@ static async Task InstalledWidgetsJoinCatalog()
         "Installed assembly path must be canonical before worker launch.");
 }
 
+static async Task InstalledCapabilityDeclarationsAreClosed()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-capabilities");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.audio",
+        enabled: true,
+        permissions: [PlatformCapabilities.AudioSessionsReadV1]);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.unknown",
+        enabled: true,
+        permissions: ["system.unsupported.control.v1"]);
+
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+
+    Assert.SequenceEqual(
+        ["test-widget", "dev.example.audio"],
+        load.Catalog.Widgets.Select(widget => widget.Id));
+    Assert.SequenceEqual(
+        [PlatformCapabilities.AudioSessionsReadV1],
+        load.Catalog.GetConfigured("dev.example.audio").DeclaredCapabilities);
+    Assert.Equal(1, load.Warnings.Count);
+    Assert.True(load.Warnings[0].Contains("unsupported capability", StringComparison.Ordinal),
+        "Unknown capabilities need a safe closed-vocabulary warning.");
+}
+
 static async Task TamperedInstalledCatalogFailsSoft()
 {
     using var trusted = TemporaryCatalog.Create();
@@ -216,7 +251,8 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     string packageDirectory,
     string id,
     bool enabled,
-    string styleSource = "button { color: #abcdef; }")
+    string styleSource = "button { color: #abcdef; }",
+    IReadOnlyList<string>? permissions = null)
 {
     var packagePath = Path.Combine(packageDirectory, $"{id}.gbarwidget");
     var manifest = new WidgetManifest
@@ -228,7 +264,7 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
         HostApi = new HostApiRange("1.0", 1),
         Entrypoint = new WidgetEntrypoint(
             "dotnet-worker", "payload/Widget.dll", "Example.EnabledWidget"),
-        Permissions = [],
+        Permissions = permissions ?? [],
         OptionalPermissions = [],
         BackgroundPolicy = "none",
         ResourceRequest = new WidgetResourceRequest(256, 60),
@@ -515,12 +551,15 @@ file sealed class TemporaryCatalog : IDisposable
                 new
                 {
                     id = "test-widget",
+                    packageId = "dev.test.widget",
+                    publisherId = "dev.test",
                     name = "Test Widget",
                     instanceId = "test.instance",
                     icon,
                     workerExecutable = executable,
                     styleFile,
                     workerArguments = Array.Empty<string>(),
+                    declaredCapabilities = Array.Empty<string>(),
                     memoryLimitMb,
                     quickActions = new[]
                     {

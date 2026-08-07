@@ -1,6 +1,9 @@
 using GameBarAlternative.Samples.ClockWidget;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetRuntime;
+using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetWorkerHost;
+using WorkerHostProgram = GameBarAlternative.WidgetWorkerHost.Program;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -9,6 +12,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Rejects entrypoint path escape", () => Run(RejectsPathEscape)),
     ("Rejects missing and non-Widget types", () => Run(RejectsInvalidTypes)),
     ("Rejects invalid assemblies without leaking paths", () => Run(RejectsInvalidAssembly)),
+    ("Broker bootstrap arguments are optional but atomic", () => Run(BrokerArgumentsAreAtomic)),
+    ("Typed capability adapter uses the authenticated broker pipe", TypedCapabilityAdapter),
 };
 var failures = new List<string>();
 foreach (var test in tests)
@@ -92,6 +97,99 @@ static void RejectsInvalidAssembly()
     Assert.Equal("invalid_assembly", exception.Code);
     Assert.True(!exception.Message.Contains(temporary.Path, StringComparison.OrdinalIgnoreCase),
         "Public load diagnostics must not disclose the installed package path.");
+}
+
+static void BrokerArgumentsAreAtomic()
+{
+    Assert.True(WorkerHostProgram.ParseBrokerConnection([], "widget-1") is null,
+        "A worker without broker arguments must preserve unavailable capabilities.");
+    Assert.Throws<ArgumentException>(() => WorkerHostProgram.ParseBrokerConnection(
+        ["--broker-pipe", "pipe-only"], "widget-1"));
+    Assert.Throws<ArgumentException>(() => WorkerHostProgram.ParseBrokerConnection(
+        BrokerArguments("different-instance"), "widget-1"));
+
+    var connection = WorkerHostProgram.ParseBrokerConnection(BrokerArguments("widget-1"), "widget-1")!;
+    Assert.Equal("dev.test.widget", connection.PackageId);
+    Assert.Equal("dev.test", connection.PublisherId);
+    Assert.Equal("widget-1", connection.InstanceId);
+}
+
+static string[] BrokerArguments(string instanceId) =>
+[
+    "--broker-pipe", "gba-worker-test",
+    "--broker-package", "dev.test.widget",
+    "--broker-publisher", "dev.test",
+    "--broker-instance", instanceId,
+    "--broker-nonce", new string('A', 64),
+];
+
+static async Task TypedCapabilityAdapter()
+{
+    using var temporary = new TemporaryDirectory();
+    var identity = new BrokerWidgetIdentity("dev.test.widget", "dev.test", "widget-1");
+    var consent = new ConsentStore(temporary.Path);
+    await consent.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
+        ConsentDecision.Grant);
+    await consent.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAudioSessions([new("audio-1", "Game", 0.75, false, true)]);
+    var options = new BrokerPipeTransportOptions
+    {
+        AcceptTimeout = TimeSpan.FromSeconds(2),
+        HandshakeTimeout = TimeSpan.FromSeconds(1),
+        RequestTimeout = TimeSpan.FromSeconds(1),
+    };
+    var pipeName = $"gba-worker-capability-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity,
+        [PlatformCapabilities.AudioSessionsReadV1, PlatformCapabilities.AudioSessionsControlV1],
+        consent, backend, options, new string('B', 64));
+    var serverTask = server.RunAsync();
+    await using var pipeClient = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce, options);
+    await pipeClient.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+    var adapter = new BrokerWidgetCapabilityClient(pipeClient);
+
+    var sessions = await adapter.InvokeAsync(
+        WidgetAudioCapabilities.GetSessions, new WidgetCapabilityQuery());
+    Assert.Equal("audio-1", sessions.Single().SessionId);
+    var acknowledged = await adapter.InvokeAsync(
+        WidgetAudioCapabilities.SetSessionVolume,
+        new SetWidgetAudioSessionVolumeRequest("audio-1", 0.5));
+    Assert.True(acknowledged.Acknowledged, "Control acknowledgement was not decoded.");
+    Assert.Equal(1, backend.AudioControlCalls);
+
+    await using var events = adapter.SubscribeAsync(WidgetAudioCapabilities.SessionsChanged)
+        .GetAsyncEnumerator();
+    var moveNext = events.MoveNextAsync().AsTask();
+    for (var attempt = 0; attempt < 20 && !moveNext.IsCompleted; attempt++)
+    {
+        backend.Publish(new BrokerPlatformEvent(
+            PlatformCapabilities.AudioSessionsReadV1,
+            PlatformCapabilities.AudioSessionsChanged,
+            new AudioSessionsChangedEvent(
+                [new("audio-2", "Voice", 0.5, false, true)])));
+        await Task.Delay(10);
+    }
+    Assert.True(await moveNext.WaitAsync(TimeSpan.FromSeconds(1)),
+        "Typed capability event was not decoded.");
+    Assert.Equal("audio-2", events.Current.Sessions.Single().SessionId);
+
+    try
+    {
+        _ = await adapter.InvokeAsync(
+            WidgetNetworkCapabilities.GetStatus, new WidgetCapabilityQuery());
+        throw new InvalidOperationException("Expected undeclared capability rejection.");
+    }
+    catch (WidgetCapabilityException exception)
+    {
+        Assert.Equal("capability_not_declared", exception.ErrorCode);
+    }
+
+    await pipeClient.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
 }
 
 file sealed class TemporaryDirectory : IDisposable

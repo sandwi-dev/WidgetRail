@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Buffers.Binary;
 using GameBarAlternative.PlatformBroker;
 
 var tests = new (string Name, Func<Task> Run)[]
@@ -15,6 +16,15 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Consent revocation terminates subscriptions", RevocationTerminatesSubscriptions),
     ("Lifecycle gates read control and destroying states", LifecycleGatesOperations),
     ("Cancellation reaches the broker boundary", CancellationIsObserved),
+    ("Pipe framing rejects oversized payloads before allocation", PipeFramesAreBounded),
+    ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
+    ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
+    ("Pipe request cancellation reaches the fixed backend", PipeCancellationIsObserved),
+    ("Pipe events coalesce suspend and unsubscribe", PipeEventsAreBounded),
+    ("Pipe consent denial revokes a live subscription", PipeConsentDenialRevokesLiveSubscription),
+    ("Pipe consent corruption fails closed", PipeMalformedConsentRevokesLiveSubscription),
+    ("Pipe consent deletion fails closed", PipeDeletedConsentRevokesLiveSubscription),
+    ("Pipe disposal revokes and completes promptly", PipeDisposalIsBounded),
 };
 
 var failures = 0;
@@ -328,6 +338,191 @@ static async Task CancellationIsObserved()
             PlatformCapabilities.AudioSessionsList, new { }), cancellation.Token));
 }
 
+static async Task PipeFramesAreBounded()
+{
+    var prefix = new byte[4];
+    BinaryPrimitives.WriteInt32LittleEndian(prefix, 1025);
+    await using var stream = new MemoryStream(prefix);
+    var channel = new BrokerPipeFrameChannel(stream, 1024);
+    await Assert.ThrowsAsync<BrokerException>(
+        async () => await channel.ReadAsync(CancellationToken.None), "frame_too_large");
+
+    var duplicate = Encoding.UTF8.GetBytes(
+        "{\"protocolVersion\":1,\"type\":\"hello\",\"type\":\"hello\",\"correlationId\":1,\"payload\":{}}");
+    Assert.Throws<BrokerException>(() => BrokerPipeJson.Parse(duplicate), "malformed_frame");
+}
+
+static async Task PipeHandshakeIsBound()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var pipeName = $"gba-broker-auth-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity, [PlatformCapabilities.AudioSessionsReadV1], store, AudioBackend(),
+        TransportOptions(), channelNonce: new string('A', 64));
+    var serverTask = server.RunAsync();
+    await using var impostor = new BrokerPipeClient(
+        pipeName, identity, new string('B', 64), TransportOptions());
+    await Assert.ThrowsAnyAsync(() => impostor.ConnectAsync());
+    await Assert.ThrowsAsync<BrokerException>(
+        () => serverTask, "authentication_failed");
+    await Assert.ThrowsAsync<InvalidOperationException>(() => server.RunAsync());
+}
+
+static async Task PipeRequestsAreBound()
+{
+    await using var harness = await BrokerPipeHarness.StartAsync();
+    harness.Server.SetLifecycle(BrokerLifecycleState.Visible);
+    var response = await harness.Client.RequestAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList,
+        new { });
+    Assert.True(response.Succeeded);
+    Assert.True(response.RequestId > 0);
+    Assert.Contains("Game audio", response.Payload!.Value.GetRawText());
+
+    var impostor = Identity() with { InstanceId = "substituted" };
+    var substitution = await harness.Client.SendRequestEnvelopeAsync(new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 0, impostor,
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList,
+        BrokerJson.ToElement(new { })));
+    Assert.Equal("identity_mismatch", substitution.ErrorCode);
+
+    harness.Server.SetLifecycle(BrokerLifecycleState.Background);
+    var denied = await harness.Client.RequestAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList,
+        new { });
+    Assert.Equal("lifecycle_denied", denied.ErrorCode);
+}
+
+static async Task PipeCancellationIsObserved()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
+        ConsentDecision.Grant);
+    var backend = new BlockingBrokerBackend();
+    var pipeName = $"gba-broker-cancel-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity, [PlatformCapabilities.AudioSessionsReadV1], store, backend,
+        TransportOptions(requestTimeout: TimeSpan.FromSeconds(2)), new string('C', 64));
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce,
+        TransportOptions(requestTimeout: TimeSpan.FromSeconds(2)));
+    await client.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(80));
+    await Assert.ThrowsAsync<OperationCanceledException>(() => client.RequestAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList,
+        new { }, cancellation.Token));
+    await backend.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static async Task PipeEventsAreBounded()
+{
+    await using var harness = await BrokerPipeHarness.StartAsync();
+    harness.Server.SetLifecycle(BrokerLifecycleState.Visible);
+    await using var subscription = await harness.Client.SubscribeAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsChanged);
+    PublishAudio(harness.Backend, "one");
+    PublishAudio(harness.Backend, "two");
+    PublishAudio(harness.Backend, "three");
+    await Task.Delay(30);
+    var latest = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Contains("three", latest.Payload.GetRawText());
+
+    harness.Server.SetLifecycle(BrokerLifecycleState.Background);
+    PublishAudio(harness.Backend, "four");
+    PublishAudio(harness.Backend, "five");
+    using (var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(80)))
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await subscription.ReadAsync(timeout.Token));
+    harness.Server.SetLifecycle(BrokerLifecycleState.Visible);
+    var resumed = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Contains("five", resumed.Payload.GetRawText());
+
+    await subscription.DisposeAsync();
+    PublishAudio(harness.Backend, "six");
+    await Assert.ThrowsAsync<System.Threading.Channels.ChannelClosedException>(
+        async () => await subscription.ReadAsync());
+}
+
+static async Task PipeConsentDenialRevokesLiveSubscription()
+{
+    await using var harness = await BrokerPipeHarness.StartAsync();
+    harness.Server.SetLifecycle(BrokerLifecycleState.Visible);
+    await using var subscription = await harness.Client.SubscribeAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsChanged);
+
+    await new ConsentStore(harness.ConsentRoot).SetDecisionAsync(
+        Identity(), PlatformCapabilities.AudioSessionsReadV1, ConsentDecision.Deny);
+
+    await Assert.ThrowsAsync<BrokerException>(async () =>
+        await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)),
+        "capability_revoked");
+}
+
+static async Task PipeMalformedConsentRevokesLiveSubscription()
+{
+    await using var harness = await BrokerPipeHarness.StartAsync();
+    harness.Server.SetLifecycle(BrokerLifecycleState.Visible);
+    await using var subscription = await harness.Client.SubscribeAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsChanged);
+
+    await File.WriteAllTextAsync(
+        System.IO.Path.Combine(harness.ConsentRoot, "consent-v1.json"), "{ malformed");
+
+    await Assert.ThrowsAsync<BrokerException>(async () =>
+        await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)),
+        "capability_revoked");
+}
+
+static async Task PipeDeletedConsentRevokesLiveSubscription()
+{
+    await using var harness = await BrokerPipeHarness.StartAsync();
+    harness.Server.SetLifecycle(BrokerLifecycleState.Visible);
+    await using var subscription = await harness.Client.SubscribeAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsChanged);
+
+    File.Delete(System.IO.Path.Combine(harness.ConsentRoot, "consent-v1.json"));
+
+    await Assert.ThrowsAsync<BrokerException>(async () =>
+        await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)),
+        "capability_revoked");
+}
+
+static async Task PipeDisposalIsBounded()
+{
+    var harness = await BrokerPipeHarness.StartAsync();
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    await harness.DisposeAsync();
+    stopwatch.Stop();
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+        $"Broker pipe disposal was not bounded ({stopwatch.Elapsed.TotalMilliseconds:0} ms).");
+}
+
+static BrokerPipeTransportOptions TransportOptions(TimeSpan? requestTimeout = null) => new()
+{
+    MaximumFrameBytes = 64 * 1024,
+    AcceptTimeout = TimeSpan.FromSeconds(2),
+    HandshakeTimeout = TimeSpan.FromSeconds(1),
+    RequestTimeout = requestTimeout ?? TimeSpan.FromSeconds(1),
+    MaximumInFlightRequests = 4,
+    MaximumSubscriptions = 4,
+};
+
 static PlatformCapabilityBroker Broker(
     BrokerWidgetIdentity identity,
     ConsentStore store,
@@ -382,6 +577,111 @@ sealed class TemporaryDirectory : IDisposable
     {
         if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
     }
+}
+
+sealed class BrokerPipeHarness : IAsyncDisposable
+{
+    private readonly TemporaryDirectory _temp;
+    private readonly Task _serverTask;
+    public SimulatedPlatformBrokerBackend Backend { get; }
+    public BrokerPipeServer Server { get; }
+    public BrokerPipeClient Client { get; }
+    public string ConsentRoot => _temp.Path;
+
+    private BrokerPipeHarness(
+        TemporaryDirectory temp,
+        SimulatedPlatformBrokerBackend backend,
+        BrokerPipeServer server,
+        BrokerPipeClient client,
+        Task serverTask)
+    {
+        _temp = temp;
+        Backend = backend;
+        Server = server;
+        Client = client;
+        _serverTask = serverTask;
+    }
+
+    public static async Task<BrokerPipeHarness> StartAsync()
+    {
+        var temp = new TemporaryDirectory();
+        var identity = new BrokerWidgetIdentity("dev.test.widget", "dev.test", "default");
+        var store = new ConsentStore(temp.Path);
+        await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
+            ConsentDecision.Grant);
+        var backend = new SimulatedPlatformBrokerBackend();
+        backend.SetAudioSessions([new("audio-1", "Game audio", 0.75, false, true)]);
+        var options = new BrokerPipeTransportOptions
+        {
+            MaximumFrameBytes = 64 * 1024,
+            AcceptTimeout = TimeSpan.FromSeconds(2),
+            HandshakeTimeout = TimeSpan.FromSeconds(1),
+            RequestTimeout = TimeSpan.FromSeconds(1),
+            MaximumInFlightRequests = 4,
+            MaximumSubscriptions = 4,
+        };
+        var pipeName = $"gba-broker-test-{Guid.NewGuid():N}";
+        var server = new BrokerPipeServer(
+            pipeName, identity,
+            [PlatformCapabilities.AudioSessionsReadV1], store, backend,
+            options, new string('D', 64));
+        var serverTask = server.RunAsync();
+        var client = new BrokerPipeClient(
+            pipeName,
+            identity, server.ChannelNonce, options);
+        try
+        {
+            await client.ConnectAsync();
+            return new BrokerPipeHarness(temp, backend, server, client, serverTask);
+        }
+        catch
+        {
+            await client.DisposeAsync();
+            await server.DisposeAsync();
+            temp.Dispose();
+            throw;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Client.DisposeAsync();
+        await _serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await Server.DisposeAsync();
+        _temp.Dispose();
+    }
+}
+
+sealed class BlockingBrokerBackend : IPlatformBrokerBackend
+{
+    public event EventHandler<BrokerPlatformEvent>? EventPublished;
+    public TaskCompletionSource CancellationObserved { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(
+        CancellationToken cancellationToken)
+    {
+        try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            CancellationObserved.TrySetResult();
+            throw;
+        }
+        return [];
+    }
+
+    public Task SetAudioSessionVolumeAsync(string sessionId, double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioSessionMutedAsync(string sessionId, bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new NetworkStatusSummary(NetworkConnectivity.None, null, null, null));
+    public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SavedNetworkProfileSummary>>([]);
+    public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }
 
 static class Assert
@@ -443,5 +743,12 @@ static class Assert
             return;
         }
         throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
+    }
+
+    public static async Task ThrowsAnyAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch { return; }
+        throw new InvalidOperationException("Expected an exception.");
     }
 }

@@ -83,10 +83,11 @@ Visible UI refresh work should use `RunPeriodicUpdatesWhileActiveAsync` or
 non-overlapping; cancellation completes normally, while callback failures fault
 the returned task and must be observed. Work exclusive to one state should use
 its state token. A widget with a legitimate background capability may own
-widget-lifetime work, but permission and lifecycle-policy enforcement are not
-implied by the lifecycle API. On Windows, trusted host policy separately
-applies a Job Object memory ceiling, one-active-process limit, and kill-on-close
-cleanup to every worker.
+widget-lifetime work, but permission and residency-policy enforcement are not
+implied by the lifecycle API. The current audio/network broker denies all
+capabilities in Background. On Windows, trusted host policy separately applies
+a Job Object memory ceiling, one-active-process limit, and kill-on-close cleanup
+to every worker.
 
 The planned policy choices are `keep-alive` (default),
 `suspend-when-hidden`, and `unload-after-idle`. The latter two must be explicit
@@ -97,6 +98,14 @@ validated metadata rather than enforcement of these final policy names.
 `WidgetBridge` is the narrow native-facing sidecar around
 `WidgetProcessClient`. Windows workers are created suspended, assigned to their
 Job Object before any worker code runs, and then resumed. AppContainer launch,
-CPU quotas, publisher verification, lifecycle-policy enforcement, and widget
-IPC access to the isolated permission-broker foundation are not claimed by this
-transport.
+CPU quotas, publisher verification, and lifecycle residency-policy enforcement
+are not claimed by this transport.
+
+`WidgetProcessOptions.CompanionSessionFactory` is trusted host policy invoked
+afresh for every worker start/restart. The bridge uses it to create an
+identity/declaration/consent/backend-fixed broker companion and append only its
+bounded bootstrap arguments. Companion lifecycle is updated before the worker
+lifecycle request. The generic worker authenticates that channel and attaches
+typed SDK host services before widget creation. Widget protocol messages cannot
+provide a companion or choose its identity/backend. See [widget
+capabilities](../../docs/capabilities.md).

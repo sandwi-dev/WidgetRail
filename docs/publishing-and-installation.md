@@ -179,8 +179,15 @@ There is no graphical installer, automatic updater, signature verification, or
 marketplace client. At bridge startup the overlay joins enabled compatible
 packages from this default current-user catalog and launches them lazily through
 the generic worker host. Catalog changes are not watched yet, so install,
-enable, or disable requires an overlay/bridge restart. Packages requesting
-capabilities are skipped until broker transport and consent UI are connected.
+enable, disable, update, or manifest changes require an overlay/bridge restart.
+Supported required/optional capability declarations join the authenticated
+broker path; unknown capability IDs cause that package to be skipped.
+
+After restart, open Settings → Permissions & capabilities to review each
+package/publisher declaration. Required means the feature is core, not that it
+is automatically granted. Optional means the widget must degrade without it.
+Grant requires explicit confirmation; deny/revoke is immediate. Consent changes
+do not require a catalog restart. See [widget capabilities](capabilities.md).
 
 ## Remote acquisition safety boundary
 

@@ -8,7 +8,8 @@ The product direction is closer to a console control center than a collection of
 - Once a widget is active, it owns every other controller input.
 - Widgets can be reordered and the last widget is restored; deeper focus/state restoration remains incremental.
 - Users can replace the visual language through a safe CSS-like theme format.
-- Widget logic runs outside the resident native shell; production capability enforcement remains planned.
+- Widget logic runs outside the resident native shell; typed brokered
+  capabilities are implemented, while hostile-code sandboxing remains planned.
 - A cold hidden start launches no third-party workers. Once used, Background
   workers remain resident by default while Visible/Interactive work is canceled.
 
@@ -28,8 +29,8 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
   enabled compatible packages join the bridge lazily on its next startup
 - A generic installed-widget worker host, pre-launch Windows Job Object memory/
-  process containment, and an isolated versioned audio/network capability-
-  broker contract/simulator foundation
+  process containment, controller permission review, and typed authenticated
+  audio/network capability transport backed by a deterministic simulator
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
 - Managed contract suites plus native state, image-cache, layout, and icon tests
 
@@ -60,7 +61,13 @@ The complete verification command requires Visual Studio's Desktop development w
 
 ## Architecture direction
 
-Continue with a small native Windows shell using C++20, Win32, Direct2D/DirectWrite, and GameInput. Do not inject into games and do not embed Chromium in the resident host. Widget logic launches lazily out of process, remains resident in Background by default, and sends a declarative UI tree over versioned local IPC; production sandboxing, capability brokering, lifecycle-policy enforcement, and signing are still required before accepting untrusted widgets.
+Continue with a small native Windows shell using C++20, Win32,
+Direct2D/DirectWrite, and GameInput. Do not inject into games and do not embed
+Chromium in the resident host. Widget logic launches lazily out of process,
+remains resident in Background by default, and sends a declarative UI tree over
+versioned local IPC. Typed capability brokering is connected to a simulator;
+production AppContainer-equivalent sandboxing, real providers, lifecycle-policy
+enforcement, and signing are still required before accepting untrusted widgets.
 
 The remaining evidence gates include:
 

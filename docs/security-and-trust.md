@@ -25,14 +25,26 @@ planned. A structurally valid package is not necessarily trustworthy.
   aggregate job-memory ceiling, one-active-process limit, kill-on-close, and
   die-on-unhandled-exception behavior. Timeout, restart, failure, and disposal
   paths release the job and its process.
-- The isolated managed capability-broker foundation has four closed versioned
+- The managed capability broker has four closed versioned
   audio/network grants. It binds a session to package, publisher, and instance
   identity and rechecks the manifest declaration, durable consent decision,
   and lifecycle on every operation. Requests/results/events are strict and
   bounded; public DTOs contain sanitized labels and opaque IDs.
+- The bridge creates a fresh broker companion for every worker start/restart.
+  Its nonce handshake binds the worker to bridge-selected identity,
+  declarations, consent store, and backend. Widget code receives typed
+  `HostServices` audio/network APIs; it cannot select a broker identity,
+  declaration, or provider through widget protocol messages.
 - Broker consent storage is strict, size/entry bounded, reparse-point rejecting,
   cross-process locked, and atomically replaced. Event subscriptions are
-  bounded/coalescing and terminate on consent revocation or Destroying.
+  bounded/coalescing. A coalesced cross-process file watcher reconciles changes;
+  denial, malformed/deleted consent, watcher failure, or Destroying promptly
+  revokes subscriptions fail closed.
+- Controller Settings lists only supported capabilities declared by an
+  installed package, distinguishes required/optional and current decision,
+  requires an explicit confirmation scope for grants, permits immediate
+  deny/revoke, never auto-grants first-party packages, and fails closed on
+  malformed catalog/consent state.
 - Package extraction rejects absolute/traversing/ambiguous Windows paths,
   links, reparse points, collisions, excessive entries, and zip expansion
   beyond configured limits.
@@ -47,10 +59,10 @@ planned. A structurally valid package is not necessarily trustworthy.
   actual digest.
 - Newly discovered widget IDs default to disabled. A remote install explicitly
   disables its widget ID and requires a separate user `gbar enable` decision.
-- At bridge startup, only enabled, host-compatible installed packages with no
-  currently unconnected capability requirement are joined. Conflicts,
-  malformed/tampered catalog entries, and invalid per-package GBSS fail soft to
-  the bundled trusted catalog.
+- At bridge startup, only enabled, host-compatible installed packages using the
+  closed capability vocabulary are joined. Conflicts, unsupported capability
+  declarations, malformed/tampered catalog entries, and invalid per-package
+  GBSS fail soft to the bundled trusted catalog.
 - The generic worker host rejects entrypoint/dependency path escape and reparse
   points, requires a public concrete SDK `Widget` type with a usable public
   constructor, and returns path-free errors for rejected assembly/type cases.
@@ -66,10 +78,9 @@ The following are **not implemented as a complete public security boundary**:
 - AppContainer launch for community workers;
 - CPU-rate/time and broader resource quotas beyond the current Job Object
   memory/single-process/cleanup policy;
-- authenticated bridge/worker exposure of the capability broker, real Core
-  Audio/WLAN providers, controller consent UI, and security audit UI;
+- real Core Audio/WLAN providers and a security audit/history UI;
 - secure token brokering for third-party integrations;
-- user-facing permission consent, update review, rollback, or quarantine UI;
+- user-facing update review, rollback, or quarantine UI;
 - a graphical install/review flow, live bridge catalog reload, and safe
   automatic updates;
 - universal anti-cheat or controller-containment compatibility.
@@ -82,10 +93,10 @@ untrusted public widget binaries are safe.
 
 The bridge now discovers enabled packages from the current-user catalog at
 startup and launches them lazily through the generic worker host. This is an
-execution path, not a trust boundary: catalog enablement has no signature or
-publisher proof, and changes require an overlay/bridge restart. Packages with
-declared capabilities are deliberately skipped until broker transport and
-controller consent are connected.
+execution path, not a complete trust boundary: catalog enablement has no
+signature or publisher proof, and package/manifest changes require an overlay/
+bridge restart. Closed declared capabilities receive an authenticated broker
+channel, but the production bridge currently connects only the simulator.
 
 The managed development theme catalog has strict manifests, version-pinned
 directories, package-relative GBSS imports, bounds, reparse/containment checks,
@@ -124,13 +135,21 @@ protection. Use only public origins you intended to contact.
 
 ## Permissions
 
-Manifests already model required and optional permission strings, background
-policy, architecture, and resource requests. Validation checks their syntax
-and bounds. The isolated broker prototype can enforce its four closed audio/
-network capability IDs against an authenticated identity, manifest declaration,
-stored decision, and lifecycle. It is not connected to widget IPC or a
-user-facing consent flow, and declaring a permission still does not grant a
-callable OS API or constrain arbitrary worker code.
+Manifests model required and optional permission strings, background policy,
+architecture, and resource requests. The bridge accepts only the four closed
+audio/network IDs, fixes the combined declared set for one authenticated worker
+session, and the broker enforces declaration, stored decision, and lifecycle.
+Settings stores decisions by package, publisher, and capability; the channel
+also binds the concrete instance. Missing decisions fail closed, including for
+required capabilities, and no package is auto-granted.
+
+This permission system constrains access through the typed broker, not arbitrary
+desktop code. Without AppContainer or an equivalent restricted token, a
+malicious worker can access user-writable files, inspect its own process, or
+call Windows APIs directly. It may therefore bypass the broker or tamper with
+the current-user consent file. Do not treat the implemented UI/transport as a
+production sandbox for untrusted widgets. See [widget
+capabilities](capabilities.md) for the exact developer and transport contract.
 
 ## Reporting security problems
 

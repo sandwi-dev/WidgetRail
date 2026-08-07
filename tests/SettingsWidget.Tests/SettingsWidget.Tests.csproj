@@ -10,5 +10,7 @@
     <ProjectReference Include="..\..\src\FirstPartyWidgets\SettingsWidget\SettingsWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
+    <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
+    <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />
   </ItemGroup>
 </Project>

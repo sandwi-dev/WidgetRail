@@ -62,6 +62,13 @@ Publisher names must be lowercase reverse-DNS identifiers that are also valid
 C# namespaces. Widget IDs use lowercase reverse-DNS components and may also
 contain `_` or `-`.
 
+If the widget needs a platform service, declare only a supported closed ID in
+manifest `permissions` (core requirement) or `optionalPermissions` (degradable
+feature), then call the typed `HostServices.Audio` or `HostServices.Network`
+API. Required capabilities are not auto-granted. See [widget
+capabilities](capabilities.md); do not create raw broker messages or hard-code
+operation IDs.
+
 ## Validate
 
 ```powershell
@@ -117,6 +124,7 @@ A, Y, D-pad/analog, and Guide, while cards may expose B, X, bumpers, triggers,
 stick clicks, Menu, or View.
 
 Continue with the [declarative UI reference](declarative-ui.md), [controller
-input model](controller-input.md), and [GBSS reference](gbss.md). For packaging,
-GitHub Release publishing, hash pinning, and local or remote installation, read
-[publishing and installation](publishing-and-installation.md).
+input model](controller-input.md), [widget capabilities](capabilities.md), and
+[GBSS reference](gbss.md). For packaging, GitHub Release publishing, hash
+pinning, and local or remote installation, read [publishing and
+installation](publishing-and-installation.md).

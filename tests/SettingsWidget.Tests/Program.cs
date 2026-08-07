@@ -1,5 +1,7 @@
 using GameBarAlternative.FirstPartyWidgets.Settings;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
@@ -18,6 +20,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Diagnostics report invalid theme packages", InvalidThemeDiagnostics),
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
+    ("Permissions use nested controller scopes and bounded package pages", PermissionScopesAndPagination),
+    ("Capability grant confirms and deny revokes atomically", GrantAndRevoke),
+    ("Consent decisions isolate package publisher identities", PublisherIsolation),
+    ("Undeclared capabilities and decisions are never actionable", UndeclaredCapabilitiesAreHidden),
+    ("Malformed catalog and consent fail closed with diagnostics", MalformedPermissionStateFailsClosed),
+    ("Permission catalog reloads only on activation", PermissionActivationReload),
+    ("First-party packages are never auto-granted", FirstPartyIsNotAutoGranted),
     ("Manifest and default GBSS validate", ShippedAssetsValidate),
 };
 
@@ -46,7 +55,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.diagnostics", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.permissions", "category.diagnostics", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
@@ -273,6 +282,211 @@ static async Task StableBoundFocus()
     Assert.Valid(overlay);
 }
 
+static async Task PermissionScopesAndPagination()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    for (var index = 0; index < 6; index++)
+        WriteInstalledWidget(catalogRoot, $"dev.test.widget{index}", $"dev.publisher{index}",
+            $"Widget {index}", [PlatformCapabilities.AudioSessionsReadV1],
+            [PlatformCapabilities.AudioSessionsControlV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    var first = Snapshot(widget);
+    Assert.Equal("permissions.packages", first.ActiveInputScopeId);
+    Assert.HasShortcut(first.Root, "permissions.packages", ControllerButton.B, "back");
+    Assert.HasShortcut(first.Root, "permissions.packages", ControllerButton.RightBumper,
+        "permission.next-page");
+    Assert.Equal(5, Buttons(first.Root).Count(button =>
+        button.Id.StartsWith("permission.item.", StringComparison.Ordinal)));
+    await Action(widget, "permission.next-page");
+    var second = Snapshot(widget);
+    Assert.Equal("permission.item.5", second.InitialFocusId);
+    Assert.HasShortcut(second.Root, "permissions.packages", ControllerButton.LeftBumper,
+        "permission.previous-page");
+
+    await Action(widget, "permission.select.5");
+    var capabilities = Snapshot(widget);
+    Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
+    Assert.Equal("capabilities.package", capabilities.ActiveInputScopeId);
+    Assert.HasShortcut(capabilities.Root, "capabilities.package", ControllerButton.B, "back");
+    Assert.Contains("Required", Button(capabilities.Root, "capability.item.0").Text!);
+    Assert.Contains("Optional", Button(capabilities.Root, "capability.item.1").Text!);
+    Assert.Contains("Not decided", Button(capabilities.Root, "capability.item.0").Text!);
+
+    await Action(widget, "capability.select.0");
+    var decision = Snapshot(widget);
+    Assert.Equal("capability.decision", decision.ActiveInputScopeId);
+    Assert.HasShortcut(decision.Root, "capability.decision", ControllerButton.B, "back");
+    Assert.True(Buttons(decision.Root).Any(button => button.Id == "capability.grant"),
+        "Grant confirmation action is missing.");
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.Permissions, widget.CurrentPage);
+    Assert.Valid(second);
+    Assert.Valid(capabilities);
+    Assert.Valid(decision);
+}
+
+static async Task GrantAndRevoke()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    WriteInstalledWidget(catalogRoot, "dev.test.audio", "dev.publisher.audio", "Audio",
+        [PlatformCapabilities.AudioSessionsReadV1], []);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    var invalidations = 0;
+    widget.Invalidated += (_, _) => invalidations++;
+    await Activate(widget);
+    await Action(widget, "capability.grant");
+    Assert.Equal((ConsentDecision?)null, await consent.GetDecisionAsync(
+        new("dev.test.audio", "dev.publisher.audio", "test"),
+        PlatformCapabilities.AudioSessionsReadV1));
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    await Action(widget, "capability.select.0");
+    Assert.Equal((ConsentDecision?)null, await consent.GetDecisionAsync(
+        new("dev.test.audio", "dev.publisher.audio", "test"),
+        PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Contains("Confirm granting", Text(Snapshot(widget).Root, "capability.confirmation").Text!);
+
+    var beforeGrant = invalidations;
+    await Action(widget, "capability.grant");
+    Assert.Equal(ConsentDecision.Grant, await consent.GetDecisionAsync(
+        new("dev.test.audio", "dev.publisher.audio", "test"),
+        PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Contains("Granted", Text(Snapshot(widget).Root, "capability.state").Text!);
+    Assert.True(invalidations > beforeGrant, "Grant did not invalidate Settings UI.");
+
+    await Action(widget, "capability.deny");
+    Assert.Equal(ConsentDecision.Deny, await consent.GetDecisionAsync(
+        new("dev.test.audio", "dev.publisher.audio", "test"),
+        PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Contains("Denied", Text(Snapshot(widget).Root, "capability.state").Text!);
+}
+
+static async Task PublisherIsolation()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    const string packageId = "dev.test.network";
+    WriteInstalledWidget(catalogRoot, packageId, "dev.publisher.real", "Network",
+        [PlatformCapabilities.NetworkReadV1], []);
+    await consent.SetDecisionAsync(new(packageId, "dev.publisher.impostor", "test"),
+        PlatformCapabilities.NetworkReadV1, ConsentDecision.Grant);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    Assert.Contains("Not decided", Button(Snapshot(widget).Root, "capability.item.0").Text!);
+    await Action(widget, "capability.select.0");
+    await Action(widget, "capability.grant");
+    Assert.Equal(ConsentDecision.Grant, await consent.GetDecisionAsync(
+        new(packageId, "dev.publisher.real", "test"), PlatformCapabilities.NetworkReadV1));
+    Assert.Equal(ConsentDecision.Grant, await consent.GetDecisionAsync(
+        new(packageId, "dev.publisher.impostor", "test"), PlatformCapabilities.NetworkReadV1));
+    Assert.Equal(2, (await consent.LoadAsync()).Entries.Count);
+}
+
+static async Task UndeclaredCapabilitiesAreHidden()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    WriteInstalledWidget(catalogRoot, "dev.test.minimal", "dev.publisher.minimal", "Minimal",
+        [PlatformCapabilities.AudioSessionsReadV1], ["network.client:example.test"]);
+    await consent.SetDecisionAsync(new("dev.test.minimal", "dev.publisher.minimal", "test"),
+        PlatformCapabilities.AudioSessionsControlV1, ConsentDecision.Grant);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    var packages = Snapshot(widget);
+    Assert.Contains("Hidden: 1 unknown declarations, 1 undeclared",
+        Text(packages.Root, "permissions.hidden").Text!);
+    await Action(widget, "permission.select.0");
+    var capabilities = Snapshot(widget);
+    Assert.Equal(1, Buttons(capabilities.Root).Count(button =>
+        button.Id.StartsWith("capability.item.", StringComparison.Ordinal)));
+    Assert.True(!Nodes(capabilities.Root).Any(node =>
+        node.Text?.Contains("Control audio", StringComparison.OrdinalIgnoreCase) == true),
+        "Undeclared stored grant became actionable.");
+}
+
+static async Task MalformedPermissionStateFailsClosed()
+{
+    using var temp = new TemporaryDirectory();
+    var badCatalog = Path.Combine(temp.Path, "bad-catalog");
+    var badPackage = Path.Combine(badCatalog, "packages", "dev.test.bad", "1.0.0");
+    Directory.CreateDirectory(badPackage);
+    await File.WriteAllTextAsync(Path.Combine(badPackage, "manifest.json"), "{ invalid");
+    var widget = CreateWithPermissions(temp.Path, badCatalog,
+        new ConsentStore(Path.Combine(temp.Path, "consent-a")));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    var catalogFailure = Snapshot(widget);
+    Assert.Contains("invalid_manifest", Text(catalogFailure.Root, "permissions.help").Text!);
+    Assert.True(!Buttons(catalogFailure.Root).Any(button =>
+        button.Id.StartsWith("permission.item.", StringComparison.Ordinal)),
+        "Malformed catalog exposed actionable packages.");
+
+    var validCatalog = Path.Combine(temp.Path, "valid-catalog");
+    WriteInstalledWidget(validCatalog, "dev.test.valid", "dev.publisher.valid", "Valid",
+        [PlatformCapabilities.AudioSessionsReadV1], []);
+    var consentRoot = Path.Combine(temp.Path, "consent-b");
+    Directory.CreateDirectory(consentRoot);
+    await File.WriteAllTextAsync(Path.Combine(consentRoot, "consent-v1.json"), "{ invalid");
+    var consentFailureWidget = CreateWithPermissions(Path.Combine(temp.Path, "settings-b"),
+        validCatalog, new ConsentStore(consentRoot));
+    await Activate(consentFailureWidget);
+    await Action(consentFailureWidget, "open.permissions");
+    await Action(consentFailureWidget, "permission.select.0");
+    var consentFailure = Snapshot(consentFailureWidget);
+    Assert.Contains("invalid_consent", Text(consentFailure.Root, "capabilities.page-label").Text!);
+    Assert.Equal(true, Button(consentFailure.Root, "capability.item.0").IsDisabled);
+}
+
+static async Task PermissionActivationReload()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    Assert.True(!Buttons(Snapshot(widget).Root).Any(button =>
+        button.Id.StartsWith("permission.item.", StringComparison.Ordinal)),
+        "Empty catalog unexpectedly contained a package.");
+    WriteInstalledWidget(catalogRoot, "dev.test.later", "dev.publisher.later", "Later",
+        [PlatformCapabilities.NetworkReadV1], []);
+    await Task.Delay(80);
+    Assert.True(!Buttons(Snapshot(widget).Root).Any(button =>
+        button.Id.StartsWith("permission.item.", StringComparison.Ordinal)),
+        "Catalog changed without a new activation.");
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    Assert.True(Buttons(Snapshot(widget).Root).Any(button => button.Id == "permission.item.0"),
+        "Catalog did not reload on the next activation.");
+}
+
+static async Task FirstPartyIsNotAutoGranted()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    WriteInstalledWidget(catalogRoot, "org.gbar.firstparty.example", "org.gbar.firstparty", "First party",
+        [PlatformCapabilities.AudioSessionsReadV1], []);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+    Assert.Equal(0, (await consent.LoadAsync()).Entries.Count);
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    Assert.Contains("Not decided", Button(Snapshot(widget).Root, "capability.item.0").Text!);
+}
+
 static async Task ShippedAssetsValidate()
 {
     var project = ProjectDirectory();
@@ -290,6 +504,19 @@ static SettingsWidget Create(string root)
 {
     var paths = new PlatformSettingsPaths(root);
     return new SettingsWidget(new PlatformSettingsStore(paths), new ThemeCatalog(paths));
+}
+
+static SettingsWidget CreateWithPermissions(
+    string settingsRoot,
+    string catalogRoot,
+    ConsentStore consentStore)
+{
+    var paths = new PlatformSettingsPaths(settingsRoot);
+    return new SettingsWidget(
+        new PlatformSettingsStore(paths),
+        new ThemeCatalog(paths),
+        new WidgetCatalog(catalogRoot),
+        consentStore);
 }
 
 static PlatformSettingsStore Store(string root) => new(new PlatformSettingsPaths(root));
@@ -333,6 +560,38 @@ static void WriteTheme(string root, string id, string name, string version, bool
     File.WriteAllText(Path.Combine(directory, "theme.json"),
         $$"""{"schemaVersion":1,"id":"{{manifestId}}","name":"{{name}}","version":"{{version}}","entryFile":"theme.gbss"}""");
     File.WriteAllText(Path.Combine(directory, "theme.gbss"), "button { color: #ffffff; }");
+}
+
+static void WriteInstalledWidget(
+    string catalogRoot,
+    string id,
+    string publisher,
+    string name,
+    IReadOnlyList<string> required,
+    IReadOnlyList<string> optional)
+{
+    const string version = "1.0.0";
+    var directory = Path.Combine(catalogRoot, "packages", id, version);
+    var payload = Path.Combine(directory, "payload");
+    Directory.CreateDirectory(payload);
+    var manifest = new WidgetManifest
+    {
+        Id = id,
+        Publisher = publisher,
+        Name = name,
+        Version = version,
+        HostApi = new("1.0", 1),
+        Entrypoint = new("dotnet-worker", "payload/Widget.dll", "Dev.Test.Widget"),
+        Permissions = required,
+        OptionalPermissions = optional,
+        BackgroundPolicy = "suspend",
+        ResourceRequest = new(32, 1),
+        Architectures = ["x64"],
+    };
+    var errors = WidgetManifestValidator.Validate(manifest);
+    Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
+    File.WriteAllBytes(Path.Combine(directory, "manifest.json"), ManifestJson.Serialize(manifest));
+    File.WriteAllBytes(Path.Combine(payload, "Widget.dll"), [0x47, 0x42, 0x41]);
 }
 
 static string ProjectDirectory()

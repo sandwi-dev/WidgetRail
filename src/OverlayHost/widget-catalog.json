@@ -3,6 +3,8 @@
   "widgets": [
     {
       "id": "yt-music",
+      "packageId": "org.gbar.firstparty.ytmusic",
+      "publisherId": "org.gbar.firstparty",
       "name": "YT Music",
       "instanceId": "yt-music.default",
       "icon": "music",
@@ -10,10 +12,13 @@
       "styleFile": "runtime/YtMusic/styles/default.gbss",
       "memoryLimitMb": 64,
       "workerArguments": [],
+      "declaredCapabilities": [],
       "quickActions": []
     },
     {
       "id": "settings",
+      "packageId": "org.gbar.firstparty.settings",
+      "publisherId": "org.gbar.firstparty",
       "name": "Settings",
       "instanceId": "settings.default",
       "icon": "settings",
@@ -21,6 +26,7 @@
       "styleFile": "runtime/Settings/styles/default.gbss",
       "memoryLimitMb": 48,
       "workerArguments": [],
+      "declaredCapabilities": [],
       "quickActions": []
     }
   ]

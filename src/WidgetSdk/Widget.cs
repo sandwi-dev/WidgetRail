@@ -109,11 +109,19 @@ public abstract partial class Widget
     private CancellationTokenSource? _activeLifetime;
     private CancellationTokenSource? _stateLifetime = new();
     private ViewSnapshot? _latestSnapshot;
+    private WidgetHostServices _hostServices = WidgetHostServices.Unavailable;
+    private int _hostServicesAttached;
 
     public event EventHandler<WidgetInvalidatedEventArgs>? Invalidated;
 
     public long Revision => Interlocked.Read(ref _revision);
     public bool IsActive => Volatile.Read(ref _isActive) != 0;
+
+    /// <summary>
+    /// Runtime-injected platform services. The capability client is unavailable
+    /// in previews/tests unless the harness supplies a fake explicitly.
+    /// </summary>
+    protected WidgetHostServices HostServices => Volatile.Read(ref _hostServices);
 
     /// <summary>
     /// The current runtime lifecycle state. The runtime owns all transitions;
@@ -144,6 +152,16 @@ public abstract partial class Widget
         Volatile.Read(ref _activeLifetime)?.Token ?? InactiveCancellationToken;
 
     public abstract WidgetView Render();
+
+    internal void AttachHostServices(WidgetHostServices services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        if (Volatile.Read(ref _created) != 0 ||
+            Interlocked.CompareExchange(ref _hostServicesAttached, 1, 0) != 0)
+            throw new InvalidOperationException(
+                "Widget host services must be attached exactly once before creation.");
+        Volatile.Write(ref _hostServices, services);
+    }
 
     /// <summary>
     /// Called exactly once while the widget is in Created. Start process-lifetime

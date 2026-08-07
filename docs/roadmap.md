@@ -106,6 +106,8 @@ No capture, Discord, marketplace, web widgets, or general community code yet.
 - `gbar new`, `gbar dev`, validation, packaging, and input replay
 - State API, the five-state host-authoritative lifecycle, crash recovery,
   explicit lifecycle-policy controls, and resource reporting
+- Typed transport-neutral audio/network host services over authenticated,
+  identity/declaration/consent/lifecycle-bound local broker transport
 - One built-in widget and one out-of-process sample implementing equivalent behavior
 - Controller-only and accessibility conformance tests
 
@@ -113,8 +115,9 @@ Developer mode is local and unsigned but remains isolated. Public distribution r
 
 ## Phase 3: security and useful first-party widgets
 
-- AppContainer/Win32 isolation and production capability-broker integration
-  (the isolated v1 contract/consent/simulator foundation is implemented)
+- AppContainer/Win32 isolation and real provider security work (the typed v1
+  SDK, authenticated broker transport, controller consent, and simulator path
+  are implemented)
 - Signed packages, atomic update, rollback, and crash-loop disable
 - Malicious/abusive widget test corpus
 - Performance widget
@@ -128,8 +131,9 @@ Every first-party widget contributes a focused SDK example and regression suite.
 ### First-party system-control reference widgets
 
 Audio Mixer and Network Controls begin only after the generic declarative widget
-path, controller Settings/global-theme foundation, and brokered capability
-boundary work end to end. They must be ordinary first-party packages built on
+path, controller Settings/global-theme foundation, and real-provider security/
+privacy gates. The typed broker and consent path already works against a
+simulator. The widgets must be ordinary first-party packages built on
 the public SDK—not special panels hard-coded into `OverlayHost`. Any primitive
 or broker API they need becomes documented, testable platform surface that
 community widgets can request under the same permission policy.
@@ -142,8 +146,12 @@ a high-frequency polling loop. Its production scope is:
   packaging/minimum-version spike, switching;
 - per-application audio sessions with volume and mute;
 - microphone mute and level where the broker can expose them safely; and
-- up to three context-appropriate dashboard quick actions, such as master mute
-  and bounded volume down/up.
+- a future separately reviewed host-mediated dashboard-control path, if needed.
+
+Version-1 broker control grants are Interactive-only. Do not route master mute,
+volume, saved-network switching, or another general control through a Visible
+dashboard quick action; that would require a distinct bounded host-mediated
+authority and security review.
 
 The host broker owns OS handles, COM lifetime, device/session observation,
 permission policy, and sanitized identity. The widget receives bounded semantic
@@ -165,8 +173,9 @@ continuously polling adapters. Its initial production scope is:
 - Ethernet and Wi-Fi connection state;
 - current network and Wi-Fi signal quality;
 - controller selection among already saved Wi-Fi profiles; and
-- narrowly reviewed quick controls that cannot silently disclose credentials
-  or connect to an unreviewed network.
+- no capability-backed dashboard control in version 1; any future quick control
+  needs separate host-mediated authority and must not silently disclose
+  credentials or connect to an unreviewed network.
 
 Password entry, editing/creating Wi-Fi profiles, captive-portal interaction,
 and exposing stored network keys are explicitly outside the initial scope. The
@@ -232,9 +241,9 @@ Exit criteria for both widgets:
 
 After the current prototype foundation, the product order is: finish generic
 widget rendering and the installed-package review/reload experience; finish
-the remaining accessibility/global-theme evidence; connect capability consent/
-broker transport and stronger worker isolation; then build Audio Mixer and
-Network Controls through those public surfaces. Do not use either widget to
+the remaining accessibility/global-theme evidence; add stronger worker
+isolation and real Windows provider backends; then build Audio Mixer and Network
+Controls through those public surfaces. Do not use either widget to
 justify a private host API that external widgets cannot exercise.
 
 The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.

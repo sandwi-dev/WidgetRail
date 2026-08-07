@@ -238,12 +238,37 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     {
         BrokerEventSubscription[] subscriptions;
         lock (_gate) subscriptions = _subscriptions.ToArray();
+        ConsentDocument document;
+        try
+        {
+            document = await _consentStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is BrokerException or IOException or
+                                          UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            RevokeSubscriptions();
+            return;
+        }
+
         foreach (var subscription in subscriptions)
         {
-            var decision = await _consentStore.GetDecisionAsync(
-                _identity, subscription.CapabilityId, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var decision = document.Entries.FirstOrDefault(entry =>
+                entry.PackageId == _identity.PackageId &&
+                entry.PublisherId == _identity.PublisherId &&
+                entry.CapabilityId == subscription.CapabilityId)?.Decision;
             if (decision != ConsentDecision.Grant) subscription.Revoke();
         }
+    }
+
+    internal void RevokeSubscriptions()
+    {
+        lock (_gate)
+            foreach (var subscription in _subscriptions) subscription.Revoke();
     }
 
     private async Task<BrokerCapabilityDefinition> AuthorizeAsync(

@@ -1,5 +1,6 @@
 using System.Globalization;
 using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.PlatformBroker;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -36,8 +37,11 @@ internal static class Program
                 settingsPaths,
                 new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
             await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
+            var consentStore = new ConsentStore(
+                Path.Combine(settingsPaths.RootDirectory, "consent"));
+            var platformBackend = new SimulatedPlatformBrokerBackend();
             await using var server = new WidgetBridgeServer(
-                pipeName, catalog, maximumBytes, appearance);
+                pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

@@ -35,6 +35,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controller queue rejects saturation without waiting", ControllerQueueIsBounded),
     ("Queued controller failures are observable without crashing", ControllerQueueFailuresAreObservable),
     ("Unexpected worker exit is reported and recoverable", CrashRecovery),
+    ("Host companion sessions are recreated and lifecycle-restored after crashes", CompanionSessionsFollowWorkerRestarts),
     ("Request timeout terminates a hung worker", HungWorkerTimesOut),
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
     ("Worker destruction is bounded when widget cleanup hangs", DestroyIsBounded),
@@ -542,6 +543,42 @@ static async Task CrashRecovery()
         Assert.Equal((uint)1, client.AppliedJobActiveProcessLimit);
 }
 
+static async Task CompanionSessionsFollowWorkerRestarts()
+{
+    var sessions = new List<ProbeCompanionSession>();
+    var client = CreateClient(
+        maximumRestarts: 1,
+        companionFactory: () =>
+        {
+            var session = new ProbeCompanionSession();
+            sessions.Add(session);
+            return session;
+        });
+    try
+    {
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+        Assert.Equal(1, sessions.Count);
+        Assert.SequenceEqual(
+            new[] { WidgetLifecycleState.Visible },
+            sessions[0].LifecycleStates);
+
+        await Assert.ThrowsAnyAsync(() =>
+            client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+        _ = await client.GetSnapshotAsync();
+
+        Assert.Equal(2, sessions.Count);
+        Assert.True(sessions[0].Disposed, "Restart did not dispose the previous companion session.");
+        Assert.SequenceEqual(
+            new[] { WidgetLifecycleState.Visible },
+            sessions[1].LifecycleStates);
+    }
+    finally
+    {
+        await client.DisposeAsync();
+    }
+    Assert.True(sessions[1].Disposed, "Client disposal left its companion session alive.");
+}
+
 static async Task HungWorkerTimesOut()
 {
     await using var client = CreateClient(requestTimeout: TimeSpan.FromMilliseconds(250));
@@ -575,7 +612,8 @@ static WidgetProcessClient CreateClient(
     int maximumRestarts = 2,
     TimeSpan? requestTimeout = null,
     IReadOnlyList<string>? extraArguments = null,
-    long memoryLimitBytes = 64L * 1024 * 1024)
+    long memoryLimitBytes = 64L * 1024 * 1024,
+    Func<IWidgetProcessCompanionSession>? companionFactory = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
     return new WidgetProcessClient(new WidgetProcessOptions
@@ -588,6 +626,7 @@ static WidgetProcessClient CreateClient(
         MaximumRestartAttempts = maximumRestarts,
         MaximumMessageBytes = 64 * 1024,
         MemoryLimitBytes = memoryLimitBytes,
+        CompanionSessionFactory = companionFactory,
     });
 }
 
@@ -782,6 +821,34 @@ file sealed class HangingDestroyWidget : Widget
         await Task.Delay(Timeout.InfiniteTimeSpan, CancellationToken.None);
 }
 
+file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
+{
+    public IReadOnlyList<string> WorkerArguments { get; } = [];
+    public List<WidgetLifecycleState> LifecycleStates { get; } = [];
+    public bool Disposed { get; private set; }
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    public Task SetLifecycleStateAsync(
+        WidgetLifecycleState state,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LifecycleStates.Add(state);
+        return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Disposed = true;
+        return ValueTask.CompletedTask;
+    }
+}
+
 file static class Assert
 {
     public static void True(bool value, string message)
@@ -795,6 +862,12 @@ file static class Assert
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
             throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
+    }
+
+    public static void SequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actual)
+    {
+        if (!expected.SequenceEqual(actual))
+            throw new InvalidOperationException("Sequences differ.");
     }
 
     public static async Task<T> ThrowsAsync<T>(Func<Task> action) where T : Exception

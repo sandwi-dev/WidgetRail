@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Cryptography;
 using System.Text;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetStyling;
@@ -30,12 +31,15 @@ public sealed record BridgeWidgetDescriptor
 internal sealed record ConfiguredWidget
 {
     public required string Id { get; init; }
+    public required string PackageId { get; init; }
+    public required string PublisherId { get; init; }
     public required string Name { get; init; }
     public required string InstanceId { get; init; }
     public WidgetGlyph Icon { get; init; } = WidgetGlyph.Connection;
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
+    public IReadOnlyList<string> DeclaredCapabilities { get; init; } = [];
     /// <summary>Trusted host policy; worker manifests and IPC cannot override it.</summary>
     public int MemoryLimitMb { get; init; } = 64;
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
@@ -112,11 +116,21 @@ public sealed class BridgeCatalog
         foreach (var source in document.Widgets)
         {
             ValidateIdentifier(source.Id, "widget ID");
+            ValidatePackageIdentity(source.PackageId, "package ID");
+            ValidatePackageIdentity(source.PublisherId, "publisher ID");
             ValidateIdentifier(source.InstanceId, "instance ID");
             ValidateLabel(source.Name, "widget name");
             if (source.WorkerArguments is null || source.WorkerArguments.Count > 64 ||
                 source.WorkerArguments.Any(argument => argument is null || argument.Length > 4096))
                 throw new BridgeCatalogException($"Widget '{source.Id}' has invalid worker arguments.");
+            if (source.DeclaredCapabilities is null || source.DeclaredCapabilities.Count > 32 ||
+                source.DeclaredCapabilities.Any(capability =>
+                    string.IsNullOrWhiteSpace(capability) || capability.Length > 128 ||
+                    !PlatformCapabilities.TryGet(capability, out _)) ||
+                source.DeclaredCapabilities.Distinct(StringComparer.Ordinal).Count() !=
+                    source.DeclaredCapabilities.Count)
+                throw new BridgeCatalogException(
+                    $"Widget '{source.Id}' has invalid declared capabilities.");
             if (source.MemoryLimitMb is < 16 or > 256)
                 throw new BridgeCatalogException(
                     $"Widget '{source.Id}' memoryLimitMb must be between 16 and 256.");
@@ -197,9 +211,15 @@ public sealed class BridgeCatalog
                 warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' is incompatible with this host and was ignored.");
                 continue;
             }
-            if (manifest.Permissions.Count != 0)
+            var declaredCapabilities = manifest.Permissions
+                .Concat(manifest.OptionalPermissions)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            if (declaredCapabilities.Any(capability =>
+                    !PlatformCapabilities.TryGet(capability, out _)))
             {
-                warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' requires capabilities that are not yet broker-connected and was ignored.");
+                warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' declares an unsupported capability and was ignored.");
                 continue;
             }
             if (!File.Exists(workerHost))
@@ -220,6 +240,8 @@ public sealed class BridgeCatalog
                 style = CompileTheme(new ConfiguredWidget
                 {
                     Id = manifest.Id,
+                    PackageId = manifest.Id,
+                    PublisherId = manifest.Publisher,
                     Name = manifest.Name,
                     InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
                     WorkerExecutable = workerHost,
@@ -235,6 +257,8 @@ public sealed class BridgeCatalog
             combined.Add(new ConfiguredWidget
             {
                 Id = manifest.Id,
+                PackageId = manifest.Id,
+                PublisherId = manifest.Publisher,
                 Name = manifest.Name,
                 InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
                 Icon = WidgetGlyph.Connection,
@@ -245,6 +269,7 @@ public sealed class BridgeCatalog
                     "--widget-assembly", assembly,
                     "--widget-type", manifest.Entrypoint.Type,
                 ],
+                DeclaredCapabilities = declaredCapabilities,
                 StyleFile = styleFile,
                 // Community manifests describe expected usage but do not set
                 // enforcement policy. The trusted host owns this fixed cap.
@@ -299,6 +324,16 @@ public sealed class BridgeCatalog
     private static void ValidateLabel(string? value, string label)
     {
         if (string.IsNullOrWhiteSpace(value) || value.Length > 256)
+            throw new BridgeCatalogException($"The {label} is invalid.");
+    }
+
+    private static void ValidatePackageIdentity(string? value, string label)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 128 ||
+            value.Split('.').Length < 2 ||
+            !value.Split('.').All(segment => segment.Length > 0 &&
+                char.IsAsciiLetterOrDigit(segment[0]) &&
+                segment.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_')))
             throw new BridgeCatalogException($"The {label} is invalid.");
     }
 

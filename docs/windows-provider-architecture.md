@@ -1,7 +1,7 @@
 # Windows provider architecture: Audio Mixer and Network Controls
 
-Status: **broker contract/simulator foundation implemented; real Windows
-providers and end-to-end widget access remain planned**. This note uses
+Status: **typed SDK, authenticated broker transport, controller consent, and
+simulator path implemented; real Windows providers remain planned**. This note uses
 Microsoft documentation as the API authority. Items labeled **Documented
 fact** describe published Windows behavior. Items labeled **Platform design**
 are Game Bar Alternative decisions; their implementation status is called out
@@ -48,10 +48,13 @@ state, and lifecycle on each operation. Read operations are allowed only while
 Visible or Interactive; control operations require Interactive. Destroying
 revokes subscriptions, while Background retains only the latest bounded event.
 
-This is an isolated managed contract with a deterministic backend, not a
-widget-accessible OS service. No real provider should be reachable until the
-bridge transport, controller consent/denial/revocation UI, and audit surface
-work end to end.
+The typed contract is connected end to end through the generic worker host,
+bridge-owned authenticated broker companion, Settings consent flow, and
+deterministic backend. It is callable by declared/granted widgets but is not a
+working OS service: the production bridge still supplies only
+`SimulatedPlatformBrokerBackend`. No real provider should be connected until
+the remaining provider, audit, privacy, churn, and isolation gates below pass.
+See [widget capabilities](capabilities.md) for the author-facing API.
 
 ## Audio provider
 
@@ -276,26 +279,26 @@ Optional Windows integration tests run only on an explicitly opted-in machine:
 
 ## Implementation gates
 
-The managed foundation now supplies versioned bounded request/result/event
-contracts, a closed capability vocabulary, identity/manifest/consent/lifecycle
-checks, sanitized DTO validation, durable consent storage, coalesced
+The managed foundation now supplies typed SDK services/DTOs, versioned bounded
+request/result/event contracts, nonce/identity-bound pipe transport, a closed
+capability vocabulary, manifest/consent/lifecycle checks, controller grant/
+deny/revoke UI, sanitized DTO validation, durable consent storage, coalesced
 subscriptions, and an initial simulator. Windows workers also have pre-launch
 Job Object containment with a trusted memory ceiling, one-process limit, and
-kill-on-close cleanup. These are necessary building blocks, not end-to-end OS
-integration.
+kill-on-close cleanup. These are necessary building blocks, not real OS
+integration or a complete hostile-code sandbox.
 
 Real OS providers remain planned until all of these exist:
 
-1. authenticated bridge/worker broker transport plus stale-revision command
-   rules;
-2. controller consent/denial/revocation UI and an audit surface;
-3. production provider identity and stronger community-worker isolation,
+1. stale-revision command rules and a security audit/history surface;
+2. production provider identity and stronger community-worker isolation,
    including the AppContainer decision;
-4. the full denial/churn/race simulator matrix above;
-5. opt-in Windows hardware tests and hidden/background wakeup measurements;
-6. a public supported output-routing decision; and
-7. privacy review proving that raw OS identifiers and secrets cannot cross the
+3. the full denial/churn/race simulator matrix above;
+4. opt-in Windows hardware tests and hidden/background wakeup measurements;
+5. a public supported output-routing decision; and
+6. privacy review proving that raw OS identifiers and secrets cannot cross the
    broker.
 
 Until those gates pass, Audio Mixer and Network Controls remain roadmap items,
-not callable SDK capabilities or working first-party widgets.
+not working first-party widgets. Their typed capability contracts currently
+exercise the simulator only.

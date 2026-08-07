@@ -126,6 +126,8 @@ The implemented root categories are:
   motion. With neither motion toggle selected, the explicit preference is
   `full`.
 - **Overlay:** interface scale and backdrop darkness in 5% steps.
+- **Permissions & capabilities:** installed packages, their supported required/
+  optional declarations, and explicit Grant/Deny/Not decided state.
 - **Diagnostics:** settings validity, total/invalid themes, and schema version.
 - **Reset:** a confirmation surface that atomically restores built-in theme,
   sizing, backdrop, and motion defaults.
@@ -159,6 +161,23 @@ between Visible and Interactive does not reload, Background cancels the active
 lifetime, and there is no periodic worker poll. Saves expose busy/completion or
 bounded error feedback. Malformed settings show safe defaults and provide a
 confirmed reset recovery path.
+
+The permission page uses three nested controller scopes: package list, package
+capabilities, and a capability decision/confirmation page. Package pages show
+five entries; capability pages show four; LB/RB paginate only within the active
+scope and B returns one level. Grant is accepted only from the active explicit
+confirmation page. Deny/revoke is immediate there. Decisions are atomically
+stored by package ID, publisher ID, and capability ID. Missing/malformed
+catalog or consent state disables actions and shows sanitized diagnostics;
+unknown declarations and stale/undeclared decisions are hidden. Required
+capabilities are not auto-granted, including for first-party packages.
+
+Installed package/permission state is refreshed with the other Settings state
+on activation, not by a polling loop. Manifest/catalog changes still require an
+overlay/bridge restart before they change a running worker's authenticated
+declaration set. Consent decisions are separate and do not require restart.
+See [widget capabilities](capabilities.md) for author behavior and the security
+boundary.
 
 The manifest requests no permissions, budgets 32 MB and 1 Hz, and declares
 `suspend` background policy metadata. Lifecycle-policy enforcement remains a

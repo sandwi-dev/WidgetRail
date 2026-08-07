@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Text.Json;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
@@ -12,7 +13,9 @@ public sealed class WidgetBridgeServer(
     string pipeName,
     BridgeCatalog catalog,
     int maximumMessageBytes = BridgeProtocol.DefaultMaximumMessageBytes,
-    PlatformAppearanceService? appearance = null) : IAsyncDisposable
+    PlatformAppearanceService? appearance = null,
+    ConsentStore? consentStore = null,
+    IPlatformBrokerBackend? platformBackend = null) : IAsyncDisposable
 {
     private readonly string _pipeName = ValidatePipeName(pipeName);
     private readonly BridgeCatalog _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -20,6 +23,8 @@ public sealed class WidgetBridgeServer(
         ? maximumMessageBytes
         : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
     private readonly PlatformAppearanceService? _appearance = appearance;
+    private readonly ConsentStore? _consentStore = consentStore;
+    private readonly IPlatformBrokerBackend? _platformBackend = platformBackend;
     private readonly ConcurrentDictionary<string, WidgetProcessClient> _clients = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private BridgeFrameChannel? _channel;
@@ -201,6 +206,9 @@ public sealed class WidgetBridgeServer(
                 MaximumMessageBytes = _maximumMessageBytes,
                 MaximumRestartAttempts = 2,
                 MemoryLimitBytes = checked((long)configured.MemoryLimitMb * 1024 * 1024),
+                CompanionSessionFactory = configured.DeclaredCapabilities.Count == 0
+                    ? null
+                    : CreateCompanionFactory(configured),
             });
             client.Invalidated += (_, revision) => _ = SendEventAsync(
                 BridgeMessageTypes.Invalidation,
@@ -228,6 +236,20 @@ public sealed class WidgetBridgeServer(
                 });
             return client;
         });
+    }
+
+    private Func<IWidgetProcessCompanionSession> CreateCompanionFactory(ConfiguredWidget configured)
+    {
+        if (_consentStore is null || _platformBackend is null)
+            throw new BridgeProtocolException(
+                $"Widget '{configured.Id}' requires platform capabilities, but the broker is unavailable.");
+        return () => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            _consentStore,
+            _platformBackend);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)

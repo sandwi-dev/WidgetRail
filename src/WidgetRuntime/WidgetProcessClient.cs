@@ -24,6 +24,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private WindowsWorkerJob? _windowsJob;
     private CancellationTokenSource? _sessionCancellation;
     private Task? _readerTask;
+    private IWidgetProcessCompanionSession? _companion;
+    private Task? _companionTask;
+    private WidgetLifecycleState _hostLifecycle = WidgetLifecycleState.Background;
     private long _requestId;
     private int _starts;
     private int _restartAttempts;
@@ -87,14 +90,21 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidateHostState(state);
-        if (state == WidgetLifecycleState.Background && !IsRunning) return;
-        var response = await RequestAsync(
+        if (state == WidgetLifecycleState.Background && !IsRunning)
+        {
+            _hostLifecycle = state;
+            return;
+        }
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        await SetCompanionLifecycleAsync(state, cancellationToken).ConfigureAwait(false);
+        var response = await RequestConnectedAsync(
             MessageTypes.SetWidgetLifecycle,
             new WidgetLifecyclePayload(state),
             cancellationToken).ConfigureAwait(false);
         if (response.Type != MessageTypes.Acknowledged)
             throw new WidgetProtocolViolationException(
                 $"Expected lifecycle acknowledgement, received '{response.Type}'.");
+        _hostLifecycle = state;
     }
 
     /// <summary>Compatibility API for callers using the former active/inactive model.</summary>
@@ -127,6 +137,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         _stopping = true;
+        if (_companion is not null)
+        {
+            try
+            {
+                await _companion.SetLifecycleStateAsync(
+                    WidgetLifecycleState.Destroying, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // Worker teardown remains bounded even if its companion already disconnected.
+            }
+        }
         if (IsRunning)
         {
             try
@@ -141,7 +163,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 TerminateWorker();
             }
         }
-        DisposeSession();
+        await DisposeSessionAsync().ConfigureAwait(false);
+        _hostLifecycle = WidgetLifecycleState.Background;
     }
 
     public void ResetCrashLoop() => Interlocked.Exchange(ref _restartAttempts, 0);
@@ -161,6 +184,12 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        return await RequestConnectedAsync(type, payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<RuntimeEnvelope> RequestConnectedAsync<T>(
+        string type, T payload, CancellationToken cancellationToken)
+    {
         var requestId = Interlocked.Increment(ref _requestId);
         var completion = new TaskCompletionSource<RuntimeEnvelope>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -218,7 +247,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 throw new WidgetProcessException("Widget restart limit has been reached.");
 
             TerminateWorker();
-            DisposeSession();
+            await DisposeSessionAsync().ConfigureAwait(false);
             _stopping = false;
             Interlocked.Exchange(ref _failureReported, 0);
             var currentSession = Interlocked.Increment(ref _sessionId);
@@ -230,6 +259,14 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             _channel = new LengthPrefixedJsonChannel(_pipe, _options.MaximumMessageBytes);
             _sessionCancellation = new CancellationTokenSource();
 
+            if (_options.CompanionSessionFactory is not null)
+            {
+                _companion = _options.CompanionSessionFactory()
+                    ?? throw new WidgetProcessException("Companion session factory returned null.");
+                ValidateCompanionArguments(_companion.WorkerArguments);
+                _companionTask = _companion.RunAsync(_sessionCancellation.Token);
+            }
+
             var startInfo = new ProcessStartInfo(_options.ExecutablePath)
             {
                 UseShellExecute = false,
@@ -238,6 +275,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             };
             foreach (var argument in _options.Arguments)
                 startInfo.ArgumentList.Add(argument);
+            if (_companion is not null)
+            {
+                foreach (var argument in _companion.WorkerArguments)
+                    startInfo.ArgumentList.Add(argument);
+            }
             startInfo.ArgumentList.Add("--widget-pipe");
             startInfo.ArgumentList.Add(pipeName);
             startInfo.ArgumentList.Add("--widget-instance");
@@ -284,15 +326,25 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 Payload = RuntimeJson.ToElement(new { }),
             }, timeout.Token).ConfigureAwait(false);
             _readerTask = ReadResponsesAsync(currentSession, _channel, _sessionCancellation.Token);
+            if (_hostLifecycle != WidgetLifecycleState.Background)
+            {
+                await SetCompanionLifecycleAsync(_hostLifecycle, timeout.Token).ConfigureAwait(false);
+                var lifecycleResponse = await RequestConnectedAsync(
+                    MessageTypes.SetWidgetLifecycle,
+                    new WidgetLifecyclePayload(_hostLifecycle),
+                    timeout.Token).ConfigureAwait(false);
+                if (lifecycleResponse.Type != MessageTypes.Acknowledged)
+                    throw new WidgetProtocolViolationException(
+                        $"Expected lifecycle acknowledgement, received '{lifecycleResponse.Type}'.");
+            }
         }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or
-            JsonException or WidgetProtocolViolationException or System.ComponentModel.Win32Exception or
-            WidgetProcessException)
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             ReportFailure(exception is WidgetProtocolViolationException
                 ? WidgetFailureReason.ProtocolViolation
                 : WidgetFailureReason.ConnectionFailed, exception);
             TerminateWorker();
+            await DisposeSessionAsync().ConfigureAwait(false);
             throw new WidgetProcessException("Widget worker connection failed.", exception);
         }
         finally
@@ -412,12 +464,22 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         _sessionCancellation?.Cancel();
     }
 
-    private void DisposeSession()
+    private async Task DisposeSessionAsync()
     {
         _sessionCancellation?.Cancel();
         _pipe?.Dispose();
         _process?.Dispose();
         _windowsJob?.Dispose();
+        if (_companion is not null)
+        {
+            try { await _companion.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        }
+        if (_companionTask is not null)
+        {
+            try { await _companionTask.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        }
         _sessionCancellation?.Dispose();
         _sessionCancellation = null;
         _readerTask = null;
@@ -425,6 +487,37 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         _channel = null;
         _process = null;
         _windowsJob = null;
+        _companion = null;
+        _companionTask = null;
+    }
+
+    private async Task SetCompanionLifecycleAsync(
+        WidgetLifecycleState state,
+        CancellationToken cancellationToken)
+    {
+        if (_companion is null) return;
+        try
+        {
+            await _companion.SetLifecycleStateAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            ReportFailure(WidgetFailureReason.TransportFailure, exception);
+            TerminateWorker();
+            throw new WidgetProcessException("Widget companion lifecycle update failed.", exception);
+        }
+    }
+
+    private static void ValidateCompanionArguments(IReadOnlyList<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (arguments.Count > 32 || arguments.Any(argument =>
+                argument is null || argument.Length == 0 || argument.Length > 4096))
+            throw new WidgetProcessException("Companion worker arguments are invalid.");
     }
 
     private static void ValidateHostState(WidgetLifecycleState state)
