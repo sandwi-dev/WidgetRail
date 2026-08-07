@@ -26,7 +26,12 @@ button.primary:focused {
 
 ## Selectors and cascade
 
-A selector is a single semantic compound: optional role, `#stable-id`, zero or more `.style-classes`, and the pseudo-states `:focused`, `:pressed`, `:selected`, or `:disabled`. Comma-separated selector lists are supported. Descendant/sibling combinators and attribute selectors are not.
+A selector is a single semantic compound: optional role, `#stable-id`, zero or more `.style-classes`, and the pseudo-states `:focused`, `:pressed`, `:selected`, `:disabled`, or `:busy`. Comma-separated selector lists are supported. Descendant/sibling combinators and attribute selectors are not. Disabled and Busy remain controller-focusable; these selectors style unavailable or pending activation without changing navigation membership.
+
+Published nodes may carry at most 32 unique style classes. Each class is at
+most 64 ASCII characters, begins with a letter or underscore, and then uses
+only letters, digits, underscores, or hyphens. The SDK checks the same grammar
+eagerly, and the protocol revalidates untrusted/raw snapshots.
 
 Specificity is deterministic: ID, then classes/pseudo-states, then semantic role. Equal specificity is resolved by document, rule, and declaration order. Imported documents appear before their importer. Resolved property maps enumerate keys in ordinal order.
 
@@ -81,8 +86,8 @@ distribution](theme-packaging.md); do not hand-author installed directories or
 substitute browser CSS tooling.
 
 The current bridge response publishes complete computed `base` and `focused`
-maps for every node. Snapshot `selected` and `disabled` state participates while
-computing both maps, so those rules can affect the current render. The language
-also parses `:pressed`, but there is no complete separate pressed/busy/dynamic
-state-map pipeline. Do not depend on transient pressed theming yet; semantic
-button state remains available to accessibility and controller routing.
+maps for every node. Snapshot `selected`, `disabled`, and `busy` state
+participates while computing both maps, so those rules can affect the current
+render. The language also parses `:pressed`, but there is no transient pressed
+state-map pipeline. Do not depend on pressed theming yet; the other semantic
+states remain available to styling, accessibility, and controller routing.

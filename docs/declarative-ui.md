@@ -20,10 +20,17 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include a semantic glyph. |
 | `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |
 | `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |
-| `UI.Progress(value, maximum, id, accessibilityLabel?)` | `progress` | Bounded progress where `0 <= value <= maximum` and `maximum > 0`. |
+| `UI.Progress(value, maximum, id, accessibilityLabel?)` | `progress` | Read-only bounded progress where `0 <= value <= maximum` and `maximum > 0`. |
+| `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, accessibilityLabel, accessibilityValue?, activationAction?)` | `slider` | Protocol-v3 controller value control with absolute requested values. |
 | `UI.Spacer(id)` | `spacer` | Layout spacing node. |
 | `UI.Image(httpsSource, id, accessibilityLabel, fit?)` | `image` | HTTPS image with required accessible alternative text. |
 | `UI.Icon(glyph, id, accessibilityLabel)` | `icon` | Host-rendered semantic vector icon from a closed enum. |
+| `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
+| `UI.Card(id, variant?, children...)` | `stack` | Nonfocusable raised/subtle/transparent grouping surface. |
+| `UI.SectionHeader(title, id, eyebrow?, description?, trailing?)` | `stack`, `row`, `text` | Stable title hierarchy with optional trailing content. |
+| `UI.StatusBadge(label, tone, id, glyph?)` | `row`, `icon`, `text` | Nonfocusable status that never relies on color alone. |
+| `UI.Divider(id)` | `spacer` | Decorative themeable separator. |
+| `UI.Alert(...)`, `UI.EmptyState(...)` | `stack`, content, optional `button` | Bounded guidance with zero or one recovery focus stop. |
 
 Stack, Row, and Scroll containers may call `.InputScope("scope-id")` to start a nested
 controller input surface. The root is always the default input scope, so a
@@ -54,7 +61,7 @@ Keep the Scroll ID and descendant button IDs stable across snapshots. Offset
 memory is isolated by exact widget runtime instance, active input scope, and
 Scroll container ID, so closing/reopening a widget or nested surface restores
 the focused row without leaking state to another version or modal. If a
-dynamic item disappears, host focus memory selects the enabled control nearest
+dynamic item disappears, host focus memory selects the focusable control nearest
 its prior tree position and the Scroll container reveals it. Runtime
 replacement clears both focus and scroll state.
 
@@ -146,9 +153,8 @@ UI.Stack("appearance-settings",
 ```
 
 `ToggleButton` renders visible `On`/`Off` text, a matching accessibility label,
-the semantic Check glyph, `.setting-toggle`, and selected state while on. The
-widget still owns the value: handle its action, update state, and call
-`Invalidate()`.
+`.setting-toggle`, and selected state while on. The widget still owns the
+value: handle its action, update state, and call `Invalidate()`.
 
 `Stepper` creates stable child IDs by appending `.label`, `.decrement`,
 `.value`, and `.increment` to its base ID. Keep the resulting IDs within the
@@ -168,6 +174,82 @@ Validate the domain in widget/host logic, then rebuild the composite from that
 authoritative value. A remains the activation button; D-pad and analog focus
 navigation continue through the normal host routing.
 
+The modern component helpers and their stable `gbar-*` class contracts are
+documented in [Controller UI component patterns](controller-ui-components.md).
+Use `.AddClasses(...)` to augment those semantic classes. `.Classes(...)`
+deliberately replaces the complete class list and is intended for primitives
+or authors who explicitly take over the component contract.
+
+## Controller-native Slider (protocol v3)
+
+Use `UI.Slider` for a value the controller can change directly. `Progress` is
+read-only and `Stepper` creates two focus stops; neither should be repurposed as
+a draggable or controller-adjustable track.
+
+```csharp
+var volume = UI.Slider(
+        value: _volume,
+        minimum: 0,
+        maximum: 1,
+        step: 0.05,
+        valueChangedAction: "player.volume.set",
+        id: "player.volume",
+        accessibilityLabel: "Player volume. Press A to mute",
+        accessibilityValue: $"{Math.Round(_volume * 100)}%",
+        activationAction: "player.mute.toggle")
+    .FocusUp("player.output")
+    .FocusDown("player.balance")
+    .Classes("volume-slider");
+```
+
+While the Slider is focused:
+
+- D-pad or left-stick Left/Right belongs to the Slider and adjusts by one
+  minimum-anchored step. It never escapes into horizontal focus navigation,
+  including at a range bound or while the control is unavailable.
+- Up/Down remains normal focus navigation. A Slider may declare only
+  `.FocusUp(...)` and `.FocusDown(...)`; horizontal focus neighbors are
+  rejected.
+- A invokes the optional `activationAction`. Without one, A is unhandled by
+  the Slider. This lets one focus stop expose a related discrete action such
+  as mute without adding an adjacent controller target.
+
+The host clamps and quantizes a transient presentation target, repaints it
+immediately, and sends that **absolute** target as
+`WidgetActionEvent.RequestedValue`. Authors must assign the requested value;
+do not increment the last widget value again:
+
+```csharp
+public override async ValueTask OnActionAsync(
+    WidgetActionEvent action,
+    CancellationToken cancellationToken = default)
+{
+    if (action.ActionId == "player.volume.set" &&
+        action.RequestedValue is { } requested)
+    {
+        _volume = requested; // already an absolute, quantized target
+        Invalidate();        // publish optimistic feedback before slow I/O
+        await _player.SetVolumeAsync(requested, cancellationToken);
+    }
+}
+```
+
+Ranges require finite `minimum < maximum`, an in-range value, and
+`0 < step <= maximum - minimum`. The accessibility label and localized,
+human-readable accessibility value are required. The SDK rejects a stale
+snapshot sequence, wrong input scope, wrong focus ID, non-finite/out-of-range
+target, a target off the declared step grid, or a value moving opposite the
+reported direction.
+
+Repeated input can arrive faster than a provider round trip. The SDK serializes
+controller actions and replaces only a contiguous pending tail for the exact
+same `(input scope, Slider ID, value-changed action ID)` with its newest
+absolute target. It never coalesces across a button action or another Slider,
+so action ordering is preserved. Leaving the active Visible/Interactive
+lifetime cancels the running action and discards pending values. Provider work
+must honor the supplied cancellation token and reconcile later authoritative
+events without letting stale data overwrite the pending intent.
+
 ## Stable IDs and limits
 
 Every node requires a unique stable ID containing only ASCII letters, digits,
@@ -177,8 +259,9 @@ migration.
 
 The current snapshot limits include:
 
-- protocol versions 1–2. Plain Stack/Row views remain v1; Scroll or explicit
-  surface hints opt that snapshot into v2 without changing package host API 1;
+- protocol versions 1–3. Plain Stack/Row views remain v1; Scroll or explicit
+  surface hints opt that snapshot into v2; a view containing Slider opts into
+  v3. These additive snapshot features do not change package host API 1;
 - at most 2,048 nodes;
 - at most 32 levels of tree depth;
 - strings up to 4,096 characters; and
@@ -190,14 +273,16 @@ are rejected before publication.
 
 ## Focus and actions
 
-Buttons are the current focusable element. Use `.FocusUp(id)`,
+Buttons and Sliders are focusable elements. Buttons use `.FocusUp(id)`,
 `.FocusDown(id)`, `.FocusLeft(id)`, and `.FocusRight(id)` when automatic spatial
-navigation would be ambiguous. `WidgetView.InitialFocusId` must name a
+navigation would be ambiguous. Sliders accept only Up/Down neighbors because
+they own Left/Right adjustment. `WidgetView.InitialFocusId` must name a
 focusable node.
 
-The host tries an enabled explicit neighbor first. If the declared target is
-unavailable because it is disabled or busy, or no neighbor was declared, the
-native renderer falls back to geometry from the last render. It favors a target
+The host tries an explicit focusable neighbor first. Disabled and busy controls
+remain focusable, so an asynchronous state change cannot teleport focus. If no
+neighbor was declared, the native renderer falls back to geometry from the
+last render. It favors a target
 whose perpendicular span overlaps the current button, then forward distance,
 lateral distance, and stable ID. It does not wrap focus at an edge.
 
@@ -220,16 +305,17 @@ return new WidgetView(
     InitialFocusId: "play");
 ```
 
-A pressed A activates the focused button through its `ActionId`. A shortcut
-can use the button's action or an explicit alternate action. Input resolves
+A pressed A activates a focused Button through its `ActionId`, or a Slider's
+optional activation action. A shortcut can use the button's action or an explicit alternate action. Input resolves
 against the latest host-rendered snapshot, not an unrendered state.
 
 Non-A shortcuts are scoped to the explicitly active input surface. Set
 `WidgetView.ActiveInputScopeId` when presenting a nested window; it defaults to
-the root's public scope ID. The SDK first checks the focused node, then searches
-only that published scope. It does not leak to a parent or sibling scope.
-Bindings are unique by button and event phase inside one scope, while separate
-nested scopes may reuse them:
+the root's public scope ID. The SDK first checks the focused node, then the
+active scope-root container. It never searches an arbitrary unfocused child and
+does not leak to a parent or sibling scope. A node may bind a button/phase only
+once; separate focused controls and separate nested scopes may reuse the same
+button because exact focus and active scope disambiguate them:
 
 ```csharp
 var root = UI.Stack("root",
@@ -263,20 +349,29 @@ ID outside the published scope before it resolves an action.
 The host owns current focus and remembers it per widget and scope. A widget
 should keep IDs stable and publish an `InitialFocusId` for fallback, not attempt
 to serialize current focus into its own state. On a new snapshot the host tries
-the remembered enabled button, then `InitialFocusId`, then the first enabled
-button in the active scope. A scope with no enabled buttons may remain focusless;
-its Stack/Row shortcut still resolves.
+the remembered focusable Button or Slider, then `InitialFocusId`, then the
+first focusable control in the active scope. A scope with no focusable controls
+may remain focusless; its Stack/Row/Scroll shortcut still resolves.
 
 ## Interaction state
 
 Buttons support `.Disabled(condition)`, `.Selected(condition)`, and
-`.Busy(condition)`. The states are renderer-neutral and allow the host to
-provide native visual and accessibility semantics. Disabled and busy buttons
-remain present but the default SDK routing will not activate them with A or a
-declared shortcut. Selected buttons remain activatable.
+`.Busy(condition)`. Sliders support Disabled and Busy. The states are
+renderer-neutral and allow the host to provide native visual and accessibility
+semantics. Disabled and busy controls remain in controller focus order, but the
+default SDK router suppresses their A activation, shortcut, and value-change
+actions. Selected buttons remain activatable.
 
-State properties are invalid on non-buttons. A true stateful button must have
-visible text or an accessibility label.
+Use Disabled for an action that is unavailable because of product state or
+permissions. Use Busy for bounded work already in flight. Neither state means
+hidden or non-navigable, and neither may trigger focus fallback. If a control
+must leave navigation, remove it from the semantic tree and provide a stable
+replacement focus target. A focused ID that survives a snapshot must retain
+focus through ordinary disabled/busy transitions.
+
+State properties are invalid on other node kinds. A true stateful button must
+have visible text or an accessibility label; every Slider requires both an
+accessible name and value.
 
 For a network-backed toggle, update the intended value immediately, render it
 with `.Selected(newValue).Busy(true)`, and call `Invalidate()` before awaiting
@@ -397,7 +492,11 @@ cleanup bounded.
 
 ## Styling
 
-Use `.Classes("primary", "danger")` to attach semantic GBSS classes. The host
-parses no CSS; the managed bridge compiles safe GBSS and returns typed computed
-values. Read the [GBSS reference](gbss.md) for selectors, allowed properties,
-imports, safety limits, and the current renderer-state caveats.
+Use `.Classes("primary", "danger")` to replace the semantic GBSS classes on a
+primitive. Use `.AddClasses("widget-accent")` for SDK composites so required
+`gbar-*` hooks are preserved. Both APIs enforce the GBSS identifier grammar,
+64-character class limit, 32-class node limit, and deterministic duplicate
+policy before snapshot publication; the protocol independently revalidates
+raw workers. The host parses no CSS; the managed bridge compiles safe GBSS and
+returns typed computed values. Read the [GBSS reference](gbss.md) for selectors,
+allowed properties, imports, safety limits, and renderer-state behavior.

@@ -23,6 +23,15 @@ gba::WidgetNode Button(const wchar_t* id, const bool disabled = false) {
     return node;
 }
 
+gba::WidgetNode Slider(const wchar_t* id, const bool disabled = false, const bool busy = false) {
+    gba::WidgetNode node;
+    node.id = id;
+    node.kind = L"slider";
+    node.isDisabled = disabled;
+    node.isBusy = busy;
+    return node;
+}
+
 gba::WidgetSnapshot Snapshot(const wchar_t* activeScope) {
     gba::WidgetSnapshot snapshot;
     snapshot.sequence = 1;
@@ -103,9 +112,25 @@ int main() {
     Check(gba::input::FindNodeInInputScope(modal, L"modal-first", L"modal") != nullptr,
           "active-surface controls are discoverable");
 
+    memory.Remember(L"widget", modal, L"modal-second");
     modal.root.children[2].children[1].isDisabled = true;
-    Check(memory.Restore(L"widget", modal) == L"modal-first",
-          "disabled remembered focus falls back safely");
+    Check(memory.Restore(L"widget", modal) == L"modal-second",
+          "disabled remembered button retains exact controller focus");
+    modal.root.children[2].children[1].isBusy = true;
+    Check(memory.Restore(L"widget", modal) == L"modal-second",
+          "busy disabled button remains a stable navigation target");
+
+    auto sliderSurface = Snapshot(L"root");
+    sliderSurface.root.children.insert(
+        sliderSurface.root.children.begin() + 1,
+        Slider(L"volume", false, false));
+    memory.Remember(L"slider-widget", sliderSurface, L"volume");
+    sliderSurface.root.children[1].isBusy = true;
+    Check(memory.Restore(L"slider-widget", sliderSurface) == L"volume",
+          "busy slider retains exact focus across snapshots");
+    sliderSurface.root.children[1].isDisabled = true;
+    Check(memory.Restore(L"slider-widget", sliderSurface) == L"volume",
+          "disabled slider remains navigable and retains exact focus");
 
     auto sessions = SessionList({
         L"session.game.mute", L"session.chat.mute", L"session.music.mute",

@@ -235,6 +235,12 @@ public sealed class WidgetWorkerServer
             throw new WidgetProtocolViolationException("Action source ID is missing or too long.");
         if (action.Sequence < 0 || action.MonotonicTimestampMicroseconds < 0)
             throw new WidgetProtocolViolationException("Action sequence and timestamp cannot be negative.");
+        if (action.RequestedValue is { } requested && !double.IsFinite(requested))
+            throw new WidgetProtocolViolationException("Requested action value must be finite.");
+        if (action.InputScopeId is { } actionScope &&
+            (actionScope.Length > 128 ||
+             !actionScope.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))
+            throw new WidgetProtocolViolationException("Action input scope ID is invalid.");
     }
 
     private static void ValidateControllerInput(ControllerInputEvent input)
@@ -244,6 +250,8 @@ public sealed class WidgetWorkerServer
             throw new WidgetProtocolViolationException("Focused element ID is too long.");
         if (input.Sequence < 0 || input.MonotonicTimestampMicroseconds < 0 || input.SnapshotSequence < 0)
             throw new WidgetProtocolViolationException("Input sequence and timestamp cannot be negative.");
+        if (input.RequestedValue is { } requested && !double.IsFinite(requested))
+            throw new WidgetProtocolViolationException("Requested controller value must be finite.");
         if (input.Context == ControllerInputContext.OpenWidget &&
             (input.SnapshotSequence <= 0 || string.IsNullOrWhiteSpace(input.ActiveInputScopeId) ||
              input.ActiveInputScopeId.Length > 128 ||

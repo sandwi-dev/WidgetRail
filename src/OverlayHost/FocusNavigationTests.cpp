@@ -34,7 +34,7 @@ int main() {
     Add(result, L"previous", {30, 55, 48, 48});
     Add(result, L"next", {182, 55, 48, 48});
     Add(result, L"like", {109, 132, 42, 42});
-    Add(result, L"disabled", {109, 190, 42, 42}, false);
+    Add(result, L"non-navigable", {109, 190, 42, 42}, false);
     Add(result, L"far-down", {300, 210, 42, 42});
     Add(result, L"modal-button", {109, 100, 42, 42}, true, L"modal");
 
@@ -45,11 +45,11 @@ int main() {
     Check(FindGeometricFocusTarget(L"play", NavigationDirection::Down, result) == L"like",
           "column navigation chooses like");
     Check(FindGeometricFocusTarget(L"like", NavigationDirection::Down, result) == L"far-down",
-          "disabled target is skipped");
+          "non-navigable target is skipped");
     Check(FindGeometricFocusTarget(L"previous", NavigationDirection::Up, result) == std::nullopt,
           "missing direction stays put");
-    Check(!gba::input::IsEnabledFocusTarget(L"disabled", result),
-          "disabled component is not focusable");
+    Check(!gba::input::IsEnabledFocusTarget(L"non-navigable", result),
+          "host-excluded component is not focusable");
     Check(FindGeometricFocusTarget(L"play", NavigationDirection::Down, result) != L"modal-button",
           "geometric fallback cannot cross nested input scopes");
     Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"play",
@@ -62,7 +62,7 @@ int main() {
           "clipped preferred focus recovers in deterministic tree order");
     result.hitRegions[0].enabled = false;
     Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"previous",
-          "clipped disabled focus cannot receive controller input");
+          "clipped host-excluded focus cannot receive controller input");
     result.focusRects.erase(L"previous");
     Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"next",
           "recovery skips controls clipped by a smaller viewport");

@@ -45,6 +45,10 @@ unbounded caches, or unnecessary helper processes.
 - The Audio Mixer and Network Controls references subscribe before their first
   read and reconcile from bounded events. YT Music limits its visible progress
   interpolation and companion reconciliation rates.
+- Repeated Slider changes carry absolute targets and coalesce only a contiguous
+  pending tail for the same active lifetime, input scope, node, and action.
+  Discrete actions remain ordering boundaries, and deactivation cancels the
+  consumer and discards pending values.
 
 Job memory containment is not a CPU or disk/profile quota. Installed/community
 workers separately have mandatory capability-free AppContainer isolation with

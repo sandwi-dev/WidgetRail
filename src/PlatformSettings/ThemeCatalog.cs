@@ -257,9 +257,14 @@ public sealed class ThemeCatalog
         var package = new GbssPackageResult([parsed.Document], parsed.Diagnostics);
         var compiled = GbssThemeCompiler.Compile(package);
         if (!compiled.IsValid)
+        {
+            var diagnostic = compiled.Diagnostics.First(item =>
+                item.Severity == GbssDiagnosticSeverity.Error);
             throw new PlatformSettingsException(
                 "invalid_builtin_theme",
-                "The built-in default theme failed GBSS validation.");
+                $"The built-in default theme failed GBSS validation: " +
+                $"{SafeMessage(diagnostic.Code)}: {SafeMessage(diagnostic.Message)}");
+        }
         return new ThemeLoadResult(
             new ThemeDescriptor(
                 ThemeIdentity.BuiltInDefault,

@@ -11,6 +11,7 @@
 #include "WidgetBridgeClient.h"
 #include "WidgetLifecycle.h"
 #include "WidgetSurfaceFocus.h"
+#include "SliderInteraction.h"
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -587,9 +588,9 @@ private:
             }
             return 0;
         case WM_KEYDOWN:
-            if ((lParam & (1LL << 30)) == 0) {
-                HandleKey(static_cast<UINT>(wParam));
-            }
+            HandleKey(
+                static_cast<UINT>(wParam),
+                (lParam & (1LL << 30)) != 0);
             return 0;
         case WM_TIMER:
             if (wParam == kControllerTimer) {
@@ -1049,6 +1050,7 @@ private:
                 // focus memory. Never let a replacement package inherit native
                 // renderer state merely because it reused public node IDs.
                 declarativeRenderer_->ForgetWidgetState(previous->instanceId);
+                sliderInteraction_.ForgetWidget(previous->instanceId);
             }
         }
         std::erase_if(widgetSnapshots_, [&](const auto& entry) {
@@ -1366,26 +1368,33 @@ private:
             wasVisible, isVisible, priorExtent, DesiredPresentationExtentDip()));
     }
 
-    void HandleKey(const UINT key) {
+    void HandleKey(const UINT key, const bool repeated) {
+        const auto phase = repeated
+            ? gba::input::NavigationEventPhase::Repeated
+            : gba::input::NavigationEventPhase::Pressed;
         switch (key) {
         case VK_LEFT:
-            state_.surface() == gba::Surface::Widget
-                ? MoveWidgetFocus(L"left")
-                : Dispatch(gba::Command::NavigateLeft);
+            if (state_.surface() == gba::Surface::Widget) {
+                HandleWidgetDirection(gba::input::NavigationDirection::Left, phase, false);
+            } else if (!repeated) {
+                Dispatch(gba::Command::NavigateLeft);
+            }
             break;
         case VK_RIGHT:
-            state_.surface() == gba::Surface::Widget
-                ? MoveWidgetFocus(L"right")
-                : Dispatch(gba::Command::NavigateRight);
+            if (state_.surface() == gba::Surface::Widget) {
+                HandleWidgetDirection(gba::input::NavigationDirection::Right, phase, false);
+            } else if (!repeated) {
+                Dispatch(gba::Command::NavigateRight);
+            }
             break;
         case VK_UP:
-            if (state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"up");
+            if (!repeated && state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"up");
             break;
         case VK_DOWN:
-            if (state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"down");
+            if (!repeated && state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"down");
             break;
         case VK_RETURN:
-            DispatchControllerAction(L"A");
+            if (!repeated) DispatchControllerAction(L"A");
             break;
         case VK_ESCAPE:
             if (state_.surface() == gba::Surface::Dashboard && state_.reorderMode()) {
@@ -1393,16 +1402,16 @@ private:
             }
             break;
         case 'B':
-            DispatchControllerAction(L"B");
+            if (!repeated) DispatchControllerAction(L"B");
             break;
         case 'X':
-            DispatchControllerAction(L"X");
+            if (!repeated) DispatchControllerAction(L"X");
             break;
         case 'Y':
-            DispatchControllerAction(L"Y");
+            if (!repeated) DispatchControllerAction(L"Y");
             break;
         case 'E':
-            Dispatch(gba::Command::ToggleReorder);
+            if (!repeated) Dispatch(gba::Command::ToggleReorder);
             break;
         default:
             break;
@@ -1425,10 +1434,18 @@ private:
             connected ? controller.Gamepad.sThumbLX : 0,
             connected ? controller.Gamepad.sThumbLY : 0,
             GetTickCount64());
+        const WORD buttons = connected ? controller.Gamepad.wButtons : 0;
+        dpadNavigator_.Prime(
+            gba::input::DigitalNavigationAxis(
+                buttons, XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_RIGHT),
+            gba::input::DigitalNavigationAxis(
+                buttons, XINPUT_GAMEPAD_DPAD_DOWN, XINPUT_GAMEPAD_DPAD_UP),
+            GetTickCount64());
     }
 
-    void DispatchStickNavigation(const gba::input::NavigationDirection direction) {
+    void DispatchStickNavigation(const gba::input::StickNavigationEvent event) {
         using gba::input::NavigationDirection;
+        const auto direction = event.direction;
         if (state_.surface() == gba::Surface::Dashboard) {
             if (direction == NavigationDirection::Left) {
                 Dispatch(gba::Command::NavigateLeft);
@@ -1439,8 +1456,10 @@ private:
         }
         if (state_.surface() != gba::Surface::Widget) return;
         switch (direction) {
-        case NavigationDirection::Left: MoveWidgetFocus(L"left"); break;
-        case NavigationDirection::Right: MoveWidgetFocus(L"right"); break;
+        case NavigationDirection::Left:
+        case NavigationDirection::Right:
+            HandleWidgetDirection(direction, event.phase, true);
+            break;
         case NavigationDirection::Up: MoveWidgetFocus(L"up"); break;
         case NavigationDirection::Down: MoveWidgetFocus(L"down"); break;
         default: break;
@@ -1460,27 +1479,22 @@ private:
         const WORD pressed = static_cast<WORD>(buttons & ~previousButtons_);
         previousButtons_ = buttons;
 
-        if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) {
-            state_.surface() == gba::Surface::Dashboard
-                ? Dispatch(gba::Command::NavigateLeft)
-                : MoveWidgetFocus(L"left");
-        }
-        if (pressed & XINPUT_GAMEPAD_DPAD_RIGHT) {
-            state_.surface() == gba::Surface::Dashboard
-                ? Dispatch(gba::Command::NavigateRight)
-                : MoveWidgetFocus(L"right");
-        }
-        if (pressed & XINPUT_GAMEPAD_DPAD_UP) {
-            if (state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"up");
-        }
-        if (pressed & XINPUT_GAMEPAD_DPAD_DOWN) {
-            if (state_.surface() == gba::Surface::Widget) MoveWidgetFocus(L"down");
-        }
-
         const ULONGLONG now = GetTickCount64();
-        if (const auto direction = stickNavigator_.Update(
+        if (sliderReconcileAt_ != 0 && now >= sliderReconcileAt_) {
+            sliderReconcileAt_ = 0;
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        if (const auto direction = stickNavigator_.UpdateEvent(
                 connected ? controller.Gamepad.sThumbLX : 0,
                 connected ? controller.Gamepad.sThumbLY : 0,
+                now)) {
+            DispatchStickNavigation(*direction);
+        }
+        if (const auto direction = dpadNavigator_.UpdateEvent(
+                gba::input::DigitalNavigationAxis(
+                    buttons, XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_RIGHT),
+                gba::input::DigitalNavigationAxis(
+                    buttons, XINPUT_GAMEPAD_DPAD_DOWN, XINPUT_GAMEPAD_DPAD_UP),
                 now)) {
             DispatchStickNavigation(*direction);
         }
@@ -1543,6 +1557,77 @@ private:
         focusedElementId_ = snapshot
             ? focusMemory_.Restore(widgetId, *snapshot)
             : std::wstring{};
+    }
+
+    static gba::input::SliderInputDescriptor SliderDescriptor(
+        const gba::WidgetSnapshot& snapshot,
+        const gba::WidgetNode& node) noexcept {
+        return {
+            snapshot.instanceId,
+            snapshot.activeInputScopeId,
+            node.id,
+            node.valueChangedActionId,
+            snapshot.sequence,
+            node.minimum,
+            node.maximum,
+            node.value,
+            node.step,
+            node.isDisabled,
+            node.isBusy,
+        };
+    }
+
+    void HandleWidgetDirection(
+        const gba::input::NavigationDirection direction,
+        const gba::input::NavigationEventPhase phase,
+        const bool repeatedCanNavigate) {
+        if (state_.surface() != gba::Surface::Widget) return;
+        const std::wstring_view widgetId = state_.activeWidget();
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!snapshot) return;
+        const auto visible = gba::input::ResolveVisibleFocusTarget(
+            focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
+        if (!visible) return;
+        if (*visible != focusedElementId_) {
+            focusedElementId_ = *visible;
+            focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        const auto* focused = gba::input::FindNodeInInputScope(
+            *snapshot, focusedElementId_, snapshot->activeInputScopeId);
+        if (!focused) return;
+        const auto route = gba::input::RouteFocusedDirection(
+            focused->kind, focused->isDisabled, focused->isBusy, direction);
+        if (route == gba::input::FocusedDirectionRoute::Consume) return;
+        if (route == gba::input::FocusedDirectionRoute::SliderAdjustment) {
+            const auto adjustment = sliderInteraction_.Adjust(
+                SliderDescriptor(*snapshot, *focused), direction, GetTickCount64());
+            if (adjustment.requestedValue) {
+                sliderReconcileAt_ = GetTickCount64() +
+                    gba::input::SliderInteractionState::PendingTimeoutMilliseconds + 1;
+                // Paint the host-owned target before the synchronous worker
+                // acknowledgement so controller feedback never waits on IPC.
+                InvalidateRect(window_, nullptr, FALSE);
+                UpdateWindow(window_);
+                const auto button = direction == gba::input::NavigationDirection::Left
+                    ? std::wstring_view{L"DPadLeft"}
+                    : std::wstring_view{L"DPadRight"};
+                DispatchWidgetAction(button, phase, adjustment.requestedValue);
+            }
+            // Optimistic value paints on the next frame even when the worker
+            // queue is busy; acknowledgement or timeout reconciles it.
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        if (phase == gba::input::NavigationEventPhase::Repeated && !repeatedCanNavigate)
+            return;
+        switch (direction) {
+        case gba::input::NavigationDirection::Left: MoveWidgetFocus(L"left"); break;
+        case gba::input::NavigationDirection::Right: MoveWidgetFocus(L"right"); break;
+        case gba::input::NavigationDirection::Up: MoveWidgetFocus(L"up"); break;
+        case gba::input::NavigationDirection::Down: MoveWidgetFocus(L"down"); break;
+        default: break;
+        }
     }
 
     void RefreshCurrentBridgeSnapshot() {
@@ -1618,7 +1703,7 @@ private:
         const auto* explicitTarget = target && !target->empty()
             ? gba::input::FindNodeInInputScope(*snapshot, *target, activeScope)
             : nullptr;
-        if (explicitTarget && !explicitTarget->isDisabled && !explicitTarget->isBusy &&
+        if (explicitTarget &&
             gba::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_)) {
             focusedElementId_ = explicitTarget->id;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
@@ -1653,6 +1738,8 @@ private:
         if (button == L"RS") return L"rightStick";
         if (button == L"Menu") return L"menu";
         if (button == L"View") return L"view";
+        if (button == L"DPadLeft") return L"dPadLeft";
+        if (button == L"DPadRight") return L"dPadRight";
         return L"";
     }
 
@@ -1681,7 +1768,11 @@ private:
         }
     }
 
-    void DispatchWidgetAction(const std::wstring_view button) {
+    void DispatchWidgetAction(
+        const std::wstring_view button,
+        const gba::input::NavigationEventPhase phase =
+            gba::input::NavigationEventPhase::Pressed,
+        const std::optional<double> requestedValue = std::nullopt) {
         if (state_.surface() == gba::Surface::Hidden) {
             return;
         }
@@ -1716,7 +1807,11 @@ private:
                     : std::wstring_view{},
                 snapshot->activeInputScopeId,
                 snapshot->sequence,
-                ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000));
+                ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000),
+                phase == gba::input::NavigationEventPhase::Repeated
+                    ? std::wstring_view{L"repeated"}
+                    : std::wstring_view{L"pressed"},
+                requestedValue);
             if (!handled) {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" input failed: " + bridge_.lastError();
@@ -2285,6 +2380,17 @@ private:
                 options.surfaceBackground = effectivePanelBackground_;
                 if (appearanceState_.current())
                     options.accessibility = CurrentAccessibilityPolicy();
+                const auto collectSliderOverrides = [&](const auto& self,
+                                                        const gba::WidgetNode& node) -> void {
+                    if (node.kind == L"slider") {
+                        if (const auto value = sliderInteraction_.PresentationValue(
+                                SliderDescriptor(*snapshot, node), GetTickCount64())) {
+                            options.sliderValueOverrides.emplace(node.id, *value);
+                        }
+                    }
+                    for (const auto& child : node.children) self(self, child);
+                };
+                collectSliderOverrides(collectSliderOverrides, snapshot->root);
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot, focusedElementId_, viewport, options);
                 if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
@@ -2352,14 +2458,18 @@ private:
     gba::OverlayState state_;
     WORD previousButtons_{};
     gba::input::StickNavigator stickNavigator_;
+    gba::input::StickNavigator dpadNavigator_{
+        gba::input::StickNavigationOptions{1, 0, 360, 125}};
     bool leftTriggerPressed_{};
     bool rightTriggerPressed_{};
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
     ULONGLONG lastActionExpiresAt_{};
     ULONGLONG lastGuideDispatchAt_{};
+    ULONGLONG sliderReconcileAt_{};
     std::wstring focusedElementId_;
     gba::input::WidgetSurfaceFocusMemory focusMemory_;
+    gba::input::SliderInteractionState sliderInteraction_;
     std::unordered_map<std::wstring, gba::WidgetSnapshot> widgetSnapshots_;
     gba::WidgetBridgeClient bridge_;
     unsigned int catalogRetryAttempts_{};

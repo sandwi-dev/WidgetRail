@@ -618,7 +618,7 @@ static async Task SnapshotAndQuickAction()
     var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(snapshotJson));
     Assert.Equal("test.instance", snapshot.WidgetInstanceId);
     var renderStyles = snapshotResponse.Payload.GetProperty("renderStyles");
-    Assert.Equal(3, renderStyles.EnumerateObject().Count());
+    Assert.Equal(5, renderStyles.EnumerateObject().Count());
     var buttonStyles = renderStyles.GetProperty("button");
     var fontSize = buttonStyles.GetProperty("base").GetProperty("font-size");
     Assert.Equal("length", fontSize.GetProperty("kind").GetString());
@@ -634,6 +634,9 @@ static async Task SnapshotAndQuickAction()
     var disabledStyles = renderStyles.GetProperty("disabled-button");
     Assert.Equal(0.4D, disabledStyles.GetProperty("base").GetProperty("opacity").GetProperty("number").GetDouble());
     Assert.Equal(0.4D, disabledStyles.GetProperty("focused").GetProperty("opacity").GetProperty("number").GetDouble());
+    var busyStyles = renderStyles.GetProperty("busy-button");
+    Assert.Equal(0.7D, busyStyles.GetProperty("base").GetProperty("opacity").GetProperty("number").GetDouble());
+    Assert.Equal(0.7D, busyStyles.GetProperty("focused").GetProperty("opacity").GetProperty("number").GetDouble());
     Assert.Equal(1, harness.Server.RunningWorkerCount);
 
     var activation = await harness.Client.RequestAsync(
@@ -670,6 +673,49 @@ static async Task SnapshotAndQuickAction()
         "Expected focused shortcut to be handled.");
     var secondInvalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
     Assert.Equal(2L, secondInvalidation.Payload.GetProperty("revision").GetInt64());
+
+    var sliderChange = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
+            ControllerButton.DPadRight,
+            ControllerEventPhase.Repeated,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "volume",
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
+            SnapshotSequence: snapshot.Sequence,
+            RequestedValue: 0.6)));
+    Assert.Equal(BridgeMessageTypes.ControllerInputResult, sliderChange.Type);
+    Assert.True(sliderChange.Payload.GetProperty("handled").GetBoolean(),
+        "Expected absolute Slider target to cross the bridge.");
+    var sliderInvalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    Assert.Equal(3L, sliderInvalidation.Payload.GetProperty("revision").GetInt64());
+    var updatedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var updated = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        updatedResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(0.6D, FindNode(updated.Root, "volume").Value);
+}
+
+static ViewNode FindNode(ViewNode node, string id)
+{
+    if (node.Id == id) return node;
+    foreach (var child in node.Children)
+    {
+        var found = FindNodeOrNull(child, id);
+        if (found is not null) return found;
+    }
+    throw new InvalidOperationException($"Node '{id}' was not found.");
+
+    static ViewNode? FindNodeOrNull(ViewNode candidate, string target)
+    {
+        if (candidate.Id == target) return candidate;
+        foreach (var child in candidate.Children)
+        {
+            var nested = FindNodeOrNull(child, target);
+            if (nested is not null) return nested;
+        }
+        return null;
+    }
 }
 
 static async Task DashboardButtonsStayHostOwned()
@@ -704,7 +750,7 @@ static Task ScrollRenderRole()
     var styles = BridgeRenderStyleResolver.Resolve(snapshot, theme: null);
     Assert.Equal(2, styles.Count);
     Assert.True(styles.ContainsKey("sessions"), "Scroll role was omitted from bridge styles.");
-    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
     return Task.CompletedTask;
 }
 
@@ -733,13 +779,19 @@ static string RequiredValue(string[] values, string name)
 
 file sealed class BridgeTestWidget : Widget
 {
+    private double _volume = 0.5;
+
     public override WidgetView Render() => new(
         UI.Stack("root",
             UI.Button("Refresh", "refresh", "button")
                 .Selected()
                 .Shortcut(ControllerButton.RightBumper).Classes("primary"),
             UI.Button("Unavailable", "disabled", "disabled-button")
-                .Disabled().Classes("disabled")),
+                .Disabled().Classes("disabled"),
+            UI.Button("Saving", "busy", "busy-button")
+                .Busy().Classes("busy"),
+            UI.Slider(_volume, 0, 1, 0.1, "volume.changed", "volume",
+                "Volume", $"{_volume:P0}")),
         "button",
         [new WidgetQuickAction(ControllerButton.X, "refresh", "Refresh")]);
 
@@ -748,6 +800,11 @@ file sealed class BridgeTestWidget : Widget
     {
         if (action.ActionId == "refresh")
             Invalidate();
+        else if (action is { ActionId: "volume.changed", RequestedValue: { } requested })
+        {
+            _volume = requested;
+            Invalidate();
+        }
         else if (action.ActionId == "crash")
             Environment.Exit(31);
         return ValueTask.CompletedTask;
@@ -784,7 +841,7 @@ file sealed class TemporaryCatalog : IDisposable
         Directory.CreateDirectory(stylesDirectory);
         File.WriteAllText(System.IO.Path.Combine(stylesDirectory, "default.gbss"), invalidStyle
             ? "button { background: url(https://example.test/evil.png); }"
-            : styleSource ?? "stack { gap: 12px; } button { color: #ffffff; font-size: 18px; } #button { opacity: 0.8; } .primary:selected { border-width: 3px; } .primary:focused { outline-color: #8b7cff; scale: 1.1; } .disabled:disabled { opacity: 0.4; }");
+            : styleSource ?? "stack { gap: 12px; } button { color: #ffffff; font-size: 18px; } #button { opacity: 0.8; } .primary:selected { border-width: 3px; } .primary:focused { outline-color: #8b7cff; scale: 1.1; } .disabled:disabled { opacity: 0.4; } .busy:busy { opacity: 0.7; }");
         var executable = Environment.ProcessPath
             ?? throw new InvalidOperationException("Test process path is unavailable.");
         var json = JsonSerializer.Serialize(new

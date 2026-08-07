@@ -56,6 +56,7 @@ public enum GbssPseudoState
     Pressed,
     Selected,
     Disabled,
+    Busy,
 }
 
 public sealed record GbssSelector(

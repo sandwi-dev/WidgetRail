@@ -72,6 +72,7 @@ internal static class BridgeRenderStyleResolver
             var states = new HashSet<GbssPseudoState>();
             if (node.IsSelected is true) states.Add(GbssPseudoState.Selected);
             if (node.IsDisabled is true) states.Add(GbssPseudoState.Disabled);
+            if (node.IsBusy is true) states.Add(GbssPseudoState.Busy);
             return states;
         }
 
@@ -115,6 +116,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.Text => "text",
         ViewNodeKind.Button => "button",
         ViewNodeKind.Progress => "progress",
+        ViewNodeKind.Slider => "slider",
         ViewNodeKind.Spacer => "spacer",
         ViewNodeKind.Image => "image",
         ViewNodeKind.Icon => "icon",

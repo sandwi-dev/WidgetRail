@@ -1,11 +1,11 @@
 :root {
-  --audio-accent: #70d7ff;
-  --audio-accent-strong: #3bbfed;
-  --audio-focus: #b9ecff;
-  --audio-surface: rgba(18, 22, 30, 0.98);
-  --audio-card: rgba(38, 45, 58, 0.94);
-  --audio-control: rgba(49, 58, 73, 0.96);
-  --audio-control-focus: rgba(67, 81, 101, 0.98);
+  --audio-accent: #59d5ff;
+  --audio-accent-strong: #27bfea;
+  --audio-focus: #c8f2ff;
+  --audio-surface: rgba(14, 18, 26, 0.98);
+  --audio-card: rgba(34, 41, 54, 0.94);
+  --audio-master: rgba(27, 45, 58, 0.97);
+  --audio-track: rgba(106, 119, 140, 0.38);
   --audio-error: #ff7c91;
 }
 
@@ -13,7 +13,7 @@
   width: 100vw;
   min-width: 280px;
   max-width: 560px;
-  gap: 12px;
+  gap: 10px;
   padding: 16px;
   background: var(--audio-surface);
   color: var(--text);
@@ -21,21 +21,21 @@
 }
 
 .audio-header {
-  gap: 3px;
+  gap: 2px;
 }
 
 .audio-eyebrow {
   color: var(--audio-accent);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.10em;
+  letter-spacing: 0.11em;
   max-lines: 1;
   text-transform: uppercase;
 }
 
 .audio-title {
   color: var(--text);
-  font-size: 24px;
+  font-size: 25px;
   font-weight: 700;
   max-lines: 1;
   text-overflow: ellipsis;
@@ -44,15 +44,13 @@
 .audio-status,
 .audio-help,
 .audio-session-count,
-.audio-session-state,
-.audio-control-status {
+.audio-session-state {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   max-lines: 2;
 }
 
-.audio-status.is-error,
-.audio-control-status.is-error {
+.audio-status.is-error {
   color: var(--audio-error);
 }
 
@@ -64,177 +62,143 @@
 .audio-state-card,
 .audio-master-card,
 .audio-session-card {
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 11px 12px;
   background: var(--audio-card);
   border-width: 0;
-  corner-radius: 15px;
+  corner-radius: 13px;
 }
 
 .audio-master-card {
-  gap: 9px;
-  background: rgba(31, 48, 61, 0.96);
+  background: var(--audio-master);
 }
 
-.audio-master-heading {
+.audio-master-heading,
+.audio-sessions-heading,
+.audio-session-heading,
+.audio-volume-control-row {
   gap: 10px;
   align: center;
   justify: space-between;
 }
 
 .audio-master-label,
-.audio-master-state {
-  color: var(--audio-accent);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  max-lines: 1;
-}
-
-.audio-master-state.is-muted {
-  color: var(--audio-error);
-}
-
-.audio-master-controls {
-  min-height: 46px;
-}
-
-.audio-master-progress {
-  color: var(--audio-accent);
-}
-
-.audio-state-title {
-  color: var(--text);
-  font-size: 19px;
-  font-weight: 700;
-  max-lines: 1;
-}
-
-.audio-sessions-heading,
-.audio-session-heading {
-  gap: 10px;
-  align: center;
-  justify: space-between;
-}
-
+.audio-master-state,
 .audio-sessions-label,
 .audio-sessions-count {
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--audio-accent);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   max-lines: 1;
   text-transform: uppercase;
 }
 
+.audio-master-state.is-muted {
+  color: var(--audio-error);
+}
+
+.audio-sessions-label {
+  color: var(--text-muted);
+}
+
 .audio-sessions-count {
-  color: var(--audio-accent);
   letter-spacing: 0.02em;
 }
 
 .audio-session-list {
-  min-height: 176px;
-  max-height: 360px;
+  min-height: 156px;
+  max-height: 340px;
   flex-grow: 1;
   flex-shrink: 1;
-  gap: 10px;
-  padding: 0 2px 0 0;
+  gap: 8px;
+  padding: 2px 4px 2px 2px;
   overflow: clip;
 }
 
 .audio-session-details {
   min-width: 80px;
   flex-grow: 1;
-  gap: 2px;
+  gap: 1px;
 }
 
 .audio-session-name {
   color: var(--text);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   max-lines: 1;
   text-overflow: ellipsis;
 }
 
-.audio-volume-row {
-  gap: 12px;
-  align: center;
+.audio-mute-icon {
+  width: 30px;
+  height: 30px;
+  padding: 4px;
+  color: var(--audio-accent);
+  background: rgba(75, 91, 111, 0.30);
+  shape: circle;
+  flex-shrink: 0;
 }
 
-.audio-volume-progress {
-  height: 6px;
-  min-width: 120px;
+.audio-mute-icon.is-muted {
+  color: var(--audio-error);
+  background: rgba(255, 124, 145, 0.13);
+}
+
+.audio-volume-slider {
+  height: 44px;
+  min-width: 132px;
   flex-grow: 1;
   color: var(--audio-accent-strong);
-  background: rgba(103, 113, 133, 0.40);
+  background: var(--audio-track);
+  outline-color: transparent;
+  outline-width: 0;
+  transition-duration: 90ms;
+  transition-easing: ease-out;
+}
+
+.audio-volume-slider:focused {
+  color: var(--audio-focus);
+  background: rgba(106, 119, 140, 0.54);
+  outline-color: var(--audio-focus);
+  outline-width: 2px;
+  outline-offset: -2px;
 }
 
 .audio-volume-value {
-  width: 48px;
+  width: 42px;
   color: var(--text);
   font-size: 14px;
   font-weight: 700;
   text-align: end;
+  flex-shrink: 0;
 }
 
-.audio-controls {
-  min-height: 48px;
-  gap: 8px;
-  align: center;
-  justify: center;
-}
-
-.audio-volume-action,
-.audio-mute-action,
-.audio-retry-action {
+.audio-state-title {
   color: var(--text);
-  background: var(--audio-control);
-  border-width: 0;
-  transition-duration: 110ms;
-  transition-easing: ease-out;
-}
-
-.audio-volume-action {
-  width: 42px;
-  height: 42px;
-  padding: 9px;
-  shape: circle;
-}
-
-.audio-mute-action {
-  min-width: 88px;
-  max-width: 156px;
-  flex-grow: 1;
-  height: 46px;
-  padding: 10px 16px;
-  corner-radius: 23px;
-}
-
-.audio-mute-action.is-muted {
-  color: var(--audio-error);
+  font-size: 18px;
+  font-weight: 700;
+  max-lines: 1;
 }
 
 .audio-retry-action {
   min-height: 44px;
-  padding: 12px 18px;
-  corner-radius: 12px;
+  padding: 11px 16px;
+  color: var(--text);
+  background: rgba(49, 58, 73, 0.96);
+  border-width: 0;
+  corner-radius: 11px;
+  transition-duration: 90ms;
+  transition-easing: ease-out;
 }
 
-.audio-volume-action:focused,
-.audio-mute-action:focused,
 .audio-retry-action:focused {
-  background: var(--audio-control-focus);
+  background: rgba(67, 81, 101, 0.98);
   outline-color: var(--audio-focus);
   outline-width: 2px;
-  outline-offset: -3px;
-  scale: 1.04;
-}
-
-.audio-mute-action:focused {
-  background: var(--audio-accent-strong);
-  color: #08131a;
+  outline-offset: -2px;
 }
 
 .audio-session-card.is-pending {
-  background: rgba(43, 57, 72, 0.98);
+  background: rgba(40, 53, 68, 0.98);
 }

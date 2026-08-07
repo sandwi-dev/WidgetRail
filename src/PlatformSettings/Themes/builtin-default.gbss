@@ -4,10 +4,15 @@
   --accent: #8f80ff;
   --surface: rgba(23, 26, 34, 0.98);
   --surface-raised: rgba(33, 37, 48, 0.98);
+  --surface-subtle: rgba(45, 50, 64, 0.72);
+  --border: rgba(174, 181, 195, 0.28);
   --text: #f7f7fa;
   --text-muted: #aeb5c3;
   --focus: #ff7898;
   --success: #48d597;
+  --info: #59d5ff;
+  --warning: #ffc46b;
+  --danger: #ff7c91;
 }
 
 canvas { background: var(--canvas); color: var(--text); }
@@ -20,5 +25,92 @@ title { color: var(--text); font-size: 30px; font-weight: 700; }
 body { color: var(--text); font-size: 16px; }
 hint { color: var(--text-muted); font-size: 13px; }
 button { background: var(--surface-raised); color: var(--text); corner-radius: 12px; }
-button:focused { outline-color: var(--focus); outline-width: 2px; scale: 1.03; }
+button:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; scale: 1; }
 progress { background: var(--surface-raised); color: var(--accent); }
+slider { min-height: 44px; background: var(--surface-subtle); color: var(--accent); corner-radius: 12px; }
+slider:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+
+.gbar-icon-button {
+  width: 48px;
+  height: 48px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  shape: circle;
+  flex-shrink: 0;
+}
+.gbar-icon-button--small { width: 44px; height: 44px; padding: 9px; }
+.gbar-icon-button--large { width: 56px; height: 56px; padding: 13px; }
+.gbar-icon-button--primary { background: var(--accent); color: var(--canvas); }
+.gbar-icon-button--danger { background: rgba(255, 124, 145, 0.18); color: var(--danger); }
+.gbar-icon-button--quiet { background: transparent; color: var(--text-muted); }
+
+.gbar-card {
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface-raised);
+  border-color: var(--border);
+  border-width: 1px;
+  corner-radius: 14px;
+}
+.gbar-card--subtle { background: var(--surface-subtle); border-width: 0; }
+.gbar-card--transparent { background: transparent; border-width: 0; padding: 0; }
+
+.gbar-section-header { gap: 4px; }
+.gbar-section-header__content { gap: 10px; align: center; justify: space-between; }
+.gbar-section-header__text { min-width: 0; flex-grow: 1; flex-shrink: 1; gap: 2px; }
+.gbar-section-header__eyebrow {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  max-lines: 1;
+}
+.gbar-section-header__title { color: var(--text); font-size: 22px; font-weight: 700; max-lines: 1; text-overflow: ellipsis; }
+.gbar-section-header__description { color: var(--text-muted); font-size: 13px; max-lines: 2; }
+.gbar-section-header__trailing { flex-shrink: 0; }
+
+.gbar-badge {
+  gap: 5px;
+  align: center;
+  padding: 4px 8px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  corner-radius: 20px;
+}
+.gbar-badge__icon { width: 14px; height: 14px; flex-shrink: 0; }
+.gbar-badge__label { color: var(--text-muted); font-size: 11px; font-weight: 700; max-lines: 1; }
+.gbar-badge__icon--info,
+.gbar-badge__label--info { color: var(--info); }
+.gbar-badge__icon--success,
+.gbar-badge__label--success { color: var(--success); }
+.gbar-badge__icon--warning,
+.gbar-badge__label--warning { color: var(--warning); }
+.gbar-badge__icon--danger,
+.gbar-badge__label--danger { color: var(--danger); }
+
+.gbar-divider { height: 1px; min-height: 1px; background: var(--border); }
+
+.gbar-alert,
+.gbar-empty-state {
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface-subtle);
+  border-color: var(--border);
+  border-width: 1px;
+  corner-radius: 14px;
+}
+.gbar-alert__icon,
+.gbar-empty-state__icon { width: 24px; height: 24px; color: var(--info); }
+.gbar-alert__title,
+.gbar-empty-state__title { color: var(--text); font-size: 17px; font-weight: 700; max-lines: 2; }
+.gbar-alert__message,
+.gbar-empty-state__message { color: var(--text-muted); font-size: 13px; max-lines: 4; }
+.gbar-alert__action,
+.gbar-empty-state__action { min-height: 44px; padding: 10px 14px; }
+.gbar-alert__icon--success { color: var(--success); }
+.gbar-alert__icon--warning { color: var(--warning); }
+.gbar-alert__icon--danger { color: var(--danger); }

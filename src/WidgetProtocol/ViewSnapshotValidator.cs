@@ -10,8 +10,6 @@ public static class ViewSnapshotValidator
         var errors = new List<ProtocolValidationError>();
         var ids = new Dictionary<string, (ViewNode Node, string Path, string ScopeKey)>(StringComparer.Ordinal);
         var inputScopes = new Dictionary<string, string>(StringComparer.Ordinal);
-        var scopeShortcuts = new Dictionary<string, Dictionary<(ControllerButton, ControllerEventPhase), string>>(
-            StringComparer.Ordinal);
         var nodes = 0;
 
         if (snapshot.ProtocolVersion < ProtocolConstants.MinimumSupportedVersion ||
@@ -46,7 +44,10 @@ public static class ViewSnapshotValidator
             CheckString(quickAction.Label, $"$.quickActions[{index}].label");
             if (string.IsNullOrWhiteSpace(quickAction.Label))
                 Add($"$.quickActions[{index}].label", "required", "A quick action requires a visible label.");
-            if (!IsDashboardQuickActionButton(quickAction.Button))
+            if (!Enum.IsDefined(quickAction.Button))
+                Add($"$.quickActions[{index}].button", "invalid_controller_button",
+                    "The controller button is not supported.");
+            else if (!IsDashboardQuickActionButton(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "reserved_button", "This button is reserved for dashboard navigation or host behavior.");
             if (!quickActionButtons.Add(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "duplicate_button", "A dashboard button can trigger only one quick action.");
@@ -160,10 +161,14 @@ public static class ViewSnapshotValidator
             }
 
             CheckIdentifier(node.Id, $"{path}.id", "node ID");
+            if (!Enum.IsDefined(node.Kind))
+                Add($"{path}.kind", "invalid_node_kind", "The node kind is not supported.");
 
             CheckString(node.Text, $"{path}.text");
             CheckString(node.AccessibilityLabel, $"{path}.accessibilityLabel");
+            CheckString(node.AccessibilityValue, $"{path}.accessibilityValue");
             CheckString(node.ActionId, $"{path}.actionId");
+            CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId");
             CheckString(node.ImageSource, $"{path}.imageSource");
 
             var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll;
@@ -197,7 +202,6 @@ public static class ViewSnapshotValidator
                 if (!string.IsNullOrWhiteSpace(publicScopeId) && !inputScopes.TryAdd(publicScopeId, scopeKey))
                     Add($"{path}.inputScopeId", "duplicate_input_scope",
                         $"The input scope ID '{publicScopeId}' is already used.");
-                scopeShortcuts.TryAdd(scopeKey, []);
             }
             if (!string.IsNullOrWhiteSpace(node.Id) && !ids.TryAdd(node.Id, (node, path, scopeKey)))
                 Add($"{path}.id", "duplicate_id", $"The ID '{node.Id}' is already used.");
@@ -207,12 +211,56 @@ public static class ViewSnapshotValidator
             if (node.Kind is ViewNodeKind.Button &&
                 string.IsNullOrWhiteSpace(node.Text) && string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                 Add(path, "missing_accessible_name", "A button requires visible text or an accessibility label.");
-            if (node.Kind is not ViewNodeKind.Button &&
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider) &&
                 (node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null))
-                Add(path, "interaction_state_not_allowed", "Disabled, selected, and busy states apply only to buttons.");
+                Add(path, "interaction_state_not_allowed", "Interaction states apply only to buttons and sliders.");
+            if (node.Kind is ViewNodeKind.Slider && node.IsSelected is not null)
+                Add($"{path}.isSelected", "interaction_state_not_allowed", "Selected state does not apply to sliders.");
             if (node.Kind is ViewNodeKind.Progress &&
-                (node.Value is null || node.Maximum is null || node.Maximum <= 0 || node.Value < 0 || node.Value > node.Maximum))
+                (node.Value is null || node.Maximum is null ||
+                 !double.IsFinite(node.Value.Value) || !double.IsFinite(node.Maximum.Value) ||
+                 node.Maximum <= 0 || node.Value < 0 || node.Value > node.Maximum))
                 Add(path, "invalid_progress", "Progress requires 0 <= value <= maximum and maximum > 0.");
+            if (node.Kind is ViewNodeKind.Slider)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.SliderVersion)
+                    Add(path, "feature_requires_version",
+                        $"Slider requires protocol version {ProtocolConstants.SliderVersion} or later.");
+                var minimum = node.Minimum ?? double.NaN;
+                var maximum = node.Maximum ?? double.NaN;
+                var value = node.Value ?? double.NaN;
+                var step = node.Step ?? double.NaN;
+                var hasCompleteFiniteRange =
+                    node.Minimum is not null && node.Maximum is not null &&
+                    node.Value is not null && node.Step is not null &&
+                    double.IsFinite(minimum) && double.IsFinite(maximum) &&
+                    double.IsFinite(value) && double.IsFinite(step);
+                var range = hasCompleteFiniteRange ? maximum - minimum : double.NaN;
+                if (!hasCompleteFiniteRange || !double.IsFinite(range) || range <= 0 ||
+                    value < minimum || value > maximum || step <= 0 || step > range)
+                    Add(path, "invalid_slider_range",
+                        "Slider requires a finite positive range, an in-range value, and 0 < step <= range.");
+                CheckIdentifier(node.ValueChangedActionId, $"{path}.valueChangedActionId", "slider value-changed action ID");
+                if (node.ActionId is not null)
+                    CheckIdentifier(node.ActionId, $"{path}.actionId", "slider activation action ID");
+                if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
+                    Add($"{path}.accessibilityLabel", "required", "A slider requires an accessibility label.");
+                if (string.IsNullOrWhiteSpace(node.AccessibilityValue))
+                    Add($"{path}.accessibilityValue", "required", "A slider requires an accessible value.");
+                if (node.Focus?.Left is not null || node.Focus?.Right is not null)
+                    Add($"{path}.focus", "slider_horizontal_focus_not_allowed",
+                        "A slider owns Left and Right for value adjustment; use only Up and Down focus neighbors.");
+            }
+            else
+            {
+                if (node.Minimum is not null || node.Step is not null ||
+                    node.ValueChangedActionId is not null ||
+                    node.AccessibilityValue is not null)
+                    Add(path, "slider_property_not_allowed",
+                        "Minimum, step, value-change action, and accessible value apply only to sliders.");
+            }
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider) && node.ActionId is not null)
+                Add($"{path}.actionId", "action_not_allowed", "Action IDs apply only to buttons and sliders.");
             if (node.Kind is ViewNodeKind.Image)
             {
                 if (!IsSafeImageSource(node.ImageSource))
@@ -239,8 +287,36 @@ public static class ViewSnapshotValidator
                 Add($"{path}.glyph", "invalid_glyph", "The semantic glyph is not supported.");
             var children = node.Children ?? [];
             var shortcuts = node.Shortcuts ?? [];
+            var styleClasses = node.StyleClasses ?? [];
             if (node.StyleClasses is null)
                 Add($"{path}.styleClasses", "required", "Style classes cannot be null.");
+            else
+            {
+                if (styleClasses.Count > ProtocolConstants.MaximumStyleClassCount)
+                    Add($"{path}.styleClasses", "too_many_style_classes",
+                        $"A node may declare at most {ProtocolConstants.MaximumStyleClassCount} style classes.");
+
+                var seenStyleClasses = new HashSet<string>(StringComparer.Ordinal);
+                var classesToValidate = Math.Min(styleClasses.Count, ProtocolConstants.MaximumStyleClassCount);
+                for (var index = 0; index < classesToValidate; index++)
+                {
+                    var className = styleClasses[index];
+                    var classPath = $"{path}.styleClasses[{index}]";
+                    if (className is null)
+                    {
+                        Add(classPath, "required", "A style class cannot be null.");
+                        continue;
+                    }
+                    if (className.Length > ProtocolConstants.MaximumStyleClassLength)
+                        Add(classPath, "style_class_too_long",
+                            $"A style class may not exceed {ProtocolConstants.MaximumStyleClassLength} characters.");
+                    else if (!StyleClassContract.IsValidIdentifier(className))
+                        Add(classPath, "invalid_style_class",
+                            "A style class must start with an ASCII letter or '_' and then contain only ASCII letters, digits, '_' or '-'.");
+                    if (!seenStyleClasses.Add(className))
+                        Add(classPath, "duplicate_style_class", $"The style class '{className}' is repeated.");
+                }
+            }
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll) && children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button) && shortcuts.Count != 0)
@@ -252,20 +328,21 @@ public static class ViewSnapshotValidator
             {
                 var shortcut = shortcuts[index];
                 CheckIdentifier(shortcut.ActionId, $"{path}.shortcuts[{index}].actionId", "shortcut action ID");
-                if (shortcut.Phase != ControllerEventPhase.Pressed)
+                if (!Enum.IsDefined(shortcut.Phase))
+                    Add($"{path}.shortcuts[{index}].phase", "invalid_controller_phase",
+                        "The controller event phase is not supported.");
+                else if (shortcut.Phase != ControllerEventPhase.Pressed)
                     Add($"{path}.shortcuts[{index}].phase", "unsupported_shortcut_phase",
                         "The MVP host emits only Pressed shortcut events.");
-                if (!IsOpenWidgetShortcutButton(shortcut.Button))
+                if (!Enum.IsDefined(shortcut.Button))
+                    Add($"{path}.shortcuts[{index}].button", "invalid_controller_button",
+                        "The controller button is not supported.");
+                else if (!IsOpenWidgetShortcutButton(shortcut.Button))
                     Add($"{path}.shortcuts[{index}].button", "reserved_shortcut_button",
                         "A and D-pad buttons are reserved for activation and focus navigation.");
                 if (!shortcutButtons.Add((shortcut.Button, shortcut.Phase)))
                     Add($"{path}.shortcuts[{index}].button", "duplicate_shortcut",
                         "A node cannot declare the same controller button and phase twice.");
-                var bindings = scopeShortcuts[scopeKey];
-                var signature = (shortcut.Button, shortcut.Phase);
-                if (!bindings.TryAdd(signature, node.Id))
-                    Add($"{path}.shortcuts[{index}].button", "ambiguous_scope_shortcut",
-                        $"Input scope shortcut {shortcut.Button}/{shortcut.Phase} is already bound by '{bindings[signature]}'.");
             }
 
             for (var index = 0; index < children.Count; index++)

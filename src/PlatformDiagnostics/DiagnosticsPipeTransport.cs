@@ -126,7 +126,13 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     {
         try
         {
-            if (_pipe.IsConnected) _pipe.Disconnect();
+            // NamedPipeServerStream must be explicitly disconnected before it
+            // can accept again. IsConnected is only a momentary observation:
+            // a peer can close between that check and this reset, leaving the
+            // reusable first instance in a state where the next accept throws
+            // forever. Disconnect unconditionally and treat "already reset"
+            // as the benign race.
+            _pipe.Disconnect();
         }
         catch (Exception exception) when (exception is IOException or InvalidOperationException or
                                                ObjectDisposedException)

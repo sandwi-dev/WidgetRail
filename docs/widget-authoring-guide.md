@@ -1,6 +1,6 @@
 # Widget authoring guide and API map
 
-Status: the package schema, managed SDK, declarative protocol versions 1–2,
+Status: the package schema, managed SDK, declarative protocol versions 1–3,
 controller routing, lifecycle, GBSS, local packaging/install workflow, and
 typed audio/network capabilities described as **implemented** below exist in
 this repository. Public NuGet packages, publisher signing/revocation, a widget
@@ -42,12 +42,14 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` or `2` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects this automatically. |
+| Declarative snapshot protocol | `1`, `2`, or `3` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects this automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Using `UI.VerticalScroll`,
 `UI.HorizontalScroll`, `UI.Scroll`, or `WidgetView.Surface` emits protocol 2.
-Those additive UI features do **not** require a fictional host API 2: packages
-still declare the implemented host API range `1.0` through major `1`.
+Using `UI.Slider` emits protocol 3, including when it is nested inside a
+protocol-2 Scroll surface. Those additive UI features do **not** require a
+fictional host API 2 or 3: packages still declare the implemented host API
+range `1.0` through major `1`.
 
 Runtime, bridge, and capability-broker transports also have internal protocol
 versions. Widget code does not set or negotiate them; use
@@ -176,8 +178,9 @@ UI.Row("player.transport",
 
 The default `OnControllerInputAsync` resolves against the exact last rendered
 snapshot. For open input it validates the snapshot sequence and active scope,
-checks the focused node first, then a unique binding in the active scope. Stale
-input, a focus ID outside that scope, or an ambiguous binding is unhandled.
+checks the focused node first, then the active scope-root container. It never
+searches an arbitrary unfocused child. Stale input or a focus ID outside that
+scope is unhandled.
 Override `OnControllerInputAsync` only for semantic controls that cannot be
 represented as declarative actions; Guide/Home and arbitrary HID reports are
 never transported.
@@ -224,8 +227,8 @@ Rules:
 - `ActiveInputScopeId` must identify the root scope or one published nested
   scope.
 - `InitialFocusId` and explicit focus neighbors must remain inside that scope.
-- Bindings must be unique per `(button, phase)` inside one scope. Separate
-  scopes may reuse the same button.
+- One node may bind each `(button, phase)` only once. Separate focused controls
+  in one scope and separate scopes may reuse the same button.
 - Focus is remembered independently per widget and scope. Keep IDs stable.
 - Parent and sibling shortcuts are never searched while a nested scope is
   active.
@@ -259,12 +262,60 @@ Keep the Scroll ID and descendant button IDs stable. The host remembers an
 offset by exact widget runtime instance, active input scope, and Scroll ID.
 Closing and reopening therefore restores the same surface without leaking
 state across widget versions or nested windows. If a dynamic item disappears,
-focus falls to the nearest surviving enabled control in tree order and its
+focus falls to the nearest surviving focusable control in tree order and its
 Scroll ancestor reveals it. A runtime replacement clears focus and scroll
 memory.
 
 Ordinary Stack/Row clipping is different: a clipped button is not a navigation
 candidate because the host cannot reveal it.
+
+## Controller-native value controls
+
+Use `UI.Slider` instead of composing minus/progress/plus controls. A focused
+Slider owns left/right D-pad and left-stick input; Up/Down still navigates and
+optional A activation can perform a related discrete action:
+
+```csharp
+var volumeSlider = UI.Slider(
+        value: _volume,
+        minimum: 0,
+        maximum: 1,
+        step: 0.05,
+        valueChangedAction: "audio.volume.set",
+        id: "audio.volume",
+        accessibilityLabel: "Application volume. Press A to mute",
+        accessibilityValue: $"{Math.Round(_volume * 100)}%",
+        activationAction: "audio.mute.toggle")
+    .FocusUp("audio.master.volume")
+    .FocusDown("audio.next.volume");
+```
+
+The change action receives an absolute, validated target. Never apply it as a
+relative delta:
+
+```csharp
+if (action is { ActionId: "audio.volume.set", RequestedValue: { } requested })
+{
+    _volume = requested;
+    Invalidate();
+    await _audio.SetVolumeAsync(requested, cancellationToken);
+}
+```
+
+The host supplies immediate transient feedback while the SDK serializes
+actions. A contiguous pending tail for the same active lifetime, scope, Slider
+ID, and action ID is latest-wins coalesced. A button or different Slider is an
+ordering boundary. When the widget leaves its active Visible/Interactive
+lifetime, the current controller operation is canceled and pending operations
+are dropped.
+
+Keep Slider and action IDs stable across snapshots. Do not publish horizontal
+focus neighbors: Left/Right belongs to value adjustment even at a bound or
+while Disabled/Busy. Those states remain focusable but suppress activation and
+adjustment, so focus cannot jump merely because work became pending.
+
+See the [declarative UI Slider contract](declarative-ui.md#controller-native-slider-protocol-v3)
+and [controller component patterns](controller-ui-components.md#audio-icon-slider-percentage-pattern).
 
 ## Tutorial 5: choose a useful surface without hard-coding a window
 
@@ -314,13 +365,16 @@ Scroll for overflow after host clamping.
 | `UI.ToggleButton(label, isOn, action, id)` | composed button | Emits On/Off text and selected semantics. |
 | `UI.Stepper(...)` | composed row | Stable `.label`, `.decrement`, `.value`, `.increment` children. |
 | `UI.Progress(value, maximum, id, label?)` | progress | Requires finite `0 <= value <= maximum`, `maximum > 0`. |
+| `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, label, value?, activation?)` | focusable value control | Protocol 3; absolute requested values, L/R adjustment, optional A action. |
 | `UI.Spacer(id)` | spacer | Layout-only. |
 | `UI.Image(httpsUrl, id, alt, fit?)` | image | HTTPS only; host applies download/decode/cache limits. |
 | `UI.Icon(glyph, id, label)` | semantic icon | Closed host-rendered glyph vocabulary. |
 
 All nodes can use `.Classes("name", ...)`. Buttons additionally provide
 `.FocusUp/Down/Left/Right(id)`, `.Disabled(...)`, `.Selected(...)`,
-`.Busy(...)`, `.Icon(...)`, and `.Shortcut(...)`.
+`.Busy(...)`, `.Icon(...)`, and `.Shortcut(...)`. Sliders provide
+`.FocusUp/Down(id)`, `.Disabled(...)`, `.Busy(...)`, and `.Activate(...)`;
+horizontal focus links are invalid because the control owns Left/Right.
 
 Current semantic glyphs are `Music`, `Play`, `Pause`, `Previous`, `Next`,
 `Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `Settings`, `Warning`,
@@ -335,9 +389,12 @@ three dashboard quick actions.
 
 ## Interaction state and reconciliation
 
-Disabled and Busy buttons remain visible but do not activate through the
-default router. Selected buttons remain actionable and expose semantic state to
-the renderer and GBSS.
+Disabled and Busy Buttons and Sliders remain visible and focusable but do not
+activate through the default router; a Slider also suppresses value changes in
+either state. Selected buttons remain actionable and expose semantic state to
+the renderer and GBSS. Disabled/Busy must not be used as a way to remove a
+control from controller navigation. Stable focused IDs survive those state
+changes without falling back to an unrelated control.
 
 For a remote toggle:
 
@@ -440,12 +497,14 @@ scroll.session-list {
 ```
 
 GBSS is not browser CSS. It supports one semantic compound selector (role,
-stable ID, classes, and `:focused`, `:pressed`, `:selected`, `:disabled`),
+stable ID, classes, and `:focused`, `:pressed`, `:selected`, `:disabled`,
+`:busy`),
 variables, safe package-relative `.gbss` imports, and an allowlist of typed,
 bounded properties. Unknown properties, scripts, URLs, filesystem paths,
-`calc`, expressions, and arbitrary functions are rejected. `:pressed` parses,
-but the complete transient pressed/busy renderer-state pipeline is not yet an
-author guarantee.
+`calc`, expressions, and arbitrary functions are rejected. Snapshot `:busy`
+state is resolved into the published base/focused maps and is an author
+guarantee. `:pressed` parses, but a transient pressed renderer-state map is not
+yet connected and must not be relied upon.
 
 Use percentages, `vw`, `vh`, flex growth/shrink, min/max dimensions, line
 limits, and `overflow: clip` for responsive layout. The host applies global
@@ -597,7 +656,7 @@ general secret broker and network API remain planned.
 | `publisher` | Lowercase reverse-DNS publisher claim. It is not cryptographic proof. |
 | `name` | 1–80 characters. |
 | `version` | Canonical dotted numeric `System.Version` text such as `1.0.0`. Installed versions are immutable. |
-| `hostApi` | Current compatible range is minimum `1.0`, maximum major `1`. This is independent of snapshot protocol 2. |
+| `hostApi` | Current compatible range is minimum `1.0`, maximum major `1`. This is independent of snapshot protocol 2 or 3. |
 | `entrypoint.runtime` | Only `dotnet-worker`. |
 | `entrypoint.assembly` | Exact-case normalized package-relative path with `/`, no traversal. |
 | `entrypoint.type` | Namespace-qualified public concrete `Widget` type with a public constructor whose parameters are all optional. |

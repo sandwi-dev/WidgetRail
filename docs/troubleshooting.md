@@ -70,9 +70,9 @@ Check that:
 - variables resolve without a missing value or cycle.
 
 The bridge publishes typed `base` and `focused` maps today. Static snapshot
-`selected` and `disabled` state participates in those maps; complete separate
-maps for transient pressed/busy/dynamic state are still under integration. See
-[GBSS](gbss.md).
+`selected`, `disabled`, and `busy` state participates in those maps, so matching
+rules affect both ordinary and focused presentation. A separate transient
+`:pressed` runtime map is not connected yet. See [GBSS](gbss.md).
 
 The first-party Settings widget, managed appearance store, immutable versioned
 themes, and bridge watcher are connected. Check these boundaries:
@@ -189,14 +189,16 @@ host launches the installed worker.
 - Dashboard quick actions support X, bumpers, triggers, stick clicks, Menu,
   and View.
 - Open-widget shortcuts check the focused node, then the explicitly published
-  active input scope. They do not infer a scope from focus or fall through to a
-  parent or sibling scope.
+  active scope-root container. They do not search an unfocused child, infer a
+  scope from focus, or fall through to a parent or sibling scope.
 - Every open-widget event must echo the latest snapshot's
   `ActiveInputScopeId` and `SnapshotSequence`. A stale sequence, wrong scope,
   or focus ID outside that scope is deliberately unhandled.
 - The MVP supports only Pressed bindings. A is reserved for focused activation;
   D-pad is reserved for focus navigation.
-- Disabled and busy buttons do not activate.
+- Disabled and busy Buttons/Sliders remain focusable but do not activate or
+  adjust. If focus jumps, first verify the stable ID still exists in the active
+  scope; ordinary Disabled/Busy changes must retain it.
 - An unhandled B returns to the dashboard only from the widget's root scope. A
   nested scope does not bubble B or get dismissed by the host.
 - B on the dashboard/icon tray closes the overlay. A widget cannot claim it as
@@ -208,8 +210,9 @@ If a modal has no focusable controls, bind B directly on its Stack/Row with
 focusless surface.
 
 If directional focus does not move, first inspect the explicit neighbor. A
-missing, disabled, or busy target uses geometric fallback; the fallback needs
-focus rectangles from a completed render and never wraps. For analog tests,
+missing target uses geometric fallback; Disabled and Busy Buttons/Sliders remain
+valid focus targets and suppress actions without forcing fallback. Geometric
+fallback needs focus rectangles from a completed render and never wraps. For analog tests,
 return the stick below the release threshold before expecting a fresh direction
 and remember that the dashboard consumes only horizontal movement.
 

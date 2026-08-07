@@ -26,7 +26,8 @@ public:
         std::wstring_view focusedElementId);
 
     /// Returns remembered focus, then valid initial focus, then the first
-    /// enabled button in tree order. An empty string is valid for focusless
+    /// navigable Button or Slider in tree order. Disabled/busy controls retain
+    /// focus but suppress actions. An empty string is valid for focusless
     /// surfaces whose container-level shortcuts still accept input.
     [[nodiscard]] std::wstring Restore(
         std::wstring_view widgetId,

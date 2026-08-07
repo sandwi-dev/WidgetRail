@@ -12,6 +12,7 @@ public static partial class GbssParser
             ["pressed"] = GbssPseudoState.Pressed,
             ["selected"] = GbssPseudoState.Selected,
             ["disabled"] = GbssPseudoState.Disabled,
+            ["busy"] = GbssPseudoState.Busy,
         };
 
     public static GbssParseResult Parse(string source, string sourceName = "<memory>")

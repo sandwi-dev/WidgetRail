@@ -28,6 +28,9 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-008 | P2 | Verifying | Declarative renderer | Inactive LRU offset eviction and scroll-clipped deferred focus outlines are implemented. |
 | GBA-009 | P1 | Verifying | Platform diagnostics transport | First-instance ownership and mutual kernel PID authentication are implemented. |
 | GBA-010 | P2 | Verifying | Platform diagnostics transport | End-to-end request deadlines and bounded client timeout validation are implemented. |
+| GBA-011 | P0 | Verifying | Widget SDK / host focus / Audio Mixer | Focus-safe disabled/busy semantics and per-session Audio reconciliation are implemented; packaged controller verification remains. |
+| GBA-012 | P1 | Verifying | Declarative renderer / component styles | Effective surface/ancestor focus clipping and non-scaling full-width defaults are implemented; packaged visual verification remains. |
+| GBA-013 | P1 | Verifying | Network Controls / widget SDK | The full-width controller-scroll profile list and focused-row routing are implemented; packaged visual/controller verification remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -42,9 +45,10 @@ real `System sounds` session from 100% to 95%, read back 95% through Core Audio,
 and restored 100%. The redesigned widget no longer infers a selected card from
 global trigger shortcuts: every visible application row has stable opaque IDs
 and an immutable action map that resolves directly to the provider's exact raw
-session ID. Removed or stale actions fail closed. The Audio Mixer Release suite
-passes 15/15. This proves the provider and widget seams independently, but not
-yet the exact packaged worker-to-broker path against a playing application.
+session ID. Removed or stale actions fail closed. The Audio provider and Audio
+Mixer Release suites pass 14/14 and 22/22. This proves the provider and widget
+seams independently, but not yet the exact packaged worker-to-broker path
+against a playing application.
 
 **Acceptance:**
 
@@ -88,13 +92,16 @@ sessions with shoulder shortcuts. This made comparison slow and did not match
 the requested mixer mental model.
 
 **Implementation evidence:** Master output is pinned above a single bounded
-vertical scroll containing every session row. Each row exposes its own progress,
-volume-down, mute, and volume-up controls with an explicit four-way focus graph.
+vertical Scroll containing every session row. Master and application rows use
+the same icon–Slider–percentage composition: the nonfocusable icon exposes mute
+state, Left/Right changes the focused Slider's absolute volume, A toggles mute,
+and Up/Down moves between rows. Each row is one stable focus target.
 LB/RB/LT/RT session cycling, root shortcuts, and dashboard quick actions were
 removed. Host-owned scroll offsets are keyed by exact worker instance, input
 scope, and scroll ID; stable focus IDs survive close/reopen and ordinal fallback
-selects the nearest enabled row after churn. SDK, native renderer/focus, and
-Audio Mixer Release suites pass, including 128-session and long-label cases.
+selects the nearest focusable row after churn. SDK, native renderer/focus, and
+Audio Mixer Release suites pass, including rapid absolute Slider updates,
+128-session, and long-label cases.
 
 **Acceptance:**
 
@@ -224,6 +231,91 @@ timeouts are finite, positive, and capped with deterministic validation.
 provider, and response work; client timeouts must be finite, positive, and no
 more than ten seconds. The diagnostics Release suite passes 8/8, including
 stalled hello/provider recovery.
+
+## GBA-011 — Async control state must not move controller focus
+
+**Evidence:** In the packaged Audio Mixer, activating mute beneath an
+application row immediately moves focus to the master-output volume `+`
+control. The widget globally marks controls unavailable while one broker
+request is pending, and the host interprets that transient state as removal
+from the focus graph.
+
+**Acceptance:**
+
+1. `Disabled` prevents activation but remains focusable and controller-
+   navigable; it exposes a readable unavailable state rather than disappearing.
+2. `Busy` remains focused and navigable while duplicate activation or value
+   changes are suppressed or coalesced.
+3. Only an explicit hidden/non-navigable state removes a control from the focus
+   graph. A focused control changing enabled, disabled, or busy state retains
+   its exact stable focus ID.
+4. Audio pending state is scoped to the exact output/session operation and does
+   not disable unrelated rows. Post-acknowledgement stale events cannot roll
+   back the optimistic value or move focus.
+5. SDK, host focus, bridge/runtime, and Audio Mixer regressions cover focus
+   retention, ignored disabled activation, busy coalescing, and session churn.
+
+**Implementation evidence:** Buttons and Sliders remain in the host focus graph
+when disabled or busy; those states suppress actions without changing stable
+focus identity. Audio now renders one Slider focus target per master/session
+row, with A mute and absolute left/right volume. Independent per-session/output
+state coalesces rapid volume targets latest-wins, retains authoritative state
+through stale post-acknowledgement events, and rolls back bounded failures. The
+SDK Release suite passes 41/41 and Audio Mixer passes 22/22, including the exact
+application-mute focus regression. Packaged controller evidence is still
+required before closing.
+
+## GBA-012 — Focus outlines must stay inside their effective clip
+
+**Evidence:** The Settings category selection outline loses its left and right
+edges because the focused full-width row expands beyond the widget drawing
+window. Similar full-width list controls can be clipped by a scroll or surface
+boundary.
+
+**Acceptance:**
+
+1. Focus decoration is resolved inside the final intersection of the control,
+   widget surface, and every ancestor clip at all supported DPI/text scales.
+2. Full-width list rows do not use a focus transform that grows outside their
+   layout allocation.
+3. Renderer and component-gallery regressions cover edge-aligned controls,
+   nested scrolling, 720p through 4K, mixed DPI, and increased text scale.
+
+**Implementation evidence:** The built-in focused Button and Slider styles use
+an inset outline and no scale transform. Settings removes its full-width focus
+growth. Deferred native focus decoration now starts with the render surface,
+intersects every Scroll or `overflow: clip` ancestor, and preserves explicit
+`overflow: visible`. Platform theme Release tests pass 13/13; native renderer
+tests pass 4,227 checks including nested non-Scroll clips, scaled root-edge
+controls, visible-overflow freedom, and retained Scroll behavior. Packaged
+screenshots at supported scale settings remain required before closing.
+
+## GBA-013 — Network Controls needs a dense controller-first surface
+
+**Evidence:** The compact Network Controls widget constrains its content root
+to 44 percent of an already compact host surface. This leaves a large dead area
+on the right and forces saved profiles into a single arrow-cycled card rather
+than a scannable controller list.
+
+**Acceptance:**
+
+1. Content uses the resolved compact surface width without viewport-relative
+   double-constraining or horizontal overflow.
+2. Current transport, radio/privacy state, and saved-profile actions use a
+   clear visual hierarchy with concise alert, empty, connecting, and failure
+   states.
+3. Saved profiles form a bounded vertical controller-scroll list with stable
+   IDs, focus restoration, and no shoulder/trigger cycling.
+4. Empty, one-profile, many-profile, long-label, radio-off, wired-only,
+   connecting/failure, 720p, high-DPI, and text-scale regressions pass.
+
+**Implementation evidence:** Network now consumes the resolved compact width
+and publishes every saved profile as a stable identity-derived row in one
+bounded vertical Scroll. A and X route through the exact focused row; LB/RB
+cycling, dashboard quick actions, and selected-row fallback are removed.
+Pending rows remain focused and focus survives reorder/churn. Network Controls
+passes 16/16 and the catalog passes 21/21; packaged visual/controller evidence
+remains.
 
 ## Closed issues
 

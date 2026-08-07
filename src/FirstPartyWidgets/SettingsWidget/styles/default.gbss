@@ -86,7 +86,6 @@
   outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -3px;
-  scale: 1.02;
 }
 
 .setting-toggle:selected,

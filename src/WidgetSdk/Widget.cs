@@ -29,9 +29,10 @@ public sealed record WidgetView(
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
 
-        int RequiredProtocolVersion() =>
-            Surface is not null || ContainsScroll(Root)
-                ? ProtocolConstants.CurrentVersion
+        int RequiredProtocolVersion() => ContainsSlider(Root)
+            ? ProtocolConstants.SliderVersion
+            : Surface is not null || ContainsScroll(Root)
+                ? ProtocolConstants.ScrollContainerVersion
                 : ProtocolConstants.BaselineVersion;
     }
 
@@ -40,6 +41,15 @@ public sealed record WidgetView(
         ScrollElement => true,
         StackElement stack => stack.Children.Any(ContainsScroll),
         RowElement row => row.Children.Any(ContainsScroll),
+        _ => false,
+    };
+
+    private static bool ContainsSlider(WidgetElement element) => element switch
+    {
+        SliderElement => true,
+        StackElement stack => stack.Children.Any(ContainsSlider),
+        RowElement row => row.Children.Any(ContainsSlider),
+        ScrollElement scroll => scroll.Children.Any(ContainsSlider),
         _ => false,
     };
 
@@ -58,7 +68,9 @@ public sealed record WidgetActionEvent(
     ControllerButton? ControllerButton = null,
     ControllerEventPhase Phase = ControllerEventPhase.Pressed,
     long Sequence = 0,
-    long MonotonicTimestampMicroseconds = 0);
+    long MonotonicTimestampMicroseconds = 0,
+    double? RequestedValue = null,
+    string? InputScopeId = null);
 
 public enum ControllerInputContext
 {
@@ -78,7 +90,8 @@ public sealed record ControllerInputEvent(
     long Sequence = 0,
     long MonotonicTimestampMicroseconds = 0,
     string? ActiveInputScopeId = null,
-    long SnapshotSequence = 0);
+    long SnapshotSequence = 0,
+    double? RequestedValue = null);
 
 public sealed record WidgetInvalidatedEventArgs(long Revision);
 
@@ -415,12 +428,40 @@ public abstract partial class Widget
                 ? FindNodeInScope(scopeRoot, focusedId, isScopeRoot: true)
                 : null;
             if (input.FocusedElementId is not null && focusedNode is null) return ValueTask.FromResult(false);
-            var focusedEnabled = focusedNode is not null &&
+            var focusedActionable = focusedNode is not null &&
                 focusedNode.IsDisabled is not true && focusedNode.IsBusy is not true;
+            if (focusedNode is { Kind: ViewNodeKind.Slider } slider &&
+                input.Button is ControllerButton.DPadLeft or ControllerButton.DPadRight)
+            {
+                // Horizontal directions belong to a focused slider even at a
+                // bound or while unavailable; they never leak into focus
+                // navigation. The host supplies a quantized absolute target;
+                // the SDK rejects stale snapshots before queueing it.
+                if (input.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated))
+                    return ValueTask.FromResult(true);
+                if (!focusedActionable) return ValueTask.FromResult(true);
+                if (input.RequestedValue is not { } requested ||
+                    slider.Minimum is not { } minimum || slider.Maximum is not { } maximum ||
+                    slider.Step is not { } step ||
+                    !SliderMath.IsValidRequestedValue(requested, minimum, maximum, step))
+                    return ValueTask.FromResult(true);
+                var sliderActionId = slider.ValueChangedActionId;
+                if (string.IsNullOrWhiteSpace(sliderActionId)) return ValueTask.FromResult(true);
+                return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
+                    sliderActionId,
+                    slider.Id,
+                    input.Button,
+                    input.Phase,
+                    input.Sequence,
+                    input.MonotonicTimestampMicroseconds,
+                    requested,
+                    snapshot.ActiveInputScopeId)));
+            }
             if (input.Button == ControllerButton.A &&
                 input.Phase == ControllerEventPhase.Pressed &&
-                focusedEnabled &&
-                focusedNode is { Kind: ViewNodeKind.Button, ActionId: { Length: > 0 } actionId })
+                focusedActionable &&
+                focusedNode is { Kind: ViewNodeKind.Button or ViewNodeKind.Slider,
+                    ActionId: { Length: > 0 } actionId })
             {
                 return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
                     actionId,
@@ -435,11 +476,11 @@ public abstract partial class Widget
             // component shortcut elsewhere in the surface.
             if (input.Button == ControllerButton.A) return ValueTask.FromResult(false);
 
-            var focusedShortcut = focusedEnabled
-                ? focusedNode!.Shortcuts.FirstOrDefault(candidate =>
-                    candidate.Button == input.Button && candidate.Phase == input.Phase)
-                : null;
+            var focusedShortcut = focusedNode?.Shortcuts.FirstOrDefault(candidate =>
+                candidate.Button == input.Button && candidate.Phase == input.Phase);
             if (focusedShortcut is not null)
+            {
+                if (!focusedActionable) return ValueTask.FromResult(false);
                 return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
                     focusedShortcut.ActionId,
                     focusedNode!.Id,
@@ -447,9 +488,12 @@ public abstract partial class Widget
                     input.Phase,
                     input.Sequence,
                     input.MonotonicTimestampMicroseconds)));
+            }
 
-            var scopedShortcut = FindUniqueShortcutInScope(
-                scopeRoot, input.Button, input.Phase);
+            var scopedShortcut = input.FocusedElementId is { } activeFocus
+                ? FindNearestAncestorShortcutInScope(
+                    scopeRoot, activeFocus, input.Button, input.Phase)
+                : FindScopeRootShortcut(scopeRoot, input.Button, input.Phase);
             if (scopedShortcut is null) return ValueTask.FromResult(false);
             return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
                 scopedShortcut.Value.Shortcut.ActionId,
@@ -496,30 +540,50 @@ public abstract partial class Widget
         return null;
     }
 
-    private static (ViewNode Node, ControllerShortcut Shortcut)? FindUniqueShortcutInScope(
+    private static (ViewNode Node, ControllerShortcut Shortcut)? FindScopeRootShortcut(
         ViewNode scopeRoot,
         ControllerButton button,
         ControllerEventPhase phase)
     {
-        (ViewNode Node, ControllerShortcut Shortcut)? result = null;
-        var ambiguous = false;
-        Visit(scopeRoot, isScopeRoot: true);
-        return ambiguous ? null : result;
+        if (scopeRoot.IsDisabled is true || scopeRoot.IsBusy is true) return null;
+        var shortcut = scopeRoot.Shortcuts.FirstOrDefault(candidate =>
+            candidate.Button == button && candidate.Phase == phase);
+        return shortcut is null ? null : (scopeRoot, shortcut);
+    }
 
-        void Visit(ViewNode node, bool isScopeRoot)
+    private static (ViewNode Node, ControllerShortcut Shortcut)?
+        FindNearestAncestorShortcutInScope(
+            ViewNode scopeRoot,
+            string focusedElementId,
+            ControllerButton button,
+            ControllerEventPhase phase)
+    {
+        var path = new List<ViewNode>();
+        if (!FindPath(scopeRoot, focusedElementId, isScopeRoot: true, path)) return null;
+        for (var index = path.Count - 2; index >= 0; index--)
         {
-            if (!isScopeRoot && node.InputScopeId is not null) return;
-            if (node.IsDisabled is not true && node.IsBusy is not true)
+            var ancestor = path[index];
+            var shortcut = ancestor.Shortcuts.FirstOrDefault(candidate =>
+                candidate.Button == button && candidate.Phase == phase);
+            if (shortcut is not null) return (ancestor, shortcut);
+        }
+        return null;
+
+        static bool FindPath(
+            ViewNode node,
+            string targetId,
+            bool isScopeRoot,
+            List<ViewNode> path)
+        {
+            if (!isScopeRoot && node.InputScopeId is not null) return false;
+            path.Add(node);
+            if (string.Equals(node.Id, targetId, StringComparison.Ordinal)) return true;
+            foreach (var child in node.Children)
             {
-                var shortcut = node.Shortcuts.FirstOrDefault(candidate =>
-                    candidate.Button == button && candidate.Phase == phase);
-                if (shortcut is not null)
-                {
-                    if (result is not null) ambiguous = true;
-                    else result = (node, shortcut);
-                }
+                if (FindPath(child, targetId, isScopeRoot: false, path)) return true;
             }
-            foreach (var child in node.Children) Visit(child, isScopeRoot: false);
+            path.RemoveAt(path.Count - 1);
+            return false;
         }
     }
 }

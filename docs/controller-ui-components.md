@@ -1,0 +1,212 @@
+# Controller UI component patterns
+
+Status: Slider v3, the Audio Mixer reference composition, and the first modern
+SDK composite set are implemented; the inventory below distinguishes current
+public helpers from later semantic candidates.
+
+Game Bar Alternative components are semantic, controller-first contracts. A
+widget publishes intent and state; the host owns rendering, accessibility,
+focus, animation, DPI, and work-area adaptation. Components are not miniature
+web views and cannot introduce HTML, JavaScript, arbitrary SVG, or their own
+focus engine.
+
+## Design sources and originality boundary
+
+The inventory uses the public category names in the [Tailwind Plus Application
+UI catalog](https://tailwindcss.com/plus/ui-blocks) to avoid overlooking common
+application patterns. Interaction and accessibility thinking is also informed
+by the public [Headless UI component
+catalog](https://headlessui.com/), where behavior and state are separated from
+appearance.
+
+Those sites are taxonomy and interaction inspiration only. This project does
+not copy Tailwind Plus component source, layouts, assets, or styles; does not
+ship Tailwind or Headless UI; and does not derive a competing web UI kit from
+commercial examples. Every component here is an original native protocol/SDK/
+GBSS design constrained by controller navigation and overlay performance.
+
+## Current foundation
+
+| Need | Current public surface | Notes |
+| --- | --- | --- |
+| Layout | `Stack`, `Row`, `Scroll`, `Spacer` | Host layout, clipping, and focus-follow; no widget pixel scrolling. |
+| Content | `Text`, `Image`, `Icon` | Bounded semantic content and a closed glyph vocabulary. |
+| Discrete action | `Button`, button glyph, shortcut | One focus stop; A activates; scoped shortcuts remain explicit. |
+| Two-state action | `ToggleButton`, selected Button | Visible and accessible state remains widget-owned. |
+| Read-only value | `Progress` | Not focusable and never accepts controller changes. |
+| Stepped setting | `Stepper` | Separate decrement/increment focus stops; useful when each action must be explicit. |
+| Direct value | `Slider` | Protocol v3, one focus stop, L/R adjustment, optional A action. |
+| Nested surface | container input scope + scope shortcut | Dialog/detail behavior is modeled without allowing shortcut leakage. |
+| Icon action | `IconButton` | One closed semantic glyph, required accessible name, controller target size/variant classes. |
+| Grouping | `Card`, `SectionHeader`, `Divider` | Nonfocusable visual hierarchy with stable generated child IDs. |
+| Status | `StatusBadge`, `Alert`, `EmptyState` | Non-color state cues and at most one explicit recovery action. |
+
+These primitives are deliberately small. Reusable components should normally
+be SDK composition helpers that emit the same bounded tree rather than new
+protocol kinds. A new protocol kind is justified only when the host must own
+unique input, accessibility, or rendering behavior—as with Slider.
+
+### Modern composite helpers
+
+The implemented helpers emit baseline protocol nodes and add stable `gbar-*`
+semantic classes. They do not add worker code, polling, or a new native node:
+
+- `UI.IconButton(...)` provides Default, Primary, Danger, and Quiet variants
+  plus Small, Medium, and Large controller-safe sizes. Its visible label is
+  intentionally empty, so a nonblank accessibility label is required.
+- `UI.Card(...)` provides Raised, Subtle, and Transparent structural variants.
+  Cards are not implicitly actionable; put a real Button inside when an action
+  is needed.
+- `UI.SectionHeader(...)` provides optional eyebrow, description, and trailing
+  content with documented stable child-ID suffixes.
+- `UI.StatusBadge(...)` provides Neutral, Info, Success, Warning, and Danger
+  tones. The text must name the state; color is supplementary.
+- `UI.Divider(...)` is decorative spacing/separation and never enters focus.
+- `UI.Alert(...)` and `UI.EmptyState(...)` provide concise title/message content
+  and zero or one `ComponentAction`. That action is their only focus stop.
+
+Use `.AddClasses(...)` to add widget-specific styling while preserving and
+deduplicating required component classes. `.Classes(...)` remains the explicit
+replacement API for compatibility and low-level primitives.
+
+### Generated child-ID contract
+
+Composite helpers reserve the following exact suffixes under the caller's
+stable `id`. These names are public compatibility surface: authors may use them
+for `InitialFocusId`, explicit focus neighbors, snapshot assertions, and
+diagnostics, but must not reuse them for another node in the same snapshot.
+
+| Helper | Generated IDs |
+| --- | --- |
+| `IconButton(id: id)` | None; the Button itself uses `id`. |
+| `Card(id, children)` | None; the Stack uses `id` and supplied children retain their IDs. |
+| `SectionHeader(title, id, ...)` | `id.content`, `id.text`, `id.title`; optional `id.eyebrow`, `id.description`, and `id.trailing`. The author-supplied trailing element retains its own ID inside `id.trailing`. |
+| `StatusBadge(label, tone, id, glyph?)` | `id.label` and, when a semantic glyph is present, `id.icon`. |
+| `Divider(id)` | None; the Spacer itself uses `id`. |
+| `Alert(..., id, action?, glyph?)` | `id.title`, `id.message`; optional `id.icon` and `id.action`. The optional recovery Button is `id.action`. |
+| `EmptyState(..., id, action?, glyph)` | `id.icon`, `id.title`, `id.message`; optional recovery Button `id.action`. |
+
+Generated IDs use the same 128-character stable-ID grammar as ordinary nodes.
+The helper validates the parent and complete generated IDs eagerly, so leave
+room for the longest suffix instead of using a 128-character parent ID.
+
+## Audio icon-Slider-percentage pattern
+
+The first-party Audio Mixer is the reference for an adjustable value with one
+closely related binary action:
+
+```text
+┌ Application name                                      ACTIVE ┐
+│  [volume/muted icon]  [========= Slider =========]       75% │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- The leading `Icon` is non-focusable and changes between the semantic Volume
+  and Muted glyphs. It communicates state without creating a tiny extra target.
+- The Slider is the row's only focus stop. Left/Right changes volume, Up/Down
+  selects the previous/next row, and A invokes the optional mute action.
+- The trailing percentage is ordinary text with a stable width, so values do
+  not make the track jump horizontally.
+- The Slider's accessibility label includes audible/muted state and the A
+  action; `AccessibilityValue` publishes the localized percentage.
+- Master output and every application use the same structure. Explicit
+  Up/Down neighbors connect the master Slider to the first application and
+  adjacent application Sliders.
+- Application rows live inside `UI.VerticalScroll`, so the host reveals and
+  restores the selected session instead of the widget inventing LT/RT paging.
+
+Representative construction:
+
+```csharp
+UI.Row(ids.Controls,
+    UI.Icon(
+            session.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Volume,
+            ids.MuteIcon,
+            session.IsMuted ? "Application muted" : "Application audible")
+        .Classes("audio-mute-icon", session.IsMuted ? "is-muted" : "is-audible"),
+    UI.Slider(
+            session.Volume, 0, 1, 0.05,
+            ids.VolumeSet,
+            ids.VolumeSlider,
+            $"{session.DisplayName} volume. Press A to toggle mute",
+            accessibilityValue: $"{percent}%",
+            activationAction: ids.Mute)
+        .FocusUp(previousSliderId)
+        .FocusDown(nextSliderId)
+        .Classes("audio-volume-slider"),
+    UI.Text($"{percent}%", ids.Value, $"Volume {percent} percent")
+        .Classes("audio-volume-value"))
+```
+
+Volume input is optimistic and latest-wins: publish the newest requested value
+immediately, keep the Slider adjustable, and style the enclosing row with a
+pending class. Do not mark the Slider Busy merely because a volume provider
+write is outstanding—the SDK queue and widget provider state perform bounded
+coalescing. A mute request is discrete, so the reference marks the Slider Busy
+until that mute intent is confirmed; Busy suppresses duplicate A/adjustment
+but retains the exact focus target.
+
+Keep IDs derived from a stable provider identity, never display name or list
+position. When a provider event arrives, ignore stale values that predate the
+pending intent; apply external authoritative changes normally once no command
+is pending. Cancel provider operations when the active lifecycle ends.
+
+## Interaction-state contract
+
+Focusable does not mean actionable:
+
+| State | In focus order | Activation/value change | Typical presentation |
+| --- | --- | --- | --- |
+| Normal | Yes | Dispatched | Normal/focused surface. |
+| Selected | Yes | Dispatched | Explicit on/checked state. |
+| Disabled | Yes | Suppressed | Lower emphasis plus an accessible unavailable state. |
+| Busy | Yes | Suppressed | Stable focus plus bounded pending feedback. |
+| Removed from tree | No | Impossible | Focus restores to a stable surviving fallback. |
+
+Disabled and Busy must never cause focus to jump. Use Disabled for a currently
+unavailable action and Busy for work already accepted. Neither is a visibility
+or navigation API. Avoid disabling a whole card or list because one child has
+work in flight; track pending state at the narrowest owning feature.
+
+## Remaining component design queue
+
+The following are design candidates, not current `UI.*` APIs. Implement them as
+tested composition helpers or native semantics before authors depend on names:
+
+1. **Status line and loading state** — bounded live state without making
+   metadata focusable or inventing a polling contract.
+2. **List row / media row** — leading visual, primary/secondary text, trailing
+   status/action, stable child-ID suffixes, and focus-ring-safe insets.
+3. **Switch and segmented/tabs helpers** — semantic state, one-dimensional
+   controller rules, and explicit selected content.
+4. **Dialog/detail helper** — nested input scope, deterministic initial focus,
+   explicit B back action, and focus restoration to the opener.
+5. **Select/listbox helper** — opens a nested scrollable scope instead of
+   cycling hidden values with bumpers or triggers.
+6. **Toast/notification model** — host-announced, time-bounded feedback that
+   never steals focus; persistent failures remain in the owning surface.
+
+Each candidate must ship with protocol/SDK validation, controller routing,
+screen-reader semantics, GBSS roles/classes, compact and wide layouts, 720p and
+high-DPI evidence, high-contrast/reduced-motion behavior, and regression tests.
+Visual polish alone is not a component contract.
+
+## Author checklist
+
+- Give every focusable intent one stable ID across labels, values, Busy, and
+  Disabled changes.
+- Prefer one meaningful focus stop over multiple tiny controls.
+- Use semantic state and host glyphs instead of encoding state only in color.
+- Keep full-width focus outlines inside the clipped surface; do not scale a row
+  beyond its Scroll/container bounds.
+- Put long collections in Scroll and let host focus reveal the selected row.
+- Use a nested input scope for dialogs/detail panes and bind B to one-level
+  Back in that scope.
+- Publish immediate local feedback, then reconcile provider truth with bounded
+  cancellation and stale-event protection.
+- Test controller navigation at minimum width, maximum text scale, empty/
+  loading/error state, dynamic item removal, and rapid repeated input.
+
+See [Declarative UI](declarative-ui.md), [Controller input](controller-input.md),
+[GBSS](gbss.md), [Visual design system](visual-design-system.md), and
+[Performance](performance.md) for the underlying contracts.

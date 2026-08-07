@@ -364,6 +364,10 @@ struct DeclarativeRenderer::RenderPass final {
         element.flexShrink = style.flexShrink();
         if (!style.flexBasisAuto()) element.flexBasis = style.flexBasisPx();
         element.aspectRatio = style.aspectRatio();
+        if (node.kind == L"slider") {
+            element.minWidth = std::max(element.minWidth.value_or(0.0F), 160.0F);
+            element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
+        }
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
             : declarative::OverflowBehavior::Visible;
@@ -563,19 +567,27 @@ struct DeclarativeRenderer::RenderPass final {
         return hasScrollAncestor;
     }
 
-    [[nodiscard]] std::optional<Rect> ScrollVisibilityClip(
+    [[nodiscard]] std::optional<Rect> EffectiveFocusVisibilityClip(
         const std::wstring_view nodeId) const {
         std::vector<const WidgetNode*> path;
-        if (!FindNodePath(snapshot->root, nodeId, path) || path.size() < 2)
+        if (!FindNodePath(snapshot->root, nodeId, path))
             return std::nullopt;
-        std::optional<Rect> clip;
+        // The render surface is an implicit clip for every deferred outline.
+        // Unlike element backgrounds, an outline intentionally escapes normal
+        // visible-overflow ancestors; only explicit clipping ancestors further
+        // constrain it.
+        auto clip = viewport;
         for (std::size_t index = 0; index + 1 < path.size(); ++index) {
             const auto& ancestor = *path[index];
-            if (ancestor.kind != L"scroll") continue;
+            const auto preparedAncestor = prepared.find(NarrowStableId(ancestor.id));
+            if (preparedAncestor == prepared.end()) continue;
+            const bool clips = ancestor.kind == L"scroll" ||
+                preparedAncestor->second.baseStyle.overflow() == NativeOverflow::Clip;
+            if (!clips) continue;
             const auto* box = layout.Find(NarrowStableId(ancestor.id));
             if (!box) continue;
             const auto localClip = Intersection(box->contentBox, box->visibleBox);
-            clip = clip ? Intersection(*clip, localClip) : localClip;
+            clip = Intersection(clip, localClip);
         }
         return clip;
     }
@@ -731,6 +743,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (node.kind == L"image") return {120.0F, 120.0F};
         if (node.kind == L"icon") return {24.0F, 24.0F};
         if (node.kind == L"progress") return {160.0F, 8.0F};
+        if (node.kind == L"slider") return {240.0F, kMinimumControlSize};
         return {};
     }
 
@@ -1015,6 +1028,72 @@ struct DeclarativeRenderer::RenderPass final {
             fillBrush.Get());
     }
 
+    void DrawSlider(
+        const WidgetNode& node,
+        const NativeRenderStyle& style,
+        const Rect rect,
+        const float opacity,
+        const bool focused) {
+        if (!target || rect.width <= 0.0F || rect.height <= 0.0F) return;
+        const auto overrideValue = options.sliderValueOverrides.find(node.id);
+        const auto presentedValue = overrideValue == options.sliderValueOverrides.end()
+            ? node.value
+            : overrideValue->second;
+        auto ratio = 0.0;
+        const auto range = node.maximum - node.minimum;
+        const auto offset = presentedValue - node.minimum;
+        if (node.hasProgress && node.hasSliderRange &&
+            std::isfinite(node.minimum) && std::isfinite(node.maximum) &&
+            std::isfinite(presentedValue) && std::isfinite(node.step) &&
+            std::isfinite(range) && range > 0.0 && std::isfinite(offset) &&
+            node.minimum < node.maximum && presentedValue >= node.minimum &&
+            presentedValue <= node.maximum && node.step > 0.0 &&
+            node.step <= range && std::isfinite(offset / range)) {
+            ratio = std::clamp(offset / range, 0.0, 1.0);
+        } else {
+            Add(node.id, L"invalid_slider_range",
+                L"Slider requires finite minimum < maximum, an in-range value, and a positive bounded step.",
+                RenderDiagnosticSeverity::Error);
+        }
+
+        const auto thumbRadius = focused ? 9.0F : 7.0F;
+        const auto trackHeight = focused ? 8.0F : 6.0F;
+        const auto trackInset = thumbRadius + 2.0F;
+        const Rect track{
+            rect.x + trackInset,
+            rect.y + (rect.height - trackHeight) * 0.5F,
+            std::max(0.0F, rect.width - trackInset * 2.0F),
+            trackHeight,
+        };
+        const auto accent = style.foreground().value_or(kDefaultAccent);
+        auto trackBrush = Brush(target, WithOpacity(
+            style.background().value_or(kDefaultTrack), opacity));
+        if (trackBrush) target->FillRoundedRectangle(
+            {D2DRect(track), trackHeight * 0.5F, trackHeight * 0.5F},
+            trackBrush.Get());
+        const auto thumbX = track.x + track.width * static_cast<float>(ratio);
+        const Rect fill{track.x, track.y, std::max(0.0F, thumbX - track.x), track.height};
+        auto accentBrush = Brush(target, WithOpacity(accent, opacity));
+        if (accentBrush && fill.width > 0.0F) target->FillRoundedRectangle(
+            {D2DRect(fill), trackHeight * 0.5F, trackHeight * 0.5F},
+            accentBrush.Get());
+        if (!accentBrush) return;
+
+        const auto center = D2D1::Point2F(thumbX, rect.y + rect.height * 0.5F);
+        const auto thumb = D2D1::Ellipse(center, thumbRadius, thumbRadius);
+        if (node.isDisabled) {
+            target->DrawEllipse(thumb, accentBrush.Get(), 2.0F);
+        } else {
+            target->FillEllipse(thumb, accentBrush.Get());
+        }
+        if (node.isBusy) {
+            const auto busyRadius = thumbRadius + 4.0F;
+            target->DrawEllipse(
+                D2D1::Ellipse(center, busyRadius, busyRadius),
+                accentBrush.Get(), 2.0F);
+        }
+    }
+
     void DrawStateCue(
         const WidgetNode& node,
         const NativeRenderStyle& style,
@@ -1093,9 +1172,13 @@ struct DeclarativeRenderer::RenderPass final {
         const auto opacity = style.opacity() * disabledFactor;
         const auto paintRect = ScaleRect(box->borderBox, style.scale());
 
-        if (node.kind == L"button") {
+        if (node.kind == L"button" || node.kind == L"slider") {
             result.navigationRects[node.id] = box->borderBox;
-            result.navigationEnabled[node.id] = !node.isDisabled && !node.isBusy;
+            // A busy slider retains its place in the focus graph while its
+            // value is pending, but the host suppresses adjustment/activation.
+            // Disabled and busy describe activation state, not navigability.
+            // Focus remains stable so status changes never teleport the user.
+            result.navigationEnabled[node.id] = true;
             result.focusScopes[node.id] = std::wstring{inputScope};
             if (CanRevealNode(node.id)) result.revealableFocusIds.insert(node.id);
             // Controller focus and pointer hit-testing must use the geometry a
@@ -1108,7 +1191,8 @@ struct DeclarativeRenderer::RenderPass final {
                 result.focusRects[node.id] = visibleRect;
                 if (focused) result.currentFocusRect = visibleRect;
             }
-            if (focused) result.currentFocusOutlineClip = ScrollVisibilityClip(node.id);
+            if (focused)
+                result.currentFocusOutlineClip = EffectiveFocusVisibilityClip(node.id);
         }
 
         if (!target) {
@@ -1143,6 +1227,8 @@ struct DeclarativeRenderer::RenderPass final {
             DrawStateCue(node, style, paintRect, opacity);
         } else if (node.kind == L"progress") {
             DrawProgress(node, style, box->contentBox, opacity);
+        } else if (node.kind == L"slider") {
+            DrawSlider(node, style, box->contentBox, opacity, focused);
         } else if (node.kind == L"image") {
             DrawImage(node, style, paintRect, opacity, focused);
         } else if (node.kind == L"icon") {
@@ -1162,7 +1248,7 @@ struct DeclarativeRenderer::RenderPass final {
             deferredFocusStyle = &style;
             deferredFocusRect = paintRect;
             deferredFocusOpacity = opacity;
-            deferredFocusClip = ScrollVisibilityClip(node.id);
+            deferredFocusClip = EffectiveFocusVisibilityClip(node.id);
         }
     }
 

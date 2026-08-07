@@ -48,6 +48,12 @@ void StickNavigator::Prime(const short x, const short y, const std::uint64_t now
 
 std::optional<NavigationDirection> StickNavigator::Update(
     const short x, const short y, const std::uint64_t now) noexcept {
+    const auto event = UpdateEvent(x, y, now);
+    return event ? std::optional{event->direction} : std::nullopt;
+}
+
+std::optional<StickNavigationEvent> StickNavigator::UpdateEvent(
+    const short x, const short y, const std::uint64_t now) noexcept {
     const auto resolved = Resolve(x, y);
     if (resolved == NavigationDirection::None) {
         Reset();
@@ -56,11 +62,11 @@ std::optional<NavigationDirection> StickNavigator::Update(
     if (resolved != direction_) {
         direction_ = resolved;
         nextRepeat_ = now + options_.initialRepeatMilliseconds;
-        return resolved;
+        return StickNavigationEvent{resolved, NavigationEventPhase::Pressed};
     }
     if (nextRepeat_ != 0 && now >= nextRepeat_) {
         nextRepeat_ = now + options_.repeatMilliseconds;
-        return resolved;
+        return StickNavigationEvent{resolved, NavigationEventPhase::Repeated};
     }
     return std::nullopt;
 }

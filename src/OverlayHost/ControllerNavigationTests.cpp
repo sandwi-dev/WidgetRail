@@ -40,6 +40,58 @@ int main() {
     navigator.Prime(-20'000, 0, 700);
     Check(!navigator.Update(-20'000, 0, 710), "priming prevents an opening ghost move");
 
+    gba::input::StickNavigator phased;
+    phased.Prime(0, 0, 0);
+    const auto pressedDirection = phased.UpdateEvent(20'000, 0, 10);
+    Check(pressedDirection && pressedDirection->phase ==
+              gba::input::NavigationEventPhase::Pressed,
+          "new stick direction is a pressed event");
+    const auto repeatedDirection = phased.UpdateEvent(20'000, 0, 370);
+    Check(repeatedDirection && repeatedDirection->phase ==
+              gba::input::NavigationEventPhase::Repeated,
+          "held stick direction preserves repeat phase");
+
+    constexpr std::uint16_t left = 0x0001;
+    constexpr std::uint16_t right = 0x0002;
+    Check(gba::input::DigitalNavigationAxis(left, left, right) < 0,
+          "digital negative button maps to a negative axis");
+    Check(gba::input::DigitalNavigationAxis(right, left, right) > 0,
+          "digital positive button maps to a positive axis");
+    Check(gba::input::DigitalNavigationAxis(left | right, left, right) == 0,
+          "opposing digital directions fail neutral");
+    gba::input::StickNavigator dpad{
+        gba::input::StickNavigationOptions{1, 0, 360, 125}};
+    dpad.Prime(0, 0, 0);
+    const auto dpadPressed = dpad.UpdateEvent(
+        gba::input::DigitalNavigationAxis(right, left, right), 0, 10);
+    Check(dpadPressed && dpadPressed->phase == gba::input::NavigationEventPhase::Pressed,
+          "D-pad direction emits one pressed event");
+    Check(!dpad.UpdateEvent(
+              gba::input::DigitalNavigationAxis(right, left, right), 0, 369),
+          "D-pad hold waits for bounded initial repeat delay");
+    const auto dpadRepeated = dpad.UpdateEvent(
+        gba::input::DigitalNavigationAxis(right, left, right), 0, 370);
+    Check(dpadRepeated && dpadRepeated->phase == gba::input::NavigationEventPhase::Repeated,
+          "D-pad hold shares the bounded navigation repeat cadence");
+
+    using gba::input::FocusedDirectionRoute;
+    using gba::input::RouteFocusedDirection;
+    Check(RouteFocusedDirection(L"slider", false, false, NavigationDirection::Left) ==
+              FocusedDirectionRoute::SliderAdjustment,
+          "focused slider owns Left adjustment");
+    Check(RouteFocusedDirection(L"slider", false, false, NavigationDirection::Up) ==
+              FocusedDirectionRoute::FocusNavigation,
+          "focused slider leaves Up for focus navigation");
+    Check(RouteFocusedDirection(L"slider", true, false, NavigationDirection::Right) ==
+              FocusedDirectionRoute::Consume,
+          "disabled slider consumes adjustment without activating");
+    Check(RouteFocusedDirection(L"slider", false, true, NavigationDirection::Right) ==
+              FocusedDirectionRoute::Consume,
+          "busy slider consumes adjustment while retaining focus");
+    Check(RouteFocusedDirection(L"button", true, true, NavigationDirection::Right) ==
+              FocusedDirectionRoute::FocusNavigation,
+          "button direction remains focus navigation regardless of activation state");
+
     using gba::input::ControllerActionContext;
     using gba::input::ControllerActionRoute;
     using gba::input::RouteControllerAction;

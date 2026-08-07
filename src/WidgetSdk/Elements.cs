@@ -211,6 +211,86 @@ public sealed record ProgressElement : WidgetElement
     };
 }
 
+/// <summary>
+/// A host-rendered controller value control. While focused, Left and Right
+/// emit quantized absolute value-change actions; Up and Down remain focus navigation.
+/// </summary>
+public sealed record SliderElement : WidgetElement
+{
+    internal SliderElement(
+        string id,
+        double value,
+        double minimum,
+        double maximum,
+        double step,
+        string valueChangedActionId,
+        string accessibilityLabel,
+        string accessibilityValue,
+        string? activationActionId) : base(RequireId(id))
+    {
+        Value = value;
+        Minimum = minimum;
+        Maximum = maximum;
+        Step = step;
+        ValueChangedActionId = RequireId(valueChangedActionId);
+        AccessibilityLabel = accessibilityLabel ?? throw new ArgumentNullException(nameof(accessibilityLabel));
+        AccessibilityValue = accessibilityValue ?? throw new ArgumentNullException(nameof(accessibilityValue));
+        ActivationActionId = activationActionId is null ? null : RequireId(activationActionId);
+    }
+
+    public double Value { get; init; }
+    public double Minimum { get; init; }
+    public double Maximum { get; init; }
+    public double Step { get; init; }
+    public string ValueChangedActionId { get; init; }
+    public string AccessibilityLabel { get; init; }
+    public string AccessibilityValue { get; init; }
+    /// <summary>Optional A-button action while this slider has focus.</summary>
+    public string? ActivationActionId { get; init; }
+    public bool? IsDisabled { get; init; }
+    public bool? IsBusy { get; init; }
+    public FocusNeighbors? FocusNeighbors { get; init; }
+
+    public SliderElement FocusUp(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Up = RequireId(id) },
+    };
+    public SliderElement FocusDown(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Down = RequireId(id) },
+    };
+    public SliderElement Disabled(bool disabled = true) => this with
+    {
+        IsDisabled = disabled ? true : null,
+    };
+    public SliderElement Busy(bool busy = true) => this with
+    {
+        IsBusy = busy ? true : null,
+    };
+    public SliderElement Activate(string actionId) => this with
+    {
+        ActivationActionId = RequireId(actionId),
+    };
+
+    internal override ViewNode ToProtocolNode() => new()
+    {
+        Id = Id,
+        Kind = ViewNodeKind.Slider,
+        Value = Value,
+        Minimum = Minimum,
+        Maximum = Maximum,
+        Step = Step,
+        ValueChangedActionId = ValueChangedActionId,
+        ActionId = ActivationActionId,
+        AccessibilityLabel = AccessibilityLabel,
+        AccessibilityValue = AccessibilityValue,
+        IsDisabled = IsDisabled,
+        IsBusy = IsBusy,
+        Focus = FocusNeighbors,
+        StyleClasses = StyleClasses,
+    };
+}
+
 public sealed record SpacerElement : WidgetElement
 {
     internal SpacerElement(string id) : base(RequireId(id)) { }

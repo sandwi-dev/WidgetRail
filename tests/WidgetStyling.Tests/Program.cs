@@ -12,7 +12,7 @@ var tests = new (string Name, Action Run)[]
     ("Variable cycles prevent theme publication", VariableCycles),
     ("Cascade applies specificity states and source order", Cascade),
     ("Explicit theme layers outrank selector specificity", LayerPrecedence),
-    ("Selected disabled and focused states compose", InteractionStateComposition),
+    ("Selected disabled busy and focused states compose", InteractionStateComposition),
     ("Typed values clamp bounded renderer inputs", Clamping),
     ("Invalid typed values prevent theme publication", InvalidTypedValues),
     ("Resolved property enumeration is deterministic", DeterministicResolution),
@@ -242,6 +242,7 @@ static void InteractionStateComposition()
     var compile = Compile("""
         .primary:selected { border-width: 3px; }
         .primary:disabled { opacity: 0.4; }
+        .primary:busy { color: #59d5ff; }
         .primary:selected:focused { scale: 1.1; }
         """);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
@@ -253,11 +254,13 @@ static void InteractionStateComposition()
         {
             GbssPseudoState.Selected,
             GbssPseudoState.Disabled,
+            GbssPseudoState.Busy,
             GbssPseudoState.Focused,
         });
     var style = compile.Theme!.Resolve(element);
     Assert.Equal("3px", style.Get("border-width")!.Text);
     Assert.Equal("0.4", style.Get("opacity")!.Text);
+    Assert.Equal("#59d5ff", style.Get("color")!.Text);
     Assert.Equal("1.1", style.Get("scale")!.Text);
 }
 

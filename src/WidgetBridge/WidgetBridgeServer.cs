@@ -532,6 +532,8 @@ public sealed class WidgetBridgeServer(
             throw new BridgeProtocolException("Controller input sequence and timestamp cannot be negative.");
         if (input.FocusedElementId is { Length: > 128 })
             throw new BridgeProtocolException("Focused element ID is too long.");
+        if (input.RequestedValue is { } requested && !double.IsFinite(requested))
+            throw new BridgeProtocolException("Requested controller value must be finite.");
         if (input.Context == ControllerInputContext.DashboardQuickAction && input.Button is
             ControllerButton.A or ControllerButton.B or ControllerButton.Y or
             ControllerButton.DPadUp or ControllerButton.DPadDown or

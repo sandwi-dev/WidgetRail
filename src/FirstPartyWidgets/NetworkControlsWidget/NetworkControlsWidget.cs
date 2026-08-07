@@ -1,5 +1,7 @@
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace GameBarAlternative.FirstPartyWidgets.NetworkControls;
 
@@ -34,12 +36,6 @@ public sealed class NetworkControlsWidget : Widget
         MinimumWidth = 320,
         MinimumHeight = 360,
     };
-
-    private static readonly IReadOnlyList<WidgetQuickAction> ProfileQuickActions =
-    [
-        new(ControllerButton.LeftBumper, "profile.previous", "Previous saved network"),
-        new(ControllerButton.RightBumper, "profile.next", "Next saved network"),
-    ];
 
     private readonly object _stateLock = new();
     private readonly SemaphoreSlim _commandGate = new(1, 1);
@@ -95,7 +91,6 @@ public sealed class NetworkControlsWidget : Widget
         IReadOnlyList<WidgetSavedNetworkProfile> profiles;
         WidgetSavedNetworkProfile? selected;
         NetworkControlsViewState state;
-        int selectedIndex;
         string statusText;
         bool statusIsError;
         bool controlBusy;
@@ -106,7 +101,6 @@ public sealed class NetworkControlsWidget : Widget
             profiles = _profiles;
             selected = SelectedProfileLocked();
             state = _viewState;
-            selectedIndex = _selectedIndex;
             statusText = _status;
             statusIsError = _statusIsError;
             controlBusy = _controlBusy;
@@ -135,16 +129,21 @@ public sealed class NetworkControlsWidget : Widget
         var wirelessNote = WirelessNote(status);
         if (wirelessNote is not null)
         {
-            content.Add(UI.Stack("network.wifi.note",
-                    UI.Text(wirelessNote.Value.Title, "network.wifi.note.title", wirelessNote.Value.Title)
-                        .Classes("network-card-state", wirelessNote.Value.IsError ? "is-error" : "is-warning"),
-                    UI.Text(wirelessNote.Value.Detail, "network.wifi.note.detail", wirelessNote.Value.Detail)
-                        .Classes("network-card-detail"))
+            content.Add(UI.Row("network.wifi.note",
+                    UI.Icon(WidgetGlyph.Warning, "network.wifi.note.icon", wirelessNote.Value.Title)
+                        .Classes("network-notice-icon",
+                            wirelessNote.Value.IsError ? "is-error" : "is-warning"),
+                    UI.Stack("network.wifi.note.copy",
+                            UI.Text(wirelessNote.Value.Title, "network.wifi.note.title", wirelessNote.Value.Title)
+                                .Classes("network-card-state",
+                                    wirelessNote.Value.IsError ? "is-error" : "is-warning"),
+                            UI.Text(wirelessNote.Value.Detail, "network.wifi.note.detail", wirelessNote.Value.Detail)
+                                .Classes("network-card-detail"))
+                        .Classes("network-notice-copy"))
                 .Classes("network-wifi-note"));
         }
 
         string? initialFocus;
-        IReadOnlyList<WidgetQuickAction> quickActions;
         if (selected is null)
         {
             var retry = UI.Button("Refresh saved networks", "retry", "network.retry")
@@ -160,26 +159,26 @@ public sealed class NetworkControlsWidget : Widget
                     retry)
                 .Classes("network-state-card"));
             initialFocus = "network.retry";
-            quickActions = [];
         }
         else
         {
-            content.Add(RenderProfileCard(
-                status, selected, selectedIndex, profiles.Count, controlBusy, pendingProfileId));
-            initialFocus = "network.profile.connect";
-            quickActions = profiles.Count > 1 ? ProfileQuickActions : [];
+            content.Add(UI.Row("network.profiles.heading",
+                    UI.Text("SAVED NETWORKS", "network.profiles.label", "Saved Wi-Fi networks")
+                        .Classes("network-section-label"),
+                    UI.Text($"{profiles.Count}", "network.profiles.count",
+                            $"{profiles.Count} saved Wi-Fi networks")
+                        .Classes("network-section-count"))
+                .Classes("network-section-heading"));
+            content.Add(RenderProfileList(status, profiles, selected, controlBusy, pendingProfileId));
+            initialFocus = ProfileElementId(selected.ProfileId);
         }
 
         var root = UI.Stack("network.root", content.ToArray())
             .InputScope("network-controls")
-            .Shortcut(ControllerButton.LeftBumper, "profile.previous")
-            .Shortcut(ControllerButton.RightBumper, "profile.next")
-            .Shortcut(ControllerButton.X, "profile.connect")
             .Classes("network-controls-widget", selected is null ? "has-state" : "has-profiles");
         return new WidgetView(
             root,
             InitialFocusId: initialFocus,
-            QuickActions: quickActions,
             Surface: CompactSurface);
     }
 
@@ -220,14 +219,9 @@ public sealed class NetworkControlsWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         switch (action.ActionId)
         {
-            case "profile.previous":
-                SelectRelativeProfile(-1);
-                break;
-            case "profile.next":
-                SelectRelativeProfile(1);
-                break;
-            case "profile.connect":
-                await ConnectSelectedProfileAsync(cancellationToken).ConfigureAwait(false);
+            case "profile.connect.item":
+                if (SelectProfileFromElementId(action.SourceElementId))
+                    await ConnectSelectedProfileAsync(cancellationToken).ConfigureAwait(false);
                 break;
             case "retry":
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
@@ -293,91 +287,88 @@ public sealed class NetworkControlsWidget : Widget
             .Classes("network-connection-card");
     }
 
-    private RowElement RenderProfileSwitcher(
-        WidgetSavedNetworkProfile selected,
-        int selectedIndex,
-        int profileCount,
-        bool controlBusy,
-        string? pendingProfileId)
-    {
-        var hasMultipleProfiles = profileCount > 1;
-        var isPending = string.Equals(
-            pendingProfileId, selected.ProfileId, StringComparison.Ordinal);
-        var previous = UI.Button("", "profile.previous", "network.profile.previous")
-            .Icon(WidgetGlyph.Previous, "Previous saved network")
-            .Disabled(!hasMultipleProfiles)
-            .FocusUp("network.profile.connect")
-            .FocusLeft("network.profile.next")
-            .FocusRight("network.profile.next")
-            .FocusDown("network.profile.connect")
-            .Classes("network-profile-action");
-        var next = UI.Button("", "profile.next", "network.profile.next")
-            .Icon(WidgetGlyph.Next, "Next saved network")
-            .Disabled(!hasMultipleProfiles)
-            .FocusUp("network.profile.connect")
-            .FocusLeft("network.profile.previous")
-            .FocusRight("network.profile.previous")
-            .FocusDown("network.profile.connect")
-            .Classes("network-profile-action");
-        var state = isPending ? "CONNECTING" : selected.IsConnected ? "CONNECTED" : "SAVED";
-        var detail = selected.SignalPercent is { } signal
-            ? $"Signal {signal}% · Profile {selectedIndex + 1} of {profileCount}"
-            : $"Profile {selectedIndex + 1} of {profileCount}";
-        return UI.Row("network.profile.switcher",
-                previous,
-                UI.Stack("network.profile.copy",
-                        UI.Text(selected.DisplayName, "network.profile.name", selected.DisplayName)
-                            .Classes("network-profile-name"),
-                        UI.Text(state, "network.profile.state", state).Classes(
-                            "network-profile-state",
-                            isPending ? "is-connecting" : selected.IsConnected ? "is-connected" : "is-saved"),
-                        UI.Text(detail, "network.profile.detail", detail).Classes("network-profile-detail"))
-                    .Classes("network-profile-copy"),
-                next)
-            .Classes("network-profile-switcher");
-    }
-
-    private StackElement RenderProfileCard(
+    private ScrollElement RenderProfileList(
         WidgetNetworkStatus status,
+        IReadOnlyList<WidgetSavedNetworkProfile> profiles,
         WidgetSavedNetworkProfile selected,
-        int selectedIndex,
-        int profileCount,
         bool controlBusy,
         string? pendingProfileId)
     {
         var interactive = LifecycleState == WidgetLifecycleState.Interactive;
         var connectionUnavailable = ConnectionUnavailable(status.WirelessAvailability);
-        var isPending = string.Equals(
-            pendingProfileId, selected.ProfileId, StringComparison.Ordinal);
-        var connectLabel = isPending
-            ? "Connecting…"
-            : selected.IsConnected
-                ? "Connected"
-                : connectionUnavailable?.ButtonLabel ?? "Connect";
-        var accessibilityLabel = connectionUnavailable is not null
-            ? connectionUnavailable.Value.Message
-            : !interactive && !selected.IsConnected
-            ? $"Open Network Controls to connect to {selected.DisplayName}"
-            : selected.IsConnected
-                ? $"{selected.DisplayName} is connected"
-                : $"Connect to {selected.DisplayName}";
-        var connect = UI.Button(connectLabel, "profile.connect", "network.profile.connect")
-            .Icon(WidgetGlyph.Connection, accessibilityLabel)
-            .Selected(selected.IsConnected)
-            .Busy(controlBusy && isPending)
-            .Disabled(!interactive || selected.IsConnected || controlBusy || connectionUnavailable is not null)
-            .FocusUp("network.profile.previous")
-            .FocusDown("network.profile.previous")
-            .FocusLeft("network.profile.previous")
-            .FocusRight("network.profile.next")
-            .Classes("network-connect-action");
-        return UI.Stack("network.profile.card",
-                RenderProfileSwitcher(selected, selectedIndex, profileCount, controlBusy, pendingProfileId),
-                connect,
-                UI.Text("LB/RB  SAVED NETWORK     X  CONNECT", "network.shortcuts",
-                        "Left and right bumper select a saved network. X connects while this widget is open.")
-                    .Classes("network-shortcuts"))
-            .Classes("network-profile-card");
+        var profileRows = new WidgetElement[profiles.Count];
+        var elementIds = profiles.Select(profile => ProfileElementId(profile.ProfileId)).ToArray();
+        for (var index = 0; index < profiles.Count; index++)
+        {
+            var profile = profiles[index];
+            var elementId = elementIds[index];
+            var isSelected = string.Equals(profile.ProfileId, selected.ProfileId, StringComparison.Ordinal);
+            var isPending = string.Equals(pendingProfileId, profile.ProfileId, StringComparison.Ordinal);
+            var state = isPending ? "CONNECTING" : profile.IsConnected ? "CONNECTED" : "SAVED";
+            var accessibilityLabel = connectionUnavailable is not null
+                ? $"{profile.DisplayName}. {connectionUnavailable.Value.ButtonLabel}. {connectionUnavailable.Value.Message}"
+                : !interactive && !profile.IsConnected
+                    ? $"{profile.DisplayName}. Open Network Controls to connect"
+                    : profile.IsConnected
+                        ? $"{profile.DisplayName}, connected"
+                        : $"Connect to {profile.DisplayName}";
+            var button = UI.Button(profile.DisplayName, "profile.connect.item", elementId)
+                .Icon(profile.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Wifi, accessibilityLabel)
+                .Selected(isSelected)
+                .Disabled(!interactive || connectionUnavailable is not null)
+                .Shortcut(ControllerButton.X, actionId: "profile.connect.item")
+                .FocusUp(elementIds[Math.Max(0, index - 1)])
+                .FocusDown(elementIds[Math.Min(profiles.Count - 1, index + 1)])
+                .FocusLeft(elementId)
+                .FocusRight(elementId)
+                .Classes("network-profile-button",
+                    profile.IsConnected ? "is-connected" : "is-saved",
+                    isPending ? "is-pending" : "is-ready");
+            var detail = profile.SignalPercent is { } signal ? $"Signal {signal}%" : "Saved profile";
+            profileRows[index] = UI.Stack($"{elementId}.row",
+                    button,
+                    UI.Row($"{elementId}.meta",
+                            UI.Text(state, $"{elementId}.state", state).Classes(
+                                "network-profile-state",
+                                isPending ? "is-connecting" : profile.IsConnected ? "is-connected" : "is-saved"),
+                            UI.Text(detail, $"{elementId}.detail", detail)
+                                .Classes("network-profile-detail"))
+                        .Classes("network-profile-meta"))
+                .Classes("network-profile-row",
+                    isSelected ? "is-selected" : "is-unselected",
+                    isPending || controlBusy && isSelected ? "is-pending" : "is-ready");
+        }
+
+        return UI.VerticalScroll("network.profiles.scroll", profileRows)
+            .Classes("network-profile-list");
+    }
+
+    private bool SelectProfileFromElementId(string elementId)
+    {
+        lock (_stateLock)
+        {
+            if (_networkStatus is null || _controlBusy) return false;
+            var index = -1;
+            for (var candidate = 0; candidate < _profiles.Count; candidate++)
+            {
+                if (!string.Equals(ProfileElementId(_profiles[candidate].ProfileId),
+                        elementId, StringComparison.Ordinal)) continue;
+                index = candidate;
+                break;
+            }
+            if (index < 0) return false;
+            _selectedIndex = index;
+            _selectedProfileId = _profiles[index].ProfileId;
+            _status = $"Selected {_profiles[index].DisplayName}";
+            _statusIsError = false;
+            return true;
+        }
+    }
+
+    private static string ProfileElementId(string profileId)
+    {
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(profileId));
+        return $"network.profile.item.{Convert.ToHexString(digest).ToLowerInvariant()}";
     }
 
     private WidgetView RenderProviderState(StackElement header, NetworkControlsViewState state)
@@ -551,7 +542,7 @@ public sealed class NetworkControlsWidget : Widget
             _networkStatus = status;
             _profiles = profiles;
 
-            var preferredId = status.AttemptProfileId ?? previousId;
+            var preferredId = status.AttemptProfileId ?? previousId ?? status.ActiveProfileId;
             var retained = preferredId is null
                 ? -1
                 : profiles.FindIndex(profile =>
@@ -587,20 +578,6 @@ public sealed class NetworkControlsWidget : Widget
                     break;
             }
             _viewState = DeriveViewState(status, profiles.Count);
-        }
-        Invalidate();
-    }
-
-    private void SelectRelativeProfile(int delta)
-    {
-        lock (_stateLock)
-        {
-            if (_profiles.Count <= 1 || _networkStatus is null) return;
-            _selectedIndex = (_selectedIndex + delta) % _profiles.Count;
-            if (_selectedIndex < 0) _selectedIndex += _profiles.Count;
-            _selectedProfileId = _profiles[_selectedIndex].ProfileId;
-            _status = $"Selected {_profiles[_selectedIndex].DisplayName}";
-            _statusIsError = false;
         }
         Invalidate();
     }

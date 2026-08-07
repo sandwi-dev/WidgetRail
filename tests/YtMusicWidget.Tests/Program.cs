@@ -120,7 +120,7 @@ static async Task SurfaceContractAcrossConnectionStates()
 
 static void AssertStandardSurface(ViewSnapshot snapshot)
 {
-    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.SurfaceHintsVersion, snapshot.ProtocolVersion);
     Assert.True(snapshot.Surface is not null, "YT Music omitted its bounded surface hint.");
     Assert.Equal(WidgetSurfaceMode.Standard, snapshot.Surface!.Mode);
     Assert.Equal(760D, snapshot.Surface.PreferredWidth);

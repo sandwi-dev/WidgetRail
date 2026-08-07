@@ -43,13 +43,16 @@ static async Task WrongNonceRecovers()
 {
     await using var harness = new DiagnosticsHarness(
         _ => ValueTask.FromResult(HealthySnapshot(12)));
-    var wrong = new PlatformDiagnosticsPipeClient(
-        harness.PipeName, new string('0', 64), Environment.ProcessId,
-        TimeSpan.FromSeconds(1));
-    await Assert.ThrowsAsync<PlatformDiagnosticsException>(
-        () => wrong.GetSnapshotAsync().AsTask());
-    var recovered = await harness.Client.GetSnapshotAsync();
-    Assert.Equal(12L, recovered.Revision);
+    for (var iteration = 0; iteration < 16; iteration++)
+    {
+        var wrong = new PlatformDiagnosticsPipeClient(
+            harness.PipeName, new string('0', 64), Environment.ProcessId,
+            TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAsync<PlatformDiagnosticsException>(
+            () => wrong.GetSnapshotAsync().AsTask());
+        var recovered = await harness.Client.GetSnapshotAsync();
+        Assert.Equal(12L, recovered.Revision);
+    }
 }
 
 static async Task FakeServerRejectedBeforeNonce()

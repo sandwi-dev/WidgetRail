@@ -12,6 +12,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Duplicate stable IDs are rejected", DuplicateIdsAreRejected),
     ("Broken focus neighbors are rejected", BrokenFocusIsRejected),
     ("Invalid progress is rejected", InvalidProgressIsRejected),
+    ("Slider v3 serializes bounded accessible value semantics", SliderV3RoundTrip),
+    ("Slider validation rejects unsafe ranges and focus conflicts", InvalidSlidersAreRejected),
     ("Image and icon nodes round-trip as renderer-neutral primitives", VisualNodesRoundTrip),
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),
@@ -19,6 +21,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
     ("Buttons expose closed semantic icons without action-ID inference", ButtonIconsRoundTrip),
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
+    ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
+    ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
+    ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
+    ("Style helpers eagerly enforce GBSS class contracts", StyleExtensionsValidateClasses),
+    ("Undefined protocol enums are rejected before renderer transport", UndefinedProtocolEnumsAreRejected),
     ("Interaction states reject invalid node combinations", InvalidInteractionStatesAreRejected),
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
     ("Null protocol collections report validation errors", NullCollectionsAreRejected),
@@ -29,9 +36,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Clock refresh invalidates once", ClockInvalidates),
     ("Default controller routing resolves dashboard quick actions", DashboardInputResolves),
     ("Default controller routing resolves focused shortcuts", FocusedShortcutResolves),
+    ("Repeated row shortcuts resolve by exact focus and ambiguous fallback fails closed", FocusedRowShortcutsResolve),
     ("Default controller routing activates focused buttons with A", FocusedButtonActivates),
     ("Default controller routing ignores A on non-buttons", NonButtonDoesNotActivate),
     ("Default controller routing blocks disabled and busy buttons", DisabledAndBusyButtonsDoNotActivate),
+    ("Slider routing is stale-safe and uses absolute requested values", SliderInputResolves),
+    ("Pending slider actions coalesce latest-wins without crossing actions", SliderActionsCoalesceInOrder),
     ("Controller shortcut fallback stays in explicit active input surface", ScopedShortcutRouting),
     ("Public test host services are typed immutable and attach once", HostCapabilityServices),
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
@@ -236,7 +246,7 @@ static Task ScrollContainersRoundTrip()
             MinimumHeight = 260,
         }).CreateSnapshot("scroll.instance", 8);
 
-    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
     Assert.Equal(ViewNodeKind.Scroll, snapshot.Root.Kind);
     Assert.Equal(ScrollAxis.Vertical, snapshot.Root.ScrollAxis);
     Assert.Equal("mixer-surface", snapshot.ActiveInputScopeId);
@@ -338,6 +348,87 @@ static Task InvalidProgressIsRejected()
     return Task.CompletedTask;
 }
 
+static Task SliderV3RoundTrip()
+{
+    var snapshot = new WidgetView(
+        UI.Stack("root",
+            UI.Slider(0.75, 0, 1, 0.05, "volume.changed", "volume",
+                    "Game volume, unmuted, press A to mute", "75 percent", "volume.mute")
+                .FocusUp("previous")
+                .Busy(),
+            UI.Button("Previous", "previous", "previous")),
+        "volume").CreateSnapshot("slider.instance", 7);
+    Assert.Equal(ProtocolConstants.SliderVersion, snapshot.ProtocolVersion);
+    var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+    var slider = Find(restored.Root, "volume");
+    Assert.Equal(ViewNodeKind.Slider, slider.Kind);
+    Assert.Equal(0d, slider.Minimum);
+    Assert.Equal(1d, slider.Maximum);
+    Assert.Equal(0.75d, slider.Value);
+    Assert.Equal(0.05d, slider.Step);
+    Assert.Equal("volume.changed", slider.ValueChangedActionId);
+    Assert.Equal("volume.mute", slider.ActionId);
+    Assert.Equal("75 percent", slider.AccessibilityValue);
+    Assert.True(slider.IsFocusable, "Slider must be a controller focus target.");
+
+    var legacy = new WidgetView(UI.Stack("root", UI.Button("Go", "go", "go")))
+        .CreateSnapshot("legacy.instance", 1);
+    Assert.Equal(ProtocolConstants.BaselineVersion, legacy.ProtocolVersion);
+    return Task.CompletedTask;
+}
+
+static Task InvalidSlidersAreRejected()
+{
+    foreach (var slider in new[]
+             {
+                 UI.Slider(double.NaN, 0, 1, 0.1, "change", "nan", "Volume"),
+                 UI.Slider(0.5, 1, 1, 0.1, "change", "empty", "Volume"),
+                 UI.Slider(0.5, 0, 1, double.PositiveInfinity, "change", "infinite", "Volume"),
+                 UI.Slider(0.5, 0, 1, 2, "change", "oversized", "Volume"),
+                 UI.Slider(0, -double.MaxValue, double.MaxValue, 1,
+                     "change", "overflowing-range", "Volume"),
+             })
+    {
+        var error = Assert.Throws<ProtocolValidationException>(() =>
+            new WidgetView(UI.Stack("root", slider)).CreateSnapshot("slider.invalid", 1));
+        Assert.True(error.Errors.Any(item => item.Code == "invalid_slider_range"),
+            "Invalid Slider range must fail closed.");
+    }
+
+    var conflicting = new ViewSnapshot
+    {
+        ProtocolVersion = ProtocolConstants.SliderVersion,
+        Sequence = 1,
+        WidgetInstanceId = "slider.invalid",
+        ActiveInputScopeId = "root",
+        InitialFocusId = "slider",
+        Root = new ViewNode
+        {
+            Id = "root",
+            Kind = ViewNodeKind.Stack,
+            Children =
+            [
+                new ViewNode
+                {
+                    Id = "slider", Kind = ViewNodeKind.Slider,
+                    Value = 0.5, Minimum = 0, Maximum = 1, Step = 0.1,
+                    ValueChangedActionId = "change",
+                    AccessibilityLabel = "Volume", AccessibilityValue = "50 percent",
+                    Focus = new FocusNeighbors(Left: "other"),
+                },
+                new ViewNode { Id = "other", Kind = ViewNodeKind.Button, Text = "Other", ActionId = "other" },
+            ],
+        },
+    };
+    var focusErrors = ViewSnapshotValidator.Validate(conflicting);
+    Assert.True(focusErrors.Any(item => item.Code == "slider_horizontal_focus_not_allowed"),
+        "Slider horizontal neighbor must be rejected because Left/Right adjust value.");
+    var oldWire = conflicting with { ProtocolVersion = ProtocolConstants.ScrollContainerVersion };
+    Assert.True(ViewSnapshotValidator.Validate(oldWire).Any(item => item.Code == "feature_requires_version"),
+        "Slider must not be silently overloaded onto protocol v2.");
+    return Task.CompletedTask;
+}
+
 static Task VisualNodesRoundTrip()
 {
     var snapshot = new WidgetView(
@@ -378,14 +469,11 @@ static Task InputSurfacesValidate()
     Assert.Equal("close-dialog", restored.Root.Children[1].Shortcuts.Single().ActionId);
     Assert.Equal("dialog-back", restored.InitialFocusId);
 
-    var ambiguous = new WidgetView(
+    var repeatedRows = new WidgetView(
         UI.Stack("root",
             UI.Button("One", "one", "one").Shortcut(ControllerButton.RightBumper),
             UI.Button("Two", "two", "two").Disabled().Shortcut(ControllerButton.RightBumper)));
-    var exception = Assert.Throws<ProtocolValidationException>(() =>
-        ambiguous.CreateSnapshot("scope.instance", 2));
-    Assert.True(exception.Errors.Any(error => error.Code == "ambiguous_scope_shortcut"),
-        "Duplicate bindings in one input surface must be rejected.");
+    _ = repeatedRows.CreateSnapshot("scope.instance", 2);
 
     var crossScopeFocus = new WidgetView(
         UI.Stack("root",
@@ -601,6 +689,262 @@ static Task SettingsCompositesAreSemantic()
     return Task.CompletedTask;
 }
 
+static Task ModernComponentsAreSemantic()
+{
+    var iconButton = UI.IconButton(
+            WidgetGlyph.Settings,
+            "open-settings",
+            "modern.settings",
+            "Open settings",
+            IconButtonVariant.Quiet,
+            IconButtonSize.Large)
+        .AddClasses("widget-accent", "gbar-icon-button");
+    var view = new WidgetView(
+        UI.Stack("modern.root",
+            iconButton,
+            UI.Card("modern.card", CardVariant.Subtle,
+                UI.SectionHeader(
+                    "Connections",
+                    "modern.header",
+                    eyebrow: "Control center",
+                    description: "Saved networks",
+                    trailing: UI.StatusBadge("Online", StatusTone.Success, "modern.status")),
+                UI.Divider("modern.divider"),
+                UI.Alert(
+                    "Wi-Fi unavailable",
+                    "Turn on Wi-Fi to connect.",
+                    AlertTone.Warning,
+                    "modern.alert",
+                    new ComponentAction("Retry", "retry-network", WidgetGlyph.Refresh)),
+                UI.EmptyState(
+                    "No devices",
+                    "Connect a device to continue.",
+                    "modern.empty"))),
+        InitialFocusId: "modern.settings");
+
+    var snapshot = view.CreateSnapshot("modern.components", 1);
+    Assert.Equal(ProtocolConstants.BaselineVersion, snapshot.ProtocolVersion);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    var button = Find(snapshot.Root, "modern.settings");
+    Assert.Equal(string.Empty, button.Text);
+    Assert.Equal("Open settings", button.AccessibilityLabel);
+    Assert.Equal(WidgetGlyph.Settings, button.Glyph);
+    Assert.True(
+        new[] { "gbar-icon-button", "gbar-icon-button--large", "gbar-icon-button--quiet", "widget-accent" }
+            .SequenceEqual(button.StyleClasses),
+        "AddClasses must preserve ordered semantic component classes and remove duplicates.");
+    Assert.True(Find(snapshot.Root, "modern.card").StyleClasses.Contains("gbar-card--subtle"),
+        "Card variant class was omitted.");
+    Assert.Equal("Connections", Find(snapshot.Root, "modern.header.title").Text);
+    var headerContent = Find(snapshot.Root, "modern.header.content");
+    Assert.Equal(ViewNodeKind.Row, headerContent.Kind);
+    Assert.Equal("modern.header.text", headerContent.Children[0].Id);
+    Assert.Equal(ViewNodeKind.Stack, headerContent.Children[0].Kind);
+    Assert.True(headerContent.Children[0].StyleClasses.Contains("gbar-section-header__text"),
+        "Section-header text must remain a vertical stack beside optional trailing content.");
+    Assert.Equal("modern.header.trailing", headerContent.Children[1].Id);
+    Assert.Equal(WidgetGlyph.Check, Find(snapshot.Root, "modern.status.icon").Glyph);
+    Assert.Equal("Success status", Find(snapshot.Root, "modern.status.icon").AccessibilityLabel);
+    Assert.True(Find(snapshot.Root, "modern.status.label").StyleClasses.Contains("gbar-badge__label--success"),
+        "Badge tone did not reach its semantic label.");
+    Assert.Equal(ViewNodeKind.Spacer, Find(snapshot.Root, "modern.divider").Kind);
+    Assert.Equal("retry-network", Find(snapshot.Root, "modern.alert.action").ActionId);
+    Assert.Equal("warning alert", Find(snapshot.Root, "modern.alert.icon").AccessibilityLabel);
+    Assert.Equal("No devices", Find(snapshot.Root, "modern.empty.title").Text);
+    Assert.Equal("Empty state", Find(snapshot.Root, "modern.empty.icon").AccessibilityLabel);
+
+    var info = UI.Alert("Connected", "No action needed.", AlertTone.Info, "modern.info")
+        .ToProtocolNode();
+    Assert.Equal(null, FindOrNull(info, "modern.info.icon"));
+    var customInfo = UI.Alert(
+            "Connected",
+            "Ethernet is active.",
+            AlertTone.Info,
+            "modern.custom-info",
+            glyph: WidgetGlyph.Connection)
+        .ToProtocolNode();
+    Assert.Equal("info alert", Find(customInfo, "modern.custom-info.icon").AccessibilityLabel);
+
+    Assert.Throws<ArgumentException>(() => UI.IconButton(
+        WidgetGlyph.Settings, "action", "id", ""));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Card(
+        "bad-card", (CardVariant)999));
+    return Task.CompletedTask;
+}
+
+static Task CompositeChildIdsValidateEagerly()
+{
+    const int maximumIdentifierLength = 128;
+
+    const string descriptionSuffix = ".description";
+    var headerBoundaryId = new string('h', maximumIdentifierLength - descriptionSuffix.Length);
+    var header = UI.SectionHeader(
+        "Network",
+        headerBoundaryId,
+        description: "Connection details");
+    Assert.Equal(maximumIdentifierLength,
+        Find(header.ToProtocolNode(), $"{headerBoundaryId}{descriptionSuffix}").Id.Length);
+    Assert.Throws<ArgumentException>(() => UI.SectionHeader(
+        "Network",
+        new string('h', headerBoundaryId.Length + 1),
+        description: "Connection details"));
+
+    const string stepperSuffix = ".decrement";
+    var stepperBoundaryId = new string('s', maximumIdentifierLength - stepperSuffix.Length);
+    var stepper = UI.Stepper(
+        "Text scale",
+        "100%",
+        "text.decrease",
+        "text.increase",
+        stepperBoundaryId);
+    Assert.Equal(maximumIdentifierLength,
+        Find(stepper.ToProtocolNode(), $"{stepperBoundaryId}{stepperSuffix}").Id.Length);
+    Assert.Throws<ArgumentException>(() => UI.Stepper(
+        "Text scale",
+        "100%",
+        "text.decrease",
+        "text.increase",
+        new string('s', stepperBoundaryId.Length + 1)));
+
+    Assert.Throws<ArgumentException>(() => UI.StatusBadge(
+        "Online", StatusTone.Success, "unsafe/id"));
+    return Task.CompletedTask;
+}
+
+static Task RawStyleClassesAreValidated()
+{
+    var valid = RawStyleSnapshot(["gbar-icon-button--large", "_private2"]);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(valid).Count);
+    Assert.True(StyleClassContract.IsValidIdentifier("gbar-icon-button--large"),
+        "The shared style-class grammar rejected a valid GBSS identifier.");
+
+    var invalidCases = new (IReadOnlyList<string> Classes, string Code)[]
+    {
+        (["two words"], "invalid_style_class"),
+        ([".primary"], "invalid_style_class"),
+        (["1primary"], "invalid_style_class"),
+        ([new string('a', ProtocolConstants.MaximumStyleClassLength + 1)], "style_class_too_long"),
+        (["primary", "primary"], "duplicate_style_class"),
+        ([null!], "required"),
+    };
+    foreach (var (classes, code) in invalidCases)
+    {
+        var errors = ViewSnapshotValidator.Validate(RawStyleSnapshot(classes));
+        Assert.True(errors.Any(error => error.Code == code &&
+                                       error.Path.StartsWith("$.root.styleClasses", StringComparison.Ordinal)),
+            $"Raw style classes did not report '{code}'.");
+    }
+
+    var overCount = Enumerable.Range(0, ProtocolConstants.MaximumStyleClassCount + 1)
+        .Select(index => $"class-{index}")
+        .ToArray();
+    Assert.True(
+        ViewSnapshotValidator.Validate(RawStyleSnapshot(overCount))
+            .Any(error => error.Code == "too_many_style_classes" &&
+                          error.Path == "$.root.styleClasses"),
+        "Raw snapshots must reject an unbounded number of classes per node.");
+    return Task.CompletedTask;
+}
+
+static Task StyleExtensionsValidateClasses()
+{
+    var explicitClasses = UI.Stack("classes.explicit")
+        .Classes("gbar-icon-button--large", "_private2");
+    Assert.True(
+        explicitClasses.StyleClasses.SequenceEqual(
+            new[] { "gbar-icon-button--large", "_private2" }, StringComparer.Ordinal),
+        "Classes must preserve explicit class order.");
+
+    var appended = UI.Stack("classes.appended")
+        .Classes("base", "accent")
+        .AddClasses("accent", "last", "last");
+    Assert.True(
+        appended.StyleClasses.SequenceEqual(new[] { "base", "accent", "last" }, StringComparer.Ordinal),
+        "AddClasses must retain original order and deduplicate additions ordinally.");
+
+    foreach (var invalid in new[] { "", "two words", ".primary", "1primary", "nonascii-é" })
+        Assert.Throws<ArgumentException>(() => UI.Stack("classes.invalid").Classes(invalid));
+    Assert.Throws<ArgumentException>(() => UI.Stack("classes.long").Classes(
+        new string('a', ProtocolConstants.MaximumStyleClassLength + 1)));
+    Assert.Throws<ArgumentException>(() => UI.Stack("classes.duplicate").Classes("same", "same"));
+    Assert.Throws<ArgumentNullException>(() => UI.Stack("classes.null-array").Classes((string[])null!));
+    Assert.Throws<ArgumentException>(() => UI.Stack("classes.null-item").Classes("valid", null!));
+    Assert.Throws<ArgumentException>(() => UI.Stack("classes.null-addition").AddClasses(null!));
+
+    var maximum = Enumerable.Range(0, ProtocolConstants.MaximumStyleClassCount)
+        .Select(index => $"class-{index}")
+        .ToArray();
+    var maximumElement = UI.Stack("classes.maximum").Classes(maximum);
+    Assert.Equal(ProtocolConstants.MaximumStyleClassCount, maximumElement.StyleClasses.Count);
+    Assert.Equal(ProtocolConstants.MaximumStyleClassCount,
+        maximumElement.AddClasses(maximum[0]).StyleClasses.Count);
+    Assert.Throws<ArgumentException>(() => maximumElement.AddClasses("overflow"));
+    Assert.Throws<ArgumentException>(() => UI.Stack("classes.over-count").Classes(
+        Enumerable.Range(0, ProtocolConstants.MaximumStyleClassCount + 1)
+            .Select(index => $"class-{index}")
+            .ToArray()));
+    return Task.CompletedTask;
+}
+
+static ViewSnapshot RawStyleSnapshot(IReadOnlyList<string> styleClasses) => new()
+{
+    ProtocolVersion = ProtocolConstants.BaselineVersion,
+    Sequence = 1,
+    WidgetInstanceId = "styles.raw",
+    ActiveInputScopeId = "root",
+    Root = new ViewNode
+    {
+        Id = "root",
+        Kind = ViewNodeKind.Stack,
+        StyleClasses = styleClasses,
+    },
+};
+
+static Task UndefinedProtocolEnumsAreRejected()
+{
+    var invalidKind = new ViewSnapshot
+    {
+        ProtocolVersion = ProtocolConstants.BaselineVersion,
+        Sequence = 1,
+        WidgetInstanceId = "enum.test",
+        ActiveInputScopeId = "root",
+        Root = new ViewNode
+        {
+            Id = "root",
+            Kind = (ViewNodeKind)999,
+        },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(invalidKind).Any(error =>
+        error.Path == "$.root.kind" && error.Code == "invalid_node_kind"),
+        "Undefined node kinds must fail before bridge/native parsing.");
+
+    var invalidShortcut = invalidKind with
+    {
+        Root = new ViewNode
+        {
+            Id = "root",
+            Kind = ViewNodeKind.Stack,
+            Shortcuts =
+            [
+                new ControllerShortcut(
+                    (ControllerButton)999,
+                    "invalid.shortcut",
+                    (ControllerEventPhase)999),
+            ],
+        },
+        QuickActions =
+        [
+            new WidgetQuickAction((ControllerButton)999, "invalid.quick", "Invalid"),
+        ],
+    };
+    var errors = ViewSnapshotValidator.Validate(invalidShortcut);
+    Assert.True(errors.Count(error => error.Code == "invalid_controller_button") == 2,
+        "Undefined shortcut and quick-action buttons must both fail closed.");
+    Assert.True(errors.Any(error => error.Code == "invalid_controller_phase"),
+        "Undefined shortcut phases must fail closed.");
+    return Task.CompletedTask;
+}
+
 static Task InvalidInteractionStatesAreRejected()
 {
     var nonButton = new ViewSnapshot
@@ -753,6 +1097,39 @@ static async Task FocusedShortcutResolves()
     Assert.True(!ignored, "Undeclared input must remain widget-owned and unhandled by default.");
 }
 
+static async Task FocusedRowShortcutsResolve()
+{
+    var widget = new RowShortcutWidget();
+    _ = widget.RenderSnapshot("rows.instance", 1);
+    await widget.SetActiveAsync(true, CancellationToken.None);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.X, "first", 1, "root")),
+        "First row did not resolve its exact focused shortcut.");
+    Assert.Equal("first.toggle", (await widget.NextActionAsync()).ActionId);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.X, "second", 1, "root")),
+        "Second row did not resolve the same button in its exact focus context.");
+    Assert.Equal("second.toggle", (await widget.NextActionAsync()).ActionId);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.Y, "nested", 1, "root")),
+        "Nearest intermediate container shortcut did not resolve from focused content.");
+    var ancestor = await widget.NextActionAsync();
+    Assert.Equal("group.options", ancestor.ActionId);
+    Assert.Equal("nested.group", ancestor.SourceElementId);
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.X, null, 1, "root")),
+        "Focusless input must not guess between row-local shortcuts.");
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.Y, null, 1, "root")),
+        "Focusless input must not guess an intermediate-container shortcut.");
+
+    widget.DisableSecond = true;
+    _ = widget.RenderSnapshot("rows.instance", 2);
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.X, "second", 2, "root")),
+        "Disabled focused row must not leak into another row's shortcut.");
+}
+
 static async Task FocusedButtonActivates()
 {
     var widget = new RoutingWidget();
@@ -800,6 +1177,115 @@ static async Task DisabledAndBusyButtonsDoNotActivate()
         ControllerButton.A, "selected", 1, "root"));
     Assert.True(selectedHandled, "Selected is semantic state, not an activation lock.");
     Assert.Equal("select", (await widget.NextActionAsync()).ActionId);
+}
+
+static async Task SliderInputResolves()
+{
+    var widget = new SliderRoutingWidget();
+    _ = widget.RenderSnapshot("slider.instance", 3);
+    await widget.SetActiveAsync(true, CancellationToken.None);
+
+    Assert.True(!await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Pressed, 2, "root", 0.6)),
+        "Stale slider snapshot input must be rejected.");
+    Assert.True(!await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Pressed, 3, "dialog", 0.6)),
+        "Wrong slider input scope must be rejected.");
+    Assert.True(await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Pressed, 3, "root", 0.55)),
+        "Focused Slider must consume malformed horizontal input.");
+    Assert.Equal(0, widget.Actions.Count);
+
+    Assert.True(await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Pressed, 3, "root", 0.6)),
+        "Valid Slider change should queue.");
+    var changed = await widget.NextActionAsync();
+    Assert.Equal("volume.changed", changed.ActionId);
+    Assert.Equal(0.6d, changed.RequestedValue);
+    Assert.Equal("root", changed.InputScopeId);
+    Assert.Equal(ControllerButton.DPadRight, changed.ControllerButton);
+
+    Assert.True(await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadLeft, ControllerEventPhase.Pressed, 3, "root", 0.5)),
+        "A quick reversal to the still-published value must not be rejected as stale direction.");
+    var reversed = await widget.NextActionAsync();
+    Assert.Equal(0.5d, reversed.RequestedValue);
+    Assert.Equal(ControllerButton.DPadLeft, reversed.ControllerButton);
+
+    Assert.True(await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Repeated, 3, "root", 0.7)),
+        "Repeated Slider change should queue through the same bounded path.");
+    Assert.Equal(ControllerEventPhase.Repeated, (await widget.NextActionAsync()).Phase);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "volume", 3, "root")),
+        "Optional Slider activation should use A without changing value.");
+    var activation = await widget.NextActionAsync();
+    Assert.Equal("volume.mute", activation.ActionId);
+    Assert.Equal(null, activation.RequestedValue);
+
+    widget.Disabled = true;
+    _ = widget.RenderSnapshot("slider.instance", 4);
+    Assert.True(await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Pressed, 4, "root", 0.6)),
+        "Disabled Slider retains focus and consumes horizontal input.");
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "volume", 4, "root")),
+        "Disabled Slider suppresses optional activation.");
+    Assert.Equal(4, widget.Actions.Count);
+
+    widget.Disabled = false;
+    widget.Busy = true;
+    _ = widget.RenderSnapshot("slider.instance", 5);
+    Assert.True(await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadLeft, ControllerEventPhase.Pressed, 5, "root", 0.4)),
+        "Busy Slider retains focus and consumes horizontal input.");
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "volume", 5, "root")),
+        "Busy Slider suppresses optional activation.");
+    Assert.Equal(4, widget.Actions.Count);
+}
+
+static async Task SliderActionsCoalesceInOrder()
+{
+    var widget = new CoalescingSliderWidget();
+    _ = widget.RenderSnapshot("coalesce.instance", 1);
+    await widget.SetActiveAsync(true, CancellationToken.None);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "block", 1, "root")), "Blocking boundary action was not queued.");
+    await widget.BlockStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    foreach (var requested in new[] { 0.6, 0.7, 0.8 })
+        Assert.True(await widget.OnControllerInputAsync(SliderInput(
+            ControllerButton.DPadRight, ControllerEventPhase.Repeated, 1, "root", requested)),
+            "Contiguous Slider target should be accepted/coalesced.");
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "volume", 1, "root")), "Discrete activation boundary was not queued.");
+    Assert.True(await widget.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Repeated, 1, "root", 0.9)),
+        "Slider target after a discrete boundary was not queued.");
+    widget.ReleaseBlock.TrySetResult();
+    await widget.WaitForActionsAsync(4);
+    Assert.Equal("block", widget.Actions[0].ActionId);
+    Assert.Equal(0.8d, widget.Actions[1].RequestedValue);
+    Assert.Equal("volume.mute", widget.Actions[2].ActionId);
+    Assert.Equal(0.9d, widget.Actions[3].RequestedValue);
+
+    var canceled = new CoalescingSliderWidget();
+    _ = canceled.RenderSnapshot("cancel.instance", 1);
+    await canceled.SetActiveAsync(true, CancellationToken.None);
+    Assert.True(await canceled.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "block", 1, "root")), "Cancellation boundary was not queued.");
+    await canceled.BlockStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(await canceled.OnControllerInputAsync(SliderInput(
+        ControllerButton.DPadRight, ControllerEventPhase.Repeated, 1, "root", 0.8)),
+        "Pending Slider action was not queued before deactivation.");
+    await canceled.SetActiveAsync(false, CancellationToken.None);
+    await canceled.SetActiveAsync(true, CancellationToken.None);
+    Assert.True(await canceled.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "volume", 1, "root")), "Reactivated Slider activation was not queued.");
+    await canceled.WaitForActionsAsync(2);
+    Assert.Equal("block", canceled.Actions[0].ActionId);
+    Assert.Equal("volume.mute", canceled.Actions[1].ActionId);
 }
 
 static async Task ScopedShortcutRouting()
@@ -851,6 +1337,20 @@ static ControllerInputEvent OpenInput(
         Sequence: inputSequence,
         ActiveInputScopeId: activeInputScopeId,
         SnapshotSequence: snapshotSequence);
+
+static ControllerInputEvent SliderInput(
+    ControllerButton button,
+    ControllerEventPhase phase,
+    long snapshotSequence,
+    string activeInputScopeId,
+    double requestedValue) => new(
+        button,
+        phase,
+        ControllerInputContext.OpenWidget,
+        "volume",
+        ActiveInputScopeId: activeInputScopeId,
+        SnapshotSequence: snapshotSequence,
+        RequestedValue: requestedValue);
 
 static WidgetManifest ValidManifest() => new()
 {
@@ -916,6 +1416,106 @@ file sealed class RoutingWidget : Widget
     }
 }
 
+file sealed class SliderRoutingWidget : Widget
+{
+    private readonly System.Threading.Channels.Channel<WidgetActionEvent> _observed =
+        System.Threading.Channels.Channel.CreateUnbounded<WidgetActionEvent>();
+    public List<WidgetActionEvent> Actions { get; } = [];
+    public bool Disabled { get; set; }
+    public bool Busy { get; set; }
+
+    public ValueTask<WidgetActionEvent> NextActionAsync() => _observed.Reader.ReadAsync();
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Slider(0.5, 0, 1, 0.1, "volume.changed", "volume",
+                    "Game volume, unmuted, press A to mute", "50 percent", "volume.mute")
+                .Disabled(Disabled)
+                .Busy(Busy)),
+        "volume");
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        Actions.Add(action);
+        _observed.Writer.TryWrite(action);
+        return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class RowShortcutWidget : Widget
+{
+    private readonly System.Threading.Channels.Channel<WidgetActionEvent> _observed =
+        System.Threading.Channels.Channel.CreateUnbounded<WidgetActionEvent>();
+    public bool DisableSecond { get; set; }
+    public ValueTask<WidgetActionEvent> NextActionAsync() => _observed.Reader.ReadAsync();
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Button("First", "first.activate", "first")
+                .Shortcut(ControllerButton.X, actionId: "first.toggle"),
+            UI.Stack("second.group",
+                UI.Button("Second", "second.activate", "second")
+                    .Shortcut(ControllerButton.X, actionId: "second.toggle")
+                    .Disabled(DisableSecond))
+                .Shortcut(ControllerButton.X, "second.group.toggle"),
+            UI.Stack("nested.group",
+                UI.Button("Nested", "nested.activate", "nested"))
+                .Shortcut(ControllerButton.Y, "group.options")),
+        "first");
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        _observed.Writer.TryWrite(action);
+        return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class CoalescingSliderWidget : Widget
+{
+    private readonly object _lock = new();
+    public List<WidgetActionEvent> Actions { get; } = [];
+    public TaskCompletionSource BlockStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReleaseBlock { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Button("Block", "block", "block"),
+            UI.Slider(0.5, 0, 1, 0.1, "volume.changed", "volume",
+                "Game volume, unmuted, press A to mute", "50 percent", "volume.mute")),
+        "block");
+
+    public override async ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_lock) Actions.Add(action);
+        if (action.ActionId == "block")
+        {
+            BlockStarted.TrySetResult();
+            await ReleaseBlock.Task.WaitAsync(cancellationToken);
+        }
+    }
+
+    public async Task WaitForActionsAsync(int count)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        while (true)
+        {
+            lock (_lock)
+            {
+                if (Actions.Count >= count) return;
+            }
+            await Task.Delay(10, timeout.Token);
+        }
+    }
+}
+
 file sealed class StateRoutingWidget : Widget
 {
     private readonly System.Threading.Channels.Channel<WidgetActionEvent> _observed =
@@ -951,16 +1551,18 @@ file sealed class SurfaceRoutingWidget : Widget
 
     public override WidgetView Render() => new(
         UI.Stack("root",
-            UI.Button("Root back", "root-back", "root-back").Shortcut(ControllerButton.LeftBumper),
+            UI.Button("Root back", "root-back", "root-back"),
             UI.Button("Root focus", "root-focus", "root-focus"),
             UI.Stack("dialog",
-                UI.Button("Dialog back", "dialog-back", "dialog-back").Shortcut(ControllerButton.LeftBumper),
+                UI.Button("Dialog back", "dialog-back", "dialog-back"),
                 UI.Button("Dialog focus", "dialog-focus", "dialog-focus"))
                 .InputScope("dialog-window")
+                .Shortcut(ControllerButton.LeftBumper, "dialog-back")
                 .Shortcut(ControllerButton.B, "dialog-close"),
             UI.Stack("empty-dialog",
                 UI.Button("Empty focus", "empty-focus", "empty-focus"))
-                .InputScope("empty-window")),
+                .InputScope("empty-window"))
+            .Shortcut(ControllerButton.LeftBumper, "root-back"),
         ActiveScope switch
         {
             "dialog-window" => "dialog-focus",

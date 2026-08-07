@@ -215,6 +215,25 @@ static Task ThemeDiscovery()
     var compiled = GbssThemeCompiler.Compile(builtIn.Package);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
     Assert.Equal("#010203", compiled.Theme!.Resolve(new GbssElement("canvas")).Get("background")!.Text);
+    var focusedButton = compiled.Theme.Resolve(new GbssElement(
+        "button",
+        null,
+        new HashSet<string>(),
+        new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
+    Assert.Equal("1", focusedButton.Get("scale")!.Text);
+    foreach (var role in new[] { "button", "slider" })
+    {
+        foreach (var state in new[] { GbssPseudoState.Disabled, GbssPseudoState.Busy })
+        {
+            var stateStyle = compiled.Theme.Resolve(new GbssElement(
+                role,
+                null,
+                new HashSet<string>(),
+                new HashSet<GbssPseudoState>([state])));
+            Assert.True(stateStyle.Get("opacity") is null,
+                $"Built-in {role}:{state} opacity would compound the native accessibility factor.");
+        }
+    }
     return Task.CompletedTask;
 }
 

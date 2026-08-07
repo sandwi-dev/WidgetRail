@@ -465,7 +465,9 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.kind = std::wstring(std::wstring_view(source.GetNamedString(L"kind")));
     node.text = OptionalString(source, L"text");
     node.accessibilityLabel = OptionalString(source, L"accessibilityLabel");
+    node.accessibilityValue = OptionalString(source, L"accessibilityValue");
     node.actionId = OptionalString(source, L"actionId");
+    node.valueChangedActionId = OptionalString(source, L"valueChangedActionId");
     node.imageSource = OptionalString(source, L"imageSource");
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");
@@ -502,6 +504,11 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.value = source.GetNamedNumber(L"value");
         node.maximum = source.GetNamedNumber(L"maximum");
         node.hasProgress = true;
+    }
+    if (source.HasKey(L"minimum") && source.HasKey(L"step")) {
+        node.minimum = source.GetNamedNumber(L"minimum");
+        node.step = source.GetNamedNumber(L"step");
+        node.hasSliderRange = true;
     }
     if (source.HasKey(L"isDisabled")) node.isDisabled = source.GetNamedBoolean(L"isDisabled");
     if (source.HasKey(L"isSelected")) node.isSelected = source.GetNamedBoolean(L"isSelected");
@@ -1135,12 +1142,14 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view activeInputScopeId,
     const long long snapshotSequence,
     const long long sequence,
-    const long long monotonicTimestampMicroseconds) {
+    const long long monotonicTimestampMicroseconds,
+    const std::wstring_view phase,
+    const std::optional<double> requestedValue) {
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         JsonObject input;
         input.Insert(L"button", JsonValue::CreateStringValue(winrt::hstring(button)));
-        input.Insert(L"phase", JsonValue::CreateStringValue(L"pressed"));
+        input.Insert(L"phase", JsonValue::CreateStringValue(winrt::hstring(phase)));
         input.Insert(L"context", JsonValue::CreateStringValue(winrt::hstring(context)));
         if (!focusedElementId.empty()) {
             input.Insert(L"focusedElementId",
@@ -1155,6 +1164,9 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         input.Insert(L"sequence", JsonValue::CreateNumberValue(static_cast<double>(sequence)));
         input.Insert(L"monotonicTimestampMicroseconds",
                      JsonValue::CreateNumberValue(static_cast<double>(monotonicTimestampMicroseconds)));
+        if (requestedValue && std::isfinite(*requestedValue)) {
+            input.Insert(L"requestedValue", JsonValue::CreateNumberValue(*requestedValue));
+        }
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
         payload.Insert(L"input", input);

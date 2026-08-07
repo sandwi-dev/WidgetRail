@@ -845,10 +845,10 @@ file sealed class TestWidget : Widget
                 .Shortcut(ControllerButton.LeftBumper, actionId: "queued-fail")
                 .Shortcut(ControllerButton.RightTrigger, actionId: "queued-block"),
             UI.Stack("nested-window",
-                UI.Button("Nested command", "nested", "nested-command")
-                    .Shortcut(ControllerButton.LeftBumper),
+                UI.Button("Nested command", "nested", "nested-command"),
                 UI.Button("Nested focus", "nested-focus", "nested-focus"))
                 .InputScope("nested-window-scope")
+                .Shortcut(ControllerButton.LeftBumper, "nested")
                 .Shortcut(ControllerButton.B, "nested-close"),
             UI.Stack("empty-window",
                 UI.Button("Empty focus", "empty-focus", "empty-focus"))

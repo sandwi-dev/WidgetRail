@@ -47,9 +47,9 @@ Accessibility policy remains host-owned and wins after every theme layer.
 The current bridge loads the trusted `styleFile` configured for a widget,
 resolves package-relative imports, compiles the bounded language, and returns
 typed property maps to the native host. The current end-to-end bridge publishes
-`base` and `focused` maps. Static snapshot `selected` and `disabled` state
-participates in those maps; a separate complete family for transient
-pressed/busy/dynamic states remains incomplete.
+`base` and `focused` maps. Static snapshot `selected`, `disabled`, and `busy`
+state participates in those maps. A transient `pressed` map and future dynamic
+semantic-state families remain incomplete.
 
 GBSS is deliberately not CSS. It cannot fetch a URL, load a font or file by
 path, execute a script, invoke a command, provide a shader, or create native

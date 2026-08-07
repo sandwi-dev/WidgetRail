@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -143,6 +144,8 @@ void PlanningMetadataAndKinds() {
     Check(first.currentFocusRect.has_value(), "focused button produces current focus rect");
     Check(first.hitRegions[0].enabled, "normal button is enabled");
     Check(!first.hitRegions[1].enabled, "disabled button is not actionable");
+    Check(first.navigationEnabled.at(L"locked"),
+          "disabled button remains controller navigable");
     Check(first.focusRects.contains(L"play"), "focus metadata uses stable widget ID");
     Check(first.focusRects.at(L"play").width > 0.0F, "planned button has positive width");
 
@@ -154,6 +157,61 @@ void PlanningMetadataAndKinds() {
         "planning is deterministic (x)");
     Near(second.focusRects.at(L"play").y, first.focusRects.at(L"play").y,
         "planning is deterministic (y)");
+}
+
+void SliderPlanningAndAccessibilityTargets() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"slider.runtime";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"root", L"stack");
+    auto slider = Node(L"volume", L"slider");
+    slider.hasProgress = true;
+    slider.hasSliderRange = true;
+    slider.minimum = 0.0;
+    slider.maximum = 1.0;
+    slider.value = 0.5;
+    slider.step = 0.1;
+    slider.valueChangedActionId = L"volume.changed";
+    slider.accessibilityLabel = L"Game volume, unmuted, press A to mute";
+    slider.accessibilityValue = L"50 percent";
+    slider.baseStyle = {
+        {L"height", Length(8)},
+        {L"width", Length(240)},
+    };
+    snapshot.root.children = {slider};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    gba::DeclarativeRenderOptions options;
+    options.pixelScale = 1.25F;
+    options.sliderValueOverrides.emplace(L"volume", 0.8);
+    const auto normal = renderer.Render(
+        nullptr, snapshot, L"volume", {0.0F, 0.0F, 320.0F, 80.0F}, options);
+    Check(normal.focusRects.contains(L"volume"), "Slider is a focus target");
+    Check(normal.focusRects.at(L"volume").height >= 44.0F,
+          "Slider enforces a 44-DIP controller target despite narrow track style");
+    Check(normal.navigationEnabled.at(L"volume"), "Slider is navigable");
+
+    snapshot.root.children[0].isDisabled = true;
+    const auto disabled = renderer.Render(
+        nullptr, snapshot, L"volume", {0.0F, 0.0F, 320.0F, 80.0F}, options);
+    Check(disabled.focusRects.contains(L"volume") &&
+              disabled.navigationEnabled.at(L"volume"),
+          "disabled Slider retains exact focus and navigation geometry");
+    Check(!disabled.hitRegions.front().enabled,
+          "disabled Slider suppresses activation/hit action");
+
+    snapshot.root.children[0].isDisabled = false;
+    snapshot.root.children[0].isBusy = true;
+    const auto busy = renderer.Render(
+        nullptr, snapshot, L"volume", {0.0F, 0.0F, 320.0F, 80.0F}, options);
+    Check(busy.focusRects.contains(L"volume") && busy.navigationEnabled.at(L"volume"),
+          "busy Slider retains exact focus while adjustment is pending");
+    Check(!busy.hitRegions.front().enabled, "busy Slider suppresses activation");
+
+    const auto clipped = renderer.Render(
+        nullptr, snapshot, L"volume", {0.0F, 0.0F, 320.0F, 0.25F}, options);
+    Check(!clipped.focusRects.contains(L"volume"),
+          "fully clipped Slider is excluded even though disabled/busy states remain navigable");
 }
 
 void ClippedControlsAreNotFocusCandidates() {
@@ -400,14 +458,83 @@ void ScrollStateCapEvictsOnlyInactiveLruEntries() {
          "cap transition evicts the least-recent inactive state only");
 }
 
-void DeferredFocusOutlineUsesOnlyScrollVisibilityClip() {
+void DeferredFocusOutlineUsesEffectiveVisibilityClip() {
     WidgetSnapshot normal;
-    normal.root = FixedButton(L"normal-focus");
+    normal.root = Node(L"visible-overflow", L"stack");
+    normal.root.baseStyle = {
+        {L"width", Length(80)},
+        {L"min-width", Length(80)},
+        {L"height", Length(60)},
+        {L"overflow", {L"keyword", L"visible", std::nullopt, {}}},
+    };
+    auto unconstrained = FixedButton(L"normal-focus");
+    unconstrained.baseStyle.insert_or_assign(L"width", Length(120));
+    unconstrained.baseStyle.insert_or_assign(L"min-width", Length(120));
+    normal.root.children = {std::move(unconstrained)};
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
     const auto normalResult = renderer.Render(
-        nullptr, normal, L"normal-focus", {0.0F, 0.0F, 120.0F, 90.0F});
-    Check(!normalResult.currentFocusOutlineClip.has_value(),
-          "ordinary deferred outline remains free of layout clipping");
+        nullptr, normal, L"normal-focus", {0.0F, 0.0F, 160.0F, 90.0F});
+    Check(normalResult.currentFocusOutlineClip.has_value(),
+          "every deferred outline retains the render-surface clip");
+    Near(normalResult.currentFocusOutlineClip->width, 160.0F,
+         "ordinary visible-overflow ancestor does not clip focus decoration");
+    Near(normalResult.currentFocusOutlineClip->height, 90.0F,
+         "ordinary focus decoration keeps the full surface draw window");
+
+    WidgetSnapshot nested;
+    nested.root = Node(L"surface-root", L"stack");
+    auto fixedClip = Node(L"fixed-clip", L"stack");
+    fixedClip.baseStyle = {
+        {L"width", Length(80)},
+        {L"min-width", Length(80)},
+        {L"height", Length(54)},
+        {L"min-height", Length(54)},
+        {L"overflow", {L"keyword", L"clip", std::nullopt, {}}},
+    };
+    auto clippedButton = FixedButton(L"nested-focus");
+    clippedButton.baseStyle.insert_or_assign(L"width", Length(120));
+    clippedButton.baseStyle.insert_or_assign(L"min-width", Length(120));
+    clippedButton.focusedStyle = {
+        {L"scale", Number(1.15)},
+        {L"outline-width", Length(4)},
+        {L"outline-offset", Length(2)},
+    };
+    fixedClip.children = {std::move(clippedButton)};
+    nested.root.children = {std::move(fixedClip)};
+    const auto nestedResult = renderer.Render(
+        nullptr, nested, L"nested-focus", {0.0F, 0.0F, 160.0F, 100.0F});
+    Check(nestedResult.currentFocusOutlineClip.has_value(),
+          "non-scroll overflow clip constrains deferred focus decoration");
+    Near(nestedResult.currentFocusOutlineClip->x, 0.0F,
+         "non-scroll outline clip preserves ancestor content x");
+    Near(nestedResult.currentFocusOutlineClip->y, 0.0F,
+         "non-scroll outline clip preserves ancestor content y");
+    Near(nestedResult.currentFocusOutlineClip->width, 80.0F,
+         "non-scroll outline clip uses clipping ancestor width");
+    Near(nestedResult.currentFocusOutlineClip->height, 54.0F,
+         "non-scroll outline clip uses clipping ancestor height");
+
+    WidgetSnapshot rootEdge;
+    rootEdge.root = FixedButton(L"root-edge-focus");
+    rootEdge.root.isSelected = true;
+    rootEdge.root.focusedStyle = {
+        {L"scale", Number(1.2)},
+        {L"outline-width", Length(4)},
+        {L"outline-offset", Length(2)},
+    };
+    const Rect rootViewport{10.0F, 20.0F, 120.0F, 60.0F};
+    const auto rootEdgeResult = renderer.Render(
+        nullptr, rootEdge, L"root-edge-focus", rootViewport);
+    Check(rootEdgeResult.currentFocusOutlineClip.has_value(),
+          "scaled selected root-edge control retains an effective draw clip");
+    Near(rootEdgeResult.currentFocusOutlineClip->x, rootViewport.x,
+         "root-edge outline cannot escape the surface left edge");
+    Near(rootEdgeResult.currentFocusOutlineClip->y, rootViewport.y,
+         "root-edge outline cannot escape the surface top edge");
+    Near(rootEdgeResult.currentFocusOutlineClip->width, rootViewport.width,
+         "root-edge outline cannot escape the surface right edge");
+    Near(rootEdgeResult.currentFocusOutlineClip->height, rootViewport.height,
+         "root-edge outline cannot escape the surface bottom edge");
 
     WidgetSnapshot oversized;
     oversized.instanceId = L"outline.runtime";
@@ -470,18 +597,48 @@ void RealDirect2DSmoke() {
     selectedToggle.isSelected = true;
     auto offToggle = Node(L"toggle-off", L"button");
     offToggle.text = L"Bold text: Off";
-    snapshot.root.children = {button, selectedToggle, offToggle};
+    auto slider = Node(L"volume", L"slider");
+    slider.hasProgress = true;
+    slider.hasSliderRange = true;
+    slider.minimum = 0.0;
+    slider.maximum = 100.0;
+    slider.value = 50.0;
+    slider.step = 5.0;
+    slider.valueChangedActionId = L"volume.changed";
+    slider.accessibilityLabel = L"Volume";
+    slider.accessibilityValue = L"50 percent";
+    snapshot.root.children = {button, selectedToggle, offToggle, slider};
 
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
     target->BeginDraw();
     target->Clear(D2D1::ColorF(0.02F, 0.02F, 0.03F, 1.0F));
+    gba::DeclarativeRenderOptions options;
+    options.sliderValueOverrides.emplace(L"volume", 75.0);
     const auto result = renderer.Render(
-        target.Get(), snapshot, L"confirm", {0.0F, 0.0F, 640.0F, 360.0F});
+        target.Get(), snapshot, L"volume", {0.0F, 0.0F, 640.0F, 360.0F}, options);
     Check(SUCCEEDED(target->EndDraw()), "complete Direct2D draw");
     Check(result.succeeded, "real Direct2D render succeeds");
     Check(result.currentFocusRect.has_value(), "real render returns focused geometry");
-    Check(result.hitRegions.size() == 3,
-          "buttons with selected state cues render without requiring primary glyphs");
+    Check(result.hitRegions.size() == 4,
+          "buttons and optimistic Slider render through the real Direct2D path");
+
+    snapshot.root.children = {slider};
+    snapshot.root.children[0].minimum = -std::numeric_limits<double>::max();
+    snapshot.root.children[0].maximum = std::numeric_limits<double>::max();
+    snapshot.root.children[0].value = 0.0;
+    snapshot.root.children[0].step = 1.0;
+    options.sliderValueOverrides.clear();
+    target->BeginDraw();
+    const auto extreme = renderer.Render(
+        target.Get(), snapshot, L"volume", {0.0F, 0.0F, 640.0F, 360.0F}, options);
+    Check(SUCCEEDED(target->EndDraw()),
+          "overflowing finite Slider range never sends NaN geometry to Direct2D");
+    Check(std::any_of(
+              extreme.diagnostics.begin(), extreme.diagnostics.end(),
+              [](const auto& diagnostic) {
+                  return diagnostic.code == L"invalid_slider_range";
+              }),
+          "overflowing finite Slider range produces a renderer diagnostic");
 }
 
 } // namespace
@@ -492,12 +649,13 @@ int main() {
     ImagePlacementMath();
     AccessibleStatePresentation();
     PlanningMetadataAndKinds();
+    SliderPlanningAndAccessibilityTargets();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
     NestedScrollFocusFollowReachesFixedPoint();
     IrrevealableClipsDoNotBecomeFocusTraps();
     ScrollStateCapEvictsOnlyInactiveLruEntries();
-    DeferredFocusOutlineUsesOnlyScrollVisibilityClip();
+    DeferredFocusOutlineUsesEffectiveVisibilityClip();
     RealDirect2DSmoke();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();

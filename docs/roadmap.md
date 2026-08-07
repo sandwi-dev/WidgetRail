@@ -132,8 +132,16 @@ remains off until the publisher-trust gates in Phase 4.
   volume/mute change, verify callbacks and reconciliation, and restore the
   original scalar/mute in `finally`. This must remain opt-in and outside normal
   verification; output switching is not part of the v1 scope.
-- Add reusable controller scrolling/list and slider semantics required by dense
-  first-party and community widget surfaces
+- Complete and package the reusable controller Slider: absolute quantized
+  values, optimistic native feedback, bounded latest-wins coalescing, stable
+  focus, and D-pad/analog horizontal adjustment. Controller scrolling and
+  focus-follow list restoration are implemented; Slider remains in the current
+  verification milestone.
+- Add an original controller-first component library over the public SDK:
+  icon buttons, cards, section headers, status badges, dividers, alerts, empty
+  states, switches, tabs, and scoped dialogs. Components must keep stable IDs,
+  minimum controller target sizes, readable non-color state, nested Back
+  behavior, themeable semantic classes, and supported-DPI focus containment.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance
@@ -182,8 +190,8 @@ Later Audio Control phases add, in evidence-gated increments:
 
 - controller-first output-device selection where a supported documented
   Windows setter is available;
-- the per-session volume/mute surface, refined with broader device,
-  communications, and application-churn coverage;
+- broader device, communications, and application-churn coverage for the
+  implemented master and per-session volume/mute surface;
 - microphone mute and input level behind separate explicit capabilities;
 - default multimedia/communications-device visibility and, only where a
   supported setter exists, controlled selection; and
@@ -195,9 +203,10 @@ event-driven Core Audio provider; then hardware/churn/performance evidence.
 Output switching and microphone work additionally require supported Windows
 APIs, separate permissions, privacy review, and unmistakable device feedback.
 
-Endpoint master controls, output selection, microphone controls, and default
-communications-device changes are not implemented today. Each requires a
-separate capability, privacy/feedback design, and provider/API review. No
+Endpoint master volume/mute is implemented on the current default multimedia
+render endpoint. Output-device selection, microphone controls, and default
+communications-device changes are not implemented today. Each remaining item
+requires a separate capability, privacy/feedback design, and provider/API review. No
 undocumented `PolicyConfig`, registry write, or shell-automation output switch
 is acceptable.
 
@@ -232,8 +241,9 @@ polling adapters and targets:
 - controller selection among already saved Wi-Fi profiles;
 - a compact dashboard summary plus a focused open panel with explicit
   Connecting, Connected, Failed, permission, and unavailable states; and
-- dashboard LB/RB selection is local/read-only; no capability-backed network
-  control runs while merely Visible. Any future dashboard connect control needs
+- the dashboard card is read-only and declares no profile-selection or connect
+  quick actions; no capability-backed network control runs while merely
+  Visible. Any future dashboard connect control needs
   separate host-mediated authority and must not silently disclose credentials
   or connect to an unreviewed network.
 

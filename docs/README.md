@@ -17,6 +17,9 @@ guarantees that are available now.
   render, and replay a controller widget.
 - [Declarative UI reference](declarative-ui.md) — elements, focus, actions,
   images, icons, state, invalidation, and protocol limits.
+- [Controller UI component patterns](controller-ui-components.md) — Slider v3,
+  the Audio icon-Slider-percentage reference, focusable Disabled/Busy states,
+  and validation requirements for future composition helpers.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
   properties, imports, and diagnostics.
 - [Settings and global themes](settings-and-themes.md) — the controller Settings

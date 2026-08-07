@@ -11,6 +11,7 @@ public enum ViewNodeKind
     Text,
     Button,
     Progress,
+    Slider,
     Spacer,
     Image,
     Icon,
@@ -144,9 +145,15 @@ public sealed record ViewNode
     public required ViewNodeKind Kind { get; init; }
     public string? Text { get; init; }
     public string? AccessibilityLabel { get; init; }
+    /// <summary>A localized, human-readable value announced for value controls.</summary>
+    public string? AccessibilityValue { get; init; }
     public string? ActionId { get; init; }
     public double? Value { get; init; }
+    public double? Minimum { get; init; }
     public double? Maximum { get; init; }
+    public double? Step { get; init; }
+    /// <summary>Receives a quantized absolute RequestedValue when a Slider changes.</summary>
+    public string? ValueChangedActionId { get; init; }
     public string? ImageSource { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
@@ -169,7 +176,7 @@ public sealed record ViewNode
     public IReadOnlyList<ViewNode> Children { get; init; } = [];
 
     [JsonIgnore]
-    public bool IsFocusable => Kind is ViewNodeKind.Button;
+    public bool IsFocusable => Kind is ViewNodeKind.Button or ViewNodeKind.Slider;
 }
 
 public sealed record ViewSnapshot

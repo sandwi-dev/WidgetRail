@@ -16,7 +16,7 @@ intercept, remap, or suppress it.
 | --- | --- | --- |
 | Hidden | Guide/Home opens the overlay. | No widget controller input. Ordinary polling is stopped. |
 | Dashboard / hover | D-pad and horizontal left-stick movement navigate; A opens; B closes; Y enters/exits reorder. | Up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, Menu, or View. Other undeclared input is unhandled. |
-| Open widget | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus. Unhandled root-scope B returns to the dashboard. | A activates the focused button. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
+| Open widget | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus; focused Sliders own horizontal adjustment. Unhandled root-scope B returns to the dashboard. | A activates the focused Button or an optional Slider activation. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
 
 The protocol names the contexts `DashboardQuickAction` and `OpenWidget`.
 Events carry button, phase, optional focused element ID, input sequence,
@@ -50,21 +50,25 @@ input even if a malformed native client requests it.
 
 The default SDK routes against the most recently rendered snapshot:
 
-1. D-pad or two-dimensional left-stick movement changes the focused stable ID.
-   An enabled explicit directional neighbor wins. If none is usable, the host
-   uses the rendered focus rectangles to choose a deterministic spatial
-   neighbor in that direction. There is no wraparound.
-2. Pressed A invokes the focused button's action.
-3. Other buttons first match a shortcut on the focused node, then a unique
-   binding within `ViewSnapshot.ActiveInputScopeId`. Focus may be absent, so a
+1. D-pad or two-dimensional left-stick movement normally changes the focused
+   stable ID. An explicit directional neighbor wins; otherwise the host uses
+   the rendered focus rectangles to choose a deterministic spatial neighbor.
+   There is no wraparound. A focused Slider is the exception: Left/Right is
+   consumed for one-step value adjustment, while Up/Down remains navigation.
+2. Pressed A invokes the focused Button action or a Slider's optional
+   activation action.
+3. Other buttons first match a shortcut on the focused node, then a binding on
+   the `ViewSnapshot.ActiveInputScopeId` root container. The router never
+   searches an arbitrary unfocused descendant. Focus may be absent, so a
    scope-container binding such as modal B still resolves.
 4. The root is the default input scope. A Stack or Row may start a nested scope
    with `.InputScope("scope-id")` and may bind actions directly with
    `.Shortcut(ControllerButton.B, "close")`. The widget explicitly publishes
    which scope is active; routing never infers it from focus and never searches
    a parent or sibling scope.
-5. Disabled or busy buttons cannot activate through A or shortcuts and are not
-   geometric focus candidates.
+5. Disabled or busy Buttons and Sliders remain explicit and geometric focus
+   candidates, preserving the exact focus ID across state changes. The SDK
+   suppresses their A activation, shortcut, and Slider adjustment actions.
 6. Unmatched or ambiguous input returns `handled = false`.
 
 The runtime also requires the input's active-scope ID and snapshot sequence to
@@ -79,10 +83,11 @@ saw. The host must copy both values from that rendered snapshot into every
 `OpenWidget` input; an older sequence cannot activate an action after a rerender
 changes scope, bindings, disabled state, or node identity.
 
-Bindings must be unique per `(button, phase)` inside one input scope; snapshot
-validation rejects duplicates. Dashboard quick actions are a separate bounded
-surface and do not participate in open-widget scope lookup. Guide/Home remains
-host-owned regardless of focus or scope.
+A node may bind each `(button, phase)` only once; snapshot validation rejects a
+duplicate on that node. Different controls in the same scope may reuse a button
+because exact focus owns the first lookup. Dashboard quick actions are a
+separate bounded surface and do not participate in open-widget scope lookup.
+Guide/Home remains host-owned regardless of focus or scope.
 
 ### Focus ownership and restoration
 
@@ -91,11 +96,12 @@ neighbors, `InitialFocusId`, and `ActiveInputScopeId`; they do not persist or
 push the currently focused ID.
 
 The current host remembers focus independently for each widget and input scope.
-After a new snapshot, it restores the remembered ID when that button is still
-enabled in the active scope, otherwise tries `InitialFocusId`, then the first
-enabled button in that scope. If none exists, the surface is intentionally
-focusless. Container shortcuts still work there, which lets a focusless notice
-or modal bind B to dismiss itself without exposing a fake button.
+After a new snapshot, it restores the remembered ID when that Button or Slider
+is still present in the active scope, including while Disabled or Busy.
+Otherwise it tries `InitialFocusId`, then the first focusable control in that
+scope. If none exists, the surface is intentionally focusless. Container
+shortcuts still work there, which lets a focusless notice or modal bind B to
+dismiss itself without exposing a fake button.
 
 Resolved dashboard and open-widget actions enter the same FIFO bounded to 16
 pending items (plus the single action currently executing) and acknowledge immediately;
@@ -108,6 +114,14 @@ it does not crash the worker or retroactively change the acknowledgement.
 The host therefore publishes `Visible` for the selected dashboard widget before
 offering its quick actions. Background widgets reject controller-action
 admission without starting work; an open widget is `Interactive`.
+
+Slider value changes use the same queue but carry a validated, quantized
+**absolute** `RequestedValue`. A contiguous pending tail coalesces latest-wins
+only when active lifetime, input scope, Slider source ID, and action ID all
+match. A discrete action or a different Slider is an ordering boundary. This
+keeps analog/D-pad repeat responsive without converting a stale rendered value
+into a series of incorrect relative writes. Deactivation cancels the consumer
+and clears all pending values.
 
 ### Analog hysteresis and repeat
 

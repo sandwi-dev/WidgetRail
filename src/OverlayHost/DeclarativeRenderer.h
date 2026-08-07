@@ -68,6 +68,10 @@ struct DeclarativeRenderOptions final {
     float rootFontSizePx{16.0F};
     std::optional<NativeColor> surfaceBackground;
     NativeAccessibilityPolicy accessibility;
+    /// Exact node-ID optimistic values owned by the controller slider state.
+    /// The immutable widget snapshot remains authoritative after acknowledgement
+    /// or timeout.
+    std::map<std::wstring, double, std::less<>> sliderValueOverrides;
 };
 
 /// Accessibility-safe state presentation. High contrast and reduced

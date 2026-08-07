@@ -1,8 +1,9 @@
 using GameBarAlternative.WidgetProtocol;
+using System.Globalization;
 
 namespace GameBarAlternative.WidgetSdk;
 
-public static class UI
+public static partial class UI
 {
     public static StackElement Stack(string id, params WidgetElement[] children) =>
         new(id, CopyChildren(children));
@@ -61,8 +62,10 @@ public static class UI
     {
         ArgumentNullException.ThrowIfNull(label);
         ArgumentNullException.ThrowIfNull(value);
-        var decrementId = $"{id}.decrement";
-        var incrementId = $"{id}.increment";
+        var decrementId = StableIdentifier.Child(id, "decrement");
+        var incrementId = StableIdentifier.Child(id, "increment");
+        var labelId = StableIdentifier.Child(id, "label");
+        var valueId = StableIdentifier.Child(id, "value");
         var decrement = new ButtonElement(decrementId, "−", decrementAction)
         {
             AccessibilityLabel = $"Decrease {label}",
@@ -79,12 +82,12 @@ public static class UI
         };
         return new RowElement(id,
         [
-            new TextElement($"{id}.label", label, label)
+            new TextElement(labelId, label, label)
             {
                 StyleClasses = ["setting-stepper-label"],
             },
             decrement,
-            new TextElement($"{id}.value", value, $"{label}: {value}")
+            new TextElement(valueId, value, $"{label}: {value}")
             {
                 StyleClasses = ["setting-stepper-value"],
             },
@@ -97,6 +100,31 @@ public static class UI
 
     public static ProgressElement Progress(double value, double maximum, string id, string? accessibilityLabel = null) =>
         new(id, value, maximum, accessibilityLabel);
+
+    /// <summary>
+    /// Creates a controller-native value control. The host publishes a
+    /// quantized absolute target through the value-changed action, and the SDK
+    /// coalesces contiguous pending changes latest-wins.
+    /// </summary>
+    public static SliderElement Slider(
+        double value,
+        double minimum,
+        double maximum,
+        double step,
+        string valueChangedAction,
+        string id,
+        string accessibilityLabel,
+        string? accessibilityValue = null,
+        string? activationAction = null) => new(
+            id,
+            value,
+            minimum,
+            maximum,
+            step,
+            valueChangedAction,
+            accessibilityLabel,
+            accessibilityValue ?? value.ToString("0.###", CultureInfo.InvariantCulture),
+            activationAction);
 
     public static SpacerElement Spacer(string id) => new(id);
 

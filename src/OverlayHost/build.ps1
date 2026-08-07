@@ -81,12 +81,13 @@ $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
 $targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
 $guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
 $navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
+$sliderTestObjectDirectory = Join-Path $outputDirectory 'obj\slider-tests'
 $focusTestObjectDirectory = Join-Path $outputDirectory 'obj\focus-tests'
 $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus-tests'
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -120,6 +121,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
     (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+    (Join-Path $projectDirectory 'SliderInteraction.cpp'),
     (Join-Path $projectDirectory 'FocusNavigation.cpp'),
     (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
     (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),
@@ -406,6 +408,22 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'ControllerNavigationTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "ControllerNavigationTests failed with exit code $LASTEXITCODE."
+    }
+
+    $sliderTestArguments = $common + @(
+        (Join-Path $projectDirectory 'SliderInteractionTests.cpp'),
+        (Join-Path $projectDirectory 'SliderInteraction.cpp'),
+        "/Fo:$sliderTestObjectDirectory\",
+        "/Fe:$outputDirectory\SliderInteractionTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $sliderTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "SliderInteractionTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'SliderInteractionTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "SliderInteractionTests failed with exit code $LASTEXITCODE."
     }
 
     $focusTestArguments = $common + @(

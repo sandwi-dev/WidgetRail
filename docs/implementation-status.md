@@ -35,18 +35,23 @@ uses an undocumented ordinal only for drivers observed to omit Guide callbacks;
 it is not a universal device-compatibility guarantee.
 
 Open-widget left-stick navigation is two-dimensional with engage/release
-hysteresis and bounded repeat. Focus uses enabled explicit neighbors first and
-deterministic rendered geometry as a fallback, without wraparound.
+hysteresis and bounded repeat. Focus uses explicit neighbors first and
+deterministic rendered geometry as a fallback, without wraparound. Disabled
+and Busy Buttons/Sliders retain focus but suppress action dispatch. Focused
+Sliders consume horizontal input for bounded value adjustment and retain
+Up/Down navigation.
 
 ### Widget platform
 
-- `WidgetProtocol`: strict version-1 manifests and snapshots, deterministic
-  JSON, stable IDs, focus validation, quick actions, images, closed semantic
-  glyphs, explicit active controller scopes and snapshot correlation, and
-  button selected/disabled/busy state.
-- `WidgetSdk`: typed Stack, Row, Text, Button, Progress, Spacer, Image, and Icon
-  authoring; controller-ready ToggleButton/Stepper composites; button glyphs;
-  focus/shortcut/state helpers; scoped shortcut routing; invalidation;
+- `WidgetProtocol`: strict version-1 manifests and additive snapshot protocols
+  v1–v3, deterministic JSON, stable IDs, focus validation, quick actions,
+  Scroll/surface hints, absolute-value Sliders, images, closed semantic glyphs,
+  explicit active controller scopes and snapshot correlation, and interaction
+  state.
+- `WidgetSdk`: typed Stack, Row, Text, Button, Progress, Slider, Scroll, Spacer,
+  Image, and Icon authoring; controller-ready ToggleButton/Stepper composites;
+  button glyphs; focus/shortcut/state helpers; scoped shortcut routing;
+  bounded latest-wins Slider coalescing; invalidation;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network services, descriptors, DTOs, events, and errors.
@@ -92,8 +97,8 @@ deterministic rendered geometry as a fallback, without wraparound.
 - `WindowsAudioProvider`: an event-driven Core Audio backend for sanitized
   per-application sessions on the current default multimedia render endpoint.
   A dedicated MTA owns native objects; callbacks only enqueue coalesced refresh
-  work. It supports per-session volume/mute, not endpoint master control,
-  output switching, or microphone control.
+  work. It supports endpoint master volume/mute and per-session volume/mute,
+  but not output-device switching or microphone control.
 - `WindowsNetworkProvider`: a lazy event-driven Windows backend with a dedicated
   MTA owner, bounded/coalesced queues, coarse IP Helper connectivity hints,
   ACM-only Native Wi-Fi notifications, sanitized saved-profile enumeration,
@@ -142,11 +147,13 @@ first-party SDK widget and worker with trusted catalog and Release-build
 packaging wiring. It requires the network read capability, makes saved-profile
 switching optional and
 Interactive-only, opens its acknowledged status subscription before snapshots,
-and never polls. Dashboard LB/RB actions only change local profile selection;
-the open widget uses LB/RB selection plus X or focused A to request a switch.
+and never polls. It declares no dashboard quick actions. The open widget renders
+every saved profile in one bounded vertical Scroll; D-pad/left-stick Up/Down
+moves focus, and A or X routes through the exact focused row without LB/RB or
+LT/RT profile cycling.
 The real provider returns on `WlanConnect` acceptance, then publishes
 authoritative `Connecting`, `Failed`, and refreshed status events. Its focused
-provider and widget Release suites pass 17/17 and 13/13 respectively. Focused checks do not
+provider and widget Release suites pass 18/18 and 16/16 respectively. Focused checks do not
 replace hardware/privacy/performance matrices, which remain open. The current
 full managed Release suite, native host suite, package required-file checks,
 hidden-startup smoke, and controller input-probe smoke pass.
@@ -288,17 +295,19 @@ protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
 settings/themes, catalog, bridge, the generic worker host, broker, and Windows
 providers/reference widgets. The runtime covers suspended pre-containment
 launch, memory/process/UI limits, kill-on-close, restart cleanup, and mandatory
-community AppContainer authority. Its focused Release harness passes 24/24;
+community AppContainer authority. Its focused Release harness passes 25/25;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current Settings Release suite passes 28/28, including
+bounded cleanup. The current SDK and YT Music Release suites pass 41/41 and
+35/35 respectively. The current Settings Release suite passes 32/32, including
 paginated identity review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. The platform settings/themes suite passes 13/13, including legacy
-schema-1 theme compatibility. CLI passes 35/35, including version
+polling. Styling and platform settings/themes pass 18/18 and 13/13,
+including Busy-state composition and legacy schema-1 theme compatibility. CLI
+passes 35/35, including version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, catalog limits, immutable
@@ -308,30 +317,34 @@ linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 version unsigned authority derivation. Bridge
-passes 22/22, including semantic catalog revisions/last-good/catch-up reload,
+passes 24/24, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted built-in Job-only policy, and mandatory installed-package isolation
-metadata. PlatformBroker passes 22/22, including closed isolated-client SID/
+metadata. PlatformBroker passes 23/23, including closed isolated-client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
 consent/lifecycle gates, and revocation. An actual AppContainer-to-broker
 request integration also passes with the exact SID, Low-label global endpoint,
 expected PID, nonce, and widget identity checks in force.
 The generic worker-host suite passes 9/9, including that real typed broker
-request from an AppContainer worker.
+request from an AppContainer worker. Audio provider and Audio Mixer pass 14/14
+and 22/22; Network provider and Network Controls pass 18/18 and 16/16.
 Pre-resume native fault injection and an installed package launched through the
 published Bridge/catalog layout remain explicit release-test gaps.
-Network Controls and its Windows provider retain their focused 13/13 and 17/17
+Network Controls and its Windows provider retain their focused 16/16 and 18/18
 coverage for controller/focus, lifecycle/no-poll subscription ordering,
 privacy/explicit state, optimistic command reconciliation, opaque identity,
 native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
-The full native aggregate passes. Display-sensitive evidence includes 175
+The full native aggregate passes. Focused native suites report Controller
+Navigation 62 checks, Slider Interaction 2,071, Focus Navigation 17, Widget Surface
+Focus 16, and Declarative Renderer 4,227. Display-sensitive evidence includes 187
 declarative-layout checks, 668 placement/render-metric/surface-geometry checks,
 and 18 foreground-target/reentrancy checks, alongside state-machine,
 remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer
 suites. It covers deterministic tiny/portrait/negative-coordinate/wide/4K and
-72–480-DPI math plus 150% font-size/letter-spacing adaptation. The packaged
+72–480-DPI math plus 150% font-size/letter-spacing adaptation. The platform
+diagnostics suite passes 8/8 and the catalog suite passes 21/21. The packaged
 hidden startup smoke remained resident for its 1.2-second observation. Physical
 mixed-monitor migration/hot-plug screenshots and the broader 150% visual matrix
 remain evidence gaps.
@@ -397,10 +410,10 @@ with C++ installed:
   Visible/Interactive work is canceled, and the current broker denies every
   capability in Background. Manifest `backgroundPolicy`, resource-policy, and
   opt-in suspend/unload enforcement are not implemented yet.
-- GBSS compilation and bridge-global layering are implemented. `selected` and
-  `disabled` snapshot state participates in the complete `base`/`focused` maps;
-  a full separate family for pressed/busy and every dynamic semantic state is
-  not connected end to end.
+- GBSS compilation and bridge-global layering are implemented. `selected`,
+  `disabled`, and `busy` snapshot state participates in the complete
+  `base`/`focused` maps. A transient `pressed` map and every future dynamic
+  semantic state are not connected end to end.
 - Controller Settings, strict persistence, version-pinned theme selection,
   no-poll watching, last-good revisions, and globally layered widget styles are
   implemented. Safe theme scaffold/validate/computed-preview/pack/inspect/

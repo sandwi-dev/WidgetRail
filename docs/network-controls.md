@@ -5,7 +5,7 @@ passed 2026-08-07**.
 The typed SDK, authenticated capability transport, consent UI, lifecycle
 enforcement, real event-driven Windows provider, first-party widget/worker,
 trusted catalog entry, and Release packaging hooks exist. The focused Release
-provider and widget suites pass 18/18 and 14/14 respectively; the full managed suite, native host
+provider and widget suites pass 18/18 and 16/16 respectively; the full managed suite, native host
 suite, packaged hidden-startup smoke, and controller input-probe smoke also
 pass. Hardware/privacy matrices and performance evidence remain open, so this
 is not yet a shipped or production-support claim.
@@ -237,9 +237,12 @@ public override async ValueTask OnActionAsync(
     WidgetActionEvent action,
     CancellationToken cancellationToken = default)
 {
-    if (action.ActionId != "network.connect" || SelectedProfile is not { } profile)
+    if (action.ActionId != "profile.connect.item" ||
+        !_profilesByElementId.TryGetValue(action.SourceElementId, out var profile))
         return;
 
+    // The immutable map was rebuilt with the rendered snapshot from opaque
+    // provider identities. Never infer the target from a display name or row.
     SetConnectBusy(profile.ProfileId);
     try
     {
@@ -293,20 +296,21 @@ The implemented first-party package contract is:
   widget update budget; and
 - root controller input scope `network-controls`.
 
-Its intended stable actions are:
+Its implemented stable actions are:
 
 | Context | Controller | Action ID | Behavior |
 | --- | --- | --- | --- |
-| Dashboard card | LB | `profile.previous` | Select the previous cached profile locally; shown only with multiple profiles. |
-| Dashboard card | RB | `profile.next` | Select the next cached profile locally; shown only with multiple profiles. |
-| Open widget | LB/RB | `profile.previous` / `profile.next` | Change the selected saved profile. |
-| Open widget | X | `profile.connect` | Request connection to the selected saved profile while Interactive. |
-| Focused Connect button | A | `profile.connect` | Make the same explicit Interactive request through normal focus activation. |
+| Dashboard card | — | — | Read-only summary; Network Controls declares no dashboard quick actions. |
+| Open widget | D-pad/left stick Up/Down | — | Move focus through the bounded saved-profile Scroll list. |
+| Focused profile row | A or X | `profile.connect.item` | Request connection to that exact focused saved profile while Interactive. |
 | Failure/unavailable surface | focused A | `retry` | Make one explicit refresh/recovery attempt; never start a retry loop. |
 
-Dashboard LB/RB actions change widget-local selection only. They do not invoke
-the switch capability. There is deliberately no dashboard connect action. B is
-not bound by the widget root, so the host can return to the dashboard.
+There is deliberately no dashboard selection or connect action. The open
+surface does not keep a separate hidden selected-card model: stable opaque row
+IDs identify the target, and A/X resolves only against the exact focused row.
+LB/RB and LT/RT remain available to other widget-owned behavior and do not
+cycle profiles. B is not bound by the widget root, so the host can return to
+the dashboard.
 
 The open widget should provide:
 
@@ -314,7 +318,7 @@ The open widget should provide:
   privacy-restricted state when current Wi-Fi identity is unavailable;
 - a controller-navigable saved-profile list with connected, busy, and signal
   states;
-- one focused connect action or direct focused-row activation;
+- direct A/X activation of the exact focused row;
 - concise permission-required, denied/revoked, no-adapter, service-disabled,
   offline, local-only, failure, and timeout states; and
 - explicit focus neighbors for ambiguous layouts, with stable focus across

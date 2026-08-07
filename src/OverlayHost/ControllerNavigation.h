@@ -8,6 +8,48 @@ namespace gba::input {
 
 enum class NavigationDirection { None, Left, Right, Up, Down };
 
+enum class NavigationEventPhase { Pressed, Repeated };
+
+struct StickNavigationEvent final {
+    NavigationDirection direction{NavigationDirection::None};
+    NavigationEventPhase phase{NavigationEventPhase::Pressed};
+};
+
+/// Converts an opposing pair of digital buttons to a signed navigation axis.
+/// Simultaneous opposites are neutral so malformed hardware state cannot pick
+/// an arbitrary direction.
+[[nodiscard]] constexpr short DigitalNavigationAxis(
+    const std::uint16_t buttons,
+    const std::uint16_t negativeButton,
+    const std::uint16_t positiveButton) noexcept {
+    const bool negative = (buttons & negativeButton) != 0;
+    const bool positive = (buttons & positiveButton) != 0;
+    if (negative == positive) return 0;
+    return negative ? static_cast<short>(-32'767) : static_cast<short>(32'767);
+}
+
+enum class FocusedDirectionRoute {
+    FocusNavigation,
+    SliderAdjustment,
+    Consume,
+};
+
+/// A focused slider owns horizontal direction. Busy/disabled slider input is
+/// consumed rather than leaking into spatial focus; Up/Down always navigate.
+[[nodiscard]] constexpr FocusedDirectionRoute RouteFocusedDirection(
+    const std::wstring_view focusedKind,
+    const bool disabled,
+    const bool busy,
+    const NavigationDirection direction) noexcept {
+    const bool horizontal = direction == NavigationDirection::Left ||
+                            direction == NavigationDirection::Right;
+    if (focusedKind != L"slider" || !horizontal)
+        return FocusedDirectionRoute::FocusNavigation;
+    return disabled || busy
+        ? FocusedDirectionRoute::Consume
+        : FocusedDirectionRoute::SliderAdjustment;
+}
+
 enum class ControllerActionContext {
     Dashboard,
     RootWidgetScope,
@@ -66,6 +108,8 @@ public:
 
     void Prime(short x, short y, std::uint64_t now) noexcept;
     [[nodiscard]] std::optional<NavigationDirection> Update(
+        short x, short y, std::uint64_t now) noexcept;
+    [[nodiscard]] std::optional<StickNavigationEvent> UpdateEvent(
         short x, short y, std::uint64_t now) noexcept;
     void Reset() noexcept;
 

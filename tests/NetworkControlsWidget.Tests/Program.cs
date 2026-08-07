@@ -16,6 +16,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Switch acknowledgement waits for authoritative status completion", AcceptedSwitchWaitsForEvent),
     ("Terminal and immediate switch failures roll back safely", SwitchFailureRollback),
     ("Saved-profile churn preserves identity selection", StableSelectionDuringChurn),
+    ("Focused A and X route the exact network row", FocusedProfileRoutes),
+    ("Large saved-profile lists stay bounded and identity stable", LargeProfileList),
     ("Capability failures render bounded recovery surfaces", CapabilityFailureStates),
     ("Unavailable host service fails closed without platform fallback", UnavailableService),
     ("Visible lifecycle subscribes once and never polls", LifecycleAndNoPolling),
@@ -74,7 +76,9 @@ static async Task ConnectionSurfaces()
     var wifi = Snapshot(widget, 2);
     Assert.Equal("WI-FI", Text(wifi.Root, "network.connection.transport").Text);
     Assert.Equal("87%", Text(wifi.Root, "network.signal.value").Text);
-    Assert.Equal("Connected", Button(wifi.Root, "network.profile.connect").Text);
+    var connected = ProfileButton(wifi.Root, "Home 5G");
+    Assert.Equal(true, connected.IsSelected);
+    Assert.Equal(WidgetGlyph.Check, connected.Glyph);
     Assert.Valid(wifi);
     await Background(widget);
 }
@@ -141,11 +145,11 @@ static async Task UnavailableWifiBlocksConnect()
         await WaitUntil(() => widget.Profiles.Count == 1);
 
         var snapshot = Snapshot(widget, 1);
-        var connect = Button(snapshot.Root, "network.profile.connect");
-        Assert.Equal(expectedButton, connect.Text);
+        var connect = ProfileButton(snapshot.Root, "Home");
         Assert.Equal(true, connect.IsDisabled);
+        Assert.Contains(expectedButton, connect.AccessibilityLabel!);
 
-        await widget.OnActionAsync(new("profile.connect", "network.profile.connect"));
+        await widget.OnActionAsync(new("profile.connect.item", connect.Id));
         Assert.Equal(0, fake.SwitchCalls);
         Assert.Contains(expectedStatus, Text(Snapshot(widget, 2).Root, "network.status").Text!);
 
@@ -164,23 +168,23 @@ static async Task ExplicitFocusGraph()
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
     var snapshot = Snapshot(widget, 1);
-    var expectedIds = new[]
-    {
-        "network.profile.previous",
-        "network.profile.next",
-        "network.profile.connect",
-    };
-    Assert.SequenceEqual(expectedIds, Buttons(snapshot.Root).Select(button => button.Id));
-    foreach (var button in Buttons(snapshot.Root))
+    var profileButtons = ProfileButtons(snapshot.Root).ToArray();
+    Assert.Equal(2, profileButtons.Length);
+    Assert.Equal(ViewNodeKind.Scroll, Node(snapshot.Root, "network.profiles.scroll").Kind);
+    Assert.Equal(profileButtons[0].Id, snapshot.InitialFocusId);
+    foreach (var button in profileButtons)
     {
         Assert.True(button.Focus is { Up: not null, Down: not null, Left: not null, Right: not null },
             $"'{button.Id}' does not have an explicit four-way focus graph.");
-        foreach (var neighbor in new[]
-                 {
-                     button.Focus!.Up!, button.Focus.Down!, button.Focus.Left!, button.Focus.Right!,
-                 })
-            Assert.True(expectedIds.Contains(neighbor, StringComparer.Ordinal),
+        foreach (var neighbor in new[] { button.Focus!.Up!, button.Focus.Down! })
+            Assert.True(profileButtons.Any(candidate => candidate.Id == neighbor),
                 $"'{button.Id}' points to missing focus target '{neighbor}'.");
+        Assert.Equal(button.Id, button.Focus.Left);
+        Assert.Equal(button.Id, button.Focus.Right);
+        Assert.True(button.Shortcuts.Any(shortcut =>
+                shortcut.Button == ControllerButton.X &&
+                shortcut.ActionId == "profile.connect.item"),
+            $"'{button.Id}' does not own its focused X shortcut.");
     }
     Assert.Valid(snapshot);
     await Background(widget);
@@ -193,37 +197,31 @@ static async Task ControllerRoutes()
     await ActivateVisible(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
     var visible = Snapshot(widget, 1);
-    Assert.SequenceEqual(
-        new[] { "profile.previous", "profile.next" },
-        visible.QuickActions.Select(action => action.ActionId));
-    Assert.SequenceEqual(
-        new[] { ControllerButton.LeftBumper, ControllerButton.RightBumper },
-        visible.QuickActions.Select(action => action.Button));
+    Assert.Equal(0, visible.QuickActions.Count);
     Assert.True(!visible.Root.Shortcuts.Any(shortcut =>
             shortcut.Button is ControllerButton.B or ControllerButton.Y or
                 ControllerButton.DPadUp or ControllerButton.DPadDown or
                 ControllerButton.DPadLeft or ControllerButton.DPadRight),
         "The open surface captured host close/reorder/navigation input.");
 
-    Assert.True(await Route(widget, visible, ControllerButton.RightBumper,
+    Assert.True(!await Route(widget, visible, ControllerButton.RightBumper,
         ControllerInputContext.DashboardQuickAction));
-    await WaitUntil(() => widget.SelectedProfileId == "office");
-    await widget.OnActionAsync(new("profile.connect", "dashboard.invalid"));
+    Assert.Equal("home", widget.SelectedProfileId);
     Assert.Equal(0, fake.SwitchCalls);
-    Assert.Contains("Open Network Controls", Text(Snapshot(widget, 2).Root, "network.status").Text!);
 
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
-    var open = Snapshot(widget, 3);
-    Assert.True(await Route(widget, open, ControllerButton.LeftBumper, ControllerInputContext.OpenWidget));
-    await WaitUntil(() => widget.SelectedProfileId == "home");
-    Assert.True(await Route(widget, Snapshot(widget, 4), ControllerButton.X,
-        ControllerInputContext.OpenWidget));
+    var open = Snapshot(widget, 2);
+    Assert.True(!await Route(widget, open, ControllerButton.LeftBumper,
+        ControllerInputContext.OpenWidget, ProfileButton(open.Root, "Office").Id));
+    Assert.Equal("home", widget.SelectedProfileId);
+    Assert.True(await Route(widget, open, ControllerButton.X,
+        ControllerInputContext.OpenWidget, ProfileButton(open.Root, "Office").Id));
     await WaitUntil(() => fake.SwitchCalls == 1);
-    Assert.Equal("home", fake.SwitchRequests.Single().ProfileId);
+    Assert.Equal("office", fake.SwitchRequests.Single().ProfileId);
     Assert.True(widget.ControlBusy, "Accepted switch should wait for a terminal status event.");
     fake.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            activeId: "home", name: "Home", signal: 80),
-        [Profile("home", "Home", connected: true, signal: 80), Profile("office", "Office")]);
+            activeId: "office", name: "Office", signal: 80),
+        [Profile("home", "Home", signal: 80), Profile("office", "Office", connected: true)]);
     await WaitUntil(() => !widget.ControlBusy);
     await Background(widget);
 }
@@ -234,8 +232,8 @@ static async Task AcceptedSwitchWaitsForEvent()
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    await widget.OnActionAsync(new("profile.next", "network.profile.next"));
-    await widget.OnActionAsync(new("profile.connect", "network.profile.connect"));
+    var ready = Snapshot(widget, 0);
+    await widget.OnActionAsync(new("profile.connect.item", ProfileButton(ready.Root, "Office").Id));
     Assert.Equal(1, fake.SwitchCalls);
     Assert.True(widget.ControlBusy, "Broker ACK was incorrectly treated as connection success.");
     Assert.Equal("home", widget.NetworkStatus!.ActiveProfileId);
@@ -249,13 +247,19 @@ static async Task AcceptedSwitchWaitsForEvent()
     await WaitUntil(() => widget.NetworkStatus?.ConnectionAttemptState ==
                           WidgetNetworkConnectionAttemptState.Connecting);
     Assert.Equal("office", widget.SelectedProfileId);
-    Assert.Equal("Connecting…", Button(Snapshot(widget, 2).Root, "network.profile.connect").Text);
+    var connecting = ProfileButton(Snapshot(widget, 2).Root, "Office");
+    Assert.True(connecting.StyleClasses.Contains("is-pending"),
+        "Pending profile did not expose a stable focus-preserving visual state.");
+    Assert.Equal(null, connecting.IsBusy);
+    Assert.Equal(null, connecting.IsDisabled);
 
     fake.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
             activeId: "office", name: "Office", signal: 68),
         [Profile("home", "Home", signal: 78), Profile("office", "Office", connected: true, signal: 68)]);
     await WaitUntil(() => !widget.ControlBusy && widget.NetworkStatus?.ActiveProfileId == "office");
-    Assert.Equal("Connected", Button(Snapshot(widget, 3).Root, "network.profile.connect").Text);
+    var connected = ProfileButton(Snapshot(widget, 3).Root, "Office");
+    Assert.Equal(true, connected.IsSelected);
+    Assert.Equal(WidgetGlyph.Check, connected.Glyph);
     await Background(widget);
 }
 
@@ -266,8 +270,8 @@ static async Task SwitchFailureRollback()
     var widget = Create(immediate);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    await widget.OnActionAsync(new("profile.next", "network.profile.next"));
-    await widget.OnActionAsync(new("profile.connect", "network.profile.connect"));
+    var ready = Snapshot(widget, 0);
+    await widget.OnActionAsync(new("profile.connect.item", ProfileButton(ready.Root, "Office").Id));
     Assert.True(!widget.ControlBusy, "Immediate denial left the controller surface busy.");
     Assert.Equal("home", widget.NetworkStatus!.ActiveProfileId);
     var denied = Text(Snapshot(widget, 1).Root, "network.status").Text!;
@@ -280,8 +284,9 @@ static async Task SwitchFailureRollback()
     var terminalWidget = Create(terminal);
     await ActivateInteractive(terminalWidget);
     await WaitUntil(() => terminalWidget.ViewState == NetworkControlsViewState.Ready);
-    await terminalWidget.OnActionAsync(new("profile.next", "network.profile.next"));
-    await terminalWidget.OnActionAsync(new("profile.connect", "network.profile.connect"));
+    var terminalReady = Snapshot(terminalWidget, 0);
+    await terminalWidget.OnActionAsync(new(
+        "profile.connect.item", ProfileButton(terminalReady.Root, "Office").Id));
     terminal.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
             attempt: WidgetNetworkConnectionAttemptState.Failed,
             attemptId: "office", activeId: "home", name: "Home", signal: 80),
@@ -305,19 +310,84 @@ static async Task StableSelectionDuringChurn()
     var widget = Create(fake);
     await ActivateVisible(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    await widget.OnActionAsync(new("profile.next", "network.profile.next"));
+    var initial = Snapshot(widget, 0);
+    await widget.OnActionAsync(new("profile.connect.item", ProfileButton(initial.Root, "Beta").Id));
     Assert.Equal("b", widget.SelectedProfileId);
 
     fake.Emit(fake.Status,
         [Profile("c", "Gamma"), Profile("b", "Beta renamed"), Profile("d", "Delta")]);
     await WaitUntil(() => widget.Profiles.First().ProfileId == "c");
     Assert.Equal("b", widget.SelectedProfileId);
-    Assert.Equal("Beta renamed", Text(Snapshot(widget, 1).Root, "network.profile.name").Text);
+    var retained = Snapshot(widget, 1);
+    Assert.Equal(true, ProfileButton(retained.Root, "Beta renamed").IsSelected);
 
     fake.Emit(fake.Status, [Profile("c", "Gamma"), Profile("d", "Delta")]);
     await WaitUntil(() => widget.Profiles.Count == 2);
     Assert.Equal("d", widget.SelectedProfileId);
-    Assert.Equal("network.profile.connect", Snapshot(widget, 2).InitialFocusId);
+    var fallback = Snapshot(widget, 2);
+    Assert.Equal(ProfileButton(fallback.Root, "Delta").Id, fallback.InitialFocusId);
+    await Background(widget);
+}
+
+static async Task FocusedProfileRoutes()
+{
+    var fake = ReadyHost(allDisconnected: true);
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
+
+    var snapshot = Snapshot(widget, 1);
+    var office = ProfileButton(snapshot.Root, "Office");
+    Assert.True(await Route(widget, snapshot, ControllerButton.A,
+        ControllerInputContext.OpenWidget, office.Id));
+    await WaitUntil(() => fake.SwitchCalls == 1);
+    Assert.Equal("office", fake.SwitchRequests.Single().ProfileId);
+    Assert.Equal("office", widget.SelectedProfileId);
+
+    fake.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
+            activeId: "office", name: "Office", signal: 66),
+        [Profile("home", "Home", signal: 80), Profile("office", "Office", true, 66)]);
+    await WaitUntil(() => !widget.ControlBusy);
+    var connected = Snapshot(widget, 2);
+    Assert.True(await Route(widget, connected, ControllerButton.X,
+        ControllerInputContext.OpenWidget, ProfileButton(connected.Root, "Home").Id));
+    await WaitUntil(() => fake.SwitchCalls == 2);
+    Assert.Equal("home", fake.SwitchRequests.Last().ProfileId);
+    await Background(widget);
+}
+
+static async Task LargeProfileList()
+{
+    var profiles = Enumerable.Range(0, 128)
+        .Select(index => Profile($"profile-{index:D3}", $"Saved network {index:D3}",
+            connected: index == 73, signal: index % 101))
+        .ToArray();
+    var fake = new FakeNetworkHost
+    {
+        Status = Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
+            activeId: profiles[73].ProfileId, name: profiles[73].DisplayName, signal: 73),
+        Profiles = profiles,
+    };
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.Profiles.Count == profiles.Length);
+
+    var snapshot = Snapshot(widget, 1);
+    var buttons = ProfileButtons(snapshot.Root).ToArray();
+    Assert.Equal(128, buttons.Length);
+    Assert.Equal(128, buttons.Select(button => button.Id).Distinct(StringComparer.Ordinal).Count());
+    Assert.Equal(ProfileButton(snapshot.Root, profiles[73].DisplayName).Id, snapshot.InitialFocusId);
+    Assert.Equal(ViewNodeKind.Scroll, Node(snapshot.Root, "network.profiles.scroll").Kind);
+    Assert.Equal(buttons[0].Id, buttons[0].Focus!.Up);
+    Assert.Equal(buttons[^1].Id, buttons[^1].Focus!.Down);
+
+    var retainedId = ProfileButton(snapshot.Root, profiles[73].DisplayName).Id;
+    fake.Emit(fake.Status, profiles.Reverse().ToArray());
+    await WaitUntil(() => widget.Profiles[0].ProfileId == profiles[^1].ProfileId);
+    var reordered = Snapshot(widget, 2);
+    Assert.Equal(retainedId, ProfileButton(reordered.Root, profiles[73].DisplayName).Id);
+    Assert.Equal(retainedId, reordered.InitialFocusId);
+    Assert.Valid(reordered);
     await Background(widget);
 }
 
@@ -423,10 +493,11 @@ static async Task CancellationRollback()
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    await widget.OnActionAsync(new("profile.next", "network.profile.next"));
     using var cancellation = new CancellationTokenSource();
+    var ready = Snapshot(widget, 0);
     var command = widget.OnActionAsync(
-        new("profile.connect", "network.profile.connect"), cancellation.Token).AsTask();
+        new("profile.connect.item", ProfileButton(ready.Root, "Office").Id),
+        cancellation.Token).AsTask();
     await WaitUntil(() => fake.SwitchCalls == 1);
     cancellation.Cancel();
     await Assert.ThrowsCanceled(command);
@@ -458,11 +529,13 @@ static async Task ShippedAssetsValidate()
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     AssertResponsiveLayoutBudget(compiled.Theme!);
     var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.gbss"));
-    Assert.Contains("width: 44vw", style);
-    Assert.Contains("min-width: 280px", style);
-    Assert.Contains("max-width: 620px", style);
+    Assert.Contains("width: 100vw", style);
+    Assert.Contains("min-width: 0px", style);
+    Assert.Contains("max-width: 560px", style);
     Assert.True(!style.Contains("min-width: 440px", StringComparison.Ordinal),
         "The network widget retained a desktop-only hard width floor.");
+    Assert.True(!style.Contains("scale:", StringComparison.Ordinal),
+        "Full-width network rows may not scale beyond their clipped scroll viewport.");
 
     var catalogPath = Path.Combine(project, "..", "..", "OverlayHost", "widget-catalog.json");
     using var catalog = JsonDocument.Parse(await File.ReadAllBytesAsync(catalogPath));
@@ -480,25 +553,28 @@ static async Task ShippedAssetsValidate()
         .Select(item => item.GetString()!).Order(StringComparer.Ordinal).ToArray();
     Assert.SequenceEqual(manifestCapabilities, trustedCapabilities);
     var quickActions = trusted.GetProperty("quickActions").EnumerateArray().ToArray();
-    Assert.Equal(2, quickActions.Length);
-    Assert.SequenceEqual(["profile.previous", "profile.next"],
-        quickActions.Select(item => item.GetProperty("actionId").GetString()!));
-    Assert.SequenceEqual(["leftBumper", "rightBumper"],
-        quickActions.Select(item => item.GetProperty("controllerButton").GetString()!));
-    Assert.SequenceEqual(["dashboard.network.previous", "dashboard.network.next"],
-        quickActions.Select(item => item.GetProperty("sourceElementId").GetString()!));
+    Assert.Equal(0, quickActions.Length);
 }
 
 static void AssertResponsiveLayoutBudget(GbssTheme theme)
 {
     var root = Resolve(theme, "stack", "network.root", "network-controls-widget");
-    var card = Resolve(theme, "stack", "network.profile.card", "network-profile-card");
-    var switcher = Resolve(theme, "row", "network.profile.switcher", "network-profile-switcher");
-    var profileButton = Resolve(theme, "button", "network.profile.previous", "network-profile-action");
-    var profileCopy = Resolve(theme, "stack", "network.profile.copy", "network-profile-copy");
-    var connect = Resolve(theme, "button", "network.profile.connect", "network-connect-action");
-    Assert.True(Pixels(profileButton.Get("width")!, 280) >= 44,
-        "Narrow layout reduced a controller target below 44px.");
+    var list = Resolve(theme, "scroll", "network.profiles.scroll", "network-profile-list");
+    var row = Resolve(theme, "stack", "network.profile.test.row", "network-profile-row");
+    var profileButton = Resolve(theme, "button", "network.profile.test", "network-profile-button");
+    var focusedProfileButton = theme.Resolve(new GbssElement(
+        "button", "network.profile.test",
+        new HashSet<string>(["network-profile-button"], StringComparer.Ordinal),
+        new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
+    Assert.True(Pixels(profileButton.Get("min-height")!, 280) >= 44,
+        "Saved-network row reduced its controller height below 44px.");
+    Assert.True(Pixels(list.Get("max-height")!, 560) <= 300,
+        "Saved-network list can escape the compact surface height budget.");
+
+    var listHorizontalInset = HorizontalSpacing(list.Get("padding")!, 560) / 2;
+    var focusInset = Math.Abs(Pixels(focusedProfileButton.Get("outline-offset")!, 560));
+    Assert.True(listHorizontalInset >= focusInset,
+        "Saved-network focus outline can clip against the scroll viewport edge.");
 
     foreach (var viewport in new[] { 280D, 320D, 1280D, 3840D })
     {
@@ -508,16 +584,11 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
             Pixels(root.Get("min-width")!, viewport),
             Pixels(root.Get("max-width")!, viewport)));
         var rootInner = rootWidth - HorizontalSpacing(root.Get("padding")!, viewport);
-        var cardInner = rootInner - HorizontalSpacing(card.Get("padding")!, viewport);
-        var switcherMinimum =
-            2 * Pixels(profileButton.Get("width")!, viewport) +
-            Pixels(profileCopy.Get("min-width")!, viewport) +
-            2 * Pixels(switcher.Get("gap")!, viewport);
-        Assert.True(switcherMinimum <= cardInner,
-            $"Profile switcher needs {switcherMinimum}px but has {cardInner}px at {viewport}px.");
-        Assert.True(Pixels(connect.Get("min-width")!, viewport) <= cardInner,
-            $"Connect control exceeds card width at {viewport}px.");
-        Assert.True(rootWidth <= 620 && rootWidth <= viewport,
+        var listInner = rootInner - HorizontalSpacing(list.Get("padding")!, viewport);
+        var rowInner = listInner - HorizontalSpacing(row.Get("padding")!, viewport);
+        Assert.True(Pixels(profileButton.Get("min-width")!, viewport) <= rowInner,
+            $"Saved-network control exceeds row width at {viewport}px.");
+        Assert.True(rootWidth <= 560 && rootWidth <= viewport,
             $"Root width {rootWidth}px escaped viewport/max bound at {viewport}px.");
     }
 }
@@ -614,12 +685,13 @@ static async ValueTask<bool> Route(
     NetworkControlsWidget widget,
     ViewSnapshot snapshot,
     ControllerButton button,
-    ControllerInputContext context) =>
+    ControllerInputContext context,
+    string? focusedElementId = null) =>
     await widget.OnControllerInputAsync(new ControllerInputEvent(
         button,
         ControllerEventPhase.Pressed,
         context,
-        FocusedElementId: "network.profile.connect",
+        FocusedElementId: focusedElementId ?? ProfileButtons(snapshot.Root).FirstOrDefault()?.Id,
         Sequence: 7,
         ActiveInputScopeId: snapshot.ActiveInputScopeId,
         SnapshotSequence: snapshot.Sequence));
@@ -627,7 +699,7 @@ static async ValueTask<bool> Route(
 static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
 {
     var snapshot = widget.RenderSnapshot("network.test", sequence);
-    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
     Assert.True(snapshot.Surface is not null, "Network Controls omitted its bounded surface hint.");
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
     Assert.Equal(560D, snapshot.Surface.PreferredWidth);
@@ -648,8 +720,14 @@ static IEnumerable<ViewNode> Nodes(ViewNode node)
 static IEnumerable<ViewNode> Buttons(ViewNode root) =>
     Nodes(root).Where(node => node.Kind == ViewNodeKind.Button);
 
-static ViewNode Button(ViewNode root, string id) =>
-    Nodes(root).Single(node => node.Id == id && node.Kind == ViewNodeKind.Button);
+static IEnumerable<ViewNode> ProfileButtons(ViewNode root) =>
+    Buttons(root).Where(node => node.ActionId == "profile.connect.item");
+
+static ViewNode ProfileButton(ViewNode root, string displayName) =>
+    ProfileButtons(root).Single(node => node.Text == displayName);
+
+static ViewNode Node(ViewNode root, string id) =>
+    Nodes(root).Single(node => node.Id == id);
 
 static ViewNode Text(ViewNode root, string id) =>
     Nodes(root).Single(node => node.Id == id && node.Kind == ViewNodeKind.Text);

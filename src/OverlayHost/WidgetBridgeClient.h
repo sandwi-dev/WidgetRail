@@ -81,7 +81,9 @@ struct WidgetNode final {
     std::wstring kind;
     std::wstring text;
     std::wstring accessibilityLabel;
+    std::wstring accessibilityValue;
     std::wstring actionId;
+    std::wstring valueChangedActionId;
     std::wstring imageSource;
     std::wstring imageFit;
     std::wstring glyph;
@@ -96,8 +98,11 @@ struct WidgetNode final {
     WidgetComputedStyle baseStyle;
     WidgetComputedStyle focusedStyle;
     double value{};
+    double minimum{};
     double maximum{};
+    double step{};
     bool hasProgress{};
+    bool hasSliderRange{};
     bool isDisabled{};
     bool isSelected{};
     bool isBusy{};
@@ -219,7 +224,9 @@ public:
         std::wstring_view activeInputScopeId,
         long long snapshotSequence,
         long long sequence,
-        long long monotonicTimestampMicroseconds);
+        long long monotonicTimestampMicroseconds,
+        std::wstring_view phase = L"pressed",
+        std::optional<double> requestedValue = std::nullopt);
     [[nodiscard]] const std::wstring& lastError() const noexcept { return lastError_; }
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();

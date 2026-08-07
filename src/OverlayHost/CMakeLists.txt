@@ -23,6 +23,7 @@ add_executable(OverlayHost WIN32
     DeclarativeRenderer.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
+    SliderInteraction.cpp
     FocusNavigation.cpp
     WidgetSurfaceFocus.cpp
     WidgetLifecycle.cpp
@@ -106,6 +107,11 @@ if(GBA_BUILD_TESTS)
     target_compile_features(ControllerNavigationTests PRIVATE cxx_std_20)
     target_compile_options(ControllerNavigationTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME ControllerNavigationTests COMMAND ControllerNavigationTests)
+
+    add_executable(SliderInteractionTests SliderInteractionTests.cpp SliderInteraction.cpp)
+    target_compile_features(SliderInteractionTests PRIVATE cxx_std_20)
+    target_compile_options(SliderInteractionTests PRIVATE /W4 /permissive- /EHsc)
+    add_test(NAME SliderInteractionTests COMMAND SliderInteractionTests)
 
     add_executable(FocusNavigationTests
         FocusNavigationTests.cpp FocusNavigation.cpp)

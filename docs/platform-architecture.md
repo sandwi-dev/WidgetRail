@@ -63,8 +63,10 @@ focus. Each open-widget event echoes that ID and the snapshot sequence it was
 rendered from. The SDK rejects stale/mismatched input before action resolution,
 so an old press cannot activate a binding after a rerender changes the active
 surface. The host owns live focus and remembers it by widget and scope, falling
-back to the snapshot's `InitialFocusId` or first enabled button. A focusless
-scope remains valid and can use a Stack/Row-level shortcut such as modal B.
+back to the snapshot's `InitialFocusId` or first focusable Button/Slider.
+Disabled and Busy controls remain focusable but do not dispatch actions, so an
+async state transition does not teleport focus. A focusless scope remains
+valid and can use a Stack/Row/Scroll-level shortcut such as modal B.
 
 All transport messages have explicit size limits, protocol versions, strict
 camel-case JSON, and unknown-member rejection. The native process never loads
