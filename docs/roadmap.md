@@ -114,21 +114,30 @@ No capture, Discord, marketplace, web widgets, or general community code yet.
 - One built-in widget and one out-of-process sample implementing equivalent behavior
 - Controller-only and accessibility conformance tests
 
-Developer mode is local and unsigned but remains isolated. Public distribution remains off until Phase 3.
+Developer mode is local and unsigned but remains isolated. Public distribution
+remains off until the publisher-trust gates in Phase 4.
 
-## Phase 3: security and useful first-party widgets
+## Phase 3: local product hardening and useful first-party widgets
 
-- Finish isolation hardening/support work: installed/community AppContainer and
-  authenticated broker integration are implemented; Win32k-disable
-  compatibility, trusted-built-in migration, disk/profile quotas/cleanup, and
-  broader Windows evidence remain. Add pre-resume launcher fault injection and
-  a published-layout installed-catalog/AppContainer smoke before release
-- Signed packages, atomic update, rollback, and crash-loop disable
-- Malicious/abusive widget test corpus
-- Controller-first Audio Control widget, beginning with per-application mixing
-- Controller-first Network Control widget, beginning with connection state and
-  saved-network actions
-- Performance widget
+- Make every dashboard tile a real catalog-backed worker with deterministic
+  local acceptance coverage; placeholders remain absent until complete
+- Finish YT Music connection, pairing persistence, transition responsiveness,
+  feedback, controller navigation, and failure recovery
+- Finish Settings controller reachability, diagnostics/recovery, local package
+  and theme workflows, and permission/version consistency
+- Complete controller-first Audio Control and Network Control through their
+  locally testable hardware, privacy, denial, churn, and recovery gates
+- Run an explicit reversible Audio Control hardware gate on this machine:
+  retain the original default multimedia endpoint, make one bounded master
+  volume/mute change, verify callbacks and reconciliation, and restore the
+  original scalar/mute in `finally`. This must remain opt-in and outside normal
+  verification; output switching is not part of the v1 scope.
+- Add reusable controller scrolling/list and slider semantics required by dense
+  first-party and community widget surfaces
+- Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
+  resource evidence, and disk/profile quotas/cleanup
+- Performance widget only after its real local diagnostics data and acceptance
+  suite exist
 - Media controls
 - Recent apps/games
 - Capture proof and widget if Windows API tests pass
@@ -290,6 +299,9 @@ packages are the canonical templates for event-driven system-control widgets.
 
 ## Phase 4: ecosystem
 
+- Publisher signing/revocation and a signed update channel, mandatory before
+  public community distribution but intentionally sequenced after local
+  product-completion gates
 - Curated catalog and controller-first install/update/rollback
 - Publisher identity and moderation process
 - Compatibility and resource labels
@@ -307,7 +319,7 @@ packages are the canonical templates for event-driven system-control widgets.
 | Guide conflict or unavailable system button | Critical | Controller/client matrix | GameInput callback, conflict onboarding, controller-only fallback |
 | Overlay not visible in true FSE | High | Presentation matrix | Do not support true FSE initially; no injection |
 | Native UI scope expands uncontrollably | High | Three-card implementation effort and accessibility audit | Small primitive set; renderer-independent widget protocol; compare WinUI only with data |
-| Community widget compromises user | Critical | AppContainer/broker abuse tests plus signing, quota, and audit evidence | Mandatory capability-free isolation is implemented; no public executable widgets before publisher trust and residual gates pass |
+| Community widget compromises user | Critical | AppContainer/broker abuse tests plus signing, quota, and audit evidence | Unsigned local development remains AppContainer-isolated and explicitly labeled; signing/revocation is deferred until local product gates pass but remains mandatory before public community distribution |
 | Worker model feels slow or heavy | High | Cold-start and working-set measurements | Lazy first launch, resident-Background measurement, explicit user lifecycle choices, resource labels |
 | GBSS updates break themes | Medium | Theme compatibility fixtures | Stable semantic selectors, typed allowlist, versioned tokens |
 | Discord rejects overlay use case | High for social only | Written eligibility/production access | Keep Discord as optional first-party integration, not a core dependency |
@@ -327,21 +339,30 @@ The native foundation, isolated worker path, controller package review/live
 catalog reload, and responsive per-monitor geometry seams are now implemented.
 The current product order is:
 
-1. finish physical mixed-DPI/resolution/accessibility visual evidence and the
-   controller/game/presentation matrix;
-2. extend the bounded process sampler with ETW/PresentMon tooling and continue
-   Audio Control/Network Control hardware/privacy/performance evidence;
-3. complete publisher signing/revocation, CPU and disk/profile quotas/cleanup,
-   audit UI, automated recovery/crash quarantine, trusted-built-in isolation
-   migration, and malicious-widget tests before expanding community
-   distribution or shipping public binaries;
-4. add native graphical theme preview, package remove/update discovery, and
-   `gbar dev` (Settings and CLI exact-version rollback are implemented); and
-5. continue non-auth first-party references: Performance/self-diagnostics,
-   general media controls, recent apps/games, and the capture feasibility spike.
+1. make every dashboard tile honest and locally complete: YT Music, Settings,
+   Audio Control, and Network Control; remove placeholders until their
+   acceptance suites pass;
+2. complete controller reachability/auto-scroll and the physical
+   resolution/DPI/accessibility visual matrix for every first-party surface;
+3. add controller-visible diagnostics, worker/provider recovery, crash
+   quarantine, local performance/resource evidence, and lifecycle-policy
+   enforcement;
+4. complete locally testable Audio/Network hardware, churn, privacy, and denial
+   paths; then Performance, general media, recent apps/games, and capture
+   feasibility;
+5. complete local developer mode: `gbar dev`, graphical/native theme preview,
+   known-local package/theme import, remove/rollback, and clean-profile
+   end-to-end samples;
+6. finish controller/game/presentation/anti-cheat matrices plus CPU and
+   disk/profile quotas/cleanup; and
+7. only then implement publisher signing/revocation, signed update metadata,
+   moderation/gallery policy, and public distribution. Signing remains a hard
+   pre-public gate, not a blocker for isolated unsigned local development.
 
 Do not use a first-party widget to justify a private host API that external
 widgets cannot exercise. Discord/social work remains deferred until eligibility
 and production authentication/communications access exist.
 
-The first irreversible ecosystem decisions—public API 1.0, package signing rules, marketplace policy, and optional web/WASM tiers—wait until these five steps have evidence.
+The first irreversible ecosystem decisions—public API 1.0, package signing
+rules, marketplace policy, and optional web/WASM tiers—wait until these local
+product steps have evidence.

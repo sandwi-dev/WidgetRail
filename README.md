@@ -26,8 +26,8 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   version-pinned themes, platform/widget/user cascade, no-poll reload, and live
   native shell appearance plus post-cascade text/contrast/motion/transparency
   accessibility policy
-- Controller-first Settings, Clock, YT Music, Audio Mixer, and Network Controls
-  reference widgets through the same declarative worker path
+- Controller-first Settings, YT Music, Audio Mixer, and Network Controls workers
+  in the runnable catalog, plus a separate Clock SDK sample
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
   immutable version pin/rollback commands; accepted catalog changes reconcile

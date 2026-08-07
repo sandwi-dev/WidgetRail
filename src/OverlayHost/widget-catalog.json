@@ -44,8 +44,10 @@
       "memoryLimitMb": 64,
       "workerArguments": [],
       "declaredCapabilities": [
-        "system.audio.sessions.read.v1",
-        "system.audio.sessions.control.v1"
+          "system.audio.sessions.read.v1",
+          "system.audio.sessions.control.v1",
+          "system.audio.output.read.v1",
+          "system.audio.output.control.v1"
       ],
       "quickActions": [
         {

@@ -156,7 +156,7 @@ public sealed class NetworkControlsWidget : Widget
         else
         {
             content.Add(RenderProfileCard(
-                selected, selectedIndex, profiles.Count, controlBusy, pendingProfileId));
+                status, selected, selectedIndex, profiles.Count, controlBusy, pendingProfileId));
             initialFocus = "network.profile.connect";
             quickActions = profiles.Count > 1 ? ProfileQuickActions : [];
         }
@@ -325,6 +325,7 @@ public sealed class NetworkControlsWidget : Widget
     }
 
     private StackElement RenderProfileCard(
+        WidgetNetworkStatus status,
         WidgetSavedNetworkProfile selected,
         int selectedIndex,
         int profileCount,
@@ -332,10 +333,17 @@ public sealed class NetworkControlsWidget : Widget
         string? pendingProfileId)
     {
         var interactive = LifecycleState == WidgetLifecycleState.Interactive;
+        var connectionUnavailable = ConnectionUnavailable(status.WirelessAvailability);
         var isPending = string.Equals(
             pendingProfileId, selected.ProfileId, StringComparison.Ordinal);
-        var connectLabel = isPending ? "Connecting…" : selected.IsConnected ? "Connected" : "Connect";
-        var accessibilityLabel = !interactive && !selected.IsConnected
+        var connectLabel = isPending
+            ? "Connecting…"
+            : selected.IsConnected
+                ? "Connected"
+                : connectionUnavailable?.ButtonLabel ?? "Connect";
+        var accessibilityLabel = connectionUnavailable is not null
+            ? connectionUnavailable.Value.Message
+            : !interactive && !selected.IsConnected
             ? $"Open Network Controls to connect to {selected.DisplayName}"
             : selected.IsConnected
                 ? $"{selected.DisplayName} is connected"
@@ -344,7 +352,7 @@ public sealed class NetworkControlsWidget : Widget
             .Icon(WidgetGlyph.Connection, accessibilityLabel)
             .Selected(selected.IsConnected)
             .Busy(controlBusy && isPending)
-            .Disabled(!interactive || selected.IsConnected || controlBusy)
+            .Disabled(!interactive || selected.IsConnected || controlBusy || connectionUnavailable is not null)
             .FocusUp("network.profile.previous")
             .FocusDown("network.profile.previous")
             .FocusLeft("network.profile.previous")
@@ -603,22 +611,34 @@ public sealed class NetworkControlsWidget : Widget
         try
         {
             WidgetSavedNetworkProfile? selected;
+            (string ButtonLabel, string Message, bool IsError)? unavailable = null;
             lock (_stateLock)
             {
                 selected = SelectedProfileLocked();
                 if (selected is null || selected.IsConnected || _controlBusy) return;
-                _pendingProfileId = selected.ProfileId;
-                _controlBusy = true;
-                _status = $"Requesting {selected.DisplayName}…";
-                _statusIsError = false;
-                if (_networkStatus is { } current)
-                    _networkStatus = current with
-                    {
-                        ConnectionAttemptState = WidgetNetworkConnectionAttemptState.Connecting,
-                        AttemptProfileId = selected.ProfileId,
-                    };
+                if (_networkStatus is { } currentStatus &&
+                    ConnectionUnavailable(currentStatus.WirelessAvailability) is { } blocked)
+                {
+                    unavailable = blocked;
+                    _status = blocked.Message;
+                    _statusIsError = blocked.IsError;
+                }
+                else
+                {
+                    _pendingProfileId = selected.ProfileId;
+                    _controlBusy = true;
+                    _status = $"Requesting {selected.DisplayName}…";
+                    _statusIsError = false;
+                    if (_networkStatus is { } current)
+                        _networkStatus = current with
+                        {
+                            ConnectionAttemptState = WidgetNetworkConnectionAttemptState.Connecting,
+                            AttemptProfileId = selected.ProfileId,
+                        };
+                }
             }
             Invalidate();
+            if (unavailable is not null) return;
 
             try
             {
@@ -831,6 +851,8 @@ public sealed class NetworkControlsWidget : Widget
                 (NetworkControlsViewState.LifecycleDenied, "Network request denied by widget lifecycle"),
             "channel_closed" =>
                 (NetworkControlsViewState.ChannelClosed, "Network service channel closed"),
+            "platform_unavailable" or "provider_unavailable" =>
+                (NetworkControlsViewState.ServiceUnavailable, "Windows network provider unavailable"),
             _ => (NetworkControlsViewState.Error, "Network provider request failed"),
         };
 
@@ -844,4 +866,16 @@ public sealed class NetworkControlsWidget : Widget
             "Network service disconnected · previous connection retained",
         _ => "Connection request failed · previous connection retained",
     };
+
+    private static (string ButtonLabel, string Message, bool IsError)? ConnectionUnavailable(
+        WidgetNetworkWirelessAvailability availability) => availability switch
+        {
+            WidgetNetworkWirelessAvailability.RadioOff =>
+                ("Wi-Fi is off", "Turn Wi-Fi on in Windows before connecting to a saved network", false),
+            WidgetNetworkWirelessAvailability.NoAdapter =>
+                ("No Wi-Fi adapter", "No Wi-Fi adapter is available for saved-network connections", false),
+            WidgetNetworkWirelessAvailability.ServiceUnavailable =>
+                ("Wi-Fi unavailable", "Windows wireless service is unavailable", true),
+            _ => null,
+        };
 }

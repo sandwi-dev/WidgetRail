@@ -62,12 +62,45 @@
 }
 
 .audio-state-card,
+.audio-master-card,
 .audio-session-card {
   gap: 13px;
   padding: 14px;
   background: var(--audio-card);
   border-width: 0;
   corner-radius: 15px;
+}
+
+.audio-master-card {
+  gap: 11px;
+  background: rgba(31, 48, 61, 0.96);
+}
+
+.audio-master-heading {
+  gap: 10px;
+  align: center;
+  justify: space-between;
+}
+
+.audio-master-label,
+.audio-master-state {
+  color: var(--audio-accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  max-lines: 1;
+}
+
+.audio-master-state.is-muted {
+  color: var(--audio-error);
+}
+
+.audio-master-controls {
+  min-height: 52px;
+}
+
+.audio-master-progress {
+  color: var(--audio-accent);
 }
 
 .audio-state-title {

@@ -10,10 +10,15 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Endpoint validation permits only bounded loopback HTTP", EndpointValidation),
     ("HTTP client parses now playing and sends authorization", HttpClientParsesSnapshot),
     ("HTTP client maps rating command and body", HttpClientMapsCommand),
+    ("Windows Credential Manager persists and removes the token", WindowsCredentialStoreRoundTrip),
+    ("HTTP client reloads a durable credential", HttpClientLoadsDurableCredential),
+    ("Pairing never sends stale authorization and replaces the token", PairingReplacesStaleCredential),
+    ("HTTP 401 is classified as expired authorization", HttpUnauthorizedIsTyped),
     ("Disconnected UI offers controller-first connect and pair", DisconnectedUi),
     ("First activation starts one non-blocking automatic connection", AutoConnectStartsOnce),
     ("Lifecycle preserves one visibility lifetime across visible and interactive states", LifecycleVisibilityLifetime),
     ("Active playback interpolates and polls only while active", ActivePlaybackUpdates),
+    ("Authoritative polls reconcile drift without visible regressions", ProgressPollReconciliation),
     ("Optimistic playback survives stale confirmation and rolls back failures", OptimisticStateRules),
     ("Secondary actions render immediate selected and busy feedback without stale flicker", SecondaryActionFeedback),
     ("Rating actions toggle off and send the requested false state", RatingToggleOff),
@@ -21,12 +26,17 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Independent pending secondary actions reconcile without clobbering each other", IndependentSecondaryActions),
     ("A track change clears rating optimism instead of leaking it to the next track", RatingGuardStopsAtTrackChange),
     ("Manual retry works after automatic connection failure", ManualRetryAfterAutoFailure),
+    ("Valid credentials reconnect when the server reports auth required", ValidCredentialReconnects),
+    ("An unauthorized connect clears the credential and returns to pairing", UnauthorizedConnectRequiresPairing),
+    ("An unauthorized poll clears the credential and returns to pairing", UnauthorizedPollRequiresPairing),
     ("Connect exposes loading then renders now playing", ConnectStateFlow),
     ("Connected UI exposes native artwork layout primitives", ConnectedArtworkLayout),
     ("Missing artwork uses a semantic native glyph", MissingArtworkUsesGlyph),
     ("Connected card exposes bounded host quick actions", ConnectedQuickActions),
     ("Dashboard-reserved buttons are rejected as quick actions", ReservedQuickActionIsRejected),
     ("Transport shortcuts route commands and refresh state", TransportCommandFlow),
+    ("Transport transitions preserve complete metadata through stale snapshots", TransportTransitionPreservesMetadata),
+    ("Repeated transport commands do not wait for snapshot reconciliation", RepeatedTransportCommandsBypassReconciliation),
     ("Errors render a focused retry action", ErrorState),
     ("Pairing displays approval code before completing", PairingStateFlow),
     ("Time formatting is stable and defensive", TimeFormatting),
@@ -78,7 +88,10 @@ static async Task HttpClientParsesSnapshot()
             """),
         _ => throw new InvalidOperationException("Unexpected request."),
     });
-    using var client = new YtmDesktopApiClient(token: " secret-token ", handler: handler);
+    using var client = new YtmDesktopApiClient(
+        token: " secret-token ",
+        handler: handler,
+        credentialStore: new FakeCredentialStore());
     var snapshot = await client.GetSnapshotAsync();
     Assert.Equal("Example Song", snapshot.Title);
     Assert.Equal("Example Artist", snapshot.Artist);
@@ -88,6 +101,8 @@ static async Task HttpClientParsesSnapshot()
     Assert.True(snapshot.IsLiked, "Expected liked state.");
     Assert.Equal(true, snapshot.IsShuffleEnabled);
     Assert.Equal(YtMusicRepeatMode.One, snapshot.RepeatMode);
+    Assert.Equal("video-1", snapshot.MetadataTrackId);
+    Assert.True(snapshot.HasCompleteMetadata, "Complete API metadata was not identified.");
     Assert.Equal(2, handler.Requests.Count);
     Assert.True(handler.Requests.All(request => request.Authorization == "Bearer secret-token"), "Bearer token was not applied.");
 }
@@ -95,12 +110,93 @@ static async Task HttpClientParsesSnapshot()
 static async Task HttpClientMapsCommand()
 {
     var handler = new RecordingHandler(_ => Json("{}"));
-    using var client = new YtmDesktopApiClient(handler: handler);
+    using var client = new YtmDesktopApiClient(
+        handler: handler,
+        credentialStore: new FakeCredentialStore());
     await client.SendCommandAsync(YtMusicCommand.Like, toggleState: false);
     var request = handler.Requests.Single();
     Assert.Equal("POST", request.Method);
     Assert.Equal("/track/like", request.Path);
     Assert.Equal("false", request.Body);
+}
+
+static Task WindowsCredentialStoreRoundTrip()
+{
+    if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+    var endpoint = $"http://127.0.0.1:{Random.Shared.Next(10000, 39999)}";
+    var token = $"credential-test-{Guid.NewGuid():N}";
+    var store = new WindowsCredentialManagerYtMusicCredentialStore(endpoint);
+    store.ClearToken();
+    try
+    {
+        Assert.Equal(null, store.LoadToken());
+        store.SaveToken(token);
+        Assert.Equal(token, store.LoadToken());
+        store.ClearToken();
+        Assert.Equal(null, store.LoadToken());
+    }
+    finally
+    {
+        store.ClearToken();
+    }
+    return Task.CompletedTask;
+}
+
+static async Task HttpClientLoadsDurableCredential()
+{
+    var store = new FakeCredentialStore("durable-token");
+    var handler = new RecordingHandler(_ => Json("""{"authRequired":true}"""));
+    using var client = new YtmDesktopApiClient(handler: handler, credentialStore: store);
+
+    var status = await client.GetStatusAsync();
+
+    Assert.True(status.AuthRequired, "Expected auth-required server configuration.");
+    Assert.True(status.HasCredential, "The durable credential was not loaded.");
+    Assert.Equal("Bearer durable-token", handler.Requests.Single().Authorization);
+}
+
+static async Task PairingReplacesStaleCredential()
+{
+    var store = new FakeCredentialStore("stale-token");
+    var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath switch
+    {
+        "/auth/requestcode" => Json("""{"code":"739204"}"""),
+        "/auth/request" => Json("""{"token":"replacement-token"}"""),
+        "/" => Json("""{"authRequired":true}"""),
+        _ => throw new InvalidOperationException($"Unexpected request {request.RequestUri!.AbsolutePath}."),
+    });
+    using var client = new YtmDesktopApiClient(handler: handler, credentialStore: store);
+
+    var pairing = await client.RequestPairingCodeAsync();
+    await client.CompletePairingAsync(pairing.Code);
+    var status = await client.GetStatusAsync();
+
+    Assert.Equal("replacement-token", store.Token);
+    Assert.Equal(1, store.SaveCalls);
+    Assert.True(handler.Requests.Take(2).All(request => request.Authorization is null),
+        "Pairing endpoints must not receive a stale bearer credential.");
+    Assert.Equal("Bearer replacement-token", handler.Requests[2].Authorization);
+    Assert.True(status.HasCredential, "The replacement token was not activated.");
+}
+
+static async Task HttpUnauthorizedIsTyped()
+{
+    var store = new FakeCredentialStore("rejected-token");
+    var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+    {
+        Content = new StringContent("credential rejected", Encoding.UTF8, "application/json"),
+    });
+    using var client = new YtmDesktopApiClient(handler: handler, credentialStore: store);
+    var classified = false;
+    try
+    {
+        _ = await client.GetStatusAsync();
+    }
+    catch (YtMusicAuthorizationRequiredException)
+    {
+        classified = true;
+    }
+    Assert.True(classified, "HTTP 401 did not use the authorization-required recovery path.");
 }
 
 static Task DisconnectedUi()
@@ -234,6 +330,109 @@ static async Task ActivePlaybackUpdates()
     await Task.Delay(650);
     Assert.Equal(stoppedCalls, fake.SnapshotCalls);
     Assert.Equal(stoppedInvalidations, Volatile.Read(ref invalidations));
+}
+
+static async Task ProgressPollReconciliation()
+{
+    var clock = new ManualTimeProvider();
+    var initial = PlayingSnapshot("Progress Track") with
+    {
+        TrackId = "progress-id",
+        MetadataTrackId = "progress-id",
+        PositionSeconds = 10,
+        DurationSeconds = 100,
+    };
+    var staleBackward = initial with { PositionSeconds = 11 };
+    var modestForward = initial with { PositionSeconds = 14 };
+    var realSeek = initial with { PositionSeconds = 20 };
+    var paused = initial with { IsPlaying = false, PositionSeconds = 20.5 };
+    var changedTrack = PlayingSnapshot("Changed Progress Track") with
+    {
+        TrackId = "changed-id",
+        MetadataTrackId = "changed-id",
+        PositionSeconds = 2,
+        DurationSeconds = 100,
+    };
+    var shortenedDuration = changedTrack with
+    {
+        PositionSeconds = 12,
+        DurationSeconds = 5,
+    };
+    var gates = Enumerable.Range(0, 6).Select(_ => NewSnapshotGate()).ToArray();
+    var finalBlockedPoll = NewSnapshotGate();
+    var fake = new FakeClient { Snapshot = initial };
+    fake.SnapshotAsync = (call, token) => call switch
+    {
+        1 => Task.FromResult(initial),
+        2 => gates[0].Task.WaitAsync(token),
+        3 => gates[1].Task.WaitAsync(token),
+        4 => gates[2].Task.WaitAsync(token),
+        5 => gates[3].Task.WaitAsync(token),
+        6 => gates[4].Task.WaitAsync(token),
+        7 => gates[5].Task.WaitAsync(token),
+        _ => finalBlockedPoll.Task.WaitAsync(token),
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy(), clock);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+
+    clock.Advance(TimeSpan.FromSeconds(2));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    AssertBetween(11.999, 12.001, ProgressValue(widget, 1),
+        "Monotonic projection did not reach the expected pre-poll position.");
+    gates[0].SetResult(staleBackward);
+    await WaitUntil(() => fake.SnapshotCalls >= 3);
+    AssertBetween(11.999, 12.001, ProgressValue(widget, 2),
+        "A small stale backward poll moved progress backward.");
+
+    clock.Advance(TimeSpan.FromSeconds(1));
+    gates[1].SetResult(modestForward);
+    await WaitUntil(() => fake.SnapshotCalls >= 4);
+    AssertBetween(12.999, 13.001, ProgressValue(widget, 3),
+        "A modest forward poll snapped instead of beginning a correction.");
+    clock.Advance(TimeSpan.FromSeconds(1));
+    AssertBetween(14.34, 14.36, ProgressValue(widget, 4),
+        "Forward drift was not eased at the bounded correction rate.");
+
+    gates[2].SetResult(realSeek);
+    await WaitUntil(() => fake.SnapshotCalls >= 5);
+    AssertBetween(19.999, 20.001, ProgressValue(widget, 5),
+        "A real seek of at least three seconds did not snap to the server.");
+
+    clock.Advance(TimeSpan.FromSeconds(1));
+    gates[3].SetResult(paused);
+    await WaitUntil(() => fake.SnapshotCalls >= 6);
+    AssertBetween(20.499, 20.501, ProgressValue(widget, 6),
+        "Pause did not anchor the authoritative position.");
+    clock.Advance(TimeSpan.FromSeconds(1));
+    AssertBetween(20.499, 20.501, ProgressValue(widget, 7),
+        "Paused progress continued advancing.");
+
+    gates[4].SetResult(changedTrack);
+    await WaitUntil(() => fake.SnapshotCalls >= 7);
+    AssertBetween(1.999, 2.001, ProgressValue(widget, 8),
+        "Track change did not anchor the new track position.");
+
+    clock.Advance(TimeSpan.FromSeconds(10));
+    gates[5].SetResult(shortenedDuration);
+    await WaitUntil(() => fake.SnapshotCalls >= 8);
+    AssertBetween(4.999, 5.001, ProgressValue(widget, 9),
+        "Progress was not clamped to a shortened duration.");
+    Assert.Equal(5d, Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 10).Root,
+        "track-progress").Maximum!.Value);
+
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static double ProgressValue(YtMusicWidget widget, long sequence) => Find(
+    widget.Render().CreateSnapshot("ytmusic.test", sequence).Root,
+    "track-progress").Value!.Value;
+
+static void AssertBetween(double minimum, double maximum, double actual, string message)
+{
+    if (actual < minimum || actual > maximum)
+        throw new InvalidOperationException($"{message} Expected {minimum}..{maximum}, got {actual}.");
 }
 
 static async Task OptimisticStateRules()
@@ -428,6 +627,10 @@ static YtMusicUpdatePolicy FastUpdatePolicy() => new()
     ProgressInterval = TimeSpan.FromMilliseconds(250),
     PollInterval = TimeSpan.FromMilliseconds(250),
     OptimisticConfirmationWindow = TimeSpan.FromSeconds(1),
+    TransportConfirmationWindow = TimeSpan.FromSeconds(1),
+    TransportRefreshInitialDelay = TimeSpan.FromMilliseconds(10),
+    TransportRefreshDelayStep = TimeSpan.FromMilliseconds(10),
+    TransportRefreshAttempts = 5,
 };
 
 static async Task ManualRetryAfterAutoFailure()
@@ -451,6 +654,69 @@ static async Task ManualRetryAfterAutoFailure()
     Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
     Assert.Equal(2, fake.StatusCalls);
     Assert.Equal("Recovered Song", Find(widget.Render().CreateSnapshot("ytmusic.test", 1).Root, "track-title").Text);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static async Task ValidCredentialReconnects()
+{
+    var fake = new FakeClient
+    {
+        HasCredential = true,
+        StatusInfo = new YtMusicConnectionInfo(AuthRequired: true, HasCredential: true),
+        Snapshot = PlayingSnapshot("Authenticated Song"),
+    };
+    var widget = new YtMusicWidget(fake);
+
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    Assert.Equal(1, fake.SnapshotCalls);
+    Assert.Equal(0, fake.ClearCredentialCalls);
+    Assert.Equal("Authenticated Song", Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
+        "track-title").Text);
+}
+
+static async Task UnauthorizedConnectRequiresPairing()
+{
+    var fake = new FakeClient
+    {
+        HasCredential = true,
+        StatusInfo = new YtMusicConnectionInfo(AuthRequired: true, HasCredential: true),
+        SnapshotFailure = _ => new YtMusicAuthorizationRequiredException(),
+    };
+    var widget = new YtMusicWidget(fake);
+
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+    Assert.Equal(YtMusicWidgetConnectionState.Disconnected, widget.ConnectionState);
+    Assert.Equal(1, fake.ClearCredentialCalls);
+    Assert.True(!fake.HasCredential, "The rejected credential was not removed from the client.");
+    var snapshot = widget.Render().CreateSnapshot("ytmusic.test", 1);
+    Assert.Equal("connect", snapshot.InitialFocusId);
+    Assert.Equal("Authorization expired · pair device", Find(snapshot.Root, "connection-status").Text);
+}
+
+static async Task UnauthorizedPollRequiresPairing()
+{
+    var fake = new FakeClient
+    {
+        HasCredential = true,
+        StatusInfo = new YtMusicConnectionInfo(AuthRequired: true, HasCredential: true),
+        Snapshot = PlayingSnapshot("Initially Authorized"),
+        SnapshotFailure = call => call >= 2 ? new YtMusicAuthorizationRequiredException() : null,
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy());
+
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Connected);
+    await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Disconnected);
+
+    Assert.Equal(1, fake.ClearCredentialCalls);
+    Assert.True(!fake.HasCredential, "The rejected polling credential was not removed.");
+    Assert.Equal("Authorization expired · pair device", Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
+        "connection-status").Text);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
 }
 
@@ -512,14 +778,150 @@ static async Task MissingArtworkUsesGlyph()
 static async Task TransportCommandFlow()
 {
     var fake = new FakeClient { Snapshot = PlayingSnapshot("Before") };
-    var widget = new YtMusicWidget(fake);
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy());
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
-    fake.Snapshot = PlayingSnapshot("After");
+    fake.Snapshot = PlayingSnapshot("After") with
+    {
+        TrackId = "after-id",
+        MetadataTrackId = "after-id",
+    };
     await widget.OnActionAsync(new WidgetActionEvent("next", "next", ControllerButton.RightBumper));
     Assert.Equal(YtMusicCommand.Next, fake.Commands.Single());
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    await WaitUntil(() => "After" == Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 3).Root,
+        "track-title").Text);
     Assert.Equal(2, fake.SnapshotCalls);
     Assert.Equal("After", Find(widget.Render().CreateSnapshot("ytmusic.test", 3).Root, "track-title").Text);
 }
+
+static async Task TransportTransitionPreservesMetadata()
+{
+    var clock = new ManualTimeProvider();
+    var oldTrack = PlayingSnapshot("Complete Old Track") with
+    {
+        TrackId = "old-id",
+        MetadataTrackId = "old-id",
+        PositionSeconds = 90,
+    };
+    var stale = oldTrack with { PositionSeconds = 92 };
+    var empty = oldTrack with
+    {
+        TrackId = "new-id",
+        Title = "YouTube Music",
+        Artist = "No track metadata available",
+        Album = string.Empty,
+        ArtworkUrl = string.Empty,
+        PositionSeconds = 0.2,
+        MetadataTrackId = string.Empty,
+        HasCompleteMetadata = false,
+    };
+    var mismatched = oldTrack with
+    {
+        TrackId = "new-id",
+        Title = "Mismatched Intermediate Track",
+        MetadataTrackId = "old-id",
+        PositionSeconds = 0.5,
+    };
+    var completeNew = PlayingSnapshot("Complete New Track") with
+    {
+        TrackId = "new-id",
+        MetadataTrackId = "new-id",
+        PositionSeconds = 1,
+    };
+    var staleGate = NewSnapshotGate();
+    var emptyGate = NewSnapshotGate();
+    var mismatchedGate = NewSnapshotGate();
+    var completeGate = NewSnapshotGate();
+    var fake = new FakeClient { Snapshot = oldTrack };
+    fake.SnapshotAsync = (call, token) => call switch
+    {
+        1 => Task.FromResult(oldTrack),
+        2 => staleGate.Task.WaitAsync(token),
+        3 => emptyGate.Task.WaitAsync(token),
+        4 => mismatchedGate.Task.WaitAsync(token),
+        5 => completeGate.Task.WaitAsync(token),
+        _ => Task.FromResult(completeNew),
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy(), clock);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    clock.Advance(TimeSpan.FromSeconds(3));
+    Assert.True(Find(widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
+        "track-progress").Value!.Value >= 93, "The test clock did not advance playback.");
+
+    await widget.OnActionAsync(new WidgetActionEvent("next", "next", ControllerButton.RightBumper));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    var immediate = widget.Render().CreateSnapshot("ytmusic.test", 2);
+    Assert.Equal(0d, Find(immediate.Root, "track-progress").Value!.Value);
+    Assert.Equal("Complete Old Track", Find(immediate.Root, "track-title").Text);
+
+    staleGate.SetResult(stale);
+    await WaitUntil(() => fake.SnapshotCalls >= 3);
+    var afterStale = widget.Render().CreateSnapshot("ytmusic.test", 3);
+    Assert.Equal(0d, Find(afterStale.Root, "track-progress").Value!.Value);
+    Assert.Equal("Complete Old Track", Find(afterStale.Root, "track-title").Text);
+
+    emptyGate.SetResult(empty);
+    await WaitUntil(() => fake.SnapshotCalls >= 4);
+    var afterEmpty = widget.Render().CreateSnapshot("ytmusic.test", 4);
+    Assert.Equal("Complete Old Track", Find(afterEmpty.Root, "track-title").Text);
+    Assert.Equal("https://img.example/cover.jpg", Find(afterEmpty.Root, "album-artwork").ImageSource);
+
+    mismatchedGate.SetResult(mismatched);
+    await WaitUntil(() => fake.SnapshotCalls >= 5);
+    var afterMismatch = widget.Render().CreateSnapshot("ytmusic.test", 5);
+    Assert.Equal("Complete Old Track", Find(afterMismatch.Root, "track-title").Text);
+
+    completeGate.SetResult(completeNew);
+    await WaitUntil(() => "Complete New Track" == Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 6).Root,
+        "track-title").Text);
+    Assert.Equal(5, fake.SnapshotCalls);
+}
+
+static async Task RepeatedTransportCommandsBypassReconciliation()
+{
+    var oldTrack = PlayingSnapshot("Before Queue") with
+    {
+        TrackId = "old-id",
+        MetadataTrackId = "old-id",
+    };
+    var finalTrack = PlayingSnapshot("After Queue") with
+    {
+        TrackId = "final-id",
+        MetadataTrackId = "final-id",
+        PositionSeconds = 0,
+    };
+    var neverCompletes = NewSnapshotGate();
+    var finalGate = NewSnapshotGate();
+    var fake = new FakeClient { Snapshot = oldTrack };
+    fake.SnapshotAsync = (call, token) => call switch
+    {
+        1 => Task.FromResult(oldTrack),
+        2 => neverCompletes.Task.WaitAsync(token),
+        _ => finalGate.Task.WaitAsync(token),
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy());
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+    await widget.OnActionAsync(new WidgetActionEvent("next", "next", ControllerButton.RightBumper));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    var secondCommand = widget.OnActionAsync(
+        new WidgetActionEvent("next", "next", ControllerButton.RightBumper)).AsTask();
+    await secondCommand.WaitAsync(TimeSpan.FromSeconds(1));
+
+    Assert.Equal(2, fake.Commands.Count);
+    Assert.True(fake.Commands.All(command => command == YtMusicCommand.Next),
+        "Repeated RB actions did not preserve transport command order.");
+    await WaitUntil(() => fake.SnapshotCalls >= 3);
+    finalGate.SetResult(finalTrack);
+    await WaitUntil(() => "After Queue" == Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
+        "track-title").Text);
+}
+
+static TaskCompletionSource<YtMusicPlaybackSnapshot> NewSnapshotGate() =>
+    new(TaskCreationOptions.RunContinuationsAsynchronously);
 
 static async Task ConnectedQuickActions()
 {
@@ -716,9 +1118,12 @@ file sealed class FakeClient : IYtMusicClient
     private int _statusCalls;
     private int _snapshotCalls;
     public Task<YtMusicConnectionInfo>? StatusTask { get; set; }
+    public YtMusicConnectionInfo StatusInfo { get; set; } = new(false);
     public Exception? StatusException { get; set; }
     public Func<int, Exception?>? StatusFailure { get; set; }
     public YtMusicPlaybackSnapshot Snapshot { get; set; } = YtMusicPlaybackSnapshot.Empty;
+    public Func<int, Exception?>? SnapshotFailure { get; set; }
+    public Func<int, CancellationToken, Task<YtMusicPlaybackSnapshot>>? SnapshotAsync { get; set; }
     public List<YtMusicCommand> Commands { get; } = [];
     public List<bool?> CommandToggleStates { get; } = [];
     public Exception? CommandException { get; set; }
@@ -727,19 +1132,26 @@ file sealed class FakeClient : IYtMusicClient
     public Task? PairCompletionTask { get; set; }
     public string? CompletedPairingCode { get; private set; }
     public int StatusCalls => Volatile.Read(ref _statusCalls);
+    public bool HasCredential { get; set; }
+    public int ClearCredentialCalls { get; private set; }
 
     public Task<YtMusicConnectionInfo> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         var call = Interlocked.Increment(ref _statusCalls);
         var failure = StatusException ?? StatusFailure?.Invoke(call);
         if (failure is not null) throw failure;
-        return StatusTask ?? Task.FromResult(new YtMusicConnectionInfo(false));
+        return StatusTask ?? Task.FromResult(StatusInfo with
+        {
+            HasCredential = StatusInfo.HasCredential || HasCredential,
+        });
     }
 
     public Task<YtMusicPlaybackSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
     {
-        Interlocked.Increment(ref _snapshotCalls);
-        return Task.FromResult(Snapshot);
+        var call = Interlocked.Increment(ref _snapshotCalls);
+        var failure = SnapshotFailure?.Invoke(call);
+        if (failure is not null) throw failure;
+        return SnapshotAsync?.Invoke(call, cancellationToken) ?? Task.FromResult(Snapshot);
     }
 
     public async Task SendCommandAsync(
@@ -760,6 +1172,45 @@ file sealed class FakeClient : IYtMusicClient
     {
         CompletedPairingCode = code;
         if (PairCompletionTask is not null) await PairCompletionTask.WaitAsync(cancellationToken);
+        HasCredential = true;
+    }
+
+    public void ClearCredential()
+    {
+        ClearCredentialCalls++;
+        HasCredential = false;
+    }
+}
+
+file sealed class ManualTimeProvider : TimeProvider
+{
+    private long _timestamp;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => Interlocked.Read(ref _timestamp);
+
+    public void Advance(TimeSpan interval) =>
+        Interlocked.Add(ref _timestamp, interval.Ticks);
+}
+
+file sealed class FakeCredentialStore(string? token = null) : IYtMusicCredentialStore
+{
+    public string? Token { get; private set; } = token;
+    public int SaveCalls { get; private set; }
+    public int ClearCalls { get; private set; }
+
+    public string? LoadToken() => Token;
+
+    public void SaveToken(string value)
+    {
+        SaveCalls++;
+        Token = value;
+    }
+
+    public void ClearToken()
+    {
+        ClearCalls++;
+        Token = null;
     }
 }
 

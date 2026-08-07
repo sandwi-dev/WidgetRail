@@ -39,12 +39,15 @@ eventual widgets:
 | --- | --- |
 | `system.audio.sessions.read.v1` | List sanitized render sessions and subscribe to bounded session-change events. |
 | `system.audio.sessions.control.v1` | Set volume/mute for one opaque session while Interactive. |
+| `system.audio.output.read.v1` | Read volume/mute for the current default multimedia render endpoint and subscribe to bounded changes; no endpoint identity. |
+| `system.audio.output.control.v1` | Set master volume/mute for the current default multimedia render endpoint while Interactive; no device switching. |
 | `system.network.read.v1` | Read sanitized connectivity/saved-profile state and subscribe to bounded network-change events. |
 | `system.network.saved-profile.switch.v1` | Connect one opaque already-saved profile while Interactive; no profile creation or secrets. |
 
-Endpoint master-volume/mute and capture-endpoint control need separately
-versioned capabilities before implementation; capture control never implies
-audio-sample access. The broker currently rechecks authenticated package,
+Endpoint master-volume/mute now has separate read and control capabilities.
+Output switching, endpoint enumeration/identity, and capture-endpoint control
+remain outside this contract; capture control never implies audio-sample
+access. The broker currently rechecks authenticated package,
 publisher, and instance identity, manifest declaration, durable grant/deny
 state, and lifecycle on each operation. Read operations are allowed only while
 Visible or Interactive; control operations require Interactive. Destroying
@@ -149,6 +152,13 @@ the provider interfaces.
 or short-held queue and signal the provider thread. All enumeration, COM calls,
 model mutation, unregister, and final release occur on that owning MTA thread.
 Never call widget IPC synchronously from a Core Audio callback.
+
+A healthy endpoint with no application sessions returns an empty list. A
+failed endpoint bind or enumeration instead returns `platform_unavailable`,
+and the coalesced session event carries `IsAvailable = false`; this prevents a
+live native failure from being rendered as “nothing is playing.” The next
+explicit read performs one bounded recovery attempt, and successful recovery
+publishes `IsAvailable = true`, including when the recovered list is empty.
 
 ## Network provider
 

@@ -196,6 +196,13 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 await SetAudioVolumeAsync(request.Payload, cancellationToken).ConfigureAwait(false),
             PlatformCapabilities.AudioSessionSetMuted =>
                 await SetAudioMutedAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+            PlatformCapabilities.AudioOutputGet =>
+                BrokerJson.ToElement(ValidateAudioOutput(DemandEmptyPayload(request.Payload),
+                    await _backend.GetAudioOutputAsync(cancellationToken).ConfigureAwait(false))),
+            PlatformCapabilities.AudioOutputSetVolume =>
+                await SetAudioOutputVolumeAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+            PlatformCapabilities.AudioOutputSetMuted =>
+                await SetAudioOutputMutedAsync(request.Payload, cancellationToken).ConfigureAwait(false),
             PlatformCapabilities.NetworkStatusGet =>
                 BrokerJson.ToElement(ValidateNetworkStatus(DemandEmptyPayload(request.Payload),
                     await _backend.GetNetworkStatusAsync(cancellationToken).ConfigureAwait(false))),
@@ -319,6 +326,26 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return BrokerJson.ToElement(new { acknowledged = true });
     }
 
+    private async Task<JsonElement> SetAudioOutputVolumeAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SetAudioOutputVolumeRequest>(payload);
+        if (!double.IsFinite(request.Volume) || request.Volume is < 0 or > 1)
+            throw new BrokerException("invalid_payload", "Audio output volume must be between zero and one.");
+        await _backend.SetAudioOutputVolumeAsync(request.Volume, cancellationToken)
+            .ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> SetAudioOutputMutedAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SetAudioOutputMutedRequest>(payload);
+        await _backend.SetAudioOutputMutedAsync(request.IsMuted, cancellationToken)
+            .ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
     private async Task<JsonElement> SwitchNetworkAsync(
         JsonElement payload, CancellationToken cancellationToken)
     {
@@ -356,6 +383,26 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 throw new BrokerException("invalid_backend_data", "Audio volume is invalid.");
         }
         return sessions.ToArray();
+    }
+
+    private static AudioOutputSummary ValidateAudioOutput(AudioOutputSummary? output)
+        => ValidateAudioOutput(true, output);
+
+    private static AudioOutputSummary ValidateAudioOutput(bool _, AudioOutputSummary? output)
+    {
+        if (output is null || !double.IsFinite(output.Volume) || output.Volume is < 0 or > 1)
+            throw new BrokerException("invalid_backend_data", "Audio output result is invalid.");
+        return output;
+    }
+
+    private static AudioOutputChangedEvent ValidateAudioOutputEvent(AudioOutputChangedEvent change)
+    {
+        if (change.IsAvailable != (change.Output is not null))
+            throw new BrokerException(
+                "invalid_backend_data", "Audio output availability is inconsistent.");
+        return new AudioOutputChangedEvent(
+            change.Output is null ? null : ValidateAudioOutput(change.Output),
+            change.IsAvailable);
     }
 
     private static NetworkStatusSummary ValidateNetworkStatus(
@@ -427,7 +474,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 PlatformCapabilities.AudioSessionsChanged when
                     platformEvent.Payload is AudioSessionsChangedEvent audio =>
                     BrokerJson.ToElement(new AudioSessionsChangedEvent(
-                        ValidateAudioSessions(audio.Sessions))),
+                        ValidateAudioSessions(audio.Sessions), audio.IsAvailable)),
+                PlatformCapabilities.AudioOutputChanged when
+                    platformEvent.Payload is AudioOutputChangedEvent output =>
+                    BrokerJson.ToElement(ValidateAudioOutputEvent(output)),
                 PlatformCapabilities.NetworkStatusChanged when
                     platformEvent.Payload is NetworkStatusChangedEvent network =>
                     BrokerJson.ToElement(new NetworkStatusChangedEvent(

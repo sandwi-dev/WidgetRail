@@ -46,6 +46,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private volatile bool _degraded;
     private volatile bool _wirelessAccessRestricted;
     private volatile bool _ownerUnavailable;
+    private volatile bool _snapshotUnavailable;
     private string? _pendingProfileId;
     private string? _pendingNativeKey;
     private NetworkConnectionAttemptState _attemptState;
@@ -57,6 +58,18 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             NetworkConnectivity.None,
             NetworkTransportKind.None,
             NetworkWirelessAvailability.NoAdapter,
+            NetworkDetailsAccess.Unavailable,
+            NetworkConnectionAttemptState.None,
+            null,
+            null,
+            null,
+            null);
+
+    private static NetworkStatusSummary UnavailableStatus { get; } =
+        new(
+            NetworkConnectivity.None,
+            NetworkTransportKind.None,
+            NetworkWirelessAvailability.ServiceUnavailable,
             NetworkDetailsAccess.Unavailable,
             NetworkConnectionAttemptState.None,
             null,
@@ -111,6 +124,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         ThrowIfDisposed();
         if (explicitRetry && _degraded && !_ownerUnavailable)
             await EnqueueRetryRefreshAsync(cancellationToken).ConfigureAwait(false);
+        if (_snapshotUnavailable)
+            throw new BrokerException(
+                "platform_unavailable", "Windows networking is temporarily unavailable.");
     }
 
     private async Task EnqueueRetryRefreshAsync(CancellationToken cancellationToken)
@@ -408,6 +424,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                 _nativeKeysByOpaqueId = reverse;
             }
             _degraded = adapter.IsDegraded;
+            _snapshotUnavailable = false;
             _wirelessAccessRestricted = snapshot.IsWirelessAccessRestricted;
             if (publish && changed) _events.Writer.TryWrite(status);
         }
@@ -508,8 +525,8 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         bool changed;
         lock (_stateGate)
         {
-            changed = _status != EmptyStatus || _profiles.Count != 0;
-            _status = EmptyStatus;
+            changed = _status != UnavailableStatus || _profiles.Count != 0;
+            _status = UnavailableStatus;
             _profiles = [];
             _nativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
             _pendingProfileId = null;
@@ -519,8 +536,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             CancelConnectionAttemptTimerLocked();
         }
         _degraded = true;
+        _snapshotUnavailable = true;
         _wirelessAccessRestricted = false;
-        if (publish && changed) _events.Writer.TryWrite(EmptyStatus);
+        if (publish && changed) _events.Writer.TryWrite(UnavailableStatus);
     }
 
     private async Task DispatchEventsAsync()

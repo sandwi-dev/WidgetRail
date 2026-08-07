@@ -546,6 +546,8 @@ public sealed partial class SettingsWidget
     {
         PlatformCapabilities.AudioSessionsReadV1 => "Read audio sessions",
         PlatformCapabilities.AudioSessionsControlV1 => "Control audio sessions",
+        PlatformCapabilities.AudioOutputReadV1 => "Read master output state",
+        PlatformCapabilities.AudioOutputControlV1 => "Control master output",
         PlatformCapabilities.NetworkReadV1 => "Read network status",
         PlatformCapabilities.NetworkSavedProfileSwitchV1 => "Switch saved network profile",
         _ => "Unsupported capability",
@@ -557,6 +559,10 @@ public sealed partial class SettingsWidget
             "See sanitized audio-session names, volume, mute, and activity state.",
         PlatformCapabilities.AudioSessionsControlV1 =>
             "Change volume or mute for an opaque audio-session ID while the widget is interactive.",
+        PlatformCapabilities.AudioOutputReadV1 =>
+            "See volume and mute for the current default multimedia output; no device identity.",
+        PlatformCapabilities.AudioOutputControlV1 =>
+            "Change master volume or mute for the current default multimedia output while interactive. It cannot switch devices.",
         PlatformCapabilities.NetworkReadV1 =>
             "See sanitized connectivity and saved-profile summaries without credentials.",
         PlatformCapabilities.NetworkSavedProfileSwitchV1 =>

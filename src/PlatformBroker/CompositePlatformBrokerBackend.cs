@@ -30,6 +30,15 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         string sessionId, bool isMuted, CancellationToken cancellationToken) =>
         _audio.SetAudioSessionMutedAsync(sessionId, isMuted, cancellationToken);
 
+    public Task<AudioOutputSummary> GetAudioOutputAsync(CancellationToken cancellationToken) =>
+        _audio.GetAudioOutputAsync(cancellationToken);
+
+    public Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken) =>
+        _audio.SetAudioOutputVolumeAsync(volume, cancellationToken);
+
+    public Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
+        _audio.SetAudioOutputMutedAsync(isMuted, cancellationToken);
+
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
         _network.GetNetworkStatusAsync(cancellationToken);
 
@@ -42,10 +51,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
 
     private void ForwardAudioEvent(object? sender, BrokerPlatformEvent platformEvent)
     {
-        if (string.Equals(
-                platformEvent.CapabilityId,
-                PlatformCapabilities.AudioSessionsReadV1,
-                StringComparison.Ordinal))
+        if (platformEvent.CapabilityId is PlatformCapabilities.AudioSessionsReadV1 or
+            PlatformCapabilities.AudioOutputReadV1)
             EventPublished?.Invoke(this, platformEvent);
     }
 

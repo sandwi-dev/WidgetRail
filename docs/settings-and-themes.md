@@ -214,6 +214,11 @@ cannot be enabled.
 Installed package/permission state is refreshed with the other Settings state
 on activation, not by a polling loop. The bridge independently watches catalog
 changes and publishes a complete validated semantic revision without a restart.
+A controller-selectable **Refresh** action on the Settings root performs the
+same bounded settings, theme, installed-package, and permission reload while
+Settings remains visible. Selecting an installed widget version also refreshes
+its permission projection immediately, because both capability declarations
+and the host-derived unsigned package authority may change with exact version.
 A process/identity/declaration policy change retires the old worker and binds
 the next lazy start to the new declarations; presentation-only changes preserve
 a compatible worker while atomically replacing validated style/quick-action

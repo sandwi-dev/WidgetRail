@@ -82,17 +82,13 @@ COLORREF GdiColor(const gba::NativeColor& color) noexcept {
 struct BuiltInWidget final {
     std::wstring_view id;
     std::wstring_view name;
-    std::wstring_view detail;
     gba::icons::NativeIcon icon;
 };
 
 constexpr std::array<BuiltInWidget, 3> kBuiltInWidgets{{
-    {L"audio-mixer", L"Audio Mixer", L"Sessions, output, and microphone",
-     gba::icons::NativeIcon::Connection},
-    {L"yt-music", L"YT Music", L"Media controls and progress",
-     gba::icons::NativeIcon::Music},
-    {L"performance", L"Performance", L"Frame rate and system load",
-     gba::icons::NativeIcon::Warning},
+    {L"audio-mixer", L"Audio Mixer", gba::icons::NativeIcon::Connection},
+    {L"yt-music", L"YT Music", gba::icons::NativeIcon::Music},
+    {L"performance", L"Performance", gba::icons::NativeIcon::Warning},
 }};
 
 const BuiltInWidget* FindBuiltInWidget(const std::wstring_view id) noexcept {
@@ -104,11 +100,6 @@ const BuiltInWidget* FindBuiltInWidget(const std::wstring_view id) noexcept {
 std::wstring_view WidgetName(const std::wstring_view id) noexcept {
     const auto* widget = FindBuiltInWidget(id);
     return widget ? widget->name : id;
-}
-
-std::wstring_view WidgetDetail(const std::wstring_view id) noexcept {
-    const auto* widget = FindBuiltInWidget(id);
-    return widget ? widget->detail : L"Community widget";
 }
 
 gba::icons::NativeIcon WidgetIcon(const std::wstring_view id) noexcept {
@@ -263,7 +254,10 @@ void AppendDiagnostic(const std::wstring_view message) {
 
 class OverlayApp final {
 public:
-    OverlayApp() : state_(LoadPersistentState()) {}
+    // The dashboard is catalog-owned. Persisted IDs are reconciled only after
+    // the bridge supplies runnable worker descriptors, so an unavailable
+    // bridge cannot expose inert native placeholder tiles.
+    OverlayApp() : state_(LoadPersistentState(), {}) {}
     ~OverlayApp() { Shutdown(); }
 
     [[nodiscard]] const std::wstring& initializationError() const noexcept {
@@ -404,6 +398,7 @@ public:
         // response to a revision event.
         if (bridge_.EnsureStarted(installationDirectory_)) {
             RefreshPlatformAppearance();
+            (void)RefreshWidgetCatalog();
         } else {
             AppendDiagnostic(L"Platform appearance unavailable at startup: " +
                              bridge_.lastError());
@@ -1057,8 +1052,7 @@ private:
             return !bridgeIds.contains(entry.first);
         });
         std::vector<std::wstring> ids;
-        ids.reserve(kBuiltInWidgets.size() + widgetDescriptors_.size());
-        for (const auto& widget : kBuiltInWidgets) ids.emplace_back(widget.id);
+        ids.reserve(widgetDescriptors_.size());
         for (const auto& descriptor : widgetDescriptors_) {
             if (std::find(ids.begin(), ids.end(), descriptor.id) == ids.end()) {
                 ids.push_back(descriptor.id);
@@ -2181,24 +2175,16 @@ private:
             return;
         }
 
-        DrawTextLine(DisplayWidgetName(widget), titleFormat_.Get(),
+        DrawTextLine(L"Widget unavailable", titleFormat_.Get(),
                      D2D1::RectF(panelLeft + 30, 48, panelLeft + panelWidth - 30, 88),
                      textBrush_.Get());
-        DrawTextLine(WidgetDetail(widget), bodyFormat_.Get(),
+        DrawTextLine(L"This widget is no longer present in the active catalog.", bodyFormat_.Get(),
                      D2D1::RectF(panelLeft + 30, 94, panelLeft + panelWidth - 30, 122),
                      secondaryBrush_.Get());
-        DrawTextLine(L"This is the native host placeholder. The active widget owns LB, RB, "
-                     L"and all non-Guide controller input.",
+        DrawTextLine(L"Return to the dashboard while the catalog is refreshed.",
                      bodyFormat_.Get(),
                      D2D1::RectF(panelLeft + 30, 146, panelLeft + panelWidth - 30, 202),
                      secondaryBrush_.Get());
-
-        const D2D1_ROUNDED_RECT action{
-            D2D1::RectF(panelLeft + 30, 224, panelLeft + 300, 298), 14.0F, 14.0F};
-        renderTarget_->FillRoundedRectangle(action, accentBrush_.Get());
-        DrawTextLine(L"A  Sample action", titleFormat_.Get(),
-                     D2D1::RectF(panelLeft + 54, 243, panelLeft + 278, 280),
-                     selectedTextBrush_.Get());
         DrawTextLine(L"B  Back to icons                       Guide  Close overlay",
                      hintFormat_.Get(),
                      D2D1::RectF(panelLeft + 30, panelBottom - 40,

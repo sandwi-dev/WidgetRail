@@ -23,7 +23,22 @@ public sealed record SetWidgetAudioSessionMutedRequest(
     [property: JsonRequired] bool IsMuted);
 
 public sealed record WidgetAudioSessionsChanged(
-    [property: JsonRequired] IReadOnlyList<WidgetAudioSession> Sessions);
+    [property: JsonRequired] IReadOnlyList<WidgetAudioSession> Sessions,
+    [property: JsonRequired] bool IsAvailable = true);
+
+public sealed record WidgetAudioOutput(
+    [property: JsonRequired] double Volume,
+    [property: JsonRequired] bool IsMuted);
+
+public sealed record SetWidgetAudioOutputVolumeRequest(
+    [property: JsonRequired] double Volume);
+
+public sealed record SetWidgetAudioOutputMutedRequest(
+    [property: JsonRequired] bool IsMuted);
+
+public sealed record WidgetAudioOutputChanged(
+    [property: JsonRequired] WidgetAudioOutput? Output,
+    [property: JsonRequired] bool IsAvailable = true);
 
 public enum WidgetNetworkConnectivity
 {
@@ -99,6 +114,18 @@ public static class WidgetAudioCapabilities
 
     public static WidgetCapabilityEvent<WidgetAudioSessionsChanged> SessionsChanged { get; } =
         new("system.audio.sessions.read.v1", "audio.sessions.changed");
+
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetAudioOutput>
+        GetOutput { get; } = new("system.audio.output.read.v1", "audio.output.get");
+
+    public static WidgetCapabilityOperation<SetWidgetAudioOutputVolumeRequest, WidgetCapabilityAcknowledgement>
+        SetOutputVolume { get; } = new("system.audio.output.control.v1", "audio.output.set-volume");
+
+    public static WidgetCapabilityOperation<SetWidgetAudioOutputMutedRequest, WidgetCapabilityAcknowledgement>
+        SetOutputMuted { get; } = new("system.audio.output.control.v1", "audio.output.set-muted");
+
+    public static WidgetCapabilityEvent<WidgetAudioOutputChanged> OutputChanged { get; } =
+        new("system.audio.output.read.v1", "audio.output.changed");
 }
 
 /// <summary>Reusable typed definitions for the saved-network provider.</summary>
@@ -127,6 +154,10 @@ public sealed class WidgetAudioService
         CancellationToken cancellationToken = default) =>
         _client.InvokeAsync(WidgetAudioCapabilities.GetSessions, new WidgetCapabilityQuery(), cancellationToken);
 
+    public ValueTask<WidgetAudioOutput> GetOutputAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(WidgetAudioCapabilities.GetOutput, new WidgetCapabilityQuery(), cancellationToken);
+
     public async ValueTask SetSessionVolumeAsync(
         string sessionId, double volume, CancellationToken cancellationToken = default)
     {
@@ -147,6 +178,28 @@ public sealed class WidgetAudioService
         DemandAcknowledged(response);
     }
 
+    public async ValueTask SetOutputVolumeAsync(
+        double volume,
+        CancellationToken cancellationToken = default)
+    {
+        if (!double.IsFinite(volume) || volume is < 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(volume), "Volume must be between zero and one.");
+        var response = await _client.InvokeAsync(
+            WidgetAudioCapabilities.SetOutputVolume,
+            new SetWidgetAudioOutputVolumeRequest(volume), cancellationToken).ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
+
+    public async ValueTask SetOutputMutedAsync(
+        bool isMuted,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _client.InvokeAsync(
+            WidgetAudioCapabilities.SetOutputMuted,
+            new SetWidgetAudioOutputMutedRequest(isMuted), cancellationToken).ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
+
     public IAsyncEnumerable<WidgetAudioSessionsChanged> WatchSessionsAsync(
         CancellationToken cancellationToken = default) =>
         _client.SubscribeAsync(WidgetAudioCapabilities.SessionsChanged, cancellationToken);
@@ -161,6 +214,14 @@ public sealed class WidgetAudioService
     public ValueTask<IWidgetCapabilitySubscription<WidgetAudioSessionsChanged>>
         OpenSessionsSubscriptionAsync(CancellationToken cancellationToken = default) =>
         _client.OpenSubscriptionAsync(WidgetAudioCapabilities.SessionsChanged, cancellationToken);
+
+    public IAsyncEnumerable<WidgetAudioOutputChanged> WatchOutputAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.SubscribeAsync(WidgetAudioCapabilities.OutputChanged, cancellationToken);
+
+    public ValueTask<IWidgetCapabilitySubscription<WidgetAudioOutputChanged>>
+        OpenOutputSubscriptionAsync(CancellationToken cancellationToken = default) =>
+        _client.OpenSubscriptionAsync(WidgetAudioCapabilities.OutputChanged, cancellationToken);
 
     private static void DemandAcknowledged(WidgetCapabilityAcknowledgement response)
     {

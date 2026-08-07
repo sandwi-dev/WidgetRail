@@ -28,6 +28,8 @@ The current closed capability set is:
 | --- | --- | --- |
 | `system.audio.sessions.read.v1` | `HostServices.Audio.GetSessionsAsync`, `OpenSessionsSubscriptionAsync`, and `WatchSessionsAsync` | Visible or Interactive |
 | `system.audio.sessions.control.v1` | `SetSessionVolumeAsync` and `SetSessionMutedAsync` | Interactive only |
+| `system.audio.output.read.v1` | `HostServices.Audio.GetOutputAsync`, `OpenOutputSubscriptionAsync`, and `WatchOutputAsync` | Visible or Interactive |
+| `system.audio.output.control.v1` | `SetOutputVolumeAsync` and `SetOutputMutedAsync` | Interactive only |
 | `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, and `WatchStatusAsync` | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | `SwitchSavedProfileAsync` | Interactive only |
 
@@ -37,10 +39,12 @@ purpose without it. Put enhancements in `optionalPermissions`:
 ```json
 {
   "permissions": [
-    "system.audio.sessions.read.v1"
+    "system.audio.sessions.read.v1",
+    "system.audio.output.read.v1"
   ],
   "optionalPermissions": [
-    "system.audio.sessions.control.v1"
+    "system.audio.sessions.control.v1",
+    "system.audio.output.control.v1"
   ]
 }
 ```
@@ -66,13 +70,18 @@ a catalog or worker restart.
 
 The reusable provider definitions and DTOs live in `WidgetSdk`:
 
-- `WidgetAudioCapabilities`, `WidgetAudioSession`, and
-  `WidgetAudioSessionsChanged`;
+- `WidgetAudioCapabilities`, `WidgetAudioSession`, `WidgetAudioOutput`,
+  `WidgetAudioSessionsChanged`, and `WidgetAudioOutputChanged`;
 - `WidgetNetworkCapabilities`, `WidgetNetworkStatus`,
   `WidgetNetworkConnectivity`, `WidgetNetworkTransportKind`,
   `WidgetNetworkWirelessAvailability`, `WidgetNetworkDetailsAccess`,
   `WidgetNetworkConnectionAttemptState`, `WidgetSavedNetworkProfile`, and
   `WidgetNetworkStatusChanged`.
+
+`WidgetAudioSessionsChanged.IsAvailable` distinguishes a live Core Audio
+provider loss from a healthy empty session list. On `false`, clear stale
+session controls and render a recoverable service-unavailable state; a later
+`true` event carries the current authoritative list.
 
 Most widgets should use `HostServices.Audio` and `HostServices.Network` rather
 than the lower-level `IWidgetCapabilityClient`. For example:
@@ -169,6 +178,9 @@ declaration is granted or currently allowed. Make the typed call and handle:
 
 Common broker codes include `permission_denied`, `capability_not_declared`,
 `unsupported_capability`, `lifecycle_denied`, and `capability_revoked`.
+`platform_unavailable` means the trusted OS provider could not obtain a
+trustworthy current snapshot; it does not mean a healthy list is empty or that
+hardware is absent.
 Transport validation can also report codes such as `channel_closed`, `unsupported_protocol`,
 `malformed_response`, or `malformed_event`. Treat unknown future codes as a
 bounded generic provider failure rather than parsing exception text.

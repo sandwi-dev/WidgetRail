@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Connection and empty-profile surfaces remain orthogonal", ConnectionSurfaces),
     ("Radio privacy adapter and service states are controller readable", WirelessStates),
+    ("Unavailable Wi-Fi disables connect without invoking the broker", UnavailableWifiBlocksConnect),
     ("D-pad and analog focus graph is explicit for every network control", ExplicitFocusGraph),
     ("Dashboard routes only local read actions and open routes control", ControllerRoutes),
     ("Switch acknowledgement waits for authoritative status completion", AcceptedSwitchWaitsForEvent),
@@ -112,6 +113,46 @@ static async Task WirelessStates()
                 button.ActionId?.Contains("access", StringComparison.OrdinalIgnoreCase) == true),
             "Privacy-restricted status offered an unbrokered prompt action.");
         Assert.Valid(snapshot);
+        await Background(widget);
+    }
+}
+
+static async Task UnavailableWifiBlocksConnect()
+{
+    var cases = new[]
+    {
+        (WidgetNetworkWirelessAvailability.RadioOff, "Wi-Fi is off", "Turn Wi-Fi on"),
+        (WidgetNetworkWirelessAvailability.NoAdapter, "No Wi-Fi adapter", "No Wi-Fi adapter"),
+        (WidgetNetworkWirelessAvailability.ServiceUnavailable, "Wi-Fi unavailable", "wireless service is unavailable"),
+    };
+
+    foreach (var (availability, expectedButton, expectedStatus) in cases)
+    {
+        var fake = new FakeNetworkHost
+        {
+            Status = Status(
+                WidgetNetworkConnectivity.Internet,
+                WidgetNetworkTransportKind.Ethernet,
+                availability),
+            Profiles = [Profile("home", "Home")],
+        };
+        var widget = Create(fake);
+        await ActivateInteractive(widget);
+        await WaitUntil(() => widget.Profiles.Count == 1);
+
+        var snapshot = Snapshot(widget, 1);
+        var connect = Button(snapshot.Root, "network.profile.connect");
+        Assert.Equal(expectedButton, connect.Text);
+        Assert.Equal(true, connect.IsDisabled);
+
+        await widget.OnActionAsync(new("profile.connect", "network.profile.connect"));
+        Assert.Equal(0, fake.SwitchCalls);
+        Assert.Contains(expectedStatus, Text(Snapshot(widget, 2).Root, "network.status").Text!);
+
+        _ = await Route(widget, Snapshot(widget, 3), ControllerButton.X,
+            ControllerInputContext.OpenWidget);
+        Assert.Equal(0, fake.SwitchCalls);
+        Assert.Contains(expectedStatus, Text(Snapshot(widget, 4).Root, "network.status").Text!);
         await Background(widget);
     }
 }
@@ -288,6 +329,7 @@ static async Task CapabilityFailureStates()
         ("capability_revoked", NetworkControlsViewState.PermissionDenied, "Network access is off"),
         ("lifecycle_denied", NetworkControlsViewState.LifecycleDenied, "paused by lifecycle"),
         ("channel_closed", NetworkControlsViewState.ChannelClosed, "disconnected"),
+        ("platform_unavailable", NetworkControlsViewState.ServiceUnavailable, "service unavailable"),
     };
     foreach (var (code, state, expectedTitle) in cases)
     {

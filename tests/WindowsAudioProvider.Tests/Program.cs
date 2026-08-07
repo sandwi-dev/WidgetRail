@@ -7,12 +7,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Construction and event subscription are completely inert", ConstructionIsLazy),
     ("Sessions are sanitized, bounded, opaque, and stable through churn", SessionsAreSafeAndStable),
     ("Controls execute on the dedicated native owner thread", ControlsUseOwnerThread),
+    ("Master output controls reconcile and fail independently from sessions", MasterOutputIsIndependent),
     ("Native callbacks coalesce and the provider never polls", CallbacksCoalesceWithoutPolling),
-    ("An explicit GET retries one transient enumeration failure", ExplicitGetRecoversTransientFailure),
-    ("An explicit GET retries a degraded endpoint bind", ExplicitGetRecoversDegradedBind),
+    ("Live native failure and recovery publish explicit availability", ProviderAvailabilityEvents),
+    ("An explicit GET reports then retries one transient enumeration failure", ExplicitGetRecoversTransientFailure),
+    ("An explicit GET reports then retries a degraded endpoint bind", ExplicitGetRecoversDegradedBind),
     ("Endpoint generations discard stale retained session callbacks", EndpointGenerationsDiscardStaleSessions),
     ("Cancelled queued controls never reach Core Audio", CancelledControlsDoNotExecute),
-    ("Unavailable Core Audio degrades to an empty provider", UnavailableAudioIsDegraded),
+    ("Unavailable Core Audio is distinct from a healthy empty session list", UnavailableAudioIsDegraded),
     ("Disposal unregisters native resources on the owner thread", DisposalIsOwnerThreadSafe),
     ("Production Core Audio adapter initializes without leaking native identity", ProductionAdapterSmoke),
 };
@@ -102,6 +104,46 @@ static async Task ControlsUseOwnerThread()
     Assert.True(adapter.NativeCallThreadIds.All(id => id == factory.CreateThreadId));
 }
 
+static async Task MasterOutputIsIndependent()
+{
+    var adapter = new FakeNativeAdapter([new("native-one", "Game", 0.4, false, true)])
+    {
+        Output = new NativeAudioOutputSnapshot(0.45, false),
+    };
+    var factory = new FakeFactory(adapter);
+    await using var backend = new WindowsAudioPlatformBackend(factory);
+
+    var initial = await backend.GetAudioOutputAsync(CancellationToken.None);
+    Assert.Equal(0.45, initial.Volume, precision: 0.0001);
+    Assert.False(initial.IsMuted);
+    await backend.SetAudioOutputVolumeAsync(0.7, CancellationToken.None);
+    await backend.SetAudioOutputMutedAsync(true, CancellationToken.None);
+    var controlled = await backend.GetAudioOutputAsync(CancellationToken.None);
+    Assert.Equal(0.7, controlled.Volume, precision: 0.0001);
+    Assert.True(controlled.IsMuted);
+    Assert.True(adapter.NativeCallThreadIds.All(id => id == factory.CreateThreadId));
+
+    var outputEvents = OutputEventChannel(backend);
+    adapter.IsOutputDegraded = true;
+    adapter.Output = null;
+    adapter.RaiseChanged();
+    var unavailable = await outputEvents.Reader.ReadAsync().AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.False(unavailable.IsAvailable);
+    Assert.True(unavailable.Output is null);
+    Assert.Equal(1, (await backend.GetAudioSessionsAsync(CancellationToken.None)).Count);
+
+    adapter.Output = new NativeAudioOutputSnapshot(0.2, false);
+    adapter.IsOutputDegraded = false;
+    var recovered = await backend.GetAudioOutputAsync(CancellationToken.None)
+        .WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(0.2, recovered.Volume, precision: 0.0001);
+    var available = await outputEvents.Reader.ReadAsync().AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(available.IsAvailable);
+    Assert.True(available.Output is not null);
+}
+
 static async Task CallbacksCoalesceWithoutPolling()
 {
     var adapter = new FakeNativeAdapter([new("native-one", "Game", 0.4, false, true)]);
@@ -128,8 +170,9 @@ static async Task ExplicitGetRecoversTransientFailure()
     adapter.FailNextEnumeration();
     await using var backend = new WindowsAudioPlatformBackend(new FakeFactory(adapter));
 
-    var failed = await backend.GetAudioSessionsAsync(CancellationToken.None);
-    Assert.Equal(0, failed.Count);
+    await Assert.ThrowsBrokerAsync(
+        () => backend.GetAudioSessionsAsync(CancellationToken.None),
+        "platform_unavailable");
     Assert.True(backend.IsDegraded);
     Assert.Equal(1, adapter.EnumerationCalls);
 
@@ -143,13 +186,35 @@ static async Task ExplicitGetRecoversTransientFailure()
     Assert.Equal(2, adapter.EnumerationCalls); // Healthy reads use the event-maintained cache.
 }
 
+static async Task ProviderAvailabilityEvents()
+{
+    var adapter = new FakeNativeAdapter([]);
+    await using var backend = new WindowsAudioPlatformBackend(new FakeFactory(adapter));
+    _ = await backend.GetAudioSessionsAsync(CancellationToken.None);
+    var events = EventChannel(backend);
+
+    adapter.FailNextEnumeration();
+    adapter.RaiseChanged();
+    var unavailable = await events.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.False(unavailable.IsAvailable);
+    Assert.Equal(0, unavailable.Sessions.Count);
+    // The next explicit read is the bounded recovery action.
+    var recovered = await backend.GetAudioSessionsAsync(CancellationToken.None)
+        .WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(0, recovered.Count);
+    var available = await events.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(available.IsAvailable);
+}
+
 static async Task ExplicitGetRecoversDegradedBind()
 {
     var adapter = new FakeNativeAdapter([new("native-one", "Bound game", 0.6, false, true)]);
     adapter.DegradeNextEnumeration();
     await using var backend = new WindowsAudioPlatformBackend(new FakeFactory(adapter));
 
-    Assert.Equal(0, (await backend.GetAudioSessionsAsync(CancellationToken.None)).Count);
+    await Assert.ThrowsBrokerAsync(
+        () => backend.GetAudioSessionsAsync(CancellationToken.None),
+        "platform_unavailable");
     Assert.True(backend.IsDegraded);
     var recovered = await backend.GetAudioSessionsAsync(CancellationToken.None)
         .WaitAsync(TimeSpan.FromSeconds(2));
@@ -198,9 +263,15 @@ static async Task CancelledControlsDoNotExecute()
 static async Task UnavailableAudioIsDegraded()
 {
     await using var backend = new WindowsAudioPlatformBackend(new ThrowingFactory());
-    var sessions = await backend.GetAudioSessionsAsync(CancellationToken.None);
-    Assert.Equal(0, sessions.Count);
+    await Assert.ThrowsBrokerAsync(
+        () => backend.GetAudioSessionsAsync(CancellationToken.None),
+        "platform_unavailable");
     Assert.True(backend.IsDegraded);
+
+    await using var healthyEmpty = new WindowsAudioPlatformBackend(
+        new FakeFactory(new FakeNativeAdapter([])));
+    Assert.Equal(0, (await healthyEmpty.GetAudioSessionsAsync(CancellationToken.None)).Count);
+    Assert.False(healthyEmpty.IsDegraded);
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
     await Assert.ThrowsBrokerAsync(
         () => backend.SetAudioSessionMutedAsync("audio_dead", true, timeout.Token),
@@ -248,6 +319,16 @@ static Channel<AudioSessionsChangedEvent> EventChannel(WindowsAudioPlatformBacke
     return channel;
 }
 
+static Channel<AudioOutputChangedEvent> OutputEventChannel(WindowsAudioPlatformBackend backend)
+{
+    var channel = Channel.CreateUnbounded<AudioOutputChangedEvent>();
+    backend.EventPublished += (_, platformEvent) =>
+    {
+        if (platformEvent.Payload is AudioOutputChangedEvent output) channel.Writer.TryWrite(output);
+    };
+    return channel;
+}
+
 static async Task WaitUntilAsync(Func<bool> condition)
 {
     var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(2);
@@ -287,6 +368,8 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
     private int _isDegraded;
     public event EventHandler? StateChanged;
     public bool IsDegraded => Volatile.Read(ref _isDegraded) != 0;
+    public bool IsOutputDegraded { get; set; }
+    public NativeAudioOutputSnapshot? Output { get; set; } = new(0.5, false);
     public ManualResetEventSlim EnumerationEntered { get; } = new(false);
     public ManualResetEventSlim AllowEnumeration { get; } = new(false);
     public List<int> NativeCallThreadIds { get; } = [];
@@ -331,6 +414,12 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
         lock (_gate) return _snapshots.ToArray();
     }
 
+    public NativeAudioOutputSnapshot? GetDefaultOutput()
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        return Output;
+    }
+
     public bool TrySetSessionVolume(string nativeSessionKey, double volume)
     {
         NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
@@ -355,6 +444,24 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
             _snapshots[index] = _snapshots[index] with { IsMuted = isMuted };
             return true;
         }
+    }
+
+    public bool TrySetDefaultOutputVolume(double volume)
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        Interlocked.Increment(ref _controlCalls);
+        if (Output is null || IsOutputDegraded) return false;
+        Output = Output with { Volume = volume };
+        return true;
+    }
+
+    public bool TrySetDefaultOutputMuted(bool isMuted)
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        Interlocked.Increment(ref _controlCalls);
+        if (Output is null || IsOutputDegraded) return false;
+        Output = Output with { IsMuted = isMuted };
+        return true;
     }
 
     public void Dispose()

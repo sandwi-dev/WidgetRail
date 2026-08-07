@@ -47,6 +47,14 @@ public sealed record SetAudioSessionMutedRequest(
     [property: JsonRequired] string SessionId,
     [property: JsonRequired] bool IsMuted);
 
+public sealed record AudioOutputSummary(
+    [property: JsonRequired] double Volume,
+    [property: JsonRequired] bool IsMuted);
+public sealed record SetAudioOutputVolumeRequest(
+    [property: JsonRequired] double Volume);
+public sealed record SetAudioOutputMutedRequest(
+    [property: JsonRequired] bool IsMuted);
+
 public enum NetworkConnectivity
 {
     None,
@@ -104,7 +112,12 @@ public sealed record SavedNetworkProfileSummary(
 public sealed record SwitchSavedNetworkProfileRequest(
     [property: JsonRequired] string ProfileId);
 
-public sealed record AudioSessionsChangedEvent(IReadOnlyList<AudioSessionSummary> Sessions);
+public sealed record AudioSessionsChangedEvent(
+    IReadOnlyList<AudioSessionSummary> Sessions,
+    bool IsAvailable = true);
+public sealed record AudioOutputChangedEvent(
+    AudioOutputSummary? Output,
+    bool IsAvailable = true);
 public sealed record NetworkStatusChangedEvent(NetworkStatusSummary Status);
 
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
@@ -120,6 +133,9 @@ public interface IAudioPlatformBrokerBackend : IPlatformBrokerEventSource
     Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(CancellationToken cancellationToken);
     Task SetAudioSessionVolumeAsync(string sessionId, double volume, CancellationToken cancellationToken);
     Task SetAudioSessionMutedAsync(string sessionId, bool isMuted, CancellationToken cancellationToken);
+    Task<AudioOutputSummary> GetAudioOutputAsync(CancellationToken cancellationToken);
+    Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken);
+    Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken);
 }
 
 public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource

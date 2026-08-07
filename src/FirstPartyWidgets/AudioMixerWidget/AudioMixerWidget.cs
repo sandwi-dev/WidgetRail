@@ -33,16 +33,21 @@ public sealed class AudioMixerWidget : Widget
 
     private readonly object _stateLock = new();
     private readonly SemaphoreSlim _commandGate = new(1, 1);
+    private readonly SemaphoreSlim _outputCommandGate = new(1, 1);
     private IReadOnlyList<WidgetAudioSession> _sessions = [];
+    private WidgetAudioOutput? _output;
     private AudioMixerViewState _viewState = AudioMixerViewState.Initial;
     private string? _selectedSessionId;
     private int _selectedIndex;
     private string _status = "Audio sessions load when this widget becomes visible";
     private bool _statusIsError;
     private bool _controlBusy;
+    private bool _outputControlBusy;
     private string? _pendingSessionId;
     private double? _pendingVolume;
     private bool? _pendingMuted;
+    private double? _pendingOutputVolume;
+    private bool? _pendingOutputMuted;
     private CancellationTokenSource? _runLifetime;
     private long _runGeneration;
     private int _activationCount;
@@ -63,6 +68,11 @@ public sealed class AudioMixerWidget : Widget
         get { lock (_stateLock) return _sessions.ToArray(); }
     }
 
+    public WidgetAudioOutput? Output
+    {
+        get { lock (_stateLock) return _output; }
+    }
+
     public int ActivationCount => Volatile.Read(ref _activationCount);
     public int FetchCount => Volatile.Read(ref _fetchCount);
 
@@ -71,19 +81,23 @@ public sealed class AudioMixerWidget : Widget
         AudioMixerViewState viewState;
         IReadOnlyList<WidgetAudioSession> sessions;
         WidgetAudioSession? selected;
+        WidgetAudioOutput? output;
         int selectedIndex;
         string status;
         bool statusIsError;
         bool controlBusy;
+        bool outputControlBusy;
         lock (_stateLock)
         {
             viewState = _viewState;
             sessions = _sessions;
             selectedIndex = _selectedIndex;
             selected = SelectedSessionLocked();
+            output = _output;
             status = _status;
             statusIsError = _statusIsError;
             controlBusy = _controlBusy;
+            outputControlBusy = _outputControlBusy;
         }
 
         var header = UI.Stack("audio.header",
@@ -94,8 +108,71 @@ public sealed class AudioMixerWidget : Widget
                 statusIsError ? "is-error" : viewState == AudioMixerViewState.Ready ? "is-live" : "is-neutral"))
             .Classes("audio-header");
 
-        if (viewState != AudioMixerViewState.Ready || selected is null)
+        if (viewState is not (AudioMixerViewState.Ready or AudioMixerViewState.Empty) || output is null)
             return RenderNonSessionState(header, viewState);
+
+        var masterPercent = VolumePercent(output.Volume);
+        var masterDown = UI.Button("−", "output.volume.down", "audio.master.volume.down")
+            .Disabled(outputControlBusy || output.Volume <= 0)
+            .Busy(outputControlBusy)
+            .FocusLeft("audio.master.volume.up")
+            .FocusRight("audio.master.mute")
+            .FocusDown(selected is null ? "audio.retry" : "audio.session.previous")
+            .Classes("audio-volume-action", "audio-master-action");
+        var masterMute = UI.Button(output.IsMuted ? "Unmute" : "Mute", "output.mute.toggle", "audio.master.mute")
+            .Icon(output.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Volume,
+                output.IsMuted ? "Unmute master output" : "Mute master output")
+            .Selected(output.IsMuted)
+            .Disabled(outputControlBusy)
+            .Busy(outputControlBusy)
+            .FocusLeft("audio.master.volume.down")
+            .FocusRight("audio.master.volume.up")
+            .FocusDown(selected is null ? "audio.retry" : "audio.mute")
+            .Classes("audio-mute-action", "audio-master-mute", output.IsMuted ? "is-muted" : "is-audible");
+        var masterUp = UI.Button("+", "output.volume.up", "audio.master.volume.up")
+            .Disabled(outputControlBusy || output.Volume >= 1)
+            .Busy(outputControlBusy)
+            .FocusLeft("audio.master.mute")
+            .FocusRight("audio.master.volume.down")
+            .FocusDown(selected is null ? "audio.retry" : "audio.session.next")
+            .Classes("audio-volume-action", "audio-master-action");
+        var masterCard = UI.Stack("audio.master.card",
+                UI.Row("audio.master.heading",
+                    UI.Text("MASTER OUTPUT", "audio.master.label", "Master output").Classes("audio-master-label"),
+                    UI.Text(output.IsMuted ? "MUTED" : "LIVE", "audio.master.state",
+                        output.IsMuted ? "Master output muted" : "Master output audible")
+                        .Classes("audio-master-state", output.IsMuted ? "is-muted" : "is-live"))
+                    .Classes("audio-master-heading"),
+                UI.Row("audio.master.volume.row",
+                    UI.Progress(masterPercent, 100, "audio.master.volume.progress",
+                            $"Master output volume {masterPercent} percent")
+                        .Classes("audio-volume-progress", "audio-master-progress"),
+                    UI.Text($"{masterPercent}%", "audio.master.volume.value",
+                            $"Master output volume {masterPercent} percent")
+                        .Classes("audio-volume-value"))
+                    .Classes("audio-volume-row"),
+                UI.Row("audio.master.controls", masterDown, masterMute, masterUp)
+                    .Classes("audio-controls", "audio-master-controls"))
+            .Classes("audio-master-card");
+
+        if (selected is null)
+        {
+            var retry = UI.Button("Check again", "retry", "audio.retry")
+                .Icon(WidgetGlyph.Refresh, "Check for application audio")
+                .FocusUp("audio.master.mute")
+                .Classes("audio-retry-action");
+            var emptyRoot = UI.Stack("audio.root", header, masterCard,
+                    UI.Stack("audio.state.card",
+                        UI.Text("No application audio yet", "audio.state.title", "No application audio yet")
+                            .Classes("audio-state-title"),
+                        UI.Text("Start playback in an application. New sessions appear here automatically.",
+                                "audio.state.help", "Start playback to create an application audio session")
+                            .Classes("audio-help", "is-neutral"),
+                        retry).Classes("audio-state-card"))
+                .InputScope("audio-mixer")
+                .Classes("audio-mixer-widget", "has-master", "has-state");
+            return new WidgetView(emptyRoot, InitialFocusId: "audio.master.mute");
+        }
 
         var hasMultipleSessions = sessions.Count > 1;
         var volumePercent = VolumePercent(selected.Volume);
@@ -104,12 +181,14 @@ public sealed class AudioMixerWidget : Widget
             .Disabled(!hasMultipleSessions)
             .FocusRight("audio.session.next")
             .FocusDown("audio.volume.down")
+            .FocusUp("audio.master.volume.down")
             .Classes("audio-session-action");
         var nextButton = UI.Button("", "session.next", "audio.session.next")
             .Icon(WidgetGlyph.Next, "Next audio session")
             .Disabled(!hasMultipleSessions)
             .FocusLeft("audio.session.previous")
             .FocusDown("audio.volume.up")
+            .FocusUp("audio.master.volume.up")
             .Classes("audio-session-action");
         var volumeDown = UI.Button("−", "volume.down", "audio.volume.down")
             .Disabled(controlBusy || selected.Volume <= 0)
@@ -138,6 +217,7 @@ public sealed class AudioMixerWidget : Widget
 
         var root = UI.Stack("audio.root",
                 header,
+                masterCard,
                 UI.Stack("audio.session.card",
                     UI.Row("audio.session.switcher",
                         previousButton,
@@ -173,7 +253,7 @@ public sealed class AudioMixerWidget : Widget
             .Shortcut(ControllerButton.X, "mute.toggle")
             .Classes("audio-mixer-widget", "has-sessions");
 
-        return new WidgetView(root, InitialFocusId: "audio.mute", QuickActions: SessionQuickActions);
+        return new WidgetView(root, InitialFocusId: "audio.master.mute", QuickActions: SessionQuickActions);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -216,6 +296,15 @@ public sealed class AudioMixerWidget : Widget
                 break;
             case "mute.toggle":
                 await ToggleMuteAsync(cancellationToken).ConfigureAwait(false);
+                break;
+            case "output.volume.down":
+                await ChangeOutputVolumeAsync(-VolumeStep, cancellationToken).ConfigureAwait(false);
+                break;
+            case "output.volume.up":
+                await ChangeOutputVolumeAsync(VolumeStep, cancellationToken).ConfigureAwait(false);
+                break;
+            case "output.mute.toggle":
+                await ToggleOutputMuteAsync(cancellationToken).ConfigureAwait(false);
                 break;
             case "retry":
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
@@ -315,9 +404,12 @@ public sealed class AudioMixerWidget : Widget
             lifetime = _runLifetime;
             _runLifetime = null;
             _controlBusy = false;
+            _outputControlBusy = false;
             _pendingSessionId = null;
             _pendingVolume = null;
             _pendingMuted = null;
+            _pendingOutputVolume = null;
+            _pendingOutputMuted = null;
         }
         lifetime?.Cancel();
         lifetime?.Dispose();
@@ -330,19 +422,26 @@ public sealed class AudioMixerWidget : Widget
             // Establish and acknowledge the coalesced event buffer before the
             // current snapshot request. A full event received during the GET is
             // applied afterward, closing the classic subscribe-after-fetch gap.
-            await using var subscription = await HostServices.Audio
+            await using var sessionSubscription = await HostServices.Audio
                 .OpenSessionsSubscriptionAsync(cancellationToken).ConfigureAwait(false);
+            await using var outputSubscription = await HostServices.Audio
+                .OpenOutputSubscriptionAsync(cancellationToken).ConfigureAwait(false);
             Interlocked.Increment(ref _fetchCount);
+            var output = await HostServices.Audio.GetOutputAsync(cancellationToken).ConfigureAwait(false);
             var sessions = await HostServices.Audio.GetSessionsAsync(cancellationToken).ConfigureAwait(false);
             if (!IsCurrentRun(generation, cancellationToken)) return;
+            ApplyOutput(output, generation);
             ApplySessions(sessions, generation);
 
-            await foreach (var change in subscription.ReadAllAsync(cancellationToken)
-                               .WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                if (!IsCurrentRun(generation, cancellationToken)) return;
-                ApplySessions(change.Sessions, generation);
-            }
+            using var observers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var sessionObserver = ObserveSessionChangesAsync(
+                sessionSubscription, generation, observers.Token);
+            var outputObserver = ObserveOutputChangesAsync(
+                outputSubscription, generation, observers.Token);
+            await Task.WhenAny(sessionObserver, outputObserver).ConfigureAwait(false);
+            observers.Cancel();
+            try { await Task.WhenAll(sessionObserver, outputObserver).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (observers.IsCancellationRequested) { }
 
             if (IsCurrentRun(generation, cancellationToken))
                 SetProviderError(AudioMixerViewState.ChannelClosed,
@@ -367,6 +466,62 @@ public sealed class AudioMixerWidget : Widget
             SetProviderError(AudioMixerViewState.Error,
                 "Audio provider returned an unexpected error", generation);
         }
+    }
+
+    private async Task ObserveSessionChangesAsync(
+        IWidgetCapabilitySubscription<WidgetAudioSessionsChanged> subscription,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var change in subscription.ReadAllAsync(cancellationToken)
+                           .WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            if (!IsCurrentRun(generation, cancellationToken)) return;
+            if (!change.IsAvailable)
+            {
+                SetProviderError(AudioMixerViewState.ServiceUnavailable,
+                    "Windows audio session provider unavailable", generation);
+                continue;
+            }
+            ApplySessions(change.Sessions, generation);
+        }
+    }
+
+    private async Task ObserveOutputChangesAsync(
+        IWidgetCapabilitySubscription<WidgetAudioOutputChanged> subscription,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var change in subscription.ReadAllAsync(cancellationToken)
+                           .WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            if (!IsCurrentRun(generation, cancellationToken)) return;
+            if (!change.IsAvailable || change.Output is null)
+            {
+                SetProviderError(AudioMixerViewState.ServiceUnavailable,
+                    "Windows master output unavailable", generation);
+                continue;
+            }
+            ApplyOutput(change.Output, generation);
+        }
+    }
+
+    private void ApplyOutput(WidgetAudioOutput incoming, long generation)
+    {
+        var normalized = new WidgetAudioOutput(
+            double.IsFinite(incoming.Volume) ? Math.Clamp(incoming.Volume, 0, 1) : 0,
+            incoming.IsMuted);
+        lock (_stateLock)
+        {
+            if (_runGeneration != generation) return;
+            if (_pendingOutputVolume is { } pendingVolume)
+                normalized = normalized with { Volume = pendingVolume };
+            if (_pendingOutputMuted is { } pendingMuted)
+                normalized = normalized with { IsMuted = pendingMuted };
+            _output = normalized;
+            UpdateHealthyStateLocked();
+        }
+        Invalidate();
     }
 
     private void ApplySessions(IReadOnlyList<WidgetAudioSession>? incoming, long generation)
@@ -398,9 +553,6 @@ public sealed class AudioMixerWidget : Widget
             {
                 _selectedSessionId = null;
                 _selectedIndex = 0;
-                _viewState = AudioMixerViewState.Empty;
-                _status = "Listening for application audio sessions";
-                _statusIsError = false;
             }
             else
             {
@@ -412,15 +564,24 @@ public sealed class AudioMixerWidget : Widget
                     ? retained
                     : Math.Clamp(previousIndex, 0, normalized.Count - 1);
                 _selectedSessionId = normalized[_selectedIndex].SessionId;
-                _viewState = AudioMixerViewState.Ready;
-                if (!_controlBusy)
-                    _status = normalized.Count == 1
-                        ? "1 audio session · live updates"
-                        : $"{normalized.Count} audio sessions · live updates";
-                _statusIsError = false;
             }
+            UpdateHealthyStateLocked();
         }
         Invalidate();
+    }
+
+    private void UpdateHealthyStateLocked()
+    {
+        if (_output is null) return;
+        _viewState = _sessions.Count == 0 ? AudioMixerViewState.Empty : AudioMixerViewState.Ready;
+        if (!_controlBusy && !_outputControlBusy)
+            _status = _sessions.Count switch
+            {
+                0 => "Master output live · listening for application audio",
+                1 => "Master output · 1 audio session · live updates",
+                _ => $"Master output · {_sessions.Count} audio sessions · live updates",
+            };
+        _statusIsError = false;
     }
 
     private static List<WidgetAudioSession> NormalizeSessions(
@@ -570,6 +731,142 @@ public sealed class AudioMixerWidget : Widget
         }
     }
 
+    private async ValueTask ChangeOutputVolumeAsync(double delta, CancellationToken cancellationToken)
+    {
+        await _outputCommandGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WidgetAudioOutput? original;
+            double desired;
+            lock (_stateLock)
+            {
+                original = _output;
+                if (original is null) return;
+                desired = RoundVolume(original.Volume + delta);
+                if (desired == original.Volume) return;
+                _output = original with { Volume = desired };
+                _outputControlBusy = true;
+                _pendingOutputVolume = desired;
+                _pendingOutputMuted = null;
+                _status = $"Setting master output to {VolumePercent(desired)}%…";
+                _statusIsError = false;
+            }
+            Invalidate();
+            try
+            {
+                await HostServices.Audio.SetOutputVolumeAsync(desired, cancellationToken)
+                    .ConfigureAwait(false);
+                CompleteOutputControl($"Master output volume {VolumePercent(desired)}%");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                RollbackOutputControl(original, null);
+                throw;
+            }
+            catch (WidgetCapabilityUnavailableException)
+            {
+                RollbackOutputControl(original, "Host master-output control unavailable");
+            }
+            catch (WidgetCapabilityException exception)
+            {
+                RollbackOutputControl(original, MapControlFailure(exception.ErrorCode));
+            }
+            catch (Exception)
+            {
+                RollbackOutputControl(original, "Master volume change failed · previous value restored");
+            }
+        }
+        finally
+        {
+            _outputCommandGate.Release();
+        }
+    }
+
+    private async ValueTask ToggleOutputMuteAsync(CancellationToken cancellationToken)
+    {
+        await _outputCommandGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WidgetAudioOutput? original;
+            bool desired;
+            lock (_stateLock)
+            {
+                original = _output;
+                if (original is null) return;
+                desired = !original.IsMuted;
+                _output = original with { IsMuted = desired };
+                _outputControlBusy = true;
+                _pendingOutputVolume = null;
+                _pendingOutputMuted = desired;
+                _status = desired ? "Muting master output…" : "Unmuting master output…";
+                _statusIsError = false;
+            }
+            Invalidate();
+            try
+            {
+                await HostServices.Audio.SetOutputMutedAsync(desired, cancellationToken)
+                    .ConfigureAwait(false);
+                CompleteOutputControl(desired ? "Master output muted" : "Master output unmuted");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                RollbackOutputControl(original, null);
+                throw;
+            }
+            catch (WidgetCapabilityUnavailableException)
+            {
+                RollbackOutputControl(original, "Host master-output control unavailable");
+            }
+            catch (WidgetCapabilityException exception)
+            {
+                RollbackOutputControl(original, MapControlFailure(exception.ErrorCode));
+            }
+            catch (Exception)
+            {
+                RollbackOutputControl(original, "Master mute change failed · previous state restored");
+            }
+        }
+        finally
+        {
+            _outputCommandGate.Release();
+        }
+    }
+
+    private void CompleteOutputControl(string status)
+    {
+        lock (_stateLock)
+        {
+            if (!_outputControlBusy) return;
+            _outputControlBusy = false;
+            _pendingOutputVolume = null;
+            _pendingOutputMuted = null;
+            _status = status;
+            _statusIsError = false;
+        }
+        Invalidate();
+    }
+
+    private void RollbackOutputControl(WidgetAudioOutput original, string? status)
+    {
+        lock (_stateLock)
+        {
+            if (_outputControlBusy)
+            {
+                _output = original;
+                _outputControlBusy = false;
+                _pendingOutputVolume = null;
+                _pendingOutputMuted = null;
+                if (status is null) UpdateHealthyStateLocked();
+                else
+                {
+                    _status = status;
+                    _statusIsError = true;
+                }
+            }
+        }
+        Invalidate();
+    }
+
     private void CompleteControl(string sessionId, string status, bool error)
     {
         lock (_stateLock)
@@ -642,8 +939,16 @@ public sealed class AudioMixerWidget : Widget
         {
             if (_runGeneration != generation) return;
             _sessions = [];
+            _output = null;
             _selectedSessionId = null;
             _selectedIndex = 0;
+            _controlBusy = false;
+            _outputControlBusy = false;
+            _pendingSessionId = null;
+            _pendingVolume = null;
+            _pendingMuted = null;
+            _pendingOutputVolume = null;
+            _pendingOutputMuted = null;
             _viewState = state;
             _status = status;
             _statusIsError = true;
@@ -657,6 +962,8 @@ public sealed class AudioMixerWidget : Widget
             "permission_denied" => (AudioMixerViewState.PermissionDenied, "Audio read permission denied"),
             "lifecycle_denied" => (AudioMixerViewState.LifecycleDenied, "Audio request denied by widget lifecycle"),
             "channel_closed" => (AudioMixerViewState.ChannelClosed, "Audio service channel closed"),
+            "platform_unavailable" or "provider_unavailable" =>
+                (AudioMixerViewState.ServiceUnavailable, "Windows audio provider unavailable"),
             _ => (AudioMixerViewState.Error, "Audio provider request failed"),
         };
 

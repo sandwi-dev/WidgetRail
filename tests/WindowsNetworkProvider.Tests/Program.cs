@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Native callbacks coalesce profile and adapter churn without polling", CallbacksCoalesceWithoutPolling),
     ("Stale-generation callbacks cannot mutate current state", StaleGenerationCallbacksAreIgnored),
     ("Explicit reads recover a transient native failure", ExplicitReadRecoversTransientFailure),
+    ("Live native failure publishes service unavailable and recovers", LiveFailurePublishesUnavailable),
     ("Switch accepts only currently enumerated opaque saved IDs", SwitchOnlyAcceptsEnumeratedOpaqueIds),
     ("Switch returns on acceptance and reports async success or failure", ConnectionAttemptsAreAsynchronous),
     ("Missing connection notification fails through a one-shot timeout", ConnectionAttemptTimesOut),
@@ -205,8 +206,9 @@ static async Task ExplicitReadRecoversTransientFailure()
     var adapter = new FakeNativeAdapter(Snapshot(connectivity: NetworkConnectivity.Internet));
     adapter.FailNextRead();
     await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter));
-    Assert.Equal(NetworkConnectivity.None,
-        (await backend.GetNetworkStatusAsync(CancellationToken.None)).Connectivity);
+    await Assert.ThrowsBrokerAsync(
+        () => backend.GetNetworkStatusAsync(CancellationToken.None),
+        "platform_unavailable");
     Assert.True(backend.IsDegraded);
     var recovered = await backend.GetNetworkStatusAsync(CancellationToken.None)
         .WaitAsync(TimeSpan.FromSeconds(2));
@@ -215,6 +217,27 @@ static async Task ExplicitReadRecoversTransientFailure()
     Assert.Equal(2, adapter.ReadCalls);
     _ = await backend.GetNetworkStatusAsync(CancellationToken.None);
     Assert.Equal(2, adapter.ReadCalls);
+}
+
+static async Task LiveFailurePublishesUnavailable()
+{
+    var adapter = new FakeNativeAdapter(Snapshot(
+        connectivity: NetworkConnectivity.Internet,
+        wireless: NetworkWirelessAvailability.NoAdapter));
+    await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter));
+    _ = await backend.GetNetworkStatusAsync(CancellationToken.None);
+    var events = EventChannel(backend);
+
+    adapter.FailNextRead();
+    adapter.RaiseChanged();
+    var unavailable = await ReadUntilAsync(events.Reader,
+        status => status.WirelessAvailability == NetworkWirelessAvailability.ServiceUnavailable);
+    Assert.Equal(NetworkConnectivity.None, unavailable.Connectivity);
+    // The next explicit read is the bounded recovery action.
+    var recovered = await backend.GetNetworkStatusAsync(CancellationToken.None)
+        .WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(NetworkConnectivity.Internet, recovered.Connectivity);
+    Assert.Equal(NetworkWirelessAvailability.NoAdapter, recovered.WirelessAvailability);
 }
 
 static async Task SwitchOnlyAcceptsEnumeratedOpaqueIds()
@@ -338,10 +361,20 @@ static async Task CancelledSwitchDoesNotExecute()
 static async Task UnavailableProviderIsBounded()
 {
     await using var backend = new WindowsNetworkPlatformBackend(new ThrowingFactory());
-    var status = await backend.GetNetworkStatusAsync(CancellationToken.None)
-        .WaitAsync(TimeSpan.FromSeconds(1));
-    Assert.Equal(NetworkConnectivity.None, status.Connectivity);
+    await Assert.ThrowsBrokerAsync(
+        () => backend.GetNetworkStatusAsync(CancellationToken.None),
+        "platform_unavailable");
+    await Assert.ThrowsBrokerAsync(
+        () => backend.GetSavedNetworkProfilesAsync(CancellationToken.None),
+        "platform_unavailable");
     Assert.True(backend.IsDegraded);
+
+    var noAdapter = new FakeNativeAdapter(Snapshot(
+        wireless: NetworkWirelessAvailability.NoAdapter));
+    await using var healthyNoAdapter = new WindowsNetworkPlatformBackend(new FakeFactory(noAdapter));
+    var healthyStatus = await healthyNoAdapter.GetNetworkStatusAsync(CancellationToken.None);
+    Assert.Equal(NetworkWirelessAvailability.NoAdapter, healthyStatus.WirelessAvailability);
+    Assert.False(healthyNoAdapter.IsDegraded);
     await Assert.ThrowsBrokerAsync(
         () => backend.SwitchSavedNetworkProfileAsync(
             "network_00000000000000000000000000000000", CancellationToken.None),

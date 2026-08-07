@@ -5,7 +5,7 @@ passed 2026-08-07**.
 The typed SDK, authenticated capability transport, consent UI, lifecycle
 enforcement, real event-driven Windows provider, first-party widget/worker,
 trusted catalog entry, and Release packaging hooks exist. The focused Release
-provider and widget suites pass 17/17 and 13/13 respectively; the full managed suite, native host
+provider and widget suites pass 18/18 and 14/14 respectively; the full managed suite, native host
 suite, packaged hidden-startup smoke, and controller input-probe smoke also
 pass. Hardware/privacy matrices and performance evidence remain open, so this
 is not yet a shipped or production-support claim.
@@ -270,6 +270,12 @@ Controller focus stays on a stable semantic profile ID when possible; if that
 profile disappears, move to the nearest valid item and announce the change.
 Never create list element IDs from row indexes.
 
+When `WirelessAvailability` is `RadioOff`, `NoAdapter`, or
+`ServiceUnavailable`, the Connect action remains visible for stable controller
+focus but is disabled with a state-specific label. Shortcut routing rechecks
+the same condition before invoking the broker, so X/A cannot issue a doomed
+connection request during a stale render.
+
 ## Controller and presentation contract
 
 The dashboard card is glanceable and read-only. It may show a connectivity
@@ -374,8 +380,9 @@ broker already uses codes such as `permission_denied`,
 `capability_not_declared`, `unsupported_capability`, `lifecycle_denied`, and
 `capability_revoked`. Normal network state belongs in the typed status fields:
 transport, wireless availability, details access, and connection-attempt state.
-Provider-specific channel/fatal error codes are not documented as stable public
-API until the production provider and its tests fix that vocabulary.
+`platform_unavailable` is the stable result when the provider cannot obtain a
+trustworthy native snapshot. It is distinct from a successful snapshot that
+reports `NoAdapter`, and an explicit retry performs one bounded recovery read.
 
 - Do not retry permission, declaration, lifecycle, or Windows privacy denial.
 - Retry transient channel/provider failures only after an explicit user action

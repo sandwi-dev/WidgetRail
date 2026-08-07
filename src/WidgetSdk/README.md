@@ -26,6 +26,10 @@ await WidgetTestHost.SetLifecycleStateAsync(
 await WidgetTestHost.DestroyAsync(widget);
 ```
 
+Pass `IsAvailable: false` in `WidgetAudioSessionsChanged` to simulate a live
+provider outage. This is not equivalent to an available event with an empty
+session list; widgets should render distinct recovery and empty states.
+
 Use `WithHandler` for request-dependent or asynchronous responses and
 `WithEventStream` for a live deterministic stream. The builder takes an
 immutable snapshot at `Build`. Missing operations/events fail with

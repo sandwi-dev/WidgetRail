@@ -11,6 +11,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Authenticated channel identity cannot be substituted", IdentityMismatchIsDenied),
     ("Request JSON is strict and bounded", RequestsAreStrictAndBounded),
     ("Audio operations expose sanitized task-shaped DTOs", AudioOperationsAreSanitized),
+    ("Master output capability validates payload lifecycle and events", MasterOutputContracts),
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
     ("Consent updates are atomic across store instances", ConsentUpdatesAreAtomic),
     ("Subscriptions coalesce and suspend with lifecycle", EventsCoalesceAcrossLifecycle),
@@ -49,7 +50,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(4, PlatformCapabilities.All.Count);
+    Assert.Equal(6, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -244,6 +245,57 @@ static async Task AudioOperationsAreSanitized()
         new { sessionId = "audio-1", volume = 0.4 }));
     Assert.True(controlled.Succeeded);
     Assert.Equal(1, backend.AudioControlCalls);
+}
+
+static async Task MasterOutputContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioOutputReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioOutputControlV1,
+        ConsentDecision.Grant);
+    var backend = AudioBackend();
+    backend.AudioOutput = new AudioOutputSummary(0.55, false);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.AudioOutputReadV1,
+        PlatformCapabilities.AudioOutputControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var malformed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioOutputReadV1, PlatformCapabilities.AudioOutputGet,
+        new { ignored = true }));
+    Assert.Equal("invalid_payload", malformed.ErrorCode);
+    var read = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioOutputReadV1, PlatformCapabilities.AudioOutputGet, new { }));
+    Assert.True(read.Succeeded && read.Payload is not null);
+    Assert.Contains("0.55", read.Payload!.Value.GetRawText());
+
+    var denied = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioOutputControlV1, PlatformCapabilities.AudioOutputSetMuted,
+        new { isMuted = true }));
+    Assert.Equal("lifecycle_denied", denied.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var controlled = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioOutputControlV1, PlatformCapabilities.AudioOutputSetVolume,
+        new { volume = 0.7 }));
+    Assert.True(controlled.Succeeded);
+    Assert.Equal(0.7, backend.AudioOutput.Volume);
+
+    var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.AudioOutputReadV1,
+        PlatformCapabilities.AudioOutputChanged);
+    backend.Publish(new(PlatformCapabilities.AudioOutputReadV1,
+        PlatformCapabilities.AudioOutputChanged,
+        new AudioOutputChangedEvent(new AudioOutputSummary(0.1, false), false)));
+    backend.Publish(new(PlatformCapabilities.AudioOutputReadV1,
+        PlatformCapabilities.AudioOutputChanged,
+        new AudioOutputChangedEvent(new AudioOutputSummary(0.8, true), true)));
+    var change = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Contains("0.8", change.Payload.GetRawText());
+    Assert.Contains("true", change.Payload.GetRawText());
+    await subscription.DisposeAsync();
 }
 
 static async Task NetworkOperationsAreSanitized()
@@ -746,6 +798,12 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
         Task.CompletedTask;
     public Task SetAudioSessionMutedAsync(string sessionId, bool isMuted, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+    public Task<AudioOutputSummary> GetAudioOutputAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AudioOutputSummary(0.5, false));
+    public Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
         Task.FromResult(TestNetwork.Disconnected());
     public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
@@ -764,6 +822,12 @@ sealed class SplitAudioBackend : IAudioPlatformBrokerBackend
     public Task SetAudioSessionVolumeAsync(string sessionId, double volume, CancellationToken cancellationToken) =>
         Task.CompletedTask;
     public Task SetAudioSessionMutedAsync(string sessionId, bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<AudioOutputSummary> GetAudioOutputAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AudioOutputSummary(0.5, false));
+    public Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
         Task.CompletedTask;
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }

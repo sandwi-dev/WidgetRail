@@ -142,6 +142,14 @@ public sealed partial class SettingsWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        // ReloadAsync owns the same operation gate used by normal actions. Keep
+        // refresh outside that critical section so controller refresh cannot
+        // deadlock while still serializing against every other mutation.
+        if (action.ActionId == "refresh")
+        {
+            await ReloadAsync(cancellationToken, "Settings refreshed").ConfigureAwait(false);
+            return;
+        }
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -264,7 +272,9 @@ public sealed partial class SettingsWidget : Widget
         }
     }
 
-    private async Task ReloadAsync(CancellationToken cancellationToken)
+    private async Task ReloadAsync(
+        CancellationToken cancellationToken,
+        string successStatus = "Ready")
     {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -317,7 +327,7 @@ public sealed partial class SettingsWidget : Widget
                 _themePage = Math.Clamp(_themePage, 0, LastThemePage(themes));
                 _busy = false;
                 _error = warning is not null;
-                _status = warning ?? "Ready";
+                _status = warning ?? successStatus;
             }
             Invalidate();
         }
@@ -434,15 +444,17 @@ public sealed partial class SettingsWidget : Widget
         var permissions = UI.Button("Permissions & capabilities", "open.permissions", "category.permissions")
             .FocusUp("category.installed-widgets").FocusDown("category.diagnostics").Busy(busy).Classes("category-card");
         var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
-            .FocusUp("category.permissions").FocusDown("category.reset").Classes("category-card");
+            .FocusUp("category.permissions").FocusDown("settings.refresh").Classes("category-card");
+        var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
+            .FocusUp("category.diagnostics").FocusDown("category.reset").Busy(busy).Classes("category-card");
         var reset = UI.Button("Reset", "open.reset", "category.reset")
-            .FocusUp("category.diagnostics").Classes("category-card", "danger-card");
+            .FocusUp("settings.refresh").Classes("category-card", "danger-card");
         return View(
             header,
             UI.Stack("settings.categories",
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
                     "settings.summary", "Selected theme").Classes("settings-summary"),
-                appearance, accessibility, overlay, installedWidgets, permissions, diagnostics, reset).Classes("category-list"),
+                appearance, accessibility, overlay, installedWidgets, permissions, diagnostics, refresh, reset).Classes("category-list"),
             "category.appearance",
             "settings-root");
     }

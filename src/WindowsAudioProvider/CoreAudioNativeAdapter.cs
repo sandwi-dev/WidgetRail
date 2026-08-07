@@ -26,10 +26,13 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
     private readonly object _callbackGate = new();
     private IMMDevice? _device;
     private IAudioSessionManager2? _manager;
+    private IAudioEndpointVolume? _endpointVolume;
     private SessionNotificationClient? _sessionNotifications;
+    private EndpointVolumeEventsClient? _endpointVolumeNotifications;
     private long _endpointGeneration;
     private int _endpointDirty = 1;
     private int _degraded = 1;
+    private int _outputDegraded = 1;
     private int _disposed;
 
     public CoreAudioNativeAdapter()
@@ -42,11 +45,12 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
 
     public event EventHandler? StateChanged;
     public bool IsDegraded => Volatile.Read(ref _degraded) != 0;
+    public bool IsOutputDegraded => Volatile.Read(ref _outputDegraded) != 0;
 
     public IReadOnlyList<NativeAudioSessionSnapshot> EnumerateSessions()
     {
         ThrowIfDisposed();
-        if (Volatile.Read(ref _endpointDirty) != 0) RebindDefaultEndpoint();
+        if (Volatile.Read(ref _endpointDirty) != 0 || _manager is null) RebindDefaultEndpoint();
         DrainCreatedSessions();
         DrainDisconnectedSessions();
         if (_manager is null) return [];
@@ -102,6 +106,20 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         return result;
     }
 
+    public NativeAudioOutputSnapshot? GetDefaultOutput()
+    {
+        ThrowIfDisposed();
+        if (Volatile.Read(ref _endpointDirty) != 0 || _endpointVolume is null) RebindDefaultEndpoint();
+        if (_endpointVolume is null) return null;
+        if (_endpointVolume.GetMasterVolumeLevelScalar(out var volume) < 0 ||
+            _endpointVolume.GetMute(out var muted) < 0)
+        {
+            MarkEndpointDirty();
+            return null;
+        }
+        return new NativeAudioOutputSnapshot(Math.Clamp(volume, 0, 1), muted);
+    }
+
     public bool TrySetSessionVolume(string nativeSessionKey, double volume)
     {
         ThrowIfDisposed();
@@ -130,36 +148,51 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         return true;
     }
 
+    public bool TrySetDefaultOutputVolume(double volume)
+    {
+        ThrowIfDisposed();
+        if (_endpointVolume is null) return false;
+        var context = _eventContext;
+        var hr = _endpointVolume.SetMasterVolumeLevelScalar(
+            (float)Math.Clamp(volume, 0, 1), ref context);
+        if (hr < 0)
+        {
+            MarkEndpointDirty();
+            return false;
+        }
+        return true;
+    }
+
+    public bool TrySetDefaultOutputMuted(bool isMuted)
+    {
+        ThrowIfDisposed();
+        if (_endpointVolume is null) return false;
+        var context = _eventContext;
+        var hr = _endpointVolume.SetMute(isMuted, ref context);
+        if (hr < 0)
+        {
+            MarkEndpointDirty();
+            return false;
+        }
+        return true;
+    }
+
     private void RebindDefaultEndpoint()
     {
         var generation = Interlocked.Increment(ref _endpointGeneration);
         ReleaseEndpoint();
         Volatile.Write(ref _degraded, 1);
+        Volatile.Write(ref _outputDegraded, 1);
         IMMDevice? device = null;
-        object? activated = null;
-        var bound = false;
         try
         {
             var hr = _deviceEnumerator.GetDefaultAudioEndpoint(
                 EDataFlow.Render, ERole.Multimedia, out device);
             if (hr < 0 || device is null) return;
-            var managerId = typeof(IAudioSessionManager2).GUID;
-            hr = device.Activate(ref managerId, ClsctxInprocServer, IntPtr.Zero, out activated);
-            if (hr < 0 || activated is not IAudioSessionManager2 manager) return;
             _device = device;
             device = null;
-            _manager = manager;
-            activated = null;
-            _sessionNotifications = new SessionNotificationClient(
-                pointer => QueueCreatedSession(generation, pointer));
-            hr = manager.RegisterSessionNotification(_sessionNotifications);
-            if (hr < 0)
-            {
-                ReleaseEndpoint();
-                return;
-            }
-            bound = true;
-            Volatile.Write(ref _degraded, 0);
+            TryBindSessions(_device, generation);
+            TryBindOutput(_device);
         }
         catch (COMException)
         {
@@ -167,9 +200,73 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         }
         finally
         {
-            Volatile.Write(ref _endpointDirty, bound ? 0 : 1);
-            CoreAudioInterop.ReleaseFinal(activated);
+            Volatile.Write(ref _endpointDirty, _device is null ? 1 : 0);
             CoreAudioInterop.Release(device);
+        }
+    }
+
+    private void TryBindSessions(IMMDevice device, long generation)
+    {
+        object? activation = null;
+        IAudioSessionManager2? manager = null;
+        SessionNotificationClient? notifications = null;
+        try
+        {
+            var interfaceId = typeof(IAudioSessionManager2).GUID;
+            if (device.Activate(ref interfaceId, ClsctxInprocServer, IntPtr.Zero, out activation) < 0 ||
+                activation is not IAudioSessionManager2 activatedManager) return;
+            manager = activatedManager;
+            notifications = new SessionNotificationClient(
+                pointer => QueueCreatedSession(generation, pointer));
+            if (manager.RegisterSessionNotification(notifications) < 0) return;
+            _manager = manager;
+            activation = null;
+            _sessionNotifications = notifications;
+            manager = null;
+            notifications = null;
+            Volatile.Write(ref _degraded, 0);
+        }
+        catch (COMException) { }
+        finally
+        {
+            if (manager is not null && notifications is not null)
+            {
+                try { manager.UnregisterSessionNotification(notifications); }
+                catch (COMException) { }
+            }
+            CoreAudioInterop.ReleaseFinal(activation);
+        }
+    }
+
+    private void TryBindOutput(IMMDevice device)
+    {
+        object? activation = null;
+        IAudioEndpointVolume? volume = null;
+        EndpointVolumeEventsClient? notifications = null;
+        try
+        {
+            var interfaceId = typeof(IAudioEndpointVolume).GUID;
+            if (device.Activate(ref interfaceId, ClsctxInprocServer, IntPtr.Zero, out activation) < 0 ||
+                activation is not IAudioEndpointVolume activatedVolume) return;
+            volume = activatedVolume;
+            notifications = new EndpointVolumeEventsClient(_eventContext, SignalChanged);
+            if (volume.RegisterControlChangeNotify(notifications) < 0) return;
+            _endpointVolume = volume;
+            activation = null;
+            _endpointVolumeNotifications = notifications;
+            volume = null;
+            notifications = null;
+            Volatile.Write(ref _outputDegraded, 0);
+        }
+        catch (COMException) { }
+        finally
+        {
+            if (volume is not null && notifications is not null)
+            {
+                try { volume.UnregisterControlChangeNotify(notifications); }
+                catch (COMException) { }
+            }
+            CoreAudioInterop.ReleaseFinal(activation);
         }
     }
 
@@ -293,6 +390,7 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         if (Volatile.Read(ref _disposed) != 0) return;
         Volatile.Write(ref _endpointDirty, 1);
         Volatile.Write(ref _degraded, 1);
+        Volatile.Write(ref _outputDegraded, 1);
         SignalChanged();
     }
 
@@ -300,6 +398,7 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
     {
         Volatile.Write(ref _endpointDirty, 1);
         Volatile.Write(ref _degraded, 1);
+        Volatile.Write(ref _outputDegraded, 1);
     }
 
     private void SignalChanged()
@@ -318,6 +417,18 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
     private void ReleaseEndpoint()
     {
         foreach (var key in _sessions.Keys.ToArray()) RemoveSession(key);
+        if (_endpointVolume is not null)
+        {
+            try
+            {
+                if (_endpointVolumeNotifications is not null)
+                    _endpointVolume.UnregisterControlChangeNotify(_endpointVolumeNotifications);
+            }
+            catch (COMException) { }
+            CoreAudioInterop.ReleaseFinal(_endpointVolume);
+            _endpointVolume = null;
+        }
+        _endpointVolumeNotifications = null;
         if (_manager is not null)
         {
             try
@@ -364,6 +475,28 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         Available,
         Expired,
         Unavailable,
+    }
+}
+
+[ComVisible(true)]
+[ClassInterface(ClassInterfaceType.None)]
+internal sealed class EndpointVolumeEventsClient(
+    Guid ownContext,
+    Action changed) : IAudioEndpointVolumeCallback
+{
+    public int OnNotify(IntPtr notificationData)
+    {
+        if (notificationData == IntPtr.Zero) return 0;
+        try
+        {
+            var notification = Marshal.PtrToStructure<AudioVolumeNotificationData>(notificationData);
+            if (notification.EventContext != ownContext) changed();
+        }
+        catch
+        {
+            // Native callbacks never allow managed parsing failures to cross COM.
+        }
+        return 0;
     }
 }
 

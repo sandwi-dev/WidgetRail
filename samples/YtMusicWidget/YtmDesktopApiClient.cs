@@ -15,12 +15,20 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
 
     private readonly Uri _baseUri;
     private readonly HttpClient _client;
+    private readonly IYtMusicCredentialStore _credentialStore;
+    private readonly object _credentialLock = new();
     private string? _token;
 
-    public YtmDesktopApiClient(string endpoint = DefaultEndpoint, string? token = null, HttpMessageHandler? handler = null)
+    public YtmDesktopApiClient(
+        string endpoint = DefaultEndpoint,
+        string? token = null,
+        HttpMessageHandler? handler = null,
+        IYtMusicCredentialStore? credentialStore = null)
     {
         _baseUri = ValidateEndpoint(endpoint);
-        _token = NormalizeToken(token);
+        _credentialStore = credentialStore ??
+            new WindowsCredentialManagerYtMusicCredentialStore(_baseUri.AbsoluteUri);
+        _token = NormalizeToken(token) ?? NormalizeToken(_credentialStore.LoadToken());
         handler ??= new HttpClientHandler
         {
             UseProxy = false,
@@ -35,7 +43,9 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
     public async Task<YtMusicConnectionInfo> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         using var document = await SendAsync(HttpMethod.Get, "/", null, cancellationToken).ConfigureAwait(false);
-        return new YtMusicConnectionInfo(GetBoolean(document.RootElement, "authRequired"));
+        return new YtMusicConnectionInfo(
+            GetBoolean(document.RootElement, "authRequired"),
+            HasCredential());
     }
 
     public async Task<YtMusicPlaybackSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
@@ -75,7 +85,12 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
             appName = "Game Bar Alternative YT Music",
             appVersion = "0.1.0",
         };
-        using var document = await SendAsync(HttpMethod.Post, "/auth/requestcode", body, cancellationToken).ConfigureAwait(false);
+        using var document = await SendAsync(
+            HttpMethod.Post,
+            "/auth/requestcode",
+            body,
+            cancellationToken,
+            includeAuthorization: false).ConfigureAwait(false);
         var code = GetString(document.RootElement, "code");
         if (string.IsNullOrWhiteSpace(code))
             throw new InvalidOperationException("YTMDesktop2 did not return a pairing code.");
@@ -86,11 +101,24 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         var body = new { appId = "gamebaralternative.ytmusic", code = code.Trim() };
-        using var document = await SendAsync(HttpMethod.Post, "/auth/request", body, cancellationToken).ConfigureAwait(false);
+        using var document = await SendAsync(
+            HttpMethod.Post,
+            "/auth/request",
+            body,
+            cancellationToken,
+            includeAuthorization: false).ConfigureAwait(false);
         var token = GetString(document.RootElement, "token");
         if (string.IsNullOrWhiteSpace(token))
             throw new InvalidOperationException("YTMDesktop2 approved pairing but returned no token.");
-        _token = NormalizeToken(token);
+        var normalized = NormalizeToken(token)!;
+        _credentialStore.SaveToken(normalized);
+        lock (_credentialLock) _token = normalized;
+    }
+
+    public void ClearCredential()
+    {
+        lock (_credentialLock) _token = null;
+        _credentialStore.ClearToken();
     }
 
     public void Dispose() => _client.Dispose();
@@ -118,11 +146,18 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         var video = GetObject(track, "video");
         var music = GetObject(track, "music");
         var meta = GetObject(track, "meta");
-        var title = GetString(video, "title") ?? "YouTube Music";
-        var artist = GetString(video, "author") ?? "YTMDesktop2";
+        var metadataTrackId = GetString(video, "videoId") ?? string.Empty;
+        var metadataTitle = GetString(video, "title");
+        var metadataArtist = GetString(video, "author");
+        var hasCompleteMetadata =
+            !string.IsNullOrWhiteSpace(metadataTrackId) &&
+            !string.IsNullOrWhiteSpace(metadataTitle) &&
+            !string.IsNullOrWhiteSpace(metadataArtist);
+        var title = hasCompleteMetadata ? metadataTitle! : "YouTube Music";
+        var artist = hasCompleteMetadata ? metadataArtist! : "No track metadata available";
         var album = GetString(music, "album") ?? string.Empty;
         var artwork = GetString(meta, "thumbnail") ?? string.Empty;
-        var trackId = GetString(state, "id") ?? GetString(video, "videoId") ?? string.Empty;
+        var trackId = GetString(state, "id") ?? metadataTrackId;
         var duration = GetNumber(state, "duration", GetNumber(meta, "duration", 0));
         var position = GetNumber(state, "uiProgress", GetNumber(state, "progress", 0));
         duration = SanitizeNonNegative(duration);
@@ -140,22 +175,29 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
             position,
             duration,
             GetOptionalBoolean(state, "shuffle") ?? GetOptionalBoolean(state, "shuffled"),
-            GetOptionalRepeatMode(state));
+            GetOptionalRepeatMode(state),
+            metadataTrackId,
+            hasCompleteMetadata);
     }
 
     private async Task<JsonDocument> SendAsync(
         HttpMethod method,
         string path,
         object? body,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeAuthorization = true)
     {
         using var request = new HttpRequestMessage(method, new Uri(_baseUri, path.TrimStart('/')));
-        if (!string.IsNullOrWhiteSpace(_token))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+        string? token;
+        lock (_credentialLock) token = _token;
+        if (includeAuthorization && !string.IsNullOrWhiteSpace(token))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (body is not null)
             request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
         using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new YtMusicAuthorizationRequiredException();
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
@@ -236,6 +278,10 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
     }
 
     private static string? NormalizeToken(string? token) => string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+    private bool HasCredential()
+    {
+        lock (_credentialLock) return !string.IsNullOrWhiteSpace(_token);
+    }
     private static double SanitizeNonNegative(double value) => double.IsFinite(value) ? Math.Max(0, value) : 0;
 
     private static bool IsSafeArtworkUrl(string value) =>

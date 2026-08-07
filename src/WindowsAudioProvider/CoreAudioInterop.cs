@@ -224,6 +224,48 @@ internal interface ISimpleAudioVolume
     [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool muted);
 }
 
+[ComImport]
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IAudioEndpointVolume
+{
+    [PreserveSig] int RegisterControlChangeNotify(IAudioEndpointVolumeCallback notify);
+    [PreserveSig] int UnregisterControlChangeNotify(IAudioEndpointVolumeCallback notify);
+    [PreserveSig] int GetChannelCount(out uint channelCount);
+    [PreserveSig] int SetMasterVolumeLevel(float levelDb, ref Guid eventContext);
+    [PreserveSig] int SetMasterVolumeLevelScalar(float level, ref Guid eventContext);
+    [PreserveSig] int GetMasterVolumeLevel(out float levelDb);
+    [PreserveSig] int GetMasterVolumeLevelScalar(out float level);
+    [PreserveSig] int SetChannelVolumeLevel(uint channel, float levelDb, ref Guid eventContext);
+    [PreserveSig] int SetChannelVolumeLevelScalar(uint channel, float level, ref Guid eventContext);
+    [PreserveSig] int GetChannelVolumeLevel(uint channel, out float levelDb);
+    [PreserveSig] int GetChannelVolumeLevelScalar(uint channel, out float level);
+    [PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool muted, ref Guid eventContext);
+    [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool muted);
+    [PreserveSig] int GetVolumeStepInfo(out uint step, out uint stepCount);
+    [PreserveSig] int VolumeStepUp(ref Guid eventContext);
+    [PreserveSig] int VolumeStepDown(ref Guid eventContext);
+    [PreserveSig] int QueryHardwareSupport(out uint hardwareSupportMask);
+    [PreserveSig] int GetVolumeRange(out float minDb, out float maxDb, out float incrementDb);
+}
+
+[ComVisible(true)]
+[Guid("657804FA-D6AD-4496-8A60-352752AF4F89")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IAudioEndpointVolumeCallback
+{
+    [PreserveSig] int OnNotify(IntPtr notificationData);
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct AudioVolumeNotificationData
+{
+    internal Guid EventContext;
+    [MarshalAs(UnmanagedType.Bool)] internal bool IsMuted;
+    internal float MasterVolume;
+    internal uint ChannelCount;
+}
+
 [ComVisible(true)]
 [Guid("C3B284D4-6D39-4359-B3CF-B56DDB3BB39C")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

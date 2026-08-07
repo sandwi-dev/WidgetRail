@@ -333,14 +333,21 @@ public sealed partial class SettingsWidget
             await _widgetCatalog.SetActiveVersionAsync(
                 selected.Id, requested.Version, cancellationToken).ConfigureAwait(false);
             var refreshed = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            // Version changes can replace declarations and always replace the
+            // installed package authority. Refresh the permission projection
+            // before reporting success so this still-visible Settings worker
+            // can never grant against the previously selected version.
+            var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
+                .ConfigureAwait(false);
             lock (_stateLock)
             {
                 _installedWidgets = refreshed;
                 _installedWidgetCatalogValid = true;
                 _installedWidgetDiagnostic = null;
                 _busy = false;
-                _error = false;
-                _status = $"{selected.Name} {requested.Version} selected; review before enabling";
+                _error = permissionWarning is not null;
+                _status = permissionWarning ??
+                    $"{selected.Name} {requested.Version} selected; review before enabling";
             }
         }
         catch (WidgetPackageException exception)

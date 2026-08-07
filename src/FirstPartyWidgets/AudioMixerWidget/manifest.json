@@ -14,10 +14,12 @@
     "type": "GameBarAlternative.FirstPartyWidgets.AudioMixer.AudioMixerWidget"
   },
   "permissions": [
-    "system.audio.sessions.read.v1"
+    "system.audio.sessions.read.v1",
+    "system.audio.output.read.v1"
   ],
   "optionalPermissions": [
-    "system.audio.sessions.control.v1"
+    "system.audio.sessions.control.v1",
+    "system.audio.output.control.v1"
   ],
   "backgroundPolicy": "suspend",
   "resourceRequest": {

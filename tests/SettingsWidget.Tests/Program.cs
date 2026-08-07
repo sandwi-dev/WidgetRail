@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
+    ("Installed version changes immediately refresh permission authority", InstalledVersionRefreshesPermissions),
     ("Malformed installed widget catalogs fail closed", InstalledWidgetCatalogFailure),
     ("Installed widget review reloads only on activation", InstalledWidgetActivationReload),
     ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
@@ -35,6 +36,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Permission catalog reloads only on activation", PermissionActivationReload),
     ("Bundled first-party capability manifests join permission review", BundledPermissionsAreDiscovered),
     ("First-party packages are never auto-granted", FirstPartyIsNotAutoGranted),
+    ("Explicit refresh reloads themes catalog and permissions while visible", ExplicitRefresh),
     ("Manifest and default GBSS validate", ShippedAssetsValidate),
 };
 
@@ -63,7 +65,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.permissions", "category.diagnostics", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.permissions", "category.diagnostics", "settings.refresh", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
@@ -454,6 +456,76 @@ static async Task InstalledWidgetVersionRollback()
     Assert.Valid(versions);
     Assert.Valid(rolledBack);
     Assert.Valid(enabled);
+}
+
+static async Task InstalledVersionRefreshesPermissions()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    const string widgetId = "dev.test.permission-version";
+    WriteInstalledWidget(catalogRoot, widgetId, "dev.publisher.versioned", "Versioned permissions",
+        [PlatformCapabilities.AudioSessionsReadV1], [], version: "1.0.0");
+    WriteInstalledWidget(catalogRoot, widgetId, "dev.publisher.versioned", "Versioned permissions",
+        [PlatformCapabilities.NetworkReadV1], [], version: "2.0.0");
+
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.select.0");
+    await Action(widget, "installed.versions.open");
+    await Action(widget, "installed.version.select.1");
+
+    await Action(widget, "back");
+    await Action(widget, "back");
+    await Action(widget, "back");
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    var capabilities = Snapshot(widget);
+    Assert.Equal(1, Buttons(capabilities.Root).Count(button =>
+        button.Id.StartsWith("capability.item.", StringComparison.Ordinal)));
+    Assert.Contains("Read audio sessions", Button(capabilities.Root, "capability.item.0").Text!);
+    Assert.True(!Nodes(capabilities.Root).Any(node =>
+            node.Text?.Contains("Read network status", StringComparison.Ordinal) == true),
+        "Permissions retained declarations from the previously active version.");
+
+    await Action(widget, "capability.select.0");
+    await Action(widget, "capability.grant");
+    Assert.Equal(ConsentDecision.Grant, await consent.GetDecisionAsync(
+        new(widgetId, InstalledAuthority(catalogRoot, widgetId, "1.0.0"), "test"),
+        PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Equal((ConsentDecision?)null, await consent.GetDecisionAsync(
+        new(widgetId, InstalledAuthority(catalogRoot, widgetId, "2.0.0"), "test"),
+        PlatformCapabilities.NetworkReadV1));
+    Assert.Valid(capabilities);
+}
+
+static async Task ExplicitRefresh()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+
+    WriteTheme(temp.Path, "dev.test.refreshed", "Refreshed", "1.0.0", valid: true);
+    WriteInstalledWidget(catalogRoot, "dev.test.refreshed-widget", "dev.publisher.refreshed",
+        "Refreshed widget", [PlatformCapabilities.NetworkReadV1], []);
+
+    await Action(widget, "refresh");
+    Assert.Contains("Settings refreshed", Text(Snapshot(widget).Root, "settings.status").Text!);
+    await Action(widget, "open.appearance");
+    await Action(widget, "open.themes");
+    Assert.True(Buttons(Snapshot(widget).Root).Any(button =>
+            button.Text?.Contains("Refreshed", StringComparison.Ordinal) == true),
+        "Explicit refresh did not reload theme discovery.");
+    await Action(widget, "back");
+    await Action(widget, "back");
+    await Action(widget, "open.installed-widgets");
+    Assert.Contains("Refreshed widget", Button(Snapshot(widget).Root, "installed.item.0").Text!);
+    await Action(widget, "back");
+    await Action(widget, "open.permissions");
+    Assert.Contains("Refreshed widget", Button(Snapshot(widget).Root, "permission.item.0").Text!);
 }
 
 static async Task InstalledWidgetCatalogFailure()

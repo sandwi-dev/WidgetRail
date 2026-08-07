@@ -22,6 +22,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
 
     public int AudioControlCalls { get; private set; }
     public int NetworkSwitchCalls { get; private set; }
+    public AudioOutputSummary AudioOutput { get; set; } = new(0.5, false);
 
     public void SetAudioSessions(IEnumerable<AudioSessionSummary> sessions)
     {
@@ -58,6 +59,28 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         AudioControlCalls++;
+        return Task.CompletedTask;
+    }
+
+    public Task<AudioOutputSummary> GetAudioOutputAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(AudioOutput);
+    }
+
+    public Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AudioControlCalls++;
+        AudioOutput = AudioOutput with { Volume = volume };
+        return Task.CompletedTask;
+    }
+
+    public Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AudioControlCalls++;
+        AudioOutput = AudioOutput with { IsMuted = isMuted };
         return Task.CompletedTask;
     }
 
