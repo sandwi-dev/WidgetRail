@@ -214,7 +214,30 @@ static Task ThemeDiscovery()
     var builtIn = catalog.BuiltInDefault;
     var compiled = GbssThemeCompiler.Compile(builtIn.Package);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
-    Assert.Equal("#010203", compiled.Theme!.Resolve(new GbssElement("canvas")).Get("background")!.Text);
+    var canvas = compiled.Theme!.Resolve(new GbssElement("canvas"));
+    Assert.Equal("#090908", canvas.Get("background")!.Text);
+    Assert.Equal("Segoe UI Variable Text, Segoe UI", canvas.Get("font-family")!.Text);
+    var panel = compiled.Theme.Resolve(new GbssElement("panel"));
+    Assert.Equal("1px", panel.Get("border-width")!.Text);
+    Assert.Equal("12px", panel.Get("corner-radius")!.Text);
+    var button = compiled.Theme.Resolve(new GbssElement("button"));
+    Assert.Equal("44px", button.Get("min-height")!.Text);
+    Assert.Equal("10px", button.Get("corner-radius")!.Text);
+    Assert.Equal("400", button.Get("font-weight")!.Text);
+    Assert.True(button.Get("shadow-blur") is null,
+        "The minimalist default must not add a heavy component shadow.");
+    var primaryIconButton = compiled.Theme.Resolve(new GbssElement(
+        "button",
+        null,
+        new HashSet<string>(["gbar-icon-button", "gbar-icon-button--primary"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("44px", primaryIconButton.Get("min-width")!.Text);
+    Assert.Equal("44px", primaryIconButton.Get("min-height")!.Text);
+    Assert.Equal("10px", primaryIconButton.Get("corner-radius")!.Text);
+    Assert.Equal("#b8ae92", primaryIconButton.Get("background")!.Text);
+    var slider = compiled.Theme.Resolve(new GbssElement("slider"));
+    Assert.Equal("44px", slider.Get("min-height")!.Text);
+    Assert.Equal("1px", slider.Get("border-width")!.Text);
     var segmentedTabs = compiled.Theme.Resolve(new GbssElement(
         "row",
         null,
@@ -222,12 +245,24 @@ static Task ThemeDiscovery()
         new HashSet<GbssPseudoState>()));
     Assert.Equal("50px", segmentedTabs.Get("min-height")!.Text);
     Assert.Equal("0", segmentedTabs.Get("flex-shrink")!.Text);
+    Assert.Equal("1px", segmentedTabs.Get("border-width")!.Text);
     var focusedButton = compiled.Theme.Resolve(new GbssElement(
         "button",
         null,
         new HashSet<string>(),
         new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
     Assert.Equal("1", focusedButton.Get("scale")!.Text);
+    Assert.Equal("#f4f0e8", focusedButton.Get("outline-color")!.Text);
+    Assert.Equal("-2px", focusedButton.Get("outline-offset")!.Text);
+    Assert.True(focusedButton.Get("transition-duration") is null,
+        "The built-in theme must not imply animation before the renderer interpolates transitions.");
+    var eyebrow = compiled.Theme.Resolve(new GbssElement(
+        "text",
+        null,
+        new HashSet<string>(["gbar-section-header__eyebrow"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("none", eyebrow.Get("text-transform")!.Text);
+    Assert.Equal("500", eyebrow.Get("font-weight")!.Text);
     foreach (var role in new[] { "button", "slider" })
     {
         foreach (var state in new[] { GbssPseudoState.Disabled, GbssPseudoState.Busy })
