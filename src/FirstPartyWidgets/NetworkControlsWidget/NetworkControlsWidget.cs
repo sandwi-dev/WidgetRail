@@ -23,6 +23,12 @@ public enum NetworkControlsViewState
     Error,
 }
 
+public enum NetworkControlsTab
+{
+    Wifi,
+    Bluetooth,
+}
+
 /// <summary>
 /// Event-driven, controller-first view of the Wi-Fi networks in the host's most
 /// recent bounded scan. Platform work and network credentials remain in trusted
@@ -73,6 +79,7 @@ public sealed class NetworkControlsWidget : Widget
     private int _radioControlCount;
     private int _bluetoothFetchCount;
     private int _bluetoothRadioControlCount;
+    private NetworkControlsTab _activeTab;
 
     public NetworkControlsViewState ViewState
     {
@@ -132,6 +139,10 @@ public sealed class NetworkControlsWidget : Widget
     public int RadioControlCount => Volatile.Read(ref _radioControlCount);
     public int BluetoothFetchCount => Volatile.Read(ref _bluetoothFetchCount);
     public int BluetoothRadioControlCount => Volatile.Read(ref _bluetoothRadioControlCount);
+    public NetworkControlsTab ActiveTab
+    {
+        get { lock (_stateLock) return _activeTab; }
+    }
     public WidgetBluetoothSnapshot? Bluetooth
     {
         get
@@ -161,6 +172,7 @@ public sealed class NetworkControlsWidget : Widget
         string? selectedBluetoothId;
         string? pendingId;
         string? selectedId;
+        NetworkControlsTab activeTab;
         lock (_stateLock)
         {
             status = _networkStatus;
@@ -179,6 +191,7 @@ public sealed class NetworkControlsWidget : Widget
             selectedBluetoothId = _selectedBluetoothDeviceId;
             pendingId = _pendingNetworkId;
             selectedId = _selectedNetworkId;
+            activeTab = _activeTab;
         }
 
         var header = UI.Stack("network.header",
@@ -194,18 +207,61 @@ public sealed class NetworkControlsWidget : Widget
         if (status is null || wifi is null || radio is null)
             return RenderProviderState(header, state);
 
+        var interactive = LifecycleState == WidgetLifecycleState.Interactive;
+        var networks = wifi.ScanState == WidgetWifiScanState.Ready ? wifi.Networks : [];
+        var selectedNetwork = networks.FirstOrDefault(network =>
+            string.Equals(network.NetworkId, selectedId, StringComparison.Ordinal)) ??
+            networks.FirstOrDefault();
+        var wifiInitialFocus = selectedNetwork is null
+            ? "network.wifi.scan"
+            : NetworkElementId(selectedNetwork.NetworkId);
+        var bluetoothDevices = bluetooth?.DiscoveryState == WidgetBluetoothDiscoveryState.Ready
+            ? bluetooth.Devices
+            : [];
+        var selectedBluetooth = bluetoothDevices.FirstOrDefault(device =>
+            string.Equals(device.DeviceId, selectedBluetoothId, StringComparison.Ordinal)) ??
+            bluetoothDevices.FirstOrDefault();
+        var bluetoothInitialFocus = selectedBluetooth is null
+            ? "network.bluetooth.radio"
+            : BluetoothElementId(selectedBluetooth.DeviceId);
+        var activeInitialFocus = activeTab == NetworkControlsTab.Wifi
+            ? wifiInitialFocus
+            : bluetoothInitialFocus;
+
+        var tabs = UI.SegmentedTabs("network.tabs",
+            activeTab == NetworkControlsTab.Wifi ? "network.tab.wifi" : "network.tab.bluetooth",
+            new SegmentedTab("network.tab.wifi", "Wi-Fi", "network.tab.select", "Wi-Fi controls"),
+            new SegmentedTab("network.tab.bluetooth", "Bluetooth", "network.tab.select", "Bluetooth controls"));
+        tabs = tabs with
+        {
+            Children = tabs.Children.Select(child => child is ButtonElement button
+                ? button.FocusUp(button.Id).FocusDown(activeInitialFocus)
+                : child).ToArray(),
+        };
+
         var content = new List<WidgetElement>
         {
             header,
             RenderConnectionCard(status),
-            RenderRadioControl(radio, radioBusy),
+            tabs,
         };
 
-        var note = WirelessNote(status, wifi.ScanState);
-        if (note is not null) content.Add(RenderNotice(note.Value));
+        if (activeTab == NetworkControlsTab.Bluetooth)
+        {
+            content.Add(UI.VerticalScroll("network.bluetooth.body.scroll",
+                    RenderBluetoothSection(bluetooth, bluetoothMessage, bluetoothIsError,
+                        bluetoothBusy, selectedBluetoothId).ToArray())
+                .Classes("network-view-scroll", "network-bluetooth-view"));
+        }
+        else
+        {
+            var wifiContent = new List<WidgetElement>
+            {
+                RenderRadioControl(radio, radioBusy),
+            };
+            var note = WirelessNote(status, wifi.ScanState);
+            if (note is not null) wifiContent.Add(RenderNotice(note.Value));
 
-        var interactive = LifecycleState == WidgetLifecycleState.Interactive;
-        var networks = wifi.ScanState == WidgetWifiScanState.Ready ? wifi.Networks : [];
         var scanButton = UI.Button(
                 scanBusy ? "Scanning…" : wifi.ScanState == WidgetWifiScanState.NotScanned
                     ? "Scan for networks" : "Scan again",
@@ -218,7 +274,8 @@ public sealed class NetworkControlsWidget : Widget
             .FocusRight("network.wifi.scan")
             .Classes("network-scan-action");
 
-        content.Add(UI.Row("network.wifi.heading",
+            var wifiHeadingIndex = wifiContent.Count;
+            wifiContent.Add(UI.Row("network.wifi.heading",
                 UI.Stack("network.wifi.heading.copy",
                         UI.Text("AVAILABLE WI-FI", "network.wifi.label", "Available Wi-Fi networks")
                             .Classes("network-section-label"),
@@ -228,26 +285,20 @@ public sealed class NetworkControlsWidget : Widget
                 scanButton)
             .Classes("network-section-heading"));
 
-        string initialFocus;
         if (networks.Count == 0)
         {
-            content.Add(RenderWifiState(wifi.ScanState));
-            initialFocus = "network.wifi.scan";
+                wifiContent.Add(RenderWifiState(wifi.ScanState));
         }
         else
         {
-            var selected = networks.FirstOrDefault(network =>
-                string.Equals(network.NetworkId, selectedId, StringComparison.Ordinal)) ?? networks[0];
-            content.Add(RenderNetworkList(networks, selected, controlBusy, pendingId,
-                "network.bluetooth.radio"));
-            initialFocus = NetworkElementId(selected.NetworkId);
+                wifiContent.AddRange(RenderNetworkRows(
+                    networks, selectedNetwork!, controlBusy, pendingId));
         }
 
-        scanButton = scanButton.FocusDown(networks.Count == 0
-            ? "network.bluetooth.radio"
-            : NetworkElementId(networks[0].NetworkId));
+        if (networks.Count > 0)
+            scanButton = scanButton.FocusDown(NetworkElementId(networks[0].NetworkId));
         // Replace the heading's immutable button with its completed focus graph.
-        content[^2] = UI.Row("network.wifi.heading",
+            wifiContent[wifiHeadingIndex] = UI.Row("network.wifi.heading",
                 UI.Stack("network.wifi.heading.copy",
                         UI.Text("AVAILABLE WI-FI", "network.wifi.label", "Available Wi-Fi networks")
                             .Classes("network-section-label"),
@@ -257,17 +308,18 @@ public sealed class NetworkControlsWidget : Widget
                 scanButton)
             .Classes("network-section-heading");
 
-        var wifiLastFocus = networks.Count == 0
-            ? "network.wifi.scan"
-            : NetworkElementId(networks[^1].NetworkId);
-        content.AddRange(RenderBluetoothSection(
-            bluetooth, bluetoothMessage, bluetoothIsError, bluetoothBusy,
-            selectedBluetoothId, wifiLastFocus));
+            content.Add(UI.VerticalScroll("network.wifi.body.scroll", wifiContent.ToArray())
+                .Classes("network-view-scroll", "network-wifi-view"));
+        }
 
         var root = UI.Stack("network.root", content.ToArray())
             .InputScope("network-controls")
-            .Classes("network-controls-widget", networks.Count == 0 ? "has-state" : "has-networks");
-        return new WidgetView(root, InitialFocusId: initialFocus, Surface: CompactSurface);
+            .Shortcut(ControllerButton.LeftBumper, "network.tab.previous")
+            .Shortcut(ControllerButton.RightBumper, "network.tab.next")
+            .Classes("network-controls-widget",
+                activeTab == NetworkControlsTab.Wifi ? "is-wifi" : "is-bluetooth",
+                networks.Count == 0 ? "has-state" : "has-networks");
+        return new WidgetView(root, InitialFocusId: activeInitialFocus, Surface: CompactSurface);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -307,6 +359,13 @@ public sealed class NetworkControlsWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         switch (action.ActionId)
         {
+            case "network.tab.select":
+                SelectTab(action.SourceElementId);
+                break;
+            case "network.tab.previous":
+            case "network.tab.next":
+                ToggleTab();
+                break;
             case "wifi.scan":
                 await RequestScanAsync(cancellationToken).ConfigureAwait(false);
                 break;
@@ -328,6 +387,25 @@ public sealed class NetworkControlsWidget : Widget
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
                 break;
         }
+    }
+
+    public override ValueTask<bool> OnControllerInputAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (input.Context == ControllerInputContext.OpenWidget &&
+            input.FocusedElementId is { } focusedId)
+        {
+            // The host owns directional focus movement. Remember the last row
+            // it reports so switching tabs, returning to the tray, or reopening
+            // this live worker restores each view independently.
+            if (ActiveTab == NetworkControlsTab.Wifi)
+                SelectNetworkFromElementId(focusedId);
+            else
+                SelectBluetoothFromElementId(focusedId);
+        }
+        return base.OnControllerInputAsync(input, cancellationToken);
     }
 
     private RowElement RenderConnectionCard(WidgetNetworkStatus status)
@@ -400,7 +478,7 @@ public sealed class NetworkControlsWidget : Widget
             .Icon(WidgetGlyph.Wifi, label)
             .Busy(busy)
             .Disabled(LifecycleState != WidgetLifecycleState.Interactive || busy || !radio.CanControl)
-            .FocusUp("network.wifi.radio")
+            .FocusUp("network.tab.wifi")
             .FocusDown("network.wifi.scan")
             .FocusLeft("network.wifi.radio")
             .FocusRight("network.wifi.radio")
@@ -454,12 +532,11 @@ public sealed class NetworkControlsWidget : Widget
             .Classes("network-state-card");
     }
 
-    private ScrollElement RenderNetworkList(
+    private IReadOnlyList<WidgetElement> RenderNetworkRows(
         IReadOnlyList<WidgetAvailableWifiNetwork> networks,
         WidgetAvailableWifiNetwork selected,
         bool controlBusy,
-        string? pendingId,
-        string finalFocusDown)
+        string? pendingId)
     {
         var interactive = LifecycleState == WidgetLifecycleState.Interactive;
         var ids = networks.Select(network => NetworkElementId(network.NetworkId)).ToArray();
@@ -479,12 +556,12 @@ public sealed class NetworkControlsWidget : Widget
                 .Disabled(!interactive || controlBusy || network.IsConnected)
                 .Shortcut(ControllerButton.X, actionId: "wifi.connect.item")
                 .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
-                .FocusDown(index == networks.Count - 1 ? finalFocusDown : ids[index + 1])
                 .FocusLeft(id)
                 .FocusRight(id)
                 .Classes("network-profile-button",
                     network.IsConnected ? "is-connected" : "is-available",
                     isPending ? "is-pending" : "is-ready");
+            if (index < networks.Count - 1) button = button.FocusDown(ids[index + 1]);
             rows[index] = UI.Stack($"{id}.row",
                     button,
                     UI.Row($"{id}.meta",
@@ -497,7 +574,7 @@ public sealed class NetworkControlsWidget : Widget
                     isSelected ? "is-selected" : "is-unselected",
                     isPending ? "is-pending" : "is-ready");
         }
-        return UI.VerticalScroll("network.wifi.scroll", rows).Classes("network-profile-list");
+        return rows;
     }
 
     private IEnumerable<WidgetElement> RenderBluetoothSection(
@@ -505,8 +582,7 @@ public sealed class NetworkControlsWidget : Widget
         string message,
         bool messageIsError,
         bool busy,
-        string? selectedDeviceId,
-        string focusUp)
+        string? selectedDeviceId)
     {
         var radioState = snapshot?.RadioState ?? WidgetBluetoothRadioState.Unavailable;
         var isOn = radioState == WidgetBluetoothRadioState.On;
@@ -530,7 +606,7 @@ public sealed class NetworkControlsWidget : Widget
             .Busy(busy)
             .Disabled(LifecycleState != WidgetLifecycleState.Interactive || busy ||
                 snapshot?.CanControlRadio != true)
-            .FocusUp(focusUp)
+            .FocusUp("network.tab.bluetooth")
             .FocusLeft("network.bluetooth.radio")
             .FocusRight("network.bluetooth.radio")
             .Classes("network-radio-toggle", "network-bluetooth-toggle",
@@ -615,8 +691,29 @@ public sealed class NetworkControlsWidget : Widget
                 .Classes("network-profile-row", "network-bluetooth-device-row",
                     selected ? "is-selected" : "is-unselected");
         }
-        yield return UI.VerticalScroll("network.bluetooth.scroll", rows)
-            .Classes("network-profile-list", "network-bluetooth-list");
+        foreach (var row in rows) yield return row;
+    }
+
+    private void SelectTab(string sourceElementId)
+    {
+        var next = sourceElementId switch
+        {
+            "network.tab.wifi" => NetworkControlsTab.Wifi,
+            "network.tab.bluetooth" => NetworkControlsTab.Bluetooth,
+            _ => (NetworkControlsTab?)null,
+        };
+        if (next is null) return;
+        lock (_stateLock) _activeTab = next.Value;
+        Invalidate();
+    }
+
+    private void ToggleTab()
+    {
+        lock (_stateLock)
+            _activeTab = _activeTab == NetworkControlsTab.Wifi
+                ? NetworkControlsTab.Bluetooth
+                : NetworkControlsTab.Wifi;
+        Invalidate();
     }
 
     private static (string State, string Detail) NetworkMetadata(

@@ -70,6 +70,9 @@ try {
     Invoke-Checked -Description 'Build and test Windows foreground activity provider' -Command {
         dotnet run --project 'tests\WindowsActivityProvider.Tests\WindowsActivityProvider.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test read-only Windows app-library provider' -Command {
+        dotnet run --project 'tests\WindowsAppLibraryProvider.Tests\WindowsAppLibraryProvider.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build and test Windows media-session provider' -Command {
         dotnet run --project 'tests\WindowsMediaProvider.Tests\WindowsMediaProvider.Tests.csproj' --configuration $Configuration
     }

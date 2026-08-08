@@ -62,8 +62,8 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
   scope
 - Performance: CPU, GPU, VRAM, RAM, frame-rate sources, and bounded history
 - Media: system media session controls
-- Recent Apps: event-driven bounded running-application observations and exact
-  live-window activation; no history/relaunch or authoritative game detection
+- Recent Activity: event-driven bounded read-only running-application
+  observations; no activation, history/relaunch, or authoritative game detection
 - Screenshot and capture controls
 - Notifications and quick settings
 - Discord: account linking, friends/presence, invitations, app-managed parties, and voice

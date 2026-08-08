@@ -261,8 +261,8 @@ Use a Scroll container whenever content can exceed its clamped viewport:
 
 ```csharp
 var list = UI.VerticalScroll(
-    "audio.sessions.scroll",
-    _sessions.Select(BuildSessionRow).ToArray())
+    "activity.items.scroll",
+    _items.Select(BuildActivityRow).ToArray())
     .Classes("session-list");
 ```
 
@@ -568,7 +568,6 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.bluetooth.read.v1` | get/watch sanitized Bluetooth radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | request Bluetooth software radio On/Off | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
-| `system.activity.recent.activate.v1` | switch to one still-running opaque observation | Interactive |
 | `system.media.sessions.read.v1` | list/watch sanitized system media sessions | Visible or Interactive |
 | `system.media.sessions.control.v1` | control one broker-issued media session | Interactive, or one exact declared dashboard gesture while Visible |
 

@@ -2100,14 +2100,6 @@ private:
                 focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                 InvalidateRect(window_, nullptr, FALSE);
             }
-            // A real pressed controller event in an Interactive widget is a
-            // generic user-activation gesture. Delegate Windows foreground
-            // eligibility only to the exact live trusted bridge process; the
-            // broker still independently enforces the widget's declared
-            // capability, consent, lifecycle, and opaque target. No widget ID
-            // or action ID receives first-party-only treatment here.
-            const bool trustedUserActivation =
-                isOpen && phase == gba::input::NavigationEventPhase::Pressed;
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
@@ -2120,8 +2112,7 @@ private:
                 phase == gba::input::NavigationEventPhase::Repeated
                     ? std::wstring_view{L"repeated"}
                     : std::wstring_view{L"pressed"},
-                requestedValue,
-                trustedUserActivation);
+                requestedValue);
             if (!handled) {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" input failed: " + bridge_.lastError();

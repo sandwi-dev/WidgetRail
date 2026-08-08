@@ -20,7 +20,8 @@ public enum RecentAppsViewState
 
 /// <summary>
 /// Controller-first recent foreground applications. The worker sees only
-/// sanitized names and opaque host IDs; activation remains in the trusted provider.
+/// sanitized names and opaque host IDs. This stopgap view is intentionally
+/// read-only until the catalog-backed Games & Apps launcher replaces it.
 /// </summary>
 public sealed class RecentAppsWidget : Widget
 {
@@ -40,7 +41,6 @@ public sealed class RecentAppsWidget : Widget
     private RecentAppsViewState _viewState = RecentAppsViewState.Initial;
     private string _status = "Recent activity loads when this widget becomes visible";
     private string? _selectedActivityId;
-    private string? _pendingActivityId;
     private CancellationTokenSource? _runLifetime;
     private long _runGeneration;
 
@@ -49,7 +49,6 @@ public sealed class RecentAppsWidget : Widget
     {
         get { lock (_gate) return _activities.ToArray(); }
     }
-    public bool ControlBusy { get { lock (_gate) return _pendingActivityId is not null; } }
     public string Status { get { lock (_gate) return _status; } }
 
     public override WidgetView Render()
@@ -58,14 +57,12 @@ public sealed class RecentAppsWidget : Widget
         RecentAppsViewState state;
         string status;
         string? selectedId;
-        string? pendingId;
         lock (_gate)
         {
             activities = _activities;
             state = _viewState;
             status = _status;
             selectedId = _selectedActivityId;
-            pendingId = _pendingActivityId;
         }
 
         var header = UI.Stack("recent.header",
@@ -91,28 +88,28 @@ public sealed class RecentAppsWidget : Widget
             var id = elementIds[index];
             map[id] = activity.ActivityId;
             var mostRecent = activity.IsMostRecent;
-            var pending = string.Equals(activity.ActivityId, pendingId, StringComparison.Ordinal);
             var kind = activity.Kind switch
             {
                 WidgetRecentActivityKind.Game => "GAME",
                 WidgetRecentActivityKind.Application => "APP",
                 _ => "ACTIVITY",
             };
-            var detail = pending ? "SWITCHING…" : mostRecent ? "MOST RECENT" : "RUNNING";
-            var button = UI.Button(activity.DisplayName, "recent.activate", id)
-                .Icon(WidgetGlyph.Play,
-                    $"{activity.DisplayName}. {kind}. {detail}. Press A to switch")
+            var detail = mostRecent ? "MOST RECENT" : "RUNNING";
+            var button = (UI.Button(activity.DisplayName, "recent.select", id) with
+                {
+                    AccessibilityLabel =
+                        $"{activity.DisplayName}. {kind}. {detail}. Read-only activity",
+                })
                 // Recency and controller selection are independent states. The
                 // recency class/meta labels the latest observation, while only
                 // the persisted controller target gets IsSelected.
                 .Selected(string.Equals(activity.ActivityId, selectedId, StringComparison.Ordinal))
-                .Busy(pending)
-                .Disabled(LifecycleState != WidgetLifecycleState.Interactive || pending || !activity.IsRunning)
                 .FocusUp(elementIds[Math.Max(0, index - 1)])
-                .FocusDown(elementIds[Math.Min(activities.Count - 1, index + 1)])
                 .FocusLeft(id)
                 .FocusRight(id)
                 .Classes("recent-item-button", mostRecent ? "is-most-recent" : "is-running");
+            if (index < activities.Count - 1)
+                button = button.FocusDown(elementIds[index + 1]);
             rows[index] = UI.Stack(id + ".row",
                     button,
                     UI.Row(id + ".meta",
@@ -170,7 +167,7 @@ public sealed class RecentAppsWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    public override async ValueTask OnActionAsync(
+    public override ValueTask OnActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
@@ -178,95 +175,18 @@ public sealed class RecentAppsWidget : Widget
         if (action.ActionId == "retry")
         {
             if (IsActive) StartActiveRun(ActiveCancellationToken);
-            return;
+            return ValueTask.CompletedTask;
         }
-        if (action.ActionId != "recent.activate") return;
+        if (action.ActionId != "recent.select") return ValueTask.CompletedTask;
         string? activityId;
         lock (_gate) _activityByElementId.TryGetValue(action.SourceElementId, out activityId);
-        if (activityId is null) return;
-        if (LifecycleState != WidgetLifecycleState.Interactive)
-        {
-            SetFeedback("Enter the widget before switching apps", error: false);
-            return;
-        }
+        if (activityId is null) return ValueTask.CompletedTask;
         lock (_gate)
         {
-            if (_pendingActivityId is not null) return;
-            _pendingActivityId = activityId;
             _selectedActivityId = activityId;
-            _status = "Switching application…";
         }
-        var commandGeneration = Volatile.Read(ref _runGeneration);
         Invalidate();
-        try
-        {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, ActiveCancellationToken);
-            await HostServices.RecentActivity.ActivateAsync(activityId, linked.Token)
-                .ConfigureAwait(false);
-            lock (_gate)
-            {
-                if (_runGeneration != commandGeneration) return;
-                _pendingActivityId = null;
-                _status = "Switched to running application";
-            }
-            Invalidate();
-        }
-        catch (OperationCanceledException) when (ActiveCancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (WidgetCapabilityUnavailableException)
-        {
-            lock (_gate)
-            {
-                if (_runGeneration == commandGeneration)
-                    _status = "Recent activity service unavailable";
-            }
-            Invalidate();
-        }
-        catch (WidgetCapabilityException exception)
-        {
-            lock (_gate)
-            {
-                if (_runGeneration != commandGeneration) return;
-                _pendingActivityId = null;
-                if (exception.ErrorCode == "resource_not_found")
-                    _activities = _activities.Where(item => item.ActivityId != activityId).ToArray();
-                _status = exception.ErrorCode switch
-                {
-                    "resource_not_found" => "That application is no longer running",
-                    "activation_denied" => "Windows did not allow the app switch",
-                    "permission_denied" => "App switching permission is off",
-                    "lifecycle_denied" => "Enter the widget before switching apps",
-                    _ => "Could not switch applications",
-                };
-                _viewState = _activities.Count == 0 ? RecentAppsViewState.Empty : RecentAppsViewState.Ready;
-            }
-            Invalidate();
-        }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            lock (_gate)
-            {
-                if (_runGeneration == commandGeneration)
-                    _status = "Could not switch applications";
-            }
-            Invalidate();
-        }
-        finally
-        {
-            var changed = false;
-            lock (_gate)
-            {
-                if (_runGeneration == commandGeneration &&
-                    string.Equals(_pendingActivityId, activityId, StringComparison.Ordinal))
-                {
-                    _pendingActivityId = null;
-                    changed = true;
-                }
-            }
-            if (changed) Invalidate();
-        }
+        return ValueTask.CompletedTask;
     }
 
     private WidgetView RenderState(StackElement header, RecentAppsViewState state)
@@ -377,9 +297,6 @@ public sealed class RecentAppsWidget : Widget
             if (_selectedActivityId is null ||
                 !normalized.Any(item => item.ActivityId == _selectedActivityId))
                 _selectedActivityId = normalized.FirstOrDefault()?.ActivityId;
-            _pendingActivityId = _pendingActivityId is not null &&
-                normalized.Any(item => item.ActivityId == _pendingActivityId)
-                ? _pendingActivityId : null;
             _viewState = normalized.Count == 0 ? RecentAppsViewState.Empty : RecentAppsViewState.Ready;
             _status = normalized.Count == 0
                 ? "Waiting for foreground activity"
@@ -413,14 +330,7 @@ public sealed class RecentAppsWidget : Widget
             _viewState = state;
             _status = status;
             _activities = [];
-            _pendingActivityId = null;
         }
-        Invalidate();
-    }
-
-    private void SetFeedback(string status, bool error)
-    {
-        lock (_gate) _status = status;
         Invalidate();
     }
 

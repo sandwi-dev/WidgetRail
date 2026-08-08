@@ -544,7 +544,6 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.NetworkBluetoothReadV1 => "See Bluetooth devices",
         PlatformCapabilities.NetworkBluetoothRadioControlV1 => "Turn Bluetooth on or off",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
-        PlatformCapabilities.RecentActivityActivateV1 => "Switch to a running app",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
         _ => "Unsupported capability",
@@ -591,9 +590,6 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.RecentActivityReadV1 =>
             "See a bounded list of privacy-filtered running applications observed after you allow access. " +
             "Widgets receive only display names, app kinds, state, and opaque IDs—never process IDs, paths, command lines, or window handles.",
-        PlatformCapabilities.RecentActivityActivateV1 =>
-            "Switch to a still-running observed application while the widget is interactive. " +
-            "It cannot launch executables, reopen closed apps, or access their process and window identifiers.",
         PlatformCapabilities.MediaSessionsReadV1 =>
             "See sanitized app, title, artist, playback, progress, and supported-control state from " +
             "Windows media sessions. Widgets never receive package IDs, process IDs, paths, handles, or native objects.",

@@ -348,8 +348,6 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             PlatformCapabilities.RecentActivitiesList =>
                 BrokerJson.ToElement(ValidateRecentActivities(DemandEmptyPayload(request.Payload),
                     await _backend.GetRecentActivitiesAsync(requestToken).ConfigureAwait(false))),
-            PlatformCapabilities.RecentActivityActivate =>
-                await ActivateRecentActivityAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.MediaSessionsGet =>
                 BrokerJson.ToElement(ValidateMediaSessions(DemandEmptyPayload(request.Payload),
                     await _backend.GetMediaSessionsAsync(requestToken).ConfigureAwait(false))),
@@ -755,16 +753,6 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     {
         var request = BrokerJson.ParsePayload<SetBluetoothRadioStateRequest>(payload);
         await _backend.SetBluetoothRadioAsync(request.Enabled, cancellationToken)
-            .ConfigureAwait(false);
-        return BrokerJson.ToElement(new { acknowledged = true });
-    }
-
-    private async Task<JsonElement> ActivateRecentActivityAsync(
-        JsonElement payload, CancellationToken cancellationToken)
-    {
-        var request = BrokerJson.ParsePayload<ActivateRecentActivityRequest>(payload);
-        ContractValidation.OpaqueId(request.ActivityId);
-        await _backend.ActivateRecentActivityAsync(request.ActivityId, cancellationToken)
             .ConfigureAwait(false);
         return BrokerJson.ToElement(new { acknowledged = true });
     }

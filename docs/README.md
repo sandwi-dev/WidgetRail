@@ -49,8 +49,8 @@ guarantees that are available now.
   integration, explicit available-Wi-Fi scan/current saved-open connection,
   controller UX, privacy/location
   gates, event-driven authoring, tests, and remaining release evidence.
-- [Recent Apps reference](recent-apps.md) — event-driven foreground activity,
-  opaque identity, exact live-window activation, controller UX, and limits.
+- [Recent Apps reference](recent-apps.md) — event-driven read-only foreground
+  activity, opaque identity, controller UX, and replacement limits.
 
 ## Distribution and operations
 

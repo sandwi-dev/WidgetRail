@@ -124,8 +124,8 @@ operation IDs. The [Network Controls reference](network-controls.md) is the
 complete example for event-driven status/available-Wi-Fi subscriptions,
 explicit Interactive scanning, current saved/open result connection, Windows
 privacy degradation, and transport-free tests.
-The [Recent Apps reference](recent-apps.md) shows a separate read/activate
-contract with event-driven opaque OS identity.
+The [Recent Apps reference](recent-apps.md) shows a read-only event stream with
+opaque OS identity and no foreground/process authority.
 
 Custom worker executables should delegate host startup to the public runtime
 bootstrap instead of parsing pipe or broker arguments:

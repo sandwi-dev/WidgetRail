@@ -100,10 +100,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         CancellationToken cancellationToken) =>
         _activity.GetRecentActivitiesAsync(cancellationToken);
 
-    public Task ActivateRecentActivityAsync(
-        string activityId, CancellationToken cancellationToken) =>
-        _activity.ActivateRecentActivityAsync(activityId, cancellationToken);
-
     public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
         CancellationToken cancellationToken) =>
         _media.GetMediaSessionsAsync(cancellationToken);
@@ -203,10 +199,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
             Task.FromException<IReadOnlyList<RecentActivitySummary>>(
                 new BrokerException("platform_unavailable", "Recent activity is unavailable."));
 
-        public Task ActivateRecentActivityAsync(
-            string activityId, CancellationToken cancellationToken) =>
-            Task.FromException(
-                new BrokerException("platform_unavailable", "Recent activity is unavailable."));
     }
 
     private sealed class UnavailableBluetoothPlatformBrokerBackend : IBluetoothPlatformBrokerBackend

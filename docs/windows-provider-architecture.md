@@ -53,7 +53,6 @@ eventual widgets:
 | `system.network.bluetooth.read.v1` | Read/watch sanitized Bluetooth radio/discovery/device state; no native IDs. |
 | `system.network.bluetooth.radio.control.v1` | Request Bluetooth software radio On/Off while Interactive. |
 | `system.activity.recent.read.v1` | Read/watch bounded eligible running foreground observations as opaque IDs. |
-| `system.activity.recent.activate.v1` | Switch to one exact still-running observation while Interactive; no launch. |
 
 Endpoint master-volume/mute, sanitized device visibility, and default-capture
 volume/mute have separate grants. Output/default-role switching and audio-

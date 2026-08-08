@@ -10,6 +10,7 @@
 #include <limits>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -339,6 +340,82 @@ WidgetNode FixedButton(const wchar_t* id, const double height = 44.0) {
         {L"flex-shrink", Number(0)},
     };
     return button;
+}
+
+void WholeWidgetScrollRevealsAudioMixerControls() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"audio-mixer.runtime";
+    snapshot.activeInputScopeId = L"audio-mixer";
+    snapshot.root = Node(L"audio.root", L"scroll");
+    snapshot.root.inputScopeId = L"audio-mixer";
+    snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.baseStyle = {
+        {L"gap", Length(8)},
+    };
+
+    auto master = FixedButton(L"audio.master.volume.slider");
+    auto input = FixedButton(L"audio.input.volume.slider");
+    auto sessions = Node(L"audio.sessions.list", L"stack");
+    sessions.baseStyle = {
+        {L"gap", Length(6)},
+        {L"flex-shrink", Number(0)},
+    };
+    std::vector<std::wstring> focusOrder{
+        master.id,
+        input.id,
+    };
+    for (int index = 0; index < 8; ++index) {
+        const auto cardId = L"audio.session." + std::to_wstring(index) + L".row";
+        const auto sliderId = L"audio.session." + std::to_wstring(index) + L".volume.slider";
+        auto card = Node(cardId.c_str(), L"stack");
+        card.baseStyle = {
+            {L"height", Length(74)},
+            {L"min-height", Length(74)},
+            {L"flex-shrink", Number(0)},
+        };
+        card.children = {FixedButton(sliderId.c_str())};
+        sessions.children.push_back(std::move(card));
+        focusOrder.push_back(sliderId);
+    }
+    snapshot.root.children = {
+        FixedSpacer(L"audio.header", 50),
+        std::move(master),
+        FixedSpacer(L"audio.devices.card", 69),
+        std::move(input),
+        FixedSpacer(L"audio.sessions.heading", 14),
+        std::move(sessions),
+    };
+
+    // 464 DIP is the content height produced by the Audio Mixer's preferred
+    // 520-DIP panel after host footer chrome. 304 DIP represents a constrained
+    // monitor. In both cases the one root Scroll must reveal every control;
+    // fixed, non-scroll content must never starve a nested application list.
+    for (const auto height : {464.0F, 304.0F}) {
+        DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+        float priorOffset = -1.0F;
+        for (const auto& focused : focusOrder) {
+            const auto result = renderer.Render(
+                nullptr, snapshot, focused, {0.0F, 0.0F, 520.0F, height});
+            Check(result.focusRects.contains(focused),
+                  "whole-widget audio scroll reveals every controller target");
+            const auto rect = result.focusRects.at(focused);
+            Check(rect.y >= -0.01F && rect.y + rect.height <= height + 0.01F,
+                  "revealed audio target remains wholly inside the host viewport");
+            const auto offset = result.scrollOffsets.at(L"audio.root");
+            Check(offset + 0.01F >= priorOffset,
+                  "audio focus order advances through a monotonic root offset");
+            priorOffset = offset;
+        }
+        Check(priorOffset > 0.0F,
+              "final audio session requires whole-widget scrolling");
+
+        const auto returned = renderer.Render(
+            nullptr, snapshot, focusOrder.front(), {0.0F, 0.0F, 520.0F, height});
+        Near(returned.scrollOffsets.at(L"audio.root"), 0.0F,
+             "returning to master output restores the true audio leading edge");
+        Check(returned.focusRects.contains(focusOrder.front()),
+              "master output remains visible after returning from the last app");
+    }
 }
 
 void ScrollFocusReachesTrueContentBoundaries() {
@@ -766,6 +843,7 @@ int main() {
     SliderPlanningAndAccessibilityTargets();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
+    WholeWidgetScrollRevealsAudioMixerControls();
     ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();
     IrrevealableClipsDoNotBecomeFocusTraps();

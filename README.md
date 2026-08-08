@@ -41,6 +41,8 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   event-driven Windows Core Audio, WLAN, Bluetooth, and foreground providers
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
 - A bounded hidden/visible Windows process-tree performance observation harness
+- A read-only, bounded Windows app-library foundation that discovers registered
+  Start Menu applications without observing foreground windows or launching them
 - Managed contract suites plus native state, image-cache, layout, and icon tests
 
 Start with the [documentation index](docs/README.md), the platform-grade

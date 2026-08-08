@@ -16,7 +16,6 @@ internal sealed class WindowsActivityNativeAdapter : IWindowsActivityNativeAdapt
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExNoActivate = 0x08000000L;
-    private const int SwRestore = 9;
     private const uint WmQuit = 0x0012;
     private const uint PmNoRemove = 0x0000;
     private readonly object _gate = new();
@@ -69,13 +68,6 @@ internal sealed class WindowsActivityNativeAdapter : IWindowsActivityNativeAdapt
         if (!IsEligibleWindow(window)) return false;
         _ = GetWindowThreadProcessId(window, out var processId);
         return processId == expectedProcessId;
-    }
-
-    public bool TryActivate(nint window, uint expectedProcessId)
-    {
-        if (!IsWindowAvailable(window, expectedProcessId)) return false;
-        if (IsIconic(window)) ShowWindow(window, SwRestore);
-        return SetForegroundWindow(window);
     }
 
     public void Dispose()
@@ -321,15 +313,4 @@ internal sealed class WindowsActivityNativeAdapter : IWindowsActivityNativeAdapt
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(nint window, out uint processId);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsIconic(nint window);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindow(nint window, int command);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(nint window);
 }

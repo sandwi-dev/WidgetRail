@@ -16,9 +16,6 @@
   "permissions": [
     "system.activity.recent.read.v1"
   ],
-  "optionalPermissions": [
-    "system.activity.recent.activate.v1"
-  ],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "suspend-when-hidden"

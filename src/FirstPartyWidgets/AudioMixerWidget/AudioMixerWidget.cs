@@ -234,7 +234,7 @@ public sealed class AudioMixerWidget : Widget
                                 "audio.state.help", "Start playback to create an application audio session")
                             .Classes("audio-help", "is-neutral"),
                         retry).Classes("audio-state-card"));
-            var emptyRoot = UI.Stack("audio.root", emptyChildren.ToArray())
+            var emptyRoot = UI.VerticalScroll("audio.root", emptyChildren.ToArray())
                 .InputScope("audio-mixer")
                 .Classes("audio-mixer-widget", "has-master", "has-state");
             return new WidgetView(emptyRoot, InitialFocusId: "audio.master.volume.slider", Surface: CompactSurface);
@@ -262,9 +262,9 @@ public sealed class AudioMixerWidget : Widget
                             $"{sessions.Count} application audio sessions")
                         .Classes("audio-sessions-count"))
                     .Classes("audio-sessions-heading"));
-        rootChildren.Add(UI.VerticalScroll("audio.sessions.scroll", sessionRows)
+        rootChildren.Add(UI.Stack("audio.sessions.list", sessionRows)
             .Classes("audio-session-list"));
-        var root = UI.Stack("audio.root", rootChildren.ToArray())
+        var root = UI.VerticalScroll("audio.root", rootChildren.ToArray())
             .InputScope("audio-mixer")
             .Classes("audio-mixer-widget", "has-sessions");
 
@@ -447,7 +447,7 @@ public sealed class AudioMixerWidget : Widget
             .Busy(state == AudioMixerViewState.Loading)
             .Disabled(state == AudioMixerViewState.Loading)
             .Classes("audio-retry-action");
-        var root = UI.Stack("audio.root",
+        var root = UI.VerticalScroll("audio.root",
                 header,
                 UI.Stack("audio.state.card",
                     UI.Text(title, "audio.state.title", title).Classes("audio-state-title"),

@@ -176,12 +176,16 @@ same catalog/bridge/worker path as the other widgets. Its widget code uses only
 the public typed audio service,
 fetches once on activation, then
 reacts to provider events rather than polling. It offers controller session
- selection plus optimistic per-session volume/mute controls in Interactive and
- renders explicit permission, lifecycle, empty, unavailable, and failure states.
- It also shows sanitized current default output/input device names and offers
- controller sliders/mute for the current default microphone behind independent
- optional grants. Endpoint selection remains display-only because no supported
- system-default setter has been adopted.
+selection plus optimistic per-session volume/mute controls in Interactive and
+renders explicit permission, lifecycle, empty, unavailable, and failure states.
+One root controller Scroll contains master, sanitized device summary,
+microphone, and every application row; this replaces the clipped nested session
+viewport and gives `audio.root` one stable host-owned offset/focus-follow
+surface at normal and constrained heights. It also shows sanitized current
+default output/input device names and offers controller sliders/mute for the
+current default microphone behind independent optional grants. Endpoint
+selection remains display-only because no supported system-default setter has
+been adopted.
 Broader hardware/churn coverage and end-to-end hidden/visible performance evidence
 remain open; this is not yet an end-user release claim.
 
@@ -190,11 +194,15 @@ package through the generic community worker/AppContainer path. It requires
 coarse network and available-Wi-Fi read grants,
 makes current saved/open result connection optional and Interactive-only,
 opens acknowledged status and available-Wi-Fi subscriptions before snapshots,
-and never polls. It declares no dashboard quick actions. The open widget
-renders the current ready scan in one bounded vertical Scroll; D-pad/left-stick
-Up/Down moves focus, A starts one explicit scan from the Scan control, and A or
-X routes a connection through the exact focused row without LB/RB or LT/RT
-cycling.
+and never polls. It declares no dashboard quick actions. The open widget has
+separate Wi-Fi and Bluetooth views under a segmented tab bar. LB/RB switches
+the active view from any root focus, while D-pad/left-stick navigates within the
+active view. Wi-Fi and Bluetooth use the independent stable Scroll IDs
+`network.wifi.body.scroll` and `network.bluetooth.body.scroll`; each retains its
+own opaque selected item so returning restores the focus target and lets host
+focus-follow restore its visible location. In Wi-Fi, A starts one explicit scan
+from the Scan control and A or X routes a connection through the exact focused
+row. LT/RT never cycles list items.
 The real provider returns on `WlanConnect` acceptance, then publishes
 authoritative `Connecting`, `Failed`, and refreshed status events. Its focused
   provider and widget Release suites pass 31/31 and 17/17 respectively. Focused checks do not
@@ -213,10 +221,20 @@ current surface.
 Recent Apps is packaged beside the other first-party widgets. It opens an
 acknowledged recent-activity subscription before fetching once per active
 lifetime, renders a bounded controller Scroll, preserves opaque selection
-across full-snapshot events, and makes activation optional/Interactive-only.
+across full-snapshot events, and is intentionally read-only. The unreliable
+foreground-activation capability and host-wide foreground delegation were
+removed while the catalog-backed Games & Apps launcher is developed.
 Every observed entry is currently classified conservatively as Application;
 there is no registry/Xbox history import, authoritative game detector, relaunch,
 or arbitrary process targeting.
+
+The replacement now has an isolated read-only foundation in
+`WindowsAppLibraryProvider`. It lazily scans the current-user and all-user Start
+Menu Programs roots, skips reparse points, parses bounded `.lnk` registrations,
+deduplicates trusted descriptors, and exposes only sanitized names plus random
+opaque IDs. Its 9/9 Release suite includes a real non-mutating machine scan that
+currently finds 148 registered executable shortcuts. Broker/SDK integration,
+AppsFolder packaged applications, icons, classification, and launch remain open.
 
 Now Playing is the public-SDK media-session reference. It uses only the typed
 `HostServices.Media` surface over the authenticated broker and the event-driven
@@ -455,7 +473,7 @@ GBSS, and privacy-safe real Windows read smoke.
 
 The full native aggregate passes. Focused native suites report Controller
 Navigation 73 checks, Slider Interaction 2,071, Focus Navigation 17, Widget Surface
-Focus 16, Declarative Renderer 4,245, and Native Icons 188. Display-sensitive evidence includes 187
+Focus 16, Declarative Renderer 4,311, and Native Icons 188. Display-sensitive evidence includes 187
 declarative-layout checks, 108,545 placement/render-metric/surface-geometry
 checks, and 34 foreground-target/display-refresh/reentrancy checks, alongside state-machine,
 remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer

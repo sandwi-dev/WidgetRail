@@ -9,9 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Private surfaces are filtered without pretending most-recent means foreground", FiltersPrivateProcesses),
     ("Destroyed and stale windows disappear safely", RemovesDestroyedAndStale),
     ("Opaque IDs rotate when an application process lifetime changes", RotatesIdAcrossProcessLifetimes),
-    ("Activation accepts only live opaque observations", ActivatesOnlyLiveOpaqueIds),
     ("Path-like executable metadata never becomes a public display name", RejectsPathLikeDisplayMetadata),
-    ("Activation permission alone cannot start private observation", ControlCannotStartObservation),
     ("Provider events expose no process or window identifiers", PayloadIsSanitized),
     ("Real WinEvent adapter starts snapshots and disposes without polling", NativeAdapterSmoke),
 };
@@ -105,32 +103,6 @@ static async Task RemovesDestroyedAndStale()
     Assert.True(first.ActivityId.StartsWith("activity-", StringComparison.Ordinal));
 }
 
-static async Task ActivatesOnlyLiveOpaqueIds()
-{
-    var native = new FakeNative();
-    native.Add(1, 10, "One", "One");
-    native.Foreground = 1;
-    await using var provider = new WindowsActivityPlatformBackend(native);
-    var activity = (await provider.GetRecentActivitiesAsync(default)).Single();
-    await provider.ActivateRecentActivityAsync(activity.ActivityId, default);
-    Assert.Equal((nint)1, native.LastActivated);
-
-    native.ActivationAllowed = false;
-    var denied = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.ActivateRecentActivityAsync(activity.ActivityId, default));
-    Assert.Equal("activation_denied", denied.Code);
-    native.ActivationAllowed = true;
-
-    native.Available.Remove(1);
-    var missing = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.ActivateRecentActivityAsync(activity.ActivityId, default));
-    Assert.Equal("resource_not_found", missing.Code);
-
-    var unknown = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.ActivateRecentActivityAsync("activity-not-observed", default));
-    Assert.Equal("resource_not_found", unknown.Code);
-}
-
 static async Task RotatesIdAcrossProcessLifetimes()
 {
     var native = new FakeNative();
@@ -145,12 +117,6 @@ static async Task RotatesIdAcrossProcessLifetimes()
         (await provider.GetRecentActivitiesAsync(default)).Single().DisplayName == "Second lifetime");
     var replacement = (await provider.GetRecentActivitiesAsync(default)).Single();
     Assert.False(original.ActivityId == replacement.ActivityId);
-
-    var stale = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.ActivateRecentActivityAsync(original.ActivityId, default));
-    Assert.Equal("resource_not_found", stale.Code);
-    await provider.ActivateRecentActivityAsync(replacement.ActivityId, default);
-    Assert.Equal((nint)2, native.LastActivated);
 }
 
 static Task RejectsPathLikeDisplayMetadata()
@@ -162,19 +128,6 @@ static Task RejectsPathLikeDisplayMetadata()
     Assert.Equal("Friendly App", WindowsActivityNativeAdapter.ResolveDisplayName(
         "Friendly App", "Ignored Product", "privateTool"));
     return Task.CompletedTask;
-}
-
-static async Task ControlCannotStartObservation()
-{
-    var native = new FakeNative();
-    native.Add(1, 10, "One", "One");
-    native.Foreground = 1;
-    await using var provider = new WindowsActivityPlatformBackend(native);
-    var exception = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.ActivateRecentActivityAsync("activity-untrusted", default));
-    Assert.Equal("resource_not_found", exception.Code);
-    Assert.False(provider.IsStarted);
-    Assert.Equal(0, native.StartCalls);
 }
 
 static async Task PayloadIsSanitized()
@@ -222,9 +175,7 @@ file sealed class FakeNative : IWindowsActivityNativeAdapter
     internal Dictionary<nint, NativeActivityCandidate> Candidates { get; } = [];
     internal HashSet<nint> Available { get; } = [];
     internal nint Foreground { get; set; }
-    internal nint LastActivated { get; private set; }
     internal int StartCalls { get; private set; }
-    internal bool ActivationAllowed { get; set; } = true;
 
     internal void Add(nint window, uint pid, string processKey, string displayName)
     {
@@ -249,12 +200,6 @@ file sealed class FakeNative : IWindowsActivityNativeAdapter
     public bool IsWindowAvailable(nint window, uint expectedProcessId) =>
         Available.Contains(window) && Candidates.TryGetValue(window, out var candidate) &&
         candidate.ProcessId == expectedProcessId;
-    public bool TryActivate(nint window, uint expectedProcessId)
-    {
-        if (!ActivationAllowed || !IsWindowAvailable(window, expectedProcessId)) return false;
-        LastActivated = window;
-        return true;
-    }
     public void Dispose() => _handler = null;
 
     private sealed class CallbackDisposable(Action callback) : IDisposable

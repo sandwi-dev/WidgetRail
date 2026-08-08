@@ -15,7 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Audio device and input permissions are granular opaque and lifecycle-gated", AudioDeviceInputContracts),
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
-    ("Recent activity read and activation use separate consent and lifecycle gates", RecentActivityContracts),
+    ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
@@ -61,7 +61,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(19, PlatformCapabilities.All.Count);
+    Assert.Equal(18, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -70,6 +70,7 @@ static Task CapabilityVocabularyIsClosed()
     }
     Assert.True(!PlatformCapabilities.TryGet("system.full-access.v1", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.audio.sessions.read.v2", out _));
+    Assert.True(!PlatformCapabilities.TryGet("system.activity.recent.activate.v1", out _));
     return Task.CompletedTask;
 }
 
@@ -141,11 +142,8 @@ static async Task RecentActivityContracts()
     ]);
     await store.SetDecisionAsync(identity, PlatformCapabilities.RecentActivityReadV1,
         ConsentDecision.Grant);
-    await store.SetDecisionAsync(identity, PlatformCapabilities.RecentActivityActivateV1,
-        ConsentDecision.Grant);
     await using var broker = Broker(identity, store, backend,
-        PlatformCapabilities.RecentActivityReadV1,
-        PlatformCapabilities.RecentActivityActivateV1);
+        PlatformCapabilities.RecentActivityReadV1);
 
     broker.SetLifecycle(BrokerLifecycleState.Visible);
     var read = await broker.HandleAsync(Request(identity,
@@ -153,26 +151,6 @@ static async Task RecentActivityContracts()
         PlatformCapabilities.RecentActivitiesList, new { }));
     Assert.True(read.Succeeded);
     Assert.True(!read.Payload!.Value.GetRawText().Contains("pid", StringComparison.OrdinalIgnoreCase));
-
-    var visibleControl = await broker.HandleAsync(Request(identity,
-        PlatformCapabilities.RecentActivityActivateV1,
-        PlatformCapabilities.RecentActivityActivate,
-        new { activityId = "activity-one" }));
-    Assert.Equal("lifecycle_denied", visibleControl.ErrorCode);
-
-    broker.SetLifecycle(BrokerLifecycleState.Interactive);
-    var activated = await broker.HandleAsync(Request(identity,
-        PlatformCapabilities.RecentActivityActivateV1,
-        PlatformCapabilities.RecentActivityActivate,
-        new { activityId = "activity-one" }));
-    Assert.True(activated.Succeeded);
-    Assert.Equal("activity-one", backend.LastActivatedActivityId);
-
-    var malformed = await broker.HandleAsync(Request(identity,
-        PlatformCapabilities.RecentActivityActivateV1,
-        PlatformCapabilities.RecentActivityActivate,
-        new { activityId = "bad id with spaces" }));
-    Assert.Equal("invalid_payload", malformed.ErrorCode);
 
     var subscription = await broker.SubscribeAsync(
         PlatformCapabilities.RecentActivityReadV1,
@@ -1576,8 +1554,6 @@ sealed class LeaseBlockingBrokerBackend : IPlatformBrokerBackend
         Task.CompletedTask;
     public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<RecentActivitySummary>>([]);
-    public Task ActivateRecentActivityAsync(string activityId, CancellationToken cancellationToken) =>
-        Task.CompletedTask;
     public Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new BluetoothSummary(
             BluetoothRadioState.Unavailable, false, BluetoothDiscoveryState.Unavailable, []));
@@ -1643,8 +1619,6 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
         Task.CompletedTask;
     public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
         CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<RecentActivitySummary>>([]);
-    public Task ActivateRecentActivityAsync(string activityId, CancellationToken cancellationToken) =>
-        Task.CompletedTask;
     public Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new BluetoothSummary(
             BluetoothRadioState.Unavailable, false, BluetoothDiscoveryState.Unavailable, []));

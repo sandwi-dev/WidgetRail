@@ -43,7 +43,6 @@ The current closed capability set is:
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, `OpenBluetoothSubscriptionAsync`, and `WatchBluetoothAsync`; sanitized radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync`; software radio only | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
-| `system.activity.recent.activate.v1` | `ActivateAsync` for one still-running opaque observation | Interactive only |
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
 

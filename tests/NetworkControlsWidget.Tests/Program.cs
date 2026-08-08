@@ -37,7 +37,10 @@ foreach (var test in tests)
     }
     catch (Exception exception)
     {
-        failures.Add($"FAIL {test.Name}: {exception.Message}");
+        var detail = exception is ProtocolValidationException protocol
+            ? $"{exception.Message}{Environment.NewLine}{string.Join(Environment.NewLine, protocol.Errors)}"
+            : exception.Message;
+        failures.Add($"FAIL {test.Name}: {detail}");
         Console.Error.WriteLine(failures[^1]);
     }
 }
@@ -165,7 +168,8 @@ static async Task ControllerFocusGraph()
     Assert.Equal("network.wifi.scan", rows[0].Focus!.Up);
     Assert.Equal(rows[1].Id, rows[0].Focus!.Down);
     Assert.Equal(rows[2].Id, rows[1].Focus!.Down);
-    Assert.Equal("network.bluetooth.radio", rows[2].Focus!.Down);
+    Assert.True(rows[2].Focus!.Down is null,
+        "Final Wi-Fi network must leave Down unclaimed for the host tray boundary.");
     foreach (var row in rows)
     {
         Assert.Equal(row.Id, row.Focus!.Left);
@@ -179,6 +183,22 @@ static async Task ControllerFocusGraph()
     Assert.True(!await Route(widget, snapshot, ControllerButton.DPadDown,
         ControllerInputContext.OpenWidget, rows[^1].Id),
         "The widget must not capture Down at its final root control.");
+    Assert.True(!Buttons(snapshot.Root).Any(button =>
+            button.Id.StartsWith("network.bluetooth.", StringComparison.Ordinal)),
+        "Bluetooth controls remained in the Wi-Fi focus tree.");
+    Assert.True(await Route(widget, snapshot, ControllerButton.RightBumper,
+        ControllerInputContext.OpenWidget, rows[1].Id),
+        "RB did not route the widget-owned tab shortcut.");
+    await WaitUntil(() => widget.ActiveTab == NetworkControlsTab.Bluetooth);
+    var bluetooth = Snapshot(widget, 2);
+    Assert.True(!NetworkButtons(bluetooth.Root).Any(),
+        "Wi-Fi network rows remained in the Bluetooth focus tree.");
+    Assert.Equal("network.bluetooth.radio", bluetooth.InitialFocusId);
+    Assert.True(await Route(widget, bluetooth, ControllerButton.LeftBumper,
+        ControllerInputContext.OpenWidget, "network.bluetooth.radio"),
+        "LB did not route the widget-owned tab shortcut.");
+    await WaitUntil(() => widget.ActiveTab == NetworkControlsTab.Wifi);
+    Assert.Equal(rows[1].Id, Snapshot(widget, 3).InitialFocusId);
     Assert.Equal(0, snapshot.QuickActions.Count);
     Assert.Valid(snapshot);
     await Background(widget);
@@ -408,6 +428,7 @@ static async Task BluetoothDeviceListing()
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.Bluetooth?.Devices.Count == 2);
+    await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     var snapshot = Snapshot(widget, 1);
     var radio = Button(snapshot.Root, "network.bluetooth.radio");
     var devices = Buttons(snapshot.Root)
@@ -444,6 +465,7 @@ static async Task BluetoothRadioToggle()
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.Bluetooth?.RadioState == WidgetBluetoothRadioState.On);
+    await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     var radio = Button(Snapshot(widget, 1).Root, "network.bluetooth.radio");
     Assert.True(radio.IsSelected is true);
     await widget.OnActionAsync(new("bluetooth.radio.toggle", radio.Id));
@@ -474,6 +496,10 @@ static async Task BluetoothPermissionIsolation()
                           WidgetBluetoothDiscoveryState.Unavailable);
     var snapshot = Snapshot(widget, 1);
     Assert.Equal("One", NetworkButtons(snapshot.Root).Single().Text);
+    Assert.True(!Nodes(snapshot.Root).Any(node => node.Id == "network.bluetooth.summary"),
+        "Inactive Bluetooth content remained in the Wi-Fi tree.");
+    await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
+    snapshot = Snapshot(widget, 2);
     Assert.Contains("Settings", Text(snapshot.Root, "network.bluetooth.summary").Text!);
     Assert.True(!Nodes(snapshot.Root).Any(node =>
             node.Text?.Contains("native bluetooth identifier", StringComparison.Ordinal) == true),
@@ -513,6 +539,7 @@ static async Task RadioCancellationIsGenerationBound()
     bluetoothFake.HoldBluetoothRadioSet = false;
     await ActivateVisible(bluetoothWidget);
     await WaitUntil(() => bluetoothWidget.Bluetooth is not null);
+    await bluetoothWidget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     Assert.True(!Text(Snapshot(bluetoothWidget, 1).Root, "network.bluetooth.summary").Text!
         .Contains("could not", StringComparison.OrdinalIgnoreCase));
     await Background(bluetoothWidget);
@@ -570,7 +597,7 @@ static async Task ShippedAssetsValidate()
 static void AssertResponsiveLayoutBudget(GbssTheme theme)
 {
     var root = Resolve(theme, "stack", "network.root", "network-controls-widget");
-    var list = Resolve(theme, "scroll", "network.wifi.scroll", "network-profile-list");
+    var list = Resolve(theme, "scroll", "network.wifi.body.scroll", "network-view-scroll");
     var row = Resolve(theme, "stack", "network.wifi.test.row", "network-profile-row");
     var button = Resolve(theme, "button", "network.wifi.test", "network-profile-button");
     var scan = Resolve(theme, "button", "network.wifi.scan", "network-scan-action");
@@ -579,7 +606,7 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
         new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
     Assert.True(Pixels(button.Get("min-height")!, 320) >= 44);
     Assert.True(Pixels(scan.Get("min-height")!, 320) >= 44);
-    Assert.True(Pixels(list.Get("max-height")!, 560) <= 300);
+    Assert.True(Pixels(list.Get("min-height")!, 560) >= 120);
     Assert.Equal("0", row.Get("flex-shrink")!.Text);
     var inset = HorizontalSpacing(list.Get("padding")!, 560) / 2;
     var focusInset = Math.Abs(Pixels(focused.Get("outline-offset")!, 560));

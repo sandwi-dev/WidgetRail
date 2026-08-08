@@ -30,9 +30,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int WifiScanCalls { get; private set; }
     public int WifiConnectCalls { get; private set; }
     public int WifiRadioControlCalls { get; private set; }
-    public int RecentActivityActivationCalls { get; private set; }
     public int BluetoothRadioControlCalls { get; private set; }
-    public string? LastActivatedActivityId { get; private set; }
     public int MediaControlCalls { get; private set; }
     public string? LastControlledMediaSessionId { get; private set; }
     public MediaSessionCommand? LastMediaCommand { get; private set; }
@@ -255,15 +253,6 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<IReadOnlyList<RecentActivitySummary>>(_recentActivities.ToArray());
-    }
-
-    public Task ActivateRecentActivityAsync(
-        string activityId, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        RecentActivityActivationCalls++;
-        LastActivatedActivityId = activityId;
-        return Task.CompletedTask;
     }
 
     public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(

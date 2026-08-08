@@ -38,7 +38,8 @@ flowchart LR
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for master/per-session volume/mute, sanitized default-device visibility, and current default-microphone volume/mute. It does not switch default devices or capture audio samples. |
 | `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse state, explicit nearby scans, opaque saved/open connection, and software-radio control. It does not handle credentials/profile XML or query current SSID/signal automatically. |
 | `src/WindowsBluetoothProvider` | Lazy WinRT software-radio and sanitized bounded device discovery. It does not pair/unpair or offer generic device connection. |
-| `src/WindowsActivityProvider` | Lazy WinEvent foreground/destroy observation with bounded opaque running-app summaries and exact live-window activation; no polling, registry history, process identifiers, or relaunch. |
+| `src/WindowsActivityProvider` | Lazy WinEvent foreground/destroy observation with bounded opaque read-only running-app summaries; no polling, registry history, public process identifiers, switching, or relaunch. |
+| `src/WindowsAppLibraryProvider` | Lazy, read-only Start Menu application catalog with bounded reparse-safe enumeration, sanitized names, deduplication, and random opaque IDs. Launching and broker exposure are intentionally not present yet. |
 | `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, catalog install/list/enable/disable, and immutable version list/select/rollback commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow

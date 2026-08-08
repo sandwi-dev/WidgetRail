@@ -127,8 +127,10 @@ closely related binary action:
 - Master output and every application use the same structure. Explicit
   Up/Down neighbors connect the master Slider to the first application and
   adjacent application Sliders.
-- Application rows live inside `UI.VerticalScroll`, so the host reveals and
-  restores the selected session instead of the widget inventing LT/RT paging.
+- The complete Audio Mixer surface is one `UI.VerticalScroll`, so master,
+  device, microphone, and application controls remain revealable even when the
+  host clamps the panel. The widget does not invent nested list paging or
+  LT/RT session selection.
 
 Representative construction:
 

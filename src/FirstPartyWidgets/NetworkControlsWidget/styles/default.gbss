@@ -22,6 +22,16 @@
   overflow: clip;
 }
 
+.network-view-scroll {
+  min-height: 120px;
+  min-width: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 8px;
+  padding: 2px 4px 2px 2px;
+  overflow: clip;
+}
+
 .network-header {
   gap: 1px;
   flex-shrink: 0;

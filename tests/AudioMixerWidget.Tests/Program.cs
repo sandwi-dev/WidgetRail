@@ -8,7 +8,7 @@ using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Pinned master and all-session scroll surfaces are compact and valid", StateSurfaces),
+    ("One whole-widget scroll surface keeps every audio control revealable", StateSurfaces),
     ("D-pad and analog focus graph covers every row", ExplicitFocusGraph),
     ("Per-row actions route by stable identity without session shortcuts", ControllerRoutes),
     ("Volume updates immediately and resists stale in-flight events", OptimisticVolume),
@@ -83,9 +83,11 @@ static async Task StateSurfaces()
     Assert.Equal(WidgetGlyph.Volume, Node(session.Root, $"{prefix}.mute.icon").Glyph);
     Assert.True(!Buttons(session.Root).Any(button => button.Text is "−" or "+" or "Mute" or "Unmute"),
         "The old stepper/mute pill controls are still rendered.");
-    Assert.Equal(ViewNodeKind.Scroll, Node(session.Root, "audio.sessions.scroll").Kind);
-    Assert.Equal(ScrollAxis.Vertical, Node(session.Root, "audio.sessions.scroll").ScrollAxis);
-    Assert.Equal(1, Node(session.Root, "audio.sessions.scroll").Children.Count);
+    Assert.Equal(ViewNodeKind.Scroll, session.Root.Kind);
+    Assert.Equal(ScrollAxis.Vertical, session.Root.ScrollAxis);
+    Assert.Equal(ViewNodeKind.Stack, Node(session.Root, "audio.sessions.list").Kind);
+    Assert.Equal(1, Node(session.Root, "audio.sessions.list").Children.Count);
+    Assert.Equal(1, Nodes(session.Root).Count(node => node.Kind == ViewNodeKind.Scroll));
     Assert.Valid(session);
     await Background(widget);
 }
@@ -628,13 +630,13 @@ static async Task ManySessionsRemainBounded()
     var widget = Create(fake);
     await ActivateReady(widget);
     var snapshot = Snapshot(widget, 1);
-    var scroll = Node(snapshot.Root, "audio.sessions.scroll");
-    Assert.Equal(128, scroll.Children.Count);
-    Assert.Equal(128, Sliders(scroll).Count());
-    Assert.Equal(128, Sliders(scroll).Select(node => node.Id).Distinct(StringComparer.Ordinal).Count());
-    Assert.True(Nodes(scroll).All(node => node.Id.Length <= 128),
+    var list = Node(snapshot.Root, "audio.sessions.list");
+    Assert.Equal(128, list.Children.Count);
+    Assert.Equal(128, Sliders(list).Count());
+    Assert.Equal(128, Sliders(list).Select(node => node.Id).Distinct(StringComparer.Ordinal).Count());
+    Assert.True(Nodes(list).All(node => node.Id.Length <= 128),
         "A long or unsafe provider identifier escaped into a protocol node ID.");
-    Assert.True(Nodes(scroll).All(node => node.Id.All(ch =>
+    Assert.True(Nodes(list).All(node => node.Id.All(ch =>
             char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')),
         "An unsafe provider identifier escaped into a protocol node ID.");
     Assert.Valid(snapshot);
@@ -808,7 +810,8 @@ static async Task ShippedAssetsValidate()
     Assert.Contains("width: 100vw", style);
     Assert.Contains("max-width: 560px", style);
     Assert.Contains(".audio-session-list", style);
-    Assert.Contains("max-height: 340px", style);
+    Assert.True(!style.Contains("max-height: 340px", StringComparison.Ordinal),
+        "The application rows retained a second fixed-height scroll viewport.");
     Assert.Contains(".audio-volume-slider", style);
     Assert.Contains(".audio-mute-icon", style);
     Assert.Contains(".audio-device-card", style);
@@ -832,13 +835,13 @@ static async Task ShippedAssetsValidate()
 
 static void AssertResponsiveLayoutBudget(GbssTheme theme)
 {
-    var root = Resolve(theme, "stack", "audio.root", "audio-mixer-widget");
+    var root = Resolve(theme, "scroll", "audio.root", "audio-mixer-widget");
     var card = Resolve(theme, "stack", "audio.session.test.row", "audio-session-card");
     var controls = Resolve(theme, "row", "audio.session.test.controls", "audio-volume-control-row");
     var slider = Resolve(theme, "slider", "audio.session.test.volume.slider", "audio-volume-slider");
     var muteIcon = Resolve(theme, "icon", "audio.session.test.mute.icon", "audio-mute-icon");
     var value = Resolve(theme, "text", "audio.session.test.volume.value", "audio-volume-value");
-    var list = Resolve(theme, "scroll", "audio.sessions.scroll", "audio-session-list");
+    var list = Resolve(theme, "stack", "audio.sessions.list", "audio-session-list");
     var header = Resolve(theme, "stack", "audio.header", "audio-header");
     var sessionState = Resolve(theme, "text", "audio.session.test.state", "audio-session-state");
 
@@ -851,9 +854,7 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
     Assert.Equal("0", sessionState.Get("flex-shrink")!.Text);
     Assert.True(Pixels(sessionState.Get("width")!, 280) >= 44,
         "The trailing session state can collapse into clipped character fragments.");
-    Assert.True(Pixels(list.Get("min-height")!, 280) >= 150 &&
-                Pixels(list.Get("max-height")!, 280) <= 360,
-        "The application list escaped its bounded scroll viewport.");
+    Assert.Equal("0", list.Get("flex-shrink")!.Text);
 
     foreach (var viewport in new[] { 280D, 320D, 1280D, 3840D })
     {

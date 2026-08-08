@@ -32,7 +32,6 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothReadV1 = "system.network.bluetooth.read.v1";
     public const string NetworkBluetoothRadioControlV1 = "system.network.bluetooth.radio.control.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
-    public const string RecentActivityActivateV1 = "system.activity.recent.activate.v1";
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
 
@@ -57,7 +56,6 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothGet = "network.bluetooth.get";
     public const string NetworkBluetoothRadioSet = "network.bluetooth.radio.set";
     public const string RecentActivitiesList = "activity.recent.list";
-    public const string RecentActivityActivate = "activity.recent.activate";
     public const string MediaSessionsGet = "media.sessions.get";
     public const string MediaSessionControl = "media.session.control";
 
@@ -107,8 +105,6 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Control, Set(NetworkBluetoothRadioSet), Set()),
             [RecentActivityReadV1] = new(RecentActivityReadV1, 1,
                 BrokerCapabilityKind.Read, Set(RecentActivitiesList), Set(RecentActivitiesChanged)),
-            [RecentActivityActivateV1] = new(RecentActivityActivateV1, 1,
-                BrokerCapabilityKind.Control, Set(RecentActivityActivate), Set()),
             [MediaSessionsReadV1] = new(MediaSessionsReadV1, 1,
                 BrokerCapabilityKind.Read, Set(MediaSessionsGet), Set(MediaSessionsChanged)),
             [MediaSessionsControlV1] = new(MediaSessionsControlV1, 1,

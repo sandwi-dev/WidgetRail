@@ -70,40 +70,6 @@ public sealed class WindowsActivityPlatformBackend : IActivityPlatformBrokerBack
             return Task.FromResult<IReadOnlyList<RecentActivitySummary>>(SnapshotLocked());
     }
 
-    public Task ActivateRecentActivityAsync(
-        string activityId, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        // Activation never starts observation by itself. A token can exist only
-        // after an authorized read started the observer and returned that token.
-        if (Volatile.Read(ref _started) == 0)
-            throw new BrokerException("resource_not_found", "The recent activity was not observed.");
-        ActivityEntry? entry;
-        lock (_gate)
-            entry = _activities.FirstOrDefault(item => item.ActivityId == activityId);
-        if (entry is null || !_native.IsWindowAvailable(entry.Window, entry.ProcessId))
-        {
-            Remove(activityId);
-            throw new BrokerException("resource_not_found", "The recent activity is no longer running.");
-        }
-        if (!_native.TryActivate(entry.Window, entry.ProcessId))
-            throw new BrokerException("activation_denied", "Windows did not allow the window switch.");
-
-        lock (_gate)
-        {
-            var index = _activities.FindIndex(item => item.ActivityId == activityId);
-            if (index > 0)
-            {
-                var selected = _activities[index];
-                _activities.RemoveAt(index);
-                _activities.Insert(0, selected);
-            }
-        }
-        Publish();
-        return Task.CompletedTask;
-    }
-
     private void EnsureStarted()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -170,8 +136,8 @@ public sealed class WindowsActivityPlatformBackend : IActivityPlatformBrokerBack
             else
             {
                 // A process key identifies an application, not one process
-                // lifetime. Never let an opaque activation token survive PID
-                // replacement: the old token must become unresolvable.
+                // lifetime. Rotate the opaque observation token so a stale
+                // process lifetime is never represented as the replacement.
                 if (index >= 0) _activities.RemoveAt(index);
                 entry = new ActivityEntry(
                     "activity-" + Guid.NewGuid().ToString("N"),
@@ -208,13 +174,6 @@ public sealed class WindowsActivityPlatformBackend : IActivityPlatformBrokerBack
     {
         var changed = false;
         lock (_gate) changed = _activities.RemoveAll(item => item.Window == window) != 0;
-        if (changed) Publish();
-    }
-
-    private void Remove(string activityId)
-    {
-        var changed = false;
-        lock (_gate) changed = _activities.RemoveAll(item => item.ActivityId == activityId) != 0;
         if (changed) Publish();
     }
 

@@ -273,9 +273,14 @@ static async Task ExerciseControlAsync(
             calls = () => backend.WifiRadioControlCalls;
             break;
         case "org.gbar.firstparty.recent-apps":
-            actionId = "recent.activate";
-            calls = () => backend.RecentActivityActivationCalls;
-            break;
+            Assert.True(!Nodes(snapshot.Root).Any(node =>
+                    string.Equals(node.ActionId, "recent.activate", StringComparison.Ordinal)),
+                $"{package.Manifest.Name} {route} exposed the retired foreground action.");
+            Assert.True(package.Manifest.Permissions.Count == 1 &&
+                package.Manifest.Permissions.Contains("system.activity.recent.read.v1") &&
+                package.Manifest.OptionalPermissions.Count == 0,
+                $"{package.Manifest.Name} {route} must remain read-only.");
+            return;
         case "org.gbar.firstparty.media-sessions":
             actionId = "media.toggle";
             calls = () => backend.MediaControlCalls;

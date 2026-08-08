@@ -8,10 +8,9 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Visible lifecycle opens subscription before fetching snapshot", SubscriptionBeforeSnapshot),
     ("Ready UI is a bounded controller scroll with stable focus graph", RendersControllerList),
-    ("Activation is optional interactive-only host control", ActivationIsInteractiveOnly),
+    ("Activity rows are local read-only selections", RowsAreReadOnlySelections),
     ("Events reconcile ordering and remove stale selections", EventsReconcile),
     ("Most-recent metadata never creates a second controller selection", RecencyIsNotSelection),
-    ("Canceled and unavailable activation always roll back pending state", ActivationRollback),
     ("Permission and channel failures render recoverable states", FailuresAreRecoverable),
     ("Manifest and GBSS package validate", PackageValidates),
 };
@@ -71,33 +70,36 @@ static async Task RendersControllerList()
     Assert.True(buttons[0].IsDisabled is not true);
     Assert.True(buttons[1].IsDisabled is not true);
     Assert.Equal(buttons[0].Id, buttons[0].Focus!.Up);
-    Assert.Equal(buttons[^1].Id, buttons[^1].Focus!.Down);
+    Assert.True(buttons[^1].Focus!.Down is null);
     Assert.True(snapshot.InitialFocusId == buttons[0].Id);
     Assert.False(Nodes(snapshot.Root).Any(node =>
         (node.Text ?? string.Empty).Contains("one", StringComparison.Ordinal)));
 }
 
-static async Task ActivationIsInteractiveOnly()
+static async Task RowsAreReadOnlySelections()
 {
-    var fake = new FakeActivityHost { Activities = [Activity("one", "One")] };
+    var fake = new FakeActivityHost
+    {
+        Activities = [Activity("one", "One"), Activity("two", "Two")],
+    };
     var widget = Create(fake);
-    await Visible(widget);
-    await WaitUntil(() => widget.ViewState == RecentAppsViewState.Ready);
-    var visibleSnapshot = widget.RenderSnapshot("recent.test", 1);
-    var button = Nodes(visibleSnapshot.Root).Single(node => node.Kind == ViewNodeKind.Button);
-    await widget.OnActionAsync(new("recent.activate", button.Id));
-    Assert.Equal(0, fake.ActivationRequests.Count);
-
     await Interactive(widget);
-    var interactiveSnapshot = widget.RenderSnapshot("recent.test", 2);
-    button = Nodes(interactiveSnapshot.Root).Single(node => node.Kind == ViewNodeKind.Button);
+    await WaitUntil(() => widget.ViewState == RecentAppsViewState.Ready);
+    var snapshot = widget.RenderSnapshot("recent.test", 2);
+    var buttons = Nodes(snapshot.Root)
+        .Where(node => node.Kind == ViewNodeKind.Button && node.ActionId == "recent.select")
+        .ToArray();
+    Assert.Equal(2, buttons.Length);
+    Assert.False(Nodes(snapshot.Root).Any(node =>
+        node.ActionId == "recent.activate" || node.Glyph == WidgetGlyph.Play));
+    var button = buttons.Single(node => node.Text == "Two");
     var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
         ControllerButton.A, ControllerEventPhase.Pressed, ControllerInputContext.OpenWidget,
-        button.Id, SnapshotSequence: interactiveSnapshot.Sequence,
-        ActiveInputScopeId: interactiveSnapshot.ActiveInputScopeId));
+        button.Id, SnapshotSequence: snapshot.Sequence,
+        ActiveInputScopeId: snapshot.ActiveInputScopeId));
     Assert.True(handled);
-    await WaitUntil(() => fake.ActivationRequests.Count == 1);
-    Assert.Equal("one", fake.ActivationRequests[0].ActivityId);
+    await WaitUntil(() => Nodes(widget.RenderSnapshot("recent.test", 3).Root)
+        .Single(node => node.Text == "Two").IsSelected is true);
 }
 
 static async Task EventsReconcile()
@@ -129,48 +131,11 @@ static async Task RecencyIsNotSelection()
     fake.Publish([Activity("two", "Two", mostRecent: true), Activity("one", "One")]);
     await WaitUntil(() => widget.Activities[0].ActivityId == "two");
     var buttons = Nodes(widget.RenderSnapshot("recent.test", 10).Root)
-        .Where(node => node.Kind == ViewNodeKind.Button && node.ActionId == "recent.activate")
+        .Where(node => node.Kind == ViewNodeKind.Button && node.ActionId == "recent.select")
         .ToArray();
     Assert.Equal(1, buttons.Count(node => node.IsSelected is true));
     Assert.Equal("One", buttons.Single(node => node.IsSelected is true).Text);
     Assert.True(buttons.Single(node => node.Text == "Two").StyleClasses.Contains("is-most-recent"));
-}
-
-static async Task ActivationRollback()
-{
-    var fake = new FakeActivityHost { Activities = [Activity("one", "One")] };
-    var widget = Create(fake);
-    await Interactive(widget);
-    await WaitUntil(() => widget.ViewState == RecentAppsViewState.Ready);
-    var source = Nodes(widget.RenderSnapshot("recent.test", 8).Root)
-        .Single(node => node.Kind == ViewNodeKind.Button).Id;
-
-    fake.ActivationWaitsForCancellation = true;
-    using (var caller = new CancellationTokenSource())
-    {
-        var action = widget.OnActionAsync(new("recent.activate", source), caller.Token).AsTask();
-        await WaitUntil(() => widget.ControlBusy && fake.ActivationRequests.Count == 1);
-        caller.Cancel();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => action);
-        Assert.False(widget.ControlBusy);
-    }
-
-    fake.ActivationWaitsForCancellation = true;
-    var lifetimeAction = widget.OnActionAsync(new("recent.activate", source)).AsTask();
-    await WaitUntil(() => widget.ControlBusy && fake.ActivationRequests.Count == 2);
-    await Background(widget);
-    await lifetimeAction;
-    Assert.False(widget.ControlBusy);
-
-    await Interactive(widget);
-    await WaitUntil(() => widget.ViewState == RecentAppsViewState.Ready);
-    source = Nodes(widget.RenderSnapshot("recent.test", 9).Root)
-        .Single(node => node.Kind == ViewNodeKind.Button).Id;
-    fake.ActivationWaitsForCancellation = false;
-    fake.ActivationException = new WidgetCapabilityUnavailableException("unavailable");
-    await widget.OnActionAsync(new("recent.activate", source));
-    Assert.False(widget.ControlBusy);
-    Assert.True(widget.Status.Contains("service unavailable", StringComparison.OrdinalIgnoreCase));
 }
 
 static async Task FailuresAreRecoverable()
@@ -199,7 +164,7 @@ static Task PackageValidates()
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(root, "manifest.json")));
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.True(manifest.Permissions.Contains("system.activity.recent.read.v1"));
-    Assert.True(manifest.OptionalPermissions.Contains("system.activity.recent.activate.v1"));
+    Assert.Equal(0, manifest.OptionalPermissions.Count);
     var package = GbssPackageLoader.Load("styles/default.gbss", new GbssFileSourceProvider(root));
     var compiled = GbssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid);
@@ -259,16 +224,12 @@ file sealed class FakeActivityHost
     private int _canceledSubscriptions;
     internal IReadOnlyList<WidgetRecentActivity> Activities { get; set; } = [];
     internal Exception? ReadException { get; set; }
-    internal Exception? ActivationException { get; set; }
-    internal bool ActivationWaitsForCancellation { get; set; }
     internal List<string> CallOrder { get; } = [];
-    internal List<ActivateWidgetRecentActivityRequest> ActivationRequests { get; } = [];
     internal int SubscriptionCount => Volatile.Read(ref _subscriptionCount);
     internal int CanceledSubscriptions => Volatile.Read(ref _canceledSubscriptions);
 
     internal WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetRecentActivityCapabilities.GetRecent, GetAsync)
-        .WithHandler(WidgetRecentActivityCapabilities.Activate, ActivateAsync)
         .WithEventStream(WidgetRecentActivityCapabilities.Changed, Subscribe)
         .Build();
 
@@ -282,16 +243,6 @@ file sealed class FakeActivityHost
         if (ReadException is not null)
             return ValueTask.FromException<IReadOnlyList<WidgetRecentActivity>>(ReadException);
         return ValueTask.FromResult(Activities);
-    }
-
-    private async ValueTask<WidgetCapabilityAcknowledgement> ActivateAsync(
-        ActivateWidgetRecentActivityRequest request, CancellationToken cancellationToken)
-    {
-        lock (ActivationRequests) ActivationRequests.Add(request);
-        if (ActivationException is not null) throw ActivationException;
-        if (ActivationWaitsForCancellation)
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        return new WidgetCapabilityAcknowledgement(true);
     }
 
     private IAsyncEnumerable<WidgetRecentActivitiesChanged> Subscribe(

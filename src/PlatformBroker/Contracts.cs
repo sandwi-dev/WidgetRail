@@ -252,9 +252,6 @@ public sealed record RecentActivitySummary(
     bool IsRunning,
     bool IsMostRecent);
 
-public sealed record ActivateRecentActivityRequest(
-    [property: JsonRequired] string ActivityId);
-
 public sealed record RecentActivitiesChangedEvent(
     IReadOnlyList<RecentActivitySummary> Activities);
 
@@ -344,7 +341,6 @@ public interface IActivityPlatformBrokerBackend : IPlatformBrokerEventSource
 {
     Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
         CancellationToken cancellationToken);
-    Task ActivateRecentActivityAsync(string activityId, CancellationToken cancellationToken);
 }
 
 public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource

@@ -241,15 +241,21 @@ WinEvent provider observes eligible foreground/destroyed top-level windows only
 after an authorized read starts it, keeps at most 16 running applications, and
 publishes full coalescible snapshots without polling. The public model contains
 only a bounded display name, an opaque process-lifetime ID, running/most-recent
-state, and conservative kind. An optional Interactive grant can restore/switch
-only to that exact still-running observed window.
+state, and conservative kind. The first slice is now read-only: unreliable
+foreground switching duplicated Windows task switching and has been removed.
 
 The first slice intentionally does not read UserAssist or registry history,
 query Xbox services, inspect game memory, retain executable paths/PIDs/HWNDs in
-the worker, launch closed applications, or infer that an app is a game. Future
-increments may add authoritative game classification, icons, grouping, and a
-reviewed relaunch contract, but each needs a privacy/resource model and must not
+the worker, launch closed applications, or infer that an app is a game. Its
+replacement is a catalog-backed Games & Apps launcher with authoritative
+installed-library sources, icons, and explicit launch contracts; it must not
 turn recent activity into an unrestricted process launcher.
+
+The first replacement foundation is implemented and locally testable: a
+read-only Start Menu source returns bounded sanitized application records with
+random opaque IDs and no launch operation. Next, add the supported AppsFolder
+source, then broker the combined catalog before implementing exact revalidated
+launch and the controller tile UI.
 
 **Network Control roadmap** follows the Audio Control foundation. Its first
 slice uses Windows WLAN/network change notifications rather than continuously

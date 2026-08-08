@@ -167,13 +167,9 @@
 }
 
 .audio-session-list {
-  min-height: 156px;
-  max-height: 340px;
-  flex-grow: 1;
-  flex-shrink: 1;
+  flex-shrink: 0;
   gap: 6px;
   padding: 1px 3px 1px 1px;
-  overflow: clip;
 }
 
 .audio-session-details {

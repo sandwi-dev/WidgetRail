@@ -229,9 +229,6 @@ public sealed record WidgetRecentActivity(
     [property: JsonRequired] bool IsRunning,
     [property: JsonRequired] bool IsMostRecent);
 
-public sealed record ActivateWidgetRecentActivityRequest(
-    [property: JsonRequired] string ActivityId);
-
 public sealed record WidgetRecentActivitiesChanged(
     [property: JsonRequired] IReadOnlyList<WidgetRecentActivity> Activities);
 
@@ -384,10 +381,6 @@ public static class WidgetRecentActivityCapabilities
 {
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, IReadOnlyList<WidgetRecentActivity>>
         GetRecent { get; } = new("system.activity.recent.read.v1", "activity.recent.list");
-
-    public static WidgetCapabilityOperation<ActivateWidgetRecentActivityRequest,
-        WidgetCapabilityAcknowledgement> Activate { get; } =
-        new("system.activity.recent.activate.v1", "activity.recent.activate");
 
     public static WidgetCapabilityEvent<WidgetRecentActivitiesChanged> Changed { get; } =
         new("system.activity.recent.read.v1", "activity.recent.changed");
@@ -671,19 +664,6 @@ public sealed class WidgetRecentActivityService
         _client.InvokeAsync(
             WidgetRecentActivityCapabilities.GetRecent,
             new WidgetCapabilityQuery(), cancellationToken);
-
-    public async ValueTask ActivateAsync(
-        string activityId, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(activityId);
-        var response = await _client.InvokeAsync(
-            WidgetRecentActivityCapabilities.Activate,
-            new ActivateWidgetRecentActivityRequest(activityId), cancellationToken)
-            .ConfigureAwait(false);
-        if (response is null || !response.Acknowledged)
-            throw new WidgetCapabilityException(
-                "malformed_response", "The recent activity provider returned an invalid acknowledgement.");
-    }
 
     public IAsyncEnumerable<WidgetRecentActivitiesChanged> WatchAsync(
         CancellationToken cancellationToken = default) =>

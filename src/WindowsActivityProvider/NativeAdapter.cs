@@ -22,5 +22,4 @@ internal interface IWindowsActivityNativeAdapter : IDisposable
     nint GetCurrentForegroundWindow();
     NativeActivityCandidate? InspectWindow(nint window);
     bool IsWindowAvailable(nint window, uint expectedProcessId);
-    bool TryActivate(nint window, uint expectedProcessId);
 }

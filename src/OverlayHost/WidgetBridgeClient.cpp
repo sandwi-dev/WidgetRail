@@ -22,18 +22,6 @@
 namespace gba {
 namespace {
 
-[[nodiscard]] bool ShouldDelegateForegroundActivation(
-    const DWORD trustedBridgeProcessId,
-    const bool trustedBridgeProcessLive,
-    const bool trustedBridgeProcessIdMatches,
-    const bool trustedUserActivation,
-    const std::wstring_view,
-    const std::wstring_view phase) noexcept {
-    return trustedBridgeProcessLive && trustedBridgeProcessIdMatches &&
-           trustedBridgeProcessId != 0 && trustedUserActivation &&
-           phase == L"pressed";
-}
-
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValue;
@@ -1163,8 +1151,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const long long sequence,
     const long long monotonicTimestampMicroseconds,
     const std::wstring_view phase,
-    const std::optional<double> requestedValue,
-    const bool trustedUserActivation) {
+    const std::optional<double> requestedValue) {
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         JsonObject input;
@@ -1196,26 +1183,6 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         envelope.Insert(L"type", JsonValue::CreateStringValue(L"controller-input"));
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
         envelope.Insert(L"payload", payload);
-        // Windows normally prevents a background broker process from activating
-        // another application. A pressed Interactive-widget controller event is
-        // a generic user activation, so delegate only to the exact live bridge
-        // process launched by this client. The worker never receives this grant;
-        // broker identity, declaration, consent, lifecycle, and opaque-resource
-        // validation still gate any foreground-affecting platform operation.
-        const bool bridgeHandlePresent =
-            process_ != nullptr && process_ != INVALID_HANDLE_VALUE;
-        const bool bridgeProcessLive = bridgeHandlePresent &&
-            WaitForSingleObject(process_, 0) == WAIT_TIMEOUT;
-        const bool bridgeProcessIdMatches = bridgeProcessLive &&
-            GetProcessId(process_) == processId_;
-        if (ShouldDelegateForegroundActivation(
-                processId_, bridgeProcessLive, bridgeProcessIdMatches,
-                trustedUserActivation, button, phase) &&
-            !AllowSetForegroundWindow(processId_)) {
-            lastError_ = Win32Message(
-                L"AllowSetForegroundWindow(WidgetBridge)", GetLastError());
-            OutputDebugStringW((lastError_ + L"\n").c_str());
-        }
         if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
         while (const auto frame = ReadFrame()) {
             const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
@@ -1356,18 +1323,6 @@ bool WidgetBridgeClient::HasWidgetCatalogChangedRevisionInFlight() const noexcep
 
 #ifdef GBA_WIDGET_BRIDGE_CLIENT_TESTING
 namespace gba::testing {
-
-bool ShouldDelegateForegroundActivation(
-    const DWORD trustedBridgeProcessId,
-    const bool trustedBridgeProcessLive,
-    const bool trustedBridgeProcessIdMatches,
-    const bool trustedActivationInput,
-    const std::wstring_view button,
-    const std::wstring_view phase) noexcept {
-    return gba::ShouldDelegateForegroundActivation(
-        trustedBridgeProcessId, trustedBridgeProcessLive,
-        trustedBridgeProcessIdMatches, trustedActivationInput, button, phase);
-}
 
 std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
     const std::string_view payloadUtf8,

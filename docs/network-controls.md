@@ -6,10 +6,12 @@ The typed SDK, authenticated capability transport, consent UI, lifecycle
 enforcement, real event-driven Windows provider, first-party widget/worker,
 trusted catalog entry, and Release packaging hooks exist. The focused Release
 network provider and widget suites pass 31/31 and 17/17 respectively; the
-Bluetooth provider passes 11/11; PlatformBroker passes 32/32; and the full managed suite, native host
+Bluetooth provider passes 11/11; the last complete Release verifier recorded
+PlatformBroker 34/34; and the full managed suite, native host
 suite, packaged hidden-startup smoke, and controller input-probe smoke also
-pass. Hardware/privacy matrices and performance evidence remain open, so this
-is not yet a shipped or production-support claim.
+pass. The split Wi-Fi/Bluetooth presentation still needs packaged controller
+and visual verification. Hardware/privacy matrices and performance evidence
+remain open, so this is not yet a shipped or production-support claim.
 
 Network Controls is the second first-party system-control reference widget,
 after Audio Mixer. It must use the same public declarative SDK, worker
@@ -34,7 +36,11 @@ The initial surface is intentionally narrow:
 - render currently visible networks with sanitized name, signal, security,
   credential-required, connected, and saved-profile state; and
 - connect an exact visible saved-profile or unsaved open network by its opaque
-  scan ID while Interactive.
+  scan ID while Interactive;
+- present Wi-Fi and Bluetooth as separate controller views rather than one
+  overlong mixed list; and
+- switch those views with LB/RB or a focused segmented-tab A action while
+  retaining independent selected-item focus.
 
 The bundled surface does **not** prompt for or store a password, create/edit/
 delete protected profiles, read profile XML or key material, expose BSSID/MAC/
@@ -425,8 +431,8 @@ The implemented first-party package contract is:
 - required `system.network.read.v1`, `system.network.wifi.read.v1`, and
   `system.network.wifi.radio.read.v1`; optional connection, Wi-Fi radio control,
   Bluetooth read, and Bluetooth radio-control grants;
-- x64, `suspend` background policy, 64 MiB requested memory, and 10 Hz maximum
-  widget update budget; and
+- x64, `unload-after-idle` background policy with a 120-second bound, 64 MiB
+  requested memory, and 10 Hz maximum widget update budget; and
 - root controller input scope `network-controls`.
 
 Its implemented stable actions are:
@@ -434,7 +440,9 @@ Its implemented stable actions are:
 | Context | Controller | Action ID | Behavior |
 | --- | --- | --- | --- |
 | Dashboard card | — | — | Read-only summary; Network Controls declares no dashboard quick actions. |
-| Open widget | D-pad/left stick Up/Down | — | Move through Wi-Fi radio, Scan, available networks, Bluetooth radio, and bounded device rows. Down from the final row returns focus to the tray. |
+| Open widget | LB/RB | `network.tab.previous` / `network.tab.next` | Switch between the mutually exclusive Wi-Fi and Bluetooth views from any root focus. |
+| Focused tab | A or D-pad/left stick Left/Right | `network.tab.select` | Select Wi-Fi or Bluetooth through the shared segmented-tab component. |
+| Active view | D-pad/left stick Up/Down | — | Move only through the current view. Down from its final row returns focus to the tray. |
 | Focused Wi-Fi radio | A | `wifi.radio.toggle` | Request software radio On/Off while Interactive and reconcile the effective state. |
 | Focused Scan action | A | `wifi.scan` | Request one bounded scan while Interactive; there is no automatic or repeating scan. |
 | Focused network row | A or X | `wifi.connect.item` | Request connection to that exact current saved/open result while Interactive. |
@@ -446,9 +454,18 @@ There is deliberately no dashboard selection or connect action. The open
 surface does not keep a separate hidden selected-card model: generation-bound
 opaque row IDs identify the target, and A/X resolves only against the exact
 focused row.
-LB/RB and LT/RT remain available to other widget-owned behavior and do not
-cycle profiles. B is not bound by the widget root, so the host can return to
-the dashboard.
+LB/RB are view-switch shortcuts, not item-cycling shortcuts. LT/RT remain
+unbound and neither shoulders nor triggers cycle profiles/devices. B is not
+bound by the widget root, so the host can return to the dashboard.
+
+The active views deliberately use different stable Scroll IDs:
+`network.wifi.body.scroll` and `network.bluetooth.body.scroll`. The widget
+retains one opaque selected network and one opaque selected Bluetooth device.
+On a tab return it publishes that tab's selected stable element as initial
+focus, and host focus-follow reconstructs the correct visible location. This
+restoration is scoped to the current worker lifetime; an idle-unloaded runtime
+starts from its safe default rather than persisting provider opaque IDs to
+disk.
 
 The open widget should provide:
 
@@ -621,6 +638,8 @@ Required widget/provider evidence includes:
 - control grant denied/revoked independently from the read grant;
 - no scan or connection command while Visible or Background;
 - stable focus and busy state under list churn;
+- LB/RB split-view switching from arbitrary root controls, independent Wi-Fi/
+  Bluetooth selected-item restoration, and distinct stable Scroll IDs;
 - zero timer polling and bounded event coalescing; and
 - cancellation/disposal with no callback-after-free or hanging operation.
 

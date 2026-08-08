@@ -21,7 +21,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | --- | --- | --- | --- | --- |
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; packaged visual verification remains. |
-| GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | The all-session controller-scroll mixer and stable focus restoration are implemented; packaged visual/controller verification remains. |
+| GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll now contains master, device, microphone, and every application control; packaged visual/controller verification remains. |
 | GBA-004 | P1 | Verifying | OverlayHost presentation / invalidation | Size-changing widget swaps now move without redraw and synchronously commit one complete frame; packaged visual verification remains. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
@@ -31,7 +31,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-010 | P2 | Verifying | Platform diagnostics transport | End-to-end request deadlines and bounded client timeout validation are implemented. |
 | GBA-011 | P0 | Verifying | Widget SDK / host focus / Audio Mixer | Focus-safe disabled/busy semantics and per-session Audio reconciliation are implemented; packaged controller verification remains. |
 | GBA-012 | P1 | Verifying | Declarative renderer / component styles | Effective surface/ancestor focus clipping and non-scaling full-width defaults are implemented; packaged visual verification remains. |
-| GBA-013 | P1 | Verifying | Network Controls / widget SDK | The full-width controller-scroll available-network list, explicit scan, and focused-row routing are implemented; packaged visual/controller verification remains. |
+| GBA-013 | P1 | Verifying | Network Controls / widget SDK | Separate Wi-Fi and Bluetooth controller views, LB/RB tab switching, explicit scan, and focused-row routing are implemented; packaged visual/controller verification remains. |
 | GBA-014 | P0 | Verifying | YT Music / Widget SDK routing / native icons | Window-wide transport shortcuts and Previous/Next glyph orientation are corrected; packaged controller/visual verification remains. |
 | GBA-015 | P1 | Verifying | Declarative renderer / built-in widget themes | Fixed regions no longer shrink into clipping, Sliders use a thin native track inside their controller target, and the built-in surfaces use a lighter visual hierarchy; packaged visual verification remains. |
 | GBA-016 | P0 | Verifying | OverlayHost focus / lifecycle / controller routing | The selected widget panel now remains visible while the tray owns focus, with one-level Back, automatic tray preview, and root-boundary return behavior; packaged controller evidence remains. |
@@ -45,6 +45,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-024 | P1 | Verifying | Gbar CLI / OverlayHost / WidgetBridge | Authenticated candidate-worker readiness, last-good recovery, complete bounded watching, and observable cleanup are implemented; packaged author-workflow evidence remains. |
 | GBA-025 | P0 | Verifying | Controller quick actions / capability broker | A dormant non-authorizing host reservation now activates one exact-operation broker lease only at the typed call; packaged controller/media evidence remains. |
 | GBA-026 | P1 | Verifying | Reference widgets / package isolation | The four brokered references now ship through the generic AppContainer path and pass real-package conformance; packaged overlay evidence remains. |
+| GBA-027 | P0 | Verifying | Recent Apps / broker / OverlayHost | Unreliable foreground switching and broad bridge foreground delegation were removed; Recent Apps remains read-only until the Games & Apps launcher replaces it. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -105,8 +106,12 @@ Release placement tests cover 720p, portrait, ultrawide, invalid hints, 200% DPI
 sessions with shoulder shortcuts. This made comparison slow and did not match
 the requested mixer mental model.
 
-**Implementation evidence:** Master output is pinned above a single bounded
-vertical Scroll containing every session row. Master and application rows use
+**Implementation evidence:** The earlier fixed master/device/microphone region
+could consume more than the host content viewport and leave its nested session
+Scroll partially clipped by a non-scroll ancestor. Audio now publishes one
+bounded root Scroll (`audio.root`) containing the header, master output,
+sanitized device summary, microphone control, and every application row. Master
+and application rows use
 the same icon–Slider–percentage composition: the nonfocusable icon exposes mute
 state, Left/Right changes the focused Slider's absolute volume, A toggles mute,
 and Up/Down moves between rows. Each row is one stable focus target.
@@ -114,13 +119,17 @@ LB/RB/LT/RT session cycling, root shortcuts, and dashboard quick actions were
 removed. Host-owned scroll offsets are keyed by exact worker instance, input
 scope, and scroll ID; stable focus IDs survive close/reopen and ordinal fallback
 selects the nearest focusable row after churn. SDK, native renderer/focus, and
-Audio Mixer Release suites pass, including rapid absolute Slider updates,
-128-session, and long-label cases.
+Audio Mixer passes 24/24 focused Release tests, including rapid absolute Slider
+updates, 128-session, and long-label cases. Native renderer coverage passes
+4,311 checks and walks Audio-like master/input/application geometry at the
+actual 464-DIP host content height and a constrained 304-DIP height. These
+focused checks do not replace packaged controller and visual verification.
 
 **Acceptance:**
 
-1. Master output remains pinned above a vertical list containing every current
-   application session and its own volume/mute controls.
+1. One bounded controller Scroll contains master output, device/microphone
+   content, and every current application session without a clipped nested
+   viewport.
 2. D-pad and analog navigation move through stable per-session controls; no
    bumper/trigger action changes the selected application.
 3. Host-owned focus-follow scrolling keeps the focused row fully visible.
@@ -214,7 +223,7 @@ ordinary non-scroll focus rendering.
 **Implementation evidence:** The 4,096-entry guard now evicts least-recent
 inactive offsets only. Deferred focus uses the effective intersection of scroll
 viewports while ordinary focus remains unchanged. Renderer Release tests pass
-4,204 checks.
+4,311 checks.
 
 ## GBA-009 — Diagnostics client must authenticate its server
 
@@ -299,7 +308,7 @@ an inset outline and no scale transform. Settings removes its full-width focus
 growth. Deferred native focus decoration now starts with the render surface,
 intersects every Scroll or `overflow: clip` ancestor, and preserves explicit
 `overflow: visible`. Platform theme Release tests pass 13/13; native renderer
-tests pass 4,245 checks including nested non-Scroll clips, scaled root-edge
+tests pass 4,311 checks including nested non-Scroll clips, scaled root-edge
 controls, visible-overflow freedom, and retained Scroll behavior. Packaged
 screenshots at supported scale settings remain required before closing.
 
@@ -317,20 +326,25 @@ than a scannable controller list.
 2. Current transport, radio/privacy state, explicit scan, and available-network actions use a
    clear visual hierarchy with concise alert, empty, connecting, and failure
    states.
-3. Current available networks form a bounded vertical controller-scroll list with stable
-   IDs, focus restoration, and no shoulder/trigger cycling.
+3. Wi-Fi and Bluetooth use separate bounded vertical controller views with
+   stable IDs and independent selected-row restoration. LB/RB changes the
+   active view; neither shoulder nor trigger cycles items inside a list.
 4. Empty, one-profile, many-profile, long-label, radio-off, wired-only,
    connecting/failure, 720p, high-DPI, and text-scale regressions pass.
 
 **Implementation evidence:** Network now consumes the resolved compact width
-and publishes the current ready scan as generation-bound identity-derived rows
-in one bounded vertical Scroll. A explicitly scans from the Scan control; A
-and X connect the exact current saved/open focused result. No scan occurs on
-activation or a timer. LB/RB cycling and dashboard quick actions are absent.
-Credential-required and unsupported authentication remain typed, sanitized
-states. Pending rows remain focused and selection survives within a scan
-generation. Network Controls passes 17/17, WindowsNetworkProvider 31/31, and
-PlatformBroker 32/32; packaged visual/controller/privacy evidence remains.
+and publishes mutually exclusive Wi-Fi and Bluetooth views under one segmented
+tab bar. LB/RB changes tabs from any root focus; A can also select a focused
+tab. Wi-Fi and Bluetooth own distinct stable Scroll IDs
+(`network.wifi.body.scroll` and `network.bluetooth.body.scroll`) and retain
+their own opaque selected item, so returning to a tab restores its focus target
+and host focus-follow reconstructs the visible location. A explicitly scans
+from the Wi-Fi Scan control; A and X connect the exact current saved/open
+focused result. No scan occurs on activation or a timer. LT/RT do not cycle
+items, and dashboard quick actions remain absent. Credential-required and
+unsupported authentication remain typed, sanitized states. Network Controls
+passes 17/17 and WindowsNetworkProvider passes 31/31; packaged split-view
+visual/controller/privacy evidence remains.
 
 ## GBA-014 — YT Music window shortcuts and transport glyphs are focus-dependent or reversed
 
@@ -403,7 +417,7 @@ flex. The native Slider draws a thin track within its unchanged 44-DIP
 controller target instead of painting a second full control background. The
 built-in platform theme and all four packaged widget themes use the revised
 lighter typography, radius, spacing, and surface treatment. Declarative
-Renderer passes 4,245 checks. Packaged visual screenshots are still required
+Renderer passes 4,311 checks. Packaged visual screenshots are still required
 before closing.
 
 ## GBA-016 — Returning to the tray must not hide the selected widget panel
@@ -441,7 +455,7 @@ controls; and a root-scope Down boundary returns to the tray without escaping
 nested scopes. Guide remains region-independent. Lifecycle transitions publish
 `Visible` for a previewed panel and `Interactive` only while its controls own
 focus. Controller Navigation passes 73 checks and Declarative Renderer passes
-4,245 checks. Packaged hands-on controller evidence remains required before
+4,311 checks. Packaged hands-on controller evidence remains required before
 closing.
 
 ## GBA-017 — Scroll boundaries do not fully reveal the first/last control
@@ -456,7 +470,7 @@ target clipped, and compact/high-scale/nested-scroll regressions pass.
 **Implementation evidence:** The renderer now identifies the first/last
 focusable descendant of each Scroll and snaps those endpoints to offset zero or
 the maximum extent while preserving nested fixed-point reveal. Declarative
-Renderer passes 4,245 checks. Status remains Verifying pending packaged input
+Renderer passes 4,311 checks. Status remains Verifying pending packaged input
 and screenshot evidence.
 
 ## GBA-018 — Tray Up should enter the visible widget
@@ -659,9 +673,36 @@ installs the same four `.gbarwidget` packages, merges them through
 `WidgetCatalog`/`BridgeCatalog`, grants simulated consent through the production
 PID-bound broker companion, and executes both the installed and separately
 configured bundled routes. Both forms drive lifecycle, validate rendered
-snapshots, and exercise a safe brokered control for every reference. It passes
-4/4; Bridge passes 29/29. The packaged build and host catalog contain and select
-no dedicated worker executable for these four widgets.
+snapshots. Recent Apps proves its read-only stream and absence of the retired
+foreground action; the other three references exercise a safe brokered
+control. It passes 4/4; Bridge passes 29/29. The packaged build and host catalog
+contain and select no dedicated worker executable for these four widgets.
+
+## GBA-027 — Recent Apps foreground switching is unreliable and mis-scoped
+
+**Evidence:** Selecting an observed terminal could create a new tab, a later
+attempt could close the terminal, and Windows could reject foreground
+activation. The feature also duplicated controller task switching while not
+providing the requested installed games/app launcher.
+
+**Acceptance:** No widget input delegates generic Windows foreground authority
+to WidgetBridge. The public capability vocabulary, SDK, broker, provider,
+simulator, manifest, and packaged Recent Apps worker expose no activity
+activation operation. Recent Apps remains a sanitized, event-driven read-only
+list with controller scrolling until the separately designed Games & Apps
+launcher has authoritative catalog sources and explicit launch contracts.
+
+**Implementation evidence:** OverlayHost no longer calls
+`AllowSetForegroundWindow` for widget controller input. The native bridge
+signature and test seam no longer carry a trusted-activation flag. The retired
+capability, DTOs, broker dispatch/backend method, provider `SetForegroundWindow`
+path, Settings copy, manifest declaration, and SDK method were removed. Recent
+rows now perform only local selection, retain controller focus/scroll behavior,
+and disclose no process/window identifiers. Release suites pass for Recent Apps
+(7/7), Windows activity (8/8), PlatformBroker (34/34), WidgetSdk (44/44), and
+Settings (34/34); installed and bundled AppContainer conformance passes 4/4,
+and the complete native Debug suite passes. Packaged overlay hands-on evidence
+remains before closure.
 
 ## Closed issues
 
