@@ -27,8 +27,8 @@ public class YtMusicWidget : Widget
         Mode = WidgetSurfaceMode.Standard,
         PreferredWidth = 760,
         PreferredHeight = 440,
-        MinimumWidth = 640,
-        MinimumHeight = 420,
+        MinimumWidth = 480,
+        MinimumHeight = 340,
     };
     private static readonly IReadOnlyList<WidgetQuickAction> ConnectedQuickActions =
     [

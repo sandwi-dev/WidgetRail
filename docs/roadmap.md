@@ -141,6 +141,11 @@ remains off until the publisher-trust gates in Phase 4.
   long permission descriptions (GBA-039). Milestone `8e8c90a` supplies focused
   regressions and one packaged standard-viewport Now Playing capture; compact/
   wide, scaled, error/recovery, and controller traversal evidence remains.
+  Milestone `9f1af0b` additionally supplies focused regressions for authored-
+  width text reflow, visible controller lease fallback, Spotify public-config
+  resolution/permission metadata, full-row vertical Games & Apps lists, and
+  stable Now Playing transport visuals (GBA-040 through GBA-042). Packaged
+  visual/controller evidence remains for those fixes as well.
 - Complete controller-first Audio Control and Network Control through their
   locally testable hardware, privacy, denial, churn, and recovery gates
 - Run an explicit reversible Audio Control hardware gate on this machine:
@@ -230,19 +235,21 @@ These items can advance on an isolated Windows machine while Spotify and
 Discord external gates are unavailable. Order reflects current product impact,
 not irreversible API priority:
 
-1. **Close the visible regression evidence.** Exercise GBA-036 through GBA-039
+1. **Close the visible regression evidence.** Exercise GBA-036 through GBA-042
    across compact/standard/wide viewports, 100–150% text/interface scale,
    reduced transparency, high contrast, long/error content, controller Back,
-   and first/last Scroll reachability. Add deterministic captures where manual
-   hardware is not required.
+   first/last Scroll reachability, and foreground-activation denial. Confirm
+   Spotify setup and permission copy without treating live OAuth as a local
+   gate. Add deterministic captures where manual hardware is not required.
 2. **Finish the YT Music Community-addon proof.** Run clean pack/install/review/
    consent/enable, real companion pairing, dashboard/open-widget input,
    lifecycle/crash recovery, update/rollback, disable, and uninstall without a
    trusted worker or direct Credential Manager/socket workaround.
-3. **Fill the public component gaps before more one-off UI.** Implement and
-   verify `SettingsRow`, picker/listbox, action sheet, non-focus-stealing toast,
-   controller scrubber, and `MediaTile`/`AppTile` as public SDK contracts. Then
-   add per-edge borders, responsive grid/wrap, and semantic monospace.
+3. **Fill the public component gaps before more one-off UI.** `SettingsRow`,
+   bounded nested `ActionSheet`, and the single-select `Picker` are complete.
+   Implement and verify a non-focus-stealing toast, controller scrubber, and
+   `MediaTile`/`AppTile` as public SDK contracts. Then add per-edge borders,
+   responsive grid/wrap, and semantic monospace.
 4. **Complete motion without web-style overhead.** Add bounded composited
    subtree translation and short shell/widget open, close, and replacement
    transitions with reduced-motion cancellation and hidden-idle evidence.
@@ -345,7 +352,7 @@ reconciliation, and provider-churn tests.
 
 **Games & Apps roadmap** has replaced Recent Apps in the bundled product
 catalog. The current public-SDK package presents a durable curated Library
-and a nested horizontally paged Start Menu Catalog, then launches one selected
+and a nested vertically scrolling Start Menu Catalog, then launches one selected
 broker-issued opaque ID only while Interactive. A toggles Catalog membership,
 X removes from the Library, and confirmed launches move to the persisted front.
 Read and launch have separate

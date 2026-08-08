@@ -46,6 +46,30 @@ struct DisplayRefreshPlan final {
     return {true, change == DisplayEnvironmentChange::SystemSettings, true};
 }
 
+// Display migration is reported as a burst on real systems: one monitor move
+// can synchronously produce DPI, topology, size, and work-area notifications.
+// Applying each notification independently exposes intermediate geometry and
+// repeatedly destroys the render target. This accumulator merges all pending
+// work into one posted message-loop refresh without polling or dropping the
+// stronger appearance refresh requested by WM_SETTINGCHANGE.
+class DisplayRefreshAccumulator final {
+public:
+    // Returns true only when the caller must post a refresh message. Further
+    // notifications merge into the already-posted unit of work.
+    [[nodiscard]] bool Enqueue(
+        bool visible,
+        DisplayEnvironmentChange change) noexcept;
+
+    // Consumes the merged plan and permits a later notification to schedule a
+    // fresh message. A queued plan may safely be ignored if the overlay became
+    // hidden before delivery; its next show resolves the environment afresh.
+    [[nodiscard]] DisplayRefreshPlan Take() noexcept;
+
+private:
+    bool scheduled_{};
+    DisplayRefreshPlan pending_{};
+};
+
 // Pure presentation policy shared by state transitions and asynchronous
 // snapshot refreshes. A visible HWND only needs another placement pass when
 // its requested logical extent or monitor target changed. Selection, focus,

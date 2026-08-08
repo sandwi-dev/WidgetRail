@@ -24,7 +24,8 @@ guarantees that are available now.
 - [Controller UI component patterns](controller-ui-components.md) — Slider v3,
   the Audio icon-Slider-percentage reference, focusable Disabled/Busy states,
   and the public controller-safe Card, IconButton, StatusBadge, Alert,
-  EmptyState, SegmentedTabs, Switch, and ScopedDialog compositions.
+  EmptyState, SegmentedTabs, Switch, ScopedDialog, SettingsRow, ActionSheet,
+  and single-select Picker compositions.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
   properties, imports, diagnostics, and bounded native opacity/scale
   transitions.

@@ -76,6 +76,24 @@ int main() {
               DisplayRefreshPlan{true, true, true},
           "work-area settings reapply appearance and reposition both windows");
 
+    gba::DisplayRefreshAccumulator displayRefresh;
+    Check(!displayRefresh.Enqueue(false, DisplayEnvironmentChange::Dpi),
+          "hidden display changes do not schedule work");
+    Check(displayRefresh.Take() == DisplayRefreshPlan{},
+          "hidden display changes leave no latent work");
+    Check(displayRefresh.Enqueue(true, DisplayEnvironmentChange::Dpi),
+          "first visible display change schedules one posted refresh");
+    Check(!displayRefresh.Enqueue(true, DisplayEnvironmentChange::Topology),
+          "topology burst merges into the scheduled refresh");
+    Check(!displayRefresh.Enqueue(true, DisplayEnvironmentChange::SystemSettings),
+          "work-area burst merges without posting another refresh");
+    Check(displayRefresh.Take() == DisplayRefreshPlan{true, true, true},
+          "coalesced burst retains its strongest appearance and placement work");
+    Check(displayRefresh.Enqueue(true, DisplayEnvironmentChange::Topology),
+          "consuming a burst permits a later display transition");
+    Check(displayRefresh.Take() == DisplayRefreshPlan{true, false, true},
+          "later topology transition remains independent");
+
     gba::ForegroundTargetTracker tracker;
     tracker.SetOwnedWindows(100, 101);
 

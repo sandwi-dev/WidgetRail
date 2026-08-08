@@ -1,6 +1,6 @@
 # Game Bar Alternative
 
-Working title for a lightweight, controller-only Windows overlay with a modular widget platform.
+Working title for a lightweight, controller-first Windows overlay with a modular widget platform.
 
 The product direction is closer to a console control center than a collection of floating desktop windows. The goals are:
 
@@ -28,7 +28,8 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   accessibility policy
 - Controller-first Settings, Audio Mixer, Network Controls, Games & Apps, and
   Now Playing workers in the runnable catalog; an installable YT Music
-  Community addon; and a separate Clock SDK sample
+  Community addon; an installable Spotify Community-addon core; and a separate
+  Clock SDK sample
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
   immutable version pin/rollback commands; accepted catalog changes reconcile

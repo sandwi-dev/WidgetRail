@@ -430,6 +430,64 @@ slider:focused {
   outline-offset: -2px;
 }
 
+.gbar-picker {
+  min-width: 0;
+  min-height: 0;
+  gap: 10px;
+  padding: 16px;
+  background: var(--surface);
+  border-color: var(--border-strong);
+  border-width: 1px;
+  corner-radius: 12px;
+}
+.gbar-picker__title {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.2;
+  max-lines: 2;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.gbar-picker__description {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  max-lines: 4;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.gbar-picker__options {
+  min-width: 0;
+  min-height: 44px;
+  max-height: 440px;
+  gap: 4px;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+.gbar-picker__option {
+  min-height: 44px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+  font-size: 15px;
+  font-weight: 400;
+  text-align: start;
+  flex-shrink: 0;
+}
+.gbar-picker__option--selected { background: var(--surface-subtle); }
+.gbar-picker__option:focused {
+  background: var(--surface-active);
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+
 .gbar-value-row {
   min-height: 44px;
   gap: 12px;

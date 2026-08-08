@@ -136,11 +136,12 @@ oversized hero whitespace. Optional packaged fonts are lower priority and
 security-sensitive; the baseline remains the Windows UI family until an
 immutable, licensed, bounded host asset contract exists.
 
-The current component gap is functional as well as visual. A future shared
-contract should cover `SettingsRow`, nested picker/listbox, action sheet,
-non-focus-stealing toast, controller scrubber, `MediaTile`/`AppTile`, per-edge
-borders, responsive grid/wrap, and semantic monospace. First-party widgets must
-not invent private substitutes unavailable to Community authors.
+The remaining component gap is functional as well as visual. `SettingsRow`,
+nested `ActionSheet`, and the single-select `Picker` now have shared public
+contracts. Future increments should cover non-focus-stealing toast, controller
+scrubber, `MediaTile`/`AppTile`, per-edge borders, responsive grid/wrap, and
+semantic monospace. First-party widgets must not invent private substitutes
+unavailable to Community authors.
 
 ## Dashboard geometry
 

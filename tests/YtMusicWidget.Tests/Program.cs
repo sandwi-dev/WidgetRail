@@ -3,6 +3,7 @@ using System.Text.Json;
 using GameBarAlternative.Samples.YtMusicWidget;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -43,7 +44,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Errors render a focused retry action", ErrorState),
     ("Pairing displays approval code before completing", PairingStateFlow),
     ("Time formatting is stable and defensive", TimeFormatting),
-    ("Shipped manifest is valid", ManifestIsValid),
+    ("Shipped package metadata and responsive styles are valid", PackageAssetsAreValid),
 };
 
 var failures = new List<string>();
@@ -135,8 +136,8 @@ static void AssertStandardSurface(ViewSnapshot snapshot)
     Assert.Equal(WidgetSurfaceMode.Standard, snapshot.Surface!.Mode);
     Assert.Equal(760D, snapshot.Surface.PreferredWidth);
     Assert.Equal(440D, snapshot.Surface.PreferredHeight);
-    Assert.Equal(640D, snapshot.Surface.MinimumWidth);
-    Assert.Equal(420D, snapshot.Surface.MinimumHeight);
+    Assert.Equal(480D, snapshot.Surface.MinimumWidth);
+    Assert.Equal(340D, snapshot.Surface.MinimumHeight);
     var errors = ViewSnapshotValidator.Validate(snapshot);
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
 }
@@ -1248,7 +1249,7 @@ static Task TimeFormatting()
     return Task.CompletedTask;
 }
 
-static Task ManifestIsValid()
+static Task PackageAssetsAreValid()
 {
     var path = Path.Combine(AppContext.BaseDirectory, "manifest.json");
     Assert.True(File.Exists(path), $"Manifest was not copied to {path}.");
@@ -1259,6 +1260,14 @@ static Task ManifestIsValid()
     Assert.True(manifest.OptionalPermissions.Contains("storage.private-secrets.v1"),
         "Private-secret permission is missing.");
     Assert.Equal(WidgetGlyph.Music, manifest.Presentation.Icon);
+
+    var stylesRoot = Path.Combine(AppContext.BaseDirectory, "styles");
+    var styles = GbssPackageLoader.Load(
+        "default.gbss",
+        new GbssFileSourceProvider(stylesRoot));
+    var compiled = GbssThemeCompiler.Compile(styles);
+    Assert.True(compiled.IsValid,
+        string.Join(Environment.NewLine, compiled.Diagnostics.Select(item => item.Message)));
     return Task.CompletedTask;
 }
 

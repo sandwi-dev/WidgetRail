@@ -118,7 +118,7 @@ The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
 `gbar pack`. By default the package is written to:
 
 ```text
-artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.0.gbarwidget
+artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.1.gbarwidget
 ```
 
 To install and enable it for the current user through the same public catalog
@@ -133,7 +133,7 @@ commands used by any addon publisher:
 ```powershell
 $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar install `
-  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.0.gbarwidget
+  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.1.gbarwidget
 & $gbar enable org.gbar.samples.ytmusic
 & $gbar list
 ```
@@ -160,7 +160,7 @@ To review or test version behavior with the public CLI:
 ```powershell
 & $gbar disable org.gbar.samples.ytmusic
 & $gbar version list org.gbar.samples.ytmusic
-& $gbar version select org.gbar.samples.ytmusic 0.2.0
+& $gbar version select org.gbar.samples.ytmusic 0.2.1
 & $gbar enable org.gbar.samples.ytmusic
 ```
 
@@ -170,6 +170,12 @@ secret namespace and require pairing again; rollback to the exact verified
 bytes regains the prior namespace. Publisher signing and uninstall secret
 cleanup are not implemented, so do not promise authenticated-update retention
 or uninstall cleanup yet.
+
+The rich media surface prefers 760 x 440 logical DIPs, but its compact budget
+is 480 x 340. Artwork, metadata, progress, and controller targets use flexible
+widths inside that bound so the host can safely clamp the window for 720p,
+portrait, high-DPI, and enlarged-text work areas. Surface hints remain hints:
+the host owns the final work-area/DPI scale and may choose a smaller safe size.
 
 The test executable has no test-framework or other NuGet dependencies. Its
 fake widget client and typed host-service harness cover UI state transitions,

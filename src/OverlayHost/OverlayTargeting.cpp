@@ -2,6 +2,29 @@
 
 namespace gba {
 
+bool DisplayRefreshAccumulator::Enqueue(
+    const bool visible,
+    const DisplayEnvironmentChange change) noexcept {
+    const auto next = DecideDisplayRefresh(visible, change);
+    if (!next.recreateGraphics && !next.reapplyAppearance &&
+        !next.repositionWindows) {
+        return false;
+    }
+    pending_.recreateGraphics |= next.recreateGraphics;
+    pending_.reapplyAppearance |= next.reapplyAppearance;
+    pending_.repositionWindows |= next.repositionWindows;
+    if (scheduled_) return false;
+    scheduled_ = true;
+    return true;
+}
+
+DisplayRefreshPlan DisplayRefreshAccumulator::Take() noexcept {
+    const auto result = pending_;
+    pending_ = {};
+    scheduled_ = false;
+    return result;
+}
+
 void ForegroundTargetTracker::SetOwnedWindows(
     const std::uintptr_t overlay,
     const std::uintptr_t backdrop) noexcept {

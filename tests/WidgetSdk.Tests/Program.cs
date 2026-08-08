@@ -29,6 +29,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Modern controller composites preserve tab switch and dialog semantics", ModernControllerComponentsAreSemantic),
     ("Settings rows and action sheets preserve responsive controller semantics", SettingsRowsAndActionSheetsAreSemantic),
     ("Action sheets route nested Back and suppress unavailable actions", ActionSheetRoutingIsScoped),
+    ("Pickers preserve single-select controller and accessibility semantics", PickersAreSemantic),
     ("Minimalist rows and controller hints preserve public focus and accessibility contracts", MinimalistRowsAreSemantic),
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
     ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
@@ -1677,6 +1678,79 @@ static async Task ActionSheetRoutingIsScoped()
         "sheet.scope")),
         "Available action-sheet items must activate normally.");
     Assert.Equal("sheet.choose", (await widget.NextActionAsync()).ActionId);
+}
+
+static Task PickersAreSemantic()
+{
+    var picker = UI.Picker(
+        "Choose output",
+        "picker.output",
+        "picker.output.scope",
+        "picker.output.dismiss",
+        [
+            new PickerOption("picker.output.tv", "Living room TV", "picker.output.select-tv"),
+            new PickerOption(
+                "picker.output.headset",
+                "Wireless headset",
+                "picker.output.select-headset",
+                IsSelected: true,
+                AccessibilityLabel: "Wireless gaming headset"),
+            new PickerOption(
+                "picker.output.speakers",
+                "Desk speakers",
+                "picker.output.select-speakers",
+                IsDisabled: true),
+        ],
+        "The selected device is used by media controls.");
+    var snapshot = new WidgetView(
+        picker,
+        InitialFocusId: "picker.output.headset",
+        ActiveInputScopeId: "picker.output.scope")
+        .CreateSnapshot("picker.instance", 18);
+
+    Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    Assert.Equal("picker.output.scope", Find(snapshot.Root, "picker.output").InputScopeId);
+    Assert.Equal("picker.output.dismiss",
+        Find(snapshot.Root, "picker.output").Shortcuts.Single().ActionId);
+    Assert.Equal(ViewNodeKind.Scroll, Find(snapshot.Root, "picker.output.options").Kind);
+
+    var tv = Find(snapshot.Root, "picker.output.tv");
+    var headset = Find(snapshot.Root, "picker.output.headset");
+    var speakers = Find(snapshot.Root, "picker.output.speakers");
+    Assert.Equal("picker.output.headset", tv.Focus!.Down);
+    Assert.Equal("picker.output.tv", headset.Focus!.Up);
+    Assert.Equal("picker.output.speakers", headset.Focus.Down);
+    Assert.Equal("picker.output.headset", speakers.Focus!.Up);
+    Assert.Equal(true, headset.IsSelected);
+    Assert.Equal(WidgetGlyph.Check, headset.Glyph);
+    Assert.Equal("Wireless gaming headset, Selected", headset.AccessibilityLabel);
+    Assert.Equal(true, speakers.IsDisabled);
+    Assert.Equal("Desk speakers, Not selected, Unavailable", speakers.AccessibilityLabel);
+    Assert.True(headset.StyleClasses.Contains("gbar-picker__option--selected"),
+        "Selected picker options must expose a semantic theme hook.");
+
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Picker(
+        "Empty", "picker.empty", "picker.empty.scope", "picker.empty.back", []));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Picker(
+        "Large", "picker.large", "picker.large.scope", "picker.large.back",
+        Enumerable.Range(0, UI.MaximumPickerOptions + 1)
+            .Select(index => new PickerOption(
+                $"picker.large.{index}", $"Option {index}", $"picker.select-{index}"))
+            .ToArray()));
+    Assert.Throws<ArgumentException>(() => UI.Picker(
+        "Duplicate", "picker.duplicate", "picker.duplicate.scope", "picker.duplicate.back",
+        [
+            new PickerOption("picker.same", "One", "picker.one"),
+            new PickerOption("picker.same", "Two", "picker.two"),
+        ]));
+    Assert.Throws<ArgumentException>(() => UI.Picker(
+        "Multiple", "picker.multiple", "picker.multiple.scope", "picker.multiple.back",
+        [
+            new PickerOption("picker.multiple.one", "One", "picker.one", IsSelected: true),
+            new PickerOption("picker.multiple.two", "Two", "picker.two", IsSelected: true),
+        ]));
+    return Task.CompletedTask;
 }
 
 static Task MinimalistRowsAreSemantic()

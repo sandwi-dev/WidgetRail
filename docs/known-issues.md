@@ -20,7 +20,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | ID | Priority | Status | Owning layer | Summary |
 | --- | --- | --- | --- | --- |
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
-| GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; packaged visual verification remains. |
+| GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll contains every control and restores the last master, microphone, or application focus target; packaged visual/controller verification remains. |
 | GBA-004 | P1 | Verifying | OverlayHost presentation / invalidation | Size-changing widget swaps now move without redraw and synchronously commit one complete frame; packaged visual verification remains. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
@@ -39,7 +39,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-018 | P1 | Verifying | OverlayHost controller routing | Pressed D-pad/left-stick Up from the tray now enters the visible widget without dispatching a widget action. |
 | GBA-019 | P1 | Verifying | OverlayHost controller guide / layout | The guide is density-aware, contextual, bounded, and no-wrap; compact/high-scale visual evidence remains. |
 | GBA-020 | P1 | Verifying | OverlayHost panel clipping / renderer | A cached host-owned rounded viewport clip now masks opaque widget roots; packaged visual evidence remains. |
-| GBA-021 | P1 | Verifying | OverlayHost targeting / DPI | Visible DPI, topology, taskbar/work-area, and appearance changes now share one dynamic refresh policy; physical mixed-monitor/hot-plug evidence remains. |
+| GBA-021 | P1 | Verifying | OverlayHost targeting / DPI | Visible DPI, topology, taskbar/work-area, and appearance changes now share one coalesced dynamic refresh policy; physical mixed-monitor/hot-plug evidence remains. |
 | GBA-022 | P1 | Verifying | Settings permissions / controller navigation | Hidden package/capability pagination and redundant Back rows were replaced with bounded controller Scroll scopes and B-only Back; packaged controller/high-scale evidence remains. |
 | GBA-023 | P1 | Verifying | Widget protocol / bridge / runtime | Versioned keep-alive, cooperative suspend, and bounded idle-unload residency are enforced with legacy migration, cached views, and lazy resume; packaged resource/churn evidence remains. |
 | GBA-024 | P1 | Verifying | Gbar CLI / OverlayHost / WidgetBridge | Authenticated candidate-worker readiness, last-good recovery, complete bounded watching, and observable cleanup are implemented; packaged author-workflow evidence remains. |
@@ -59,6 +59,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | Activation resolves only durable saved entries and Catalog loads only on Add; intrinsic layout regressions cover the clipped empty/card copy, with packaged visual verification remaining. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
 | GBA-040 | P0 | Verifying | Native declarative layout / Spotify / responsive text | Intrinsic leaves now measure height against their authored width/max-width before layout, with exact Spotify state/setup regressions at compact and 150% text scales; packaged visual verification remains. |
+| GBA-041 | P0 | Verifying | OverlayHost / controller input ownership | A visibility-scoped GameInput lease keeps navigation alive when foreground activation is denied and uses exclusivity when confirmed; packaged backend/game evidence remains. |
+| GBA-042 | P0 | Verifying | Spotify configuration / Settings permissions | Unsigned packages can resolve one unambiguous owning-publisher public configuration document, and Settings names all four Spotify grants; packaged authorization/revoke evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -97,8 +99,9 @@ bounded Compact, Standard, Wide, and Adaptive hints with optional preferred and
 minimum logical-DIP pairs. The native host resolves those hints without widget
 IDs, reserves shell/tray/footer space, grows safely for text accessibility, and
 clamps against the selected monitor after DPI and interface scaling. Audio and
-Network publish Compact surfaces, YT Music publishes Standard, and Settings
-publishes Standard. API-1/no-hint widgets retain the legacy surface. Native
+Network publish Compact surfaces, YT Music publishes Standard with a flexible
+480 x 340 minimum media budget, and Settings publishes Standard. API-1/no-hint
+widgets retain the legacy surface. Native
 Release placement tests cover 720p, portrait, ultrawide, invalid hints, 200% DPI,
 125% interface scale, and 150% text scale.
 
@@ -545,10 +548,12 @@ to miss an authoritative monitor/DPI placement pass.
 **Implementation evidence:** The Per-Monitor-V2 host now maps visible DPI,
 topology, and system-settings changes through one tested refresh policy that
 recreates graphics, conditionally reapplies appearance, and performs one fresh
-monitor/work-area/DPI placement. Hidden notifications defer all work to the
-next open. Placement passes 108,545 checks and Targeting 34 checks. Status
-remains Verifying until physical mixed-DPI migration, hot-plug, taskbar-edge,
-and accessibility/theme screenshots are retained.
+monitor/work-area/DPI placement. Back-to-back notifications merge into one
+posted message-loop refresh while retaining the strongest requested work;
+hidden notifications defer all work to the next open. Placement passes 108,545
+checks and Targeting 42 checks. Status remains Verifying until physical
+mixed-DPI migration, hot-plug, taskbar-edge, and accessibility/theme screenshots
+are retained.
 
 ## GBA-022 — Permission review hides pages and duplicates Back
 
@@ -568,7 +573,7 @@ scales.
 vertical Scroll nodes. Package and capability rows are linked through one
 stable focus graph, page labels/shortcuts/state and in-content Back Buttons are
 removed, and malformed-state fallbacks retain their scoped B action without a
-fake focus target. Settings passes 40/40 focused Release tests. Status remains
+fake focus target. Settings passes 41/41 focused Release tests. Status remains
 Verifying pending packaged controller and increased-text-scale evidence.
 
 ## GBA-023 — Background residency policy was metadata only
@@ -628,7 +633,7 @@ kill-on-close Job Object before its first instruction, and cleanup waits for
 zero active descendants. Missing/forged readiness, a missing widget type, and a
 persistent child/grandchild all fail closed. Bounded reparse-safe project
 watching includes general MSBuild inputs and newly created directories while
-excluding `.git`, `.vs`, `bin`, and `obj`. CLI passes 43/43 and all native
+excluding `.git`, `.vs`, `bin`, and `obj`. CLI passes 45/45 and all native
 focused suites pass; packaged author-workflow evidence remains.
 
 ## GBA-025 — Tray quick actions cannot use brokered controls
@@ -665,8 +670,8 @@ without concurrent pipe readers or deadlock. The broker keeps at most 16
 two-second active grants, consumes each exact tuple once, and clears dormant
 and active state on lifecycle, consent, process, or session teardown.
 Subscriptions remain ineligible and lifecycle is never promoted. Focused SDK,
-Broker, Runtime, Bridge, and Now Playing suites pass 48/48, 40/40, 33/33,
-30/30, and 9/9 respectively and cover wrong operation/capability,
+Broker, Runtime, Bridge, and Now Playing suites pass 60/60, 46/46, 33/33,
+35/35, and 16/16 respectively and cover wrong operation/capability,
 slow-first rapid-second input, custom async routing, replay, expiry, stale
 snapshot, denial, and revocation cases.
 
@@ -700,7 +705,7 @@ snapshots. Games & Apps proves separate app-library read and launch
 authority; the other built-in references exercise their safe brokered control.
 YT Music additionally proves the public CLI package flow, pairing/private-
 secret/Bearer path, dashboard transport, lifecycle enforcement, and absence of
-a trusted fallback. The suite passes 5/5; Bridge passes 31/31. The packaged
+a trusted fallback. The suite passes 5/5; Bridge passes 35/35. The packaged
 build and host catalog contain and select no dedicated worker executable for
 these references.
 
@@ -892,9 +897,9 @@ display/accessibility matrix are not recorded yet.
 5. Packaged screenshots and controller traversal verify the complete component
    set, not only one hand-tuned widget.
 6. Common product composition no longer requires private widget hacks:
-   `SettingsRow`, picker/listbox, action sheet, toast, scrubber,
-   `MediaTile`/`AppTile`, per-edge borders, responsive grid/wrap, and semantic
-   monospace have reviewed bounded contracts or an explicit deferral.
+   `SettingsRow`, `ActionSheet`, and single-select `Picker` have reviewed
+   bounded contracts; toast, scrubber, `MediaTile`/`AppTile`, per-edge borders,
+   responsive grid/wrap, and semantic monospace retain explicit deferrals.
 7. The default rejects web-centric stagger/ambient motion, editorial serif or
    faux-macOS chrome, and treats packaged fonts as lower-priority security-
    sensitive assets rather than a baseline dependency.
@@ -1146,8 +1151,8 @@ constraint before asking the renderer for line metrics. The auto-height leaf
 retains that reflowed height through flex allocation. Exact native regressions
 cover the Spotify Client-ID state card and setup card at compact width and at
 150% text, in addition to the generic centered-state and permission Scroll
-coverage. The full native Debug suite is green; refreshed packaged screenshots
-remain outstanding, so status remains Verifying.
+coverage. The full native Release suite is green at milestone `9f1af0b`;
+refreshed packaged screenshots remain outstanding, so status remains Verifying.
 
 **Acceptance:**
 

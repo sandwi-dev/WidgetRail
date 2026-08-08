@@ -538,17 +538,17 @@ two-clock dashboard-gesture propagation. Its focused Release harness passes
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK and YT Music Release suites pass 48/48 and
+bounded cleanup. The current SDK and YT Music Release suites pass 60/60 and
 38/38 respectively, including serialization and widget recovery for host-side
 rejected-Bearer invalidation without a second widget delete. The current
-Settings Release suite passes 40/40, including
+Settings Release suite passes 41/41, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. Styling and platform settings/themes pass 18/18 and 13/13,
+polling. Styling and platform settings/themes pass 19/19 and 14/14,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 43/43, including authenticated candidate/active development readiness,
+passes 45/45, including authenticated candidate/active development readiness,
 last-good retention/restart, complete bounded source/package watching, cleanup
 failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
@@ -561,7 +561,7 @@ disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 content-tree sealing/tamper rejection plus content-bound unsigned authority.
 Bridge
-passes 31/31, including semantic catalog revisions/last-good/catch-up reload,
+passes 35/35, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
@@ -585,7 +585,8 @@ expected PID, nonce, and widget identity checks in force.
  Windows app-library provider retain focused suites covering the in-memory
  Library/Catalog flow and exact shortcut launch revalidation.
  The retained Recent Apps and Windows activity reference suites pass 8/8 and
- 10/10; Windows Media provider and Now Playing pass 11/11 and 9/9.
+ 10/10; Windows Media provider and Now Playing pass 11/11 and 16/16. Games &
+ Apps passes 25/25, including its vertical full-row Library/Catalog focus model.
  The first-party conformance suite passes 5/5 by building and installing the
  actual Audio Mixer, Network Controls, Games & Apps, Now Playing, and YT Music
  packages, launching each with the generic host in its package AppContainer, and
@@ -600,9 +601,9 @@ privacy/explicit state, optimistic command reconciliation, opaque identity,
 native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
-The full native aggregate passes. Focused native suites report Controller
-Navigation 73 checks, Slider Interaction 2,071, Focus Navigation 17, Widget Surface
-Focus 16, Declarative Renderer 4,311, and Native Icons 188. Display-sensitive evidence includes 187
+The full native Release aggregate passes at milestone `9f1af0b`. Focused native suites report Controller
+Navigation 73 checks, Slider Interaction 2,071, Focus Navigation 22, Widget Surface
+Focus 16, Controller Input Ownership 17, Declarative Renderer 4,452, and Native Icons 198. Display-sensitive evidence includes 200
 declarative-layout checks, 108,545 placement/render-metric/surface-geometry
 checks, and 34 foreground-target/display-refresh/reentrancy checks, alongside state-machine,
 remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer
@@ -765,14 +766,18 @@ and [troubleshooting](troubleshooting.md).
 
 ## Next vertical slices
 
-1. Complete packaged GBA-036 through GBA-039 plus physical mixed-DPI/
+1. Complete packaged GBA-036 through GBA-042 plus physical mixed-DPI/
    accessibility/visual-regression evidence, including long/error states, the
-   150% text-scale matrix, and controller focus/Scroll reachability.
+   150% text-scale matrix, controller focus/Scroll reachability, a denied-
+   activation controller lease, and Spotify setup/permission copy. Live
+   Spotify authorization is a separate authenticated evidence gate.
 2. Complete the YT Music clean Community-addon install/consent/lifecycle/crash/
    update/rollback/uninstall proof without a trusted fallback.
-3. Add public `SettingsRow`, picker/listbox, action sheet, toast, scrubber,
-   `MediaTile`, and `AppTile` contracts, followed by per-edge borders,
-   responsive grid/wrap, semantic monospace, and bounded shell transitions.
+3. Build the next public component milestone: non-focus-stealing toast,
+   controller scrubber, `MediaTile`, and `AppTile`. `SettingsRow`, bounded
+   nested `ActionSheet`, and single-select `Picker` are already public. Follow
+   with per-edge borders, responsive grid/wrap, semantic
+   monospace, and bounded shell transitions.
 4. Extend Games & Apps with bounded icons, AppsFolder/launcher sources,
    running-program capture, and a host-owned file picker while preserving
    opaque exact launch identities.
@@ -789,9 +794,10 @@ and [troubleshooting](troubleshooting.md).
    their bounded reference slices through hardware/privacy/performance gates,
    then continue non-auth Performance, richer media, recent games detection,
    and capture references.
-9. In parallel when Spotify Development Mode credentials are available, wire
-   the tested PKCE/Web API provider foundation into the host, add the
-   controller-native setup surface, and build the core Player Community addon.
-   Keep the Web Playback SDK local-audio host as a separate later security and
+9. In parallel when an allowlisted Spotify Development Mode account is
+   available, prove the already-composed PKCE/Web API provider and packaged
+   Player Community addon against live login/playback. Then add nested device,
+   queue, search, recent, library, playlist, album, and artist surfaces. Keep
+   the Web Playback SDK local-audio host as a separate later security and
    performance slice.
 10. Run the documented controller/game/presentation/anti-cheat matrix.

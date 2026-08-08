@@ -46,7 +46,11 @@ host responds without a polling loop:
 
 These notifications do no work while hidden; the next open resolves fresh
 state. While visible they share one pure refresh policy and one authoritative
-placement pass, avoiding a partial old-DPI/old-work-area frame.
+placement pass. DPI, topology, and work-area messages commonly arrive as a
+burst during monitor migration or hot-plug. The host merges that burst into one
+posted refresh while retaining its strongest requested work (including an
+appearance refresh for system-setting changes), avoiding repeated render-target
+destruction and partial old-DPI/old-work-area frames.
 
 `SetWindowPos` may synchronously cause another DPI message. A reentrancy gate
 coalesces that case into one deferred placement refresh, preventing recursive
@@ -161,7 +165,8 @@ The native Release suite currently proves these policy/math seams:
   and action dispatch; and
 - targeting checks covering foreground self-ignore, invalid-target fallback,
   Alt+Tab close policy, duplicate suppression, DPI-placement reentrancy
-  coalescing, and visible-versus-hidden DPI/topology/settings refresh policy.
+  coalescing, display-notification burst coalescing, and visible-versus-hidden
+  DPI/topology/settings refresh policy.
 
 Run the native contract suite with:
 

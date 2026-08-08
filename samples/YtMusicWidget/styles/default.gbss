@@ -7,8 +7,8 @@
 }
 
 .ytmusic-widget {
-  gap: 14px;
-  padding: 22px 26px 18px;
+  gap: 12px;
+  padding: 18px 20px 16px;
   background: var(--media-surface);
   color: var(--text);
   overflow: visible;
@@ -29,13 +29,18 @@
 }
 
 .connection-status,
-.connection-help,
 .loading-detail,
 .track-artist,
 .track-album,
 .time {
   color: var(--text-muted);
   max-lines: 1;
+  text-overflow: ellipsis;
+}
+
+.connection-help {
+  color: var(--text-muted);
+  max-lines: 2;
   text-overflow: ellipsis;
 }
 
@@ -59,16 +64,16 @@
 }
 
 #media-layout {
-  height: 154px;
-  gap: 20px;
+  min-height: 128px;
+  gap: 16px;
   align: center;
 }
 
 .artwork-frame,
 .artwork-image,
 .artwork-placeholder {
-  width: 150px;
-  height: 150px;
+  width: 128px;
+  height: 128px;
   corner-radius: 10px;
   overflow: clip;
 }
@@ -80,11 +85,11 @@
 
 .artwork-placeholder {
   color: var(--text-muted);
-  padding: 48px;
+  padding: 39px;
 }
 
 #media-details {
-  min-width: 300px;
+  min-width: 200px;
   flex-grow: 1;
   gap: 10px;
   padding: 5px 0;
@@ -126,7 +131,7 @@
 }
 
 .track-progress {
-  min-width: 240px;
+  min-width: 120px;
   height: 5px;
   flex-grow: 1;
   color: var(--media-accent);

@@ -19,6 +19,9 @@ from its one stable `id.action` target. `UI.ActionSheet` accepts 1–32 stable
 items, owns a vertical focus-follow Scroll, and binds B on its nested scope;
 publish that scope as `WidgetView.ActiveInputScopeId` while it is open. Disabled
 and Busy actions stay focusable and are suppressed by the standard router.
+Use `UI.Picker` for bounded single selection rather than disguising choices as
+commands: it exposes one stable option ID per row, explicit selected state,
+Up/Down neighbors, focus-safe unavailable state, and the same scope-owned B.
 
 For indeterminate work that lasts long enough to be visible, use
 `UI.LoadingIndicator(id, accessibilityLabel, size)`. It is a protocol-v5,

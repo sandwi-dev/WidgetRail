@@ -63,6 +63,7 @@ constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
 constexpr UINT kSnapshotRefreshMessage = WM_APP + 4;
 constexpr UINT kForegroundChangedMessage = WM_APP + 5;
 constexpr UINT kPlacementRefreshMessage = WM_APP + 6;
+constexpr UINT kDisplayRefreshMessage = WM_APP + 7;
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
 constexpr gba::NativeColor kSafeCanvasFallback{
@@ -828,6 +829,9 @@ private:
                 InvalidateRect(window_, nullptr, FALSE);
             }
             return 0;
+        case kDisplayRefreshMessage:
+            ApplyPendingDisplayEnvironmentRefresh();
+            return 0;
         case WM_KEYDOWN:
             HandleKey(
                 static_cast<UINT>(wParam),
@@ -957,18 +961,18 @@ private:
             }
             return 0;
         case WM_DPICHANGED:
-            RefreshVisibleDisplayEnvironment(gba::DisplayEnvironmentChange::Dpi);
+            QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::Dpi);
             return 0;
         case WM_DISPLAYCHANGE:
             // Display topology may change without a DPI transition. Recreate
             // the target so viewport-relative shell styles use fresh metrics.
-            RefreshVisibleDisplayEnvironment(gba::DisplayEnvironmentChange::Topology);
+            QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::Topology);
             return 0;
         case WM_SETTINGCHANGE:
             // SPI_SETWORKAREA/taskbar changes and accessibility/theme changes
             // share this notification. Always re-read monitor work-area data,
             // even when the bridge has not supplied an appearance revision.
-            RefreshVisibleDisplayEnvironment(gba::DisplayEnvironmentChange::SystemSettings);
+            QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::SystemSettings);
             return 0;
         case WM_WINDOWPOSCHANGED:
             if (state_.surface() != gba::Surface::Hidden &&
@@ -1308,9 +1312,22 @@ private:
         ApplyPlatformAppearance();
     }
 
-    void RefreshVisibleDisplayEnvironment(const gba::DisplayEnvironmentChange change) {
-        const auto plan = gba::DecideDisplayRefresh(
-            state_.surface() != gba::Surface::Hidden, change);
+    void QueueDisplayEnvironmentRefresh(const gba::DisplayEnvironmentChange change) {
+        if (displayRefresh_.Enqueue(
+                state_.surface() != gba::Surface::Hidden, change)) {
+            if (!PostMessageW(window_, kDisplayRefreshMessage, 0, 0)) {
+                // A live HWND should accept its private message, but never
+                // strand the accumulator if the queue is temporarily full.
+                // The synchronous fallback retains correctness; coalescing is
+                // an optimization, not a precondition for display recovery.
+                ApplyPendingDisplayEnvironmentRefresh();
+            }
+        }
+    }
+
+    void ApplyPendingDisplayEnvironmentRefresh() {
+        const auto plan = displayRefresh_.Take();
+        if (state_.surface() == gba::Surface::Hidden) return;
         if (!plan.repositionWindows) return;
 
         // Appearance application also invalidates widget snapshots and target
@@ -3204,6 +3221,7 @@ private:
     HWND window_{};
     gba::ForegroundTargetTracker foregroundTarget_;
     gba::PlacementRefreshGate placementRefreshGate_;
+    gba::DisplayRefreshAccumulator displayRefresh_;
     HWND backdropWindow_{};
     HBRUSH backdropBrush_{};
     HWINEVENTHOOK foregroundHook_{};

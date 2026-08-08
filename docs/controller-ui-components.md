@@ -1,7 +1,7 @@
 # Controller UI component patterns
 
 Status: Slider v3, the Audio Mixer reference composition, SettingsRow,
-ActionSheet, and the modern SDK composite set are implemented; the inventory
+ActionSheet, Picker, and the modern SDK composite set are implemented; the inventory
 below distinguishes current public helpers from later semantic candidates.
 
 Game Bar Alternative components are semantic, controller-first contracts. A
@@ -48,6 +48,7 @@ GBSS design constrained by controller navigation and overlay performance.
 | Full-row choice | `ChoiceRow` | One stable 44-DIP-or-larger focus target with selected, Disabled, and Busy semantics. |
 | Actionable setting | `SettingsRow` | Responsive label/description/value/status flow plus exactly one stable 44-DIP action target. |
 | Contextual action list | `ActionSheet` | Bounded vertical Scroll in a nested input scope; focus-independent B and stable author item IDs. |
+| Single-select list | `Picker` | Bounded vertical Scroll with explicit selected semantics, stable Up/Down neighbors, and scope-owned B. |
 | Controller help | `ControllerHint` | Nonfocusable semantic key/label pair; documents but never implicitly binds input. |
 
 These primitives are deliberately small. Reusable components should normally
@@ -121,6 +122,10 @@ semantic classes. They do not add worker code, polling, or a new native node:
   root, so it dismisses one navigation level even from an unavailable item or
   when focus is temporarily absent. `Danger` is an accessible semantic tone,
   not permission to bypass confirmation for destructive work.
+- `UI.Picker(...)` accepts 1–64 stable `PickerOption` records and permits at
+  most one selected option. Selected, Disabled, and Busy state remain on the
+  same Button ID across rerenders. The root owns B and the host owns Scroll/
+  focus-follow; authors should publish the selected option as initial focus.
 - `UI.ControllerHint(...)` creates a restrained key-cap and label from the
   closed `ControllerButton` enum. It is display-only: authors must still bind
   the matching shortcut to the active input scope or focused control. Compose
@@ -154,6 +159,7 @@ diagnostics, but must not reuse them for another node in the same snapshot.
 | `ChoiceRow(..., id)` | None; the Button itself uses `id`. |
 | `SettingsRow(..., id, ...)` | `id.content`, `id.copy`, `id.label`, and `id.action`; optional `id.icon`, `id.description`, `id.metadata`, `id.value`, `id.status`, `id.status.label`, and `id.status.icon`. `id.action` is the only focus stop. |
 | `ActionSheet(..., id, items, ...)` | `id.title`, `id.list`, and optional `id.description`; each action Button uses its author-provided `ActionSheetItem.Id`. |
+| `Picker(..., id, options, ...)` | `id.title`, `id.options`, and optional `id.description`; each choice Button uses its author-provided `PickerOption.Id`. |
 | `ControllerHint(button, label, id)` | `id.key` and `id.label`. |
 
 Generated IDs use the same 128-character stable-ID grammar as ordinary nodes.
@@ -268,13 +274,14 @@ var outputRow = UI.SettingsRow(
     statusTone: providerAvailable ? StatusTone.Success : StatusTone.Warning,
     isDisabled: !providerAvailable);
 
-var picker = UI.ActionSheet(
+var picker = UI.Picker(
     "Choose output device",
     "settings.output.sheet",
     "settings.output.sheet.scope",
     "settings.output.dismiss",
-    devices.Select(device => new ActionSheetItem(
+    devices.Select(device => new PickerOption(
         device.FocusId, device.Name, device.SelectAction,
+        IsSelected: device.IsCurrent,
         IsBusy: device.IsPending,
         IsDisabled: !device.CanSelect)).ToArray(),
     description: "B returns without changing the current device.");
@@ -285,7 +292,7 @@ return showPicker
 ```
 
 Do not keep a hidden catalog behind LB/RB cycling. If the option set is empty,
-render an `EmptyState` instead of constructing an ActionSheet. For more than 32
+render an `EmptyState` instead of constructing a Picker. For more than 64
 options, provide search/category navigation or bounded paging where each page
 is its own stable surface; never silently truncate user choices.
 
@@ -294,9 +301,9 @@ is its own stable surface; never silently truncate user choices.
 The following are design candidates, not current `UI.*` APIs. Implement them as
 tested composition helpers or native semantics before authors depend on names:
 
-1. **Picker/listbox selection semantics** — ActionSheet now covers contextual
-   commands. A future selection-specific helper still needs selected-value,
-   multi-select, type-ahead, and empty/loading contracts beyond ChoiceRow.
+1. **Advanced listbox semantics** — `Picker` covers bounded single selection.
+   Multi-select, type-ahead/search, and asynchronous empty/loading contracts
+   remain separate future designs rather than overloading its stable contract.
 2. **Toast/notification model** — host-announced, time-bounded feedback that
    never steals focus; persistent failures remain in the owning surface.
 3. **Controller scrubber** — Slider-derived seek semantics, time/value labels,

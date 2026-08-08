@@ -31,6 +31,17 @@ public sealed record ActionSheetItem(
     bool IsDisabled = false,
     bool IsBusy = false);
 
+/// <summary>A stable, single-select option rendered by <see cref="UI.Picker"/>.</summary>
+public sealed record PickerOption(
+    string Id,
+    string Label,
+    string ActionId,
+    bool IsSelected = false,
+    WidgetGlyph? Glyph = null,
+    string? AccessibilityLabel = null,
+    bool IsDisabled = false,
+    bool IsBusy = false);
+
 /// <summary>
 /// Original controller-first composites built only from stable public protocol
 /// nodes. Their gbar-* classes are semantic theme hooks, not fixed colors.
@@ -39,6 +50,9 @@ public static partial class UI
 {
     /// <summary>The maximum number of actions accepted by one action sheet.</summary>
     public const int MaximumActionSheetItems = 32;
+
+    /// <summary>The maximum number of choices accepted by one picker surface.</summary>
+    public const int MaximumPickerOptions = 64;
 
     /// <summary>
     /// Creates a responsive setting summary with exactly one controller focus
@@ -244,6 +258,104 @@ public static partial class UI
             InputScopeId = scopeId,
             Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
             StyleClasses = ["gbar-action-sheet"],
+        };
+    }
+
+    /// <summary>
+    /// Creates a bounded single-select surface with one stable focus target per
+    /// option. The selected option remains explicit protocol state, unavailable
+    /// options stay in the focus graph, and B resolves on the nested scope even
+    /// when focus is temporarily absent. At most one option may be selected.
+    /// </summary>
+    public static StackElement Picker(
+        string title,
+        string id,
+        string scopeId,
+        string backAction,
+        IReadOnlyList<PickerOption> options,
+        string? description = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentException.ThrowIfNullOrWhiteSpace(scopeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(backAction);
+        ArgumentNullException.ThrowIfNull(options);
+        StableIdentifier.Validate(id, nameof(id));
+        StableIdentifier.Validate(scopeId, nameof(scopeId));
+        if (options.Count is < 1 or > MaximumPickerOptions)
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                $"A picker requires between 1 and {MaximumPickerOptions} options.");
+        if (options.Any(option => option is null))
+            throw new ArgumentException("Picker options cannot contain null values.", nameof(options));
+        if (options.Select(option => option.Id).Distinct(StringComparer.Ordinal).Count() != options.Count)
+            throw new ArgumentException("Picker option IDs must be unique.", nameof(options));
+        if (options.Count(option => option.IsSelected) > 1)
+            throw new ArgumentException("A single-select picker cannot contain multiple selected options.", nameof(options));
+
+        var buttons = new ButtonElement[options.Count];
+        for (var index = 0; index < options.Count; index++)
+        {
+            var option = options[index];
+            StableIdentifier.Validate(option.Id, nameof(options));
+            ArgumentException.ThrowIfNullOrWhiteSpace(option.Label);
+            ArgumentException.ThrowIfNullOrWhiteSpace(option.ActionId);
+
+            var accessibleParts = new List<string>
+            {
+                string.IsNullOrWhiteSpace(option.AccessibilityLabel)
+                    ? option.Label
+                    : option.AccessibilityLabel,
+                option.IsSelected ? "Selected" : "Not selected",
+            };
+            if (option.IsDisabled) accessibleParts.Add("Unavailable");
+            if (option.IsBusy) accessibleParts.Add("Busy");
+
+            var button = new ButtonElement(option.Id, option.Label, option.ActionId)
+            {
+                AccessibilityLabel = string.Join(", ", accessibleParts),
+                Glyph = option.Glyph ?? (option.IsSelected ? WidgetGlyph.Check : null),
+                IsSelected = option.IsSelected ? true : null,
+                IsDisabled = option.IsDisabled ? true : null,
+                IsBusy = option.IsBusy ? true : null,
+                StyleClasses =
+                [
+                    "gbar-picker__option",
+                    option.IsSelected
+                        ? "gbar-picker__option--selected"
+                        : "gbar-picker__option--idle",
+                ],
+            };
+            if (index > 0) button = button.FocusUp(options[index - 1].Id);
+            if (index + 1 < options.Count) button = button.FocusDown(options[index + 1].Id);
+            buttons[index] = button;
+        }
+
+        var children = new List<WidgetElement>
+        {
+            new TextElement(StableIdentifier.Child(id, "title"), title, title)
+            {
+                StyleClasses = ["gbar-picker__title"],
+            },
+        };
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            children.Add(new TextElement(
+                StableIdentifier.Child(id, "description"), description, description)
+            {
+                StyleClasses = ["gbar-picker__description"],
+            });
+        }
+        children.Add(new ScrollElement(
+            StableIdentifier.Child(id, "options"), ScrollAxis.Vertical, buttons)
+        {
+            StyleClasses = ["gbar-picker__options"],
+        });
+
+        return new StackElement(id, children)
+        {
+            InputScopeId = scopeId,
+            Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
+            StyleClasses = ["gbar-picker"],
         };
     }
 
