@@ -65,6 +65,7 @@ constexpr UINT kSnapshotRefreshMessage = WM_APP + 4;
 constexpr UINT kForegroundChangedMessage = WM_APP + 5;
 constexpr UINT kPlacementRefreshMessage = WM_APP + 6;
 constexpr UINT kDisplayRefreshMessage = WM_APP + 7;
+constexpr UINT kPerformanceResetMessage = WM_APP + 8;
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
 constexpr gba::NativeColor kSafeCanvasFallback{
@@ -286,6 +287,13 @@ public:
             return FailWin32(L"GetModuleFileNameW", GetLastError());
         }
         if (!ParseDevelopmentArguments()) return false;
+        if (performanceState_) {
+            // Performance observations must not inherit or mutate the user's
+            // last-open widget, tray order, or reopen preference. The catalog
+            // is still the real installed catalog; only presentation state is
+            // ephemeral for this process.
+            state_ = gba::OverlayState({}, {});
+        }
         const HRESULT runtimeResult = RoInitialize(RO_INIT_SINGLETHREADED);
         if (FAILED(runtimeResult) && runtimeResult != RPC_E_CHANGED_MODE) {
             return FailHresult(L"RoInitialize", runtimeResult);
@@ -444,6 +452,10 @@ public:
         }
 
         (void)showCommand;
+        if (performanceState_) {
+            if (!ApplyPerformanceStartupState()) return false;
+            return true;
+        }
         bool startShown = false;
         for (int i = 1; i < __argc; ++i) {
             if (_wcsicmp(__wargv[i], L"--show") == 0) {
@@ -511,6 +523,18 @@ private:
                     return false;
                 }
                 developmentProbeOnly_ = true;
+            } else if (_wcsicmp(__wargv[i], L"--performance-state") == 0) {
+                if (!takeValue(i, performanceState_, L"--performance-state")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--performance-widget-id") == 0) {
+                if (!takeValue(i, performanceWidgetId_, L"--performance-widget-id")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--performance-diagnostics-path") == 0) {
+                if (!takeValue(i, performanceDiagnosticsPath_, L"--performance-diagnostics-path")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--performance-diagnostics-nonce") == 0) {
+                if (!takeValue(i, performanceDiagnosticsNonce_, L"--performance-diagnostics-nonce")) return false;
+                ++i;
             }
         }
         try {
@@ -518,6 +542,9 @@ private:
                 developmentCatalogRoot_ = std::filesystem::absolute(*developmentCatalogRoot_).wstring();
             if (developmentReadyPath_)
                 developmentReadyPath_ = std::filesystem::absolute(*developmentReadyPath_).wstring();
+            if (performanceDiagnosticsPath_)
+                performanceDiagnosticsPath_ =
+                    std::filesystem::absolute(*performanceDiagnosticsPath_).wstring();
         } catch (const std::filesystem::filesystem_error&) {
             initializationError_ = L"A development path is invalid.";
             return false;
@@ -559,6 +586,155 @@ private:
             initializationError_ = L"The expected development widget identity is invalid.";
             return false;
         }
+        const bool hasPerformanceArguments = performanceState_ || performanceWidgetId_ ||
+                                             performanceDiagnosticsPath_ ||
+                                             performanceDiagnosticsNonce_;
+        if (hasPerformanceArguments &&
+            (!performanceState_ || !performanceWidgetId_ ||
+             !performanceDiagnosticsPath_ || !performanceDiagnosticsNonce_)) {
+            initializationError_ =
+                L"Performance diagnostics arguments must be supplied together.";
+            return false;
+        }
+        if (hasPerformanceArguments && (hasHandshake || developmentProbeOnly_)) {
+            initializationError_ =
+                L"Performance diagnostics cannot be combined with development readiness.";
+            return false;
+        }
+        if (performanceState_) {
+            std::transform(performanceState_->begin(), performanceState_->end(),
+                           performanceState_->begin(), towlower);
+            if (*performanceState_ != L"hidden" && *performanceState_ != L"visible" &&
+                *performanceState_ != L"interactive") {
+                initializationError_ =
+                    L"--performance-state must be hidden, visible, or interactive.";
+                return false;
+            }
+            if (!validIdentity(performanceWidgetId_)) {
+                initializationError_ = L"The performance widget identity is invalid.";
+                return false;
+            }
+            if (performanceDiagnosticsNonce_->size() != 64 ||
+                !std::all_of(performanceDiagnosticsNonce_->begin(),
+                             performanceDiagnosticsNonce_->end(),
+                             [](const wchar_t value) {
+                                 return (value >= L'0' && value <= L'9') ||
+                                        (value >= L'a' && value <= L'f') ||
+                                        (value >= L'A' && value <= L'F');
+                             })) {
+                initializationError_ = L"The performance diagnostics nonce is invalid.";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool ApplyPerformanceStartupState() {
+        if (!performanceState_ || !performanceWidgetId_) return false;
+        if (*performanceState_ == L"hidden") return true;
+        if (state_.order().empty()) {
+            initializationError_ = L"Performance diagnostics found no runnable widgets.";
+            return false;
+        }
+
+        Dispatch(gba::Command::ToggleOverlay);
+        if (state_.surface() == gba::Surface::Widget &&
+            state_.focusRegion() == gba::FocusRegion::Widget) {
+            Dispatch(gba::Command::SampleWidgetBack);
+        }
+        for (std::size_t remaining = state_.order().size();
+             remaining > 0 && state_.selectedWidget() != *performanceWidgetId_;
+             --remaining) {
+            Dispatch(gba::Command::NavigateRight);
+        }
+        if (state_.selectedWidget() != *performanceWidgetId_) {
+            initializationError_ = L"The requested performance widget is not installed and enabled.";
+            return false;
+        }
+        if (*performanceState_ == L"interactive") {
+            Dispatch(gba::Command::Activate);
+        }
+
+        const auto expected = *performanceState_ == L"interactive"
+            ? gba::WidgetLifecycleState::Interactive
+            : gba::WidgetLifecycleState::Visible;
+        if (!lifecycleBridgeState_ || *lifecycleBridgeState_ != expected ||
+            lifecycleBridgeWidget_ != *performanceWidgetId_) {
+            initializationError_ =
+                L"The requested performance lifecycle could not be established.";
+            return false;
+        }
+        return true;
+    }
+
+    void ResetPerformanceCounters() noexcept {
+        if (!performanceState_) return;
+        performanceTimerMessages_ = 0;
+        performanceControllerTimerMessages_ = 0;
+        performanceGuideCompatibilityTimerMessages_ = 0;
+        performancePaintMessages_ = 0;
+        performanceSuccessfulFrames_ = 0;
+        LARGE_INTEGER now{};
+        performanceCountersActive_ = QueryPerformanceCounter(&now) != FALSE;
+        performanceCounterStarted_ = performanceCountersActive_
+            ? static_cast<unsigned long long>(now.QuadPart)
+            : 0;
+    }
+
+    bool PublishPerformanceCounters() {
+        if (!performanceCountersActive_ || !performanceState_ ||
+            !performanceWidgetId_ || !performanceDiagnosticsPath_ ||
+            !performanceDiagnosticsNonce_) {
+            return false;
+        }
+        LARGE_INTEGER ended{};
+        LARGE_INTEGER frequency{};
+        if (!QueryPerformanceCounter(&ended) || !QueryPerformanceFrequency(&frequency) ||
+            ended.QuadPart < 0 || frequency.QuadPart <= 0) {
+            return false;
+        }
+        const auto ascii = [](const std::wstring& value) {
+            std::string result;
+            result.reserve(value.size());
+            for (const wchar_t character : value) {
+                result.push_back(static_cast<char>(character));
+            }
+            return result;
+        };
+        const std::string payload =
+            "gbar-performance-runtime-v2\n" +
+            ascii(*performanceDiagnosticsNonce_) + "\n" +
+            ascii(*performanceState_) + "\n" +
+            ascii(*performanceWidgetId_) + "\n" +
+            std::to_string(performanceCounterStarted_) + "\n" +
+            std::to_string(static_cast<unsigned long long>(ended.QuadPart)) + "\n" +
+            std::to_string(static_cast<unsigned long long>(frequency.QuadPart)) + "\n" +
+            std::to_string(performanceTimerMessages_) + "\n" +
+            std::to_string(performanceControllerTimerMessages_) + "\n" +
+            std::to_string(performanceGuideCompatibilityTimerMessages_) + "\n" +
+            std::to_string(performancePaintMessages_) + "\n" +
+            std::to_string(performanceSuccessfulFrames_) + "\n";
+
+        const std::filesystem::path destination(*performanceDiagnosticsPath_);
+        const auto temporary = destination.wstring() + L".tmp-" +
+                               std::to_wstring(GetCurrentProcessId());
+        HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr,
+                                  CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY, nullptr);
+        if (file == INVALID_HANDLE_VALUE) return false;
+        DWORD written = 0;
+        const bool wrote = payload.size() <= MAXDWORD &&
+                           WriteFile(file, payload.data(),
+                                     static_cast<DWORD>(payload.size()),
+                                     &written, nullptr) &&
+                           written == static_cast<DWORD>(payload.size()) &&
+                           FlushFileBuffers(file);
+        CloseHandle(file);
+        if (!wrote || !MoveFileExW(temporary.c_str(), destination.c_str(),
+                                   MOVEFILE_WRITE_THROUGH)) {
+            DeleteFileW(temporary.c_str());
+            return false;
+        }
+        performanceCountersActive_ = false;
         return true;
     }
 
@@ -846,6 +1022,9 @@ private:
         case kDisplayRefreshMessage:
             ApplyPendingDisplayEnvironmentRefresh();
             return 0;
+        case kPerformanceResetMessage:
+            ResetPerformanceCounters();
+            return 0;
         case WM_KEYDOWN:
             HandleKey(
                 static_cast<UINT>(wParam),
@@ -857,6 +1036,14 @@ private:
                 static_cast<float>(static_cast<short>(HIWORD(lParam))));
             return 0;
         case WM_TIMER:
+            if (performanceCountersActive_) {
+                ++performanceTimerMessages_;
+                if (wParam == kControllerTimer) {
+                    ++performanceControllerTimerMessages_;
+                } else if (wParam == kGuideCompatibilityTimer) {
+                    ++performanceGuideCompatibilityTimerMessages_;
+                }
+            }
             if (wParam == kControllerTimer) {
                 const auto now = GetTickCount64();
                 if (overlayTransition_.active()) {
@@ -981,6 +1168,7 @@ private:
             }
             return 0;
         case WM_PAINT:
+            if (performanceCountersActive_) ++performancePaintMessages_;
             Paint();
             return 0;
         case WM_SIZE:
@@ -1016,6 +1204,10 @@ private:
         case WM_ERASEBKGND:
             return 1;
         case WM_CLOSE:
+            if (performanceState_ && performanceCountersActive_ &&
+                !PublishPerformanceCounters()) {
+                AppendDiagnostic(L"Performance runtime diagnostics could not be published");
+            }
             DestroyWindow(window_);
             return 0;
         case WM_DESTROY:
@@ -1127,9 +1319,10 @@ private:
             if (pressedInteraction_.Clear())
                 InvalidateRect(window_, nullptr, FALSE);
         }
-        if (before.order != state_.persistent().order ||
+        if (!performanceState_ &&
+            (before.order != state_.persistent().order ||
             before.lastWidget != state_.persistent().lastWidget ||
-            before.reopenWidget != state_.persistent().reopenWidget) {
+             before.reopenWidget != state_.persistent().reopenWidget)) {
             SavePersistentState(state_.persistent());
         }
         SyncWidgetActivity();
@@ -1499,7 +1692,8 @@ private:
             lastWidgetRenderResult_ = {};
         }
         const auto before = state_.persistent();
-        if (state_.SetAvailableWidgets(std::move(ids)) && before != state_.persistent()) {
+        if (state_.SetAvailableWidgets(std::move(ids)) &&
+            before != state_.persistent() && !performanceState_) {
             SavePersistentState(state_.persistent());
         }
         SyncWidgetActivity();
@@ -3074,6 +3268,7 @@ private:
             DiscardGraphicsResources();
             ReprimeOpenAfterRenderTargetLoss();
         } else if (SUCCEEDED(result)) {
+            if (performanceCountersActive_) ++performanceSuccessfulFrames_;
             BeginOpenAfterSuccessfulPaint();
         }
         EndPaint(window_, &paint);
@@ -3456,6 +3651,17 @@ private:
     std::optional<std::wstring> developmentWidgetId_;
     std::optional<std::wstring> developmentWidgetInstance_;
     bool developmentProbeOnly_{};
+    std::optional<std::wstring> performanceState_;
+    std::optional<std::wstring> performanceWidgetId_;
+    std::optional<std::wstring> performanceDiagnosticsPath_;
+    std::optional<std::wstring> performanceDiagnosticsNonce_;
+    bool performanceCountersActive_{};
+    unsigned long long performanceCounterStarted_{};
+    unsigned long long performanceTimerMessages_{};
+    unsigned long long performanceControllerTimerMessages_{};
+    unsigned long long performanceGuideCompatibilityTimerMessages_{};
+    unsigned long long performancePaintMessages_{};
+    unsigned long long performanceSuccessfulFrames_{};
     gba::OverlayState state_;
     WORD previousButtons_{};
     gba::input::StickNavigator stickNavigator_;

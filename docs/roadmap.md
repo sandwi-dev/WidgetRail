@@ -130,8 +130,11 @@ remains off until the publisher-trust gates in Phase 4.
   loopback JSON plus write-only private secrets replace raw sockets and direct
   Credential Manager access. Package conformance proves install, consent,
   pairing, host-side Bearer injection, dashboard input, and no trusted fallback.
-  Complete the remaining clean packaged playtest, controller/lifecycle/crash
-  recovery, update/rollback, and uninstall evidence before closing GBA-030.
+  `scripts/Test-YtMusicCommunityAddon.ps1` now supplies isolated executable
+  evidence for lifecycle suspend/resume, deliberate crash recovery, fresh
+  force reload, content-bound update consent, rollback, disable, and uninstall
+  without touching the real catalog. A real YTMDesktop2 pairing plus packaged
+  physical-controller/shell playtest remains before closing GBA-030.
 - Finish Settings controller reachability, diagnostics/recovery, local package
   and theme workflows, and permission/version consistency
 - Finish the evidence matrix for the implemented packaged-regression fixes:
@@ -274,10 +277,12 @@ not irreversible API priority:
    package/standalone-widget-body captures for the covered GBA-038/GBA-042
    paths; retain the recorded Settings activation gap and add the uncaptured/
    error/manual cases without broadening what that run proves.
-2. **Finish the YT Music Community-addon proof.** Run clean pack/install/review/
-   consent/enable, real companion pairing, dashboard/open-widget input,
-   lifecycle/crash recovery, update/rollback, disable, and uninstall without a
-   trusted worker or direct Credential Manager/socket workaround.
+2. **Finish the manual YT Music Community-addon proof.** The isolated auth-free
+   workflow now covers clean pack/install/review/consent/enable,
+   dashboard/open-widget input, lifecycle/crash/force-reload recovery,
+   content-bound update/rollback, disable, and uninstall without a trusted
+   worker or direct Credential Manager/socket workaround. Run real companion
+   pairing and packaged physical-controller/shell verification next.
 3. **Fill the public component gaps before more one-off UI.** `SettingsRow`,
    bounded nested `ActionSheet`, and the single-select `Picker` contracts are
    public. Settings now adopts Picker, Spotify adopts the public controller
@@ -294,14 +299,19 @@ not irreversible API priority:
    with reduced-motion and no-settled-idle native evidence. Capture packaged
    visual/frame-time evidence before adding later product-target transitions.
 5. **Deepen Games & Apps through safe sources.** Start Menu and bounded
-   AppsFolder/AUMID sources plus curated icons are implemented. Add reviewed
-   launcher adapters, running-program capture, and a host-owned file picker.
+   AppsFolder/AUMID sources plus curated icons and a bounded Steam manifest/URI
+   adapter are implemented. Add other reviewed launcher adapters,
+   running-program capture, and a host-owned file picker.
    Keep classification evidence-backed and launch identities opaque/revalidated.
-6. **Harden local providers and resource behavior.** Expand Audio/Network
-   denial/churn/recovery tests, perform reversible Bluetooth pairing only with
-   disposable hardware, add worker crash quarantine/profile cleanup, and store
-   ETW/PresentMon/working-set evidence for hidden, Visible, and Interactive
-   lifecycles.
+6. **Harden local providers and resource behavior.** The bounded schema-2
+   process/native-counter harness now establishes independent Hidden, Visible,
+   and Interactive Settings lifecycles without authentication or persisted
+   user-state changes, records working set/private bytes/CPU/process counts,
+   and exposes timer/paint/successful-EndDraw evidence with exact provenance.
+   Next expand Audio/Network denial/churn/recovery tests, perform reversible
+   Bluetooth pairing only with disposable hardware, add worker crash
+   quarantine/profile cleanup, resolve GBA-044's hidden Guide-compatibility
+   cadence, and add ETW/PresentMon/private-working-set evidence.
 
 Spotify's provider/configuration tests can proceed offline; its live login,
 playback, and Community-addon evidence require a registered Development Mode

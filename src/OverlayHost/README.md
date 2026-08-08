@@ -62,6 +62,20 @@ cooperative suspend-when-hidden, or explicit bounded unload-after-idle. The
 native host never applies an idle/resource heuristic and never suspends worker
 threads; it restores focus by stable ID when a lazily recreated snapshot arrives.
 
+The local performance harness has a separate opt-in startup contract. Supplying
+all four `--performance-state`, `--performance-widget-id`,
+`--performance-diagnostics-path`, and `--performance-diagnostics-nonce`
+arguments replaces only this process's overlay presentation state with an
+ephemeral one, establishes the requested `hidden`, `visible`, or `interactive`
+lifecycle for an already-installed widget, and suppresses persistence writes.
+The harness resets native counters after warmup through the exact spawned HWND;
+graceful close atomically creates (never replaces) a bounded nonce-bound record
+with timer, paint, and successful Direct2D-frame counts. Partial argument sets,
+invalid IDs/nonces/states, missing widgets, lifecycle failure, an existing
+destination, and combinations with development readiness fail closed. This is
+local evidence tooling, not a widget API, automation backdoor, ETW trace, or
+presentation telemetry surface.
+
 ## Window contract
 
 While visible, the prototype creates two non-injecting DWM windows on the

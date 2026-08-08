@@ -1,8 +1,8 @@
 # Performance contract and evidence
 
-Status: low-overhead architecture, bounded worker controls, and repeatable
-diagnostic process sampling implemented; ETW/PresentMon release evidence and
-per-widget resource UI remain open
+Status: low-overhead architecture, bounded worker controls, and reproducible
+Hidden/Visible/Interactive local baselines implemented; ETW/PresentMon release
+evidence, private-working-set collection, and per-widget resource UI remain open
 
 Performance is a product feature because the overlay runs beside a game. This
 page separates enforceable platform behavior, author responsibilities, current
@@ -31,8 +31,11 @@ unbounded caches, or unnecessary helper processes.
 
 - The native window stops presenting and releases dispensable graphics
   resources while hidden.
-- Guide acquisition is callback-driven while hidden. Ordinary controller
-  polling runs only while the overlay is visible.
+- Primary GameInput Guide acquisition is callback-driven while hidden.
+  Ordinary controller polling runs only while the overlay is visible. The
+  quarantined XInput ordinal-100 compatibility path still owns a 25 ms hidden
+  timer when that adapter initializes; GBA-044 tracks replacing its continuous
+  cadence with a lower-wake strategy that preserves Guide-open reliability.
 - Widget workers start lazily; listing the catalog, rendering dashboard
   metadata, changing themes, or reviewing permissions does not start them.
 - Each worker receives a host-owned Job Object before it resumes. Trusted
@@ -144,23 +147,40 @@ these patterns.
 
 ## Current measurement
 
-One visible prototype sample measured:
+The schema-2 harness completed a full three-state Settings baseline in local run
+`overlay-performance-20260808-201124310-6e6c053e`. It used Release executable
+SHA-256 `f55c41f34bf216ecf986919476d25961d7d4e8c995a6e6f5e9306ce73489e657`,
+three seconds of warmup, 30 requested seconds, and 31 process observations per
+state on a 16-logical-processor Ryzen 7 9800X3D Windows 11 machine. The report
+records a dirty worktree and is therefore local implementation evidence—not a
+release or marketing baseline.
 
-| Process | Private working set |
-| --- | ---: |
-| `OverlayHost` | 93.2 MB |
-| `WidgetBridge` | 59.1 MB |
-| One widget worker | 51.5 MB |
-| **Total** | **203.8 MB** |
+| State | CPU p95 | Working set p95 | Private bytes p95 | Processes p95 | Guide fallback timer | Post-warmup D2D frames |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Hidden | 0.0977% | 95.9 MiB | 42.5 MiB | 3 | 31.65 messages/s | 0 |
+| Visible | 0.2921% | 203.6 MiB | 121.2 MiB | 5 | 31.89 messages/s | 0 |
+| Interactive | 0.1953% | 214.3 MiB | 142.4 MiB | 5 | 31.87 messages/s | 0 |
 
-Across a five-second CPU sample, `OverlayHost` accumulated 78.12 ms; bridge and
-worker deltas were below that sample's timer resolution. The current hidden
-startup smoke also proves that the packaged host remains resident for its
-1.2-second observation window without an initialization failure.
+The Hidden CPU observation is within the initial 0.1% target for this one run,
+but comparisons remain non-gating. Private-working-set targets are explicitly
+`metric-unavailable`; ordinary working set or private bytes are not substituted
+for them.
 
-These are smoke observations, not a budget pass. They do not establish p95
-latency, hidden steady state, GPU activity, wakeups, frame pacing, multi-widget
-cost, or long-run memory behavior.
+The baseline established all three explicit host lifecycle states, produced
+working-set/private-byte/CPU/process samples, published nonce-bound native
+counter records, and left no host, bridge, or worker process behind. After
+warmup, Hidden recorded no controller-timer messages, paints, or successful
+Direct2D frames. It directly recorded 943 quarantined Guide-compatibility timer
+messages over its counter interval; that
+known hidden cadence remains performance follow-up rather than being mislabeled
+as a scheduler-wakeup count. Stable Visible and Interactive observations also
+recorded no post-warmup paints or successful Direct2D frames, while their normal
+controller/bridge timer remained active.
+
+These observations do not establish GPU activity, DWM presentation, OS
+scheduler wakeups, context switches, gameplay frame impact, multi-widget cost,
+or long-run memory behavior. The harness reports those fields as unavailable
+instead of deriving them from CPU or paint activity.
 
 ## Verification and remaining tooling
 
@@ -180,38 +200,62 @@ overlay and run:
 .\scripts\Measure-OverlayPerformance.ps1 -Configuration Release
 ```
 
-The safe default starts one hidden instance, waits for the host-resident plus
-bridge-child readiness proxy, warms up for three seconds, samples for 15
-seconds, and writes versioned JSON plus Markdown under
-`artifacts/performance`. It measures the spawned process tree's Windows private
-working set, private bytes, total working set, CPU-time deltas normalized by
-logical processor count, handles, and threads. Cleanup targets only the host
-and descendants whose exact PID and creation-time ticks were observed during
-that run.
+The default performs independent Hidden, Visible, and Interactive observations
+against the installed, authentication-free Settings widget. Each process gets
+an explicit ephemeral startup lifecycle; performance mode neither inherits nor
+writes the user's tray order, last widget, or reopen preference. It warms up for
+three seconds, samples for 30 seconds, and writes one provenance-bearing run
+directory under `artifacts/performance` containing schema-2 JSON, Markdown, and
+one nonce-bound native record per state.
 
-To include an independently launched visible-state observation:
+The process sampler records working set, private bytes, CPU-time deltas
+normalized by logical processor count, process count, handles, and threads for
+the spawned host tree. Native opt-in counters start only after warmup and report
+host timer messages, controller-timer messages, paint messages, and successful
+Direct2D `EndDraw` calls. Those last two are renderer-work evidence, not DWM or
+game presentation evidence. The report records the executable and harness
+hashes, Git state, machine/build metadata, exact parameters, optional WPR and
+PresentMon availability, runtime-sidecar hashes, and every documented gap.
+
+Sampling has finite startup, CIM, warmup, measurement, and graceful-shutdown
+bounds. The harness first requests normal `WM_CLOSE`; its `finally` cleanup only
+touches the spawned host and descendants whose exact PID plus creation-time
+ticks it observed. It refuses to run when that exact overlay executable is
+already active, preventing both file/state conflicts and contaminated results.
+
+To run a shorter focused diagnostic:
 
 ```powershell
 .\scripts\Measure-OverlayPerformance.ps1 `
     -Configuration Release `
-    -Scenario Hidden,Visible `
-    -WarmupSeconds 5 `
-    -SampleSeconds 60
+    -Scenario Visible,Interactive `
+    -WidgetId settings `
+    -WarmupSeconds 2 `
+    -SampleSeconds 10
 ```
 
-Visible mode deliberately displays and focuses the overlay. It does not inject
-controller or keyboard input. Its readiness proxy is a resident host, observed
-bridge child, and visible top-level window—not a presented first frame or proof
-of interactivity. Consequently the harness cannot automate warm activation
-without adding a supported host control seam.
+Visible and Interactive modes deliberately display and focus the overlay. The
+host-owned startup seam establishes the exact selected widget and lifecycle
+before returning from initialization; the script never uses global synthetic
+controller or keyboard input. Readiness additionally requires the bridge and
+the exact `GameBarAlternative.OverlayHost` window class. Hidden establishes no
+widget worker, while Visible/Interactive lazily start only the selected widget.
 
 The report compares observations with relevant engineering targets, but labels
 every comparison `diagnostic-observation` and `releaseGate: false`. A short
-WMI/CIM sample is sensitive to machine state and creates its own external
+process sample is sensitive to machine state and creates its own external
 measurement load, so the script never fails a build based on those numbers.
 Nearest-rank p95 target comparisons require at least 20 observations; shorter
 runs are labeled `insufficient-samples` instead of treating one scheduler tick
 as a representative tail result.
+
+This machine exposes built-in `wpr.exe` but not PresentMon. The default never
+elevates, starts a machine-wide ETW session, or downloads a tool. Therefore OS
+wake/context-switch and presentation evidence remain explicitly uncollected.
+The previously used `Win32_PerfRawData_PerfProc_Process` provider also rejected
+bounded operation timeouts on this machine. Schema 2 uses bounded process APIs
+for working set and private bytes and reports private working set unavailable;
+it does not silently fall back to a potentially indefinite provider call.
 Validate the harness's deterministic helpers without launching the overlay via:
 
 ```powershell
@@ -222,8 +266,8 @@ The performance release gate still needs:
 
 - an automated Windows Performance Recorder/ETW and PresentMon harness beyond
   the bounded process sampler above;
-- stored machine/build metadata plus comparable baseline artifacts;
-- hidden/visible CPU, GPU, wakeup, private-working-set, and handle trends;
+- checked-in comparable reference-machine baselines and noise envelopes;
+- hidden/visible GPU, scheduler-wakeup, private-working-set, and handle trends;
 - warm/cold Guide, controller-to-visual, and worker-start latency percentiles;
 - one-, three-, and many-widget background/interactive scenarios;
 - provider/device churn and catalog/theme reload burst measurements;

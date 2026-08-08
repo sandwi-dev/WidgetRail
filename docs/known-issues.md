@@ -50,8 +50,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
 | GBA-030 | P0 | Verifying | YT Music packaging / community isolation / local companion broker | YT Music now uses the public Community package/AppContainer/loopback/secret path without a trusted fallback; clean packaged controller and lifecycle evidence remains. |
 | GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | The shared default, responsive Row/Grid, Picker, Scrubber, Toast, CodeText, per-edge borders, and protocol-v7 ActionSurface/MediaTile/AppTile exist; Settings and Games & Apps provide production adoption, and the full Release gate is green while hands-on packaged scale/accessibility evidence remains. |
-| GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes interpolate bounded opacity/scale/translation; shell open/close and widget identity reveals now use bounded 140/100 ms tracks with reduced-motion cancellation and no settled idle frames. Packaged visual/performance evidence remains. |
-| GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation, Start Menu plus AppsFolder discovery, exact revalidated launch, and close-after-correlated-success are implemented; launcher sources, classification, and packaged controller evidence remain. |
+| GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes interpolate bounded opacity/scale/translation; shell open/close and widget identity reveals use bounded 140/100 ms tracks, and a three-state native-counter smoke observed no settled post-warmup Direct2D frames. PresentMon/packaged visual evidence remains. |
+| GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable curation, Start Menu/AppsFolder plus bounded Steam discovery, evidence-backed Steam Game classification, exact revalidated launch, and close-after-correlated-success are implemented; additional launchers and packaged controller evidence remain. |
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
 | GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
 | GBA-036 | P1 | Verifying | OverlayHost / native composition / declarative surface | The native client clears unused pixels to the layered color key and one packaged standard-viewport capture shows no opaque canvas; the broader paint/scale/contrast matrix remains. |
@@ -62,6 +62,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-041 | P0 | Verifying | OverlayHost / controller input ownership | A visibility-scoped GameInput lease keeps navigation alive when foreground activation is denied and uses exclusivity when confirmed; packaged backend/game evidence remains. |
 | GBA-042 | P0 | Verifying | Spotify configuration / Settings permissions | Unsigned packages can resolve one unambiguous owning-publisher public configuration document; `final-schema-v2-20260808-final` proves Spotify 0.1.6 unconfigured/setup standalone widget-body rendering, but Settings package-path injection and live configure/connect/revoke evidence remain. |
 | GBA-043 | P0 | Verifying | Spotify OAuth / broker lifecycle / pipe timeout | Package 0.1.6 keeps the explicit Connect task resident through browser-triggered Visible/Background and tolerates 16 bounded local callback probes inside the five-minute listener; the exact broker operation remains seven minutes and live packaged authorization evidence remains. |
+| GBA-044 | P1 | Confirmed | OverlayHost / XInput Guide compatibility / performance | The schema-2 Hidden smoke recorded about 32 host timer messages per second with zero controller timers, paints, or Direct2D frames; the always-on 25 ms ordinal-100 compatibility timer is the remaining hidden cadence. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -853,9 +854,17 @@ actual 401 deletes the exact scoped slot while the dependent lease is valid,
 and the widget clears local state without a second delete. Restart coverage
 confirms the rejected slot is absent.
 
-The complete conformance suite passes 5/5; YT Music and PlatformBroker focused
-suites cover the typed companion path. Clean packaged controller/lifecycle testing on the
-real companion remains before closure.
+The complete conformance suite and focused YT/PlatformBroker suites cover the
+typed companion path. `scripts/Test-YtMusicCommunityAddon.ps1` additionally
+uses a unique temporary catalog and consent root to execute clean public
+validate/pack/install, explicit consent, generic AppContainer launch,
+simulated pairing, dashboard/open-window routing, suspend/resume, deliberate
+worker termination and restart, fresh force reload, content-bound update
+review, exact rollback, disable, and disabled-only uninstall. It snapshots the
+real catalog read-only and fails if that inventory changes during the run. The
+generated auth-free evidence does not claim real YTMDesktop2 pairing,
+production Credential Manager purge, physical controller input, or packaged
+shell pixels; those manual checks remain before closure.
 
 **Acceptance:**
 
@@ -968,19 +977,21 @@ performance evidence is still open.
 ## GBA-033 — Games & Apps needs durable curated launch semantics
 
 **Evidence:** The current slice safely pages executable-backed Start Menu
-shortcuts plus bounded current-user AppsFolder/AUMID registrations into a
+shortcuts, bounded current-user AppsFolder/AUMID registrations, and bounded
+registered Steam manifests into a
 nested Catalog where A adds/removes entries from a separate Library view. The
 Library supports explicit removal and moves an exact item to
 the front only after launch success. The SDK/broker/provider issue an
 authority-scoped durable SavedId, resolve it to a fresh launch token, and the
 widget persists curation/recent-first order through private compare-and-swap
 state. A host-owned effect closes only after the exact provider success and is
-rejected for stale widget generations. Start Menu and AppsFolder launch both
+rejected for stale widget generations. Start Menu, AppsFolder, and Steam launch
 re-enumerate and require one exact unchanged registration before constrained
-Shell/null-argument activation; raw paths, AUMIDs, arguments, and PIDs never
-cross IPC. Curated shortcut/AppsFolder icons use the bounded pixel contract.
-Source-aware grouping, game classification, launcher catalogs, and richer
-artwork remain absent.
+Shell/null-argument/numeric-URI activation; raw paths, AUMIDs, Steam AppIds,
+arguments, and PIDs never cross IPC. Curated shortcut/AppsFolder icons use the
+bounded pixel contract. Steam manifests provide the first evidence-backed Game
+classification. Source-aware grouping, additional launcher catalogs, and
+richer Steam artwork remain absent.
 
 **Acceptance:**
 
@@ -1342,6 +1353,44 @@ callback evidence in acceptance item 5 is captured.
    and timeout always terminate the listener and request.
 5. A packaged allowlisted-account test completes the exact callback and proves
    there is no refusal, token leakage, or hidden retry/polling loop.
+
+## GBA-044 — XInput Guide compatibility keeps a hidden timer active
+
+**Evidence:** Bounded local baseline
+`overlay-performance-20260808-201124310-6e6c053e` established an explicit
+Hidden state for the Settings reference without inheriting user overlay state.
+Across its 29.791551-second post-warmup native interval, schema 2 directly
+recorded 943 total timer messages and 943 Guide-compatibility timer messages
+(31.65327/s), with zero ordinary controller-timer messages, paint messages, or
+successful Direct2D frames. That cadence is `kGuideCompatibilityTimer`,
+configured at 25 ms whenever the
+quarantined `xinput1_4.dll` ordinal-100 adapter initializes. GameInput Guide is
+callback-driven; this compatibility path is not.
+
+The short local run is not OS scheduler-wakeup or CPU-budget evidence. It does,
+however, disprove the broader claim that Hidden owns no recurring host timer.
+Runtime-record schema 2 now reports the compatibility timer directly, separate
+from total and ordinary visible-controller timers, so subsequent evidence does
+not depend on subtraction.
+
+**Decision:** Do not simply change 25 ms to 50 ms. Ordinal-100 reports sampled
+state rather than a queued supported Guide event, so an interval increase can
+miss a short press that begins and ends between samples. There is no current
+hardware/tap-duration evidence proving 50 ms preserves the fallback's only
+purpose. The behavior remains unchanged until a lower-wake design is tested on
+the controllers that require it.
+
+**Acceptance:**
+
+1. Hidden runtime evidence reports Guide-compatibility timer messages directly,
+   separately from ordinary visible-controller and other host timers.
+2. A replacement eliminates or materially reduces continuous Hidden cadence
+   without polling ordinary controls, animating, or presenting.
+3. Supported GameInput callback behavior remains unchanged.
+4. Xbox-360-class and affected 8BitDo hardware trials include very short Guide
+   taps and prove no practical regression in open/close detection.
+5. Repeated clean-machine Hidden baselines include CPU, timer cadence, and
+   scheduler-wakeup/context-switch evidence before this issue closes.
 
 ## Closed issues
 

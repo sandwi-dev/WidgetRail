@@ -51,6 +51,20 @@ This channel is intentionally outside `WidgetSdk`. Third-party widgets cannot
 request it in a manifest, discover its endpoint, select another identity, or
 turn it into a general host control API.
 
+The separate `Measure-OverlayPerformance.ps1` startup contract is also not a
+widget capability or Settings control channel. It is opt-in process-launch
+diagnostics for a local developer: the host creates an ephemeral presentation
+state, selects one already-installed widget by public ID, establishes exactly
+Hidden, Visible, or Interactive, and suppresses every overlay-state persistence
+write for that process. After the script's warmup it accepts one reset message
+on the exact spawned HWND, then atomically publishes a nonce-bound bounded record
+only during graceful shutdown. The record contains lifecycle/widget identity,
+QPC interval, host timer classes, paint count, and successful Direct2D frame
+count—never paths, widget content, controller data, or provider state. The
+harness hashes that sidecar and records all unmeasured ETW/presentation facts.
+The nonce binds a record to one invocation and detects mismatches; it is not a
+security boundary against another process already running as the same user.
+
 ## Controller behavior
 
 Open **Settings → Diagnostics**. Focus starts on **Refresh diagnostics**. D-pad

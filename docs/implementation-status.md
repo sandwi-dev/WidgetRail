@@ -477,6 +477,15 @@ and never rewrite package bytes. A missing pinned directory fails discovery
 closed with `active_version_missing` rather than silently executing another
 version.
 
+`gbar uninstall <widget-id>` is implemented as a disabled-only catalog
+operation. It removes the exact ID's state, atomically retires its complete
+package directory from discovery, deletes all immutable versions, and
+reindexes remaining order. Locked retired files are reported honestly and a
+later package mutation retries bounded staging cleanup. It intentionally does
+not guess or enumerate
+provider-owned private-secret slots; cleanup of known slots remains a widget
+host-service responsibility.
+
 Presentation/order-only changes preserve compatible workers while atomically
 swapping their validated presentation/quick-action metadata. A package,
 publisher, instance, executable, argument, declared-capability, or memory-policy
@@ -847,8 +856,11 @@ and [troubleshooting](troubleshooting.md).
    remains an explicit gap. Live Spotify authorization, callback behavior,
    shell/window composition, and hardware input are separate evidence gates,
    so GBA-038 and GBA-042 remain Verifying.
-2. Complete the YT Music clean Community-addon install/consent/lifecycle/crash/
-   update/rollback/uninstall proof without a trusted fallback.
+2. Complete the remaining real-companion and packaged physical-controller/
+   shell proof for YT Music. The clean isolated auth-free workflow already
+   proves install/consent/AppContainer launch, dashboard/open routing,
+   lifecycle/crash/force-reload recovery, content-bound update/rollback, and
+   disabled-only uninstall without a trusted fallback.
 3. Complete hands-on packaged visual/accessibility/controller evidence for the
    public component milestone. The full Release gate is green. `SettingsRow`,
    bounded nested `ActionSheet`, Picker,
@@ -857,8 +869,8 @@ and [troubleshooting](troubleshooting.md).
    production uses. After that gate, design advanced/virtualized collections,
    optional packaged-font brokering, and further motion polish without
    importing browser layout or arbitrary asset loading.
-4. Extend Games & Apps beyond its bounded Start Menu plus AppsFolder sources
-   with reviewed launcher adapters,
+4. Extend Games & Apps beyond its bounded Start Menu, AppsFolder, and Steam
+   sources with additional reviewed launcher adapters,
    running-program capture, and a host-owned file picker while preserving
    opaque exact launch identities.
 5. Extend the bounded process sampler with ETW/PresentMon automation, stored
