@@ -401,6 +401,12 @@ Use `.AddClasses(...)` to augment those semantic classes. `.Classes(...)`
 deliberately replaces the complete class list and is intended for primitives
 or authors who explicitly take over the component contract.
 
+Build and install the
+[SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md) to inspect
+the components together under the real theme, Scroll, controller-focus, and
+generic Community-worker contracts. It is a development reference rather than
+a built-in tray widget and declares no platform capabilities.
+
 ## Controller-native Slider (protocol v3)
 
 Use `UI.Slider` for a value the controller can change directly. `Progress` is

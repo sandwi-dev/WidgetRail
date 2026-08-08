@@ -29,7 +29,7 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 - Controller-first Settings, Audio Mixer, Network Controls, Games & Apps, and
   Now Playing workers in the runnable catalog; an installable YT Music
   Community addon; an installable Spotify Community-addon core; and a separate
-  Clock SDK sample
+  Clock SDK sample plus a capability-free, installable SDK Gallery reference
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
   immutable version pin/rollback commands; accepted catalog changes reconcile
@@ -69,6 +69,7 @@ The complete verification command requires Visual Studio's Desktop development w
 
 - [Documentation index](docs/README.md)
 - [Widget authoring guide and API map](docs/widget-authoring-guide.md)
+- [SDK Gallery Community addon reference](samples/SdkGalleryWidget/README.md)
 - [Games & Apps reference](docs/games-and-apps.md)
 - [YT Music Community addon reference](samples/YtMusicWidget/README.md)
 - [Retired Recent Apps reference](docs/recent-apps.md)

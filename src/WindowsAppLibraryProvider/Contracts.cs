@@ -56,6 +56,19 @@ internal sealed record AppsFolderRegistration(
     string RevalidationKey) : WindowsLaunchRegistration(
         IdentityKey, DisplayName, RevalidationKey);
 
+/// <summary>
+/// Trusted Steam library registration. The numeric AppId and manifest path stay
+/// inside this assembly; widgets receive only provider and authority-scoped
+/// opaque identifiers.
+/// </summary>
+internal sealed record SteamRegistration(
+    string IdentityKey,
+    string DisplayName,
+    string SteamAppId,
+    string ManifestPath,
+    string RevalidationKey) : WindowsLaunchRegistration(
+        IdentityKey, DisplayName, RevalidationKey);
+
 internal interface IStartMenuApplicationSource
 {
     IReadOnlyList<StartMenuRegistration> Enumerate(CancellationToken cancellationToken);
@@ -77,6 +90,16 @@ internal interface IAppsFolderApplicationSource
     /// <summary>Re-reads one exact canonical AUMID immediately before launch.</summary>
     AppsFolderRegistration? ReadExact(
         string aumid,
+        CancellationToken cancellationToken);
+}
+
+internal interface ISteamApplicationSource
+{
+    IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken);
+
+    SteamRegistration? ReadExact(
+        string steamAppId,
+        string manifestPath,
         CancellationToken cancellationToken);
 }
 
@@ -107,6 +130,11 @@ internal interface IWindowsAppIconSource
 internal interface IWindowsPackagedAppLauncher
 {
     void Launch(string exactAumid, CancellationToken cancellationToken);
+}
+
+internal interface IWindowsSteamLauncher
+{
+    void Launch(string exactSteamAppId, CancellationToken cancellationToken);
 }
 
 internal interface IShellStaExecutor

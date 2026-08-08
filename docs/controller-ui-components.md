@@ -76,6 +76,13 @@ text-scale, high-contrast, and reduced-transparency matrix remain the evidence
 gate tracked by
 [GBA-031](known-issues.md#gba-031--default-components-need-a-minimalist-visual-system).
 
+The separately installable
+[SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md) is the
+executable reference for this inventory. It exercises these helpers using only
+public SDK APIs, package-local GBSS, the generic AppContainer worker, stable
+controller IDs, and nested input scopes; it has no permissions or host-only
+integration.
+
 ### Modern composite helpers
 
 The implemented helpers emit baseline protocol nodes and add stable `gbar-*`

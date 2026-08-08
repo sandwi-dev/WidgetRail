@@ -88,6 +88,9 @@ try {
     Invoke-Checked -Description 'Build and test Spotify community widget' -Command {
         dotnet run --project 'tests\SpotifyWidget.Tests\SpotifyWidget.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test public SDK Gallery community widget' -Command {
+        dotnet run --project 'tests\SdkGalleryWidget.Tests\SdkGalleryWidget.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build and test first-party Audio Mixer widget' -Command {
         dotnet run --project 'tests\AudioMixerWidget.Tests\AudioMixerWidget.Tests.csproj' --configuration $Configuration
     }

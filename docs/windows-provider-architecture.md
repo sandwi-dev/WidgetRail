@@ -370,10 +370,11 @@ delivery and cancels in-flight work, while immediate native-observer shutdown/
 history clear on revocation remains future hardening. Recent Apps is retained
 only as the [read-only activity reference](recent-apps.md), not a bundled widget.
 
-## Start Menu and AppsFolder application-library provider
+## Start Menu, AppsFolder, and Steam application-library provider
 
 The trusted application-library provider merges current-user/all-user Start
-Menu Programs shortcuts with the current user's Shell `AppsFolder`. Shortcut
+Menu Programs shortcuts, the current user's Shell `AppsFolder`, and registered
+Steam library manifests. Shortcut
 enumeration is bounded by candidate count, directory depth, shortcut size,
 catalog size, and sanitized display-name length; it never follows reparse
 points. It accepts `.lnk` registrations whose
@@ -390,6 +391,13 @@ canonical AUMID. A malformed or disappearing item is skipped without failing
 the other source. The AUMID remains provider-private and contributes only to a
 host identity/revalidation digest; neither it nor a Shell object crosses IPC.
 
+Steam discovery is separately bounded to 32 library roots, 4,096 top-level
+manifests, 1 MiB per metadata file, and bounded quoted-token parsing. A
+manifest is accepted only when its filename and payload contain the same
+positive numeric AppId. These reviewed registrations are the only current
+source classified as Game. AppIds, manifest paths, and library paths stay
+provider-private.
+
 Widgets persist only SavedIds in private state. The read capability's bounded
 resolver accepts at most 64 unique SavedIds, refreshes the provider, preserves
 request order, omits unavailable registrations, and returns fresh launch IDs.
@@ -403,10 +411,13 @@ directory, elevation verb, or owner window. An AppsFolder entry requires
 exactly one unchanged canonical AUMID/revalidation identity before
 `IApplicationActivationManager.ActivateApplication` with null arguments; its
 returned PID is discarded. Stale, moved, modified, duplicated, and unknown
-registrations fail closed.
+registrations fail closed. For Steam, launch re-reads the exact manifest and
+requires the same identity, path, and content hash before Shell-opening only
+the constrained `steam://rungameid/<numeric-id>` URI.
 
-The present source does not enumerate Steam/Xbox/Epic/GOG launcher libraries
-and conservatively reports every real item as Application. AppsFolder is a
+The present source does not enumerate Xbox/Epic/GOG launcher libraries. Start
+Menu and AppsFolder entries remain conservatively classified as Application.
+AppsFolder is a
 Windows Shell view, not a guarantee that every installed package, alias, or
 launcher-owned game is returned under every Windows policy. For the user's
 curated library only, the provider resolves the shortcut or AppsFolder Shell

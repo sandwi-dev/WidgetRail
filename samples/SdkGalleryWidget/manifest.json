@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.samples.sdk-gallery",
+  "publisher": "org.gbar.samples",
+  "name": "SDK Gallery",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/SdkGalleryWidget.dll",
+    "type": "GameBarAlternative.Samples.SdkGalleryWidget.SdkGalleryWidget"
+  },
+  "presentation": { "icon": "settings" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "suspend-when-hidden"
+  },
+  "resourceRequest": {
+    "memoryMb": 32,
+    "updateHz": 2
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}

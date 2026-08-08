@@ -1,7 +1,8 @@
 # Games & Apps reference
 
 Status: durable authority-scoped curation and trusted close-on-confirmed-launch
-implemented. Packaged hands-on verification and broader sources remain.
+implemented. A bounded Steam launcher adapter is also implemented; packaged
+hands-on verification and additional sources remain.
 
 Games & Apps replaces Recent Apps in the bundled overlay catalog. It is a
 manifest-backed first-party package that uses the public SDK, generic
@@ -12,7 +13,8 @@ native shell panel.
 The old Recent Apps project remains useful historical coverage for the
 read-only foreground-activity API, but it is no longer one of the packaged
 dashboard widgets. Games & Apps lists installed launch registrations rather
-than applications the user happened to foreground.
+than applications the user happened to foreground. Steam manifests are an
+explicit game-library source, not a guess based on process or executable names.
 
 ## Current user experience
 
@@ -116,9 +118,9 @@ lifecycle, payload validation, and provider validation are independent gates.
 
 ## Trusted Windows provider boundary
 
-The current provider merges two bounded trusted Windows sources: current-user/
-all-user Start Menu Programs shortcuts and the current user's Shell
-`AppsFolder` namespace. It:
+The current provider merges three bounded trusted Windows sources: current-user/
+all-user Start Menu Programs shortcuts, the current user's Shell `AppsFolder`
+namespace, and registered Steam libraries. It:
 
 - enumerates at most 4,096 `.lnk` candidates, to a maximum directory depth of
   16, without following reparse points;
@@ -126,6 +128,9 @@ all-user Start Menu Programs shortcuts and the current user's Shell
 - enumerates at most 2,048 AppsFolder items on one bounded process-wide Shell
   STA lane, retains only a canonical AppUserModelID (AUMID) plus sanitized
   display text, and treats a malformed/disappearing item as an isolated skip;
+- discovers at most 32 Steam library roots and 4,096 bounded
+  `appmanifest_<id>.acf` files, accepts only a matching positive numeric AppId
+  plus sanitized name, and classifies those registrations as games;
 - sanitizes display names, deduplicates the same trusted target identity, and
   publishes at most 512 entries;
 - assigns random opaque IDs that stay stable only while that registration
@@ -136,7 +141,8 @@ all-user Start Menu Programs shortcuts and the current user's Shell
 - exposes a separate stable private provider fingerprint only to the host
   broker, which derives non-reversible authority-scoped SavedIds with HMAC; and
 - keeps shortcut paths, raw provider identities, arguments, host key, and file
-  fingerprints out of widget IPC.
+  fingerprints out of widget IPC; Steam AppIds, manifests, and library paths
+  remain private by the same rule.
 
 Launch does not trust a stale opaque-ID lookup by itself. Immediately before
 launch, the provider re-enumerates the exact source on the Shell STA lane.
@@ -149,11 +155,14 @@ elevation verb, or owner window. AppsFolder activation uses
 AUMID and null arguments; the returned PID is discarded. Missing, moved,
 changed, duplicated, or unknown registrations fail as `app_not_found`;
 platform and Shell failures are sanitized before returning to widget code.
+Steam launch also re-reads the exact manifest, requires the same identity,
+location, and content hash, then opens only
+`steam://rungameid/<numeric-id>` without widget-supplied arguments.
 
 ## Honest limitations
 
-- Discovery covers bounded Start Menu `.lnk` and current-user AppsFolder/AUMID
-  registrations. Steam, Xbox, Epic, GOG, and other launcher-library catalogs
+- Discovery covers bounded Start Menu `.lnk`, current-user AppsFolder/AUMID,
+  and registered Steam manifests. Xbox, Epic, GOG, and other launcher catalogs
   are not integrated; AppsFolder coverage is not a promise that every package,
   alias, launcher-owned game, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,
@@ -163,9 +172,9 @@ platform and Shell failures are sanitized before returning to widget code.
   entries.
   Missing, malformed, or over-budget icons use the host semantic Play glyph;
   broad Catalog discovery intentionally does not rasterize hundreds of icons.
-- The public kind enum supports Unknown, Application, and Game, but the real
-  Windows provider deliberately reports every current entry as Application.
-  Filename/path guessing is not authoritative game classification.
+- The public kind enum supports Unknown, Application, and Game. Start Menu and
+  AppsFolder entries remain conservative Applications; only reviewed Steam
+  manifests are classified as Games. Filename/path guessing is not used.
 - There is no search, grouping, install/uninstall,
   game history, foreground switching, running-program capture, file picker, or
   arbitrary executable/path launch.
@@ -184,9 +193,9 @@ SavedIds across fresh worker instances, opaque selected launch, bounded paging,
 sanitized failure states, and manifest/GBSS validation. Provider tests cover
 lazy refresh, sanitization and bounds, opaque-ID lifetime, payload privacy,
 on-demand icon caching and bounds, exact shortcut/AUMID revalidation,
-constrained Shell/packaged activation, STA queue cancellation, source-failure
-isolation, sanitized errors, and non-mutating real Start Menu plus AppsFolder
-scans. Broker, SDK, bridge, Settings, and first-party conformance suites
+constrained Shell/packaged/Steam activation, STA queue cancellation,
+source-failure isolation, sanitized errors, and non-mutating real Start Menu,
+AppsFolder, and Steam scans. Broker, SDK, bridge, Settings, and first-party conformance suites
 cover separate read/launch consent, lifecycle denial, invalid payload/backend
 data, transport mapping, permission copy, packaged AppContainer startup, render,
 and a simulated launch.

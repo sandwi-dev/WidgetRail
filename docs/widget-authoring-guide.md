@@ -490,6 +490,14 @@ local companion access, write-only pairing secrets, dashboard gesture
 authority, and the public pack/install/AppContainer path. It has no trusted
 catalog or custom desktop-worker fallback.
 
+For a smaller capability-free reference, install or render the
+[SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md). Its four
+controller-native pages exercise the shipped modern components, stable state,
+responsive Grid/Scroll behavior, nested Picker/ActionSheet B scopes, a
+non-focus-stealing Toast, package-local GBSS, and the generic Community worker.
+The gallery intentionally stays out of the built-in tray and uses no private
+host API, so each composition is valid copyable author guidance.
+
 ## Lifecycle API
 
 Lifecycle is host-authoritative and separate from process residency.

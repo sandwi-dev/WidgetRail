@@ -323,7 +323,7 @@ public sealed class GamesAppsWidget : Widget
                         UI.Text("ADD APPLICATIONS", "games.section.label", "Add applications")
                             .Classes("games-section-label"),
                         UI.Text($"{items.Count}{(nextOffset is null ? string.Empty : "+")} available",
-                                "games.section.count", $"{items.Count} applications available")
+                                "games.section.count", CatalogStatus(items, nextOffset is not null))
                             .Classes("games-section-count"))
                     .Classes("games-section-heading"),
                 UI.VerticalScroll("games.library.scroll", rows.ToArray())
@@ -480,10 +480,12 @@ public sealed class GamesAppsWidget : Widget
 
     private string LibraryStatusLocked()
     {
-        var count = ResolveCuratedItemsLocked().Count;
+        var curated = ResolveCuratedItemsLocked();
+        var count = curated.Count;
         return count == 0
             ? "Your library is empty · choose only the apps you want here"
-            : $"{count} saved {(count == 1 ? "application" : "applications")} · most recently opened first";
+            : $"{count} saved · {curated.Count(item => item.Kind == WidgetAppLibraryKind.Game)} " +
+              "games · recent first";
     }
 
     private WidgetView RenderState(StackElement header, GamesAppsViewState state)
@@ -895,9 +897,9 @@ public sealed class GamesAppsWidget : Widget
                         : ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
                 _viewState = _items.Count == 0 ? GamesAppsViewState.Empty : GamesAppsViewState.Ready;
                 _status = _items.Count == 0
-                    ? "No launchable Start Menu apps found"
+                    ? "No launchable applications or games found"
                     : _page == GamesAppsPage.Catalog
-                        ? $"{_items.Count}{(_nextOffset is null ? string.Empty : "+")} applications available"
+                        ? CatalogStatus(_items, _nextOffset is not null)
                         : LibraryStatusLocked();
             }
         }
@@ -1128,6 +1130,15 @@ public sealed class GamesAppsWidget : Widget
 
     private static string AppKindLabel(WidgetAppLibraryKind kind) =>
         kind == WidgetAppLibraryKind.Game ? "Game" : "Application";
+
+    private static string CatalogStatus(
+        IReadOnlyList<WidgetAppLibraryItem> items,
+        bool hasMore)
+    {
+        var games = items.Count(item => item.Kind == WidgetAppLibraryKind.Game);
+        return $"{items.Count}{(hasMore ? "+" : string.Empty)} available · " +
+               $"{games} {(games == 1 ? "game" : "games")} loaded";
+    }
 
     private static TileArtwork AppArtwork(WidgetAppLibraryItem item, string accessibilityLabel) =>
         item.IconPngBase64 is { Length: > 0 } png

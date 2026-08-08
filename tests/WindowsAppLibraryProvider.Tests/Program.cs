@@ -10,6 +10,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("AppsFolder merges deterministically without display-name deduplication", AppsFolderMergesDeterministically),
     ("AppsFolder identifiers remain trusted and opaque", AppsFolderPayloadIsOpaque),
     ("AppsFolder rejects malformed launch identifiers", AppsFolderRejectsMalformedAumids),
+    ("Steam manifests merge as games without exposing launcher identifiers", SteamCatalogIsOpaque),
+    ("Steam launch exactly revalidates its manifest", SteamLaunchRevalidatesManifest),
+    ("Steam manifest source reads registered libraries safely", SteamSourceReadsLibraries),
+    ("Steam launch URI accepts only a numeric application ID", SteamLaunchIsConstrained),
     ("Names and catalog size are bounded and sanitized", SanitizesAndBounds),
     ("Opaque IDs are stable only while the registration remains current", OpaqueIdLifecycle),
     ("Public payload contains no trusted launch descriptors", PayloadIsOpaque),
@@ -26,6 +30,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cancellation reaches the source without publishing partial state", CancellationIsAtomic),
     ("AppsFolder cancellation cannot publish a partial merged catalog", AppsFolderCancellationIsAtomic),
     ("AppsFolder collection failures preserve last-good packaged state", AppsFolderFailurePreservesLastGood),
+    ("Steam collection failures preserve last-good game state", SteamFailurePreservesLastGood),
     ("Shell sources execute on the bounded STA lane", SourcesUseStaLane),
     ("Real AppsFolder scan is read-only bounded and sanitized", NativeAppsFolderSmoke),
     ("Real Start Menu scan is read-only bounded and sanitized", NativeReadOnlySmoke),
@@ -161,6 +166,98 @@ static async Task AppsFolderRejectsMalformedAumids()
     Assert.True(snapshot.Any(item => item.DisplayName == "Generated"));
     Assert.True(malformed.All(aumid =>
         WindowsAppsFolderApplicationSource.NormalizeAumid(aumid) is null));
+}
+
+static async Task SteamCatalogIsOpaque()
+{
+    var manifest = Path.Combine(Path.GetTempPath(), "appmanifest_440.acf");
+    var steam = new FakeSteamSource(
+        new SteamRegistration("steam-440", "Team Fortress 2", "440", manifest, "acf-one"));
+    var provider = CreateMerged(new FakeSource(), new FakeAppsFolderSource(), steam: steam);
+
+    var item = (await provider.GetAppsAsync()).Single();
+    Assert.Equal("Team Fortress 2", item.DisplayName);
+    Assert.Equal(WindowsAppLibraryKind.Game, item.Kind);
+    Assert.False(item.AppId.Contains("440", StringComparison.Ordinal));
+
+    var broker = ((IAppLibraryPlatformBrokerBackend)provider);
+    var projected = (await broker.GetAppLibraryAsync(CancellationToken.None)).Single();
+    var json = JsonSerializer.Serialize(projected);
+    Assert.False(json.Contains("440", StringComparison.Ordinal));
+    Assert.False(json.Contains("appmanifest", StringComparison.OrdinalIgnoreCase));
+    Assert.Equal(AppLibraryKind.Game, projected.Kind);
+}
+
+static async Task SteamLaunchRevalidatesManifest()
+{
+    var manifest = Path.Combine(Path.GetTempPath(), "appmanifest_570.acf");
+    var registration = new SteamRegistration(
+        "steam-570", "Dota 2", "570", manifest, "acf-current");
+    var steam = new FakeSteamSource(registration);
+    var launcher = new FakeSteamLauncher();
+    var provider = CreateMerged(
+        new FakeSource(), new FakeAppsFolderSource(), steam: steam, steamLauncher: launcher);
+    var appId = (await provider.GetAppsAsync()).Single().AppId;
+
+    await provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None);
+    Assert.Equal("570", launcher.AppIds.Single());
+    Assert.Equal(1, steam.ExactReadCalls);
+
+    steam.Items = [registration with { RevalidationKey = "acf-changed" }];
+    var exception = await Assert.ThrowsAsync<BrokerException>(() =>
+        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+    Assert.Equal("app_not_found", exception.Code);
+    Assert.Equal(1, launcher.AppIds.Count);
+}
+
+static async Task SteamSourceReadsLibraries()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var root = Path.Combine(Path.GetTempPath(), "gba-steam-source-" + Guid.NewGuid().ToString("N"));
+    var extra = Path.Combine(root, "extra-library");
+    try
+    {
+        Directory.CreateDirectory(Path.Combine(root, "steamapps"));
+        Directory.CreateDirectory(Path.Combine(extra, "steamapps"));
+        File.WriteAllText(Path.Combine(root, "steamapps", "libraryfolders.vdf"),
+            $"\"libraryfolders\" {{ \"1\" {{ \"path\" \"{extra.Replace("\\", "\\\\")}\" }} }}");
+        File.WriteAllText(Path.Combine(root, "steamapps", "appmanifest_730.acf"),
+            "\"AppState\" { \"appid\" \"730\" \"name\" \"Counter-Strike 2\" }");
+        var extraManifest = Path.Combine(extra, "steamapps", "appmanifest_1172470.acf");
+        File.WriteAllText(extraManifest,
+            "\"AppState\" { \"appid\" \"1172470\" \"name\" \"Apex Legends\" }");
+        File.WriteAllText(Path.Combine(extra, "steamapps", "appmanifest_99.acf"),
+            "\"AppState\" { \"appid\" \"100\" \"name\" \"Mismatch\" }");
+
+        var source = new WindowsSteamApplicationSource([root]);
+        var items = source.Enumerate(CancellationToken.None);
+        Assert.Equal(2, items.Count);
+        Assert.True(items.Any(item => item.SteamAppId == "730"));
+        var apex = items.Single(item => item.SteamAppId == "1172470");
+        Assert.Equal("Apex Legends", apex.DisplayName);
+        Assert.Equal(apex, source.ReadExact("1172470", extraManifest, CancellationToken.None));
+
+        File.AppendAllText(extraManifest, "\n\"StateFlags\" \"4\"");
+        Assert.False(string.Equals(apex.RevalidationKey,
+            source.ReadExact("1172470", extraManifest, CancellationToken.None)?.RevalidationKey,
+            StringComparison.Ordinal));
+    }
+    finally
+    {
+        if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+    }
+}
+
+static Task SteamLaunchIsConstrained()
+{
+    var start = WindowsSteamLauncher.CreateStartInfo("1172470");
+    Assert.Equal("steam://rungameid/1172470", start.FileName);
+    Assert.Equal("open", start.Verb);
+    Assert.True(start.UseShellExecute);
+    Assert.Equal(0, start.ArgumentList.Count);
+    Assert.Throws<ArgumentException>(() => WindowsSteamLauncher.CreateStartInfo("1 --unsafe"));
+    Assert.Throws<ArgumentException>(() => WindowsSteamLauncher.CreateStartInfo("0"));
+    return Task.CompletedTask;
 }
 
 static async Task SanitizesAndBounds()
@@ -500,6 +597,21 @@ static async Task AppsFolderFailurePreservesLastGood()
     Assert.Equal("Start Only", degraded.Single().DisplayName);
 }
 
+static async Task SteamFailurePreservesLastGood()
+{
+    var manifest = Path.Combine(Path.GetTempPath(), "appmanifest_620.acf");
+    var steam = new FailingSteamSource(
+        new SteamRegistration("steam-620", "Portal 2", "620", manifest, "acf-portal"));
+    var provider = CreateMerged(new FakeSource(), new FakeAppsFolderSource(), steam: steam);
+
+    var first = await provider.GetAppsAsync();
+    Assert.Equal("Portal 2", first.Single().DisplayName);
+    steam.FailEnumeration = true;
+    var refreshed = await provider.RefreshAsync();
+    Assert.Equal("Portal 2", refreshed.Single().DisplayName);
+    Assert.Equal(WindowsAppLibraryKind.Game, refreshed.Single().Kind);
+}
+
 static async Task ShellStaWatchdogPoisons()
 {
     var executor = new ShellStaExecutor(TimeSpan.FromMilliseconds(100));
@@ -530,6 +642,9 @@ static async Task NativeReadOnlySmoke()
     var appsFolderCount = (await ShellStaExecutor.Shared.RunAsync(
         token => new WindowsAppsFolderApplicationSource().Enumerate(token),
         CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10))).Count;
+    var steamCount = (await ShellStaExecutor.Shared.RunAsync(
+        token => new WindowsSteamApplicationSource().Enumerate(token),
+        CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10))).Count;
     var provider = new WindowsAppLibraryProvider();
     var snapshot = await provider.GetAppsAsync().WaitAsync(TimeSpan.FromSeconds(10));
     Assert.True(snapshot.Count <= WindowsAppLibraryProvider.MaximumApps);
@@ -539,9 +654,10 @@ static async Task NativeReadOnlySmoke()
         item.AppId.StartsWith("app-", StringComparison.Ordinal) &&
         item.AppId.Length == 36 &&
         item.DisplayName.Length is > 0 and <= WindowsAppLibraryProvider.MaximumDisplayNameLength &&
-        item.Kind == WindowsAppLibraryKind.Application));
+        item.Kind is WindowsAppLibraryKind.Application or WindowsAppLibraryKind.Game));
     Console.WriteLine($"INFO Real merged app catalog contains {snapshot.Count} entries " +
-        $"from {startMenuCount} Start Menu and {appsFolderCount} AppsFolder candidates");
+        $"from {startMenuCount} Start Menu, {appsFolderCount} AppsFolder, and " +
+        $"{steamCount} Steam candidates");
 }
 
 static async Task SourcesUseStaLane()
@@ -608,10 +724,13 @@ static WindowsAppLibraryProvider CreateMerged(
     IAppsFolderApplicationSource appsFolder,
     IWindowsShellLauncher? shellLauncher = null,
     IWindowsPackagedAppLauncher? packagedLauncher = null,
-    IWindowsAppIconSource? iconSource = null) =>
-    new(startMenu, appsFolder,
+    IWindowsAppIconSource? iconSource = null,
+    ISteamApplicationSource? steam = null,
+    IWindowsSteamLauncher? steamLauncher = null) =>
+    new(startMenu, appsFolder, steam ?? new FakeSteamSource(),
         shellLauncher ?? new FakeShellLauncher(),
         packagedLauncher ?? new FakePackagedAppLauncher(),
+        steamLauncher ?? new FakeSteamLauncher(),
         iconSource ?? new FakeIconSource(null),
         ShellStaExecutor.Shared);
 
@@ -673,6 +792,34 @@ file sealed class FakeAppsFolderSource(params AppsFolderRegistration[] items) :
     }
 }
 
+file sealed class FakeSteamSource(params SteamRegistration[] items) :
+    ISteamApplicationSource
+{
+    public IReadOnlyList<SteamRegistration> Items { get; set; } = items;
+    public int ExactReadCalls { get; private set; }
+
+    public IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Items.ToArray();
+    }
+
+    public SteamRegistration? ReadExact(
+        string steamAppId,
+        string manifestPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ExactReadCalls++;
+        var matches = Items.Where(item =>
+                item.SteamAppId == steamAppId &&
+                string.Equals(item.ManifestPath, manifestPath, StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToArray();
+        return matches.Length == 1 ? matches[0] : null;
+    }
+}
+
 file sealed class FailingAppsFolderSource(params AppsFolderRegistration[] items) :
     IAppsFolderApplicationSource
 {
@@ -694,6 +841,29 @@ file sealed class FailingAppsFolderSource(params AppsFolderRegistration[] items)
         cancellationToken.ThrowIfCancellationRequested();
         return items.SingleOrDefault(item => string.Equals(
             item.Aumid, aumid, StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+file sealed class FailingSteamSource(params SteamRegistration[] items) :
+    ISteamApplicationSource
+{
+    public bool FailEnumeration { get; set; }
+
+    public IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailEnumeration) throw new IOException("Simulated Steam library failure.");
+        return items.ToArray();
+    }
+
+    public SteamRegistration? ReadExact(
+        string steamAppId,
+        string manifestPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return items.SingleOrDefault(item => item.SteamAppId == steamAppId &&
+            string.Equals(item.ManifestPath, manifestPath, StringComparison.OrdinalIgnoreCase));
     }
 }
 
@@ -807,6 +977,18 @@ file sealed class FakePackagedAppLauncher(Exception? failure = null) :
     }
 }
 
+file sealed class FakeSteamLauncher(Exception? failure = null) : IWindowsSteamLauncher
+{
+    public List<string> AppIds { get; } = [];
+
+    public void Launch(string exactSteamAppId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AppIds.Add(exactSteamAppId);
+        if (failure is not null) throw failure;
+    }
+}
+
 file sealed class FakeIconSource(byte[]? png) : IWindowsAppIconSource
 {
     public int Calls { get; private set; }
@@ -850,6 +1032,19 @@ file static class Assert
         try
         {
             await action();
+        }
+        catch (T exception)
+        {
+            return exception;
+        }
+        throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+    }
+
+    public static T Throws<T>(Action action) where T : Exception
+    {
+        try
+        {
+            action();
         }
         catch (T exception)
         {

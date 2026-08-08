@@ -70,6 +70,9 @@ guarantees that are available now.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.
+- [SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md) — a
+  capability-free, separately installable reference for modern public SDK
+  composites, responsive layout, nested B scopes, themes, and local packaging.
 - [Recent Apps reference](recent-apps.md) — retained reference for the read-only
   foreground-activity API; it is no longer in the bundled dashboard catalog.
 - [Discord integration research](discord-integration.md) — official API/SDK
