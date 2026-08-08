@@ -106,12 +106,15 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private async Task ServeConnectionAsync(Stream pipe, CancellationToken cancellationToken)
     {
         var hello = await ReadAsync<DiagnosticsHello>(pipe, cancellationToken).ConfigureAwait(false);
-        if (!CryptographicOperations.FixedTimeEquals(
-                Convert.FromHexString(ChannelNonce),
-                ParseNonce(hello.Nonce)))
-            throw new PlatformDiagnosticsException("authentication_failed");
-        await WriteAsync(pipe, new DiagnosticsAcknowledgement(true), cancellationToken)
+        var authenticated = CryptographicOperations.FixedTimeEquals(
+            Convert.FromHexString(ChannelNonce), ParseNonce(hello.Nonce));
+        await WriteAsync(pipe, new DiagnosticsAcknowledgement(authenticated), cancellationToken)
             .ConfigureAwait(false);
+        if (!authenticated)
+        {
+            await ReadReceiptAsync(pipe, "authentication", cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         var request = await ReadAsync<DiagnosticsRequest>(pipe, cancellationToken).ConfigureAwait(false);
         if (!string.Equals(request.Operation, "snapshot", StringComparison.Ordinal))
@@ -120,6 +123,20 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             .WaitAsync(cancellationToken).ConfigureAwait(false);
         ValidateSnapshot(snapshot);
         await WriteAsync(pipe, snapshot, cancellationToken).ConfigureAwait(false);
+        // FlushAsync only transfers the frame to the Windows pipe buffer.
+        // Disconnecting immediately can discard it before the client reads it.
+        // An async, bounded receipt proves delivery without WaitForPipeDrain(),
+        // which is synchronous and can be held forever by a stalled peer.
+        await ReadReceiptAsync(pipe, "snapshot", cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask ReadReceiptAsync(
+        Stream pipe, string expectedOperation, CancellationToken cancellationToken)
+    {
+        var receipt = await ReadAsync<DiagnosticsReceipt>(pipe, cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.Equals(receipt.Operation, expectedOperation, StringComparison.Ordinal))
+            throw new PlatformDiagnosticsException("invalid_receipt");
     }
 
     private void ResetConnection()
@@ -281,6 +298,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private sealed record DiagnosticsHello(string Nonce);
     private sealed record DiagnosticsRequest(string Operation);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
+    private sealed record DiagnosticsReceipt(string Operation);
 }
 
 public sealed class PlatformDiagnosticsPipeClient(
@@ -311,14 +329,26 @@ public sealed class PlatformDiagnosticsPipeClient(
             VerifyExpectedServer(pipe);
             await PlatformDiagnosticsPipeServer.WriteAsync(
                 pipe, new DiagnosticsHello(_nonce), bounded.Token).ConfigureAwait(false);
-            var accepted = await PlatformDiagnosticsPipeServer.ReadAsync<DiagnosticsAcknowledgement>(
-                pipe, bounded.Token).ConfigureAwait(false);
-            if (!accepted.Accepted) throw new PlatformDiagnosticsException("authentication_failed");
+            var accepted = await PlatformDiagnosticsPipeServer
+                .ReadAsync<DiagnosticsAcknowledgement>(pipe, bounded.Token)
+                .ConfigureAwait(false);
+            if (!accepted.Accepted)
+            {
+                await PlatformDiagnosticsPipeServer.WriteAsync(
+                    pipe, new DiagnosticsReceipt("authentication"), bounded.Token)
+                    .ConfigureAwait(false);
+                throw new PlatformDiagnosticsException("authentication_failed");
+            }
             await PlatformDiagnosticsPipeServer.WriteAsync(
-                pipe, new DiagnosticsRequest("snapshot"), bounded.Token).ConfigureAwait(false);
-            var snapshot = await PlatformDiagnosticsPipeServer.ReadAsync<PlatformDiagnosticsSnapshot>(
-                pipe, bounded.Token).ConfigureAwait(false);
+                pipe, new DiagnosticsRequest("snapshot"), bounded.Token)
+                .ConfigureAwait(false);
+            var snapshot = await PlatformDiagnosticsPipeServer
+                .ReadAsync<PlatformDiagnosticsSnapshot>(pipe, bounded.Token)
+                .ConfigureAwait(false);
             PlatformDiagnosticsPipeServer.ValidateSnapshot(snapshot);
+            await PlatformDiagnosticsPipeServer.WriteAsync(
+                pipe, new DiagnosticsReceipt("snapshot"), bounded.Token)
+                .ConfigureAwait(false);
             return snapshot;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -334,6 +364,7 @@ public sealed class PlatformDiagnosticsPipeClient(
     private sealed record DiagnosticsHello(string Nonce);
     private sealed record DiagnosticsRequest(string Operation);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
+    private sealed record DiagnosticsReceipt(string Operation);
 
     private void VerifyExpectedServer(NamedPipeClientStream pipe)
     {

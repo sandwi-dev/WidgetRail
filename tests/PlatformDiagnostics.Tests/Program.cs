@@ -1,3 +1,7 @@
+using System.Buffers.Binary;
+using System.IO.Pipes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using GameBarAlternative.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
@@ -5,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
     ("Client authenticates the kernel-reported server before sending its nonce", FakeServerRejectedBeforeNonce),
     ("Pre-created first pipe instance rejects a squatted endpoint", SquattedEndpointFailsClosed),
+    ("Peer withholding delivery receipt is evicted without poisoning recovery", MissingReceiptRecovers),
     ("Wrong nonce loses one connection without poisoning recovery", WrongNonceRecovers),
     ("Client timeout must be finite positive and bounded", ClientTimeoutValidation),
     ("Stalled hello is evicted and the accept loop recovers", StalledHelloRecovers),
@@ -48,11 +53,75 @@ static async Task WrongNonceRecovers()
         var wrong = new PlatformDiagnosticsPipeClient(
             harness.PipeName, new string('0', 64), Environment.ProcessId,
             TimeSpan.FromSeconds(1));
-        await Assert.ThrowsAsync<PlatformDiagnosticsException>(
+        var rejection = await Assert.ThrowsAsync<PlatformDiagnosticsException>(
             () => wrong.GetSnapshotAsync().AsTask());
-        var recovered = await harness.Client.GetSnapshotAsync();
+        Assert.Equal("authentication_failed", rejection.Code);
+        PlatformDiagnosticsSnapshot recovered;
+        try
+        {
+            recovered = await harness.Client.GetSnapshotAsync();
+        }
+        catch (PlatformDiagnosticsException exception)
+        {
+            throw new InvalidOperationException(
+                $"Recovery failed at iteration {iteration} with '{exception.Code}': " +
+                $"{exception.InnerException?.GetType().Name}: {exception.InnerException?.Message}",
+                exception);
+        }
         Assert.Equal(12L, recovered.Revision);
     }
+}
+
+static async Task MissingReceiptRecovers()
+{
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(17)),
+        serverTimeout: TimeSpan.FromMilliseconds(100),
+        clientTimeout: TimeSpan.FromSeconds(1));
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    await using var peer = new NamedPipeClientStream(
+        ".", harness.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+    await peer.ConnectAsync(timeout.Token);
+    await WriteTestFrame(peer, new { nonce = harness.ChannelNonce }, timeout.Token);
+    using (var acknowledgement = await ReadTestFrame(peer, timeout.Token))
+        Assert.Equal(true, acknowledgement.RootElement.GetProperty("accepted").GetBoolean());
+    await WriteTestFrame(peer, new { operation = "snapshot" }, timeout.Token);
+    using (var snapshot = await ReadTestFrame(peer, timeout.Token))
+        Assert.Equal(17L, snapshot.RootElement.GetProperty("revision").GetInt64());
+
+    // Do not send the delivery receipt. The server's existing request bound
+    // must evict this peer, rearm the sole reserved instance, and allow the
+    // authenticated worker to recover without a timing sleep or request replay.
+    var recovered = await harness.Client.GetSnapshotAsync(timeout.Token);
+    Assert.Equal(17L, recovered.Revision);
+}
+
+static async Task<JsonDocument> ReadTestFrame(Stream stream, CancellationToken cancellationToken)
+{
+    var header = new byte[4];
+    await stream.ReadExactlyAsync(header, cancellationToken);
+    var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+    if (length is <= 0 or > 64 * 1024)
+        throw new InvalidOperationException($"Unexpected test frame length {length}.");
+    var payload = new byte[length];
+    await stream.ReadExactlyAsync(payload, cancellationToken);
+    return JsonDocument.Parse(payload);
+}
+
+static async Task WriteTestFrame<T>(
+    Stream stream, T value, CancellationToken cancellationToken)
+{
+    var options = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+    options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, false));
+    var payload = JsonSerializer.SerializeToUtf8Bytes(value, options);
+    var header = new byte[4];
+    BinaryPrimitives.WriteInt32LittleEndian(header, payload.Length);
+    await stream.WriteAsync(header, cancellationToken);
+    await stream.WriteAsync(payload, cancellationToken);
+    await stream.FlushAsync(cancellationToken);
 }
 
 static async Task FakeServerRejectedBeforeNonce()
@@ -202,6 +271,7 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
     }
 
     public string PipeName { get; }
+    public string ChannelNonce => _server.ChannelNonce;
     public PlatformDiagnosticsPipeClient Client { get; }
 
     public async ValueTask DisposeAsync()
