@@ -224,6 +224,9 @@ static Task ThemeDiscovery()
     Assert.Equal("44px", button.Get("min-height")!.Text);
     Assert.Equal("10px", button.Get("corner-radius")!.Text);
     Assert.Equal("400", button.Get("font-weight")!.Text);
+    Assert.Equal("0.99", button.Get("scale")!.Text);
+    Assert.Equal("90ms", button.Get("transition-duration")!.Text);
+    Assert.Equal("ease-out", button.Get("transition-easing")!.Text);
     Assert.True(button.Get("shadow-blur") is null,
         "The minimalist default must not add a heavy component shadow.");
     var primaryIconButton = compiled.Theme.Resolve(new GbssElement(
@@ -238,6 +241,8 @@ static Task ThemeDiscovery()
     var slider = compiled.Theme.Resolve(new GbssElement("slider"));
     Assert.Equal("44px", slider.Get("min-height")!.Text);
     Assert.Equal("1px", slider.Get("border-width")!.Text);
+    Assert.Equal("0.99", slider.Get("scale")!.Text);
+    Assert.Equal("90ms", slider.Get("transition-duration")!.Text);
     var segmentedTabs = compiled.Theme.Resolve(new GbssElement(
         "row",
         null,
@@ -254,8 +259,8 @@ static Task ThemeDiscovery()
     Assert.Equal("1", focusedButton.Get("scale")!.Text);
     Assert.Equal("#f4f0e8", focusedButton.Get("outline-color")!.Text);
     Assert.Equal("-2px", focusedButton.Get("outline-offset")!.Text);
-    Assert.True(focusedButton.Get("transition-duration") is null,
-        "The built-in theme must not imply animation before the renderer interpolates transitions.");
+    Assert.Equal("90ms", focusedButton.Get("transition-duration")!.Text);
+    Assert.Equal("ease-out", focusedButton.Get("transition-easing")!.Text);
     var eyebrow = compiled.Theme.Resolve(new GbssElement(
         "text",
         null,

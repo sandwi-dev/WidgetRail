@@ -1,21 +1,10 @@
-:root {
-  --audio-accent: #59d5ff;
-  --audio-accent-strong: #27bfea;
-  --audio-focus: #7acbe5;
-  --audio-surface: rgba(14, 18, 26, 0.98);
-  --audio-card: rgba(34, 41, 54, 0.94);
-  --audio-master: rgba(27, 45, 58, 0.97);
-  --audio-track: rgba(106, 119, 140, 0.38);
-  --audio-error: #ff7c91;
-}
-
 .audio-mixer-widget {
   width: 100vw;
   min-width: 280px;
   max-width: 560px;
   gap: 8px;
   padding: 14px;
-  background: var(--audio-surface);
+  background: var(--surface);
   color: var(--text);
   overflow: clip;
 }
@@ -26,18 +15,18 @@
 }
 
 .audio-eyebrow {
-  color: var(--audio-accent);
+  color: var(--text-muted);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.11em;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   max-lines: 1;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .audio-title {
   color: var(--text);
   font-size: 23px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 1;
   text-overflow: ellipsis;
 }
@@ -48,17 +37,13 @@
 .audio-session-state {
   color: var(--text-muted);
   font-size: 12px;
+  font-weight: 400;
   max-lines: 2;
 }
 
-.audio-status.is-error {
-  color: var(--audio-error);
-}
-
+.audio-status.is-error { color: var(--danger, #c98181); }
 .audio-status.is-live,
-.audio-session-state.is-active {
-  color: var(--success);
-}
+.audio-session-state.is-active { color: var(--success); }
 
 .audio-state-card,
 .audio-master-card,
@@ -66,20 +51,22 @@
 .audio-session-card {
   gap: 6px;
   padding: 9px 10px;
-  background: var(--audio-card);
-  border-width: 0;
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
   corner-radius: 10px;
 }
 
-.audio-master-card {
-  background: var(--audio-master);
-  flex-shrink: 0;
+.audio-state-card,
+.audio-master-card,
+.audio-device-card {
+  background: var(--surface-raised);
 }
 
+.audio-master-card,
 .audio-input-card,
-.audio-device-card {
-  flex-shrink: 0;
-}
+.audio-device-card,
+.audio-state-card,
+.audio-session-card { flex-shrink: 0; }
 
 .audio-device-card {
   gap: 5px;
@@ -88,16 +75,16 @@
 
 .audio-device-row {
   gap: 8px;
+  min-height: 44px;
   align: center;
 }
 
 .audio-device-icon {
-  width: 24px;
-  height: 24px;
-  padding: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 1px;
   color: var(--text-muted);
-  background: rgba(75, 91, 111, 0.20);
-  shape: circle;
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -110,9 +97,9 @@
 
 .audio-device-label {
   color: var(--text-muted);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   max-lines: 1;
 }
 
@@ -122,11 +109,6 @@
   font-weight: 400;
   max-lines: 1;
   text-overflow: ellipsis;
-}
-
-.audio-state-card,
-.audio-session-card {
-  flex-shrink: 0;
 }
 
 .audio-master-heading,
@@ -142,34 +124,30 @@
 .audio-master-state,
 .audio-sessions-label,
 .audio-sessions-count {
-  color: var(--audio-accent);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  max-lines: 1;
-  text-transform: uppercase;
-}
-
-.audio-master-state.is-muted {
-  color: var(--audio-error);
-}
-
-.audio-sessions-label {
   color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  max-lines: 1;
+  text-transform: none;
 }
 
-.audio-sessions-count {
-  letter-spacing: 0.02em;
-}
-
-.audio-sessions-heading {
-  flex-shrink: 0;
-}
+.audio-master-state.is-muted { color: var(--danger, #c98181); }
+.audio-sessions-count { color: var(--text-subdued); }
+.audio-sessions-heading { flex-shrink: 0; }
 
 .audio-session-list {
   flex-shrink: 0;
-  gap: 6px;
+  gap: 2px;
   padding: 1px 3px 1px 1px;
+}
+
+.audio-session-card {
+  padding: 9px 6px;
+  background: transparent;
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
 }
 
 .audio-session-details {
@@ -182,7 +160,7 @@
 .audio-session-name {
   color: var(--text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 1;
   text-overflow: ellipsis;
 }
@@ -190,24 +168,23 @@
 .audio-mute-icon {
   width: 28px;
   height: 28px;
-  padding: 4px;
-  color: var(--audio-accent);
-  background: rgba(75, 91, 111, 0.30);
-  shape: circle;
+  padding: 3px;
+  color: var(--text-muted);
+  background: transparent;
   flex-shrink: 0;
 }
 
-.audio-mute-icon.is-muted {
-  color: var(--audio-error);
-  background: rgba(255, 124, 145, 0.13);
-}
+.audio-mute-icon.is-muted { color: var(--danger, #c98181); }
 
 .audio-volume-slider {
   height: 44px;
   min-width: 132px;
   flex-grow: 1;
-  color: var(--audio-accent-strong);
-  background: var(--audio-track);
+  color: var(--accent);
+  background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
+  corner-radius: 10px;
   outline-color: transparent;
   outline-width: 0;
   transition-duration: 90ms;
@@ -215,9 +192,9 @@
 }
 
 .audio-volume-slider:focused {
-  color: var(--audio-focus);
-  background: rgba(106, 119, 140, 0.54);
-  outline-color: var(--audio-focus);
+  color: var(--accent);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+  outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
 }
@@ -226,7 +203,7 @@
   width: 42px;
   color: var(--text);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   text-align: end;
   flex-shrink: 0;
 }
@@ -241,28 +218,28 @@
 .audio-state-title {
   color: var(--text);
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 1;
 }
 
 .audio-retry-action {
   min-height: 44px;
-  padding: 11px 16px;
+  padding: 10px 14px;
   color: var(--text);
-  background: rgba(49, 58, 73, 0.96);
-  border-width: 0;
-  corner-radius: 9px;
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
+  corner-radius: 10px;
+  font-weight: 400;
   transition-duration: 90ms;
   transition-easing: ease-out;
 }
 
 .audio-retry-action:focused {
-  background: rgba(67, 81, 101, 0.98);
-  outline-color: var(--audio-focus);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+  outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
 }
 
-.audio-session-card.is-pending {
-  background: rgba(40, 53, 68, 0.98);
-}
+.audio-session-card.is-pending { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }

@@ -1,27 +1,16 @@
-:root {
-  --settings-accent: #8f80ff;
-  --settings-danger: #ff5d73;
-  --settings-surface: rgba(23, 26, 34, 0.98);
-  --settings-row: rgba(44, 49, 62, 0.92);
-}
-
 .settings-widget {
-  gap: 12px;
-  padding: 20px 24px;
-  background: var(--settings-surface);
+  gap: 10px;
+  padding: 18px 20px;
+  background: var(--surface);
   color: var(--text);
 }
 
 .settings-header,
 .settings-page,
 .category-list,
-.theme-picker {
-  gap: 10px;
-}
+.theme-picker { gap: 8px; }
 
-.settings-header {
-  flex-shrink: 0;
-}
+.settings-header { flex-shrink: 0; }
 
 .settings-page,
 .category-list {
@@ -34,7 +23,7 @@
 .page-heading {
   color: var(--text);
   font-size: 21px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 1;
 }
 
@@ -45,18 +34,14 @@
 .page-counter {
   color: var(--text-muted);
   font-size: 13px;
+  font-weight: 400;
   max-lines: 2;
 }
 
 .settings-status.is-error,
 .diagnostic-error,
-.theme-item.is-invalid {
-  color: var(--settings-danger);
-}
-
-.settings-status.is-busy {
-  color: var(--warning);
-}
+.theme-item.is-invalid { color: var(--danger, #c98181); }
+.settings-status.is-busy { color: var(--warning); }
 
 .category-card,
 .setting-row,
@@ -67,11 +52,13 @@
 .danger-button,
 .setting-stepper-button {
   min-height: 44px;
-  padding: 10px 13px;
-  background: var(--settings-row);
-  border-width: 0;
-  corner-radius: 9px;
-  transition-duration: 100ms;
+  padding: 10px 12px;
+  background: transparent;
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+  font-weight: 400;
+  transition-duration: 90ms;
   transition-easing: ease-out;
 }
 
@@ -82,59 +69,39 @@
 .primary-button:focused,
 .secondary-button:focused,
 .setting-stepper-button:focused {
-  background: var(--surface-raised);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: 2px;
-  outline-offset: -3px;
+  outline-offset: -2px;
 }
 
 .setting-toggle:selected,
 .theme-item.is-selected,
-.setting-row.is-enabled {
-  color: var(--settings-accent);
+.setting-row.is-enabled { color: var(--accent); }
+
+.primary-button,
+.secondary-button,
+.setting-stepper-button {
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
 }
 
-.primary-button {
-  background: var(--settings-accent);
-  color: #ffffff;
-}
-
-.primary-button:focused {
-  background: #a99eff;
-  color: #ffffff;
-}
+.primary-button { color: var(--text); }
+.primary-button:focused { color: var(--text); }
 
 .setting-stepper,
-.reset-actions {
-  gap: 10px;
-  align: center;
-}
-
-.setting-stepper-label {
-  min-width: 180px;
-  color: var(--text);
-}
-
-.setting-stepper-value {
-  min-width: 64px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.setting-stepper-button {
-  width: 44px;
-  height: 44px;
-}
+.reset-actions { gap: 10px; align: center; }
+.setting-stepper-label { min-width: 180px; color: var(--text); }
+.setting-stepper-value { min-width: 64px; color: var(--text-muted); text-align: center; }
+.setting-stepper-button { width: 44px; height: 44px; padding: 10px; }
 
 .danger-card,
-.danger-button {
-  color: var(--settings-danger);
-}
+.danger-button { color: var(--danger, #c98181); }
 
 .danger-button:focused {
-  background: var(--settings-danger);
-  color: var(--text);
-  outline-color: #ff9aaa;
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+  color: var(--danger, #c98181);
+  outline-color: var(--focus);
   outline-width: 2px;
-  outline-offset: -3px;
+  outline-offset: -2px;
 }

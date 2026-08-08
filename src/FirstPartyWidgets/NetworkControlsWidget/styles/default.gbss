@@ -1,23 +1,10 @@
-:root {
-  --network-accent: #68d7ff;
-  --network-accent-strong: #2dbde9;
-  --network-focus: #7acbe5;
-  --network-surface: rgba(14, 18, 26, 0.98);
-  --network-card: rgba(34, 41, 54, 0.94);
-  --network-card-selected: rgba(36, 55, 70, 0.98);
-  --network-control: rgba(48, 58, 73, 0.96);
-  --network-control-focus: rgba(65, 80, 99, 0.99);
-  --network-error: #ff7c91;
-  --network-warning: #ffc76a;
-}
-
 .network-controls-widget {
   width: 100vw;
   min-width: 0px;
   max-width: 560px;
   gap: 8px;
   padding: 14px;
-  background: var(--network-surface);
+  background: var(--surface);
   color: var(--text);
   overflow: clip;
 }
@@ -32,24 +19,20 @@
   overflow: clip;
 }
 
-.network-header {
-  gap: 1px;
-  flex-shrink: 0;
-}
-
+.network-header { gap: 1px; flex-shrink: 0; }
 .network-eyebrow {
-  color: var(--network-accent);
+  color: var(--text-muted);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.11em;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   max-lines: 1;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .network-title {
   color: var(--text);
   font-size: 23px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 1;
   text-overflow: ellipsis;
 }
@@ -60,43 +43,37 @@
 .network-help {
   color: var(--text-muted);
   font-size: 12px;
+  font-weight: 400;
   max-lines: 2;
 }
 
 .network-status.is-live,
 .network-card-state.is-online,
-.network-profile-state.is-connected {
-  color: var(--success);
-}
+.network-profile-state.is-connected { color: var(--success); }
 
 .network-status.is-error,
 .network-card-state.is-error,
 .network-profile-state.is-error,
-.network-notice-icon.is-error {
-  color: var(--network-error);
-}
+.network-notice-icon.is-error { color: var(--danger, #c98181); }
 
 .network-card-state.is-warning,
 .network-profile-state.is-connecting,
-.network-notice-icon.is-warning {
-  color: var(--network-warning);
-}
+.network-notice-icon.is-warning { color: var(--warning); }
 
 .network-connection-card,
 .network-state-card,
-.network-wifi-note {
+.network-wifi-note,
+.network-radio-row {
   gap: 7px;
   padding: 9px 10px;
-  background: var(--network-card);
-  border-width: 0;
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
   corner-radius: 10px;
   flex-shrink: 0;
 }
 
-.network-connection-card {
-  align: center;
-  justify: space-between;
-}
+.network-connection-card { align: center; justify: space-between; }
 
 .network-connection-top,
 .network-wifi-note,
@@ -108,27 +85,19 @@
   justify: space-between;
 }
 
-.network-connection-top {
-  min-height: 44px;
-}
+.network-connection-top { min-height: 44px; }
 
 .network-connection-icon,
 .network-notice-icon {
-  width: 32px;
-  height: 32px;
-  padding: 6px;
-  color: var(--network-accent);
-  background: var(--network-control);
-  shape: circle;
+  width: 22px;
+  height: 22px;
+  padding: 1px;
+  color: var(--text-muted);
+  background: transparent;
   flex-shrink: 0;
 }
 
-.network-notice-icon {
-  width: 30px;
-  height: 30px;
-  padding: 6px;
-  background: rgba(255, 199, 106, 0.10);
-}
+.network-notice-icon { color: var(--warning); }
 
 .network-connection-copy,
 .network-notice-copy,
@@ -142,74 +111,46 @@
 
 .network-radio-row {
   gap: 10px;
-  padding: 7px 10px;
   min-height: 48px;
-  background: var(--network-card);
-  border-width: 0;
-  corner-radius: 10px;
-  flex-shrink: 0;
 }
 
 .network-radio-toggle {
   min-width: 136px;
-  min-height: 36px;
-  padding: 5px 9px;
+  min-height: 44px;
+  padding: 8px 11px;
   color: var(--text);
-  background: var(--network-control);
-  border-width: 0;
+  background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
   corner-radius: 8px;
   flex-shrink: 0;
   font-size: 12px;
+  font-weight: 400;
 }
 
-.network-radio-toggle.is-on {
-  color: var(--success);
-}
-
-.network-bluetooth-row {
-  min-height: 50px;
-}
-
-.network-bluetooth-toggle {
-  min-width: 146px;
-}
-
-.network-bluetooth-list {
-  min-height: 74px;
-  max-height: 168px;
-  flex-grow: 0;
-}
-
-.network-bluetooth-device-row {
-  min-height: 66px;
-}
-
-.network-bluetooth-state {
-  min-height: 68px;
-}
-
-.network-section-summary.is-error {
-  color: var(--network-error);
-}
+.network-radio-toggle.is-on { color: var(--success); }
+.network-bluetooth-row { min-height: 50px; }
+.network-bluetooth-toggle { min-width: 146px; }
+.network-bluetooth-list { min-height: 74px; max-height: 168px; flex-grow: 0; }
+.network-bluetooth-device-row { min-height: 66px; }
+.network-bluetooth-state { min-height: 68px; }
+.network-section-summary.is-error { color: var(--danger, #c98181); }
 
 .network-radio-toggle:focused {
   color: var(--text);
-  background: var(--network-control-focus);
-  outline-color: var(--network-focus);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+  outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
 }
 
-.network-connection-meta {
-  gap: 8px;
-  align: center;
-}
+.network-connection-meta { gap: 8px; align: center; }
 
 .network-card-title,
 .network-state-title {
   color: var(--text);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 1;
   text-overflow: ellipsis;
 }
@@ -220,62 +161,41 @@
 .network-section-count {
   color: var(--text-muted);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   max-lines: 1;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
-.network-section-label {
-  color: var(--text-muted);
-}
-
-.network-section-count {
-  color: var(--network-accent);
-  letter-spacing: 0.02em;
-}
-
-.network-section-heading {
-  flex-shrink: 0;
-}
-
-.network-section-summary {
-  color: var(--text-muted);
-  font-size: 11px;
-  max-lines: 1;
-}
-
-.network-signal-row {
-  gap: 10px;
-  align: center;
-}
+.network-section-count { color: var(--text-subdued); }
+.network-section-heading { flex-shrink: 0; }
+.network-section-summary { color: var(--text-muted); font-size: 11px; max-lines: 1; }
+.network-signal-row { gap: 10px; align: center; }
 
 .network-signal-progress {
-  height: 5px;
+  height: 4px;
   min-width: 100px;
   flex-grow: 1;
-  color: var(--network-accent-strong);
-  background: rgba(103, 113, 133, 0.38);
+  color: var(--accent);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
 }
 
 .network-signal-value {
   width: 42px;
   color: var(--text);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   text-align: end;
 }
 
-.network-signal-value.is-empty {
-  color: transparent;
-}
+.network-signal-value.is-empty { color: transparent; }
 
 .network-profile-list {
   min-height: 156px;
   max-height: 292px;
   flex-grow: 1;
   flex-shrink: 1;
-  gap: 6px;
+  gap: 2px;
   padding: 1px 3px 1px 1px;
   overflow: clip;
 }
@@ -283,15 +203,14 @@
 .network-profile-row {
   gap: 1px;
   padding: 2px 3px 5px;
-  background: var(--network-card);
-  border-width: 0;
-  corner-radius: 10px;
+  background: transparent;
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
   flex-shrink: 0;
 }
 
-.network-profile-row.is-pending {
-  background: rgba(42, 56, 71, 0.99);
-}
+.network-profile-row.is-pending { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }
 
 .network-profile-button,
 .network-retry-action,
@@ -300,8 +219,10 @@
   padding: 7px 9px;
   color: var(--text);
   background: transparent;
-  border-width: 0;
+  border-color: transparent;
+  border-width: 1px;
   corner-radius: 8px;
+  font-weight: 400;
   transition-duration: 90ms;
   transition-easing: ease-out;
 }
@@ -313,42 +234,26 @@
   text-overflow: ellipsis;
 }
 
-.network-profile-button.is-connected {
-  color: var(--success);
-}
+.network-profile-button.is-connected { color: var(--success); }
 
 .network-profile-button:focused,
 .network-retry-action:focused,
 .network-scan-action:focused {
   color: var(--text);
-  background: var(--network-control-focus);
-  outline-color: var(--network-focus);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+  outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
 }
 
-.network-profile-meta {
-  padding: 0px 10px;
-  flex-shrink: 0;
-}
+.network-profile-meta { padding: 0px 10px; flex-shrink: 0; }
+.network-profile-detail { max-lines: 1; text-align: end; flex-shrink: 0; }
 
-.network-profile-detail {
-  max-lines: 1;
-  text-align: end;
-  flex-shrink: 0;
-}
-
-.network-retry-action {
-  background: var(--network-control);
-}
-
+.network-retry-action,
 .network-scan-action {
-  min-width: 132px;
-  flex-shrink: 0;
-  background: var(--network-control);
-  font-size: 12px;
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
 }
 
-.network-state-card {
-  min-height: 88px;
-}
+.network-scan-action { min-width: 132px; flex-shrink: 0; font-size: 12px; }
+.network-state-card { min-height: 88px; }

@@ -1,29 +1,15 @@
-:root {
-  --games-accent: #72d8ff;
-  --games-focus: #86dfff;
-  --games-surface: rgba(14, 18, 26, 0.98);
-  --games-card: rgba(34, 41, 54, 0.94);
-  --games-card-selected: rgba(36, 58, 74, 0.98);
-  --games-control: rgba(48, 58, 73, 0.96);
-  --games-control-focus: rgba(65, 82, 101, 0.99);
-  --games-error: #ff7c91;
-}
-
 .games-apps-widget {
   width: 100vw;
   min-width: 0px;
   max-width: 820px;
-  gap: 10px;
-  padding: 16px;
-  background: var(--games-surface);
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
   color: var(--text);
   overflow: clip;
 }
 
-.games-header {
-  gap: 2px;
-  flex-shrink: 0;
-}
+.games-header { gap: 1px; flex-shrink: 0; }
 
 .games-eyebrow,
 .games-section-label,
@@ -32,21 +18,18 @@
 .games-card-hint {
   color: var(--text-muted);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   max-lines: 1;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
-.games-eyebrow,
-.games-section-count {
-  color: var(--games-accent);
-}
+.games-section-count { color: var(--text-subdued); }
 
 .games-title {
   color: var(--text);
   font-size: 26px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 1;
   text-overflow: ellipsis;
 }
@@ -55,11 +38,12 @@
 .games-state-help {
   color: var(--text-muted);
   font-size: 12px;
+  font-weight: 400;
   max-lines: 2;
 }
 
 .games-status.is-ready { color: var(--success); }
-.games-status.is-error { color: var(--games-error); }
+.games-status.is-error { color: var(--danger, #c98181); }
 
 .games-section-heading,
 .games-card-meta {
@@ -74,7 +58,7 @@
   max-height: 244px;
   flex-grow: 1;
   flex-shrink: 1;
-  gap: 10px;
+  gap: 8px;
   padding: 3px 4px 4px 3px;
   overflow: clip;
 }
@@ -83,82 +67,87 @@
   width: 184px;
   min-width: 184px;
   min-height: 158px;
-  gap: 7px;
-  padding: 7px;
-  background: var(--games-card);
-  corner-radius: 12px;
+  gap: 6px;
+  padding: 3px;
+  background: transparent;
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 10px;
   flex-grow: 0;
   flex-shrink: 0;
 }
 
 .games-card-action {
-  width: 170px;
-  min-width: 170px;
+  width: 176px;
+  min-width: 176px;
   min-height: 116px;
-  padding: 14px;
-  background: var(--games-control);
+  padding: 12px;
+  background: var(--surface-raised);
   color: var(--text);
-  corner-radius: 9px;
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
+  corner-radius: 10px;
+  font-weight: 400;
   max-lines: 3;
   text-overflow: ellipsis;
   transition-duration: 90ms;
   transition-easing: ease-out;
 }
 
-.games-card-action:selected {
-  background: var(--games-card-selected);
-}
+.games-card-action:selected { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }
 
 .games-card-action:focused,
 .games-retry:focused {
-  background: var(--games-control-focus);
-  outline-color: var(--games-focus);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+  outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
 }
 
 .games-card-action:busy { opacity: 0.72; }
 .games-card-meta { padding: 0px 4px 2px; }
-.games-card-hint { color: var(--games-accent); letter-spacing: 0.03em; }
-.games-card.is-load-more { background: rgba(30, 37, 49, 0.94); }
-.games-load-more { color: var(--games-accent); }
+.games-card-hint { color: var(--text-muted); }
+.games-card.is-load-more { background: transparent; }
+.games-load-more { color: var(--text-muted); }
 
 .games-state-card {
   min-height: 168px;
-  gap: 10px;
+  gap: 8px;
   padding: 20px;
   align: center;
   justify: center;
-  background: var(--games-card);
-  corner-radius: 12px;
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
+  corner-radius: 10px;
   flex-grow: 1;
 }
 
 .games-state-icon {
-  width: 42px;
-  height: 42px;
-  padding: 9px;
-  color: var(--games-accent);
-  background: var(--games-control);
-  shape: circle;
+  width: 32px;
+  height: 32px;
+  padding: 4px;
+  color: var(--text-muted);
+  background: transparent;
 }
 
 .games-state-title {
   color: var(--text);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   max-lines: 2;
 }
 
-.games-state-help {
-  max-lines: 3;
-}
+.games-state-help { max-lines: 3; }
 
 .games-retry {
   min-width: 150px;
   min-height: 44px;
   padding: 10px 14px;
-  background: var(--games-control);
+  background: var(--surface-raised);
   color: var(--text);
-  corner-radius: 9px;
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
+  corner-radius: 10px;
+  font-weight: 400;
 }

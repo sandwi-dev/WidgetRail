@@ -81,6 +81,9 @@ button {
   font-family: var(--font-text);
   font-size: 15px;
   font-weight: 400;
+  scale: 0.99;
+  transition-duration: 90ms;
+  transition-easing: ease-out;
 }
 button:selected {
   background: var(--surface-active);
@@ -107,12 +110,16 @@ slider {
   border-color: var(--border);
   border-width: 1px;
   corner-radius: 10px;
+  scale: 0.99;
+  transition-duration: 90ms;
+  transition-easing: ease-out;
 }
 slider:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
+  scale: 1;
 }
 
 .gbar-icon-button {
