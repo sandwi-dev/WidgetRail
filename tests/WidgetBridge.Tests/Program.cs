@@ -330,16 +330,29 @@ static async Task InstalledCapabilityDeclarationsAreClosed()
         "dev.example.unknown",
         enabled: true,
         permissions: ["system.unsupported.control.v1"]);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.apps",
+        enabled: true,
+        permissions:
+        [
+            PlatformCapabilities.AppLibraryReadV1,
+            PlatformCapabilities.AppLibraryLaunchV1,
+        ]);
 
     var load = await BridgeCatalog.LoadWithInstalledAsync(
         trusted.Path, catalogRoot, Environment.ProcessPath!);
 
     Assert.SequenceEqual(
-        ["test-widget", "dev.example.audio"],
+        ["test-widget", "dev.example.audio", "dev.example.apps"],
         load.Catalog.Widgets.Select(widget => widget.Id));
     Assert.SequenceEqual(
         [PlatformCapabilities.AudioSessionsReadV1],
         load.Catalog.GetConfigured("dev.example.audio").DeclaredCapabilities);
+    Assert.SequenceEqual(
+        [PlatformCapabilities.AppLibraryLaunchV1, PlatformCapabilities.AppLibraryReadV1],
+        load.Catalog.GetConfigured("dev.example.apps").DeclaredCapabilities);
     Assert.Equal(1, load.Warnings.Count);
     Assert.True(load.Warnings[0].Contains("unsupported capability", StringComparison.Ordinal),
         "Unknown capabilities need a safe closed-vocabulary warning.");

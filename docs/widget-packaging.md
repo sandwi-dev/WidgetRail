@@ -199,6 +199,21 @@ The native host coalesces revision events, atomically reloads descriptors,
 invalidates affected presentation caches, clears runtime focus/lifecycle when
 required, and safely leaves a disabled/removed active widget.
 
+Games & Apps is packaged as the same ordinary manifest-backed shape available
+to another author. Its required `system.apps.library.read.v1` and optional
+`system.apps.library.launch.v1` declarations come from its package manifest;
+bundling does not auto-grant either capability or give its worker paths/launch
+authority. The public SDK exposes only paged opaque metadata and an
+Interactive-only launch of one broker-issued ID. The trusted provider retains
+and revalidates the exact Start Menu shortcut. See the [Games & Apps
+reference](games-and-apps.md).
+
+Settings permission review also treats package diagnostics as read-only. One
+focusable Review row opens a bounded nested controller page for unsupported
+requests and inactive saved decisions. It offers no cleanup action, shares one
+16-row detail budget, and suppresses inactive classification entirely when the
+catalog projection or consent document is invalid or incomplete.
+
 ## Installed-worker isolation
 
 Every package joined from the current-user catalog is marked by trusted bridge
@@ -232,6 +247,11 @@ still requires signing/revocation, CPU quotas, disk/profile quotas and cleanup,
 and a security audit/history surface. Trusted bundled Settings and YT Music
 workers temporarily remain Job-only because they require desktop-user
 resources; packages cannot request that exception.
+YT Music is not intended to remain Built-in: it is the first planned Community
+addon migration and conformance case. Until exact-port loopback HTTP and private
+per-widget secret access are brokered and the ordinary CLI install/AppContainer
+path passes clean-machine verification, its current trusted package is not
+evidence that an independently installed addon can request the same authority.
 Win32k system-call disable is not enabled because the tested mitigation caused
 CoreCLR DLL initialization failure (`0xC0000142`); Job Object UI restrictions
 remain part of the enforced boundary.

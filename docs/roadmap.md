@@ -122,12 +122,17 @@ remains off until the publisher-trust gates in Phase 4.
 - Make every dashboard tile a real catalog-backed worker with deterministic
   local acceptance coverage; placeholders remain absent until complete
 - Finish YT Music connection, pairing persistence, transition responsiveness,
-  feedback, controller navigation, and failure recovery
-- Move YT Music off its trusted desktop exception: implement an exact-port,
-  loopback-only HTTP broker for declared local companions plus a private
-  per-widget secret vault for optional bearer-token persistence. Prove the
-  unchanged widget through the ordinary installed AppContainer path; never
-  grant ambient network or direct Credential Manager access to community code.
+  feedback, controller navigation, and failure recovery. YT Music is the first
+  Community addon integration reference, not a permanent Built-in widget.
+- Migrate YT Music off the bundled catalog and trusted desktop exception:
+  package it with the public SDK/CLI, install it through the ordinary Community
+  catalog, and run it in the mandatory package AppContainer. Implement an
+  exact-port, loopback-only HTTP broker for declared local companions plus a
+  private per-widget secret vault for optional bearer-token persistence. Prove
+  install, review, consent, update/rollback, controller behavior, lifecycle,
+  crash recovery, and uninstall through the same paths available to an
+  independent developer; never grant ambient network, direct Credential
+  Manager access, or a first-party-only runtime escape to the addon.
 - Finish Settings controller reachability, diagnostics/recovery, local package
   and theme workflows, and permission/version consistency
 - Complete controller-first Audio Control and Network Control through their
@@ -152,8 +157,10 @@ remains off until the publisher-trust gates in Phase 4.
 - Performance widget only after its real local diagnostics data and acceptance
   suite exist
 - Media controls
-- Recent Apps first slice implemented; authoritative game classification,
-  history/relaunch, icons, and grouping remain roadmap work
+- Games & Apps replaces bundled Recent Apps with a locally testable Start Menu
+  catalog and exact opaque-ID launch. AppsFolder/launcher sources,
+  authoritative game classification, icons, history, search/favorites, and
+  grouping remain roadmap work.
 - Capture proof and widget if Windows API tests pass
 - Discord proof after eligibility and production communications access are confirmed
 
@@ -236,26 +243,25 @@ does not provide a system-default setter. Do not ship an undocumented
 supported API passes the spike, default-device switching leaves the initial
 scope.
 
-**Recent Apps roadmap** now has a locally testable first slice. A trusted
-WinEvent provider observes eligible foreground/destroyed top-level windows only
-after an authorized read starts it, keeps at most 16 running applications, and
-publishes full coalescible snapshots without polling. The public model contains
-only a bounded display name, an opaque process-lifetime ID, running/most-recent
-state, and conservative kind. The first slice is now read-only: unreliable
-foreground switching duplicated Windows task switching and has been removed.
+**Games & Apps roadmap** has replaced Recent Apps in the bundled product
+catalog. The current public-SDK package pages through a bounded Start Menu
+library, renders a horizontal controller strip, and launches one selected
+broker-issued opaque ID only while Interactive. Read and launch have separate
+manifest declarations and consent. The trusted provider keeps paths, shortcut
+targets, arguments, AUMIDs, package identities, PIDs, and HWNDs private; every
+launch re-enumerates and requires one exact unchanged shortcut before invoking
+the Windows Shell without arguments or elevation.
 
-The first slice intentionally does not read UserAssist or registry history,
-query Xbox services, inspect game memory, retain executable paths/PIDs/HWNDs in
-the worker, launch closed applications, or infer that an app is a game. Its
-replacement is a catalog-backed Games & Apps launcher with authoritative
-installed-library sources, icons, and explicit launch contracts; it must not
-turn recent activity into an unrestricted process launcher.
-
-The first replacement foundation is implemented and locally testable: a
-read-only Start Menu source returns bounded sanitized application records with
-random opaque IDs and no launch operation. Next, add the supported AppsFolder
-source, then broker the combined catalog before implementing exact revalidated
-launch and the controller tile UI.
+This first slice intentionally scans only executable `.lnk` registrations in
+the current-user and all-user Start Menu Programs folders. It exposes no
+application icons/artwork and deliberately reports every real entry as
+Application rather than guessing games from filenames or paths. Next increments
+should add supported AppsFolder/UWP and launcher-specific catalog adapters,
+then an icon/artwork broker and evidence-backed game classification. Search,
+favorites, grouping, history, source attribution, and refresh observation must
+remain bounded and privacy reviewed. None may become arbitrary path/process
+launch authority. Recent Apps remains a separate read-only activity API/test
+reference, not a bundled dashboard widget.
 
 **Network Control roadmap** follows the Audio Control foundation. Its first
 slice uses Windows WLAN/network change notifications rather than continuously
@@ -434,7 +440,7 @@ The current product order is:
    quarantine, local performance/resource evidence, and lifecycle-policy
    enforcement;
 4. complete locally testable Audio/Network hardware, churn, privacy, and denial
-   paths; then Performance, general media, recent apps/games, and capture
+   paths; then Performance, general media, Games & Apps catalog depth, and capture
    feasibility;
 5. harden local developer mode and public references: exact-generation
    `gbar dev` readiness, real first-party community-package conformance,

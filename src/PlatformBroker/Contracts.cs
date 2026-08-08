@@ -255,6 +255,34 @@ public sealed record RecentActivitySummary(
 public sealed record RecentActivitiesChangedEvent(
     IReadOnlyList<RecentActivitySummary> Activities);
 
+public enum AppLibraryKind
+{
+    Unknown,
+    Application,
+    Game,
+}
+
+/// <summary>
+/// One launchable Start Menu registration. AppId is a provider-owned opaque
+/// token and never contains a path, command line, AUMID, package identity, or
+/// launcher-specific identifier.
+/// </summary>
+public sealed record AppLibraryItemSummary(
+    string AppId,
+    string DisplayName,
+    AppLibraryKind Kind);
+
+public sealed record AppLibraryPageRequest(
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit);
+
+public sealed record AppLibraryPageSummary(
+    [property: JsonRequired] IReadOnlyList<AppLibraryItemSummary> Items,
+    [property: JsonRequired] int? NextOffset);
+
+public sealed record LaunchAppLibraryItemRequest(
+    [property: JsonRequired] string AppId);
+
 public enum MediaPlaybackStatus
 {
     Closed,
@@ -343,6 +371,30 @@ public interface IActivityPlatformBrokerBackend : IPlatformBrokerEventSource
         CancellationToken cancellationToken);
 }
 
+public interface IAppLibraryPlatformBrokerBackend
+{
+    Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromException<IReadOnlyList<AppLibraryItemSummary>>(
+            new BrokerException("platform_unavailable", "App library is unavailable."));
+
+    /// <summary>
+    /// Reconciles the provider snapshot with the operating system. The broker
+    /// calls this only at a first-page boundary and keeps its own immutable
+    /// snapshot for later pages, so refresh cannot make an in-flight page walk
+    /// skip or duplicate entries.
+    /// </summary>
+    Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+        CancellationToken cancellationToken) =>
+        GetAppLibraryAsync(cancellationToken);
+
+    Task LaunchAppLibraryItemAsync(
+        string appId,
+        CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "App launch is unavailable."));
+}
+
 public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
 {
     Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken);
@@ -369,7 +421,8 @@ public interface IMediaPlatformBrokerBackend : IPlatformBrokerEventSource
 /// </summary>
 public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     INetworkPlatformBrokerBackend, IActivityPlatformBrokerBackend,
-    IBluetoothPlatformBrokerBackend, IMediaPlatformBrokerBackend
+    IAppLibraryPlatformBrokerBackend, IBluetoothPlatformBrokerBackend,
+    IMediaPlatformBrokerBackend
 {
 }
 

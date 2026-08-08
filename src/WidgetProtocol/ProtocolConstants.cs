@@ -23,4 +23,6 @@ public static class ProtocolConstants
     public const int MaximumQuickActionCount = 3;
     public const int MaximumStyleClassCount = 32;
     public const int MaximumStyleClassLength = 64;
+    public const int MaximumManifestPermissionCount = 32;
+    public const int MaximumCapabilityIdLength = 128;
 }

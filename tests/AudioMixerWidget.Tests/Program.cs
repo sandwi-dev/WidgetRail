@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("One whole-widget scroll surface keeps every audio control revealable", StateSurfaces),
     ("D-pad and analog focus graph covers every row", ExplicitFocusGraph),
+    ("Whole-list focus reaches both extents and restores the last controller row", WholeListFocusRestoration),
     ("Per-row actions route by stable identity without session shortcuts", ControllerRoutes),
     ("Volume updates immediately and resists stale in-flight events", OptimisticVolume),
     ("Rapid slider changes coalesce latest-wins without freezing other rows", RapidVolumeCoalescing),
@@ -115,6 +116,51 @@ static async Task ExplicitFocusGraph()
     Assert.True(sliders.Values.All(slider => slider.ActionId is not null),
         "A slider does not expose its A-button mute activation.");
     Assert.Valid(snapshot);
+    await Background(widget);
+}
+
+static async Task WholeListFocusRestoration()
+{
+    var sessions = Enumerable.Range(0, 12)
+        .Select(index => Session($"session-{index}", $"Application {index:00}", 0.5))
+        .ToArray();
+    var fake = new FakeCapabilityClient { Sessions = sessions };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var snapshot = widget.RenderSnapshot("audio.test", 20);
+    var expected = new List<string>
+    {
+        "audio.master.volume.slider",
+        "audio.input.volume.slider",
+    };
+    expected.AddRange(sessions.Select(session =>
+        $"{SessionPrefix(snapshot.Root, session.DisplayName)}.volume.slider"));
+
+    Assert.Equal(1, Nodes(snapshot.Root).Count(node => node.Kind == ViewNodeKind.Scroll));
+    Assert.Equal("audio.root", Nodes(snapshot.Root).Single(node =>
+        node.Kind == ViewNodeKind.Scroll).Id);
+    for (var index = 0; index < expected.Count; index++)
+    {
+        var control = Node(snapshot.Root, expected[index]);
+        Assert.Equal(index == 0 ? null : expected[index - 1], control.Focus?.Up);
+        Assert.Equal(index + 1 == expected.Count ? null : expected[index + 1], control.Focus?.Down);
+    }
+
+    var lastSession = expected[^1];
+    Assert.True(!await Route(widget, snapshot, ControllerButton.B, lastSession),
+        "B should remain host-owned while Audio remembers the focused row.");
+    await Background(widget);
+    await ActivateReady(widget);
+    var reopened = widget.RenderSnapshot("audio.test", 21);
+    Assert.Equal(lastSession, reopened.InitialFocusId);
+
+    Assert.True(!await Route(widget, reopened, ControllerButton.B, "audio.input.volume.slider"),
+        "B should remain host-owned while Audio remembers the microphone row.");
+    await Background(widget);
+    await ActivateReady(widget);
+    Assert.Equal("audio.input.volume.slider", Snapshot(widget, 22).InitialFocusId);
+    Assert.Valid(snapshot);
+    Assert.Valid(reopened);
     await Background(widget);
 }
 
@@ -607,12 +653,13 @@ static async Task StableSelectionDuringChurn()
     Assert.Equal("Chat renamed", Text(retained.Root, $"{stableB}.name").Text);
     Assert.True(Nodes(retained.Root).Any(node => node.Id == $"{stableB}.volume.slider"),
         "The stable focus target changed after display-name/order churn.");
-    Assert.Equal("audio.master.volume.slider", retained.InitialFocusId);
+    Assert.Equal($"{stableB}.volume.slider", retained.InitialFocusId);
 
     fake.Emit([Session("c", "Music", 0.5), Session("d", "Browser", 0.2)]);
     await WaitUntil(() => widget.Sessions.Count == 2);
     Assert.Equal("d", widget.SelectedSessionId);
-    Assert.Equal("audio.master.volume.slider", Snapshot(widget, 2).InitialFocusId);
+    var replacement = SessionPrefix(Snapshot(widget, 2).Root, "Browser");
+    Assert.Equal($"{replacement}.volume.slider", Snapshot(widget, 3).InitialFocusId);
     await Background(widget);
 }
 

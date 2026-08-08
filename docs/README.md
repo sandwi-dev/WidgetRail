@@ -42,15 +42,18 @@ guarantees that are available now.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
 - [Widget capabilities](capabilities.md) — typed audio/network/Bluetooth/recent-
-  activity/media-session services, exact-operation dashboard gesture authority,
+  activity/app-library/media-session services, exact-operation dashboard gesture authority,
   manifest declarations, lifecycle/consent behavior, errors, testing, and the
   current security boundary.
 - [Network Controls reference](network-controls.md) — implemented first-party
   integration, explicit available-Wi-Fi scan/current saved-open connection,
   controller UX, privacy/location
   gates, event-driven authoring, tests, and remaining release evidence.
-- [Recent Apps reference](recent-apps.md) — event-driven read-only foreground
-  activity, opaque identity, controller UX, and replacement limits.
+- [Games & Apps reference](games-and-apps.md) — implemented Start Menu library,
+  opaque paged SDK, separately consented exact launch, controller UX, provider
+  security boundary, tests, and current catalog/icon/classification limits.
+- [Recent Apps reference](recent-apps.md) — retained reference for the read-only
+  foreground-activity API; it is no longer in the bundled dashboard catalog.
 
 ## Distribution and operations
 
@@ -74,7 +77,8 @@ guarantees that are available now.
 - [Known issues](known-issues.md) — active user-visible bugs, reproduction
   evidence, acceptance criteria, status, and closing commits.
 - [Windows provider architecture](windows-provider-architecture.md) — the
-  event-driven Core Audio and WLAN/IP Helper providers, privacy boundaries, and
+  event-driven Core Audio, WLAN/IP Helper, and bounded Start Menu providers,
+  privacy boundaries, and
   simulator/hardware evidence gates for Audio Mixer and Network Controls. The
   current GSMTC Now Playing provider and its public-package path are summarized
   in [implementation status](implementation-status.md) and [widget

@@ -2,7 +2,8 @@
 
 Status: typed SDK services, authenticated local transport, lifecycle/consent
 enforcement, controller Settings review, deterministic simulators, and narrow
-real Core Audio, Windows network/Bluetooth, and foreground-activity backends are
+real Core Audio, Windows network/Bluetooth, foreground-activity, Start Menu
+app-library, and media-session backends are
 implemented. The production bridge composes those trusted providers. Hardware/
 privacy matrices plus
 broader performance evidence remain release gates; the current
@@ -43,6 +44,8 @@ The current closed capability set is:
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, `OpenBluetoothSubscriptionAsync`, and `WatchBluetoothAsync`; sanitized radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync`; software radio only | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
+| `system.apps.library.read.v1` | `HostServices.AppLibrary.GetPageAsync(offset, limit)` for sanitized names, conservative kinds, and opaque IDs | Visible or Interactive |
+| `system.apps.library.launch.v1` | `HostServices.AppLibrary.LaunchAsync(appId)` for one current broker-issued app ID | Interactive only; never dashboard gesture authority |
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
 
@@ -118,6 +121,24 @@ reservations are bounded to the controller queue capacity; dormant and active
 state are revoked on lifecycle change, consent loss, expiry, worker replacement,
 or shutdown. Direct actions, open-widget actions, subscriptions, and background
 tasks do not receive dashboard authority.
+
+### Installed application library
+
+The app-library read and launch capabilities are deliberately separate. A
+launcher can make `system.apps.library.read.v1` required while declaring
+`system.apps.library.launch.v1` optional, as the bundled Games & Apps reference
+does. Read pages contain only `WidgetAppLibraryItem.AppId`, `DisplayName`, and
+`Kind`; `AppId` is an opaque current-provider token, not a Windows identifier.
+The public page limit is 64 and the complete broker projection is bounded to
+512 entries.
+
+Launch requires Interactive even if the widget has already listed the item.
+The broker validates the opaque ID and the trusted Start Menu provider
+re-enumerates immediately before launch, requiring one exact unchanged
+shortcut registration. The worker never receives the shortcut path, target,
+arguments, AUMID, package identity, PID, or HWND, and app launch is not eligible
+for Visible dashboard-gesture authority. See the [Games & Apps
+reference](games-and-apps.md) for provider limits and authoring behavior.
 
 The bridge watches the installed package catalog without polling. After a
 complete validated reload, an enable/disable, install, update, manifest, or
@@ -294,19 +315,27 @@ The controller flow is:
 
 1. **Permissions & capabilities** lists packages in one bounded vertical
    controller Scroll.
-2. A package page lists all supported required/optional declarations in its
+2. When unsupported declarations or inactive saved decisions exist, one
+   focusable **Review unsupported or inactive access** row opens a nested,
+   read-only bounded Scroll. It uses stable opaque row IDs and B-only return;
+   there are no grant, cleanup, or removal actions on that page.
+3. A package page lists all supported required/optional declarations in its
    own bounded Scroll, with Granted/Denied/Not decided state.
-3. A decision page requires an explicit focused confirmation before grant.
+4. A decision page requires an explicit focused confirmation before grant.
    Deny/revoke is immediate from that same scope.
 
 Each page owns B-back and contains no redundant Back button. Up/Down scrolls
 through the current list; LB/RB remain available to widget-owned actions.
 Decisions are atomically stored by package ID, publisher ID, and capability ID.
 The broker channel additionally binds the concrete instance ID. Unknown
-declarations and consent entries no longer declared by that package/publisher
-are hidden and never actionable. Malformed/unavailable catalog or consent data
-fails closed with sanitized diagnostics. First-party packages are not
-auto-granted.
+declarations and consent entries no longer declared by that exact package/
+publisher authority are never actionable. The Review page shares one 16-item
+display budget across unsupported requests and inactive decisions, reports the
+remaining count, and sanitizes/truncates display and accessibility strings.
+Inactive-decision classification is shown only when the catalog projection is
+complete and both catalog and consent are valid. Otherwise Settings says the
+classification is unavailable and exposes no possibly false inactive rows.
+First-party packages are not auto-granted.
 
 ## Testing
 
@@ -315,8 +344,9 @@ Widget unit tests should build transport-free services with
 drive creation/lifecycle/destruction with the public `WidgetTestHost` helpers.
 Assert:
 
-- the widget calls the published `WidgetAudioCapabilities` or
-  `WidgetNetworkCapabilities` descriptors rather than ad-hoc strings;
+- the widget calls published typed descriptors such as
+  `WidgetAudioCapabilities`, `WidgetNetworkCapabilities`, or
+  `WidgetAppLibraryCapabilities` rather than ad-hoc strings;
 - denied/unavailable/error responses render controller-readable states;
 - caller and lifecycle cancellation stop enumerations promptly;
 - event bursts do not create overlapping UI refresh work; and

@@ -61,7 +61,8 @@ internal static class Program
                 new WindowsNetworkPlatformBackend(),
                 new WindowsActivityPlatformBackend(),
                 new WindowsBluetoothPlatformBackend(),
-                new WindowsMediaPlatformBackend());
+                new WindowsMediaPlatformBackend(),
+                new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider());
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor);

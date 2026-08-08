@@ -133,6 +133,7 @@ public sealed class WidgetHostServices
         Audio = new WidgetAudioService(capabilityClient);
         Network = new WidgetNetworkService(capabilityClient);
         RecentActivity = new WidgetRecentActivityService(capabilityClient);
+        AppLibrary = new WidgetAppLibraryService(capabilityClient);
         Media = new WidgetMediaService(capabilityClient);
     }
 
@@ -140,6 +141,7 @@ public sealed class WidgetHostServices
     public WidgetAudioService Audio { get; }
     public WidgetNetworkService Network { get; }
     public WidgetRecentActivityService RecentActivity { get; }
+    public WidgetAppLibraryService AppLibrary { get; }
     public WidgetMediaService Media { get; }
 
     internal static WidgetHostServices Unavailable { get; } =

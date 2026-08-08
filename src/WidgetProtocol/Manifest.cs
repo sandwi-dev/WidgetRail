@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -133,12 +134,14 @@ public static partial class WidgetManifestValidator
 
         if (manifest.ManifestVersion != ProtocolConstants.CurrentManifestVersion)
             Add("$.manifestVersion", "unsupported_version", $"Expected manifest version {ProtocolConstants.CurrentManifestVersion}.");
-        if (!PackageIdRegex().IsMatch(manifest.Id ?? string.Empty))
+        if (!IsPackageIdentity(manifest.Id))
             Add("$.id", "invalid_id", "ID must be a reverse-DNS identifier using lowercase letters, digits, underscores and hyphens.");
-        if (!PackageIdRegex().IsMatch(manifest.Publisher ?? string.Empty))
+        if (!IsPackageIdentity(manifest.Publisher))
             Add("$.publisher", "invalid_publisher", "Publisher must be a reverse-DNS identifier.");
-        if (string.IsNullOrWhiteSpace(manifest.Name) || manifest.Name.Length > 80)
-            Add("$.name", "invalid_name", "Name must contain 1 to 80 characters.");
+        if (string.IsNullOrWhiteSpace(manifest.Name) || manifest.Name.Length > 80 ||
+            ContainsUnsafeText(manifest.Name))
+            Add("$.name", "invalid_name",
+                "Name must contain 1 to 80 characters without control, formatting, or bidi-override characters.");
         if (!System.Version.TryParse(manifest.Version, out _))
             Add("$.version", "invalid_version", "Version must be a valid dotted numeric version.");
         System.Version? minimum = null;
@@ -182,11 +185,18 @@ public static partial class WidgetManifestValidator
         var optionalPermissions = manifest.OptionalPermissions ?? [];
         if (manifest.Permissions is null) Add("$.permissions", "required", "Permissions cannot be null.");
         if (manifest.OptionalPermissions is null) Add("$.optionalPermissions", "required", "Optional permissions cannot be null.");
+        if ((long)permissions.Count + optionalPermissions.Count >
+            ProtocolConstants.MaximumManifestPermissionCount)
+            Add("$.permissions", "too_many_permissions",
+                $"A manifest may declare at most {ProtocolConstants.MaximumManifestPermissionCount} required and optional permissions in total.");
         CheckPermissions(permissions, "$.permissions");
         CheckPermissions(optionalPermissions, "$.optionalPermissions");
-        var required = permissions.ToHashSet(StringComparer.Ordinal);
-        for (var i = 0; i < optionalPermissions.Count; i++)
-            if (required.Contains(optionalPermissions[i]))
+        var validationLimit = ProtocolConstants.MaximumManifestPermissionCount + 1;
+        var required = permissions.Take(validationLimit)
+            .Where(permission => permission is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        for (var i = 0; i < Math.Min(optionalPermissions.Count, validationLimit); i++)
+            if (optionalPermissions[i] is { } permission && required.Contains(permission))
                 Add($"$.optionalPermissions[{i}]", "duplicate_permission", "A permission cannot be both required and optional.");
 
         var architectures = manifest.Architectures ?? [];
@@ -201,12 +211,21 @@ public static partial class WidgetManifestValidator
         void CheckPermissions(IReadOnlyList<string> permissions, string path)
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            for (var i = 0; i < permissions.Count; i++)
+            var count = Math.Min(
+                permissions.Count,
+                ProtocolConstants.MaximumManifestPermissionCount + 1);
+            for (var i = 0; i < count; i++)
             {
                 var permission = permissions[i];
-                if (!PermissionRegex().IsMatch(permission))
+                if (string.IsNullOrWhiteSpace(permission) ||
+                    ContainsUnsafeText(permission) ||
+                    (permission.Length <= ProtocolConstants.MaximumCapabilityIdLength &&
+                     !PermissionRegex().IsMatch(permission)))
                     Add($"{path}[{i}]", "invalid_permission", "Permission syntax is invalid.");
-                if (!seen.Add(permission))
+                if (permission?.Length > ProtocolConstants.MaximumCapabilityIdLength)
+                    Add($"{path}[{i}]", "too_long",
+                        $"Permission IDs may not exceed {ProtocolConstants.MaximumCapabilityIdLength} characters.");
+                if (permission is not null && !seen.Add(permission))
                     Add($"{path}[{i}]", "duplicate_permission", "Permission is declared more than once.");
             }
         }
@@ -219,6 +238,35 @@ public static partial class WidgetManifestValidator
         !Path.IsPathRooted(value) &&
         !value.Contains('\\') &&
         !value.Split('/').Any(segment => segment is ".." or "." or "");
+
+    private static bool IsPackageIdentity(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= ProtocolConstants.MaximumCapabilityIdLength &&
+        !ContainsUnsafeText(value) &&
+        PackageIdRegex().IsMatch(value);
+
+    private static bool ContainsUnsafeText(string value)
+    {
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            var category = char.GetUnicodeCategory(character);
+            if (char.IsControl(character) || category is UnicodeCategory.Format or
+                UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator)
+                return true;
+            if (char.IsHighSurrogate(character))
+            {
+                if (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1]))
+                    return true;
+                index++;
+            }
+            else if (char.IsLowSurrogate(character))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$", RegexOptions.CultureInvariant)]
     private static partial Regex PackageIdRegex();

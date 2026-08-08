@@ -20,7 +20,7 @@ This is less visually unconstrained than giving every widget a browser or native
 Shipped with the host, but not all receive a trusted process exception. The
 host catalog's ordered `bundledWidgets` entries point at ordinary manifest-
 backed packages and supply only shell identity, package location, icon, and
-optional presentation metadata. Audio Mixer, Network Controls, Recent Apps,
+optional presentation metadata. Audio Mixer, Network Controls, Games & Apps,
 and Now Playing derive code identity, publisher, permissions, resource request,
 residency, and styles from those manifests and use the same generic worker,
 package-specific AppContainer, broker, lifecycle, and renderer as community
@@ -31,6 +31,14 @@ their current desktop-user dependencies are not yet brokered. A package cannot
 request that exception. Privileged OS and service integrations remain behind
 authenticated, task-shaped providers; being bundled does not bypass manifest
 declaration or user consent.
+
+YT Music is intentionally transitional, not a permanent Built-in tier. It is
+the planned first Community-addon conformance and migration: the same widget
+must eventually package/install through the public workflow and run in the
+generic package AppContainer after reusable exact-port loopback HTTP and private
+per-widget secret services replace its direct desktop-user dependencies. That
+broker work and migration are not implemented today, so the current trusted
+worker is UI/behavior evidence rather than Community isolation evidence.
 
 ### Community executable widgets
 
@@ -369,7 +377,7 @@ Available now:
   interactive generation is replaced. Failed generations retain or restart
   last good, and shutdown reports unreclaimed process/directory state;
 - `WidgetWorkerBootstrap`, `WidgetTestHost`, and typed fake host services; and
-- first-party Audio Mixer, Network Controls, Recent Apps, and Now Playing
+- first-party Audio Mixer, Network Controls, Games & Apps, and Now Playing
   projects as generic-AppContainer, public-SDK, brokered-capability reference
   implementations, plus a packaged 4/4 conformance harness.
 
@@ -422,8 +430,9 @@ AppContainer isolation and broker permissions remain independent requirements.
    launch add across the supported Windows matrix?
 2. Is a cached widget tree sufficient to make on-demand workers feel instantaneous?
 3. Which UI primitives cover the first-party widgets without encouraging bespoke escape hatches?
-4. Which remaining trusted built-in dependencies should become brokered so
-   Settings and YT Music can move from Job-only to AppContainer policy?
+4. Which remaining Settings desktop-user dependencies should become brokered so
+   it can move from Job-only to AppContainer policy after the planned YT Music
+   Community-addon migration?
 5. Which additional permissions can be safely brokered without elevating the host?
 6. What disk/profile quotas, stale-profile cleanup, and user controls are
    required before public distribution?

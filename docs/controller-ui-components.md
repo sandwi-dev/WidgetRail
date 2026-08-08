@@ -71,6 +71,10 @@ semantic classes. They do not add worker code, polling, or a new native node:
   links every button explicitly for cyclic Left/Right navigation, and publishes
   selected state without owning or hiding the selected content. Boundary input
   therefore remains in the tab group instead of escaping through geometry.
+  The built-in theme reserves a nonshrinking 50-DIP group around its 44-DIP
+  tab targets. Native renderer regressions cover the normal compact surface and
+  a constrained high-interface/high-text-scale surface, requiring each tab and
+  focus ring to remain wholly inside the viewport.
 - `UI.Switch(...)` is one stable Button focus stop with visible and accessible
   On/Off state. Disabled suppresses activation but does not remove focus.
 - `UI.ScopedDialog(...)` creates a styled nested input scope with B bound on the
@@ -131,6 +135,11 @@ closely related binary action:
   device, microphone, and application controls remain revealable even when the
   host clamps the panel. The widget does not invent nested list paging or
   LT/RT session selection.
+- Publish one explicit Up/Down chain from the true master top through the last
+  application. Remember the last semantic master/microphone/opaque-session
+  target from normal controller input, then republish it as initial focus after
+  reopen. If session churn removes it, choose the nearest surviving row; do not
+  reset focus to master merely because mute or volume rerendered.
 
 Representative construction:
 

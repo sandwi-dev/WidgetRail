@@ -8,6 +8,7 @@ internal sealed class WindowsStartMenuApplicationSource : IStartMenuApplicationS
 {
     internal const int MaximumShortcutCandidates = 4096;
     internal const int MaximumDirectoryDepth = 16;
+    internal const int MaximumShortcutBytes = 1024 * 1024;
 
     public IReadOnlyList<StartMenuRegistration> Enumerate(
         CancellationToken cancellationToken)
@@ -25,6 +26,73 @@ internal sealed class WindowsStartMenuApplicationSource : IStartMenuApplicationS
             registrations,
             cancellationToken);
         return registrations;
+    }
+
+    public StartMenuRegistration? ReadExact(
+        string shortcutPath,
+        StartMenuScope scope,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!OperatingSystem.IsWindows()) return null;
+        var root = Environment.GetFolderPath(scope switch
+        {
+            StartMenuScope.CurrentUser => Environment.SpecialFolder.Programs,
+            StartMenuScope.AllUsers => Environment.SpecialFolder.CommonPrograms,
+            _ => throw new ArgumentOutOfRangeException(nameof(scope)),
+        });
+        if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(shortcutPath))
+            return null;
+
+        try
+        {
+            root = Path.GetFullPath(root);
+            shortcutPath = Path.GetFullPath(shortcutPath);
+            if (!IsSafeShortcutPath(root, shortcutPath, cancellationToken)) return null;
+            return TryReadRegistration(root, shortcutPath, scope);
+        }
+        catch (Exception exception) when (exception is IOException or
+            UnauthorizedAccessException or ArgumentException or NotSupportedException or
+            System.Security.SecurityException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsSafeShortcutPath(
+        string root,
+        string shortcutPath,
+        CancellationToken cancellationToken)
+    {
+        var relativePath = Path.GetRelativePath(root, shortcutPath);
+        if (relativePath.Length == 0 || relativePath == "." ||
+            relativePath.StartsWith(".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal) ||
+            Path.IsPathRooted(relativePath) ||
+            !Path.GetExtension(shortcutPath).Equals(".lnk", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var components = relativePath.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        var current = root;
+        foreach (var component in components)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            current = Path.Combine(current, component);
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(current);
+            }
+            catch (Exception exception) when (exception is IOException or
+                UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                return false;
+            }
+            if ((attributes & FileAttributes.ReparsePoint) != 0) return false;
+        }
+        return true;
     }
 
     private static void EnumerateRoot(
@@ -114,10 +182,13 @@ internal sealed class WindowsStartMenuApplicationSource : IStartMenuApplicationS
                 if (!IsExecutableTarget(targetPath)) return null;
                 var arguments = new StringBuilder(8_192);
                 shellLink.GetArguments(arguments, arguments.Capacity);
+                var revalidationKey = HashShortcutFile(shortcutPath);
+                if (revalidationKey is null) return null;
                 var identity = HashIdentity(targetPath, arguments.ToString());
                 var displayName = Path.GetFileNameWithoutExtension(shortcutPath);
                 return new StartMenuRegistration(
-                    identity, displayName, scope, Path.GetFullPath(shortcutPath));
+                    identity, displayName, scope, Path.GetFullPath(shortcutPath),
+                    revalidationKey);
             }
             finally
             {
@@ -146,6 +217,28 @@ internal sealed class WindowsStartMenuApplicationSource : IStartMenuApplicationS
         var normalized = targetPath.Trim().ToUpperInvariant() + "\0" + arguments.Trim();
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
         return "start-" + Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string? HashShortcutFile(string shortcutPath)
+    {
+        try
+        {
+            using var stream = new FileStream(
+                shortcutPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read | FileShare.Delete,
+                bufferSize: 4096,
+                FileOptions.SequentialScan);
+            if (stream.Length is <= 0 or > MaximumShortcutBytes) return null;
+            return "lnk-" + Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        }
+        catch (Exception exception) when (exception is IOException or
+            UnauthorizedAccessException or System.Security.SecurityException or
+            NotSupportedException)
+        {
+            return null;
+        }
     }
 
     [ComImport]

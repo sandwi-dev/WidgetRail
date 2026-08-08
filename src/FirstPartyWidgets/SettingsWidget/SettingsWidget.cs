@@ -22,6 +22,7 @@ public enum SettingsPage
     InstalledWidgetDetails,
     InstalledWidgetVersions,
     Permissions,
+    PermissionDiagnostics,
     PackageCapabilities,
     CapabilityDecision,
     Diagnostics,
@@ -132,6 +133,7 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.InstalledWidgetDetails => RenderInstalledWidgetDetails(header, busy),
             SettingsPage.InstalledWidgetVersions => RenderInstalledWidgetVersions(header, busy),
             SettingsPage.Permissions => RenderPermissionPackages(header, busy),
+            SettingsPage.PermissionDiagnostics => RenderPermissionDiagnostics(header),
             SettingsPage.PackageCapabilities => RenderPackageCapabilities(header, busy),
             SettingsPage.CapabilityDecision => RenderCapabilityDecision(header, busy),
             SettingsPage.Diagnostics => RenderDiagnostics(
@@ -171,6 +173,7 @@ public sealed partial class SettingsWidget : Widget
                 case "open.overlay": Navigate(SettingsPage.Overlay); break;
                 case "open.installed-widgets": Navigate(SettingsPage.InstalledWidgets); break;
                 case "open.permissions": Navigate(SettingsPage.Permissions); break;
+                case "open.permission-diagnostics": OpenPermissionDiagnostics(); break;
                 case "open.diagnostics": Navigate(SettingsPage.Diagnostics); break;
                 case "open.reset": Navigate(SettingsPage.Reset); break;
                 case "open.themes": Navigate(SettingsPage.ThemePicker); break;
@@ -753,7 +756,11 @@ public sealed partial class SettingsWidget : Widget
     {
         lock (_stateLock)
         {
+            var previousPage = _page;
             _page = page;
+            if (page == SettingsPage.Permissions &&
+                previousPage != SettingsPage.PermissionDiagnostics)
+                _permissionDiagnosticsReturnFocus = false;
             if (page == SettingsPage.ThemePicker)
             {
                 var selected = _themes.Themes
@@ -791,6 +798,7 @@ public sealed partial class SettingsWidget : Widget
         SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
         SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
         SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,
+        SettingsPage.PermissionDiagnostics => SettingsPage.Permissions,
         SettingsPage.PackageCapabilities => SettingsPage.Permissions,
         SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,
         SettingsPage.Root => SettingsPage.Root,

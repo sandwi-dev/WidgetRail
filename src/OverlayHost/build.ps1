@@ -210,7 +210,7 @@ if (-not $SkipPackaging) {
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
     $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
-    $recentAppsOutput = Join-Path $outputDirectory 'runtime\RecentApps'
+    $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
     $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
@@ -260,8 +260,8 @@ if (-not $SkipPackaging) {
         (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget') `
         $networkControlsOutput 'NetworkControlsWidget' 'Network Controls'
     Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\RecentAppsWidget') `
-        $recentAppsOutput 'RecentAppsWidget' 'Recent Apps'
+        (Join-Path $projectDirectory '..\FirstPartyWidgets\GamesAppsWidget') `
+        $gamesAppsOutput 'GamesAppsWidget' 'Games & Apps'
     Publish-BundledWidgetPackage `
         (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
         $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'

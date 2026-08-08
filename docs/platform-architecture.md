@@ -17,6 +17,7 @@ flowchart LR
     Worker <-->|"typed authenticated capability IPC"| Broker["PlatformBroker"]
     Broker --> Audio["Core Audio session provider"]
     Broker --> Network["IP Helper/WLAN provider"]
+    Broker --> Apps["Start Menu app-library provider"]
     Host --> State["Host-owned order and last-widget state"]
     Catalog["Validated live WidgetCatalog revisions"] --> Bridge
 ```
@@ -30,16 +31,16 @@ flowchart LR
 | `src/WidgetRuntime` | Lazy worker process client/server, stable host-derived AppContainer profiles for installed/community packages, explicit read/execute grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch Job Object memory/process/UI/cleanup policy. |
 | `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies inside the mandatory AppContainer, connects an authenticated broker client when declared, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
-| `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network/Bluetooth/recent-activity services/DTOs. |
+| `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network/Bluetooth/recent-activity/app-library/media services/DTOs. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, and last-good reload. The bridge/native shell consume its live revisions, including bounded text scale for shell and generic widget layout. |
 | `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement/order persistence, schema-1 migration, and fail-closed exact active-version pins. The bridge consumes enabled compatible packages through complete validated live revisions. |
-| `src/PlatformBroker` | Version-1 audio/network/Bluetooth/recent-activity capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
+| `src/PlatformBroker` | Version-1 audio/network/Bluetooth/recent-activity/app-library/media capability contracts, nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for master/per-session volume/mute, sanitized default-device visibility, and current default-microphone volume/mute. It does not switch default devices or capture audio samples. |
 | `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse state, explicit nearby scans, opaque saved/open connection, and software-radio control. It does not handle credentials/profile XML or query current SSID/signal automatically. |
 | `src/WindowsBluetoothProvider` | Lazy WinRT software-radio and sanitized bounded device discovery. It does not pair/unpair or offer generic device connection. |
 | `src/WindowsActivityProvider` | Lazy WinEvent foreground/destroy observation with bounded opaque read-only running-app summaries; no polling, registry history, public process identifiers, switching, or relaunch. |
-| `src/WindowsAppLibraryProvider` | Lazy, read-only Start Menu application catalog with bounded reparse-safe enumeration, sanitized names, deduplication, and random opaque IDs. Launching and broker exposure are intentionally not present yet. |
+| `src/WindowsAppLibraryProvider` | Lazy Start Menu application catalog with bounded reparse-safe enumeration, sanitized names, deduplication, and random opaque IDs. Launch re-enumerates and requires one exact unchanged shortcut before constrained Shell open; trusted paths/arguments never enter broker payloads. |
 | `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, catalog install/list/enable/disable, and immutable version list/select/rollback commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
@@ -83,7 +84,7 @@ third-party managed assemblies.
    fixed identity, declarations, consent store, backend, random pipe, and nonce.
 3. The generic worker bootstrap authenticates the complete nonce/identity
    hello and attaches `WidgetHostServices` before `OnCreatedAsync`. Widget code
-   receives typed audio/network services, not raw broker JSON.
+   receives typed audio/network/app-library/media services, not raw broker JSON.
 4. Every operation rechecks the server-fixed declaration, durable grant, closed
    operation shape, and host-owned lifecycle. Read is Visible/Interactive;
    control is Interactive-only.
@@ -93,8 +94,9 @@ third-party managed assemblies.
 
 The worker cannot send broker lifecycle transitions or elevate itself. The
 runtime propagates only host-owned states to the companion server. The trusted
-bridge composes the real Core Audio and Windows network backends. Both remain
-behind the same typed, declared, consented contract. See [widget
+bridge composes the real Core Audio, Windows network, Start Menu app-library,
+and media backends. They remain behind the same typed, declared, consented
+contract. See [widget
 capabilities](capabilities.md).
 
 ## Resource behavior

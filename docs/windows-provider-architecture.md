@@ -1,15 +1,16 @@
-# Windows provider architecture: Audio Mixer and Network Controls
+# Windows provider architecture: Audio, Network, and Games & Apps
 
 Status: **typed SDK, authenticated broker transport, controller consent,
-simulator path, and narrow real Core Audio and Windows network providers
-implemented; automated packaged Release verification passes, while the network
-provider/widget remain under hardware/privacy and performance verification**. This note uses
+simulator path, and narrow real Core Audio, Windows network, and Start Menu
+app-library providers implemented; automated packaged Release verification
+passes, while hardware/privacy and performance verification remains open**. This note uses
 Microsoft documentation as the API authority. Items labeled **Documented
 fact** describe published Windows behavior. Items labeled **Platform design**
 are Game Bar Alternative decisions; their implementation status is called out
 where it matters.
 
-Audio Mixer and Network Controls must remain ordinary out-of-process widgets.
+Audio Mixer, Network Controls, and Games & Apps must remain ordinary
+out-of-process widgets.
 They receive bounded snapshots/events and invoke narrow broker commands; they
 never receive COM interfaces, Windows handles, process IDs, endpoint IDs,
 interface GUIDs, BSSIDs, profile XML, or credentials.
@@ -53,6 +54,8 @@ eventual widgets:
 | `system.network.bluetooth.read.v1` | Read/watch sanitized Bluetooth radio/discovery/device state; no native IDs. |
 | `system.network.bluetooth.radio.control.v1` | Request Bluetooth software radio On/Off while Interactive. |
 | `system.activity.recent.read.v1` | Read/watch bounded eligible running foreground observations as opaque IDs. |
+| `system.apps.library.read.v1` | Page through sanitized Start Menu application names, conservative kinds, and opaque IDs while Visible or Interactive. |
+| `system.apps.library.launch.v1` | Launch one current exact provider-revalidated opaque app ID while Interactive. |
 
 Endpoint master-volume/mute, sanitized device visibility, and default-capture
 volume/mute have separate grants. Output/default-role switching and audio-
@@ -68,7 +71,8 @@ The typed contract is connected end to end through the generic worker host,
 bridge-owned authenticated broker companion, Settings consent flow, and
 deterministic backends. The trusted bridge composes
 `WindowsAudioPlatformBackend`, `WindowsNetworkPlatformBackend`,
-`WindowsBluetoothPlatformBackend`, and `WindowsActivityPlatformBackend`. They are
+`WindowsBluetoothPlatformBackend`, `WindowsActivityPlatformBackend`, and
+`WindowsAppLibraryProvider`. They are
 working narrow OS services for declared and explicitly granted widgets; this
 does not close their hardware, privacy, performance, or hostile-code release
 gates. See [widget capabilities](capabilities.md) for the author-facing API.
@@ -350,14 +354,36 @@ process lifetime changes, and publishes no PID, path, command line, HWND, or
 process key. Every entry is currently classified conservatively as
 `Application`; most-recent is ordering metadata, not a game/foreground claim.
 
-Activation accepts only one current opaque observation, revalidates the exact
-window/process lifetime, restores it if minimized, and requests a normal
-`SetForegroundWindow`. It cannot relaunch an exited app or target arbitrary
-processes. Windows may refuse the switch. Observation remains event-driven
-until backend disposal after it first starts; consent revocation blocks broker
-delivery/activation and cancels in-flight work, but immediate native-observer
-shutdown/history clear on revocation is future hardening. See the
-[Recent Apps reference](recent-apps.md).
+Foreground activation is not part of this capability. The unreliable switch
+operation and broad bridge delegation were removed; it cannot relaunch an
+exited app or target a process/window. Observation remains event-driven until
+backend disposal after it first starts; consent revocation blocks broker
+delivery and cancels in-flight work, while immediate native-observer shutdown/
+history clear on revocation remains future hardening. Recent Apps is retained
+only as the [read-only activity reference](recent-apps.md), not a bundled widget.
+
+## Start Menu application-library provider
+
+The trusted application-library provider scans only current-user and all-user
+Start Menu Programs folders. Enumeration is bounded by candidate count,
+directory depth, shortcut size, catalog size, and sanitized display-name
+length; it never follows reparse points. It accepts `.lnk` registrations whose
+resolved target is an `.exe` or `.com`, deduplicates an internal target/
+arguments identity, and returns random opaque IDs. Paths, targets, arguments,
+shortcut fingerprints, AUMIDs, package identities, PIDs, and HWNDs stay inside
+the provider.
+
+Launch is a separate Interactive-only capability. The provider resolves a
+current opaque ID, re-enumerates, and requires exactly one unchanged match for
+scope, trusted target identity, full shortcut path, and shortcut-content
+fingerprint. Only then does it invoke the Windows Shell `open` verb on that
+exact `.lnk`, with no supplied arguments, working directory, elevation verb,
+or owner window. Stale, moved, modified, duplicated, and unknown registrations
+fail closed.
+
+The present source does not enumerate AppsFolder/UWP or launcher libraries,
+does not expose application icons/artwork, and conservatively reports every
+real item as Application. See the [Games & Apps reference](games-and-apps.md).
 
 ## Privilege and privacy boundary
 
@@ -443,7 +469,7 @@ broker endpoint in addition to nonce/full-identity authentication. The audio
 implementation adds a lazy, event-driven Core Audio session backend on top of
 those pieces; publisher trust and production-support evidence remain separate.
 
-Both providers remain deliberately limited prototypes while these production
+These providers remain deliberately limited prototypes while these production
 gates are open:
 
 1. stale-revision command rules and a security audit/history surface;
@@ -459,9 +485,10 @@ Win32k system-call disable is not an active mitigation because its tested
 configuration prevented CoreCLR DLL initialization (`0xC0000142`); Job Object
 UI restrictions remain enabled.
 
-Audio Mixer, Network Controls, and Recent Apps are implemented first-party
+Audio Mixer, Network Controls, and Games & Apps are implemented first-party
 integration references. They do not imply output/default-role switching,
 microphone sample capture, Bluetooth pairing/generic connection, current-SSID
-privacy access, or production security support. Hardware/privacy/performance gates remain. See the
+privacy access, AppsFolder/launcher coverage, app icons, authoritative game
+classification, or production security support. Hardware/privacy/performance gates remain. See the
 [Network Controls reference](network-controls.md) for its authoring,
 controller, test, and packaging contract.

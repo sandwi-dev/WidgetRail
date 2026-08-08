@@ -32,6 +32,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
     ("Null protocol collections report validation errors", NullCollectionsAreRejected),
     ("Valid manifest passes", ValidManifestPasses),
+    ("Manifest permission declarations are bounded ASCII-safe and unambiguous", ManifestPermissionsAreBounded),
     ("Residency policy is versioned bounded and legacy compatible", ResidencyPolicyIsVersioned),
     ("Unsafe manifest values report errors", UnsafeManifestFails),
     ("Null manifest collections report validation errors", NullManifestCollectionsFail),
@@ -48,6 +49,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controller shortcut fallback stays in explicit active input surface", ScopedShortcutRouting),
     ("Public test host services are typed immutable and attach once", HostCapabilityServices),
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
+    ("App library host service uses opaque paged read and launch contracts", AppLibraryPlatformService),
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
 };
 
@@ -113,6 +115,46 @@ static async Task HostCapabilityServices()
     {
         Assert.Equal("test_handler_missing", exception.ErrorCode);
     }
+}
+
+static async Task AppLibraryPlatformService()
+{
+    var services = new WidgetTestHostServicesBuilder()
+        .WithHandler(
+            WidgetAppLibraryCapabilities.GetPage,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal(64, request.Offset);
+                Assert.Equal(12, request.Limit);
+                return ValueTask.FromResult(new WidgetAppLibraryPage(
+                    [new WidgetAppLibraryItem(
+                        "app-opaque", "Launchable App", WidgetAppLibraryKind.Application)],
+                    null));
+            })
+        .WithResponse(
+            WidgetAppLibraryCapabilities.Launch,
+            new WidgetCapabilityAcknowledgement(true))
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+
+    var page = await widget.AppLibrary.GetPageAsync(64, 12);
+    Assert.Equal(1, page.Items.Count);
+    Assert.Equal("app-opaque", page.Items[0].AppId);
+    Assert.Equal("Launchable App", page.Items[0].DisplayName);
+    Assert.Equal(WidgetAppLibraryKind.Application, page.Items[0].Kind);
+    Assert.Equal<int?>(null, page.NextOffset);
+    await widget.AppLibrary.LaunchAsync("app-opaque");
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        widget.AppLibrary.GetPageAsync(-1).GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        widget.AppLibrary.GetPageAsync(WidgetAppLibraryService.MaximumItems + 1)
+            .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        widget.AppLibrary.GetPageAsync(0, WidgetAppLibraryService.MaximumPageSize + 1)
+            .GetAwaiter().GetResult());
 }
 
 static async Task TypedPlatformServices()
@@ -1150,6 +1192,87 @@ static Task ValidManifestPasses()
     return Task.CompletedTask;
 }
 
+static Task ManifestPermissionsAreBounded()
+{
+    var supportedFormats = ValidManifest() with
+    {
+        Name = "Música 🎵",
+        Permissions =
+        [
+            "system.audio.sessions.read.v1",
+            "network.loopback:13091",
+        ],
+    };
+    Assert.Equal(0, WidgetManifestValidator.Validate(supportedFormats).Count);
+
+    var required = Enumerable.Range(0, ProtocolConstants.MaximumManifestPermissionCount / 2)
+        .Select(index => $"system.test.required-{index}.v1")
+        .ToArray();
+    var optional = Enumerable.Range(0, ProtocolConstants.MaximumManifestPermissionCount / 2)
+        .Select(index => $"system.test.optional-{index}.v1")
+        .ToArray();
+    Assert.Equal(0, WidgetManifestValidator.Validate(ValidManifest() with
+    {
+        Permissions = required,
+        OptionalPermissions = optional,
+    }).Count);
+
+    var tooMany = WidgetManifestValidator.Validate(ValidManifest() with
+    {
+        Permissions = Enumerable.Range(0, ProtocolConstants.MaximumManifestPermissionCount + 1)
+            .Select(index => $"system.test.capability-{index}.v1")
+            .ToArray(),
+    });
+    Assert.True(tooMany.Any(error => error.Path == "$.permissions" &&
+                                     error.Code == "too_many_permissions"),
+        "Combined permission declarations were not bounded.");
+
+    var longPermission = "system." +
+        new string('a', ProtocolConstants.MaximumCapabilityIdLength);
+    var tooLong = WidgetManifestValidator.Validate(ValidManifest() with
+    {
+        Permissions = [longPermission],
+    });
+    Assert.True(tooLong.Any(error => error.Path == "$.permissions[0]" &&
+                                    error.Code == "too_long"),
+        "Oversized capability ID did not fail at the manifest boundary.");
+
+    var duplicated = WidgetManifestValidator.Validate(ValidManifest() with
+    {
+        Permissions = ["system.audio.sessions.read.v1"],
+        OptionalPermissions = ["system.audio.sessions.read.v1"],
+    });
+    Assert.True(duplicated.Any(error => error.Path == "$.optionalPermissions[0]" &&
+                                       error.Code == "duplicate_permission"),
+        "Required and optional declarations were not treated as one authority set.");
+
+    var malicious = WidgetManifestValidator.Validate(ValidManifest() with
+    {
+        Permissions =
+        [
+            "system.audio.\u202Eread.v1",
+            "system.audio.read.v1\0",
+            "system\uFF0Eaudio.read.v1",
+            null!,
+        ],
+    });
+    Assert.Equal(4, malicious.Count(error => error.Code == "invalid_permission"));
+
+    var spoofedIdentity = WidgetManifestValidator.Validate(ValidManifest() with
+    {
+        Id = "dev.test.\u202Ewidget",
+        Publisher = "dev.test\npublisher",
+        Name = "Trusted \u2066publisher\u2069",
+    });
+    Assert.True(spoofedIdentity.Any(error => error.Code == "invalid_id"),
+        "Bidi-spoofed package ID was accepted.");
+    Assert.True(spoofedIdentity.Any(error => error.Code == "invalid_publisher"),
+        "Control-bearing publisher ID was accepted.");
+    Assert.True(spoofedIdentity.Any(error => error.Code == "invalid_name"),
+        "Bidi-formatting display name was accepted.");
+    return Task.CompletedTask;
+}
+
 static Task ResidencyPolicyIsVersioned()
 {
     var defaultPolicy = WidgetResidencyPolicies.Resolve(ValidManifest());
@@ -1785,6 +1908,7 @@ file sealed class CapabilityWidget : Widget
     public WidgetLifecycleState TestLifecycleState => LifecycleState;
     public WidgetAudioService Audio => HostServices.Audio;
     public WidgetNetworkService Network => HostServices.Network;
+    public WidgetAppLibraryService AppLibrary => HostServices.AppLibrary;
     public ValueTask<string> CallAsync() =>
         HostServices.Capabilities.InvokeAsync(Operation, "request");
     public override WidgetView Render() => new(UI.Text("Ready", "root"));

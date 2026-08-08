@@ -110,6 +110,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
 {
     public static readonly TimeSpan MaximumDashboardGestureLifetime = TimeSpan.FromSeconds(2);
     public const int MaximumDashboardGestureAuthorities = 16;
+    internal const int MaximumAppLibraryItems = 512;
+    internal const int MaximumAppLibraryPageSize = 64;
     private readonly BrokerWidgetIdentity _identity;
     private readonly HashSet<string> _declaredCapabilities;
     private readonly ConsentStore _consentStore;
@@ -120,6 +122,12 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly HashSet<string> _revokedCapabilities = new(StringComparer.Ordinal);
     private readonly Dictionary<DashboardGestureKey, DashboardGestureAuthority>
         _dashboardGestureAuthorities = [];
+    private readonly SemaphoreSlim _appLibraryGate = new(1, 1);
+    private readonly Dictionary<string, string> _appLibraryPublicIdsByBackendId =
+        new(StringComparer.Ordinal);
+    private IReadOnlyList<AppLibraryItemSummary>? _appLibrarySnapshot;
+    private Dictionary<string, string> _appLibraryBackendIdsByPublicId =
+        new(StringComparer.Ordinal);
     private long _lastDashboardGestureSequence;
     private BrokerLifecycleState _lifecycle = BrokerLifecycleState.Background;
     private long _eventSequence;
@@ -184,7 +192,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     {
         if (!PlatformCapabilities.TryGet(capabilityId, out var capability) ||
             capability.Kind != BrokerCapabilityKind.Control ||
-            !capability.Operations.Contains(operationId))
+            !capability.Operations.Contains(operationId) ||
+            !capability.AllowsDashboardGesture)
             throw new BrokerException(
                 "unsupported_capability", "Dashboard authority requires a supported control operation.");
         if (!_declaredCapabilities.Contains(capabilityId))
@@ -348,6 +357,11 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             PlatformCapabilities.RecentActivitiesList =>
                 BrokerJson.ToElement(ValidateRecentActivities(DemandEmptyPayload(request.Payload),
                     await _backend.GetRecentActivitiesAsync(requestToken).ConfigureAwait(false))),
+            PlatformCapabilities.AppLibraryList =>
+                BrokerJson.ToElement(await GetAppLibraryPageAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.AppLibraryLaunch =>
+                await LaunchAppLibraryItemAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.MediaSessionsGet =>
                 BrokerJson.ToElement(ValidateMediaSessions(DemandEmptyPayload(request.Payload),
                     await _backend.GetMediaSessionsAsync(requestToken).ConfigureAwait(false))),
@@ -500,6 +514,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 throw new BrokerException("capability_revoked", "Capability permission was revoked.");
             var dashboardGestureAuthorized = false;
             if (capability.Kind == BrokerCapabilityKind.Control &&
+                capability.AllowsDashboardGesture &&
                 _lifecycle == BrokerLifecycleState.Visible)
             {
                 if (request.GestureInputSequence is not { } inputSequence ||
@@ -780,6 +795,108 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 throw new BrokerException("invalid_backend_data", "Recent activity entries are inconsistent.");
         }
         return activities.ToArray();
+    }
+
+    private async Task<AppLibraryPageSummary> GetAppLibraryPageAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<AppLibraryPageRequest>(payload);
+        if (request.Offset < 0 || request.Offset > MaximumAppLibraryItems ||
+            request.Limit is < 1 or > MaximumAppLibraryPageSize)
+            throw new BrokerException("invalid_payload", "App library page bounds are invalid.");
+
+        await _appLibraryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Offset zero is the explicit refresh boundary. Later pages use the
+            // broker-session snapshot, even if another widget refreshes the
+            // shared Windows provider in the meantime.
+            if (request.Offset == 0 || _appLibrarySnapshot is null)
+            {
+                var backendItems = ValidateAppLibrary(
+                    await _backend.RefreshAppLibraryAsync(cancellationToken)
+                        .ConfigureAwait(false));
+                cancellationToken.ThrowIfCancellationRequested();
+                _appLibrarySnapshot = ProjectAppLibrarySnapshot(backendItems);
+            }
+
+            var items = _appLibrarySnapshot;
+            var page = items.Skip(request.Offset).Take(request.Limit).ToArray();
+            var consumed = request.Offset + page.Length;
+            return new AppLibraryPageSummary(
+                page,
+                consumed < items.Count ? consumed : null);
+        }
+        finally
+        {
+            _appLibraryGate.Release();
+        }
+    }
+
+    private IReadOnlyList<AppLibraryItemSummary> ProjectAppLibrarySnapshot(
+        IReadOnlyList<AppLibraryItemSummary> backendItems)
+    {
+        var liveBackendIds = backendItems.Select(item => item.AppId)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var stale in _appLibraryPublicIdsByBackendId.Keys
+                     .Where(id => !liveBackendIds.Contains(id)).ToArray())
+            _appLibraryPublicIdsByBackendId.Remove(stale);
+
+        var byPublicId = new Dictionary<string, string>(StringComparer.Ordinal);
+        var projected = new AppLibraryItemSummary[backendItems.Count];
+        for (var index = 0; index < backendItems.Count; index++)
+        {
+            var item = backendItems[index];
+            if (!_appLibraryPublicIdsByBackendId.TryGetValue(item.AppId, out var publicId))
+            {
+                publicId = "app-" + Guid.NewGuid().ToString("N");
+                _appLibraryPublicIdsByBackendId.Add(item.AppId, publicId);
+            }
+            byPublicId.Add(publicId, item.AppId);
+            projected[index] = item with { AppId = publicId };
+        }
+        _appLibraryBackendIdsByPublicId = byPublicId;
+        return Array.AsReadOnly(projected);
+    }
+
+    private static IReadOnlyList<AppLibraryItemSummary> ValidateAppLibrary(
+        IReadOnlyList<AppLibraryItemSummary>? items)
+    {
+        if (items is null || items.Count > MaximumAppLibraryItems)
+            throw new BrokerException("invalid_backend_data", "App library result is invalid.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            if (item is null || !Enum.IsDefined(item.Kind))
+                throw new BrokerException("invalid_backend_data", "App library entry is invalid.");
+            ContractValidation.OpaqueId(item.AppId, "invalid_backend_data");
+            ContractValidation.DisplayName(item.DisplayName);
+            if (!ids.Add(item.AppId))
+                throw new BrokerException("invalid_backend_data", "App library IDs are duplicated.");
+        }
+        return items.ToArray();
+    }
+
+    private async Task<JsonElement> LaunchAppLibraryItemAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<LaunchAppLibraryItemRequest>(payload);
+        ContractValidation.OpaqueId(request.AppId);
+        await _appLibraryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_appLibraryBackendIdsByPublicId.TryGetValue(
+                    request.AppId, out var backendAppId))
+                throw new BrokerException(
+                    "app_not_found", "The selected app is no longer available.");
+            await _backend.LaunchAppLibraryItemAsync(backendAppId, cancellationToken)
+                .ConfigureAwait(false);
+            return BrokerJson.ToElement(new { acknowledged = true });
+        }
+        finally
+        {
+            _appLibraryGate.Release();
+        }
     }
 
     private async Task<JsonElement> ControlMediaSessionAsync(

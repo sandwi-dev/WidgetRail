@@ -16,6 +16,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
+    ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
@@ -62,7 +63,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(18, PlatformCapabilities.All.Count);
+    Assert.Equal(20, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -72,6 +73,24 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(!PlatformCapabilities.TryGet("system.full-access.v1", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.audio.sessions.read.v2", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.activity.recent.activate.v1", out _));
+    Assert.True(PlatformCapabilities.TryGet(
+        PlatformCapabilities.AppLibraryLaunchV1, out var appLaunch));
+    Assert.Equal(BrokerCapabilityKind.Control, appLaunch.Kind);
+    Assert.True(!appLaunch.AllowsDashboardGesture);
+    Assert.True(PlatformCapabilities.TryGet(
+        PlatformCapabilities.MediaSessionsControlV1, out var mediaControl));
+    Assert.True(mediaControl.AllowsDashboardGesture);
+    Assert.True(PlatformCapabilities.All
+        .Where(capability => capability.Kind == BrokerCapabilityKind.Control &&
+            capability.Id != PlatformCapabilities.MediaSessionsControlV1)
+        .All(capability => !capability.AllowsDashboardGesture));
+    var defaultControl = new BrokerCapabilityDefinition(
+        "test.future.control.v1",
+        1,
+        BrokerCapabilityKind.Control,
+        new HashSet<string>(["future.control"], StringComparer.Ordinal),
+        new HashSet<string>(StringComparer.Ordinal));
+    Assert.True(!defaultControl.AllowsDashboardGesture);
     return Task.CompletedTask;
 }
 
@@ -166,6 +185,172 @@ static async Task RecentActivityContracts()
         ])));
     var change = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
     Assert.Equal(PlatformCapabilities.RecentActivitiesChanged, change.EventType);
+}
+
+static async Task AppLibraryContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibrary(Enumerable.Range(0, 70).Select(index =>
+        new AppLibraryItemSummary(
+            $"app-{index:D3}",
+            $"Launchable {index:D3}",
+            index == 0 ? AppLibraryKind.Game : AppLibraryKind.Application)));
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryLaunchV1);
+
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var denied = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 0, limit = 64 }));
+    Assert.Equal("permission_denied", denied.ErrorCode);
+
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryReadV1,
+        ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    var background = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 0, limit = 64 }));
+    Assert.Equal("lifecycle_denied", background.ErrorCode);
+
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var first = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 0, limit = 64 }));
+    Assert.True(first.Succeeded, $"First app-library page failed: {first.ErrorCode}");
+    var firstPayload = first.Payload!.Value;
+    Assert.Equal(64, firstPayload.GetProperty("items").GetArrayLength());
+    Assert.Equal(64, firstPayload.GetProperty("nextOffset").GetInt32());
+    var firstItem = firstPayload.GetProperty("items")[0];
+    var publicAppId = firstItem.GetProperty("appId").GetString()!;
+    Assert.True(publicAppId.StartsWith("app-", StringComparison.Ordinal));
+    Assert.True(publicAppId != "app-000",
+        "A provider-global ID escaped the widget-scoped broker projection.");
+    Assert.Equal("Launchable 000", firstItem.GetProperty("displayName").GetString());
+    var json = firstPayload.GetRawText();
+    Assert.True(!json.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
+    Assert.True(!json.Contains("C:\\\\", StringComparison.OrdinalIgnoreCase));
+    Assert.True(!json.Contains("aumid", StringComparison.OrdinalIgnoreCase));
+    Assert.Equal(1, backend.AppLibraryRefreshCalls);
+
+    // Later pages remain bound to the first-page snapshot even if the shared
+    // backend changes. A new first page is the explicit refresh boundary.
+    backend.SetAppLibrary([
+        new AppLibraryItemSummary("changed", "Changed", AppLibraryKind.Application),
+    ]);
+    var last = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 64, limit = 64 }));
+    Assert.True(last.Succeeded);
+    Assert.Equal(6, last.Payload!.Value.GetProperty("items").GetArrayLength());
+    Assert.Equal(JsonValueKind.Null,
+        last.Payload.Value.GetProperty("nextOffset").ValueKind);
+    Assert.Equal(1, backend.AppLibraryRefreshCalls);
+
+    var invalidPage = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = -1, limit = 65 }));
+    Assert.Equal("invalid_payload", invalidPage.ErrorCode);
+
+    backend.SetAppLibrary([
+        new AppLibraryItemSummary("duplicate", "First", AppLibraryKind.Application),
+        new AppLibraryItemSummary("duplicate", "Second", AppLibraryKind.Application),
+    ]);
+    var invalidBackend = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 0, limit = 64 }));
+    Assert.Equal("invalid_backend_data", invalidBackend.ErrorCode);
+
+    var launchWithoutConsent = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new { appId = publicAppId }));
+    Assert.Equal("permission_denied", launchWithoutConsent.ErrorCode);
+    Assert.Equal(0, backend.AppLibraryLaunchCalls);
+
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryLaunchV1,
+        ConsentDecision.Grant);
+    Assert.Throws<BrokerException>(() => broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        inputSequence: 10,
+        snapshotSequence: 20,
+        TimeSpan.FromSeconds(1)));
+    var visibleLaunch = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new { appId = publicAppId }));
+    Assert.Equal("lifecycle_denied", visibleLaunch.ErrorCode);
+    Assert.Equal(0, backend.AppLibraryLaunchCalls);
+
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var invalidIdentifier = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new { appId = @"C:\private\Game.lnk" }));
+    Assert.Equal("invalid_payload", invalidIdentifier.ErrorCode);
+    Assert.Equal(0, backend.AppLibraryLaunchCalls);
+
+    var providerTokenForgery = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new { appId = "app-000" }));
+    Assert.Equal("app_not_found", providerTokenForgery.ErrorCode);
+    Assert.Equal(0, backend.AppLibraryLaunchCalls);
+
+    var launched = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new { appId = publicAppId }));
+    Assert.True(launched.Succeeded);
+    Assert.True(launched.Payload!.Value.GetProperty("acknowledged").GetBoolean());
+    Assert.Equal(1, backend.AppLibraryLaunchCalls);
+    Assert.Equal("app-000", backend.LastLaunchedAppId);
+
+    backend.SetAppLibrary([
+        new AppLibraryItemSummary("changed", "Changed", AppLibraryKind.Application),
+    ]);
+    var refreshed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 0, limit = 64 }));
+    Assert.True(refreshed.Succeeded);
+    Assert.Equal("Changed", refreshed.Payload!.Value.GetProperty("items")[0]
+        .GetProperty("displayName").GetString());
+    Assert.Equal(3, backend.AppLibraryRefreshCalls);
+
+    var staleToken = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new { appId = publicAppId }));
+    Assert.Equal("app_not_found", staleToken.ErrorCode);
+
+    var secondIdentity = new BrokerWidgetIdentity(
+        "dev.test.widget-two", "dev.test", "default");
+    await store.SetDecisionAsync(secondIdentity, PlatformCapabilities.AppLibraryReadV1,
+        ConsentDecision.Grant);
+    await using var secondBroker = Broker(secondIdentity, store, backend,
+        PlatformCapabilities.AppLibraryReadV1);
+    secondBroker.SetLifecycle(BrokerLifecycleState.Visible);
+    var secondWidget = await secondBroker.HandleAsync(Request(secondIdentity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 0, limit = 64 }));
+    var secondWidgetId = secondWidget.Payload!.Value.GetProperty("items")[0]
+        .GetProperty("appId").GetString();
+    var firstWidgetId = refreshed.Payload.Value.GetProperty("items")[0]
+        .GetProperty("appId").GetString();
+    Assert.True(firstWidgetId != secondWidgetId,
+        "Opaque app IDs must not correlate two widget broker sessions.");
 }
 
 static async Task MediaSessionContracts()
@@ -304,20 +489,11 @@ static async Task DashboardGestureAuthorityIsBounded()
     Assert.Equal("lifecycle_denied", replay.ErrorCode);
     Assert.Equal(1, backend.MediaControlCalls);
 
-    broker.GrantDashboardGestureAuthority(
+    Assert.Throws<BrokerException>(() => broker.GrantDashboardGestureAuthority(
         PlatformCapabilities.AudioSessionsControlV1,
-        PlatformCapabilities.AudioSessionSetMuted, 11, 5, TimeSpan.FromSeconds(2));
-    var wrongOperation = await broker.HandleAsync(GestureRequest(
-        identity, PlatformCapabilities.AudioSessionsControlV1,
-        PlatformCapabilities.AudioSessionSetVolume,
-        new { sessionId = "audio-1", volume = 0.5 }, 11, 5));
-    Assert.Equal("lifecycle_denied", wrongOperation.ErrorCode);
-    var exactAudio = await broker.HandleAsync(GestureRequest(
-        identity, PlatformCapabilities.AudioSessionsControlV1,
-        PlatformCapabilities.AudioSessionSetMuted,
-        new { sessionId = "audio-1", isMuted = true }, 11, 5));
-    Assert.True(exactAudio.Succeeded);
-    Assert.Equal(1, backend.AudioControlCalls);
+        PlatformCapabilities.AudioSessionSetMuted, 11, 5, TimeSpan.FromSeconds(2)),
+        "unsupported_capability");
+    Assert.Equal(0, backend.AudioControlCalls);
 
     broker.GrantDashboardGestureAuthority(
         PlatformCapabilities.MediaSessionsControlV1,

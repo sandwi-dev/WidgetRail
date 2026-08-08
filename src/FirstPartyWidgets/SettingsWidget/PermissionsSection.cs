@@ -2,6 +2,9 @@ using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings;
@@ -9,10 +12,35 @@ namespace GameBarAlternative.FirstPartyWidgets.Settings;
 public sealed partial class SettingsWidget
 {
     private const int MaximumPermissionPackages = 256;
+    private const int MaximumPermissionDiagnostics = 16;
+    private const int MaximumDiagnosticComponentRunes = 120;
     private const int MaximumBundledDirectories = 64;
     private const int MaximumManifestBytes = 1024 * 1024;
 
     private sealed record DeclaredCapability(string Id, bool IsRequired);
+    private sealed record UnknownDeclaration(
+        string PackageId,
+        string PackageName,
+        string AuthorityPublisher,
+        string CapabilityId,
+        bool IsRequired);
+    private sealed record HiddenConsentDecision(
+        string PackageId,
+        string PackageName,
+        string PublisherId,
+        string CapabilityId,
+        ConsentDecision Decision);
+    private sealed class UnknownDeclarationAccumulator
+    {
+        public int Count { get; private set; }
+        public List<UnknownDeclaration> Details { get; } = [];
+
+        public void Add(UnknownDeclaration item)
+        {
+            Count = checked(Count + 1);
+            if (Details.Count < MaximumPermissionDiagnostics) Details.Add(item);
+        }
+    }
     private sealed record PermissionPackage(
         string Id,
         string Publisher,
@@ -30,13 +58,18 @@ public sealed partial class SettingsWidget
     private string? _permissionDiagnostic;
     private int _unknownDeclarations;
     private int _hiddenConsentEntries;
+    private bool _inactiveConsentClassificationAvailable = true;
+    private bool _permissionDiagnosticsReturnFocus;
+    private IReadOnlyList<UnknownDeclaration> _unknownDeclarationDetails = [];
+    private IReadOnlyList<HiddenConsentDecision> _hiddenConsentDetails = [];
 
     private async Task<string?> ReloadPermissionsAsync(CancellationToken cancellationToken)
     {
         IReadOnlyList<PermissionPackage> packages = [];
         var catalogValid = true;
+        var catalogComplete = true;
         string? catalogDiagnostic = null;
-        var unknownDeclarations = 0;
+        var unknownDeclarations = new UnknownDeclarationAccumulator();
         try
         {
             var catalog = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
@@ -46,7 +79,7 @@ public sealed partial class SettingsWidget
                 foreach (var manifest in DiscoverBundledManifests(_bundledWidgetRoot))
                 {
                     var package = CreatePermissionPackage(
-                        manifest, installed: false, ref unknownDeclarations);
+                        manifest, installed: false, unknownDeclarations);
                     if (package.Capabilities.Count != 0)
                         discovered.TryAdd(package.Id, package);
                 }
@@ -55,7 +88,7 @@ public sealed partial class SettingsWidget
             {
                 var manifest = widget.ActiveVersion.Manifest;
                 var package = CreatePermissionPackage(
-                    manifest, installed: true, ref unknownDeclarations);
+                    manifest, installed: true, unknownDeclarations);
                 if (package.Capabilities.Count != 0)
                     discovered.TryAdd(package.Id, package);
             }
@@ -66,21 +99,27 @@ public sealed partial class SettingsWidget
                 .ToArray();
             if (catalog.Widgets.Count > MaximumPermissionPackages ||
                 discovered.Count > MaximumPermissionPackages)
+            {
+                catalogComplete = false;
                 catalogDiagnostic = $"Installed package list is limited to {MaximumPermissionPackages} entries";
+            }
         }
         catch (WidgetPackageException exception)
         {
             catalogValid = false;
+            catalogComplete = false;
             catalogDiagnostic = $"Catalog unavailable ({exception.Code})";
         }
         catch (IOException)
         {
             catalogValid = false;
+            catalogComplete = false;
             catalogDiagnostic = "Catalog unavailable (io_error)";
         }
         catch (UnauthorizedAccessException)
         {
             catalogValid = false;
+            catalogComplete = false;
             catalogDiagnostic = "Catalog unavailable (access_denied)";
         }
 
@@ -107,13 +146,46 @@ public sealed partial class SettingsWidget
             consentDiagnostic = "Consent unavailable (access_denied)";
         }
 
+        var inactiveClassificationAvailable = catalogValid && catalogComplete && consentValid;
         var declaredKeys = packages
             .SelectMany(package => package.Capabilities.Select(capability =>
                 ConsentKey(package.Id, package.AuthorityPublisher, capability.Id)))
             .ToHashSet(StringComparer.Ordinal);
-        var hiddenConsentEntries = consent.Entries.Count(entry =>
-            !declaredKeys.Contains(ConsentKey(
-                entry.PackageId, entry.PublisherId, entry.CapabilityId)));
+        var packageNames = packages.ToDictionary(
+            package => ConsentKey(package.Id, package.AuthorityPublisher, string.Empty),
+            package => package.Name,
+            StringComparer.Ordinal);
+        var hiddenConsentEntries = inactiveClassificationAvailable
+            ? consent.Entries
+                .Where(entry => !declaredKeys.Contains(ConsentKey(
+                    entry.PackageId, entry.PublisherId, entry.CapabilityId)))
+                .OrderBy(entry => entry.PackageId, StringComparer.Ordinal)
+                .ThenBy(entry => entry.CapabilityId, StringComparer.Ordinal)
+                .ThenBy(entry => entry.PublisherId, StringComparer.Ordinal)
+                .ToArray()
+            : [];
+        var unknownCount = catalogValid ? unknownDeclarations.Count : 0;
+        var unknownDetails = catalogValid
+            ? unknownDeclarations.Details
+                .OrderBy(item => item.PackageName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.CapabilityId, StringComparer.Ordinal)
+                .Take(MaximumPermissionDiagnostics)
+                .ToArray()
+            : [];
+        var remainingDiagnosticBudget = Math.Max(
+            0, MaximumPermissionDiagnostics - unknownDetails.Length);
+        var hiddenConsentDetails = hiddenConsentEntries
+            .Take(remainingDiagnosticBudget)
+            .Select(entry => new HiddenConsentDecision(
+                entry.PackageId,
+                packageNames.TryGetValue(
+                    ConsentKey(entry.PackageId, entry.PublisherId, string.Empty), out var packageName)
+                    ? packageName
+                    : entry.PackageId,
+                entry.PublisherId,
+                entry.CapabilityId,
+                entry.Decision))
+            .ToArray();
         var diagnostic = string.Join("; ", new[] { catalogDiagnostic, consentDiagnostic }
             .Where(value => value is not null));
         lock (_stateLock)
@@ -123,8 +195,11 @@ public sealed partial class SettingsWidget
             _permissionCatalogValid = catalogValid;
             _consentValid = consentValid;
             _permissionDiagnostic = diagnostic.Length == 0 ? null : diagnostic;
-            _unknownDeclarations = unknownDeclarations;
-            _hiddenConsentEntries = hiddenConsentEntries;
+            _unknownDeclarations = unknownCount;
+            _hiddenConsentEntries = hiddenConsentEntries.Length;
+            _inactiveConsentClassificationAvailable = inactiveClassificationAvailable;
+            _unknownDeclarationDetails = unknownDetails;
+            _hiddenConsentDetails = hiddenConsentDetails;
             var selected = SelectedPackageLocked();
             if (selected is null)
             {
@@ -151,30 +226,33 @@ public sealed partial class SettingsWidget
     private static PermissionPackage CreatePermissionPackage(
         WidgetManifest manifest,
         bool installed,
-        ref int unknownDeclarations)
+        UnknownDeclarationAccumulator unknownDeclarations)
     {
         var capabilities = new List<DeclaredCapability>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var authorityPublisher = installed
+            ? InstalledWidgetAuthority.PublisherId(manifest)
+            : manifest.Publisher;
         foreach (var id in manifest.Permissions)
         {
             if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
                 capabilities.Add(new(id, IsRequired: true));
             else if (!PlatformCapabilities.TryGet(id, out _))
-                unknownDeclarations++;
+                unknownDeclarations.Add(new(
+                    manifest.Id, manifest.Name, authorityPublisher, id, IsRequired: true));
         }
         foreach (var id in manifest.OptionalPermissions)
         {
             if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
                 capabilities.Add(new(id, IsRequired: false));
             else if (!PlatformCapabilities.TryGet(id, out _))
-                unknownDeclarations++;
+                unknownDeclarations.Add(new(
+                    manifest.Id, manifest.Name, authorityPublisher, id, IsRequired: false));
         }
         return new PermissionPackage(
             manifest.Id,
             manifest.Publisher,
-            installed
-                ? InstalledWidgetAuthority.PublisherId(manifest)
-                : manifest.Publisher,
+            authorityPublisher,
             manifest.Name,
             capabilities.OrderByDescending(capability => capability.IsRequired)
                 .ThenBy(capability => capability.Id, StringComparer.Ordinal)
@@ -226,6 +304,8 @@ public sealed partial class SettingsWidget
     {
         IReadOnlyList<PermissionPackage> packages;
         bool catalogValid;
+        bool inactiveClassificationAvailable;
+        bool returnDiagnosticsFocus;
         string? diagnostic;
         string? selectedPackageId;
         int unknown;
@@ -234,6 +314,8 @@ public sealed partial class SettingsWidget
         {
             packages = _permissionPackages;
             catalogValid = _permissionCatalogValid;
+            inactiveClassificationAvailable = _inactiveConsentClassificationAvailable;
+            returnDiagnosticsFocus = _permissionDiagnosticsReturnFocus;
             diagnostic = _permissionDiagnostic;
             selectedPackageId = _selectedPackageId;
             unknown = _unknownDeclarations;
@@ -255,11 +337,16 @@ public sealed partial class SettingsWidget
                 "permissions.system-help", "Windows permission help")
                 .Classes(catalogValid ? "page-help" : "diagnostic-error"),
         };
-        if (unknown != 0 || hidden != 0)
+        var showDiagnosticsReview = unknown != 0 || hidden != 0 ||
+                                    !inactiveClassificationAvailable;
+        if (showDiagnosticsReview)
         {
-            children.Add(UI.Text(
-                $"Hidden: {unknown} unknown declarations, {hidden} undeclared or unavailable decisions",
-                "permissions.hidden", "Hidden permission diagnostics").Classes("diagnostic-line"));
+            var label = inactiveClassificationAvailable
+                ? $"Review unsupported or inactive access · {unknown} requests · {hidden} saved decisions"
+                : $"Review unsupported or inactive access · {unknown} requests · inactive classification unavailable";
+            children.Add(UI.Button(label, "open.permission-diagnostics",
+                    "permissions.diagnostics.open")
+                .Busy(busy).Classes("setting-row"));
         }
         for (var index = 0; index < packages.Count; index++)
         {
@@ -283,10 +370,99 @@ public sealed partial class SettingsWidget
         var hasSelectedPackage = selectedPackageId is not null &&
             packages.Any(package => string.Equals(
                 package.Id, selectedPackageId, StringComparison.Ordinal));
-        var initial = packages.Count == 0
-            ? null
-            : $"permission.item.{(hasSelectedPackage ? selectedIndex : 0)}";
+        var initial = showDiagnosticsReview && returnDiagnosticsFocus
+            ? "permissions.diagnostics.open"
+            : packages.Count != 0
+                ? $"permission.item.{(hasSelectedPackage ? selectedIndex : 0)}"
+                : showDiagnosticsReview ? "permissions.diagnostics.open" : null;
         return View(header, scope, initial, "permissions.packages");
+    }
+
+    private WidgetView RenderPermissionDiagnostics(StackElement header)
+    {
+        IReadOnlyList<UnknownDeclaration> unknownDetails;
+        IReadOnlyList<HiddenConsentDecision> hiddenDetails;
+        int unknown;
+        int hidden;
+        bool inactiveClassificationAvailable;
+        lock (_stateLock)
+        {
+            unknownDetails = _unknownDeclarationDetails;
+            hiddenDetails = _hiddenConsentDetails;
+            unknown = _unknownDeclarations;
+            hidden = _hiddenConsentEntries;
+            inactiveClassificationAvailable = _inactiveConsentClassificationAvailable;
+        }
+
+        var children = new List<WidgetElement>
+        {
+            UI.Text("Unsupported or inactive access", "permission-diagnostics.heading",
+                    "Unsupported or inactive widget access")
+                .Classes("page-heading"),
+            UI.Text(
+                    "These rows are read-only. Unsupported requests are ignored; inactive saved decisions do not grant access to the current package identity.",
+                    "permission-diagnostics.help", "Permission diagnostic help")
+                .Classes("page-help"),
+        };
+        var focusableIds = new List<string>();
+        if (!inactiveClassificationAvailable)
+        {
+            const string unavailableId = "permission-diagnostics.classification-unavailable";
+            children.Add(ReadOnlyDiagnosticRow(
+                "Inactive saved-decision classification is unavailable until the complete package catalog and consent document are valid.",
+                unavailableId));
+            focusableIds.Add(unavailableId);
+        }
+
+        foreach (var item in unknownDetails)
+        {
+            var requirement = item.IsRequired ? "required" : "optional";
+            var packageName = SafeDiagnosticComponent(item.PackageName);
+            var capabilityId = SafeDiagnosticComponent(item.CapabilityId);
+            var authority = AuthorityDiagnosticLabel(item.AuthorityPublisher);
+            var label = $"Unsupported {requirement} request · {packageName} · {capabilityId} · {authority}";
+            var id = PermissionDiagnosticId("unknown", item.PackageId,
+                item.AuthorityPublisher, item.CapabilityId, requirement);
+            children.Add(ReadOnlyDiagnosticRow(label, id));
+            focusableIds.Add(id);
+        }
+        foreach (var item in hiddenDetails)
+        {
+            var packageName = SafeDiagnosticComponent(item.PackageName);
+            var capabilityId = SafeDiagnosticComponent(item.CapabilityId);
+            var capabilityName = SafeDiagnosticComponent(CapabilityName(item.CapabilityId));
+            var authority = AuthorityDiagnosticLabel(item.PublisherId);
+            var label = $"Inactive {item.Decision} decision · {packageName} · {capabilityName} ({capabilityId}) · {authority}";
+            var id = PermissionDiagnosticId("inactive", item.PackageId,
+                item.PublisherId, item.CapabilityId, item.Decision.ToString());
+            children.Add(ReadOnlyDiagnosticRow(label, id));
+            focusableIds.Add(id);
+        }
+
+        var displayed = unknownDetails.Count + hiddenDetails.Count;
+        var undisplayed = Math.Max(0, checked(unknown + hidden - displayed));
+        if (undisplayed != 0)
+        {
+            const string moreId = "permission-diagnostics.more";
+            children.Add(ReadOnlyDiagnosticRow(
+                $"{undisplayed} more diagnostics are hidden by the {MaximumPermissionDiagnostics}-item display limit.",
+                moreId));
+            focusableIds.Add(moreId);
+        }
+        if (focusableIds.Count == 0)
+        {
+            const string emptyId = "permission-diagnostics.empty";
+            children.Add(ReadOnlyDiagnosticRow(
+                "No unsupported requests or inactive saved decisions were found.", emptyId));
+            focusableIds.Add(emptyId);
+        }
+
+        LinkVertical(children);
+        var scope = UI.VerticalScroll("permission-diagnostics.page", children.ToArray())
+            .InputScope("permission-diagnostics.page")
+            .Shortcut(ControllerButton.B, "back")
+            .Classes("settings-page");
+        return View(header, scope, focusableIds[0], "permission-diagnostics.page");
     }
 
     private WidgetView RenderPackageCapabilities(StackElement header, bool busy)
@@ -483,7 +659,22 @@ public sealed partial class SettingsWidget
             _selectedPackageId = package.Id;
             _selectedPublisherId = package.AuthorityPublisher;
             _selectedCapabilityId = null;
+            _permissionDiagnosticsReturnFocus = false;
             _page = SettingsPage.PackageCapabilities;
+        }
+        Invalidate();
+    }
+
+    private void OpenPermissionDiagnostics()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.Permissions ||
+                (_unknownDeclarations == 0 && _hiddenConsentEntries == 0 &&
+                 _inactiveConsentClassificationAvailable))
+                return;
+            _permissionDiagnosticsReturnFocus = true;
+            _page = SettingsPage.PermissionDiagnostics;
         }
         Invalidate();
     }
@@ -519,6 +710,70 @@ public sealed partial class SettingsWidget
     private static string ConsentKey(string packageId, string publisherId, string capabilityId) =>
         packageId + "\n" + publisherId + "\n" + capabilityId;
 
+    private static ButtonElement ReadOnlyDiagnosticRow(string label, string id)
+    {
+        var safeLabel = SafeDiagnosticText(label);
+        return UI.Button(safeLabel, "permission-diagnostics.read-only", id)
+            .Disabled(true)
+            .Classes("setting-row", "permission-diagnostic-row") with
+        {
+            AccessibilityLabel = safeLabel,
+        };
+    }
+
+    private static string AuthorityDiagnosticLabel(string publisherId)
+    {
+        var fingerprint = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(publisherId)))[..12]
+            .ToLowerInvariant();
+        return $"authority {SafeDiagnosticComponent(publisherId)} · {fingerprint}";
+    }
+
+    private static string PermissionDiagnosticId(string kind, params string[] components)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", components)));
+        return $"permission-diagnostics.{kind}.{Convert.ToHexString(bytes).ToLowerInvariant()}";
+    }
+
+    private static string SafeDiagnosticText(string value) =>
+        SafeDiagnosticComponent(value, maxRunes: 640);
+
+    private static string SafeDiagnosticComponent(
+        string? value,
+        int maxRunes = MaximumDiagnosticComponentRunes)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "Unnamed";
+        var builder = new StringBuilder(Math.Min(value.Length, maxRunes + 1));
+        var pendingSpace = false;
+        var appended = 0;
+        var truncated = false;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            var category = Rune.GetUnicodeCategory(rune);
+            if (Rune.IsWhiteSpace(rune) || category is UnicodeCategory.Control or
+                UnicodeCategory.Format or UnicodeCategory.LineSeparator or
+                UnicodeCategory.ParagraphSeparator)
+            {
+                pendingSpace = builder.Length != 0;
+                continue;
+            }
+            if (appended >= maxRunes)
+            {
+                truncated = true;
+                break;
+            }
+            if (pendingSpace)
+            {
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+            builder.Append(rune.ToString());
+            appended++;
+        }
+        if (truncated) builder.Append('…');
+        return builder.Length == 0 ? "Unnamed" : builder.ToString();
+    }
+
     private static string DecisionLabel(ConsentDecision? decision) => decision switch
     {
         ConsentDecision.Grant => "Granted by you",
@@ -544,6 +799,8 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.NetworkBluetoothReadV1 => "See Bluetooth devices",
         PlatformCapabilities.NetworkBluetoothRadioControlV1 => "Turn Bluetooth on or off",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
+        PlatformCapabilities.AppLibraryReadV1 => "See installed apps",
+        PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
         _ => "Unsupported capability",
@@ -590,6 +847,13 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.RecentActivityReadV1 =>
             "See a bounded list of privacy-filtered running applications observed after you allow access. " +
             "Widgets receive only display names, app kinds, state, and opaque IDs—never process IDs, paths, command lines, or window handles.",
+        PlatformCapabilities.AppLibraryReadV1 =>
+            "See a bounded catalog of Start Menu application names, conservative kinds, and opaque IDs. " +
+            "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
+        PlatformCapabilities.AppLibraryLaunchV1 =>
+            "Launch one selected Start Menu registration by its opaque ID while the widget is interactive. " +
+            "The trusted host rechecks the exact registration before asking Windows to open it; widgets cannot " +
+            "supply paths, arguments, working directories, elevation, or foreground-window commands.",
         PlatformCapabilities.MediaSessionsReadV1 =>
             "See sanitized app, title, artist, playback, progress, and supported-control state from " +
             "Windows media sessions. Widgets never receive package IDs, process IDs, paths, handles, or native objects.",

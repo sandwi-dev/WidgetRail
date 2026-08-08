@@ -118,8 +118,10 @@ slider:focused { outline-color: var(--focus); outline-width: 2px; outline-offset
 .gbar-segmented-tabs {
   gap: 3px;
   padding: 3px;
+  min-height: 50px;
   background: var(--surface-subtle);
   corner-radius: 11px;
+  flex-shrink: 0;
 }
 .gbar-segmented-tabs__tab {
   min-width: 96px;

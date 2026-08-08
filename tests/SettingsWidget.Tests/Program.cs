@@ -34,10 +34,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
     ("Permissions use nested controller-scroll scopes and B-only Back", PermissionScopesAreScrollable),
     ("Permission screens explain declarations consent enforcement and Windows access", PermissionModelIsClear),
+    ("App-library copy separates opaque catalog read from exact launch", AppLibraryPermissionCopy),
     ("Bluetooth permission copy states privacy and radio-control boundaries", BluetoothPermissionCopy),
     ("Capability grant confirms and deny revokes atomically", GrantAndRevoke),
     ("Consent decisions isolate package publisher identities", PublisherIsolation),
     ("Undeclared capabilities and decisions are never actionable", UndeclaredCapabilitiesAreHidden),
+    ("Permission diagnostics are bounded sanitized and controller reachable", PermissionDiagnosticsAreBounded),
+    ("Truncated permission catalogs suppress inactive-decision classification", TruncatedPermissionCatalogSuppressesClassification),
     ("Malformed catalog and consent fail closed with diagnostics", MalformedPermissionStateFailsClosed),
     ("Retired consent migrates without blocking current permission review", RetiredConsentMigration),
     ("Permission catalog reloads only on activation", PermissionActivationReload),
@@ -886,6 +889,41 @@ static async Task PermissionModelIsClear()
     Assert.Valid(optional);
 }
 
+static async Task AppLibraryPermissionCopy()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(catalogRoot, "dev.test.launcher", "dev.publisher.launcher", "Launcher",
+        [PlatformCapabilities.AppLibraryReadV1], [PlatformCapabilities.AppLibraryLaunchV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    var capabilities = Snapshot(widget);
+    Assert.Contains("See installed apps", Button(capabilities.Root, "capability.item.0").Text!);
+    await Action(widget, "capability.select.0");
+    var decision = Snapshot(widget);
+    var description = Text(decision.Root, "capability.description").Text!;
+    Assert.Contains("opaque IDs", description);
+    Assert.Contains("never receive paths", description);
+    Assert.Contains("launch authority", description);
+    await Action(widget, "back");
+    var launchCapabilities = Snapshot(widget);
+    Assert.Contains("Launch installed apps",
+        Button(launchCapabilities.Root, "capability.item.1").Text!);
+    await Action(widget, "capability.select.1");
+    var launchDecision = Snapshot(widget);
+    var launchDescription = Text(launchDecision.Root, "capability.description").Text!;
+    Assert.Contains("trusted host rechecks", launchDescription);
+    Assert.Contains("cannot supply paths", launchDescription);
+    Assert.Contains("foreground-window commands", launchDescription);
+    Assert.Valid(capabilities);
+    Assert.Valid(decision);
+    Assert.Valid(launchCapabilities);
+    Assert.Valid(launchDecision);
+}
+
 static async Task BluetoothPermissionCopy()
 {
     using var temp = new TemporaryDirectory();
@@ -991,8 +1029,46 @@ static async Task UndeclaredCapabilitiesAreHidden()
     await Activate(widget);
     await Action(widget, "open.permissions");
     var packages = Snapshot(widget);
-    Assert.Contains("Hidden: 1 unknown declarations, 1 undeclared",
-        Text(packages.Root, "permissions.hidden").Text!);
+    var review = Button(packages.Root, "permissions.diagnostics.open");
+    Assert.Contains("1 requests · 1 saved decisions", review.Text!);
+    Assert.True(!Nodes(packages.Root).Any(node =>
+        node.Id.StartsWith("permission-diagnostics.", StringComparison.Ordinal)),
+        "Permission details leaked inline ahead of the package controls.");
+
+    await Action(widget, "open.permission-diagnostics");
+    var diagnostics = Snapshot(widget);
+    Assert.Equal(SettingsPage.PermissionDiagnostics, widget.CurrentPage);
+    Assert.HasShortcut(diagnostics.Root, "permission-diagnostics.page", ControllerButton.B, "back");
+    Assert.True(!Buttons(diagnostics.Root).Any(button => button.ActionId == "back"),
+        "Diagnostic review rendered a redundant Back action.");
+    var diagnosticRows = Buttons(diagnostics.Root)
+        .Where(button => button.Id.StartsWith("permission-diagnostics.unknown.", StringComparison.Ordinal) ||
+                         button.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal))
+        .ToArray();
+    Assert.Equal(2, diagnosticRows.Length);
+    Assert.True(diagnosticRows.All(row => row.IsDisabled is true),
+        "Read-only permission diagnostics became actionable.");
+    var unknown = diagnosticRows.Single(row =>
+        row.Id.StartsWith("permission-diagnostics.unknown.", StringComparison.Ordinal)).Text!;
+    Assert.Contains("Minimal", unknown);
+    Assert.Contains("network.client:example.test", unknown);
+    Assert.Contains("optional", unknown);
+    var inactive = diagnosticRows.Single(row =>
+        row.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal)).Text!;
+    Assert.Contains("Minimal", inactive);
+    Assert.Contains("Control audio sessions", inactive);
+    Assert.Contains(PlatformCapabilities.AudioSessionsControlV1, inactive);
+    Assert.Contains("Grant", inactive);
+    Assert.Contains("dev.publisher.minimal", inactive);
+    Assert.Equal(diagnosticRows[0].Id, diagnostics.InitialFocusId);
+    Assert.Equal(diagnosticRows[1].Id, diagnosticRows[0].Focus!.Down);
+    Assert.Equal(diagnosticRows[0].Id, diagnosticRows[1].Focus!.Up);
+    Assert.Valid(diagnostics);
+
+    await Action(widget, "back");
+    var restoredPackages = Snapshot(widget);
+    Assert.Equal(SettingsPage.Permissions, widget.CurrentPage);
+    Assert.Equal("permissions.diagnostics.open", restoredPackages.InitialFocusId);
     await Action(widget, "permission.select.0");
     var capabilities = Snapshot(widget);
     Assert.Equal(1, Buttons(capabilities.Root).Count(button =>
@@ -1000,6 +1076,112 @@ static async Task UndeclaredCapabilitiesAreHidden()
     Assert.True(!Nodes(capabilities.Root).Any(node =>
         node.Text?.Contains("Control audio", StringComparison.OrdinalIgnoreCase) == true),
         "Undeclared stored grant became actionable.");
+}
+
+static async Task PermissionDiagnosticsAreBounded()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    var unknown = Enumerable.Range(0, 12)
+        .Select(index => index == 0
+            ? "network.client:" + new string('a', 113)
+            : $"network.client:diagnostic-{index:D2}.example")
+        .ToArray();
+    const string packageId = "dev.test.diagnostics";
+    WriteInstalledWidget(catalogRoot, packageId, "dev.publisher.current",
+        "Helper " + new string('N', 73),
+        [PlatformCapabilities.AudioSessionsReadV1], unknown);
+    for (var index = 0; index < 12; index++)
+    {
+        await consent.SetDecisionAsync(
+            new(packageId, $"dev.publisher.retired{index:D2}", "test"),
+            PlatformCapabilities.AudioSessionsControlV1,
+            index % 2 == 0 ? ConsentDecision.Grant : ConsentDecision.Deny);
+    }
+
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    var packages = Snapshot(widget);
+    Assert.Contains("12 requests · 12 saved decisions",
+        Button(packages.Root, "permissions.diagnostics.open").Text!);
+    await Action(widget, "open.permission-diagnostics");
+    var diagnostics = Snapshot(widget);
+    var rows = Buttons(diagnostics.Root).ToArray();
+    var exactDetails = rows.Where(row =>
+        row.Id.StartsWith("permission-diagnostics.unknown.", StringComparison.Ordinal) ||
+        row.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal)).ToArray();
+    Assert.Equal(16, exactDetails.Length);
+    Assert.Equal(12, exactDetails.Count(row =>
+        row.Id.StartsWith("permission-diagnostics.unknown.", StringComparison.Ordinal)));
+    Assert.Equal(4, exactDetails.Count(row =>
+        row.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal)));
+    Assert.Contains("8 more", Button(diagnostics.Root, "permission-diagnostics.more").Text!);
+    Assert.True(rows.All(row => row.IsDisabled is true),
+        "Permission diagnostic review exposed an actionable row.");
+    Assert.Equal(rows[0].Id, diagnostics.InitialFocusId);
+    for (var index = 0; index < rows.Length; index++)
+    {
+        Assert.Equal(index == 0 ? null : rows[index - 1].Id, rows[index].Focus!.Up);
+        Assert.Equal(index == rows.Length - 1 ? null : rows[index + 1].Id,
+            rows[index].Focus!.Down);
+    }
+    Assert.Equal(rows.Length, rows.Select(row => row.Id).Distinct(StringComparer.Ordinal).Count());
+    Assert.True(Nodes(diagnostics.Root).All(node =>
+            (node.Text?.Length ?? 0) < 4096 &&
+            (node.AccessibilityLabel?.Length ?? 0) < 4096 &&
+            !(node.Text?.Contains('\n') ?? false) &&
+            !(node.Text?.Contains('\u202E') ?? false)),
+        "Diagnostic display or accessibility text escaped its one-line protocol budget.");
+    var retiredAuthorities = exactDetails
+        .Where(row => row.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal))
+        .Select(row => row.Text!)
+        .ToArray();
+    Assert.True(retiredAuthorities.All(text => text.Contains("authority dev.publisher.retired", StringComparison.Ordinal)),
+        "Exact retired publisher authority was not visible.");
+    Assert.Equal(retiredAuthorities.Length,
+        retiredAuthorities.Distinct(StringComparer.Ordinal).Count());
+    var rerendered = Snapshot(widget);
+    Assert.SequenceEqual(rows.Select(row => row.Id), Buttons(rerendered.Root).Select(row => row.Id));
+    Assert.Valid(diagnostics);
+    Assert.Valid(rerendered);
+}
+
+static async Task TruncatedPermissionCatalogSuppressesClassification()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    for (var index = 0; index < 257; index++)
+    {
+        WriteInstalledWidget(catalogRoot, $"dev.test.widget{index:D3}",
+            $"dev.publisher.widget{index:D3}", $"Widget {index:D3}",
+            [PlatformCapabilities.AudioSessionsReadV1], []);
+    }
+    var omittedId = "dev.test.widget256";
+    await consent.SetDecisionAsync(new(omittedId,
+            InstalledAuthority(catalogRoot, omittedId), "test"),
+        PlatformCapabilities.AudioSessionsReadV1, ConsentDecision.Grant);
+
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    var packages = Snapshot(widget);
+    var review = Button(packages.Root, "permissions.diagnostics.open");
+    Assert.Contains("inactive classification unavailable", review.Text!);
+    Assert.True(!review.Text!.Contains("saved decisions", StringComparison.OrdinalIgnoreCase),
+        "An incomplete catalog reported a false inactive-decision count.");
+    await Action(widget, "open.permission-diagnostics");
+    var diagnostics = Snapshot(widget);
+    Assert.True(Buttons(diagnostics.Root).Any(button =>
+        button.Id == "permission-diagnostics.classification-unavailable"),
+        "The review did not explain why inactive classification was unavailable.");
+    Assert.True(!Buttons(diagnostics.Root).Any(button =>
+        button.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal)),
+        "A truncated catalog classified a potentially active decision as inactive.");
+    Assert.Valid(packages);
+    Assert.Valid(diagnostics);
 }
 
 static async Task MalformedPermissionStateFailsClosed()
@@ -1018,6 +1200,18 @@ static async Task MalformedPermissionStateFailsClosed()
     Assert.True(!Buttons(catalogFailure.Root).Any(button =>
         button.Id.StartsWith("permission.item.", StringComparison.Ordinal)),
         "Malformed catalog exposed actionable packages.");
+    Assert.Contains("inactive classification unavailable",
+        Button(catalogFailure.Root, "permissions.diagnostics.open").Text!);
+    await Action(widget, "open.permission-diagnostics");
+    var catalogDiagnostics = Snapshot(widget);
+    Assert.True(Buttons(catalogDiagnostics.Root).Any(button =>
+        button.Id == "permission-diagnostics.classification-unavailable"),
+        "Malformed catalog did not expose the bounded classification warning.");
+    Assert.True(!Buttons(catalogDiagnostics.Root).Any(button =>
+        button.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal)),
+        "Malformed catalog produced an unsafe inactive-decision classification.");
+    Assert.Valid(catalogFailure);
+    Assert.Valid(catalogDiagnostics);
 
     var validCatalog = Path.Combine(temp.Path, "valid-catalog");
     WriteInstalledWidget(validCatalog, "dev.test.valid", "dev.publisher.valid", "Valid",
@@ -1029,6 +1223,9 @@ static async Task MalformedPermissionStateFailsClosed()
         validCatalog, new ConsentStore(consentRoot));
     await Activate(consentFailureWidget);
     await Action(consentFailureWidget, "open.permissions");
+    var invalidConsentPackages = Snapshot(consentFailureWidget);
+    Assert.Contains("inactive classification unavailable",
+        Button(invalidConsentPackages.Root, "permissions.diagnostics.open").Text!);
     await Action(consentFailureWidget, "permission.select.0");
     var consentFailure = Snapshot(consentFailureWidget);
     Assert.Contains("invalid_consent", Text(consentFailure.Root, "capabilities.diagnostic").Text!);

@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.firstparty.games-apps",
+  "publisher": "org.gbar.firstparty",
+  "name": "Games & Apps",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/GamesAppsWidget.dll",
+    "type": "GameBarAlternative.FirstPartyWidgets.GamesApps.GamesAppsWidget"
+  },
+  "permissions": [
+    "system.apps.library.read.v1"
+  ],
+  "optionalPermissions": [
+    "system.apps.library.launch.v1"
+  ],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "unload-after-idle",
+    "idleSeconds": 120
+  },
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64"
+  ]
+}

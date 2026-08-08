@@ -48,6 +48,7 @@ public sealed class AudioMixerWidget : Widget
     private AudioMixerViewState _viewState = AudioMixerViewState.Initial;
     private string? _selectedSessionId;
     private int _selectedIndex;
+    private PreferredFocusTarget _preferredFocusTarget = PreferredFocusTarget.MasterOutput;
     private string _status = "Audio sessions load when this widget becomes visible";
     private bool _statusIsError;
     private readonly Dictionary<string, SessionPendingState> _sessionPending =
@@ -101,6 +102,8 @@ public sealed class AudioMixerWidget : Widget
         WidgetAudioOutput? output;
         IReadOnlyList<WidgetAudioDevice> devices;
         WidgetAudioInput? input;
+        PreferredFocusTarget preferredFocusTarget;
+        string? selectedSessionId;
         string status;
         bool statusIsError;
         lock (_stateLock)
@@ -111,6 +114,8 @@ public sealed class AudioMixerWidget : Widget
             output = _output;
             devices = _devices;
             input = _input;
+            preferredFocusTarget = _preferredFocusTarget;
+            selectedSessionId = _selectedSessionId;
             status = _status;
             statusIsError = _statusIsError;
             pendingBySessionId = _sessionPending.ToDictionary(
@@ -132,6 +137,14 @@ public sealed class AudioMixerWidget : Widget
 
         var sessionControls = sessions.Select(session => controlsBySessionId[session.SessionId]).ToArray();
         var firstControls = sessionControls.FirstOrDefault();
+        var initialFocusId = preferredFocusTarget switch
+        {
+            PreferredFocusTarget.Microphone when input is not null => "audio.input.volume.slider",
+            PreferredFocusTarget.Session when selectedSessionId is not null &&
+                controlsBySessionId.TryGetValue(selectedSessionId, out var selectedControls) =>
+                selectedControls.VolumeSlider,
+            _ => "audio.master.volume.slider",
+        };
 
         var masterPercent = VolumePercent(output.Volume);
         var masterMute = UI.Icon(
@@ -237,7 +250,7 @@ public sealed class AudioMixerWidget : Widget
             var emptyRoot = UI.VerticalScroll("audio.root", emptyChildren.ToArray())
                 .InputScope("audio-mixer")
                 .Classes("audio-mixer-widget", "has-master", "has-state");
-            return new WidgetView(emptyRoot, InitialFocusId: "audio.master.volume.slider", Surface: CompactSurface);
+            return new WidgetView(emptyRoot, InitialFocusId: initialFocusId, Surface: CompactSurface);
         }
 
         var sessionRows = new WidgetElement[sessions.Count];
@@ -268,7 +281,7 @@ public sealed class AudioMixerWidget : Widget
             .InputScope("audio-mixer")
             .Classes("audio-mixer-widget", "has-sessions");
 
-        return new WidgetView(root, InitialFocusId: "audio.master.volume.slider", Surface: CompactSurface);
+        return new WidgetView(root, InitialFocusId: initialFocusId, Surface: CompactSurface);
     }
 
     private static StackElement RenderSessionRow(
@@ -394,6 +407,45 @@ public sealed class AudioMixerWidget : Widget
             case "retry":
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
                 break;
+        }
+    }
+
+    public override ValueTask<bool> OnControllerInputAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        RememberFocusedControl(input);
+        return base.OnControllerInputAsync(input, cancellationToken);
+    }
+
+    private void RememberFocusedControl(ControllerInputEvent input)
+    {
+        if (input.Context != ControllerInputContext.OpenWidget ||
+            !string.Equals(input.ActiveInputScopeId, "audio-mixer", StringComparison.Ordinal) ||
+            input.FocusedElementId is not { } focusedId)
+            return;
+
+        lock (_stateLock)
+        {
+            if (focusedId == "audio.master.volume.slider")
+            {
+                _preferredFocusTarget = PreferredFocusTarget.MasterOutput;
+                return;
+            }
+            if (focusedId == "audio.input.volume.slider" && _input is not null)
+            {
+                _preferredFocusTarget = PreferredFocusTarget.Microphone;
+                return;
+            }
+            foreach (var pair in _sessionControls)
+            {
+                if (!string.Equals(pair.Value.VolumeSlider, focusedId, StringComparison.Ordinal))
+                    continue;
+                SelectSessionLocked(pair.Key);
+                return;
+            }
         }
     }
 
@@ -1023,6 +1075,7 @@ public sealed class AudioMixerWidget : Widget
         lock (_stateLock)
         {
             if (_output is not { } output) return ValueTask.CompletedTask;
+            _preferredFocusTarget = PreferredFocusTarget.MasterOutput;
             var desired = RoundVolume(requestedVolume);
             if (VolumesMatch(desired, output.Volume)) return ValueTask.CompletedTask;
             _outputPending.VolumeTarget = desired;
@@ -1053,6 +1106,7 @@ public sealed class AudioMixerWidget : Widget
         lock (_stateLock)
         {
             if (_output is not { } output) return ValueTask.CompletedTask;
+            _preferredFocusTarget = PreferredFocusTarget.MasterOutput;
             var desired = !output.IsMuted;
             _outputPending.MuteTarget = desired;
             _outputPending.MuteRevision++;
@@ -1084,6 +1138,7 @@ public sealed class AudioMixerWidget : Widget
         lock (_stateLock)
         {
             if (_input is not { } input) return ValueTask.CompletedTask;
+            _preferredFocusTarget = PreferredFocusTarget.Microphone;
             var desired = RoundVolume(requestedVolume);
             if (VolumesMatch(desired, input.Volume)) return ValueTask.CompletedTask;
             _inputPending.VolumeTarget = desired;
@@ -1114,6 +1169,7 @@ public sealed class AudioMixerWidget : Widget
         lock (_stateLock)
         {
             if (_input is not { } input) return ValueTask.CompletedTask;
+            _preferredFocusTarget = PreferredFocusTarget.Microphone;
             var desired = !input.IsMuted;
             _inputPending.MuteTarget = desired;
             _inputPending.MuteRevision++;
@@ -1982,6 +2038,7 @@ public sealed class AudioMixerWidget : Widget
         if (index < 0) return;
         _selectedIndex = index;
         _selectedSessionId = sessionId;
+        _preferredFocusTarget = PreferredFocusTarget.Session;
     }
 
     private bool TryResolveSessionAction(
@@ -2032,6 +2089,7 @@ public sealed class AudioMixerWidget : Widget
             _input = null;
             _selectedSessionId = null;
             _selectedIndex = 0;
+            _preferredFocusTarget = PreferredFocusTarget.MasterOutput;
             _sessionPending.Clear();
             _outputPending.Reset();
             _inputPending.Reset();
@@ -2130,6 +2188,13 @@ public sealed class AudioMixerWidget : Widget
     }
 
     private sealed class SessionPendingState : OutputPendingState { }
+
+    private enum PreferredFocusTarget
+    {
+        MasterOutput,
+        Microphone,
+        Session,
+    }
 
     private sealed class SessionControlIds
     {

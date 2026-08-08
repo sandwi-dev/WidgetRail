@@ -26,8 +26,8 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   version-pinned themes, platform/widget/user cascade, no-poll reload, and live
   native shell appearance plus post-cascade text/contrast/motion/transparency
   accessibility policy
-- Controller-first Settings, YT Music, Audio Mixer, Network Controls, and Recent
-  Apps workers
+- Controller-first Settings, YT Music, Audio Mixer, Network Controls, Games &
+  Apps, and Now Playing workers
   in the runnable catalog, plus a separate Clock SDK sample
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
@@ -36,13 +36,14 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 - A generic installed-widget worker host with mandatory capability-free
   AppContainer isolation, pre-launch Job Object memory/process/UI containment,
   controller permission review, and typed authenticated audio/network/
-  Bluetooth/recent-activity
+  Bluetooth/recent-activity/app-library/media
   capability transport backed by deterministic simulators and narrow
   event-driven Windows Core Audio, WLAN, Bluetooth, and foreground providers
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
 - A bounded hidden/visible Windows process-tree performance observation harness
-- A read-only, bounded Windows app-library foundation that discovers registered
-  Start Menu applications without observing foreground windows or launching them
+- A bounded Windows app-library provider that discovers Start Menu applications
+  and launches only a current exact revalidated opaque registration while
+  keeping paths, arguments, package identities, and process/window IDs private
 - Managed contract suites plus native state, image-cache, layout, and icon tests
 
 Start with the [documentation index](docs/README.md), the platform-grade
@@ -67,7 +68,8 @@ The complete verification command requires Visual Studio's Desktop development w
 
 - [Documentation index](docs/README.md)
 - [Widget authoring guide and API map](docs/widget-authoring-guide.md)
-- [Recent Apps reference](docs/recent-apps.md)
+- [Games & Apps reference](docs/games-and-apps.md)
+- [Retired Recent Apps reference](docs/recent-apps.md)
 - [Platform architecture](docs/platform-architecture.md)
 - [Widget quickstart](docs/widget-quickstart.md)
 - [Declarative UI](docs/declarative-ui.md) and [GBSS](docs/gbss.md)

@@ -47,6 +47,10 @@ gba::WidgetStyleValue Length(const double number, std::wstring unit = L"px") {
     return {L"length", std::to_wstring(number) + unit, number, std::move(unit)};
 }
 
+gba::WidgetStyleValue LengthList(const wchar_t* value) {
+    return {L"lengthList", value, std::nullopt, {}};
+}
+
 gba::WidgetStyleValue Number(const double number) {
     return {L"number", std::to_wstring(number), number, {}};
 }
@@ -415,6 +419,98 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
              "returning to master output restores the true audio leading edge");
         Check(returned.focusRects.contains(focusOrder.front()),
               "master output remains visible after returning from the last app");
+    }
+}
+
+void SegmentedTabsSurviveConstrainedNetworkSurfaces() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"network-controls.runtime";
+    snapshot.activeInputScopeId = L"network-controls";
+    snapshot.root = Node(L"network.root", L"stack");
+    snapshot.root.inputScopeId = L"network-controls";
+    snapshot.root.baseStyle = {
+        {L"gap", LengthList(L"8px")},
+        {L"padding", LengthList(L"14px")},
+    };
+
+    auto tabs = Node(L"network.tabs", L"row");
+    tabs.baseStyle = {
+        {L"gap", LengthList(L"3px")},
+        {L"padding", LengthList(L"3px")},
+        {L"min-height", Length(50)},
+        {L"flex-shrink", Number(0)},
+    };
+    for (const auto& [id, label] : {
+             std::pair{L"network.tab.wifi", L"Wi-Fi"},
+             std::pair{L"network.tab.bluetooth", L"Bluetooth"},
+         }) {
+        auto tab = Node(id, L"button");
+        tab.text = label;
+        tab.actionId = L"network.tab.select";
+        tab.baseStyle = {
+            {L"min-width", Length(96)},
+            {L"min-height", Length(44)},
+            {L"padding", LengthList(L"9px 14px")},
+            {L"flex-grow", Number(1)},
+        };
+        tab.focusedStyle = {
+            {L"outline-width", Length(2)},
+            {L"outline-offset", Length(-2)},
+        };
+        tabs.children.push_back(std::move(tab));
+    }
+
+    auto body = Node(L"network.wifi.body.scroll", L"scroll");
+    body.scrollAxis = L"vertical";
+    body.baseStyle = {
+        {L"min-height", Length(120)},
+        {L"flex-grow", Number(1)},
+        {L"flex-shrink", Number(1)},
+        {L"gap", LengthList(L"8px")},
+    };
+    for (int index = 0; index < 12; ++index) {
+        body.children.push_back(FixedSpacer(
+            (L"network.row." + std::to_wstring(index)).c_str(), 60));
+    }
+    snapshot.root.children = {
+        FixedSpacer(L"network.header", 60),
+        FixedSpacer(L"network.connection.card", 64),
+        std::move(tabs),
+        std::move(body),
+    };
+
+    struct Scenario final {
+        float viewportHeight;
+        float pixelScale;
+        float textScale;
+    };
+    // 364 DIPs models the standard compact panel content. At maximum interface
+    // scale the work-area clamp can reduce the normalized logical viewport, so
+    // 300 DIPs plus a 1.25 physical-pixel scale covers that constrained path.
+    for (const auto scenario : {
+             Scenario{364.0F, 1.0F, 1.0F},
+             Scenario{300.0F, 1.25F, 1.5F},
+         }) {
+        DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+        gba::DeclarativeRenderOptions options;
+        options.pixelScale = scenario.pixelScale;
+        options.accessibility.textScale = scenario.textScale;
+        for (const auto* focused : {L"network.tab.wifi", L"network.tab.bluetooth"}) {
+            const auto result = renderer.Render(
+                nullptr, snapshot, focused,
+                {0.0F, 0.0F, 560.0F, scenario.viewportHeight}, options);
+            Check(result.focusRects.contains(focused),
+                  "segmented tab remains visible and focusable under vertical pressure");
+            Check(result.navigationEnabled.at(focused),
+                  "segmented tab remains controller navigable at constrained scale");
+            const auto rect = result.focusRects.at(focused);
+            Check(rect.height >= 44.0F,
+                  "segmented tab preserves its controller target and label height");
+            Check(rect.y >= 0.0F && rect.y + rect.height <= scenario.viewportHeight,
+                  "segmented tab remains wholly inside the constrained viewport");
+            Check(rect.x >= 16.0F && rect.x + rect.width <= 544.0F,
+                  "segmented tab retains inset room for an unclipped focus border");
+        }
     }
 }
 
@@ -844,6 +940,7 @@ int main() {
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
     WholeWidgetScrollRevealsAudioMixerControls();
+    SegmentedTabsSurviveConstrainedNetworkSurfaces();
     ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();
     IrrevealableClipsDoNotBecomeFocusTraps();

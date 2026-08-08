@@ -56,8 +56,8 @@ Up/Down navigation.
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
-  audio/network/Bluetooth/recent-activity/media-session services, descriptors,
-  DTOs, events, and errors.
+  audio/network/Bluetooth/recent-activity/app-library/media-session services,
+  descriptors, DTOs, events, and errors.
 - `WidgetRuntime`: lazy out-of-process workers over bounded framed JSON with
   explicit lifecycle transitions, per-start host-owned companion sessions,
   timeouts, failure reporting, and limited restart. Installed/community workers
@@ -92,14 +92,14 @@ Up/Down navigation.
   schema-1 state migration, fail-closed exact version pins, discovery,
   enablement, and pin-preserving order persistence. Enabled compatible packages
   join complete validated live bridge revisions and remain lazy until first use.
-- `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity/media
+- `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity/app-library/media
   capability foundation with a closed versioned grant vocabulary, SID/Low-
   label/PID-bound isolated endpoints plus nonce/
   identity authentication, manifest/consent/lifecycle enforcement, strict
   bounded DTOs/events, atomic consent persistence, bounded/coalesced
   subscriptions, and a deterministic simulator. It is connected to widget
   `HostServices`; the trusted bridge composes the real Windows audio, network,
-  Bluetooth, and foreground-activity backends.
+  Bluetooth, foreground-activity, Start Menu app-library, and media backends.
 - `WindowsAudioProvider`: an event-driven Core Audio backend for sanitized
   per-application sessions on the current default multimedia render endpoint.
   A dedicated MTA owns native objects; callbacks only enqueue coalesced refresh
@@ -125,6 +125,11 @@ Up/Down navigation.
   bounded display names plus per-process-lifetime opaque IDs; activation can
   switch only to a still-running observed window. It does not read UserAssist,
   launch executables, expose PID/path/HWND, or claim game classification.
+- `WindowsAppLibraryProvider`: a lazy bounded current-user/all-user Start Menu
+  `.lnk` catalog. It publishes sanitized names, conservative kinds, and random
+  opaque IDs; launch re-enumerates and requires one exact unchanged shortcut
+  before invoking only the Shell `open` verb. Paths, targets, arguments, AUMIDs,
+  package identities, PIDs, and HWNDs never enter the widget contract.
 - `WindowsMediaProvider`: a lazy, event-driven Windows Global System Media
   Transport Controls (GSMTC) backend. It publishes bounded sanitized sessions
   with broker-issued process-lifetime IDs, retains multiple sessions from the
@@ -142,7 +147,7 @@ Up/Down navigation.
   instance and return a validated snapshot before replacing the last-good
   interactive generation; failed generations retain or restore last good.
 
-Audio Mixer, Network Controls, Recent Apps, and Now Playing are manifest-backed
+Audio Mixer, Network Controls, Games & Apps, and Now Playing are manifest-backed
 `bundledWidgets`: they use the same generic `WidgetWorkerHost`, package-specific
 capability-free AppContainer, authenticated capability broker, lifecycle,
 renderer, and manifest-derived authority as an independently installed
@@ -170,6 +175,13 @@ confirmation; deny/revoke is immediate, missing/invalid state fails closed,
 and first-party packages are not auto-granted. An exact tombstone migrates the
 retired Recent Apps activation decision without discarding current consent;
 arbitrary unknown capability IDs still invalidate the document and fail closed.
+Unsupported declarations and inactive saved decisions now appear behind one
+focusable Review row rather than inline text. Its nested read-only controller
+Scroll uses B-only return, stable opaque IDs, sanitized bounded labels, one
+shared 16-item detail budget, and exact publisher-authority distinction. It
+classifies inactive decisions only when catalog projection and consent are
+valid and complete; otherwise it explicitly reports classification unavailable
+and publishes no inactive rows. It never removes or rewrites consent.
 It reloads settings/themes/
 catalog/permissions once per active lifetime and does not poll in Background.
 The same public compatibility evaluator gates Bridge and Settings: details show
@@ -186,7 +198,12 @@ renders explicit permission, lifecycle, empty, unavailable, and failure states.
 One root controller Scroll contains master, sanitized device summary,
 microphone, and every application row; this replaces the clipped nested session
 viewport and gives `audio.root` one stable host-owned offset/focus-follow
-surface at normal and constrained heights. It also shows sanitized current
+surface at normal and constrained heights. One explicit Up/Down chain reaches
+the true master-output top, optional microphone control, and every application
+through the final bottom row. The widget remembers the last focused master,
+microphone, or stable application target from controller input; reopen restores
+that target, and session churn falls back to the nearest surviving row instead
+of jumping to master. It also shows sanitized current
 default output/input device names and offers controller sliders/mute for the
 current default microphone behind independent optional grants. Endpoint
 selection remains display-only because no supported system-default setter has
@@ -208,6 +225,11 @@ own opaque selected item so returning restores the focus target and lets host
 focus-follow restore its visible location. In Wi-Fi, A starts one explicit scan
 from the Scan control and A or X routes a connection through the exact focused
 row. LT/RT never cycles list items.
+The shared segmented-tab container now has a nonshrinking 50-DIP minimum region
+around 44-DIP tab targets. Native layout regression scenarios at the normal
+compact viewport and a constrained high-interface/high-text-scale viewport
+verify both tabs remain visible, controller-enabled, inside the viewport, and
+inset far enough for an unclipped focus border.
 The real provider returns on `WlanConnect` acceptance, then publishes
 authoritative `Connecting`, `Failed`, and refreshed status events. Its focused
   provider and widget Release suites pass 31/31 and 17/17 respectively. Focused checks do not
@@ -223,23 +245,28 @@ read/control and Bluetooth radio/discovery are now implemented behind separate
 grants; pair/unpair and generic Bluetooth Connect/Disconnect remain outside the
 current surface.
 
-Recent Apps is packaged beside the other first-party widgets. It opens an
-acknowledged recent-activity subscription before fetching once per active
-lifetime, renders a bounded controller Scroll, preserves opaque selection
-across full-snapshot events, and is intentionally read-only. The unreliable
-foreground-activation capability and host-wide foreground delegation were
-removed while the catalog-backed Games & Apps launcher is developed.
-Every observed entry is currently classified conservatively as Application;
-there is no registry/Xbox history import, authoritative game detector, relaunch,
-or arbitrary process targeting.
+Games & Apps has replaced Recent Apps in the bundled catalog and first-party
+package conformance path. It is an ordinary public-SDK package in the generic
+AppContainer, requires `system.apps.library.read.v1`, optionally declares the
+separate `system.apps.library.launch.v1`, loads one 32-item page on entering an
+active lifetime, and renders a horizontal controller Scroll with bounded load-
+more behavior. Launch is enabled only while Interactive and targets only the
+opaque ID associated with the exact action source. Permission, lifecycle,
+healthy-empty, unavailable, stale-item, and generic failure states remain
+controller reachable and sanitized.
 
-The replacement now has an isolated read-only foundation in
-`WindowsAppLibraryProvider`. It lazily scans the current-user and all-user Start
-Menu Programs roots, skips reparse points, parses bounded `.lnk` registrations,
-deduplicates trusted descriptors, and exposes only sanitized names plus random
-opaque IDs. Its 9/9 Release suite includes a real non-mutating machine scan that
-currently finds 148 registered executable shortcuts. Broker/SDK integration,
-AppsFolder packaged applications, icons, classification, and launch remain open.
+The trusted `WindowsAppLibraryProvider` lazily scans the current-user and all-
+user Start Menu Programs roots, skips reparse points, parses bounded `.lnk`
+registrations, deduplicates trusted descriptors, and exposes only sanitized
+names, conservative kinds, and random opaque IDs. Before launch it re-enumerates
+and requires one exact match on scope, trusted target identity, shortcut path,
+and shortcut-content fingerprint, then asks Windows Shell to open only that
+`.lnk` with no supplied arguments, elevation, working directory, or HWND.
+The provider currently discovers only Start Menu executable shortcuts, exposes
+no application icons/artwork, and reports every real entry as Application;
+AppsFolder/UWP and launcher libraries plus authoritative game classification
+remain open. Recent Apps remains only as a read-only foreground-activity API/
+test reference and is not packaged in the current overlay. See [Games & Apps](games-and-apps.md).
 
 Now Playing is the public-SDK media-session reference. It uses only the typed
 `HostServices.Media` surface over the authenticated broker and the event-driven
@@ -256,7 +283,12 @@ identity/PID/snapshot/input-sequence-bound broker lease for at most two seconds.
 It is consumed once without promoting lifecycle or enabling subscriptions.
 Normal declaration, consent, payload, and provider checks still apply.
 
-YT Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
+YT Music remains a temporarily bundled, trusted Job-only worker today; this is
+not its intended permanent product tier. It is planned as the first Community
+addon conformance and migration target once reusable exact-port loopback and
+private per-widget secret services can replace its desktop-user exception. That
+migration is not implemented yet. The current YT Music worker uses the
+YTMDesktop2 loopback API, performs a non-blocking automatic
 connection attempt, and renders media metadata, artwork, transport state, and
 dashboard quick actions through the declarative protocol. It auto-connects on
 first entry into Visible/Interactive, interpolates progress there at four Hz,
@@ -427,8 +459,8 @@ two-clock dashboard-gesture propagation. Its focused Release harness passes
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK and YT Music Release suites pass 44/44 and
-38/38 respectively. The current Settings Release suite passes 34/34, including
+bounded cleanup. The current SDK and YT Music Release suites pass 46/46 and
+38/38 respectively. The current Settings Release suite passes 39/39, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
@@ -451,7 +483,7 @@ passes 29/29, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
-gesture derivation. PlatformBroker passes 34/34, including closed isolated-
+gesture derivation. PlatformBroker passes 36/36, including closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
 consent/lifecycle gates, revocation, and cancellation of already in-flight
@@ -462,11 +494,13 @@ request integration also passes with the exact SID, Low-label global endpoint,
 expected PID, nonce, and widget identity checks in force.
  The generic worker-host suite passes 9/9, including that real typed broker
  request from an AppContainer worker. Audio provider and Audio Mixer pass 15/15
- and 24/24; Network provider and Network Controls pass 31/31 and 17/17.
- Bluetooth provider passes 11/11; Recent Apps and its Windows activity provider
- pass 8/8 and 10/10; Windows Media provider and Now Playing pass 11/11 and 9/9.
+ and 25/25; Network provider and Network Controls pass 31/31 and 17/17.
+ Bluetooth provider passes 11/11; Games & Apps and its Windows app-library
+ provider pass 6/6 and 13/13, including exact shortcut launch revalidation.
+ The retained Recent Apps and Windows activity reference suites pass 8/8 and
+ 10/10; Windows Media provider and Now Playing pass 11/11 and 9/9.
  The first-party conformance suite passes 4/4 by building and installing the
- actual Audio Mixer, Network Controls, Recent Apps, and Now Playing packages,
+ actual Audio Mixer, Network Controls, Games & Apps, and Now Playing packages,
  launching each with the generic host in its package AppContainer, and observing
  a safe brokered action through simulated platform providers. Pre-resume native
  fault injection remains an explicit release-test gap.
@@ -505,7 +539,7 @@ with C++ installed:
 ## Honest limitations
 
 - The generic native renderer handles the current declarative node kinds and
-  renders YT Music, Settings, Audio Mixer, Network Controls, Recent Apps, Now
+  renders YT Music, Settings, Audio Mixer, Network Controls, Games & Apps, Now
   Playing, and installed widgets through catalog descriptors. Responsive
   viewport/containment math is
   covered broadly; physical mixed-DPI, localization, accessibility, and visual
@@ -521,7 +555,10 @@ with C++ installed:
   the separate Settings consent flow.
 - Mandatory capability-free AppContainer isolation is implemented for every
   installed/community worker, while trusted bundled Settings and YT Music
-  temporarily remain Job-only for desktop-user dependencies. Publisher
+  temporarily remain Job-only for desktop-user dependencies. YT Music is the
+  planned first Community-addon migration/conformance target, not a permanent
+  Built-in classification; the required loopback/secret broker work and actual
+  package migration remain unimplemented. Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The
   narrow Core Audio and Windows network backends still need broader hardware/

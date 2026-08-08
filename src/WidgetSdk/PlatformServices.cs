@@ -232,6 +232,34 @@ public sealed record WidgetRecentActivity(
 public sealed record WidgetRecentActivitiesChanged(
     [property: JsonRequired] IReadOnlyList<WidgetRecentActivity> Activities);
 
+public enum WidgetAppLibraryKind
+{
+    Unknown,
+    Application,
+    Game,
+}
+
+/// <summary>
+/// Sanitized Start Menu app metadata. AppId is an opaque host token and is the
+/// only identifier exposed to widgets; it is not a path, command line, AUMID,
+/// package identity, or launcher-specific identifier.
+/// </summary>
+public sealed record WidgetAppLibraryItem(
+    [property: JsonRequired] string AppId,
+    [property: JsonRequired] string DisplayName,
+    [property: JsonRequired] WidgetAppLibraryKind Kind);
+
+public sealed record WidgetAppLibraryPageRequest(
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit);
+
+public sealed record WidgetAppLibraryPage(
+    [property: JsonRequired] IReadOnlyList<WidgetAppLibraryItem> Items,
+    [property: JsonRequired] int? NextOffset);
+
+public sealed record LaunchWidgetAppLibraryItemRequest(
+    [property: JsonRequired] string AppId);
+
 public enum WidgetMediaPlaybackStatus
 {
     Closed,
@@ -384,6 +412,17 @@ public static class WidgetRecentActivityCapabilities
 
     public static WidgetCapabilityEvent<WidgetRecentActivitiesChanged> Changed { get; } =
         new("system.activity.recent.read.v1", "activity.recent.changed");
+}
+
+/// <summary>Typed, read-only launchable Start Menu library contract.</summary>
+public static class WidgetAppLibraryCapabilities
+{
+    public static WidgetCapabilityOperation<WidgetAppLibraryPageRequest, WidgetAppLibraryPage>
+        GetPage { get; } = new("system.apps.library.read.v1", "apps.library.list");
+
+    public static WidgetCapabilityOperation<LaunchWidgetAppLibraryItemRequest,
+        WidgetCapabilityAcknowledgement> Launch { get; } =
+        new("system.apps.library.launch.v1", "apps.library.launch");
 }
 
 /// <summary>Typed, sanitized Windows system-media-session contracts.</summary>
@@ -673,6 +712,49 @@ public sealed class WidgetRecentActivityService
         OpenSubscriptionAsync(CancellationToken cancellationToken = default) =>
         _client.OpenSubscriptionAsync(
             WidgetRecentActivityCapabilities.Changed, cancellationToken);
+}
+
+public sealed class WidgetAppLibraryService
+{
+    public const int MaximumItems = 512;
+    public const int MaximumPageSize = 64;
+    private readonly IWidgetCapabilityClient _client;
+
+    internal WidgetAppLibraryService(IWidgetCapabilityClient client) => _client = client;
+
+    /// <summary>
+    /// Reads one page. Offset zero starts a reconciled host snapshot; nonzero
+    /// offsets continue that immutable snapshot so paging cannot skip or
+    /// duplicate apps while the Start Menu changes.
+    /// </summary>
+    public ValueTask<WidgetAppLibraryPage> GetPageAsync(
+        int offset = 0,
+        int limit = MaximumPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (offset is < 0 or > MaximumItems)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        if (limit is < 1 or > MaximumPageSize)
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        return _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.GetPage,
+            new WidgetAppLibraryPageRequest(offset, limit),
+            cancellationToken);
+    }
+
+    public async ValueTask LaunchAsync(
+        string appId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(appId);
+        var response = await _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.Launch,
+            new LaunchWidgetAppLibraryItemRequest(appId),
+            cancellationToken).ConfigureAwait(false);
+        if (response is null || !response.Acknowledged)
+            throw new WidgetCapabilityException(
+                "malformed_response", "The app library provider returned an invalid acknowledgement.");
+    }
 }
 
 public sealed class WidgetMediaService

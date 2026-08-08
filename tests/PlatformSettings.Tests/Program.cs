@@ -215,6 +215,13 @@ static Task ThemeDiscovery()
     var compiled = GbssThemeCompiler.Compile(builtIn.Package);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
     Assert.Equal("#010203", compiled.Theme!.Resolve(new GbssElement("canvas")).Get("background")!.Text);
+    var segmentedTabs = compiled.Theme.Resolve(new GbssElement(
+        "row",
+        null,
+        new HashSet<string>(["gbar-segmented-tabs"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("50px", segmentedTabs.Get("min-height")!.Text);
+    Assert.Equal("0", segmentedTabs.Get("flex-shrink")!.Text);
     var focusedButton = compiled.Theme.Resolve(new GbssElement(
         "button",
         null,

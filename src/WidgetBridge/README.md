@@ -120,7 +120,8 @@ bootstrap authenticates the nonce/full identity and attaches typed
 the companion pipe is additionally ACLed to the runtime's exact AppContainer
 SID, labeled for Low-integrity access, and bound to the exact started PID before
 accept. The production bridge composes the narrow real Core Audio, Windows
-network/Bluetooth, foreground-activity, and GSMTC media-session providers;
+network/Bluetooth, foreground-activity, Start Menu app-library, and GSMTC
+media-session providers;
 deterministic tests use `SimulatedPlatformBrokerBackend`.
 See [widget capabilities](../../docs/capabilities.md).
 
@@ -300,7 +301,7 @@ because they require desktop-user resources not yet brokered. This exception is
 bundled host policy and cannot be introduced through catalog JSON or a package
 manifest.
 
-Audio Mixer, Network Controls, Recent Apps, and Now Playing are
+Audio Mixer, Network Controls, Games & Apps, and Now Playing are
 `bundledWidgets`, not trusted-worker shortcuts. A Windows conformance suite
 builds and installs those same four package layouts, merges them through
 `WidgetCatalog`/`BridgeCatalog`, launches the generic worker in the package

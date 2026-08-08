@@ -46,10 +46,10 @@
       "quickActions": []
     },
     {
-      "id": "recent-apps",
-      "packageId": "org.gbar.firstparty.recent-apps",
-      "instanceId": "recent-apps.default",
-      "packageRoot": "runtime/RecentApps",
+      "id": "games-apps",
+      "packageId": "org.gbar.firstparty.games-apps",
+      "instanceId": "games-apps.default",
+      "packageRoot": "runtime/GamesApps",
       "icon": "play",
       "quickActions": []
     },

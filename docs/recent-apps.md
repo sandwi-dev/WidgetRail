@@ -1,9 +1,10 @@
 # Recent Apps reference
 
-Status: read-only compatibility slice; scheduled to be replaced by the
-catalog-backed Games & Apps launcher
+Status: retained read-only activity API/reference; replaced by Games & Apps in
+the bundled overlay catalog
 
-Recent Apps is a first-party public-SDK widget backed by a trusted Windows
+Recent Apps is no longer a packaged dashboard widget. Its project remains a
+first-party public-SDK reference backed by a trusted Windows
 foreground-activity provider. It demonstrates how a widget can consume a
 privacy-bounded event stream without gaining process or window authority. It
 does not switch, restore, close, or launch an application.
@@ -25,11 +26,13 @@ does not switch, restore, close, or launch an application.
   complete list. A row action changes only the widget's selected styling; no
   host or Windows control operation runs.
 
-The first slice does not launch or switch an application. It does not classify
+This reference does not launch or switch an application. It does not classify
 an entry as a game without an authoritative signal, so current Windows
-observations are intentionally labelled as applications. The planned Games &
-Apps replacement will use authoritative installed-library sources, icons,
-grouping, and explicit launch contracts rather than foreground-window history.
+observations are intentionally labelled as applications. The implemented
+[Games & Apps replacement](games-and-apps.md) uses a separate installed-library
+source and explicit launch contract rather than foreground-window history; its
+current Start Menu source, icon, and classification limitations are documented
+there.
 
 ## Capabilities and enforcement
 

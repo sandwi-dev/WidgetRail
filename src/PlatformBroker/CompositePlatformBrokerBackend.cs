@@ -6,6 +6,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     private readonly IAudioPlatformBrokerBackend _audio;
     private readonly INetworkPlatformBrokerBackend _network;
     private readonly IActivityPlatformBrokerBackend _activity;
+    private readonly IAppLibraryPlatformBrokerBackend _appLibrary;
     private readonly IBluetoothPlatformBrokerBackend _bluetooth;
     private readonly IMediaPlatformBrokerBackend _media;
     private int _disposed;
@@ -15,11 +16,13 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         INetworkPlatformBrokerBackend network,
         IActivityPlatformBrokerBackend? activity = null,
         IBluetoothPlatformBrokerBackend? bluetooth = null,
-        IMediaPlatformBrokerBackend? media = null)
+        IMediaPlatformBrokerBackend? media = null,
+        IAppLibraryPlatformBrokerBackend? appLibrary = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _network = network ?? throw new ArgumentNullException(nameof(network));
         _activity = activity ?? UnavailableActivityPlatformBrokerBackend.Instance;
+        _appLibrary = appLibrary ?? UnavailableAppLibraryPlatformBrokerBackend.Instance;
         _bluetooth = bluetooth ?? UnavailableBluetoothPlatformBrokerBackend.Instance;
         _media = media ?? UnavailableMediaPlatformBrokerBackend.Instance;
         _audio.EventPublished += ForwardAudioEvent;
@@ -99,6 +102,18 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
         CancellationToken cancellationToken) =>
         _activity.GetRecentActivitiesAsync(cancellationToken);
+
+    public Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+        CancellationToken cancellationToken) =>
+        _appLibrary.GetAppLibraryAsync(cancellationToken);
+
+    public Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+        CancellationToken cancellationToken) =>
+        _appLibrary.RefreshAppLibraryAsync(cancellationToken);
+
+    public Task LaunchAppLibraryItemAsync(
+        string appId, CancellationToken cancellationToken) =>
+        _appLibrary.LaunchAppLibraryItemAsync(appId, cancellationToken);
 
     public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
         CancellationToken cancellationToken) =>
@@ -187,6 +202,15 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
             else if (_media is IDisposable media)
                 media.Dispose();
         }
+        if (!ReferenceEquals(_appLibrary, _audio) && !ReferenceEquals(_appLibrary, _network) &&
+            !ReferenceEquals(_appLibrary, _activity) && !ReferenceEquals(_appLibrary, _bluetooth) &&
+            !ReferenceEquals(_appLibrary, _media))
+        {
+            if (_appLibrary is IAsyncDisposable asyncAppLibrary)
+                await asyncAppLibrary.DisposeAsync().ConfigureAwait(false);
+            else if (_appLibrary is IDisposable appLibrary)
+                appLibrary.Dispose();
+        }
     }
 
     private sealed class UnavailableActivityPlatformBrokerBackend : IActivityPlatformBrokerBackend
@@ -213,6 +237,25 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken) =>
             Task.FromException(
                 new BrokerException("platform_unavailable", "Bluetooth radio control is unavailable."));
+    }
+
+    private sealed class UnavailableAppLibraryPlatformBrokerBackend : IAppLibraryPlatformBrokerBackend
+    {
+        internal static UnavailableAppLibraryPlatformBrokerBackend Instance { get; } = new();
+
+        public Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromException<IReadOnlyList<AppLibraryItemSummary>>(
+                new BrokerException("platform_unavailable", "App library is unavailable."));
+
+        public Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+            CancellationToken cancellationToken) =>
+            GetAppLibraryAsync(cancellationToken);
+
+        public Task LaunchAppLibraryItemAsync(
+            string appId, CancellationToken cancellationToken) =>
+            Task.FromException(
+                new BrokerException("platform_unavailable", "App launch is unavailable."));
     }
 
     private sealed class UnavailableMediaPlatformBrokerBackend : IMediaPlatformBrokerBackend

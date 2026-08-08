@@ -1,9 +1,9 @@
 using System.IO.Compression;
 using System.Text.Json;
 using GameBarAlternative.FirstPartyWidgets.AudioMixer;
+using GameBarAlternative.FirstPartyWidgets.GamesApps;
 using GameBarAlternative.FirstPartyWidgets.MediaSessions;
 using GameBarAlternative.FirstPartyWidgets.NetworkControls;
-using GameBarAlternative.FirstPartyWidgets.RecentApps;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetCatalog;
@@ -47,7 +47,7 @@ static async Task BundledCatalogUsesManifests()
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
     var catalog = BridgeCatalog.Load(deployment.BundledCatalogPath);
     Assert.SequenceEqual(
-        new[] { "media-sessions", "recent-apps", "audio-mixer", "network-controls" },
+        new[] { "media-sessions", "games-apps", "audio-mixer", "network-controls" },
         catalog.Widgets.Select(widget => widget.Id));
 
     foreach (var package in deployment.Packages)
@@ -272,15 +272,10 @@ static async Task ExerciseControlAsync(
             actionId = "wifi.radio.toggle";
             calls = () => backend.WifiRadioControlCalls;
             break;
-        case "org.gbar.firstparty.recent-apps":
-            Assert.True(!Nodes(snapshot.Root).Any(node =>
-                    string.Equals(node.ActionId, "recent.activate", StringComparison.Ordinal)),
-                $"{package.Manifest.Name} {route} exposed the retired foreground action.");
-            Assert.True(package.Manifest.Permissions.Count == 1 &&
-                package.Manifest.Permissions.Contains("system.activity.recent.read.v1") &&
-                package.Manifest.OptionalPermissions.Count == 0,
-                $"{package.Manifest.Name} {route} must remain read-only.");
-            return;
+        case "org.gbar.firstparty.games-apps":
+            actionId = "games.launch";
+            calls = () => backend.AppLibraryLaunchCalls;
+            break;
         case "org.gbar.firstparty.media-sessions":
             actionId = "media.toggle";
             calls = () => backend.MediaControlCalls;
@@ -324,6 +319,11 @@ static SimulatedPlatformBrokerBackend CreateBackend()
     [
         new AudioDeviceSummary("output-one", "Conformance Speakers", AudioDeviceDirection.Output, true),
         new AudioDeviceSummary("input-one", "Conformance Microphone", AudioDeviceDirection.Input, true),
+    ]);
+    backend.SetAppLibrary(
+    [
+        new AppLibraryItemSummary(
+            "app-conformance", "Conformance Library App", AppLibraryKind.Application),
     ]);
     backend.SetAvailableWifiNetworks(
     [
@@ -440,8 +440,8 @@ file sealed class Deployment : IDisposable
             {
                 new PackageSpec("media-sessions", "MediaSessions", WidgetGlyph.Music,
                     typeof(MediaSessionsWidget), "Conformance Song"),
-                new PackageSpec("recent-apps", "RecentApps", WidgetGlyph.Play,
-                    typeof(RecentAppsWidget), "Conformance Editor"),
+                new PackageSpec("games-apps", "GamesApps", WidgetGlyph.Play,
+                    typeof(GamesAppsWidget), "Conformance Library App"),
                 new PackageSpec("audio-mixer", "AudioMixer", WidgetGlyph.Volume,
                     typeof(AudioMixerWidget), "Conformance Game"),
                 new PackageSpec("network-controls", "NetworkControls", WidgetGlyph.Wifi,

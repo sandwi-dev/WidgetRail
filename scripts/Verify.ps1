@@ -70,7 +70,7 @@ try {
     Invoke-Checked -Description 'Build and test Windows foreground activity provider' -Command {
         dotnet run --project 'tests\WindowsActivityProvider.Tests\WindowsActivityProvider.Tests.csproj' --configuration $Configuration
     }
-    Invoke-Checked -Description 'Build and test read-only Windows app-library provider' -Command {
+    Invoke-Checked -Description 'Build and test Windows app-library provider' -Command {
         dotnet run --project 'tests\WindowsAppLibraryProvider.Tests\WindowsAppLibraryProvider.Tests.csproj' --configuration $Configuration
     }
     Invoke-Checked -Description 'Build and test Windows media-session provider' -Command {
@@ -82,8 +82,11 @@ try {
     Invoke-Checked -Description 'Build and test first-party Network Controls widget' -Command {
         dotnet run --project 'tests\NetworkControlsWidget.Tests\NetworkControlsWidget.Tests.csproj' --configuration $Configuration
     }
-    Invoke-Checked -Description 'Build and test first-party Recent Apps widget' -Command {
+    Invoke-Checked -Description 'Build and test retired Recent Apps reference widget' -Command {
         dotnet run --project 'tests\RecentAppsWidget.Tests\RecentAppsWidget.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test first-party Games & Apps widget' -Command {
+        dotnet run --project 'tests\GamesAppsWidget.Tests\GamesAppsWidget.Tests.csproj' --configuration $Configuration
     }
     Invoke-Checked -Description 'Build and test first-party Now Playing widget' -Command {
         dotnet run --project 'tests\MediaSessionsWidget.Tests\MediaSessionsWidget.Tests.csproj' --configuration $Configuration

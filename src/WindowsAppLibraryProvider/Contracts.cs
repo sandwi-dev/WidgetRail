@@ -36,9 +36,19 @@ internal sealed record StartMenuRegistration(
     string IdentityKey,
     string DisplayName,
     StartMenuScope Scope,
-    string ShortcutPath);
+    string ShortcutPath,
+    string RevalidationKey);
 
 internal interface IStartMenuApplicationSource
 {
     IReadOnlyList<StartMenuRegistration> Enumerate(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Re-reads one exact shortcut within the declared Start Menu scope. This
+    /// avoids a long full-tree scan between fingerprint validation and launch.
+    /// </summary>
+    StartMenuRegistration? ReadExact(
+        string shortcutPath,
+        StartMenuScope scope,
+        CancellationToken cancellationToken);
 }

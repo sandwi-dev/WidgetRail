@@ -8,6 +8,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<SavedNetworkProfileSummary> _networkProfiles = [];
     private readonly List<AvailableWifiNetworkSummary> _availableWifiNetworks = [];
     private readonly List<RecentActivitySummary> _recentActivities = [];
+    private readonly List<AppLibraryItemSummary> _appLibrary = [];
     private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
     private readonly List<MediaSessionSummary> _mediaSessions = [];
 
@@ -32,6 +33,10 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int WifiRadioControlCalls { get; private set; }
     public int BluetoothRadioControlCalls { get; private set; }
     public int MediaControlCalls { get; private set; }
+    public int AppLibraryLaunchCalls { get; private set; }
+    public int AppLibraryReadCalls { get; private set; }
+    public int AppLibraryRefreshCalls { get; private set; }
+    public string? LastLaunchedAppId { get; private set; }
     public string? LastControlledMediaSessionId { get; private set; }
     public MediaSessionCommand? LastMediaCommand { get; private set; }
     public WifiRadioSummary WifiRadio { get; set; } = new(WifiRadioState.On, true);
@@ -70,6 +75,12 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         _recentActivities.Clear();
         _recentActivities.AddRange(activities);
+    }
+
+    public void SetAppLibrary(IEnumerable<AppLibraryItemSummary> items)
+    {
+        _appLibrary.Clear();
+        _appLibrary.AddRange(items);
     }
 
     public void SetBluetoothDevices(IEnumerable<BluetoothDeviceSummary> devices)
@@ -253,6 +264,31 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<IReadOnlyList<RecentActivitySummary>>(_recentActivities.ToArray());
+    }
+
+    public Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AppLibraryReadCalls++;
+        return Task.FromResult<IReadOnlyList<AppLibraryItemSummary>>(_appLibrary.ToArray());
+    }
+
+    public Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AppLibraryRefreshCalls++;
+        return Task.FromResult<IReadOnlyList<AppLibraryItemSummary>>(_appLibrary.ToArray());
+    }
+
+    public Task LaunchAppLibraryItemAsync(
+        string appId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AppLibraryLaunchCalls++;
+        LastLaunchedAppId = appId;
+        return Task.CompletedTask;
     }
 
     public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(

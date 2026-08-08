@@ -428,7 +428,10 @@ For a remote toggle:
 
 The [YT Music reference](../samples/YtMusicWidget/README.md) demonstrates
 optimistic playback/rating/shuffle/repeat state, stale-event guards, bounded
-progress interpolation, and rapid ordered LB/RB actions.
+progress interpolation, and rapid ordered LB/RB actions. Those are current
+widget-UI behavior examples, not yet a Community packaging/isolation example:
+YT Music still runs through a temporary bundled trusted exception while its
+public-addon migration is developed.
 
 ## Lifecycle API
 
@@ -568,6 +571,8 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.bluetooth.read.v1` | get/watch sanitized Bluetooth radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | request Bluetooth software radio On/Off | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
+| `system.apps.library.read.v1` | page through sanitized installed-app names, conservative kinds, and opaque IDs | Visible or Interactive |
+| `system.apps.library.launch.v1` | launch one current broker-issued opaque app ID | Interactive only |
 | `system.media.sessions.read.v1` | list/watch sanitized system media sessions | Visible or Interactive |
 | `system.media.sessions.control.v1` | control one broker-issued media session | Interactive, or one exact declared dashboard gesture while Visible |
 
@@ -652,17 +657,46 @@ Render `WirelessAvailability`, `DetailsAccess`, and
 radio off, and unavailable WLAN service are normal bounded states; do not
 retry them on a timer, request elevation, inspect WLAN XML, or log SSIDs.
 
+### Installed app-library example
+
+Use the typed `HostServices.AppLibrary` surface; do not turn a display name,
+path, command line, or launcher-specific ID into an action target:
+
+```csharp
+var page = await HostServices.AppLibrary.GetPageAsync(
+    offset: 0,
+    limit: 32,
+    cancellationToken);
+
+if (LifecycleState == WidgetLifecycleState.Interactive)
+    await HostServices.AppLibrary.LaunchAsync(
+        page.Items[0].AppId,
+        cancellationToken);
+```
+
+`GetPageAsync` permits 1–64 items per request. Read is allowed only in Visible
+or Interactive; launch is separately declared/consented and Interactive-only.
+Treat `AppId` as an opaque, provider-lifetime token and discard it when the
+provider reports `app_not_found`. The current Windows provider exposes only
+Start Menu `.lnk` registrations and conservatively reports them as
+Application. It provides no icon/artwork, AppsFolder/UWP, Steam/Xbox/other
+launcher aggregation, or authoritative game detection. See the [Games & Apps
+reference](games-and-apps.md).
+
 Handle `WidgetCapabilityUnavailableException`, `WidgetCapabilityException`
 using its stable `ErrorCode`, and normal lifecycle cancellation. Common codes
 include `permission_denied`, `capability_not_declared`, `lifecycle_denied`,
-`capability_revoked`, and `platform_unavailable`. Treat unknown codes as a
+`capability_revoked`, `platform_unavailable`, `app_not_found`, and
+`launch_failed`. Treat unknown codes as a
 generic bounded provider failure.
 
 The YT Music trusted reference currently declares `network.loopback:13091`,
 but general loopback/network brokering is not implemented for community
 workers. Installed AppContainer workers have no network capability. Do not
 copy the trusted built-in's direct Credential Manager or socket access; a
-general secret broker and network API remain planned.
+private per-widget secret service and exact-port loopback HTTP broker remain
+planned. YT Music is intended to be their first Community-addon conformance and
+migration case, but it remains temporarily bundled/trusted today.
 
 ## Manifest reference
 
@@ -896,6 +930,13 @@ Typed audio/network services cross a separate identity-, declaration-,
 consent-, and lifecycle-bound broker. A manifest cannot request raw pipe
 details, arbitrary operation IDs, an AppContainer capability SID, or the
 trusted Job-only launch used temporarily by bundled Settings and YT Music.
+
+That YT Music exception is transitional and cannot be requested by authors. The
+planned migration must install it as an ordinary Community package and pass the
+same AppContainer, declaration, consent, lifecycle, update/rollback, and removal
+contracts described here. Until that work is implemented, use YT Music for its
+controller/media interaction patterns, not as evidence of current loopback or
+secret authority available to a Community widget.
 
 This is meaningful containment, not proof that an unsigned publisher is safe.
 CPU quotas, disk/profile quotas and cleanup, Win32k system-call disable,

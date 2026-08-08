@@ -11,7 +11,8 @@ public sealed record BrokerCapabilityDefinition(
     int Version,
     BrokerCapabilityKind Kind,
     IReadOnlySet<string> Operations,
-    IReadOnlySet<string> Events);
+    IReadOnlySet<string> Events,
+    bool AllowsDashboardGesture = false);
 
 /// <summary>Closed public capability vocabulary. Version is part of every ID.</summary>
 public static class PlatformCapabilities
@@ -32,6 +33,8 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothReadV1 = "system.network.bluetooth.read.v1";
     public const string NetworkBluetoothRadioControlV1 = "system.network.bluetooth.radio.control.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
+    public const string AppLibraryReadV1 = "system.apps.library.read.v1";
+    public const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
 
@@ -56,6 +59,8 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothGet = "network.bluetooth.get";
     public const string NetworkBluetoothRadioSet = "network.bluetooth.radio.set";
     public const string RecentActivitiesList = "activity.recent.list";
+    public const string AppLibraryList = "apps.library.list";
+    public const string AppLibraryLaunch = "apps.library.launch";
     public const string MediaSessionsGet = "media.sessions.get";
     public const string MediaSessionControl = "media.session.control";
 
@@ -105,10 +110,16 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Control, Set(NetworkBluetoothRadioSet), Set()),
             [RecentActivityReadV1] = new(RecentActivityReadV1, 1,
                 BrokerCapabilityKind.Read, Set(RecentActivitiesList), Set(RecentActivitiesChanged)),
+            [AppLibraryReadV1] = new(AppLibraryReadV1, 1,
+                BrokerCapabilityKind.Read, Set(AppLibraryList), Set()),
+            [AppLibraryLaunchV1] = new(AppLibraryLaunchV1, 1,
+                BrokerCapabilityKind.Control, Set(AppLibraryLaunch), Set(),
+                AllowsDashboardGesture: false),
             [MediaSessionsReadV1] = new(MediaSessionsReadV1, 1,
                 BrokerCapabilityKind.Read, Set(MediaSessionsGet), Set(MediaSessionsChanged)),
             [MediaSessionsControlV1] = new(MediaSessionsControlV1, 1,
-                BrokerCapabilityKind.Control, Set(MediaSessionControl), Set()),
+                BrokerCapabilityKind.Control, Set(MediaSessionControl), Set(),
+                AllowsDashboardGesture: true),
         };
 
     public static IReadOnlyCollection<BrokerCapabilityDefinition> All { get; } =
