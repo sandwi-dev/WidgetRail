@@ -249,10 +249,10 @@ actionable only while the widget is disabled. Selecting one keeps it disabled
 and requires separate review and enablement. An incompatible package cannot be
 enabled, though an already enabled incompatible entry can be disabled for
 recovery/update. Enabling only joins a compatible widget to the overlay; it
-does **not** grant a capability. Open Settings →
-Permissions & capabilities separately to confirm a grant or immediately deny/
-revoke it. Required means the feature is core, not that it is automatically
-granted. Optional means the widget must degrade without it.
+does **not** grant a capability. On that same widget management page, open
+**Permissions & configuration** to confirm a grant or immediately deny/revoke
+it. Required means the feature is core, not that it is automatically granted.
+Optional means the widget must degrade without it.
 
 An accepted catalog change invalidates native descriptors/caches. Compatible
 presentation-only changes preserve a running worker while atomically replacing

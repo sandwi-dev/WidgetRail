@@ -25,7 +25,9 @@ than applications the user happened to foreground.
   Library X removes the focused entry.
 - Both surfaces use stable hashed UI IDs; widget snapshots contain only display
   names, conservative kinds, broker-issued short-lived AppIds, and
-  authority-scoped SavedIds. Provider launch tokens stay inside the host and
+  authority-scoped SavedIds. Resolved Library entries may also contain a
+  bounded 48 by 48 PNG icon rasterized by the trusted provider; Catalog
+  discovery remains text-only. Provider launch tokens stay inside the host and
   last only for the current provider snapshot.
 - Library Left/Right selects a card. A launches that exact card only while the
   widget is Interactive. After confirmed provider success, that item moves to
@@ -94,6 +96,12 @@ package IDs; it remains stable across worker/host restarts and package updates,
 but it cannot be correlated or reused by another widget package. The widget
 instance ID is intentionally not part of this durable authority.
 
+Resolved items may set `IconPngBase64`. This is host-rasterized pixel data, not
+an icon path. Use `UI.InlinePngImage` when present and a semantic `UI.Icon`
+fallback otherwise. The broker requests icons on demand only for the curated
+resolution, validates each PNG, attaches at most 32, and caps aggregate source
+pixels at 384 KiB so the snapshot remains below its 1 MiB transport limit.
+
 `LaunchAsync` accepts only the short-lived opaque `AppId` returned by a current
 page or resolution. Widgets must never persist AppId. Widgets never
 receive a path, `.lnk` filename, target executable, command line, AUMID,
@@ -116,6 +124,8 @@ Programs folders. It:
   publishes at most 512 entries;
 - assigns random opaque IDs that stay stable only while that registration
   remains in the current provider snapshot; and
+- rasterizes the Shell icon on demand to a bounded 48 by 48 RGBA PNG, caches it
+  by shortcut-content fingerprint, and returns only pixels; and
 - exposes a separate stable private provider fingerprint only to the host
   broker, which derives non-reversible authority-scoped SavedIds with HMAC; and
 - keeps shortcut paths, raw provider identities, arguments, host key, and file
@@ -137,8 +147,9 @@ Shell failures are sanitized before returning to widget code.
 - Curation is durable for the package, but deduplication across launchers,
   authoritative game classification, source-aware grouping, and broader source
   reconciliation remain tracked as [GBA-033](known-issues.md).
-- The provider does not extract or publish application artwork or icons. The
-  current card uses a host semantic Play glyph.
+- Shell icons are available only for resolved curated Start Menu entries.
+  Missing, malformed, or over-budget icons use the host semantic Play glyph;
+  broad Catalog discovery intentionally does not rasterize hundreds of icons.
 - The public kind enum supports Unknown, Application, and Game, but the real
   Start Menu provider deliberately reports every current entry as Application.
   Filename/path guessing is not authoritative game classification.
@@ -159,7 +170,7 @@ confirmed recent-first ordering, failed-launch order retention, durable
 SavedIds across fresh worker instances, opaque selected launch, bounded paging,
 sanitized failure states, and manifest/GBSS validation. Provider tests cover lazy refresh,
 sanitization and bounds,
-opaque-ID lifetime, payload privacy, exact shortcut revalidation, constrained
+opaque-ID lifetime, payload privacy, on-demand icon caching and bounds, exact shortcut revalidation, constrained
 Shell invocation, sanitized errors, cancellation, and a non-mutating real Start
 Menu scan. Broker, SDK, bridge, Settings, and first-party conformance suites
 cover separate read/launch consent, lifecycle denial, invalid payload/backend
@@ -167,5 +178,5 @@ data, transport mapping, permission copy, packaged AppContainer startup, render,
 and a simulated launch.
 
 This is local automated evidence, not a public-release claim. A packaged
-controller/visual playtest, broader Windows catalog matrix, icon pipeline, and
+controller/visual playtest, broader Windows catalog matrix, and
 authoritative game sources remain required.

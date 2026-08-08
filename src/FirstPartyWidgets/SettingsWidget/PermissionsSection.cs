@@ -53,6 +53,7 @@ public sealed partial class SettingsWidget
     private string? _selectedPackageId;
     private string? _selectedPublisherId;
     private string? _selectedCapabilityId;
+    private SettingsPage _packageCapabilitiesReturnPage = SettingsPage.Permissions;
     private bool _permissionCatalogValid = true;
     private bool _consentValid = true;
     private string? _permissionDiagnostic;
@@ -209,7 +210,7 @@ public sealed partial class SettingsWidget
                 _selectedPublisherId = null;
                 _selectedCapabilityId = null;
                 if (_page is SettingsPage.PackageCapabilities or SettingsPage.CapabilityDecision)
-                    _page = SettingsPage.Permissions;
+                    _page = _packageCapabilitiesReturnPage;
             }
             else
             {
@@ -658,8 +659,40 @@ public sealed partial class SettingsWidget
             _selectedPackageId = package.Id;
             _selectedPublisherId = package.AuthorityPublisher;
             _selectedCapabilityId = null;
+            _packageCapabilitiesReturnPage = SettingsPage.Permissions;
             _permissionDiagnosticsReturnFocus = false;
             _page = SettingsPage.PackageCapabilities;
+        }
+        Invalidate();
+    }
+
+    private void OpenSelectedInstalledPermissions()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails ||
+                !_installedWidgetCatalogValid || !_permissionCatalogValid)
+                return;
+            var packageId = SelectedInstalledWidgetLocked()?.ActiveVersion.Manifest.Id ??
+                            SelectedBuiltInWidgetLocked()?.Id;
+            var package = packageId is null
+                ? null
+                : _permissionPackages.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Id, packageId, StringComparison.Ordinal));
+            if (package is null)
+            {
+                _status = "This widget does not request host permissions";
+                _error = false;
+            }
+            else
+            {
+                _selectedPackageId = package.Id;
+                _selectedPublisherId = package.AuthorityPublisher;
+                _selectedCapabilityId = null;
+                _permissionDiagnosticsReturnFocus = false;
+                _packageCapabilitiesReturnPage = SettingsPage.InstalledWidgetDetails;
+                _page = SettingsPage.PackageCapabilities;
+            }
         }
         Invalidate();
     }

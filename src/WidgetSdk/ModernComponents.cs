@@ -7,6 +7,7 @@ public enum IconButtonSize { Small, Medium, Large }
 public enum CardVariant { Raised, Subtle, Transparent }
 public enum StatusTone { Neutral, Info, Success, Warning, Danger }
 public enum AlertTone { Info, Success, Warning, Danger }
+public enum ActionSheetItemTone { Default, Danger }
 
 /// <summary>A single optional action rendered by an alert or empty state.</summary>
 public sealed record ComponentAction(string Label, string ActionId, WidgetGlyph? Glyph = null);
@@ -19,12 +20,233 @@ public sealed record SegmentedTab(
     string? AccessibilityLabel = null,
     bool IsDisabled = false);
 
+/// <summary>A bounded, stable controller action presented in an action sheet.</summary>
+public sealed record ActionSheetItem(
+    string Id,
+    string Label,
+    string ActionId,
+    WidgetGlyph? Glyph = null,
+    string? AccessibilityLabel = null,
+    ActionSheetItemTone Tone = ActionSheetItemTone.Default,
+    bool IsDisabled = false,
+    bool IsBusy = false);
+
 /// <summary>
 /// Original controller-first composites built only from stable public protocol
 /// nodes. Their gbar-* classes are semantic theme hooks, not fixed colors.
 /// </summary>
 public static partial class UI
 {
+    /// <summary>The maximum number of actions accepted by one action sheet.</summary>
+    public const int MaximumActionSheetItems = 32;
+
+    /// <summary>
+    /// Creates a responsive setting summary with exactly one controller focus
+    /// stop. Descriptive text remains in its own vertical flow so long labels,
+    /// values, and status copy can reflow without shrinking the 44-DIP action.
+    /// The stable focus ID is <c>{id}.action</c>.
+    /// </summary>
+    public static StackElement SettingsRow(
+        string label,
+        ComponentAction action,
+        string id,
+        string? description = null,
+        string? value = null,
+        string? status = null,
+        StatusTone statusTone = StatusTone.Neutral,
+        bool isDisabled = false,
+        bool isBusy = false,
+        WidgetGlyph? glyph = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentException.ThrowIfNullOrWhiteSpace(action.Label);
+        ArgumentException.ThrowIfNullOrWhiteSpace(action.ActionId);
+        EnsureDefined(statusTone, nameof(statusTone));
+        StableIdentifier.Validate(id, nameof(id));
+
+        var content = new List<WidgetElement>();
+        if (glyph is { } semanticGlyph)
+        {
+            content.Add(new IconElement(
+                StableIdentifier.Child(id, "icon"), semanticGlyph, label)
+            {
+                StyleClasses = ["gbar-settings-row__icon"],
+            });
+        }
+
+        var copy = new List<WidgetElement>
+        {
+            new TextElement(StableIdentifier.Child(id, "label"), label, label)
+            {
+                StyleClasses = ["gbar-settings-row__label"],
+            },
+        };
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            copy.Add(new TextElement(
+                StableIdentifier.Child(id, "description"), description, description)
+            {
+                StyleClasses = ["gbar-settings-row__description"],
+            });
+        }
+        content.Add(new StackElement(StableIdentifier.Child(id, "copy"), copy)
+        {
+            StyleClasses = ["gbar-settings-row__copy"],
+        });
+
+        var metadata = new List<WidgetElement>();
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            metadata.Add(new TextElement(
+                StableIdentifier.Child(id, "value"), value, $"{label}: {value}")
+            {
+                StyleClasses = ["gbar-settings-row__value"],
+            });
+        }
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            metadata.Add(StatusBadge(
+                status,
+                statusTone,
+                StableIdentifier.Child(id, "status"))
+                .AddClasses("gbar-settings-row__status"));
+        }
+
+        var accessibleParts = new List<string> { label };
+        if (!string.IsNullOrWhiteSpace(description)) accessibleParts.Add(description);
+        if (!string.IsNullOrWhiteSpace(value)) accessibleParts.Add($"Current value: {value}");
+        if (!string.IsNullOrWhiteSpace(status)) accessibleParts.Add($"Status: {status}");
+        accessibleParts.Add(action.Label);
+        if (isDisabled) accessibleParts.Add("Unavailable");
+        if (isBusy) accessibleParts.Add("Busy");
+
+        var children = new List<WidgetElement>
+        {
+            new RowElement(StableIdentifier.Child(id, "content"), content)
+            {
+                StyleClasses = ["gbar-settings-row__content"],
+            },
+        };
+        if (metadata.Count > 0)
+        {
+            children.Add(new StackElement(StableIdentifier.Child(id, "metadata"), metadata)
+            {
+                StyleClasses = ["gbar-settings-row__metadata"],
+            });
+        }
+        children.Add(new ButtonElement(
+            StableIdentifier.Child(id, "action"), action.Label, action.ActionId)
+        {
+            AccessibilityLabel = string.Join(". ", accessibleParts),
+            Glyph = action.Glyph,
+            IsDisabled = isDisabled ? true : null,
+            IsBusy = isBusy ? true : null,
+            StyleClasses = ["gbar-settings-row__action"],
+        });
+
+        return new StackElement(id, children)
+        {
+            StyleClasses = ["gbar-settings-row"],
+        };
+    }
+
+    /// <summary>
+    /// Creates a bounded, vertically scrollable nested action scope. Each item
+    /// keeps its author-supplied focus ID, disabled and busy actions remain in
+    /// the focus graph, and B always resolves to <paramref name="backAction"/>
+    /// without depending on which item has focus.
+    /// </summary>
+    public static StackElement ActionSheet(
+        string title,
+        string id,
+        string scopeId,
+        string backAction,
+        IReadOnlyList<ActionSheetItem> items,
+        string? description = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentException.ThrowIfNullOrWhiteSpace(scopeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(backAction);
+        ArgumentNullException.ThrowIfNull(items);
+        StableIdentifier.Validate(id, nameof(id));
+        StableIdentifier.Validate(scopeId, nameof(scopeId));
+        if (items.Count is < 1 or > MaximumActionSheetItems)
+            throw new ArgumentOutOfRangeException(
+                nameof(items),
+                $"An action sheet requires between 1 and {MaximumActionSheetItems} items.");
+        if (items.Any(item => item is null))
+            throw new ArgumentException("Action-sheet items cannot contain null values.", nameof(items));
+        if (items.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != items.Count)
+            throw new ArgumentException("Action-sheet item IDs must be unique.", nameof(items));
+
+        var buttons = new ButtonElement[items.Count];
+        for (var index = 0; index < items.Count; index++)
+        {
+            var item = items[index];
+            StableIdentifier.Validate(item.Id, nameof(items));
+            ArgumentException.ThrowIfNullOrWhiteSpace(item.Label);
+            ArgumentException.ThrowIfNullOrWhiteSpace(item.ActionId);
+            EnsureDefined(item.Tone, nameof(items));
+
+            var accessibleParts = new List<string>
+            {
+                string.IsNullOrWhiteSpace(item.AccessibilityLabel)
+                    ? item.Label
+                    : item.AccessibilityLabel,
+            };
+            if (item.Tone == ActionSheetItemTone.Danger) accessibleParts.Add("Destructive action");
+            if (item.IsDisabled) accessibleParts.Add("Unavailable");
+            if (item.IsBusy) accessibleParts.Add("Busy");
+
+            var button = new ButtonElement(item.Id, item.Label, item.ActionId)
+            {
+                AccessibilityLabel = string.Join(", ", accessibleParts),
+                Glyph = item.Glyph,
+                IsDisabled = item.IsDisabled ? true : null,
+                IsBusy = item.IsBusy ? true : null,
+                StyleClasses =
+                [
+                    "gbar-action-sheet__item",
+                    item.Tone == ActionSheetItemTone.Danger
+                        ? "gbar-action-sheet__item--danger"
+                        : "gbar-action-sheet__item--default",
+                ],
+            };
+            if (index > 0) button = button.FocusUp(items[index - 1].Id);
+            if (index + 1 < items.Count) button = button.FocusDown(items[index + 1].Id);
+            buttons[index] = button;
+        }
+
+        var children = new List<WidgetElement>
+        {
+            new TextElement(StableIdentifier.Child(id, "title"), title, title)
+            {
+                StyleClasses = ["gbar-action-sheet__title"],
+            },
+        };
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            children.Add(new TextElement(
+                StableIdentifier.Child(id, "description"), description, description)
+            {
+                StyleClasses = ["gbar-action-sheet__description"],
+            });
+        }
+        children.Add(new ScrollElement(
+            StableIdentifier.Child(id, "list"), ScrollAxis.Vertical, buttons)
+        {
+            StyleClasses = ["gbar-action-sheet__list"],
+        });
+
+        return new StackElement(id, children)
+        {
+            InputScopeId = scopeId,
+            Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
+            StyleClasses = ["gbar-action-sheet"],
+        };
+    }
+
     /// <summary>
     /// Creates a flat, read-only label/value row. The row never enters focus;
     /// use <see cref="ChoiceRow"/> when the whole row represents an action.

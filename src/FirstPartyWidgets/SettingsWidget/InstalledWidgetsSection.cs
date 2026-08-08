@@ -180,14 +180,20 @@ public sealed partial class SettingsWidget
         CatalogWidget? package;
         WidgetManifest? builtIn;
         bool valid;
+        bool permissionCatalogValid;
+        IReadOnlyList<string> permissionPackageIds;
         lock (_stateLock)
         {
             package = SelectedInstalledWidgetLocked();
             builtIn = SelectedBuiltInWidgetLocked();
             valid = _installedWidgetCatalogValid;
+            permissionCatalogValid = _permissionCatalogValid;
+            permissionPackageIds = _permissionPackages.Select(item => item.Id).ToArray();
         }
         if (builtIn is not null && valid)
         {
+            var builtInHasPermissions = permissionCatalogValid &&
+                permissionPackageIds.Contains(builtIn.Id, StringComparer.Ordinal);
             var builtInCompatibility = WidgetHostCompatibility.Evaluate(builtIn);
             var builtInRequiredPermissions = builtIn.Permissions.Count == 0
                 ? "None"
@@ -222,8 +228,15 @@ public sealed partial class SettingsWidget
                         "Included with Game Bar Alternative. Built-in widgets are updated with the app and cannot be disabled or version-managed here.",
                         "installed.details.status", "Built-in widget management status")
                         .Classes("page-help"),
+                    UI.Button(
+                            builtInHasPermissions
+                                ? "Permissions & configuration"
+                                : "No host permissions requested",
+                            "installed.permissions.open", "installed.details.permissions")
+                        .Disabled(!builtInHasPermissions).Busy(busy).Classes("setting-row"),
                     UI.Button("Back", "back", "installed.details.back").Classes("secondary-button")),
-                "installed.details.back", "installed.details");
+                builtInHasPermissions ? "installed.details.permissions" : "installed.details.back",
+                "installed.details");
         }
         if (package is null || !valid)
             return View(header,
@@ -256,19 +269,27 @@ public sealed partial class SettingsWidget
         };
         var action = package.Enabled ? "Disable widget" : "Enable reviewed widget";
         var canToggle = package.Enabled || compatibility.IsSupported;
+        var hasPermissions = permissionCatalogValid &&
+            permissionPackageIds.Contains(manifest.Id, StringComparer.Ordinal);
         var versionsButton = UI.Button(
                 $"Manage versions ({package.Versions.Count})", "installed.versions.open",
                 "installed.details.versions")
             .Busy(busy).Classes("setting-row");
-        var actionButton = UI.Button(action, "installed.toggle", "installed.details.toggle")
+        var permissionsButton = UI.Button(
+                hasPermissions
+                    ? "Permissions & configuration"
+                    : "No host permissions requested",
+                "installed.permissions.open", "installed.details.permissions")
             .FocusUp("installed.details.versions")
+            .FocusDown(canToggle ? "installed.details.toggle" : "installed.details.back")
+            .Disabled(!hasPermissions).Busy(busy).Classes("setting-row");
+        var actionButton = UI.Button(action, "installed.toggle", "installed.details.toggle")
+            .FocusUp("installed.details.permissions")
             .FocusDown("installed.details.back").Busy(busy).Disabled(!canToggle)
             .Classes(package.Enabled ? "danger-button" : "primary-button");
-        versionsButton = versionsButton.FocusDown(canToggle
-            ? "installed.details.toggle"
-            : "installed.details.back");
+        versionsButton = versionsButton.FocusDown("installed.details.permissions");
         var back = UI.Button("Back", "back", "installed.details.back")
-            .FocusUp(canToggle ? "installed.details.toggle" : "installed.details.versions")
+            .FocusUp(canToggle ? "installed.details.toggle" : "installed.details.permissions")
             .Classes("secondary-button");
         return View(header,
             PageScope("installed.details",
@@ -304,6 +325,7 @@ public sealed partial class SettingsWidget
                             : "Install a version that supports this host API and architecture before enabling. Capability consent is a separate decision.",
                     "installed.details.status", "Package enabled status").Classes("page-help"),
                 versionsButton,
+                permissionsButton,
                 actionButton,
                 back),
             canToggle ? "installed.details.toggle" : "installed.details.back", "installed.details");

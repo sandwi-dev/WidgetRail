@@ -109,6 +109,9 @@ public:
 
     /// Public deterministic policy seam for native tests and callers.
     [[nodiscard]] static bool IsAllowedHttpsUrl(std::wstring_view url) noexcept;
+    /// HTTPS or a strictly bounded canonical PNG data source. Inline pixels
+    /// are decoded locally and never reach WinHTTP.
+    [[nodiscard]] static bool IsAllowedImageSource(std::wstring_view source) noexcept;
 
 private:
     struct Entry {
@@ -141,4 +144,3 @@ private:
 };
 
 } // namespace gba
-

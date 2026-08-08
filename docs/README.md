@@ -58,13 +58,20 @@ guarantees that are available now.
   gates, event-driven authoring, tests, and remaining release evidence.
 - [Games & Apps reference](games-and-apps.md) — implemented durable curated
   Library/Catalog slice, opaque paged SDK, separately consented exact launch,
-  controller UX, provider security boundary, and current persistence/close/
-  catalog/icon/classification limits.
+  controller UX, provider security boundary, lazy catalog discovery,
+  close-after-confirmed-launch, and current source/icon/classification limits.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.
 - [Recent Apps reference](recent-apps.md) — retained reference for the read-only
   foreground-activity API; it is no longer in the bundled dashboard catalog.
+- [Discord integration research](discord-integration.md) — official API/SDK
+  capability matrix, authentication and production-access gates, and why the
+  social/voice widget is deferred rather than built on unsupported client APIs.
+- [Spotify integration](spotify-integration.md) — implemented broker/provider/
+  configuration foundation, fixed-loopback PKCE, current CLI setup, remaining
+  Community-addon work, staged Web API surfaces, separately trusted Web
+  Playback SDK plan, Development Mode quota, and attribution gates.
 
 ## Distribution and operations
 

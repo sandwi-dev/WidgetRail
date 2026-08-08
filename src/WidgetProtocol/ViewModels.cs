@@ -15,6 +15,15 @@ public enum ViewNodeKind
     Spacer,
     Image,
     Icon,
+    LoadingIndicator,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<LoadingIndicatorSize>))]
+public enum LoadingIndicatorSize
+{
+    Compact,
+    Standard,
+    Large,
 }
 
 /// <summary>The single logical axis owned by a host-rendered scroll container.</summary>
@@ -167,6 +176,7 @@ public sealed record ViewNode
     public string? ImageSource { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
+    public LoadingIndicatorSize? IndicatorSize { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
     public bool? IsBusy { get; init; }

@@ -11,8 +11,11 @@ planned. A structurally valid package is not necessarily trustworthy.
 - Strict manifests and snapshots reject unknown JSON members.
 - Widget trees, strings, depth, quick actions, focus targets, progress,
   images, icons, and interaction states have bounded validation.
-- Images accept HTTPS only, reject embedded credentials, and are downloaded by
-  a bounded host cache rather than widget drawing code.
+- General images accept HTTPS only, reject embedded credentials, and are
+  downloaded by a bounded host cache rather than widget drawing code. Protocol
+  v6 additionally accepts a canonical RGBA8 PNG data source capped at 12 KiB
+  and 64 by 64 pixels for broker-sanitized artwork; it is decoded locally and
+  cannot contain a native file or executable path.
 - GBSS is an allowlisted data language. It rejects scripts, URLs, expressions,
   arbitrary functions, traversal, reparse-point escapes, and oversized input.
 - Native rendering uses semantic elements and a closed icon set; widgets
@@ -82,6 +85,12 @@ planned. A structurally valid package is not necessarily trustworthy.
   content-bound authority and cannot inherit state. Uninstall currently retains
   it; per-widget clear-local-data UI remains unimplemented. See [Private widget
   state](private-widget-state.md).
+- Public widget configuration is a separate bounded settings store, also keyed
+  by publisher/package authority. It is intentionally readable JSON for values
+  such as an OAuth Client ID and is managed locally through `gbar config` until
+  a controller-native editor exists. It is not private state or a credential
+  vault: secret/password/token/credential-like CLI keys are rejected, and OAuth
+  tokens remain in provider-owned Windows protected storage.
 - Package extraction rejects absolute/traversing/ambiguous Windows paths,
   links, reparse points, collisions, excessive entries, and zip expansion
   beyond configured limits.

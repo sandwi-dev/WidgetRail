@@ -227,7 +227,10 @@ public sealed class WindowsMediaPlatformBackend : IMediaPlatformBrokerBackend, I
                 item.CanPause,
                 item.CanTogglePlayPause,
                 item.CanPrevious,
-                item.CanNext));
+                item.CanNext)
+            {
+                ArtworkPngBase64 = item.ArtworkPngBase64,
+            });
         }
         var result = mapped
             .OrderByDescending(item => item.IsCurrent)

@@ -47,6 +47,13 @@ struct RenderResult final {
     bool animationActive{};
     std::vector<RenderDiagnostic> diagnostics;
     std::vector<RenderHitRegion> hitRegions;
+#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+    // Test-only exact geometry seam. Production results intentionally retain
+    // only interactive geometry so ordinary paints do not allocate two maps
+    // for every decorative and structural node.
+    std::map<std::wstring, declarative::Rect, std::less<>> elementRects;
+    std::map<std::wstring, declarative::Rect, std::less<>> elementVisibleRects;
+#endif
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
     // Full logical controller geometry includes offscreen descendants of a
     // semantic scroll container. Pointer hit regions remain visible-only.

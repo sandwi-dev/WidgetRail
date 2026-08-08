@@ -17,6 +17,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
 
     private readonly IStartMenuApplicationSource _source;
     private readonly IWindowsShellLauncher _shellLauncher;
+    private readonly IWindowsAppIconSource _iconSource;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly object _stateGate = new();
     private readonly Dictionary<string, string> _opaqueIdsByIdentity =
@@ -24,22 +25,36 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     private IReadOnlyList<WindowsAppLibraryItem>? _snapshot;
     private Dictionary<string, StartMenuRegistration> _registrationsByOpaqueId =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string?> _iconsByRevalidationKey =
+        new(StringComparer.Ordinal);
 
-    public WindowsAppLibraryProvider() : this(new WindowsStartMenuApplicationSource())
+    public WindowsAppLibraryProvider() : this(
+        new WindowsStartMenuApplicationSource(),
+        new WindowsShellLauncher(),
+        new WindowsAppIconSource())
     {
     }
 
     internal WindowsAppLibraryProvider(IStartMenuApplicationSource source) :
-        this(source, new WindowsShellLauncher())
+        this(source, new WindowsShellLauncher(), new WindowsAppIconSource())
     {
     }
 
     internal WindowsAppLibraryProvider(
         IStartMenuApplicationSource source,
-        IWindowsShellLauncher shellLauncher)
+        IWindowsShellLauncher shellLauncher) :
+        this(source, shellLauncher, new WindowsAppIconSource())
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IStartMenuApplicationSource source,
+        IWindowsShellLauncher shellLauncher,
+        IWindowsAppIconSource iconSource)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _shellLauncher = shellLauncher ?? throw new ArgumentNullException(nameof(shellLauncher));
+        _iconSource = iconSource ?? throw new ArgumentNullException(nameof(iconSource));
     }
 
     /// <summary>Returns the cached immutable snapshot, scanning lazily on first use.</summary>
@@ -163,6 +178,42 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         }
     }
 
+    public async Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
+        string appId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
+            return new AppLibraryIconSummary(null);
+
+        await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            StartMenuRegistration? registration;
+            lock (_stateGate)
+                _registrationsByOpaqueId.TryGetValue(appId, out registration);
+            if (registration is null) return new AppLibraryIconSummary(null);
+
+            lock (_stateGate)
+            {
+                if (_iconsByRevalidationKey.TryGetValue(
+                        registration.RevalidationKey, out var cached))
+                    return new AppLibraryIconSummary(cached);
+            }
+
+            var png = await Task.Run(
+                () => _iconSource.TryRasterizePngBase64(
+                    registration.ShortcutPath, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_stateGate)
+                _iconsByRevalidationKey[registration.RevalidationKey] = png;
+            return new AppLibraryIconSummary(png);
+        }
+        finally
+        {
+            _scanGate.Release();
+        }
+    }
+
     private async Task<IReadOnlyList<WindowsAppLibraryItem>> ScanAsync(
         bool force, CancellationToken cancellationToken)
     {
@@ -218,6 +269,13 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
             foreach (var stale in _opaqueIdsByIdentity.Keys
                          .Where(identity => !liveIdentities.Contains(identity)).ToArray())
                 _opaqueIdsByIdentity.Remove(stale);
+
+            var liveRevalidationKeys = candidates
+                .Select(candidate => candidate.Registration.RevalidationKey)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var stale in _iconsByRevalidationKey.Keys
+                         .Where(key => !liveRevalidationKeys.Contains(key)).ToArray())
+                _iconsByRevalidationKey.Remove(stale);
 
             var byId = new Dictionary<string, StartMenuRegistration>(StringComparer.Ordinal);
             var snapshot = new WindowsAppLibraryItem[candidates.Length];

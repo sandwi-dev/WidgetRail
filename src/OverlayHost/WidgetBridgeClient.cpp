@@ -471,6 +471,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.imageSource = OptionalString(source, L"imageSource");
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");
+    node.indicatorSize = OptionalString(source, L"indicatorSize");
     node.inputScopeId = OptionalString(source, L"inputScopeId");
     node.scrollAxis = OptionalString(source, L"scrollAxis");
     if (source.HasKey(L"styleClasses")) {
@@ -1141,6 +1142,75 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge lifecycle JSON: " + std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> WidgetBridgeClient::RestartWidget(
+    const std::wstring_view widgetId) {
+    if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
+        widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId)) {
+        if (pipe_ != INVALID_HANDLE_VALUE) Fail(L"Widget restart request is invalid.");
+        return std::nullopt;
+    }
+    try {
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"restart-widget"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId = 0;
+            if (!ReadRequestId(response, responseId)) {
+                Fail(L"WidgetBridge returned an invalid restart request ID.");
+                return std::nullopt;
+            }
+            const auto type = response.GetNamedString(L"type");
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, hostEffects_,
+                                      appearanceChanges_, catalogChanges_, status)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
+                continue;
+            }
+            if (responseId != requestId) {
+                Fail(L"WidgetBridge returned a mismatched restart request ID.");
+                return std::nullopt;
+            }
+            if (type == L"error") {
+                Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            if (type != L"acknowledged" || !response.HasKey(L"payload") ||
+                response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
+                Fail(L"WidgetBridge returned an unexpected restart response.");
+                return std::nullopt;
+            }
+            const auto acknowledgement = response.GetNamedObject(L"payload");
+            if (OptionalString(acknowledgement, L"widgetId") != widgetId) {
+                Fail(L"WidgetBridge acknowledged restart for a different widget ID.");
+                return std::nullopt;
+            }
+            const auto state = OptionalString(acknowledgement, L"state");
+            if (state != L"background" && state != L"visible" &&
+                state != L"interactive") {
+                Fail(L"WidgetBridge returned an invalid restored lifecycle state.");
+                return std::nullopt;
+            }
+            lastError_.clear();
+            return true;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge restart JSON: " + std::wstring(error.message()));
     }
     return std::nullopt;
 }

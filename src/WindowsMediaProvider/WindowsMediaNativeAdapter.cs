@@ -1,4 +1,5 @@
 using Windows.Media.Control;
+using System.Diagnostics;
 
 namespace GameBarAlternative.WindowsMediaProvider;
 
@@ -62,12 +63,15 @@ internal sealed class WindowsMediaNativeAdapter : IWindowsMediaNativeAdapter
             ThrowIfDisposed();
             manager = _manager ?? throw new InvalidOperationException("Media provider has not started.");
             ReconcileObservedLocked(manager);
-            sessions = manager.GetSessions().Take(32)
-                .Select(session => (Session: session, Token: TokenForLocked(session))).ToArray();
             current = manager.GetCurrentSession();
+            sessions = manager.GetSessions()
+                .OrderByDescending(session => ReferenceEquals(session, current) || session.Equals(current))
+                .Take(32)
+                .Select(session => (Session: session, Token: TokenForLocked(session))).ToArray();
         }
 
         var result = new List<NativeMediaSession>(sessions.Length);
+        var artworkBudget = Stopwatch.StartNew();
         foreach (var entry in sessions)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -83,6 +87,10 @@ internal sealed class WindowsMediaNativeAdapter : IWindowsMediaNativeAdapter
                 var position = Math.Clamp(
                     ClampMilliseconds(timeline.Position - timeline.StartTime), 0, duration);
                 var controls = playback.Controls;
+                var artwork = artworkBudget.Elapsed < TimeSpan.FromMilliseconds(600)
+                    ? await MediaArtworkReader.TryReadAsync(
+                        media?.Thumbnail, cancellationToken).ConfigureAwait(false)
+                    : null;
                 result.Add(new NativeMediaSession(
                     entry.Token,
                     FriendlyAppName(sourceAppId),
@@ -99,7 +107,8 @@ internal sealed class WindowsMediaNativeAdapter : IWindowsMediaNativeAdapter
                     controls.IsPauseEnabled,
                     controls.IsPlayPauseToggleEnabled,
                     controls.IsPreviousEnabled,
-                    controls.IsNextEnabled));
+                    controls.IsNextEnabled,
+                    artwork));
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception)

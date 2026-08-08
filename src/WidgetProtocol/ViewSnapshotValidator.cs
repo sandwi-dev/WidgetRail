@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Buffers.Binary;
 
 namespace GameBarAlternative.WidgetProtocol;
 
@@ -181,9 +182,35 @@ public static class ViewSnapshotValidator
             CheckString(node.AccessibilityValue, $"{path}.accessibilityValue");
             CheckString(node.ActionId, $"{path}.actionId");
             CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId");
-            CheckString(node.ImageSource, $"{path}.imageSource");
+            if (node.Kind is not ViewNodeKind.Image)
+                CheckString(node.ImageSource, $"{path}.imageSource");
 
             var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll;
+            if (node.Kind is ViewNodeKind.LoadingIndicator)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.LoadingIndicatorVersion)
+                    Add(path, "feature_requires_version",
+                        $"LoadingIndicator requires protocol version {ProtocolConstants.LoadingIndicatorVersion} or later.");
+                if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
+                    Add($"{path}.accessibilityLabel", "required",
+                        "A loading indicator requires an accessibility label.");
+                if (node.IndicatorSize is null)
+                    Add($"{path}.indicatorSize", "required",
+                        "A loading indicator requires a bounded semantic size.");
+                else if (!Enum.IsDefined(node.IndicatorSize.Value))
+                    Add($"{path}.indicatorSize", "invalid_loading_indicator_size",
+                        "The loading-indicator size is not supported.");
+                if (node.Text is not null || node.Value is not null || node.Maximum is not null ||
+                    node.ImageSource is not null || node.ImageFit is not null ||
+                    node.Glyph is not null || node.Focus is not null)
+                    Add(path, "loading_indicator_property_not_allowed",
+                        "Loading indicators accept only an ID, accessibility label, and style classes.");
+            }
+            else if (node.IndicatorSize is not null)
+            {
+                Add($"{path}.indicatorSize", "loading_indicator_size_not_allowed",
+                    "Indicator size applies only to loading indicators.");
+            }
             if (node.Kind is ViewNodeKind.Scroll)
             {
                 if (snapshot.ProtocolVersion < ProtocolConstants.ScrollContainerVersion)
@@ -275,8 +302,14 @@ public static class ViewSnapshotValidator
                 Add($"{path}.actionId", "action_not_allowed", "Action IDs apply only to buttons and sliders.");
             if (node.Kind is ViewNodeKind.Image)
             {
-                if (!IsSafeImageSource(node.ImageSource))
-                    Add($"{path}.imageSource", "invalid_image_source", "An image requires an absolute HTTPS URL without embedded credentials.");
+                var imageSource = ValidateImageSource(node.ImageSource);
+                if (imageSource == ImageSourceKind.Invalid)
+                    Add($"{path}.imageSource", "invalid_image_source",
+                        "An image requires an absolute HTTPS URL without credentials or a bounded canonical PNG data source.");
+                else if (imageSource == ImageSourceKind.InlinePng &&
+                    snapshot.ProtocolVersion < ProtocolConstants.InlinePngImageVersion)
+                    Add($"{path}.imageSource", "feature_requires_version",
+                        $"Inline PNG images require protocol version {ProtocolConstants.InlinePngImageVersion} or later.");
                 if (node.ImageFit is null)
                     Add($"{path}.imageFit", "required", "An image requires a fit mode.");
                 else if (!Enum.IsDefined(node.ImageFit.Value))
@@ -406,9 +439,71 @@ public static class ViewSnapshotValidator
         ControllerButton.DPadUp or ControllerButton.DPadDown or
         ControllerButton.DPadLeft or ControllerButton.DPadRight);
 
-    private static bool IsSafeImageSource(string? source) =>
-        Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
-        uri.Scheme == Uri.UriSchemeHttps &&
-        !string.IsNullOrWhiteSpace(uri.Host) &&
-        string.IsNullOrEmpty(uri.UserInfo);
+    private enum ImageSourceKind { Invalid, Https, InlinePng }
+
+    private static ImageSourceKind ValidateImageSource(string? source)
+    {
+        if (Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+            uri.Scheme == Uri.UriSchemeHttps &&
+            !string.IsNullOrWhiteSpace(uri.Host) &&
+            string.IsNullOrEmpty(uri.UserInfo) &&
+            source!.Length <= ProtocolConstants.MaximumStringLength)
+            return ImageSourceKind.Https;
+        return IsValidInlinePng(source) ? ImageSourceKind.InlinePng : ImageSourceKind.Invalid;
+    }
+
+    private static bool IsValidInlinePng(string? source)
+    {
+        const string prefix = "data:image/png;base64,";
+        if (string.IsNullOrEmpty(source) ||
+            source.Length > ProtocolConstants.MaximumInlinePngSourceLength ||
+            !source.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+        byte[] png;
+        try
+        {
+            png = Convert.FromBase64String(source[prefix.Length..]);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+        if (png.Length is < 45 or > ProtocolConstants.MaximumInlinePngBytes ||
+            !source.AsSpan(prefix.Length).SequenceEqual(Convert.ToBase64String(png)) ||
+            !png.AsSpan(0, 8).SequenceEqual(
+                new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) ||
+            BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(8, 4)) != 13 ||
+            !png.AsSpan(12, 4).SequenceEqual("IHDR"u8))
+            return false;
+        var width = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4));
+        var height = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
+        if (width is < 1 or > ProtocolConstants.MaximumInlinePngDimension ||
+            height is < 1 or > ProtocolConstants.MaximumInlinePngDimension ||
+            png[24] != 8 || png[25] != 6 || png[26] != 0 || png[27] != 0 ||
+            png[28] != 0)
+            return false;
+        var offset = 8;
+        var sawHeader = false;
+        var sawImageData = false;
+        while (offset <= png.Length - 12)
+        {
+            var length = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(offset, 4));
+            if (length < 0 || length > png.Length - offset - 12) return false;
+            var type = png.AsSpan(offset + 4, 4);
+            if (!sawHeader)
+            {
+                if (!type.SequenceEqual("IHDR"u8) || length != 13) return false;
+                sawHeader = true;
+            }
+            else if (type.SequenceEqual("IHDR"u8))
+            {
+                return false;
+            }
+            if (type.SequenceEqual("IDAT"u8)) sawImageData = true;
+            offset += 12 + length;
+            if (type.SequenceEqual("IEND"u8))
+                return length == 0 && sawImageData && offset == png.Length;
+        }
+        return false;
+    }
 }

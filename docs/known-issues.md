@@ -52,9 +52,9 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | A shared minimalist warm-graphite default and matching first-party styles are implemented; packaged scale/accessibility screenshots remain. |
 | GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes now interpolate bounded opacity/scale targets with reduced-motion cancellation; packaged visual/performance evidence remains. |
 | GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation and close-after-correlated-success are implemented; broader sources, icons, classification, and packaged controller evidence remain. |
-| GBA-034 | P1 | Open | Network Controls / controller state model | Wi-Fi and Bluetooth rows need unambiguous focus, selection, connection, and churn semantics. |
-| GBA-035 | P0 | Open | Audio Mixer / capability degradation / focus | Failure of an optional audio provider must not break working mixer sections or move focus unexpectedly. |
-| GBA-036 | P1 | Verifying | OverlayHost / native composition / declarative surface | The native client now clears unused pixels to the layered color key; packaged visual verification must confirm the opaque canvas is gone. |
+| GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
+| GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
+| GBA-036 | P1 | Verifying | OverlayHost / native composition / declarative surface | The native client clears unused pixels to the layered color key and one packaged standard-viewport capture shows no opaque canvas; the broader paint/scale/contrast matrix remains. |
 | GBA-037 | P0 | Verifying | Now Playing / media provider / retry | Current-state reads are independent from live subscription failure and Retry creates a fresh generation; packaged provider-failure recovery remains to verify visually. |
 | GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | Activation resolves only durable saved entries and Catalog loads only on Add; intrinsic layout regressions cover the clipped empty/card copy, with packaged visual verification remaining. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
@@ -924,7 +924,7 @@ immediate, and packaged visual/performance evidence is still open.
    close, and replacement transitions; none is implied by the current paint-
    only opacity/scale slice.
 
-## GBA-033 — Games & Apps is not yet a curated launch library
+## GBA-033 — Games & Apps needs durable curated launch semantics
 
 **Evidence:** The current slice safely pages executable-backed Start Menu
 shortcuts into a nested Catalog where A adds/removes entries from a separate
@@ -958,6 +958,15 @@ candidate selection, radio state, saved/paired state, and authoritative
 connection state are different concepts. A focused row can look connected, a
 Bluetooth row can imply an unsafe generic Connect action, and refresh churn can
 jump focus.
+
+**Implementation evidence:** Focus no longer sets selected/connected state.
+Wi-Fi rows distinguish saved/open/password-required, pending, connected, and
+failure presentation from the controller target. Bluetooth rows expose Pair
+only for an actionable unpaired device and Windows-managed details for paired/
+connected or unsupported-ceremony cases; no row claims generic Connect. Wi-Fi
+and Bluetooth retain independent stable focus/Scroll IDs across tab switches,
+and deterministic tests cover churn and nearest-survivor fallback. Packaged
+controller churn and reversible physical pairing remain before closure.
 
 **Acceptance:**
 
@@ -993,14 +1002,35 @@ rebuild focus onto an unrelated master control.
 5. Packaged controller testing verifies partial grants and real provider
    failure where safely reproducible.
 
-## GBA-036 — Native client canvas is opaque outside widget surfaces
+**Implementation evidence:** Device-name and microphone enrichment now run in
+independent, event-driven section workers after the required master/session
+snapshot is live. Each section records loading, healthy, healthy-empty, denied,
+revoked, or unavailable state; provider details remain sanitized; and an
+explicit section retry reopens only that capability stream. Optional loss
+clears only data owned by that grant. Master output and application rows keep
+their stable IDs and remain actionable, while a disappearing microphone moves
+semantic focus to its same-section retry or the nearest surviving session
+instead of rebuilding focus at the master control. Focused deterministic tests
+cover startup denial, live revocation, unavailable-to-healthy recovery,
+endpoint/session churn, retry, and lifecycle generation replacement. The
+remaining gate is packaged controller testing with safe real grant revocation.
 
-**Evidence:** Current packaged screenshots show a rectangular opaque native
+## GBA-036 — Native client canvas was opaque outside widget surfaces
+
+**Original evidence:** Packaged screenshots showed a rectangular opaque native
 client/canvas region extending beyond the intended rounded content surface.
 That region masks the dimmed application backdrop and makes content-sized
 widgets look like they are embedded in an extra black window. This is distinct
 from the intentional full-screen dimming backdrop and is not a theme color
 choice.
+
+**Implementation/current evidence:** The native client now clears unused
+pixels to the exact layered color key rather than the theme canvas color. The
+packaged Release capture after `8e8c90a` shows the live Now Playing surface over
+the dimmed application without the former extra client rectangle. That single
+standard-viewport capture does not yet cover initial paint, replacement,
+compact/wide, reduced-transparency, high-contrast, or DPI changes, so the issue
+remains Verifying rather than Closed.
 
 **Acceptance:**
 
@@ -1014,13 +1044,22 @@ choice.
 4. Native deterministic coverage plus packaged screenshots exercise compact,
    standard, wide, reduced-transparency, and high-contrast presentations.
 
-## GBA-037 — Now Playing retry does not recover provider failure
+## GBA-037 — Now Playing retry did not recover provider failure
 
-**Evidence:** A current packaged run rendered the Now Playing provider-failure
+**Original evidence:** A packaged run rendered the Now Playing provider-failure
 surface. Activating **Try again** left the same failed state with no observable
 new load, recovery, or changed bounded diagnostic. A focusable Retry control
 that acknowledges input without beginning a real attempt is a functional
 failure, not merely missing polish.
+
+**Implementation/current evidence:** Subscription startup and current-state
+read are separate failure domains. A failed subscription can still publish a
+valid current snapshot, a later live-read failure preserves the last valid
+snapshot, and Retry cancels the old attempt and creates one fresh bounded
+generation. Focused media tests cover those paths. The post-`8e8c90a` packaged
+capture shows a live GSMTC session, proving the normal provider path on this
+machine, but it does not reproduce failure followed by recovery; status remains
+Verifying.
 
 **Acceptance:**
 
@@ -1058,12 +1097,19 @@ visual evidence remains outstanding.
 5. Automated lifecycle/layout tests and packaged screenshots cover empty,
    populated, loading, failure, long-name, and maximum-page states.
 
-## GBA-039 — Permission descriptions do not reflow or scroll fully
+## GBA-039 — Permission descriptions did not reflow or scroll fully
 
-**Evidence:** Current Settings permission detail screenshots show long
+**Original evidence:** Settings permission detail screenshots showed long
 capability descriptions running beyond their row/content allocation. Text can
 be clipped before the next focus target, and the Scroll extent follows focus
 rows rather than guaranteeing the full description is readable.
+
+**Implementation/current evidence:** The native column allocator now preserves
+measured intrinsic height for auto-height wrapped leaves, and Settings
+permission detail composition no longer forces the old clipped allocation.
+Native layout/renderer regressions cover long wrapped leaves and Scroll extent.
+A packaged long-description controller traversal across the supported scale
+matrix has not yet been captured, so status remains Verifying.
 
 **Acceptance:**
 

@@ -8,11 +8,17 @@ public sealed class PlatformSettingsPaths
         RootDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootDirectory));
         SettingsFile = Path.Combine(RootDirectory, "platform-settings.json");
         ThemesDirectory = Path.Combine(RootDirectory, "themes");
+        WidgetConfigurationDirectory = Path.Combine(RootDirectory, "widget-config");
     }
 
     public string RootDirectory { get; }
     public string SettingsFile { get; }
     public string ThemesDirectory { get; }
+    /// <summary>
+    /// Host-owned, package-scoped non-secret widget configuration. Authentication
+    /// tokens and other secrets must never be stored here.
+    /// </summary>
+    public string WidgetConfigurationDirectory { get; }
 
     public static PlatformSettingsPaths CreateDefault()
     {

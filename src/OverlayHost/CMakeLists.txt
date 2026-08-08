@@ -114,6 +114,11 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(GuideInputCompatibilityTests PRIVATE user32)
     add_test(NAME GuideInputCompatibilityTests COMMAND GuideInputCompatibilityTests)
 
+    add_executable(ControllerInputOwnershipTests ControllerInputOwnershipTests.cpp)
+    target_compile_features(ControllerInputOwnershipTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerInputOwnershipTests PRIVATE /W4 /permissive- /EHsc)
+    add_test(NAME ControllerInputOwnershipTests COMMAND ControllerInputOwnershipTests)
+
     add_executable(ControllerNavigationTests
         ControllerNavigationTests.cpp ControllerNavigation.cpp)
     target_compile_features(ControllerNavigationTests PRIVATE cxx_std_20)
@@ -159,7 +164,8 @@ if(GBA_BUILD_TESTS)
         NativeStyle.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
     target_compile_features(DeclarativeRendererTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeRendererTests PRIVATE /W4 /permissive- /EHsc)
-    target_compile_definitions(DeclarativeRendererTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_compile_definitions(DeclarativeRendererTests PRIVATE
+        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(DeclarativeRendererTests PRIVATE d2d1 dwrite winhttp windowscodecs ole32)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
 endif()

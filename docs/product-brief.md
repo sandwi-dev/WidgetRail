@@ -56,12 +56,17 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
   device switching or microphone sample capture
 - Network Controls: event-driven aggregate/Ethernet/Wi-Fi state, explicit
   nearby scans, saved/open connection, software Wi-Fi/Bluetooth radio control,
-  and sanitized Bluetooth discovery; no password entry, pairing, generic
-  Bluetooth connection, automatic
+  sanitized Bluetooth discovery, explicit association pairing, and Windows-
+  owned management fallback; no password entry, unpair, generic Bluetooth
+  connection, automatic
   location-sensitive current-SSID query, or signal disclosure in the initial
   scope
 - Performance: CPU, GPU, VRAM, RAM, frame-rate sources, and bounded history
 - Media: system media session controls
+- Spotify: an optional Community addon backed by a trusted official-Web-API
+  provider, with a separately trusted Web Playback SDK host for optional local
+  audio; PKCE login, Premium/streaming eligibility, and quota/terms are external
+  gates
 - Recent Activity: event-driven bounded read-only running-application
   observations; no activation, history/relaunch, or authoritative game detection
 - Screenshot and capture controls
@@ -69,13 +74,22 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 - Discord: a generally distributable launch/invite surface; conditional
   identity and Social SDK friends/presence only after Discord eligibility review
 
-Discord is the only planned social provider initially. Normal OAuth and bots
+Discord is the only candidate social provider initially. Normal OAuth and bots
 cannot mirror the signed-in user's friends, DMs, current call, or mute state.
-Social SDK communications are game-oriented and review-gated; control of the
-existing Discord desktop call requires partner-only local RPC scopes. The
-ungated baseline is therefore opening Discord home, official channel/message
-links, and invite links. Anything broader remains conditional on written
-Discord eligibility and production access.
+Social SDK communications are game-oriented and production-review-gated;
+control of the existing Discord desktop client requires approval-restricted
+local RPC authorization (or a named tester during development). The ungated
+baseline is therefore only opening Discord home, official channel/message
+links, and invite links, which is insufficient for the requested social/voice
+widget. Anything broader remains deferred pending written Discord eligibility
+and production access. See [Discord integration research](discord-integration.md).
+
+Spotify is an approved media-addon roadmap item, not a Built-in assumption. Its
+typed broker and focused PKCE/Web API provider/configuration foundation now
+exist, while host wiring, controller setup, the Community addon, live evidence,
+and the optional trusted Web Playback SDK engine remain open. Tokens stay host-
+side, and public use remains limited by Spotify quota, Premium, streaming-
+approval, and terms gates. See [Spotify integration](spotify-integration.md).
 
 Audio Mixer and Network Controls are the first two implemented system-control
 reference widgets, backed by narrow event-driven Core Audio and WLAN/IP Helper

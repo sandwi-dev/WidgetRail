@@ -16,11 +16,11 @@ active external foreground window. The overlay panel is bottom-centered inside
 that monitor's current work area, while the dimming backdrop covers that
 monitor's full bounds.
 
-While visible, an external foreground change retargets both windows. Events
-from the overlay or its backdrop, repeated foreground events, invalid HWNDs,
-and destroyed targets cannot make the overlay target itself. If the remembered
-target disappears, placement safely falls back to the host window until a new
-external target is observed.
+While visible, a valid external foreground change (including Alt+Tab) closes
+the overlay. Events from the overlay or its backdrop and transient invalid
+HWNDs are ignored. The newly foregrounded external window becomes the restore
+target, while the next explicit Guide/F1 open resolves its monitor and display
+environment afresh.
 
 The current product intentionally owns one selected monitor. It does not dim
 every monitor, draw over secure desktop/UAC, or promise visibility over true
@@ -41,8 +41,8 @@ host responds without a polling loop:
   graphics, and recomputes work-area placement, including taskbar changes;
 - `WM_SIZE` recreates the render target atomically so viewport-relative styles
   use the new client extent; and
-- visible foreground changes move the overlay and backdrop to the new target
-  monitor.
+- a valid external foreground change closes the overlay; the next open resolves
+  the new target monitor.
 
 These notifications do no work while hidden; the next open resolves fresh
 state. While visible they share one pure refresh policy and one authoritative
@@ -159,8 +159,8 @@ The native Release suite currently proves these policy/math seams:
 - deterministic controller-focus recovery when resize/reflow clips the
   preferred control, with hidden controls excluded from explicit navigation
   and action dispatch; and
-- 34 targeting checks covering foreground self-ignore, invalid-target fallback,
-  Alt+Tab retargeting, duplicate suppression, DPI-placement reentrancy
+- targeting checks covering foreground self-ignore, invalid-target fallback,
+  Alt+Tab close policy, duplicate suppression, DPI-placement reentrancy
   coalescing, and visible-versus-hidden DPI/topology/settings refresh policy.
 
 Run the native contract suite with:

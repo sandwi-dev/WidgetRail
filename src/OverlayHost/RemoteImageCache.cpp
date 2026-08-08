@@ -172,6 +172,57 @@ struct ParsedUrl {
     return {S_OK, std::move(image), {}};
 }
 
+constexpr std::wstring_view inlinePngPrefix = L"data:image/png;base64,";
+constexpr std::size_t maximumInlinePngBytes = 12U * 1024U;
+constexpr UINT32 maximumInlinePngDimension = 64;
+
+[[nodiscard]] int DecodeBase64Character(wchar_t value) noexcept {
+    if (value >= L'A' && value <= L'Z') return value - L'A';
+    if (value >= L'a' && value <= L'z') return value - L'a' + 26;
+    if (value >= L'0' && value <= L'9') return value - L'0' + 52;
+    if (value == L'+') return 62;
+    if (value == L'/') return 63;
+    return -1;
+}
+
+[[nodiscard]] std::optional<std::vector<std::uint8_t>> ParseInlinePng(
+    std::wstring_view source) {
+    if (!source.starts_with(inlinePngPrefix)) return std::nullopt;
+    source.remove_prefix(inlinePngPrefix.size());
+    if (source.empty() || source.size() % 4 != 0 ||
+        source.size() > ((maximumInlinePngBytes + 2U) / 3U) * 4U)
+        return std::nullopt;
+
+    std::vector<std::uint8_t> decoded;
+    decoded.reserve(source.size() / 4U * 3U);
+    for (std::size_t offset = 0; offset < source.size(); offset += 4) {
+        const bool last = offset + 4 == source.size();
+        const int a = DecodeBase64Character(source[offset]);
+        const int b = DecodeBase64Character(source[offset + 1]);
+        const int c = source[offset + 2] == L'=' ? -2 : DecodeBase64Character(source[offset + 2]);
+        const int d = source[offset + 3] == L'=' ? -2 : DecodeBase64Character(source[offset + 3]);
+        if (a < 0 || b < 0 || c == -1 || d == -1 ||
+            (c == -2 && d != -2) || (!last && (c == -2 || d == -2)))
+            return std::nullopt;
+        decoded.push_back(static_cast<std::uint8_t>((a << 2) | (b >> 4)));
+        if (c != -2) {
+            decoded.push_back(static_cast<std::uint8_t>((b << 4) | (c >> 2)));
+            if (d != -2)
+                decoded.push_back(static_cast<std::uint8_t>((c << 6) | d));
+            else if ((c & 0x03) != 0)
+                return std::nullopt;
+        } else if ((b & 0x0f) != 0) {
+            return std::nullopt;
+        }
+    }
+    if (decoded.size() < 45 || decoded.size() > maximumInlinePngBytes)
+        return std::nullopt;
+    constexpr std::uint8_t signature[]{137, 80, 78, 71, 13, 10, 26, 10};
+    if (!std::equal(std::begin(signature), std::end(signature), decoded.begin()))
+        return std::nullopt;
+    return decoded;
+}
+
 } // namespace
 
 RemoteImageCache::RemoteImageCache(
@@ -201,13 +252,13 @@ RemoteImageCache::~RemoteImageCache() {
 }
 
 RemoteImageRequestResult RemoteImageCache::Request(std::wstring url) {
-    if (!IsAllowedHttpsUrl(url)) return RemoteImageRequestResult::InvalidUrl;
+    if (!IsAllowedImageSource(url)) return RemoteImageRequestResult::InvalidUrl;
     std::scoped_lock lock(mutex_);
     return QueueLocked(std::move(url), false);
 }
 
 RemoteImageRequestResult RemoteImageCache::Retry(std::wstring url) {
-    if (!IsAllowedHttpsUrl(url)) return RemoteImageRequestResult::InvalidUrl;
+    if (!IsAllowedImageSource(url)) return RemoteImageRequestResult::InvalidUrl;
     std::scoped_lock lock(mutex_);
     return QueueLocked(std::move(url), true);
 }
@@ -290,6 +341,14 @@ void RemoteImageCache::Shutdown() noexcept {
 bool RemoteImageCache::IsAllowedHttpsUrl(std::wstring_view url) noexcept {
     try {
         return ParseHttpsUrl(url).has_value();
+    } catch (...) {
+        return false;
+    }
+}
+
+bool RemoteImageCache::IsAllowedImageSource(std::wstring_view source) noexcept {
+    try {
+        return ParseHttpsUrl(source).has_value() || ParseInlinePng(source).has_value();
     } catch (...) {
         return false;
     }
@@ -404,6 +463,15 @@ RemoteImageFetchResult RemoteImageCache::FetchAndDecode(
     std::wstring_view url,
     std::stop_token stopToken,
     const RemoteImageLimits& limits) {
+    if (auto inlinePng = ParseInlinePng(url)) {
+        if (stopToken.stop_requested()) return Failure(E_ABORT, L"Image request was cancelled.");
+        auto decoded = DecodeWithWic(std::move(*inlinePng), L"image/png", limits);
+        if (decoded.succeeded() &&
+            (decoded.image.width > maximumInlinePngDimension ||
+             decoded.image.height > maximumInlinePngDimension))
+            return Failure(E_INVALIDARG, L"Inline PNG dimensions exceed the allowed bound.");
+        return decoded;
+    }
     const auto parsed = ParseHttpsUrl(url);
     if (!parsed) return Failure(E_INVALIDARG, L"Only credential-free HTTPS URLs are allowed.");
 

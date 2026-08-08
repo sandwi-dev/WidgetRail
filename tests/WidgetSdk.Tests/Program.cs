@@ -16,6 +16,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Slider v3 serializes bounded accessible value semantics", SliderV3RoundTrip),
     ("Slider validation rejects unsafe ranges and focus conflicts", InvalidSlidersAreRejected),
     ("Image and icon nodes round-trip as renderer-neutral primitives", VisualNodesRoundTrip),
+    ("Loading indicators round-trip with bounded non-interactive semantics", LoadingIndicatorRoundTrip),
+    ("Inline PNG images are bounded local and negotiate the highest protocol", InlinePngImagesAreBounded),
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
     ("Dashboard quick action authority is typed bounded and versioned", DashboardAuthorityContract),
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),
@@ -25,6 +27,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
     ("Modern controller composites preserve tab switch and dialog semantics", ModernControllerComponentsAreSemantic),
+    ("Settings rows and action sheets preserve responsive controller semantics", SettingsRowsAndActionSheetsAreSemantic),
+    ("Action sheets route nested Back and suppress unavailable actions", ActionSheetRoutingIsScoped),
     ("Minimalist rows and controller hints preserve public focus and accessibility contracts", MinimalistRowsAreSemantic),
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
     ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
@@ -52,6 +56,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controller shortcut fallback stays in explicit active input surface", ScopedShortcutRouting),
     ("Public test host services are typed immutable and attach once", HostCapabilityServices),
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
+    ("Spotify host service exposes exact typed broker contracts", SpotifyTypedContracts),
+    ("Spotify service validates configuration scopes and playback commands", SpotifyInputValidation),
+    ("Spotify playback subscriptions acknowledge and stream typed changes", SpotifySubscriptionContracts),
+    ("Spotify playback control rejects failed acknowledgements", SpotifyAcknowledgementFailure),
+    ("Spotify service fails closed without a host capability client", SpotifyUnavailableClient),
     ("App library host service uses opaque paged read and launch contracts", AppLibraryPlatformService),
     ("Community services expose exact loopback and write-only secret contracts", CommunityPlatformServices),
     ("Private state canonicalizes JSON and exposes typed revision CAS helpers", PrivateStateServiceContracts),
@@ -75,6 +84,33 @@ foreach (var test in tests)
 
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static Task InlinePngImagesAreBounded()
+{
+    const string png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
+        "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    var view = new WidgetView(
+        UI.Stack("root",
+            UI.LoadingIndicator("loading", "Loading icon"),
+            UI.InlinePngImage(png, "icon", "Application icon"),
+            UI.Slider(1, 0, 10, 1, "change", "slider", "Value")));
+    var snapshot = view.CreateSnapshot("inline-image-test", 1);
+    Assert.Equal(ProtocolConstants.InlinePngImageVersion, snapshot.ProtocolVersion);
+    var image = snapshot.Root.Children.Single(node => node.Id == "icon");
+    Assert.True(image.ImageSource!.StartsWith(
+        "data:image/png;base64,", StringComparison.Ordinal),
+        "Inline image source did not use the local PNG data scheme.");
+    Assert.True(image.ActionId is null, "Inline images must remain non-interactive.");
+
+    Assert.Throws<ProtocolValidationException>(() =>
+        new WidgetView(UI.Stack("bad-root",
+            UI.InlinePngImage(Convert.ToBase64String([1, 2, 3]), "bad", "Bad icon")))
+            .CreateSnapshot("bad-inline-image", 1));
+    Assert.Throws<ArgumentException>(() =>
+        UI.InlinePngImage("not-base64", "bad-base64", "Bad icon"));
+    return Task.CompletedTask;
+}
 
 static async Task HostCapabilityServices()
 {
@@ -153,6 +189,7 @@ static async Task AppLibraryPlatformService()
                         "app-current", "Launchable App", WidgetAppLibraryKind.Application)
                     {
                         SavedId = "saved-durable",
+                        IconPngBase64 = "icon-pixels",
                     }]));
             })
         .WithResponse(
@@ -174,6 +211,7 @@ static async Task AppLibraryPlatformService()
     Assert.Equal(1, resolved.Count);
     Assert.Equal("app-current", resolved[0].AppId);
     Assert.Equal("saved-durable", resolved[0].SavedId);
+    Assert.Equal("icon-pixels", resolved[0].IconPngBase64);
     await widget.AppLibrary.LaunchAsync("app-opaque");
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());
@@ -496,6 +534,269 @@ static async Task SubscriptionOpenAcknowledges()
     await using var reader = subscription.ReadAllAsync().GetAsyncEnumerator();
     Assert.True(await reader.MoveNextAsync(), "Acknowledged subscription did not forward its event.");
     Assert.Equal("audio-ack", reader.Current.Sessions.Single().SessionId);
+}
+
+static async Task SpotifyTypedContracts()
+{
+    Assert.Equal("external.spotify.configuration.v1",
+        WidgetSpotifyCapabilities.ConfigurationCapabilityId);
+    Assert.Equal("external.spotify.authorization.v1",
+        WidgetSpotifyCapabilities.AuthorizationCapabilityId);
+    Assert.Equal("external.spotify.playback.read.v1",
+        WidgetSpotifyCapabilities.PlaybackReadCapabilityId);
+    Assert.Equal("external.spotify.playback.control.v1",
+        WidgetSpotifyCapabilities.PlaybackControlCapabilityId);
+    Assert.Equal("spotify.configuration.get",
+        WidgetSpotifyCapabilities.GetConfiguration.OperationId);
+    Assert.Equal("spotify.configuration.configure",
+        WidgetSpotifyCapabilities.ConfigureClient.OperationId);
+    Assert.Equal("spotify.authorization.get",
+        WidgetSpotifyCapabilities.GetAuthorization.OperationId);
+    Assert.Equal("spotify.authorization.connect",
+        WidgetSpotifyCapabilities.Connect.OperationId);
+    Assert.Equal("spotify.authorization.disconnect",
+        WidgetSpotifyCapabilities.Disconnect.OperationId);
+    Assert.Equal("spotify.playback.get",
+        WidgetSpotifyCapabilities.GetPlayback.OperationId);
+    Assert.Equal("spotify.playback.control",
+        WidgetSpotifyCapabilities.ControlPlayback.OperationId);
+    Assert.Equal("spotify.playback.changed",
+        WidgetSpotifyCapabilities.PlaybackChanged.EventType);
+    Assert.Equal("http://127.0.0.1:43827/callback/",
+        WidgetSpotifyService.ExactRedirectUri);
+    Assert.Equal(2, Enum.GetValues<WidgetSpotifyAuthorizationScope>().Length);
+    Assert.Equal(7, Enum.GetValues<WidgetSpotifyPlaybackOperation>().Length);
+
+    var publicSpotifyMembers = typeof(WidgetSpotifyService).Assembly.GetExportedTypes()
+        .Where(type => type.Name.Contains("Spotify", StringComparison.Ordinal))
+        .SelectMany(type => type.GetMembers(
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Static))
+        .Select(member => member.Name)
+        .ToArray();
+    Assert.True(publicSpotifyMembers.All(name =>
+            !name.Contains("Token", StringComparison.OrdinalIgnoreCase) &&
+            !name.Contains("Secret", StringComparison.OrdinalIgnoreCase) &&
+            !name.Contains("Http", StringComparison.OrdinalIgnoreCase)),
+        "Spotify SDK contracts must not expose tokens, client secrets, or generic HTTP.");
+
+    var playback = SpotifyPlayback("Typed title");
+    var services = new WidgetTestHostServicesBuilder()
+        .WithResponse(
+            WidgetSpotifyCapabilities.GetConfiguration,
+            new WidgetSpotifyConfigurationSummary(
+                false, WidgetSpotifyService.ExactRedirectUri))
+        .WithHandler(
+            WidgetSpotifyCapabilities.ConfigureClient,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal(new string('a', 32), request.ClientId);
+                return ValueTask.FromResult(new WidgetSpotifyConfigurationSummary(
+                    true, WidgetSpotifyService.ExactRedirectUri));
+            })
+        .WithResponse(
+            WidgetSpotifyCapabilities.GetAuthorization,
+            new WidgetSpotifyAuthorizationSummary(
+                WidgetSpotifyAuthorizationState.Disconnected, [], [], "Connect Spotify."))
+        .WithHandler(
+            WidgetSpotifyCapabilities.Connect,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal(WidgetSpotifyAuthorizationScope.PlaybackStateRead,
+                    request.RequestedScopes[0]);
+                Assert.Equal(WidgetSpotifyAuthorizationScope.PlaybackStateControl,
+                    request.RequestedScopes[1]);
+                return ValueTask.FromResult(new WidgetSpotifyAuthorizationSummary(
+                    WidgetSpotifyAuthorizationState.Connected,
+                    request.RequestedScopes, request.RequestedScopes, null));
+            })
+        .WithResponse(
+            WidgetSpotifyCapabilities.Disconnect,
+            new WidgetSpotifyAuthorizationSummary(
+                WidgetSpotifyAuthorizationState.Disconnected, [], [], null))
+        .WithResponse(WidgetSpotifyCapabilities.GetPlayback, playback)
+        .WithHandler(
+            WidgetSpotifyCapabilities.ControlPlayback,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal(WidgetSpotifyPlaybackOperation.Seek, request.Operation);
+                Assert.Equal<long?>(42_000, request.PositionMilliseconds);
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+            })
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+
+    Assert.True(widget.Spotify.IsAvailable, "Attached Spotify service was unavailable.");
+    Assert.True(!(await widget.Spotify.GetConfigurationAsync()).IsConfigured,
+        "Initial Spotify configuration should be unconfigured.");
+    var configured = await widget.Spotify.ConfigureClientAsync(new string('a', 32));
+    Assert.True(configured.IsConfigured, "Spotify client configuration was not forwarded.");
+    var authorization = await widget.Spotify.GetAuthorizationAsync();
+    Assert.Equal(WidgetSpotifyAuthorizationState.Disconnected, authorization.State);
+    var connected = await widget.Spotify.ConnectAsync([
+        WidgetSpotifyAuthorizationScope.PlaybackStateControl,
+        WidgetSpotifyAuthorizationScope.PlaybackStateRead]);
+    Assert.Equal(WidgetSpotifyAuthorizationState.Connected, connected.State);
+    Assert.Equal(WidgetSpotifyAuthorizationState.Disconnected,
+        (await widget.Spotify.DisconnectAsync()).State);
+    Assert.Equal("Typed title", (await widget.Spotify.GetPlaybackAsync()).Item!.Title);
+    await widget.Spotify.SeekAsync(42_000);
+}
+
+static async Task SpotifyInputValidation()
+{
+    var canceledObserved = false;
+    var services = new WidgetTestHostServicesBuilder()
+        .WithHandler(
+            WidgetSpotifyCapabilities.GetPlayback,
+            (_, cancellationToken) =>
+            {
+                canceledObserved = cancellationToken.IsCancellationRequested;
+                cancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(SpotifyPlayback("Never returned"));
+            })
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+
+    Assert.Throws<ArgumentException>(() => widget.Spotify
+        .ConfigureClientAsync(" ").AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify
+        .ConfigureClientAsync("client-id").AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify
+        .ConfigureClientAsync(new string('a', WidgetSpotifyService.MaximumClientIdCharacters + 1))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() => widget.Spotify
+        .ConnectAsync([]).AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.ConnectAsync([
+            WidgetSpotifyAuthorizationScope.PlaybackStateRead,
+            WidgetSpotifyAuthorizationScope.PlaybackStateRead])
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() => widget.Spotify.ConnectAsync([
+            (WidgetSpotifyAuthorizationScope)999])
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.ControlPlaybackAsync(
+            new(WidgetSpotifyPlaybackOperation.Play, PositionMilliseconds: 1))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.ControlPlaybackAsync(
+            new(WidgetSpotifyPlaybackOperation.Seek))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.SeekAsync(-1)
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.SeekAsync(
+            WidgetSpotifyService.MaximumPositionMilliseconds + 1)
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.SetRepeatAsync(
+            (WidgetSpotifyRepeatState)999)
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.ControlPlaybackAsync(
+            new(WidgetSpotifyPlaybackOperation.SetShuffle))
+        .AsTask().GetAwaiter().GetResult());
+
+    using var cancellation = new CancellationTokenSource();
+    cancellation.Cancel();
+    try
+    {
+        _ = await widget.Spotify.GetPlaybackAsync(cancellation.Token);
+        throw new InvalidOperationException("Expected Spotify playback cancellation.");
+    }
+    catch (OperationCanceledException)
+    {
+    }
+    Assert.True(canceledObserved, "Spotify service did not forward cancellation to the client.");
+}
+
+static async Task SpotifySubscriptionContracts()
+{
+    var opened = 0;
+    var services = new WidgetTestHostServicesBuilder()
+        .WithEventStream(
+            WidgetSpotifyCapabilities.PlaybackChanged,
+            cancellationToken =>
+            {
+                Interlocked.Increment(ref opened);
+                return OneSpotifyEvent(cancellationToken);
+            })
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+
+    await using (var subscription = await widget.Spotify.OpenPlaybackSubscriptionAsync())
+    {
+        Assert.Equal(1, Volatile.Read(ref opened));
+        await using var reader = subscription.ReadAllAsync().GetAsyncEnumerator();
+        Assert.True(await reader.MoveNextAsync(),
+            "Acknowledged Spotify subscription did not forward its event.");
+        Assert.Equal("Subscription title", reader.Current.Playback.Item!.Title);
+    }
+
+    await using var watch = widget.Spotify.WatchPlaybackAsync().GetAsyncEnumerator();
+    Assert.True(await watch.MoveNextAsync(), "Spotify watch stream did not forward its event.");
+    Assert.Equal(2, Volatile.Read(ref opened));
+}
+
+static async Task SpotifyAcknowledgementFailure()
+{
+    var services = new WidgetTestHostServicesBuilder()
+        .WithResponse(
+            WidgetSpotifyCapabilities.ControlPlayback,
+            new WidgetCapabilityAcknowledgement(false))
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+    try
+    {
+        await widget.Spotify.NextAsync();
+        throw new InvalidOperationException("Expected failed Spotify acknowledgement.");
+    }
+    catch (WidgetCapabilityException exception)
+    {
+        Assert.Equal("malformed_response", exception.ErrorCode);
+    }
+}
+
+static async Task SpotifyUnavailableClient()
+{
+    var widget = new CapabilityWidget();
+    Assert.True(!widget.Spotify.IsAvailable,
+        "Spotify service must fail closed without an authenticated host channel.");
+    try
+    {
+        _ = await widget.Spotify.GetConfigurationAsync();
+        throw new InvalidOperationException("Expected unavailable Spotify capability client.");
+    }
+    catch (WidgetCapabilityUnavailableException)
+    {
+    }
+}
+
+static WidgetSpotifyPlaybackSummary SpotifyPlayback(string title) => new(
+    true,
+    true,
+    12_000,
+    180_000,
+    1_000_000,
+    WidgetSpotifyRepeatState.Context,
+    true,
+    new WidgetSpotifyPlaybackItemSummary(
+        WidgetSpotifyPlaybackItemType.Track,
+        title,
+        "Typed artist",
+        "Typed context",
+        "https://i.scdn.co/image/typed",
+        "spotify:track:typed"),
+    new WidgetSpotifyPlaybackDisallowedActions(
+        false, false, false, false, false, false, false, false),
+    "Spotify");
+
+static async IAsyncEnumerable<WidgetSpotifyPlaybackChanged> OneSpotifyEvent(
+    [System.Runtime.CompilerServices.EnumeratorCancellation]
+    CancellationToken cancellationToken)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+    yield return new WidgetSpotifyPlaybackChanged(SpotifyPlayback("Subscription title"));
+    await Task.Yield();
 }
 
 static async IAsyncEnumerable<WidgetAudioSessionsChanged> OneAudioEvent(
@@ -876,7 +1177,27 @@ static Task DashboardAuthorityContract()
         [new WidgetQuickAction(ControllerButton.X, "toggle", "Play or pause", capability)]);
     var snapshot = view.CreateSnapshot("authority.instance", 4);
     Assert.Equal(ProtocolConstants.DashboardGestureAuthorityVersion, snapshot.ProtocolVersion);
-    var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+    byte[] payload;
+    try
+    {
+        payload = SnapshotJson.Serialize(snapshot);
+    }
+    catch (ProtocolValidationException exception)
+    {
+        throw new InvalidOperationException("serialize: " + string.Join("; ",
+            exception.Errors.Select(error =>
+                $"{error.Path} {error.Code}: {error.Message}")), exception);
+    }
+    ViewSnapshot roundTrip;
+    try
+    {
+        roundTrip = SnapshotJson.Deserialize(payload);
+    }
+    catch (ProtocolValidationException exception)
+    {
+        throw new InvalidOperationException("deserialize: " + string.Join("; ", exception.Errors.Select(error =>
+            $"{error.Path} {error.Code}: {error.Message}")), exception);
+    }
     Assert.Equal(capability, roundTrip.QuickActions.Single().Capability);
 
     var scopedCapability = new WidgetQuickActionCapability(
@@ -1193,6 +1514,150 @@ static Task ModernControllerComponentsAreSemantic()
     return Task.CompletedTask;
 }
 
+static Task SettingsRowsAndActionSheetsAreSemantic()
+{
+    const string longDescription =
+        "This intentionally long setting description remains a separate text node so the host can reflow it at compact widths and increased text scales.";
+    var setting = UI.SettingsRow(
+        "Controller vibration",
+        new ComponentAction("Change intensity", "settings.vibration.change", WidgetGlyph.Settings),
+        "settings.vibration",
+        description: longDescription,
+        value: "Medium with adaptive trigger feedback",
+        status: "Available",
+        statusTone: StatusTone.Success,
+        isBusy: true,
+        glyph: WidgetGlyph.Settings);
+    var sheet = UI.ActionSheet(
+        "Choose an intensity",
+        "settings.vibration.sheet",
+        "settings.vibration.sheet.scope",
+        "settings.vibration.dismiss",
+        [
+            new ActionSheetItem(
+                "settings.vibration.low", "Low", "settings.vibration.select-low"),
+            new ActionSheetItem(
+                "settings.vibration.medium", "Medium", "settings.vibration.select-medium",
+                WidgetGlyph.Check, "Medium vibration", IsBusy: true),
+            new ActionSheetItem(
+                "settings.vibration.reset", "Reset custom profile", "settings.vibration.reset-profile",
+                Tone: ActionSheetItemTone.Danger, IsDisabled: true),
+        ],
+        "The current game may override this setting.");
+    var snapshot = new WidgetView(
+        UI.Stack("settings.root", setting, sheet),
+        InitialFocusId: "settings.vibration.medium",
+        ActiveInputScopeId: "settings.vibration.sheet.scope")
+        .CreateSnapshot("settings.components", 8);
+
+    Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+
+    var settingNode = Find(snapshot.Root, "settings.vibration");
+    Assert.Equal(ViewNodeKind.Stack, settingNode.Kind);
+    Assert.True(settingNode.StyleClasses.Contains("gbar-settings-row"),
+        "SettingsRow must publish its semantic theme hook.");
+    Assert.Equal(longDescription,
+        Find(snapshot.Root, "settings.vibration.description").Text);
+    Assert.Equal(ViewNodeKind.Stack,
+        Find(snapshot.Root, "settings.vibration.copy").Kind);
+    Assert.Equal("Medium with adaptive trigger feedback",
+        Find(snapshot.Root, "settings.vibration.value").Text);
+    Assert.Equal("Available", Find(snapshot.Root, "settings.vibration.status.label").Text);
+    var settingAction = Find(snapshot.Root, "settings.vibration.action");
+    Assert.Equal(ViewNodeKind.Button, settingAction.Kind);
+    Assert.Equal(true, settingAction.IsBusy);
+    Assert.Equal(WidgetGlyph.Settings, settingAction.Glyph);
+    Assert.True(settingAction.AccessibilityLabel!.Contains("Current value: Medium", StringComparison.Ordinal),
+        "Settings action must announce the associated value.");
+    Assert.True(settingAction.AccessibilityLabel.Contains("Status: Available", StringComparison.Ordinal),
+        "Settings action must announce the associated status.");
+
+    var sheetNode = Find(snapshot.Root, "settings.vibration.sheet");
+    Assert.Equal("settings.vibration.sheet.scope", sheetNode.InputScopeId);
+    Assert.Equal(ControllerButton.B, sheetNode.Shortcuts.Single().Button);
+    Assert.Equal("settings.vibration.dismiss", sheetNode.Shortcuts.Single().ActionId);
+    Assert.Equal(ViewNodeKind.Scroll,
+        Find(snapshot.Root, "settings.vibration.sheet.list").Kind);
+    Assert.Equal(ScrollAxis.Vertical,
+        Find(snapshot.Root, "settings.vibration.sheet.list").ScrollAxis);
+    var low = Find(snapshot.Root, "settings.vibration.low");
+    var medium = Find(snapshot.Root, "settings.vibration.medium");
+    var reset = Find(snapshot.Root, "settings.vibration.reset");
+    Assert.Equal("settings.vibration.medium", low.Focus!.Down);
+    Assert.Equal("settings.vibration.low", medium.Focus!.Up);
+    Assert.Equal("settings.vibration.reset", medium.Focus.Down);
+    Assert.Equal("settings.vibration.medium", reset.Focus!.Up);
+    Assert.Equal(true, medium.IsBusy);
+    Assert.Equal("Medium vibration, Busy", medium.AccessibilityLabel);
+    Assert.Equal(true, reset.IsDisabled);
+    Assert.Equal("Reset custom profile, Destructive action, Unavailable", reset.AccessibilityLabel);
+    Assert.True(reset.StyleClasses.Contains("gbar-action-sheet__item--danger"),
+        "Destructive actions must expose a semantic theme class.");
+
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.ActionSheet(
+        "Empty", "empty.sheet", "empty.scope", "empty.back", []));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.ActionSheet(
+        "Too many", "large.sheet", "large.scope", "large.back",
+        Enumerable.Range(0, UI.MaximumActionSheetItems + 1)
+            .Select(index => new ActionSheetItem($"item.{index}", $"Item {index}", $"action.{index}"))
+            .ToArray()));
+    Assert.Throws<ArgumentException>(() => UI.ActionSheet(
+        "Duplicate", "duplicate.sheet", "duplicate.scope", "duplicate.back",
+        [
+            new ActionSheetItem("same", "One", "one"),
+            new ActionSheetItem("same", "Two", "two"),
+        ]));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.ActionSheet(
+        "Bad tone", "tone.sheet", "tone.scope", "tone.back",
+        [new ActionSheetItem("tone.item", "Bad", "bad", Tone: (ActionSheetItemTone)999)]));
+    Assert.Throws<ArgumentException>(() => UI.SettingsRow(
+        "Setting", new ComponentAction("Open", "open"), "unsafe/id"));
+    return Task.CompletedTask;
+}
+
+static async Task ActionSheetRoutingIsScoped()
+{
+    var widget = new ActionSheetRoutingWidget();
+    _ = widget.RenderSnapshot("action-sheet.instance", 12);
+    await widget.SetActiveAsync(true, CancellationToken.None);
+
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.B,
+        "sheet.busy",
+        12,
+        "sheet.scope")),
+        "B must resolve on the action-sheet scope even when Busy has focus.");
+    Assert.Equal("sheet.dismiss", (await widget.NextActionAsync()).ActionId);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.B,
+        null,
+        12,
+        "sheet.scope")),
+        "B must resolve on a temporarily focusless action-sheet scope.");
+    Assert.Equal("sheet.dismiss", (await widget.NextActionAsync()).ActionId);
+
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A,
+        "sheet.busy",
+        12,
+        "sheet.scope")),
+        "Busy action-sheet items must suppress A without leaving focus.");
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A,
+        "sheet.disabled",
+        12,
+        "sheet.scope")),
+        "Disabled action-sheet items must suppress A without leaving focus.");
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A,
+        "sheet.ready",
+        12,
+        "sheet.scope")),
+        "Available action-sheet items must activate normally.");
+    Assert.Equal("sheet.choose", (await widget.NextActionAsync()).ActionId);
+}
+
 static Task MinimalistRowsAreSemantic()
 {
     var value = UI.ValueRow(
@@ -1504,6 +1969,73 @@ static Task NullCollectionsAreRejected()
     const string json = "{\"protocolVersion\":1,\"sequence\":0,\"widgetInstanceId\":\"test.instance\",\"activeInputScopeId\":\"root\",\"root\":{\"id\":\"root\",\"kind\":\"stack\",\"styleClasses\":null,\"shortcuts\":null,\"children\":null}}";
     var exception = Assert.Throws<ProtocolValidationException>(() => SnapshotJson.Deserialize(Encoding.UTF8.GetBytes(json)));
     Assert.True(exception.Errors.Any(error => error.Path.EndsWith("styleClasses", StringComparison.Ordinal)), "Expected null style classes to be rejected.");
+    return Task.CompletedTask;
+}
+
+static Task LoadingIndicatorRoundTrip()
+{
+    var view = new WidgetView(
+        UI.Stack("root",
+            UI.LoadingIndicator("loading", "Loading saved applications",
+                LoadingIndicatorSize.Compact)),
+        ActiveInputScopeId: "root");
+    var snapshot = view.CreateSnapshot("loading.instance", 11);
+    var indicator = Find(snapshot.Root, "loading");
+    Assert.Equal(ViewNodeKind.LoadingIndicator, indicator.Kind);
+    Assert.Equal("Loading saved applications", indicator.AccessibilityLabel);
+    Assert.Equal(GameBarAlternative.WidgetProtocol.LoadingIndicatorSize.Compact,
+        indicator.IndicatorSize);
+    Assert.True(!indicator.IsFocusable, "A loading indicator must never enter controller focus.");
+    Assert.True(indicator.StyleClasses.SequenceEqual(
+        ["loading-indicator", "loading-indicator-compact"]),
+        "The SDK did not emit the bounded semantic loading-indicator classes.");
+
+    var validation = ViewSnapshotValidator.Validate(snapshot);
+    Assert.True(validation.Count == 0,
+        string.Join("; ", validation.Select(error =>
+            $"{error.Path} {error.Code}: {error.Message}")));
+    var payload = SnapshotJson.Serialize(snapshot);
+    ViewSnapshot roundTrip;
+    try
+    {
+        roundTrip = SnapshotJson.Deserialize(payload);
+    }
+    catch (ProtocolValidationException exception)
+    {
+        throw new InvalidOperationException(string.Join("; ", exception.Errors.Select(error =>
+            $"{error.Path} {error.Code}: {error.Message}")), exception);
+    }
+    Assert.Equal(ViewNodeKind.LoadingIndicator, Find(roundTrip.Root, "loading").Kind);
+    Assert.Throws<ArgumentException>(() => UI.LoadingIndicator("bad", " "));
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        UI.LoadingIndicator("bad-size", "Loading", (LoadingIndicatorSize)999));
+
+    var legacy = snapshot with { ProtocolVersion = ProtocolConstants.LoadingIndicatorVersion - 1 };
+    Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+        error.Path == "$.root.children[0]" && error.Code == "feature_requires_version"),
+        "A pre-v5 snapshot accepted a loading-indicator node.");
+    var unnamed = snapshot with
+    {
+        Root = snapshot.Root with
+        {
+            Children = [indicator with { AccessibilityLabel = null }],
+        },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(unnamed).Any(error =>
+        error.Path == "$.root.children[0].accessibilityLabel" && error.Code == "required"),
+        "A loading indicator without an accessible name was accepted.");
+    var interactive = snapshot with
+    {
+        Root = snapshot.Root with
+        {
+            Children = [indicator with { ActionId = "not.allowed", IsBusy = true }],
+        },
+    };
+    var errors = ViewSnapshotValidator.Validate(interactive);
+    Assert.True(errors.Any(error => error.Code == "action_not_allowed"),
+        "A loading indicator accepted an action ID.");
+    Assert.True(errors.Any(error => error.Code == "interaction_state_not_allowed"),
+        "A loading indicator accepted interactive state.");
     return Task.CompletedTask;
 }
 
@@ -2265,6 +2797,36 @@ file sealed class SurfaceRoutingWidget : Widget
     }
 }
 
+file sealed class ActionSheetRoutingWidget : Widget
+{
+    private readonly System.Threading.Channels.Channel<WidgetActionEvent> _observed =
+        System.Threading.Channels.Channel.CreateUnbounded<WidgetActionEvent>();
+
+    public ValueTask<WidgetActionEvent> NextActionAsync() => _observed.Reader.ReadAsync();
+
+    public override WidgetView Render() => new(
+        UI.ActionSheet(
+            "Choose",
+            "sheet",
+            "sheet.scope",
+            "sheet.dismiss",
+            [
+                new ActionSheetItem("sheet.ready", "Ready", "sheet.choose"),
+                new ActionSheetItem("sheet.busy", "Busy", "sheet.busy-action", IsBusy: true),
+                new ActionSheetItem("sheet.disabled", "Disabled", "sheet.disabled-action", IsDisabled: true),
+            ]),
+        InitialFocusId: "sheet.busy",
+        ActiveInputScopeId: "sheet.scope");
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        _observed.Writer.TryWrite(action);
+        return ValueTask.CompletedTask;
+    }
+}
+
 file sealed class CapabilityWidget : Widget
 {
     private static readonly WidgetCapabilityOperation<string, string> Operation =
@@ -2275,6 +2837,7 @@ file sealed class CapabilityWidget : Widget
     public WidgetAudioService Audio => HostServices.Audio;
     public WidgetNetworkService Network => HostServices.Network;
     public WidgetAppLibraryService AppLibrary => HostServices.AppLibrary;
+    public WidgetSpotifyService Spotify => HostServices.Spotify;
     public WidgetLoopbackHttpService Loopback => HostServices.Loopback;
     public WidgetPrivateSecretService PrivateSecrets => HostServices.PrivateSecrets;
     public WidgetPrivateStateService PrivateState => HostServices.PrivateState;

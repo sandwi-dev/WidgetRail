@@ -193,6 +193,16 @@ public sealed class WidgetBridgeServer(
                 }, cancellationToken).ConfigureAwait(false);
             }
             break;
+        case BridgeMessageTypes.RestartWidget:
+            var restartRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
+            var restoredState = await RestartWidgetAsync(
+                restartRequest.WidgetId, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(
+                BridgeMessageTypes.Acknowledged,
+                request.RequestId,
+                new { widgetId = restartRequest.WidgetId, state = restoredState },
+                cancellationToken).ConfigureAwait(false);
+            break;
         case BridgeMessageTypes.SetWidgetLifecycle:
             var lifecycleRequest = BridgeJson.FromElement<BridgeWidgetLifecycleRequest>(request.Payload);
             ValidateHostState(lifecycleRequest.State);
@@ -370,8 +380,15 @@ public sealed class WidgetBridgeServer(
                 return existing;
             if (existing is not null && _clients.TryRemove(widgetId, out var replaced))
                 _ = DisposeRegistrationAsync(replaced);
+            var registration = CreateRegistration(configured);
+            _clients[widgetId] = registration;
+            return registration;
+        }
+    }
 
-            var client = new WidgetProcessClient(new WidgetProcessOptions
+    private ClientRegistration CreateRegistration(ConfiguredWidget configured)
+    {
+        var client = new WidgetProcessClient(new WidgetProcessOptions
             {
                 ExecutablePath = configured.WorkerExecutable,
                 Arguments = configured.WorkerArguments,
@@ -393,43 +410,139 @@ public sealed class WidgetBridgeServer(
                         ? null
                         : CreateCompanionFactory(configured),
             });
-            var registration = new ClientRegistration(configured, client);
-            client.Invalidated += (_, revision) =>
+        var registration = new ClientRegistration(configured, client);
+        client.Invalidated += (_, revision) =>
+        {
+            if (IsCurrent(registration) && registration.MayPublishInvalidation) _ = SendEventAsync(
+                BridgeMessageTypes.Invalidation,
+                new BridgeInvalidation(configured.Id, revision));
+        };
+        client.ControllerActionFailed += (_, failure) =>
+        {
+            if (IsCurrent(registration)) _ = SendEventAsync(
+                BridgeMessageTypes.Failure,
+                new
+                {
+                    widgetId = configured.Id,
+                    reason = "controllerActionFailed",
+                    failure.ActionId,
+                    failure.SourceElementId,
+                    failure.Message,
+                    canRestart = false,
+                });
+        };
+        client.Failed += (_, failure) =>
+        {
+            registration.RecordFailure(failure);
+            if (IsCurrent(registration)) _ = SendEventAsync(
+                BridgeMessageTypes.Failure,
+                new
+                {
+                    widgetId = configured.Id,
+                    reason = failure.Reason,
+                    failure.ExitCode,
+                    failure.RestartsUsed,
+                    failure.CanRestart,
+                });
+        };
+        return registration;
+    }
+
+    private async Task<WidgetLifecycleState> RestartWidgetAsync(
+        string widgetId,
+        CancellationToken cancellationToken)
+    {
+        ClientRegistration oldRegistration;
+        lock (_catalogGate)
+        {
+            // Validate against the current catalog without launching a worker.
+            _ = _catalog.GetConfigured(widgetId);
+            if (!_clients.TryGetValue(widgetId, out oldRegistration!))
             {
-                if (IsCurrent(registration) && registration.MayPublishInvalidation) _ = SendEventAsync(
-                    BridgeMessageTypes.Invalidation,
-                    new BridgeInvalidation(configured.Id, revision));
-            };
-            client.ControllerActionFailed += (_, failure) =>
+                // A known widget with no registration has no process or cached
+                // authority to reload. Install a fresh inert registration so
+                // the operation remains lazy and deterministic.
+                var fresh = CreateRegistration(_catalog.GetConfigured(widgetId));
+                _clients[widgetId] = fresh;
+                return WidgetLifecycleState.Background;
+            }
+        }
+
+        using var gateTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        gateTimeout.CancelAfter(TimeSpan.FromSeconds(4));
+        try
+        {
+            await oldRegistration.OperationGate.WaitAsync(gateTimeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new BridgeProtocolException(
+                $"Widget '{widgetId}' did not become available for restart.");
+        }
+
+        try
+        {
+            oldRegistration.CancelIdleUnload();
+            var previousState = oldRegistration.HostLifecycle;
+            ConfiguredWidget configured;
+            lock (_catalogGate)
             {
-                if (IsCurrent(registration)) _ = SendEventAsync(
-                    BridgeMessageTypes.Failure,
-                    new
-                    {
-                        widgetId = configured.Id,
-                        reason = "controllerActionFailed",
-                        failure.ActionId,
-                        failure.SourceElementId,
-                        failure.Message,
-                        canRestart = false,
-                    });
-            };
-            client.Failed += (_, failure) =>
+                configured = _catalog.GetConfigured(widgetId);
+                if (!_clients.TryGetValue(widgetId, out var current) ||
+                    !ReferenceEquals(current, oldRegistration) ||
+                    !_clients.TryRemove(widgetId, out _))
+                    throw new BridgeProtocolException(
+                        $"Widget '{widgetId}' changed while it was restarting.");
+            }
+
+            // Disposal owns cooperative stop plus process-tree termination and
+            // is independently bounded. Do not acknowledge while the old
+            // process can still retain worker or companion authority.
+            using var retireTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            try
             {
-                registration.RecordFailure(failure);
-                if (IsCurrent(registration)) _ = SendEventAsync(
-                    BridgeMessageTypes.Failure,
-                    new
-                    {
-                        widgetId = configured.Id,
-                        reason = failure.Reason,
-                        failure.ExitCode,
-                        failure.RestartsUsed,
-                        failure.CanRestart,
-                    });
-            };
-            _clients[widgetId] = registration;
-            return registration;
+                await oldRegistration.Client.DisposeAsync().AsTask()
+                    .WaitAsync(retireTimeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new BridgeProtocolException(
+                    $"Widget '{widgetId}' could not be retired within the restart deadline.");
+            }
+
+            // The new registration has no cached snapshot, dashboard sequence,
+            // failure, or residency generation. Background remains completely
+            // lazy; visible states are restored before acknowledgement.
+            ClientRegistration freshRegistration;
+            lock (_catalogGate)
+            {
+                configured = _catalog.GetConfigured(widgetId);
+                freshRegistration = CreateRegistration(configured);
+                if (!_clients.TryAdd(widgetId, freshRegistration))
+                    throw new BridgeProtocolException(
+                        $"Widget '{widgetId}' changed while its fresh worker was created.");
+            }
+
+            if (previousState != WidgetLifecycleState.Background)
+            {
+                await freshRegistration.OperationGate.WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                try
+                {
+                    await freshRegistration.Client.SetLifecycleStateAsync(
+                        previousState, cancellationToken).ConfigureAwait(false);
+                    freshRegistration.HostLifecycle = previousState;
+                }
+                finally
+                {
+                    freshRegistration.OperationGate.Release();
+                }
+            }
+            return previousState;
+        }
+        finally
+        {
+            oldRegistration.OperationGate.Release();
         }
     }
 

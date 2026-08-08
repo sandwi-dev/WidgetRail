@@ -118,6 +118,7 @@ struct WidgetNode final {
     std::wstring imageSource;
     std::wstring imageFit;
     std::wstring glyph;
+    std::wstring indicatorSize;
     std::wstring inputScopeId;
     std::wstring scrollAxis;
     std::vector<std::wstring> styleClasses;
@@ -249,6 +250,9 @@ public:
     [[nodiscard]] std::optional<bool> SetWidgetLifecycle(
         std::wstring_view widgetId,
         std::wstring_view state);
+    /// Retires the exact current worker registration, clears its cached
+    /// snapshot/input authority, and restores its prior host lifecycle.
+    [[nodiscard]] std::optional<bool> RestartWidget(std::wstring_view widgetId);
     [[nodiscard]] std::optional<WidgetSnapshot> GetSnapshot(std::wstring_view widgetId);
     [[nodiscard]] std::optional<bool> SendControllerInput(
         std::wstring_view widgetId,

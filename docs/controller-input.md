@@ -26,6 +26,18 @@ monotonic timestamp, active input-scope ID, and rendered snapshot sequence. The
 MVP host emits only `Pressed`; snapshot validation rejects `Released` or
 `Repeated` shortcut bindings until those phases are transported end to end.
 
+### Desktop test fallbacks
+
+Keyboard and pointer support exists for local testing and accessibility without
+changing the controller-first widget contract. Arrow keys use the same host
+navigation path, Enter maps only to A/select, and Escape maps only to B/back.
+No other controller buttons are synthesized and these fallbacks are not added
+to controller guide hints. A left click on a tray icon selects/enters it. A
+left click on a visible declarative Button or Slider selects that stable focus
+ID and invokes semantic A only when enabled. Hit testing is host-owned, clipped
+to the renderer's visible active input scope, and never forwards raw mouse data
+to widget code. Clicking the dimmed backdrop closes the overlay.
+
 ## B behavior
 
 While widget controls own focus, B is offered to the active input scope. A
@@ -195,15 +207,29 @@ firmware, controller mode, transport, Steam configuration, and other software
 that owns Guide. Use the input probe and the real target configuration when
 making compatibility claims.
 
-## Containment limitation
+## Foreground ownership and containment limitation
 
-The visible prototype uses documented `XInputGetState` for ordinary controls
-and reads the first connected XInput slot. GameInput remains the primary Guide
-path; the compatibility adapter above is limited to Guide discovery.
-Foreground focus and GameInput exclusivity do not guarantee that a game using
-background Raw Input or direct HID access will stop seeing controller input.
-The project does not inject into games and currently ships no filter or
-virtual-controller driver.
+While visible, the host requests `GameInputExclusiveForegroundInput` together
+with the existing background-Guide and foreground-exclusive-Guide policy. It
+also reads ordinary gamepad state through GameInput instead of polling XInput.
+On every show/placement transition the Win32 host verifies that one of its
+windows actually belongs to the foreground process. A Guide callback does not
+itself prove that activation succeeded. If the first foreground request is
+declined, the host makes one bounded `AttachThreadInput` activation attempt and
+detaches immediately. Until foreground ownership is confirmed, ordinary
+controller polling fails closed so a press is not deliberately routed by both
+the overlay and the window behind it.
+
+If GameInput cannot initialize, the visible host retains a documented XInput
+compatibility path, clearly diagnosed as non-exclusive. GameInput exclusivity
+only prevents *other GameInput clients* from seeing ordinary input received by
+the focused overlay. It cannot consume delivery through XInput, Raw Input,
+direct HID, Steam Input, or another remapping/virtual-controller layer. A
+normal desktop overlay has no universal "consume this controller report"
+operation across those APIs. Universal suppression would require a separately
+installed, explicitly opt-in HID interception or physical-to-virtual controller
+layer. This project does not inject into games and is not authorized to install
+such a driver.
 
 Use `tools/InputProbe` and its documented test matrix when evaluating a game,
 controller, Steam, or Xbox Game Bar conflict. Do not claim universal input

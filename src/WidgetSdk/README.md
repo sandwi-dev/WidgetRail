@@ -13,6 +13,22 @@ neither continue emitting the package-API-1-compatible protocol-v1 snapshot.
 See [Declarative UI](../../docs/declarative-ui.md) and
 [Display and resolution](../../docs/display-and-resolution.md).
 
+For settings and contextual commands, prefer the public controller composites
+over custom focus routing. `UI.SettingsRow` keeps long supporting copy separate
+from its one stable `id.action` target. `UI.ActionSheet` accepts 1–32 stable
+items, owns a vertical focus-follow Scroll, and binds B on its nested scope;
+publish that scope as `WidgetView.ActiveInputScopeId` while it is open. Disabled
+and Busy actions stay focusable and are suppressed by the standard router.
+
+For indeterminate work that lasts long enough to be visible, use
+`UI.LoadingIndicator(id, accessibilityLabel, size)`. It is a protocol-v5,
+host-rendered primitive with bounded Compact, Standard, and Large sizes. It
+never enters controller focus, accepts no action or interaction state, and
+does not require widget polling. The native host animates its lightweight arc
+only while it is visible; reduced-motion mode keeps the same accessible status
+as a static indeterminate arc. Keep fast cached transitions visually quiet
+instead of flashing a spinner for a single frame.
+
 Unit tests can use the supported transport-free fake instead of reflection,
 internal APIs, named pipes, or hand-written JSON:
 

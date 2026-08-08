@@ -368,6 +368,12 @@ public sealed record WidgetAppLibraryItem(
 {
     [JsonRequired]
     public string SavedId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional host-rasterized PNG icon pixels. This never contains a file,
+    /// shortcut, package, or executable identifier.
+    /// </summary>
+    public string? IconPngBase64 { get; init; }
 }
 
 public sealed record WidgetAppLibraryPageRequest(
@@ -430,7 +436,11 @@ public sealed record WidgetMediaSession(
     [property: JsonRequired] bool CanPause,
     [property: JsonRequired] bool CanTogglePlayPause,
     [property: JsonRequired] bool CanPrevious,
-    [property: JsonRequired] bool CanNext);
+    [property: JsonRequired] bool CanNext)
+{
+    /// <summary>Optional host-sanitized inline PNG album artwork.</summary>
+    public string? ArtworkPngBase64 { get; init; }
+}
 
 public sealed record ControlWidgetMediaSessionRequest(
     [property: JsonRequired] string SessionId,

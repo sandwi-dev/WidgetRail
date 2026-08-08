@@ -22,6 +22,7 @@ internal static class BridgeMessageTypes
     public const string AppearanceChanged = "platform-appearance-changed";
     public const string CatalogChanged = "widget-catalog-changed";
     public const string GetSnapshot = "get-snapshot";
+    public const string RestartWidget = "restart-widget";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
     public const string Action = "action";

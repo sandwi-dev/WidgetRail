@@ -81,6 +81,7 @@ $motionTestObjectDirectory = Join-Path $outputDirectory 'obj\motion-tests'
 $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
 $targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
 $guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
+$inputOwnershipTestObjectDirectory = Join-Path $outputDirectory 'obj\input-ownership-tests'
 $navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
 $pressedTestObjectDirectory = Join-Path $outputDirectory 'obj\pressed-tests'
 $sliderTestObjectDirectory = Join-Path $outputDirectory 'obj\slider-tests'
@@ -89,7 +90,7 @@ $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -471,6 +472,21 @@ if (-not $SkipTests) {
         throw "GuideInputCompatibilityTests failed with exit code $LASTEXITCODE."
     }
 
+    $inputOwnershipTestArguments = $common + @(
+        (Join-Path $projectDirectory 'ControllerInputOwnershipTests.cpp'),
+        "/Fo:$inputOwnershipTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerInputOwnershipTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $inputOwnershipTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerInputOwnershipTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerInputOwnershipTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerInputOwnershipTests failed with exit code $LASTEXITCODE."
+    }
+
     $navigationTestArguments = $common + @(
         (Join-Path $projectDirectory 'ControllerNavigationTests.cpp'),
         (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
@@ -567,6 +583,7 @@ if (-not $SkipTests) {
     }
 
     $rendererTestArguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),

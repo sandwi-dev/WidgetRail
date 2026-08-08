@@ -1,6 +1,8 @@
 using System.Text.Json;
+using System.Buffers.Binary;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WindowsMediaProvider;
+using Windows.Storage.Streams;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -14,6 +16,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unsupported native controls fail with a typed error", UnsupportedControlFailsClosed),
     ("Provider payloads expose no AUMID or native identifier", PayloadIsSanitized),
     ("App labels and metadata remove control characters and paths", SanitizerIsBounded),
+    ("GSMTC artwork is normalized to a bounded inline PNG", ArtworkIsNormalized),
+    ("Missing malformed and oversized GSMTC artwork is omitted", BadArtworkIsOmitted),
     ("Real GSMTC API can be requested and disposed without polling", NativeApiSmoke),
 };
 
@@ -153,6 +157,45 @@ static Task SanitizerIsBounded()
     Assert.Equal(160, WindowsMediaNativeAdapter.Sanitize(new string('x', 200), "Fallback").Length);
     Assert.Equal("Fallback", WindowsMediaNativeAdapter.Sanitize("\r\n", "Fallback"));
     return Task.CompletedTask;
+}
+
+static async Task ArtworkIsNormalized()
+{
+    // Valid 1x1 RGBA PNG. The reader always re-encodes even an already-safe input.
+    var source = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==");
+    var encoded = await MediaArtworkReader.TryReadAsync(Reference(source), default);
+    Assert.True(encoded is not null);
+    var png = Convert.FromBase64String(encoded!);
+    Assert.True(png.Length <= MediaArtworkReader.MaximumOutputBytes);
+    Assert.SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, png.Take(8));
+    Assert.True(BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4)) <=
+        MediaArtworkReader.MaximumOutputDimension);
+    Assert.True(BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4)) <=
+        MediaArtworkReader.MaximumOutputDimension);
+    Assert.Equal((byte)8, png[24]);
+    Assert.Equal((byte)6, png[25]);
+    Assert.Equal((byte)0, png[28]);
+}
+
+static async Task BadArtworkIsOmitted()
+{
+    Assert.Equal<string?>(null, await MediaArtworkReader.TryReadAsync(null, default));
+    Assert.Equal<string?>(null, await MediaArtworkReader.TryReadAsync(
+        Reference([1, 2, 3, 4]), default));
+    Assert.Equal<string?>(null, await MediaArtworkReader.TryReadAsync(
+        Reference(new byte[MediaArtworkReader.MaximumSourceBytes + 1]), default));
+}
+
+static IRandomAccessStreamReference Reference(byte[] bytes)
+{
+    var stream = new InMemoryRandomAccessStream();
+    using var writer = new DataWriter(stream);
+    writer.WriteBytes(bytes);
+    writer.StoreAsync().AsTask().GetAwaiter().GetResult();
+    writer.DetachStream();
+    stream.Seek(0);
+    return RandomAccessStreamReference.CreateFromStream(stream);
 }
 
 static async Task NativeApiSmoke()

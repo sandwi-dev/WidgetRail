@@ -257,6 +257,26 @@ static Task ThemeDiscovery()
     Assert.Equal("50px", segmentedTabs.Get("min-height")!.Text);
     Assert.Equal("0", segmentedTabs.Get("flex-shrink")!.Text);
     Assert.Equal("1px", segmentedTabs.Get("border-width")!.Text);
+    var settingsRowAction = compiled.Theme.Resolve(new GbssElement(
+        "button",
+        null,
+        new HashSet<string>(["gbar-settings-row__action"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("44px", settingsRowAction.Get("min-height")!.Text);
+    Assert.Equal("start", settingsRowAction.Get("text-align")!.Text);
+    var actionSheetItem = compiled.Theme.Resolve(new GbssElement(
+        "button",
+        null,
+        new HashSet<string>(["gbar-action-sheet__item"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("44px", actionSheetItem.Get("min-height")!.Text);
+    Assert.Equal("0", actionSheetItem.Get("flex-shrink")!.Text);
+    var settingsDescription = compiled.Theme.Resolve(new GbssElement(
+        "text",
+        null,
+        new HashSet<string>(["gbar-settings-row__description"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("4", settingsDescription.Get("max-lines")!.Text);
     var focusedButton = compiled.Theme.Resolve(new GbssElement(
         "button",
         null,

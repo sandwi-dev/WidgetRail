@@ -134,8 +134,48 @@ public static partial class UI
         string accessibilityLabel,
         ImageFit fit = ImageFit.Cover) => new(id, source, accessibilityLabel, fit);
 
+    /// <summary>
+    /// Creates an image from bounded PNG pixels supplied by a trusted platform
+    /// service. The host validates the PNG again before decoding it; use this
+    /// for broker-projected icons rather than exposing native file paths.
+    /// </summary>
+    public static ImageElement InlinePngImage(
+        string pngBase64,
+        string id,
+        string accessibilityLabel,
+        ImageFit fit = ImageFit.Contain)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pngBase64);
+        byte[] bytes;
+        try
+        {
+            bytes = Convert.FromBase64String(pngBase64);
+        }
+        catch (FormatException exception)
+        {
+            throw new ArgumentException("Inline PNG data must be canonical base64.",
+                nameof(pngBase64), exception);
+        }
+        if (bytes.Length > ProtocolConstants.MaximumInlinePngBytes ||
+            !pngBase64.Equals(Convert.ToBase64String(bytes), StringComparison.Ordinal))
+            throw new ArgumentException("Inline PNG data exceeds its bound or is not canonical.",
+                nameof(pngBase64));
+        return new ImageElement(
+            id, "data:image/png;base64," + pngBase64, accessibilityLabel, fit);
+    }
+
     public static IconElement Icon(WidgetGlyph glyph, string id, string accessibilityLabel) =>
         new(id, glyph, accessibilityLabel);
+
+    /// <summary>
+    /// Creates a non-focusable indeterminate activity indicator. The label is
+    /// announced by accessibility services but is not rendered as visible text.
+    /// </summary>
+    public static LoadingIndicatorElement LoadingIndicator(
+        string id,
+        string accessibilityLabel = "Loading",
+        LoadingIndicatorSize size = LoadingIndicatorSize.Standard) =>
+        new(id, accessibilityLabel, size);
 
     private static IReadOnlyList<WidgetElement> CopyChildren(WidgetElement[] children)
     {

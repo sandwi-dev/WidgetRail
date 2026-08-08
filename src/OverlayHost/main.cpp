@@ -1,6 +1,7 @@
 #include "OverlayState.h"
 #include "DeclarativeRenderer.h"
 #include "ControllerNavigation.h"
+#include "ControllerInputOwnership.h"
 #include "GuideInputCompatibility.h"
 #include "FocusNavigation.h"
 #include "NativeIcons.h"
@@ -55,6 +56,7 @@ constexpr UINT_PTR kControllerTimer = 1;
 constexpr UINT_PTR kGuideCompatibilityTimer = 2;
 constexpr UINT_PTR kZOrderSettleTimer = 3;
 constexpr UINT_PTR kCatalogRetryTimer = 4;
+constexpr UINT_PTR kForegroundLossTimer = 5;
 constexpr UINT kGuideMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
 constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
@@ -806,16 +808,18 @@ private:
         case kForegroundChangedMessage:
             if (state_.surface() != gba::Surface::Hidden) {
                 const HWND foreground = reinterpret_cast<HWND>(lParam);
-                if (foregroundTarget_.Observe(
-                        reinterpret_cast<std::uintptr_t>(foreground),
-                        foreground && IsWindow(foreground))) {
-                    // A visible overlay follows the newly foregrounded app to
-                    // its monitor. This also recomputes work-area and DPI data
-                    // rather than merely restoring topmost z-order in place.
-                    ShowOverlay();
-                    InvalidateRect(window_, nullptr, FALSE);
+                const bool valid = foreground && IsWindow(foreground);
+                DWORD processId = 0;
+                if (valid) (void)GetWindowThreadProcessId(foreground, &processId);
+                if (gba::input::DecideVisibleForegroundTransition(
+                        true, valid, processId == GetCurrentProcessId()) ==
+                    gba::input::VisibleForegroundTransition::CloseOverlay) {
+                    (void)foregroundTarget_.Observe(
+                        reinterpret_cast<std::uintptr_t>(foreground), true);
+                    AppendDiagnostic(
+                        L"External foreground activation closed the overlay");
+                    Dispatch(gba::Command::CloseOverlay);
                 }
-                SetTimer(window_, kZOrderSettleTimer, 80, nullptr);
             }
             return 0;
         case kPlacementRefreshMessage:
@@ -828,6 +832,11 @@ private:
             HandleKey(
                 static_cast<UINT>(wParam),
                 (lParam & (1LL << 30)) != 0);
+            return 0;
+        case WM_LBUTTONUP:
+            HandlePointerActivation(
+                static_cast<float>(static_cast<short>(LOWORD(lParam))),
+                static_cast<float>(static_cast<short>(HIWORD(lParam))));
             return 0;
         case WM_TIMER:
             if (wParam == kControllerTimer) {
@@ -904,11 +913,34 @@ private:
                 if (bridge_.TakeWidgetCatalogChangedRevision()) {
                     PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
                 }
+            } else if (wParam == kForegroundLossTimer) {
+                KillTimer(window_, kForegroundLossTimer);
+                if (state_.surface() != gba::Surface::Hidden) {
+                    const HWND foreground = GetForegroundWindow();
+                    const bool valid = foreground && IsWindow(foreground);
+                    DWORD processId = 0;
+                    if (valid) (void)GetWindowThreadProcessId(foreground, &processId);
+                    if (gba::input::DecideVisibleForegroundTransition(
+                            true, valid, processId == GetCurrentProcessId()) ==
+                        gba::input::VisibleForegroundTransition::CloseOverlay) {
+                        (void)foregroundTarget_.Observe(
+                            reinterpret_cast<std::uintptr_t>(foreground), true);
+                        AppendDiagnostic(
+                            L"Application deactivation closed the overlay");
+                        Dispatch(gba::Command::CloseOverlay);
+                    }
+                }
             }
             return 0;
         case WM_ACTIVATEAPP:
             if (state_.surface() != gba::Surface::Hidden) {
-                SetTimer(window_, kZOrderSettleTimer, 80, nullptr);
+                if (wParam == FALSE) {
+                    // Foreground assignment can lag WM_ACTIVATEAPP. Defer one
+                    // bounded check and close only with a valid external HWND.
+                    SetTimer(window_, kForegroundLossTimer, 40, nullptr);
+                } else {
+                    KillTimer(window_, kForegroundLossTimer);
+                }
             }
             return 0;
         case WM_PAINT:
@@ -965,6 +997,7 @@ private:
             return;
         }
         gameInput_->SetFocusPolicy(static_cast<GameInputFocusPolicy>(
+            GameInputExclusiveForegroundInput |
             GameInputEnableBackgroundGuideButton |
             GameInputExclusiveForegroundGuideButton));
         const HRESULT result = gameInput_->RegisterSystemButtonCallback(
@@ -976,11 +1009,18 @@ private:
         if (FAILED(result)) {
             AppendDiagnostic(L"RegisterSystemButtonCallback failed HRESULT=" +
                              std::to_wstring(static_cast<unsigned long>(result)));
-            gameInput_.Reset();
             guideCallback_ = 0;
+            AppendDiagnostic(
+                L"GameInput remains available for foreground-exclusive ordinary controls; "
+                L"Guide requires the compatibility path");
         } else {
-            AppendDiagnostic(L"GameInput Guide callback registered with background+foreground-exclusive policy");
+            AppendDiagnostic(
+                L"GameInput configured for background Guide and foreground-exclusive "
+                L"Guide plus ordinary controls");
         }
+        AppendDiagnostic(
+            L"Controller exclusivity covers other GameInput clients only; XInput, Raw Input, "
+            L"HID, and remapping drivers may still receive the same physical input");
     }
 
     void Shutdown() {
@@ -1002,6 +1042,7 @@ private:
             KillTimer(window_, kGuideCompatibilityTimer);
             KillTimer(window_, kZOrderSettleTimer);
             KillTimer(window_, kCatalogRetryTimer);
+            KillTimer(window_, kForegroundLossTimer);
             UnregisterHotKey(window_, kDeveloperHotkey);
         }
         guideCompatibility_.Shutdown();
@@ -1538,8 +1579,9 @@ private:
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
-            SetForegroundWindow(window_);
-            SetFocus(window_);
+        }
+        (void)AcquireOverlayForegroundInput();
+        if (!wasVisible) {
             SetTimer(window_, kControllerTimer, 16, nullptr);
             PrimeControllerState();
         }
@@ -1547,8 +1589,12 @@ private:
 
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
+        lastControllerReadPath_ = gba::input::ControllerReadPath::None;
+        lastForegroundOwnership_.reset();
+        lastForegroundAcquisitionAt_ = 0;
         declarativeMotionActive_ = false;
         KillTimer(window_, kCatalogRetryTimer);
+        KillTimer(window_, kForegroundLossTimer);
         bridge_.AbandonWidgetCatalogChangedRevision();
         catalogRetryAttempts_ = 0;
         ShowWindow(window_, SW_HIDE);
@@ -1672,12 +1718,128 @@ private:
             wasVisible, isVisible, priorExtent, DesiredPresentationExtentDip()));
     }
 
+    [[nodiscard]] std::optional<std::size_t> HitTraySlot(
+        const float x,
+        const float y,
+        const float width,
+        const float height,
+        const gba::OverlaySurfaceGeometry* surfaceGeometry) const {
+        if (state_.order().empty() || width <= 0.0F || height <= 0.0F) {
+            return std::nullopt;
+        }
+        constexpr float preferredTileSize = 64.0F;
+        constexpr float gap = 14.0F;
+        const float stripTop = surfaceGeometry
+            ? surfaceGeometry->trayY
+            : std::max(0.0F, height - 112.0F);
+        const float stripBottom = surfaceGeometry
+            ? surfaceGeometry->trayY + surfaceGeometry->trayHeight
+            : std::max(stripTop, height - 14.0F);
+        const float stripHeight = stripBottom - stripTop;
+        if (stripHeight <= 0.0F) return std::nullopt;
+        const float verticalPadding = std::min(
+            16.0F, std::max(0.0F, (stripHeight - preferredTileSize) * 0.5F));
+        const float horizontalPadding = std::min(14.0F, width * 0.15F);
+        const float tileSize = std::max(
+            1.0F, std::min({preferredTileSize,
+                            width - horizontalPadding * 2.0F,
+                            stripHeight - verticalPadding * 2.0F}));
+        const float stripPadding = std::min(
+            14.0F, std::max(0.0F, (width - tileSize) * 0.5F));
+        const auto maximumVisible = static_cast<std::size_t>(std::max(
+            1.0F, std::floor((width - horizontalPadding * 2.0F + gap) /
+                             (preferredTileSize + gap))));
+        const std::size_t visibleCount = std::min(state_.order().size(), maximumVisible);
+        const std::size_t half = visibleCount / 2;
+        const std::size_t maximumFirst = state_.order().size() - visibleCount;
+        const std::size_t firstSlot = std::min(
+            state_.selectedSlot() > half ? state_.selectedSlot() - half : 0U,
+            maximumFirst);
+        const float stripWidth = tileSize * static_cast<float>(visibleCount) +
+                                 gap * static_cast<float>(visibleCount - 1) +
+                                 stripPadding * 2.0F;
+        const float stripLeft = (width - stripWidth) * 0.5F;
+        const float tileTop = stripTop + verticalPadding;
+        for (std::size_t visibleIndex = 0; visibleIndex < visibleCount; ++visibleIndex) {
+            const float tileLeft = stripLeft + stripPadding +
+                static_cast<float>(visibleIndex) * (tileSize + gap);
+            if (x >= tileLeft && x < tileLeft + tileSize &&
+                y >= tileTop && y < tileTop + tileSize) {
+                return firstSlot + visibleIndex;
+            }
+        }
+        return std::nullopt;
+    }
+
+    void HandlePointerActivation(const float clientX, const float clientY) {
+        if (state_.surface() == gba::Surface::Hidden || !window_) return;
+        RECT client{};
+        if (!GetClientRect(window_, &client)) return;
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            client.right - client.left, client.bottom - client.top,
+            dpi, interfaceScale);
+        if (!metrics) return;
+        const float x = clientX / metrics->physicalPixelsPerDip;
+        const float y = clientY / metrics->physicalPixelsPerDip;
+
+        if (state_.surface() == gba::Surface::Widget) {
+            const std::wstring widget{state_.activeWidget()};
+            const auto* snapshot = SnapshotFor(widget);
+            if (snapshot) {
+                const auto hit = gba::input::FindPointerHitTarget(
+                    x, y, snapshot->activeInputScopeId, lastWidgetRenderResult_);
+                if (hit) {
+                    if (state_.focusRegion() == gba::FocusRegion::Tray) {
+                        Dispatch(gba::Command::Activate);
+                    }
+                    (void)pressedInteraction_.Clear();
+                    focusedElementId_ = hit->id;
+                    focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+                    InvalidateRect(window_, nullptr, FALSE);
+                    if (hit->enabled) DispatchControllerAction(L"A");
+                    return;
+                }
+            }
+        }
+
+        std::optional<gba::OverlaySurfaceGeometry> surfaceGeometry;
+        if (state_.surface() == gba::Surface::Widget) {
+            surfaceGeometry = gba::ComputeOverlaySurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip,
+                DesiredWidgetSurfaceTarget().panelWidthDip);
+        }
+        const auto traySlot = HitTraySlot(
+            x, y, metrics->viewportWidthDip, metrics->viewportHeightDip,
+            surfaceGeometry ? &*surfaceGeometry : nullptr);
+        if (!traySlot) return;
+        if (state_.surface() == gba::Surface::Widget &&
+            state_.focusRegion() == gba::FocusRegion::Widget) {
+            Dispatch(gba::Command::SampleWidgetBack);
+        }
+        if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
+        for (std::size_t remaining = state_.order().size();
+             remaining > 0 && state_.selectedSlot() != *traySlot; --remaining) {
+            Dispatch(gba::Command::NavigateRight);
+        }
+        if (state_.selectedSlot() == *traySlot) {
+            Dispatch(gba::Command::Activate);
+        }
+    }
+
     void HandleKey(const UINT key, const bool repeated) {
         const auto phase = repeated
             ? gba::input::NavigationEventPhase::Repeated
             : gba::input::NavigationEventPhase::Pressed;
-        switch (key) {
-        case VK_LEFT:
+        if (key == VK_F5) {
+            if (!repeated) RestartCurrentWidget();
+            return;
+        }
+        switch (gba::input::ResolveBasicKeyboardAction(key)) {
+        case gba::input::BasicKeyboardAction::NavigateLeft:
             if (state_.surface() == gba::Surface::Widget &&
                 state_.focusRegion() == gba::FocusRegion::Widget) {
                 HandleWidgetDirection(gba::input::NavigationDirection::Left, phase, false);
@@ -1685,7 +1847,7 @@ private:
                 Dispatch(gba::Command::NavigateLeft);
             }
             break;
-        case VK_RIGHT:
+        case gba::input::BasicKeyboardAction::NavigateRight:
             if (state_.surface() == gba::Surface::Widget &&
                 state_.focusRegion() == gba::FocusRegion::Widget) {
                 HandleWidgetDirection(gba::input::NavigationDirection::Right, phase, false);
@@ -1693,7 +1855,7 @@ private:
                 Dispatch(gba::Command::NavigateRight);
             }
             break;
-        case VK_UP:
+        case gba::input::BasicKeyboardAction::NavigateUp:
             if (!repeated && state_.surface() == gba::Surface::Widget) {
                 if (state_.focusRegion() == gba::FocusRegion::Tray) {
                     Dispatch(gba::Command::Activate);
@@ -1702,44 +1864,179 @@ private:
                 }
             }
             break;
-        case VK_DOWN:
+        case gba::input::BasicKeyboardAction::NavigateDown:
             if (!repeated && state_.surface() == gba::Surface::Widget &&
                 state_.focusRegion() == gba::FocusRegion::Widget) MoveWidgetFocus(L"down");
             break;
-        case VK_RETURN:
+        case gba::input::BasicKeyboardAction::Activate:
             if (!repeated) DispatchControllerAction(L"A");
             break;
-        case VK_ESCAPE:
-            if (state_.focusRegion() == gba::FocusRegion::Tray && state_.reorderMode()) {
-                Dispatch(gba::Command::Cancel);
-            }
-            break;
-        case 'B':
+        case gba::input::BasicKeyboardAction::Back:
             if (!repeated) DispatchControllerAction(L"B");
             break;
-        case 'X':
-            if (!repeated) DispatchControllerAction(L"X");
-            break;
-        case 'Y':
-            if (!repeated) DispatchControllerAction(L"Y");
-            break;
-        case 'E':
-            if (!repeated) Dispatch(gba::Command::ToggleReorder);
-            break;
+        case gba::input::BasicKeyboardAction::None:
         default:
             break;
         }
     }
 
-    void PrimeControllerState() {
-        XINPUT_STATE controller{};
-        bool connected = false;
-        for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index) {
-            if (XInputGetState(index, &controller) == ERROR_SUCCESS) {
-                connected = true;
+    [[nodiscard]] bool IsOverlayProcessForeground() const noexcept {
+        const HWND foreground = GetForegroundWindow();
+        if (!foreground) return false;
+        DWORD foregroundProcess = 0;
+        (void)GetWindowThreadProcessId(foreground, &foregroundProcess);
+        return foregroundProcess == GetCurrentProcessId();
+    }
+
+    [[nodiscard]] bool AcquireOverlayForegroundInput() {
+        if (!window_ || !IsWindow(window_) || !IsWindowVisible(window_)) return false;
+
+        HWND foreground = GetForegroundWindow();
+        DWORD foregroundProcess = 0;
+        const DWORD foregroundThread = foreground
+            ? GetWindowThreadProcessId(foreground, &foregroundProcess)
+            : 0;
+        const DWORD overlayThread = GetCurrentThreadId();
+        const auto plan = gba::input::PlanForegroundAcquisition(
+            foregroundProcess == GetCurrentProcessId(), overlayThread, foregroundThread);
+
+        if (plan.attemptDirect) {
+            (void)SetForegroundWindow(window_);
+            (void)SetActiveWindow(window_);
+            (void)SetFocus(window_);
+        }
+
+        if (!IsOverlayProcessForeground() && plan.attachForegroundThread) {
+            // A Guide callback is delivered asynchronously and does not itself
+            // grant the UI thread foreground rights. Join the current
+            // foreground queue for one bounded activation attempt, then detach
+            // immediately. This does not bypass Windows' foreground lock when
+            // the OS declines the request.
+            const BOOL attached = AttachThreadInput(
+                overlayThread, foregroundThread, TRUE);
+            if (attached) {
+                (void)BringWindowToTop(window_);
+                (void)SetForegroundWindow(window_);
+                (void)SetActiveWindow(window_);
+                (void)SetFocus(window_);
+                (void)AttachThreadInput(overlayThread, foregroundThread, FALSE);
+            }
+        }
+
+        const bool confirmed = IsOverlayProcessForeground();
+        if (!lastForegroundOwnership_ || *lastForegroundOwnership_ != confirmed) {
+            lastForegroundOwnership_ = confirmed;
+            if (confirmed) {
+                AppendDiagnostic(
+                    gameInput_
+                        ? L"Overlay foreground confirmed; ordinary controller input is "
+                          L"GameInput foreground-exclusive"
+                        : L"Overlay foreground confirmed; GameInput unavailable, ordinary "
+                          L"controller input is non-exclusive XInput compatibility");
+            } else {
+                AppendDiagnostic(
+                    L"Overlay foreground acquisition was not confirmed; ordinary controller "
+                    L"polling is suspended to avoid double-routing input");
+            }
+        }
+        return confirmed;
+    }
+
+    static WORD MapGameInputButtons(const GameInputGamepadButtons buttons) noexcept {
+        const auto has = [buttons](const GameInputGamepadButtons button) {
+            return (static_cast<unsigned>(buttons) & static_cast<unsigned>(button)) != 0;
+        };
+        WORD mapped = 0;
+        if (has(GameInputGamepadDPadUp)) mapped |= XINPUT_GAMEPAD_DPAD_UP;
+        if (has(GameInputGamepadDPadDown)) mapped |= XINPUT_GAMEPAD_DPAD_DOWN;
+        if (has(GameInputGamepadDPadLeft)) mapped |= XINPUT_GAMEPAD_DPAD_LEFT;
+        if (has(GameInputGamepadDPadRight)) mapped |= XINPUT_GAMEPAD_DPAD_RIGHT;
+        if (has(GameInputGamepadMenu)) mapped |= XINPUT_GAMEPAD_START;
+        if (has(GameInputGamepadView)) mapped |= XINPUT_GAMEPAD_BACK;
+        if (has(GameInputGamepadLeftThumbstick)) mapped |= XINPUT_GAMEPAD_LEFT_THUMB;
+        if (has(GameInputGamepadRightThumbstick)) mapped |= XINPUT_GAMEPAD_RIGHT_THUMB;
+        if (has(GameInputGamepadLeftShoulder)) mapped |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+        if (has(GameInputGamepadRightShoulder)) mapped |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+        if (has(GameInputGamepadA)) mapped |= XINPUT_GAMEPAD_A;
+        if (has(GameInputGamepadB)) mapped |= XINPUT_GAMEPAD_B;
+        if (has(GameInputGamepadX)) mapped |= XINPUT_GAMEPAD_X;
+        if (has(GameInputGamepadY)) mapped |= XINPUT_GAMEPAD_Y;
+        return mapped;
+    }
+
+    static SHORT MapGameInputThumbstick(const float value) noexcept {
+        const float clamped = std::clamp(value, -1.0F, 1.0F);
+        const float scale = clamped < 0.0F ? 32768.0F : 32767.0F;
+        return static_cast<SHORT>(std::lround(clamped * scale));
+    }
+
+    static BYTE MapGameInputTrigger(const float value) noexcept {
+        return static_cast<BYTE>(std::lround(
+            std::clamp(value, 0.0F, 1.0F) * 255.0F));
+    }
+
+    [[nodiscard]] bool TryReadControllerState(XINPUT_STATE& controller) {
+        const bool overlayVisible = state_.surface() != gba::Surface::Hidden &&
+                                    window_ && IsWindowVisible(window_);
+        bool foregroundConfirmed = IsOverlayProcessForeground();
+        auto decision = gba::input::DecideControllerInputOwnership(
+            overlayVisible, foregroundConfirmed, gameInput_.Get() != nullptr);
+        const ULONGLONG now = GetTickCount64();
+        if (decision.shouldAcquireForeground &&
+            (lastForegroundAcquisitionAt_ == 0 ||
+             now - lastForegroundAcquisitionAt_ >= 250)) {
+            lastForegroundAcquisitionAt_ = now;
+            foregroundConfirmed = AcquireOverlayForegroundInput();
+            decision = gba::input::DecideControllerInputOwnership(
+                overlayVisible, foregroundConfirmed, gameInput_.Get() != nullptr);
+        }
+
+        if (!lastControllerReadPath_ || *lastControllerReadPath_ != decision.readPath) {
+            lastControllerReadPath_ = decision.readPath;
+            switch (decision.readPath) {
+            case gba::input::ControllerReadPath::GameInputForegroundExclusive:
+                AppendDiagnostic(L"Controller read path: GameInput foreground-exclusive");
+                break;
+            case gba::input::ControllerReadPath::XInputCompatibility:
+                AppendDiagnostic(
+                    L"Controller read path: XInput compatibility (not exclusive)");
+                break;
+            case gba::input::ControllerReadPath::None:
+                AppendDiagnostic(L"Controller read path suspended: overlay lacks foreground");
                 break;
             }
         }
+
+        controller = {};
+        if (decision.readPath ==
+            gba::input::ControllerReadPath::GameInputForegroundExclusive) {
+            ComPtr<IGameInputReading> reading;
+            const HRESULT result = gameInput_->GetCurrentReading(
+                GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf());
+            if (FAILED(result) || !reading) return false;
+            GameInputGamepadState state{};
+            if (!reading->GetGamepadState(&state)) return false;
+            controller.Gamepad.wButtons = MapGameInputButtons(state.buttons);
+            controller.Gamepad.bLeftTrigger = MapGameInputTrigger(state.leftTrigger);
+            controller.Gamepad.bRightTrigger = MapGameInputTrigger(state.rightTrigger);
+            controller.Gamepad.sThumbLX = MapGameInputThumbstick(state.leftThumbstickX);
+            controller.Gamepad.sThumbLY = MapGameInputThumbstick(state.leftThumbstickY);
+            controller.Gamepad.sThumbRX = MapGameInputThumbstick(state.rightThumbstickX);
+            controller.Gamepad.sThumbRY = MapGameInputThumbstick(state.rightThumbstickY);
+            return true;
+        }
+
+        if (decision.readPath == gba::input::ControllerReadPath::XInputCompatibility) {
+            for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index) {
+                if (XInputGetState(index, &controller) == ERROR_SUCCESS) return true;
+            }
+        }
+        return false;
+    }
+
+    void PrimeControllerState() {
+        XINPUT_STATE controller{};
+        const bool connected = TryReadControllerState(controller);
         previousButtons_ = connected ? controller.Gamepad.wButtons : 0;
         leftTriggerPressed_ = connected && controller.Gamepad.bLeftTrigger >= 30;
         rightTriggerPressed_ = connected && controller.Gamepad.bRightTrigger >= 30;
@@ -1785,17 +2082,15 @@ private:
 
     void PollController() {
         XINPUT_STATE controller{};
-        bool connected = false;
-        for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index) {
-            if (XInputGetState(index, &controller) == ERROR_SUCCESS) {
-                connected = true;
-                break;
-            }
-        }
+        const bool connected = TryReadControllerState(controller);
         const WORD buttons = connected ? controller.Gamepad.wButtons : 0;
         const WORD pressed = static_cast<WORD>(buttons & ~previousButtons_);
         const WORD released = static_cast<WORD>(previousButtons_ & ~buttons);
         previousButtons_ = buttons;
+        constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
+        const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
+        if (recoveryChordDown && !reloadChordHeld_) RestartCurrentWidget();
+        reloadChordHeld_ = recoveryChordDown;
 
         const auto releaseButton = [&](const WORD mask, const std::wstring_view protocolButton) {
             if ((released & mask) != 0 && pressedInteraction_.Release(protocolButton))
@@ -1856,10 +2151,10 @@ private:
         if (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) {
             DispatchControllerAction(L"RS", true);
         }
-        if (pressed & XINPUT_GAMEPAD_BACK) {
+        if (!recoveryChordDown && (pressed & XINPUT_GAMEPAD_BACK)) {
             DispatchControllerAction(L"View", true);
         }
-        if (pressed & XINPUT_GAMEPAD_START) {
+        if (!recoveryChordDown && (pressed & XINPUT_GAMEPAD_START)) {
             DispatchControllerAction(L"Menu", true);
         }
         const bool leftTriggerPressed = connected && controller.Gamepad.bLeftTrigger >= 30;
@@ -1982,6 +2277,51 @@ private:
             ? state_.activeWidget()
             : state_.selectedWidget();
         if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
+    }
+
+    void RestartCurrentWidget() {
+        if (state_.surface() != gba::Surface::Widget) return;
+        const std::wstring widgetId{state_.activeWidget()};
+        if (!IsBridgeWidget(widgetId)) return;
+        if (!bridge_.EnsureStarted(
+                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
+            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                                 L" reload failed: " + bridge_.lastError();
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            AppendDiagnostic(lastActionMessage_);
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+
+        const auto descriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [&](const gba::WidgetDescriptor& candidate) { return candidate.id == widgetId; });
+        if (descriptor != widgetDescriptors_.end()) {
+            if (declarativeRenderer_ && !descriptor->instanceId.empty())
+                declarativeRenderer_->ForgetWidgetState(descriptor->instanceId);
+            sliderInteraction_.ForgetWidget(descriptor->instanceId);
+        }
+        (void)pressedInteraction_.Clear();
+        focusMemory_.Forget(widgetId);
+        focusedElementId_.clear();
+        widgetSnapshots_.erase(widgetId);
+        renderedSnapshotSequences_.erase(widgetId);
+
+        const auto restarted = bridge_.RestartWidget(widgetId);
+        if (!restarted || !*restarted) {
+            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                                 L" reload failed: " + bridge_.lastError();
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            AppendDiagnostic(lastActionMessage_);
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+
+        lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) + L" reloaded";
+        lastActionExpiresAt_ = GetTickCount64() + 1800;
+        AppendDiagnostic(lastActionMessage_);
+        RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widgetId); });
+        InvalidateRect(window_, nullptr, FALSE);
     }
 
     void RefreshWidgetSnapshot(const std::wstring_view widgetId) {
@@ -2879,6 +3219,10 @@ private:
         gba::input::StickNavigationOptions{1, 0, 360, 125}};
     bool leftTriggerPressed_{};
     bool rightTriggerPressed_{};
+    bool reloadChordHeld_{};
+    std::optional<gba::input::ControllerReadPath> lastControllerReadPath_;
+    std::optional<bool> lastForegroundOwnership_;
+    ULONGLONG lastForegroundAcquisitionAt_{};
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
     ULONGLONG lastActionExpiresAt_{};

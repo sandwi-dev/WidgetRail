@@ -51,10 +51,12 @@ Accessibility policy remains host-owned and wins after every theme layer.
 
 The current bridge loads the trusted `styleFile` configured for a widget,
 resolves package-relative imports, compiles the bounded language, and returns
-typed property maps to the native host. The current end-to-end bridge publishes
-`base` and `focused` maps. Static snapshot `selected`, `disabled`, and `busy`
-state participates in those maps. A transient `pressed` map and future dynamic
-semantic-state families remain incomplete.
+typed property maps to the native host. The end-to-end bridge publishes
+complete `base`, `focused`, and transient `pressed` maps. Static snapshot
+`selected`, `disabled`, and `busy` state participates while computing all three.
+The native host applies `pressed` only to the exact physically held action and
+cancels/reconciles it across focus, surface, and snapshot changes. Future
+dynamic semantic-state families remain incomplete.
 
 GBSS is deliberately not CSS. It cannot fetch a URL, load a font or file by
 path, execute a script, invoke a command, provide a shader, or create native
@@ -122,6 +124,32 @@ additive contrast, bold-text, and transparency fields existed still load with
 the safe defaults. Editing the JSON is not a supported end-user settings
 experience.
 
+### Public per-widget configuration
+
+`WidgetConfigurationStore` separately persists bounded **non-secret** values in
+`%LOCALAPPDATA%\GameBarAlternative\widget-config` by default. Each document is
+isolated by the authenticated publisher and package IDs, capped at 32 entries/
+32 KiB, written atomically under bounded process and cross-process locking, and
+validated against duplicate fields, unknown fields, identity mismatches,
+invalid keys/values, oversize data, and reparse-point paths. It is suitable for
+public integration settings such as an OAuth Client ID; passwords, client
+secrets, refresh/access tokens, and credentials belong in a host-owned vault.
+
+The current local/test workflow is the `gbar config` CLI:
+
+```powershell
+gbar config set <package-id> <key> <value> --publisher <publisher-id>
+gbar config get <package-id> <key> --publisher <publisher-id>
+gbar config list <package-id> --publisher <publisher-id>
+gbar config remove <package-id> <key> --publisher <publisher-id>
+gbar config clear <package-id> --publisher <publisher-id>
+```
+
+`--settings-root <path>` isolates tests. The CLI rejects key names that look
+like secrets, passwords, tokens, or credentials. A generic controller-native
+editor and manifest-declared configuration schema are not implemented; do not
+ask a Community worker to edit these files directly.
+
 ## Current controller Settings widget
 
 Settings is a first-party out-of-process worker registered in the trusted
@@ -146,12 +174,10 @@ The implemented root categories are:
   Built-in rows show bundled manifest identity, publisher, version, runtime,
   compatibility, and required/optional capabilities. Community rows add active/
   installed versions, host-API range, architectures, compatibility reason,
-  enable/disable, and version management.
-- **Permissions & capabilities:** installed packages, their supported required/
-  optional declarations, and explicit Grant/Deny/Not decided state. Current
-  packaged evidence shows long descriptions can clip instead of producing a
-  complete reflow/Scroll extent; that remains open as
-  [GBA-039](known-issues.md).
+  enable/disable, version management, and a nested **Permissions &
+  configuration** page for that exact identity. Supported required and optional
+  declarations expose explicit Grant/Deny/Not decided state there; permissions
+  are not a separate root category.
 - **Diagnostics:** settings validity, total/invalid themes, and schema version.
   Runtime diagnostics additionally arrive through the bridge-owned,
   process-bound private Settings channel: catalog/appearance last-good state,
@@ -194,8 +220,9 @@ bridge host-API/architecture gating: an incompatible package shows a bounded
 reason and cannot be enabled, while an already enabled incompatible package can
 still be disabled for recovery. Enabling makes a compatible package available
 to the overlay but does not grant any declared capability. Required and
-optional declarations are shown separately, and consent remains the next
-explicit Permissions & capabilities decision.
+optional declarations are shown separately. Open **Permissions &
+configuration** on the same widget management page to make an explicit consent
+decision.
 
 The SDK now provides verified `UI.ToggleButton(...)` and `UI.Stepper(...)`
 helpers for this interaction model. They are available to any widget and are
@@ -210,14 +237,14 @@ lifetime, and there is no periodic worker poll. Saves expose busy/completion or
 bounded error feedback. Malformed settings show safe defaults and provide a
 confirmed reset recovery path.
 
-The permission page uses three nested controller scopes: package list, package
-capabilities, and a capability decision/confirmation page. Each scope is one
-bounded vertical controller Scroll rather than an internally paged list, so
-every installed package or declared capability remains reachable with normal
-Up/Down navigation and focus-follow. The pages contain no duplicate Back row;
-B returns exactly one level. Grant is accepted only from the active explicit
-confirmation page. Deny/revoke is immediate there. Decisions are atomically
-stored by package ID, publisher ID, and capability ID. Missing/malformed
+Permission review starts from the selected Installed widget rather than a
+second package list. Its capability page and nested decision/confirmation page
+each own one bounded vertical controller Scroll, so every declaration remains
+reachable with normal Up/Down navigation and focus-follow. B returns first to
+the widget management page and then to Installed widgets. Grant is accepted
+only from the active explicit confirmation page. Deny/revoke is immediate
+there. Decisions are atomically stored by package ID, publisher ID, and
+capability ID. Missing/malformed
 catalog or consent state disables actions and shows sanitized diagnostics.
 Unknown declarations and stale/undeclared saved decisions are excluded from
 normal editable permission rows because they cannot grant current authority;

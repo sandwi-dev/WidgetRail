@@ -9,6 +9,20 @@
 
 namespace gba::input {
 
+struct PointerHitTarget final {
+    std::wstring id;
+    bool enabled{};
+};
+
+/// Resolves the topmost visible pointer region in the active input scope.
+/// Disabled/busy controls remain selectable but report enabled=false so the
+/// host can move focus without invoking their action.
+[[nodiscard]] std::optional<PointerHitTarget> FindPointerHitTarget(
+    float x,
+    float y,
+    std::wstring_view activeScopeId,
+    const RenderResult& renderResult);
+
 /// Finds the closest enabled focus target in a direction. Candidates whose
 /// perpendicular span overlaps the current control are preferred, producing
 /// stable row/column behavior before falling back across asymmetric layouts.

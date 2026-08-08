@@ -13,9 +13,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Session selection remains stable across reorder and metadata churn", SelectionSurvivesChurn),
     ("Removed selection falls back to Windows current session", RemovedSelectionFallsBack),
     ("Playing progress interpolates locally without capability polling", ProgressInterpolatesLocally),
+    ("Current media artwork renders through the bounded inline image node", ArtworkRenders),
+    ("Missing media artwork renders a semantic placeholder", MissingArtworkUsesPlaceholder),
     ("A failed live subscription does not discard a valid current snapshot", SubscriptionFailurePreservesSnapshot),
     ("A live channel failure after loading preserves the last valid snapshot", ChannelFailurePreservesSnapshot),
     ("Try again starts a fresh read and subscription attempt", RetryStartsFreshAttempt),
+    ("Try again cannot cancel its own in-flight native reload", RetryDoesNotRestartWhileLoading),
     ("Capability and channel failures render recoverable states", FailureStates),
     ("Manifest permissions and GBSS package validate", PackageValidates),
 };
@@ -194,6 +197,43 @@ static async Task ProgressInterpolatesLocally()
     await Background(widget);
 }
 
+static async Task ArtworkRenders()
+{
+    const string png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==";
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("one", title: "Covered", current: true) with
+        {
+            ArtworkPngBase64 = png,
+        }],
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+    var snapshot = widget.RenderSnapshot("media.test", 80);
+    var artwork = Nodes(snapshot.Root).Single(node => node.Id == "media.artwork");
+    Assert.Equal(ViewNodeKind.Image, artwork.Kind);
+    Assert.Equal($"data:image/png;base64,{png}", artwork.ImageSource);
+    Assert.Equal("Artwork for Covered", artwork.AccessibilityLabel);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    await Background(widget);
+}
+
+static async Task MissingArtworkUsesPlaceholder()
+{
+    var fake = new FakeMediaHost { Sessions = [Session("one", current: true)] };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+    var snapshot = widget.RenderSnapshot("media.test", 81);
+    var placeholder = Nodes(snapshot.Root).Single(node => node.Id == "media.artwork-placeholder");
+    Assert.Equal(ViewNodeKind.Icon, placeholder.Kind);
+    Assert.Equal(WidgetGlyph.Music, placeholder.Glyph);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    await Background(widget);
+}
+
 static async Task SubscriptionFailurePreservesSnapshot()
 {
     var fake = new FakeMediaHost
@@ -250,6 +290,49 @@ static async Task RetryStartsFreshAttempt()
     Assert.Equal(2, fake.SubscriptionCalls);
     Assert.Equal("recovered", widget.Sessions.Single().SessionId);
     Assert.True(widget.LiveUpdatesAvailable);
+    await Background(widget);
+}
+
+static async Task RetryDoesNotRestartWhileLoading()
+{
+    var fake = new FakeMediaHost
+    {
+        ReadException = new WidgetCapabilityException("platform_unavailable", "first read failed"),
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.ServiceUnavailable);
+
+    fake.ReadException = null;
+    fake.PendingRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    var failed = widget.RenderSnapshot("media.retry", 10);
+    var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.A,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        "media.retry",
+        SnapshotSequence: failed.Sequence,
+        ActiveInputScopeId: failed.ActiveInputScopeId));
+    Assert.True(handled);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Loading);
+    await WaitUntil(() => fake.GetCalls == 2);
+
+    var loading = widget.RenderSnapshot("media.retry", 11);
+    var retry = Nodes(loading.Root).Single(node => node.Id == "media.retry");
+    Assert.True(retry.IsDisabled is true);
+    Assert.True(retry.IsBusy is true);
+    Assert.Equal("Loading…", retry.Text);
+
+    // Even a stale action already queued by the host must not cancel and
+    // replace the native request currently making progress.
+    await widget.OnActionAsync(new("media.retry", "media.retry"));
+    await Task.Delay(50);
+    Assert.Equal(2, fake.GetCalls);
+    Assert.Equal(2, fake.SubscriptionCalls);
+
+    fake.PendingRead.SetResult([Session("recovered", current: true)]);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+    Assert.Equal("recovered", widget.Sessions.Single().SessionId);
     await Background(widget);
 }
 
@@ -345,6 +428,7 @@ file sealed class FakeMediaHost
     internal Exception? ControlException { get; set; }
     internal Exception? SubscriptionOpenException { get; set; }
     internal Exception? SubscriptionReadException { get; set; }
+    internal TaskCompletionSource<IReadOnlyList<WidgetMediaSession>>? PendingRead { get; set; }
     internal List<string> CallOrder { get; } = [];
     internal List<ControlWidgetMediaSessionRequest> Commands { get; } = [];
     internal int GetCalls { get; private set; }
@@ -367,6 +451,9 @@ file sealed class FakeMediaHost
         GetCalls++;
         if (ReadException is not null)
             return ValueTask.FromException<IReadOnlyList<WidgetMediaSession>>(ReadException);
+        if (PendingRead is not null)
+            return new ValueTask<IReadOnlyList<WidgetMediaSession>>(
+                PendingRead.Task.WaitAsync(cancellationToken));
         return ValueTask.FromResult(Sessions);
     }
 

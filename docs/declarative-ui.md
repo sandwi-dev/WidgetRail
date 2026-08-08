@@ -1,7 +1,8 @@
 # Declarative UI reference
 
-Status: protocol and managed SDK implemented; generic native rendering remains
-a prototype integration
+Status: protocol, managed SDK, and generic native rendering implemented as an
+integrated prototype; the physical accessibility/resolution matrix remains a
+release evidence gate
 
 Widgets return a semantic tree from `Widget.Render()`. The host owns layout,
 pixels, focus presentation, accessibility, and controller dispatch. Widgets
@@ -24,8 +25,12 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, accessibilityLabel, accessibilityValue?, activationAction?)` | `slider` | Protocol-v3 controller value control with absolute requested values. |
 | `UI.Spacer(id)` | `spacer` | Layout spacing node. |
 | `UI.Image(httpsSource, id, accessibilityLabel, fit?)` | `image` | HTTPS image with required accessible alternative text. |
+| `UI.InlinePngImage(pngBase64, id, accessibilityLabel, fit?)` | `image` | Protocol-v6 bounded host-decoded PNG pixels for trusted broker artwork; never a native path. |
 | `UI.Icon(glyph, id, accessibilityLabel)` | `icon` | Host-rendered semantic vector icon from a closed enum. |
+| `UI.LoadingIndicator(id, accessibilityLabel, size?)` | `loadingIndicator` | Protocol-v5 nonfocusable native activity arc with Compact, Standard, or Large sizing. |
 | `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
+| `UI.SettingsRow(label, action, id, ...)` | `stack`, `row`, `text`, `button` | Responsive setting summary whose `id.action` Button is its only focus stop. |
+| `UI.ActionSheet(title, id, scopeId, backAction, items, description?)` | `stack`, `scroll`, `button` | Bounded 1–32 item nested action scope with stable item focus IDs and scope-owned B. |
 | `UI.Card(id, variant?, children...)` | `stack` | Nonfocusable raised/subtle/transparent grouping surface. |
 | `UI.SectionHeader(title, id, eyebrow?, description?, trailing?)` | `stack`, `row`, `text` | Stable title hierarchy with optional trailing content. |
 | `UI.StatusBadge(label, tone, id, glyph?)` | `row`, `icon`, `text` | Nonfocusable status that never relies on color alone. |
@@ -37,6 +42,15 @@ controller input surface. The root is always the default input scope, so a
 simple widget does not need to declare one. Those containers may also call
 `.Shortcut(button, actionId)` for a surface-level action that must work without
 focused content, such as B to dismiss a modal.
+
+`LoadingIndicator` is indeterminate presentation, not a worker lifecycle or
+polling mechanism. Its accessible label is required, and the protocol rejects
+actions, focus neighbors, interaction state, and arbitrary numeric geometry on
+the node. The host draws and advances the arc only while its visible geometry
+intersects the widget viewport. Reduced-motion mode uses a static incomplete
+arc, preserving the honest "work is in progress" meaning without movement.
+Prefer keeping cached content in place for fast refreshes; do not flash a
+single-frame indicator when work normally finishes before the next paint.
 
 ## Controller scroll containers
 
@@ -105,10 +119,13 @@ Explicit values refine the selected mode but do not bypass work-area, DPI,
 text-scale, tray/footer, or minimum-control-size constraints. Widgets must
 still reflow and use Scroll for overflow after the host clamps the surface.
 
-Image fit is `Contain`, `Cover` (default), or `Fill`. Image sources must be
-absolute HTTPS URLs with a host and no embedded credentials. Redirect,
-download-size, decode-size, MIME, and cache policy are enforced by the host
-image service; widgets never receive native image handles.
+Image fit is `Contain`, `Cover` (default), or `Fill`. General image sources must
+be absolute HTTPS URLs with a host and no embedded credentials. A trusted
+platform service may instead return PNG pixels for `UI.InlinePngImage`; protocol
+v6 accepts only canonical RGBA8 PNG data up to 12 KiB and 64 by 64 pixels. The
+host decodes those pixels in memory and never sends them through WinHTTP.
+Redirect, download-size, decode-size, MIME, and cache policy are enforced by the
+host image service; widgets never receive native image handles or filesystem paths.
 
 The closed `WidgetGlyph` set is `Music`, `Play`, `Pause`, `Previous`, `Next`,
 `Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `Settings`, `Warning`,

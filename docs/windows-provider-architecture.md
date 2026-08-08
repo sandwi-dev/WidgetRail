@@ -332,17 +332,25 @@ on the owner thread. No provider timer runs while the system is unchanged.
 
 ### Implemented boundary and remaining work
 
-Bluetooth radio read/control and event-driven device enumeration are
-implemented as separate closed broker capabilities. The trusted WinRT adapter
-publishes bounded opaque IDs, sanitized names, and paired/present/connected
-state; native device IDs, addresses, handles, and pairing secrets never cross
-the broker. Software-radio changes reconcile effective state and report
-hardware/user/system denial, no adapter, unavailable, or partial failure.
+Bluetooth radio read/control, event-driven device enumeration, pairing, and
+management fallback are separate closed broker capabilities. The trusted WinRT
+adapter publishes bounded opaque IDs, sanitized names, and paired/present/
+connected state; native device IDs, addresses, handles, and pairing secrets
+never cross the broker. Software-radio changes reconcile effective state and
+report hardware/user/system denial, no adapter, unavailable, or partial
+failure.
 
-Pair/unpair is not implemented. A future host-owned pairing ceremony requires
-desktop owner-window, consent, cancellation, and hardware evidence. Generic
-Connect/Disconnect remains out of scope; a future GATT or RFCOMM integration
-must declare its exact profile/service authority and resource/lifecycle policy.
+Pairing resolves one current opaque ID to a retained native association
+endpoint only inside the trusted provider, calls `PairAsync`, returns a bounded
+typed Windows outcome, and refreshes/publishes authoritative state even after
+failure or cancellation. It does not claim that a Bluetooth profile connected.
+The separate manage operation validates the same opaque ID and opens
+`ms-settings:bluetooth` without placing that native ID in the URI. That fallback
+lets Windows own unsupported ceremonies and paired-device management. Unpair is
+not implemented and physical pairing still needs reversible hardware evidence.
+Generic Connect/Disconnect remains out of scope; a future GATT or RFCOMM
+integration must declare its exact profile/service authority and resource/
+lifecycle policy.
 
 ## Foreground-activity provider
 
@@ -388,9 +396,14 @@ exact `.lnk`, with no supplied arguments, working directory, elevation verb,
 or owner window. Stale, moved, modified, duplicated, and unknown registrations
 fail closed.
 
-The present source does not enumerate AppsFolder/UWP or launcher libraries,
-does not expose application icons/artwork, and conservatively reports every
-real item as Application. See the [Games & Apps reference](games-and-apps.md).
+The present source does not enumerate AppsFolder/UWP or launcher libraries and
+conservatively reports every real item as Application. For the user's curated
+library only, it resolves the Shell icon on demand inside the trusted provider,
+rasterizes it to a 48 by 48 RGBA PNG, and exposes only bounded pixels. Discovery
+pages remain text-only; at most 32 resolved icons and 384 KiB of source pixels
+cross one broker response, with a semantic fallback for missing or malformed
+icons. Shortcut, executable, icon-location, AUMID, and package paths never cross
+the broker boundary. See the [Games & Apps reference](games-and-apps.md).
 
 ## Privilege and privacy boundary
 
@@ -494,7 +507,7 @@ UI restrictions remain enabled.
 
 Audio Mixer, Network Controls, and Games & Apps are implemented first-party
 integration references. They do not imply output/default-role switching,
-microphone sample capture, Bluetooth pairing/generic connection, current-SSID
+microphone sample capture, Bluetooth unpair/generic connection, current-SSID
 privacy access, AppsFolder/launcher coverage, app icons, authoritative game
 classification, or production security support. Hardware/privacy/performance gates remain. See the
 [Network Controls reference](network-controls.md) for its authoring,

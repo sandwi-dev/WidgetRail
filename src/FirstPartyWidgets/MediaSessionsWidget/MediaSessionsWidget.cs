@@ -50,6 +50,7 @@ public sealed class MediaSessionsWidget : Widget
     private long _runGeneration;
     private long _snapshotRevision;
     private bool _liveUpdatesAvailable;
+    private bool _reloadInFlight;
 
     public MediaSessionsWidget(TimeProvider? timeProvider = null) =>
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -67,6 +68,7 @@ public sealed class MediaSessionsWidget : Widget
         WidgetMediaSessionCommand? pending;
         MediaSessionsViewState state;
         string status;
+        bool reloadInFlight;
         lock (_gate)
         {
             sessions = _sessions;
@@ -74,6 +76,7 @@ public sealed class MediaSessionsWidget : Widget
             pending = _pendingCommand;
             state = _viewState;
             status = _status;
+            reloadInFlight = _reloadInFlight;
         }
 
         var header = UI.Stack("media.header",
@@ -91,7 +94,7 @@ public sealed class MediaSessionsWidget : Widget
             .Classes("media-header");
 
         if (state != MediaSessionsViewState.Ready || sessions.Count == 0)
-            return RenderState(header, state);
+            return RenderState(header, state, reloadInFlight);
 
         var selected = sessions.FirstOrDefault(item =>
             string.Equals(item.SessionId, selectedId, StringComparison.Ordinal)) ?? sessions[0];
@@ -146,23 +149,37 @@ public sealed class MediaSessionsWidget : Widget
             .FocusUp(selectedPill).FocusLeft("media.play-toggle")
             .Classes("media-transport", "media-next");
 
+        WidgetElement artwork = string.IsNullOrWhiteSpace(selected.ArtworkPngBase64)
+            ? UI.Icon(WidgetGlyph.Music, "media.artwork-placeholder",
+                    $"No artwork available for {selected.Title}")
+                .Classes("media-artwork", "media-artwork-placeholder")
+            : UI.InlinePngImage(
+                    selected.ArtworkPngBase64,
+                    "media.artwork",
+                    $"Artwork for {selected.Title}",
+                    ImageFit.Cover)
+                .Classes("media-artwork", "media-artwork-image");
+
         var root = UI.Stack("media.root",
                 header,
                 UI.HorizontalScroll("media.session-scroll", pills).Classes("media-session-list"),
-                UI.Stack("media.now-playing",
-                        UI.Text(selected.Title, "media.track-title", $"Track {selected.Title}")
-                            .Classes("media-track-title"),
-                        UI.Text(selected.Artist, "media.track-artist", $"Artist {selected.Artist}")
-                            .Classes("media-track-artist"),
-                        UI.Row("media.timeline",
-                                UI.Text(FormatTime(position), "media.position", "Current position")
-                                    .Classes("media-time"),
-                                UI.Progress(position, Math.Max(1, duration), "media.progress",
-                                        $"{FormatTime(position)} of {FormatTime(duration)}")
-                                    .Classes("media-progress"),
-                                UI.Text(FormatTime(duration), "media.duration", "Duration")
-                                    .Classes("media-time", "is-duration"))
-                            .Classes("media-timeline"))
+                UI.Row("media.now-playing",
+                        artwork,
+                        UI.Stack("media.track-details",
+                                UI.Text(selected.Title, "media.track-title", $"Track {selected.Title}")
+                                    .Classes("media-track-title"),
+                                UI.Text(selected.Artist, "media.track-artist", $"Artist {selected.Artist}")
+                                    .Classes("media-track-artist"),
+                                UI.Row("media.timeline",
+                                        UI.Text(FormatTime(position), "media.position", "Current position")
+                                            .Classes("media-time"),
+                                        UI.Progress(position, Math.Max(1, duration), "media.progress",
+                                                $"{FormatTime(position)} of {FormatTime(duration)}")
+                                            .Classes("media-progress"),
+                                        UI.Text(FormatTime(duration), "media.duration", "Duration")
+                                            .Classes("media-time", "is-duration"))
+                                    .Classes("media-timeline"))
+                            .Classes("media-track-details"))
                     .Classes("media-now-playing"),
                 UI.Row("media.controls", previous, toggle, next).Classes("media-controls"))
             .InputScope("media-sessions")
@@ -240,7 +257,7 @@ public sealed class MediaSessionsWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         if (action.ActionId == "media.retry")
         {
-            if (IsActive) StartActiveRun(ActiveCancellationToken);
+            if (IsActive) StartActiveRun(ActiveCancellationToken, rejectIfLoading: true);
             return;
         }
         if (action.ActionId == "media.select")
@@ -369,8 +386,21 @@ public sealed class MediaSessionsWidget : Widget
         }
     }
 
-    private void StartActiveRun(CancellationToken activeLifetime)
+    private void StartActiveRun(
+        CancellationToken activeLifetime,
+        bool rejectIfLoading = false)
     {
+        if (rejectIfLoading)
+        {
+            lock (_gate)
+            {
+                // Controller repeats and stale rendered snapshots can deliver a
+                // second activation before the loading snapshot reaches the host.
+                // Do not cancel the fresh native request that is already running.
+                if (_reloadInFlight) return;
+                _reloadInFlight = true;
+            }
+        }
         var prior = Interlocked.Exchange(ref _runLifetime, null);
         prior?.Cancel();
         prior?.Dispose();
@@ -379,6 +409,7 @@ public sealed class MediaSessionsWidget : Widget
         var generation = Interlocked.Increment(ref _runGeneration);
         lock (_gate)
         {
+            _reloadInFlight = true;
             _viewState = MediaSessionsViewState.Loading;
             _status = "Loading Windows media sessions…";
             _liveUpdatesAvailable = false;
@@ -392,6 +423,7 @@ public sealed class MediaSessionsWidget : Widget
         var lifetime = Interlocked.Exchange(ref _runLifetime, null);
         lifetime?.Cancel();
         lifetime?.Dispose();
+        lock (_gate) _reloadInFlight = false;
     }
 
     private async Task ObserveAsync(long generation, CancellationToken cancellationToken)
@@ -474,6 +506,7 @@ public sealed class MediaSessionsWidget : Widget
                         item.PlaybackStatus == WidgetMediaPlaybackStatus.Playing)?.SessionId ??
                     normalized.FirstOrDefault()?.SessionId;
             _pendingCommand = null;
+            _reloadInFlight = false;
             _viewState = normalized.Count == 0 ? MediaSessionsViewState.Empty : MediaSessionsViewState.Ready;
             _status = normalized.Count == 0 ? "No active Windows media sessions" :
                 normalized.Count == 1 ? "1 active media session · live" :
@@ -561,7 +594,10 @@ public sealed class MediaSessionsWidget : Widget
     private WidgetMediaSession? SelectedLocked() => _sessions.FirstOrDefault(item =>
         string.Equals(item.SessionId, _selectedSessionId, StringComparison.Ordinal));
 
-    private WidgetView RenderState(StackElement header, MediaSessionsViewState state)
+    private WidgetView RenderState(
+        StackElement header,
+        MediaSessionsViewState state,
+        bool reloadInFlight)
     {
         var (title, help) = state switch
         {
@@ -579,9 +615,10 @@ public sealed class MediaSessionsWidget : Widget
                 ("Media service disconnected", "Retry the trusted Windows media service."),
             _ => ("Media unavailable", "Try again; no app identity or process details were exposed."),
         };
-        var retry = UI.Button("Try again", "media.retry", "media.retry")
+        var retry = UI.Button(reloadInFlight ? "Loading…" : "Try again", "media.retry", "media.retry")
             .Icon(WidgetGlyph.Refresh, "Reload media sessions")
-            .Disabled(!IsActive)
+            .Disabled(!IsActive || reloadInFlight)
+            .Busy(reloadInFlight)
             .Classes("media-retry");
         var root = UI.Stack("media.root", header,
                 UI.Stack("media.state",
@@ -606,6 +643,7 @@ public sealed class MediaSessionsWidget : Widget
             _sessions = [];
             _pendingCommand = null;
             _liveUpdatesAvailable = false;
+            _reloadInFlight = false;
         }
         Invalidate();
     }

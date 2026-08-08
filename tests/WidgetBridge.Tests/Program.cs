@@ -41,6 +41,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
     ("Suspend-when-hidden blocks work and serves only a cached view", SuspendWhenHiddenIsLogical),
     ("Idle unload is cancellable cached and lazily resumable", IdleUnloadIsPolicyDriven),
+    ("Force reload retires a healthy worker and restores lifecycle", ForceReloadRestoresLifecycle),
+    ("Force reload clears suspended snapshots and stale input authority", ForceReloadClearsCachedAuthority),
+    ("Force reload recovers a timed-out worker", ForceReloadRecoversTimedOutWorker),
+    ("Force reload rejects unknown widget IDs", ForceReloadRejectsUnknownWidget),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
@@ -889,6 +893,126 @@ static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
     }
 }
 
+static async Task ForceReloadRestoresLifecycle()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    foreach (var state in new[]
+             {
+                 WidgetLifecycleState.Visible,
+                 WidgetLifecycleState.Interactive,
+             })
+    {
+        var lifecycle = await harness.Client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest("test-widget", state));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+
+        var beforeResponse = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        var before = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+            beforeResponse.Payload.GetProperty("snapshot").GetRawText()));
+        _ = await harness.Client.RequestAsync(
+            BridgeMessageTypes.Action,
+            new BridgeActionRequest("test-widget", new WidgetActionEvent("refresh", "button")));
+        _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+        var advancedResponse = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        var advanced = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+            advancedResponse.Payload.GetProperty("snapshot").GetRawText()));
+        Assert.True(advanced.Sequence > before.Sequence,
+            "The pre-reload worker did not advance its snapshot generation.");
+
+        var restarted = await harness.Client.RequestAsync(
+            BridgeMessageTypes.RestartWidget, new WidgetIdRequest("test-widget"));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, restarted.Type);
+        Assert.Equal("test-widget", restarted.Payload.GetProperty("widgetId").GetString());
+        Assert.Equal(state.ToString().ToLowerInvariant(),
+            restarted.Payload.GetProperty("state").GetString());
+        Assert.Equal(1, harness.Server.RunningWorkerCount);
+
+        var freshResponse = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        var fresh = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+            freshResponse.Payload.GetProperty("snapshot").GetRawText()));
+        Assert.True(fresh.Sequence < advanced.Sequence,
+            "Force reload retained the prior worker's snapshot generation.");
+    }
+}
+
+static async Task ForceReloadClearsCachedAuthority()
+{
+    await using var harness = await BridgeHarness.StartAsync(residencyPolicy:
+        new WidgetResidencyPolicy { Mode = WidgetResidencyPolicies.SuspendWhenHidden });
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    var oldResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var old = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        oldResponse.Payload.GetProperty("snapshot").GetRawText()));
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Background));
+
+    var restarted = await harness.Client.RequestAsync(
+        BridgeMessageTypes.RestartWidget, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, restarted.Type);
+    Assert.Equal("background", restarted.Payload.GetProperty("state").GetString());
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+    var staleSnapshot = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Error, staleSnapshot.Type);
+
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    var freshResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var fresh = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        freshResponse.Payload.GetProperty("snapshot").GetRawText()));
+    var staleInput = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            SnapshotSequence: old.Sequence + 1,
+            Sequence: 700,
+            MonotonicTimestampMicroseconds: 700)));
+    Assert.Equal(BridgeMessageTypes.Error, staleInput.Type);
+    Assert.True(fresh.Sequence > 0, "Fresh snapshot was not rendered after reload.");
+}
+
+static async Task ForceReloadRecoversTimedOutWorker()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+    var timedOut = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest("test-widget", new WidgetActionEvent("hang", "button")));
+    Assert.Equal(BridgeMessageTypes.Error, timedOut.Type);
+
+    var restarted = await harness.Client.RequestAsync(
+        BridgeMessageTypes.RestartWidget, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, restarted.Type);
+    Assert.Equal("interactive", restarted.Payload.GetProperty("state").GetString());
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+    var snapshot = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, snapshot.Type);
+}
+
+static async Task ForceReloadRejectsUnknownWidget()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    var response = await harness.Client.RequestAsync(
+        BridgeMessageTypes.RestartWidget, new WidgetIdRequest("unknown-widget"));
+    Assert.Equal(BridgeMessageTypes.Error, response.Type);
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+
 static async Task RuntimeOwnedLifecycleStatesAreRejected()
 {
     await using var harness = await BridgeHarness.StartAsync();
@@ -1131,6 +1255,8 @@ file sealed class BridgeTestWidget : Widget
         }
         else if (action.ActionId == "crash")
             Environment.Exit(31);
+        else if (action.ActionId == "hang")
+            Thread.Sleep(TimeSpan.FromSeconds(30));
         return ValueTask.CompletedTask;
     }
 }

@@ -30,6 +30,27 @@ enum class NativeIcon : std::uint8_t {
     Ethernet,
 };
 
+struct LoadingIndicatorArc final {
+    float startDegrees{};
+    float sweepDegrees{};
+};
+
+/// Deterministic native animation geometry. Reduced motion returns the same
+/// honest indeterminate arc for every timestamp.
+[[nodiscard]] LoadingIndicatorArc ComputeLoadingIndicatorArc(
+    std::uint64_t monotonicMilliseconds,
+    bool reducedMotion) noexcept;
+
+/// Draws the bounded host-owned loading indicator. The caller owns frame
+/// scheduling; this function starts no timer and retains no animation state.
+[[nodiscard]] bool DrawLoadingIndicator(
+    ID2D1RenderTarget* renderTarget,
+    D2D1_RECT_F bounds,
+    ID2D1Brush* brush,
+    std::uint64_t monotonicMilliseconds,
+    bool reducedMotion,
+    float strokeWidth = 2.0F) noexcept;
+
 // Accepts protocol glyph names plus a small closed list of built-in transport
 // action IDs. Matching is ordinal and case-sensitive.
 [[nodiscard]] bool TryParseNativeIcon(

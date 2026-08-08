@@ -11,6 +11,13 @@ int main() {
     assert(RemoteImageCache::IsAllowedHttpsUrl(L"https://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"http://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"https://user:secret@example.test/image.png"));
+    constexpr auto inlinePng =
+        L"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    assert(RemoteImageCache::IsAllowedImageSource(inlinePng));
+    assert(RemoteImageCache::IsAllowedImageSource(L"https://example.test/image.png"));
+    assert(!RemoteImageCache::IsAllowedImageSource(L"data:image/png;base64,not-base64"));
+    assert(!RemoteImageCache::IsAllowedImageSource(L"data:image/svg+xml;base64,PHN2Zz4="));
 
     std::mutex mutex;
     std::condition_variable completed;
@@ -56,6 +63,12 @@ int main() {
     }
     assert(cache.GetStats().entries == 2);
     assert(cache.GetStats().decodedBytes == 8);
+    assert(cache.Request(inlinePng) == RemoteImageRequestResult::Queued);
+    {
+        std::unique_lock lock(mutex);
+        assert(completed.wait_for(lock, std::chrono::seconds(2), [&] { return completionCount == 3; }));
+    }
+    assert(cache.GetState(inlinePng) == RemoteImageState::Ready);
     cache.Shutdown();
     assert(cache.Request(L"https://example.test/c") == RemoteImageRequestResult::ShuttingDown);
     std::cout << "RemoteImageCacheTests passed\n";

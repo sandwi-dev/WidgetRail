@@ -15,6 +15,8 @@
 namespace {
 
 using gba::icons::DrawNativeIcon;
+using gba::icons::ComputeLoadingIndicatorArc;
+using gba::icons::DrawLoadingIndicator;
 using gba::icons::NativeIcon;
 using gba::icons::TryParseNativeIcon;
 
@@ -169,6 +171,42 @@ void RenderEveryIcon() {
         Release(lock);
     }
 
+    const auto animatedStart = ComputeLoadingIndicatorArc(0, false);
+    const auto animatedQuarter = ComputeLoadingIndicatorArc(225, false);
+    const auto reducedStart = ComputeLoadingIndicatorArc(0, true);
+    const auto reducedLater = ComputeLoadingIndicatorArc(812, true);
+    Check(std::abs(animatedStart.startDegrees + 90.0F) < 0.001F,
+        "loading indicator begins at the semantic leading edge");
+    Check(std::abs(animatedQuarter.startDegrees - animatedStart.startDegrees - 90.0F) < 0.001F,
+        "loading indicator phase advances deterministically");
+    Check(std::abs(reducedStart.startDegrees - reducedLater.startDegrees) < 0.001F &&
+          std::abs(reducedStart.sweepDegrees - 270.0F) < 0.001F,
+        "reduced motion keeps a static honest indeterminate arc");
+
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(0, 0.0F));
+    Check(DrawLoadingIndicator(
+        target, D2D1::RectF(12.0F, 12.0F, 52.0F, 52.0F), brush, 450, false, 2.4F),
+        "animated loading indicator renders");
+    Check(SUCCEEDED(target->EndDraw()), "loading indicator draw completes");
+    IWICBitmapLock* loadingLock = nullptr;
+    const WICRect loadingArea{0, 0, 64, 64};
+    Check(SUCCEEDED(bitmap->Lock(&loadingArea, WICBitmapLockRead, &loadingLock)),
+        "loading indicator bitmap locks");
+    UINT loadingByteCount = 0;
+    BYTE* loadingBytes = nullptr;
+    Check(SUCCEEDED(loadingLock->GetDataPointer(&loadingByteCount, &loadingBytes)),
+        "loading indicator pixels are accessible");
+    bool loadingVisible = false;
+    for (UINT offset = 3; offset < loadingByteCount; offset += 4) {
+        if (loadingBytes[offset] != 0) {
+            loadingVisible = true;
+            break;
+        }
+    }
+    Check(loadingVisible, "loading indicator produces visible native pixels");
+    Release(loadingLock);
+
     const auto nan = std::numeric_limits<float>::quiet_NaN();
     Check(!DrawNativeIcon(target, NativeIcon::Check, D2D1::RectF(nan, 0, 32, 32), brush),
         "non-finite bounds fail closed");
@@ -182,6 +220,10 @@ void RenderEveryIcon() {
         "unknown enum fails closed");
     Check(!DrawNativeIcon(target, NativeIcon::Check, D2D1::Point2F(nan, 0), 32, brush),
         "non-finite center fails closed");
+    Check(!DrawLoadingIndicator(target, D2D1::RectF(nan, 0, 32, 32), brush, 0, false),
+        "loading indicator rejects non-finite bounds");
+    Check(!DrawLoadingIndicator(target, D2D1::RectF(0, 0, 32, 32), brush, 0, false, nan),
+        "loading indicator rejects non-finite stroke");
 
     Release(brush);
     Release(target);

@@ -135,6 +135,7 @@ public sealed class WidgetHostServices
         RecentActivity = new WidgetRecentActivityService(capabilityClient);
         AppLibrary = new WidgetAppLibraryService(capabilityClient);
         Media = new WidgetMediaService(capabilityClient);
+        Spotify = new WidgetSpotifyService(capabilityClient);
         Loopback = new WidgetLoopbackHttpService(capabilityClient);
         PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
         PrivateState = new WidgetPrivateStateService(capabilityClient);
@@ -146,6 +147,7 @@ public sealed class WidgetHostServices
     public WidgetRecentActivityService RecentActivity { get; }
     public WidgetAppLibraryService AppLibrary { get; }
     public WidgetMediaService Media { get; }
+    public WidgetSpotifyService Spotify { get; }
     public WidgetLoopbackHttpService Loopback { get; }
     public WidgetPrivateSecretService PrivateSecrets { get; }
     /// <summary>

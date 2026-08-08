@@ -39,6 +39,7 @@ public static class CliApplication
                 "enable" => await EnabledCommand.RunAsync(args[1..], output, enabled: true),
                 "disable" => await EnabledCommand.RunAsync(args[1..], output, enabled: false),
                 "version" => await VersionCommand.RunAsync(args[1..], output, cancellationToken),
+                "config" => await ConfigCommand.RunAsync(args[1..], output, cancellationToken),
                 "theme" => await ThemeCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'. Run 'gbar help'."),
             };
@@ -98,6 +99,11 @@ public static class CliApplication
           gbar version list <widget-id> [--catalog <root>]
           gbar version select <widget-id> <version> [--catalog <root>]
           gbar version rollback <widget-id> [--to <version>] [--catalog <root>]
+          gbar config set <widget-id> <key> <value> --publisher <publisher-id> [--settings-root <root>]
+          gbar config get <widget-id> <key> --publisher <publisher-id> [--settings-root <root>]
+          gbar config list <widget-id> --publisher <publisher-id> [--settings-root <root>]
+          gbar config remove <widget-id> <key> --publisher <publisher-id> [--settings-root <root>]
+          gbar config clear <widget-id> --publisher <publisher-id> [--settings-root <root>]
           gbar theme new <Name> [--output <directory>] [--id <id>] [--publisher <id>] [--version <version>]
           gbar theme validate <theme-directory|file.gbartheme>
           gbar theme pack <theme-directory> [--output <file.gbartheme>]

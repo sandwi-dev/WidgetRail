@@ -347,3 +347,47 @@ public sealed record IconElement : WidgetElement
         StyleClasses = StyleClasses,
     };
 }
+
+/// <summary>
+/// A non-interactive, host-rendered indeterminate activity indicator. It never
+/// enters controller focus or emits actions. The host animates it only while
+/// visible and presents an honest static indicator when reduced motion is on.
+/// </summary>
+public sealed record LoadingIndicatorElement : WidgetElement
+{
+    internal LoadingIndicatorElement(
+        string id,
+        string accessibilityLabel,
+        LoadingIndicatorSize size) : base(RequireId(id))
+    {
+        AccessibilityLabel = string.IsNullOrWhiteSpace(accessibilityLabel)
+            ? throw new ArgumentException("A loading indicator requires an accessibility label.", nameof(accessibilityLabel))
+            : accessibilityLabel;
+        if (!Enum.IsDefined(size)) throw new ArgumentOutOfRangeException(nameof(size));
+        Size = size;
+    }
+
+    public string AccessibilityLabel { get; init; }
+    public LoadingIndicatorSize Size { get; init; }
+
+    internal override ViewNode ToProtocolNode() => new()
+    {
+        Id = Id,
+        Kind = ViewNodeKind.LoadingIndicator,
+        AccessibilityLabel = AccessibilityLabel,
+        IndicatorSize = Size,
+        StyleClasses =
+        [
+            "loading-indicator",
+            Size switch
+            {
+                LoadingIndicatorSize.Compact => "loading-indicator-compact",
+                LoadingIndicatorSize.Large => "loading-indicator-large",
+                _ => "loading-indicator-standard",
+            },
+            .. StyleClasses.Where(item =>
+                !string.Equals(item, "loading-indicator", StringComparison.Ordinal) &&
+                !item.StartsWith("loading-indicator-", StringComparison.Ordinal)),
+        ],
+    };
+}

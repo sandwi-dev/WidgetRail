@@ -173,6 +173,7 @@ public sealed partial class SettingsWidget : Widget
                 case "open.overlay": Navigate(SettingsPage.Overlay); break;
                 case "open.installed-widgets": Navigate(SettingsPage.InstalledWidgets); break;
                 case "open.permissions": Navigate(SettingsPage.Permissions); break;
+                case "installed.permissions.open": OpenSelectedInstalledPermissions(); break;
                 case "open.permission-diagnostics": OpenPermissionDiagnostics(); break;
                 case "open.diagnostics": Navigate(SettingsPage.Diagnostics); break;
                 case "open.reset": Navigate(SettingsPage.Reset); break;
@@ -464,11 +465,9 @@ public sealed partial class SettingsWidget : Widget
         var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
             .FocusUp("category.accessibility").FocusDown("category.installed-widgets").Busy(busy).Classes("category-card");
         var installedWidgets = UI.Button("Installed widgets", "open.installed-widgets", "category.installed-widgets")
-            .FocusUp("category.overlay").FocusDown("category.permissions").Busy(busy).Classes("category-card");
-        var permissions = UI.Button("Permissions & capabilities", "open.permissions", "category.permissions")
-            .FocusUp("category.installed-widgets").FocusDown("category.diagnostics").Busy(busy).Classes("category-card");
+            .FocusUp("category.overlay").FocusDown("category.diagnostics").Busy(busy).Classes("category-card");
         var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
-            .FocusUp("category.permissions").FocusDown("settings.refresh").Classes("category-card");
+            .FocusUp("category.installed-widgets").FocusDown("settings.refresh").Classes("category-card");
         var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
             .FocusUp("category.diagnostics").FocusDown("category.reset").Busy(busy).Classes("category-card");
         var reset = UI.Button("Reset", "open.reset", "category.reset")
@@ -478,7 +477,7 @@ public sealed partial class SettingsWidget : Widget
             UI.VerticalScroll("settings.categories",
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
                     "settings.summary", "Selected theme").Classes("settings-summary"),
-                appearance, accessibility, overlay, installedWidgets, permissions, diagnostics, refresh, reset).Classes("category-list"),
+                appearance, accessibility, overlay, installedWidgets, diagnostics, refresh, reset).Classes("category-list"),
             "category.appearance",
             "settings-root");
     }
@@ -792,18 +791,23 @@ public sealed partial class SettingsWidget : Widget
         Invalidate();
     }
 
-    private static SettingsPage ParentPage(SettingsPage page) => page switch
+    private SettingsPage ParentPage(SettingsPage page) => page switch
     {
         SettingsPage.ThemePicker => SettingsPage.Appearance,
         SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
         SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
         SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,
         SettingsPage.PermissionDiagnostics => SettingsPage.Permissions,
-        SettingsPage.PackageCapabilities => SettingsPage.Permissions,
+        SettingsPage.PackageCapabilities => PackageCapabilitiesReturnPage(),
         SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,
         SettingsPage.Root => SettingsPage.Root,
         _ => SettingsPage.Root,
     };
+
+    private SettingsPage PackageCapabilitiesReturnPage()
+    {
+        lock (_stateLock) return _packageCapabilitiesReturnPage;
+    }
 
     private static int LastThemePage(ThemeCatalogSnapshot themes) =>
         Math.Max(0, (themes.Themes.Count - 1) / ThemesPerPage);

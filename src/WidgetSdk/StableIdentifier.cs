@@ -22,7 +22,7 @@ internal static class StableIdentifier
         return childId;
     }
 
-    private static void Validate(string? value, string parameterName)
+    internal static void Validate(string? value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("A stable identifier is required.", parameterName);

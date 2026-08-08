@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text;
+using System.Buffers.Binary;
 using System.Threading.Channels;
 
 namespace GameBarAlternative.PlatformBroker;
@@ -404,6 +405,33 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     await _backend.GetMediaSessionsAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.MediaSessionControl =>
                 await ControlMediaSessionAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.SpotifyConfigurationGet =>
+                BrokerJson.ToElement(ValidateSpotifyConfiguration(
+                    DemandEmptyPayload(request.Payload),
+                    await _backend.GetSpotifyConfigurationAsync(_identity, requestToken)
+                        .ConfigureAwait(false))),
+            PlatformCapabilities.SpotifyConfigurationConfigure =>
+                BrokerJson.ToElement(await ConfigureSpotifyAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.SpotifyAuthorizationGet =>
+                BrokerJson.ToElement(ValidateSpotifyAuthorization(
+                    DemandEmptyPayload(request.Payload),
+                    await _backend.GetSpotifyAuthorizationAsync(_identity, requestToken)
+                        .ConfigureAwait(false))),
+            PlatformCapabilities.SpotifyAuthorizationConnect =>
+                BrokerJson.ToElement(await ConnectSpotifyAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.SpotifyAuthorizationDisconnect =>
+                BrokerJson.ToElement(await DisconnectSpotifyAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.SpotifyPlaybackGet =>
+                BrokerJson.ToElement(ValidateSpotifyPlayback(
+                    DemandEmptyPayload(request.Payload),
+                    await _backend.GetSpotifyPlaybackAsync(_identity, requestToken)
+                        .ConfigureAwait(false))),
+            PlatformCapabilities.SpotifyPlaybackControl =>
+                await ControlSpotifyPlaybackAsync(request.Payload, requestToken)
+                    .ConfigureAwait(false),
             PlatformCapabilities.LoopbackHttpGetJson =>
                 await SendLoopbackJsonAsync(request, lease, isPost: false).ConfigureAwait(false),
             PlatformCapabilities.LoopbackHttpPostJson =>
@@ -1022,12 +1050,109 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 .Where(currentBySavedId.ContainsKey)
                 .Select(savedId => currentBySavedId[savedId])
                 .ToArray();
+            var iconBytes = 0;
+            for (var index = 0;
+                 index < resolved.Length && index < AppLibraryImageLimits.MaximumResolvedIconCount;
+                 index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!_appLibraryBackendIdsByPublicId.TryGetValue(
+                        resolved[index].AppId, out var backendAppId))
+                    continue;
+                AppLibraryIconSummary? icon;
+                try
+                {
+                    icon = await _backend.GetAppLibraryIconAsync(
+                        backendAppId, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (exception is BrokerException or IOException or
+                    UnauthorizedAccessException or InvalidOperationException or
+                    ArgumentException or NotSupportedException)
+                {
+                    icon = null;
+                }
+                var validated = ValidateAppLibraryIcon(icon);
+                if (validated is null ||
+                    iconBytes + validated.Value.Bytes >
+                        AppLibraryImageLimits.MaximumAggregatePngBytes)
+                    continue;
+                iconBytes += validated.Value.Bytes;
+                resolved[index] = resolved[index] with
+                {
+                    IconPngBase64 = validated.Value.Base64,
+                };
+            }
             return new ResolveSavedAppLibraryItemsSummary(resolved);
         }
         finally
         {
             _appLibraryGate.Release();
         }
+    }
+
+    private static (string Base64, int Bytes)? ValidateAppLibraryIcon(
+        AppLibraryIconSummary? icon) => ValidateInlinePng(icon?.PngBase64);
+
+    private static (string Base64, int Bytes)? ValidateInlinePng(
+        string? pngBase64)
+    {
+        if (string.IsNullOrEmpty(pngBase64)) return null;
+        byte[] png;
+        try
+        {
+            png = Convert.FromBase64String(pngBase64);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+        if (png.Length is < 45 or > AppLibraryImageLimits.MaximumPngBytes ||
+            !pngBase64.Equals(Convert.ToBase64String(png), StringComparison.Ordinal) ||
+            !png.AsSpan(0, 8).SequenceEqual(
+                new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) ||
+            BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(8, 4)) != 13 ||
+            !png.AsSpan(12, 4).SequenceEqual("IHDR"u8))
+            return null;
+
+        var width = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4));
+        var height = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
+        if (width is < 1 or > AppLibraryImageLimits.MaximumPixelDimension ||
+            height is < 1 or > AppLibraryImageLimits.MaximumPixelDimension ||
+            png[24] != 8 || png[25] != 6 || png[26] != 0 || png[27] != 0 ||
+            png[28] != 0 || !HasWellFormedPngChunks(png))
+            return null;
+        return (pngBase64, png.Length);
+    }
+
+    private static bool HasWellFormedPngChunks(ReadOnlySpan<byte> png)
+    {
+        var offset = 8;
+        var sawHeader = false;
+        var sawImageData = false;
+        while (offset <= png.Length - 12)
+        {
+            var length = BinaryPrimitives.ReadInt32BigEndian(png.Slice(offset, 4));
+            if (length < 0 || length > png.Length - offset - 12) return false;
+            var type = png.Slice(offset + 4, 4);
+            if (!sawHeader)
+            {
+                if (!type.SequenceEqual("IHDR"u8) || length != 13) return false;
+                sawHeader = true;
+            }
+            else if (type.SequenceEqual("IHDR"u8))
+            {
+                return false;
+            }
+            if (type.SequenceEqual("IDAT"u8)) sawImageData = true;
+            offset += 12 + length;
+            if (!type.SequenceEqual("IEND"u8)) continue;
+            return length == 0 && sawImageData && offset == png.Length;
+        }
+        return false;
     }
 
     private async Task<JsonElement> LaunchAppLibraryItemAsync(
@@ -1061,6 +1186,60 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             throw new BrokerException("invalid_payload", "Media session command is invalid.");
         await _backend.ControlMediaSessionAsync(
             request.SessionId, request.Command, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<SpotifyConfigurationSummary> ConfigureSpotifyAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ConfigureSpotifyClientRequest>(payload);
+        ValidateSpotifyClientId(request.ClientId);
+        return ValidateSpotifyConfiguration(await _backend.ConfigureSpotifyClientAsync(
+            _identity, request, cancellationToken).ConfigureAwait(false));
+    }
+
+    private async Task<SpotifyAuthorizationSummary> ConnectSpotifyAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ConnectSpotifyRequest>(payload);
+        var scopes = ValidateSpotifyScopes(request.RequestedScopes, "invalid_payload");
+        if (scopes.Count == 0)
+            throw new BrokerException("invalid_payload", "At least one Spotify scope is required.");
+
+        foreach (var scope in scopes)
+        {
+            var capabilityId = scope switch
+            {
+                SpotifyAuthorizationScope.PlaybackStateRead =>
+                    PlatformCapabilities.SpotifyPlaybackReadV1,
+                SpotifyAuthorizationScope.PlaybackStateControl =>
+                    PlatformCapabilities.SpotifyPlaybackControlV1,
+                _ => throw new BrokerException("invalid_payload", "Spotify scope is invalid."),
+            };
+            await AuthorizeAsync(capabilityId, operation: null, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return ValidateSpotifyAuthorization(await _backend.ConnectSpotifyAsync(
+            _identity, request with { RequestedScopes = scopes }, cancellationToken)
+            .ConfigureAwait(false));
+    }
+
+    private async Task<SpotifyAuthorizationSummary> DisconnectSpotifyAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        DemandEmptyPayload(payload);
+        return ValidateSpotifyAuthorization(await _backend.DisconnectSpotifyAsync(
+            _identity, cancellationToken).ConfigureAwait(false));
+    }
+
+    private async Task<JsonElement> ControlSpotifyPlaybackAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var command = BrokerJson.ParsePayload<SpotifyPlaybackCommand>(payload);
+        ValidateSpotifyPlaybackCommand(command);
+        await _backend.ControlSpotifyPlaybackAsync(
+            _identity, command, cancellationToken).ConfigureAwait(false);
         return BrokerJson.ToElement(new { acknowledged = true });
     }
 
@@ -1413,6 +1592,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             throw new BrokerException("invalid_backend_data", "Media session result is invalid.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var currentCount = 0;
+        var artworkBytes = 0;
+        var validated = new List<MediaSessionSummary>(sessions.Count);
         foreach (var session in sessions)
         {
             if (session is null || !Enum.IsDefined(session.PlaybackStatus) ||
@@ -1429,8 +1610,162 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             ContractValidation.DisplayName(session.Artist);
             if (!ids.Add(session.SessionId))
                 throw new BrokerException("invalid_backend_data", "Media session IDs are duplicated.");
+            var artwork = ValidateInlinePng(session.ArtworkPngBase64);
+            if (artwork is not null &&
+                artworkBytes + artwork.Value.Bytes <= MediaSessionImageLimits.MaximumSnapshotPngBytes)
+            {
+                artworkBytes += artwork.Value.Bytes;
+                validated.Add(session with { ArtworkPngBase64 = artwork.Value.Base64 });
+            }
+            else
+            {
+                validated.Add(session with { ArtworkPngBase64 = null });
+            }
         }
-        return sessions.ToArray();
+        return validated;
+    }
+
+    private const string SpotifyRedirectUri = "http://127.0.0.1:43827/callback/";
+    private const int MaximumSpotifyClientIdCharacters = 128;
+    private const int MaximumSpotifyMessageCharacters = 320;
+    private const int MaximumSpotifyUriCharacters = 512;
+    private const int MaximumSpotifyArtworkUrlCharacters = 2_048;
+
+    private static void ValidateSpotifyClientId(string? clientId)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) ||
+            clientId.Length > MaximumSpotifyClientIdCharacters ||
+            clientId.Any(character => !char.IsAsciiLetterOrDigit(character)))
+            throw new BrokerException("invalid_payload", "Spotify client ID is invalid.");
+    }
+
+    private static SpotifyConfigurationSummary ValidateSpotifyConfiguration(
+        bool _, SpotifyConfigurationSummary? configuration) =>
+        ValidateSpotifyConfiguration(configuration);
+
+    private static SpotifyConfigurationSummary ValidateSpotifyConfiguration(
+        SpotifyConfigurationSummary? configuration)
+    {
+        if (configuration is null ||
+            !string.Equals(configuration.RedirectUri, SpotifyRedirectUri,
+                StringComparison.Ordinal))
+            throw new BrokerException(
+                "invalid_backend_data", "Spotify configuration is invalid.");
+        return configuration;
+    }
+
+    private static SpotifyAuthorizationSummary ValidateSpotifyAuthorization(
+        bool _, SpotifyAuthorizationSummary? authorization) =>
+        ValidateSpotifyAuthorization(authorization);
+
+    private static SpotifyAuthorizationSummary ValidateSpotifyAuthorization(
+        SpotifyAuthorizationSummary? authorization)
+    {
+        if (authorization is null || !Enum.IsDefined(authorization.State))
+            throw new BrokerException(
+                "invalid_backend_data", "Spotify authorization state is invalid.");
+        var requested = ValidateSpotifyScopes(
+            authorization.RequestedScopes, "invalid_backend_data");
+        var granted = ValidateSpotifyScopes(
+            authorization.GrantedScopes, "invalid_backend_data");
+        if (granted.Except(requested).Any() ||
+            authorization.State == SpotifyAuthorizationState.Unconfigured &&
+                (requested.Count != 0 || granted.Count != 0) ||
+            authorization.State == SpotifyAuthorizationState.Authorizing &&
+                requested.Count == 0 ||
+            authorization.State == SpotifyAuthorizationState.Connected &&
+                (requested.Count == 0 || granted.Count == 0))
+            throw new BrokerException(
+                "invalid_backend_data", "Spotify authorization scopes are inconsistent.");
+        if (authorization.DisplayMessage is { } message &&
+            (string.IsNullOrWhiteSpace(message) ||
+             message.Length > MaximumSpotifyMessageCharacters ||
+             message.Any(char.IsControl)))
+            throw new BrokerException(
+                "invalid_backend_data", "Spotify authorization message is invalid.");
+        return authorization with
+        {
+            RequestedScopes = requested,
+            GrantedScopes = granted,
+        };
+    }
+
+    private static IReadOnlyList<SpotifyAuthorizationScope> ValidateSpotifyScopes(
+        IReadOnlyList<SpotifyAuthorizationScope>? scopes, string errorCode)
+    {
+        if (scopes is null || scopes.Count > 2 ||
+            scopes.Any(scope => !Enum.IsDefined(scope)) ||
+            scopes.Distinct().Count() != scopes.Count)
+            throw new BrokerException(errorCode, "Spotify authorization scopes are invalid.");
+        return scopes.OrderBy(scope => scope).ToArray();
+    }
+
+    private static SpotifyPlaybackSummary ValidateSpotifyPlayback(
+        bool _, SpotifyPlaybackSummary? playback) => ValidateSpotifyPlayback(playback);
+
+    private static SpotifyPlaybackSummary ValidateSpotifyPlayback(
+        SpotifyPlaybackSummary? playback)
+    {
+        if (playback is null || playback.DisallowedActions is null ||
+            !Enum.IsDefined(playback.RepeatState) ||
+            playback.ProgressMilliseconds < 0 || playback.DurationMilliseconds < 0 ||
+            playback.ProgressMilliseconds > playback.DurationMilliseconds ||
+            playback.DurationMilliseconds > TimeSpan.FromDays(7).TotalMilliseconds ||
+            playback.CapturedAtUnixMilliseconds < 0 ||
+            !string.Equals(playback.Attribution, "Spotify", StringComparison.Ordinal) ||
+            playback.IsAvailable != (playback.Item is not null) ||
+            !playback.IsAvailable &&
+                (playback.IsPlaying || playback.ProgressMilliseconds != 0 ||
+                 playback.DurationMilliseconds != 0))
+            throw new BrokerException("invalid_backend_data", "Spotify playback is invalid.");
+        if (playback.Item is { } item)
+        {
+            if (!Enum.IsDefined(item.ItemType))
+                throw new BrokerException(
+                    "invalid_backend_data", "Spotify playback item type is invalid.");
+            ContractValidation.DisplayName(item.Title);
+            ContractValidation.DisplayName(item.Subtitle);
+            if (item.ContextName is { } context) ContractValidation.DisplayName(context);
+            if (item.Uri is { } uri &&
+                (string.IsNullOrWhiteSpace(uri) || uri.Length > MaximumSpotifyUriCharacters ||
+                 uri.Any(char.IsControl) ||
+                 !uri.StartsWith("spotify:", StringComparison.Ordinal)))
+                throw new BrokerException(
+                    "invalid_backend_data", "Spotify item URI is invalid.");
+            if (item.ArtworkUrl is { } artwork &&
+                (artwork.Length > MaximumSpotifyArtworkUrlCharacters ||
+                 !Uri.TryCreate(artwork, UriKind.Absolute, out var parsed) ||
+                 parsed.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(parsed.UserInfo)))
+                throw new BrokerException(
+                    "invalid_backend_data", "Spotify artwork URL is invalid.");
+        }
+        return playback;
+    }
+
+    private static void ValidateSpotifyPlaybackCommand(SpotifyPlaybackCommand command)
+    {
+        if (!Enum.IsDefined(command.Operation))
+            throw new BrokerException("invalid_payload", "Spotify playback operation is invalid.");
+        var valid = command.Operation switch
+        {
+            SpotifyPlaybackOperation.Play or SpotifyPlaybackOperation.Pause or
+                SpotifyPlaybackOperation.Next or SpotifyPlaybackOperation.Previous =>
+                command.PositionMilliseconds is null && command.RepeatState is null &&
+                command.Enabled is null,
+            SpotifyPlaybackOperation.Seek =>
+                command.PositionMilliseconds is >= 0 and <= 604_800_000 &&
+                command.RepeatState is null && command.Enabled is null,
+            SpotifyPlaybackOperation.SetRepeat =>
+                command.PositionMilliseconds is null &&
+                command.RepeatState is { } repeat && Enum.IsDefined(repeat) &&
+                command.Enabled is null,
+            SpotifyPlaybackOperation.SetShuffle =>
+                command.PositionMilliseconds is null && command.RepeatState is null &&
+                command.Enabled is not null,
+            _ => false,
+        };
+        if (!valid)
+            throw new BrokerException("invalid_payload", "Spotify playback command is invalid.");
     }
 
     private static WifiRadioSummary ValidateWifiRadio(bool _, WifiRadioSummary? radio)
@@ -1701,6 +2036,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     platformEvent.Payload is MediaSessionsChangedEvent media =>
                     BrokerJson.ToElement(new MediaSessionsChangedEvent(
                         ValidateMediaSessions(media.Sessions))),
+                PlatformCapabilities.SpotifyPlaybackChanged when
+                    platformEvent.Payload is SpotifyPlaybackChangedEvent spotify =>
+                    BrokerJson.ToElement(new SpotifyPlaybackChangedEvent(
+                        ValidateSpotifyPlayback(spotify.Playback))),
                 _ => throw new BrokerException("invalid_backend_data", "Broker event payload is invalid."),
             };
             var envelope = new BrokerEventEnvelope(BrokerJson.ProtocolVersion,

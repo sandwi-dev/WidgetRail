@@ -1,8 +1,8 @@
 # Controller UI component patterns
 
-Status: Slider v3, the Audio Mixer reference composition, and the first modern
-SDK composite set are implemented; the inventory below distinguishes current
-public helpers from later semantic candidates.
+Status: Slider v3, the Audio Mixer reference composition, SettingsRow,
+ActionSheet, and the modern SDK composite set are implemented; the inventory
+below distinguishes current public helpers from later semantic candidates.
 
 Game Bar Alternative components are semantic, controller-first contracts. A
 widget publishes intent and state; the host owns rendering, accessibility,
@@ -31,6 +31,7 @@ GBSS design constrained by controller navigation and overlay performance.
 | --- | --- | --- |
 | Layout | `Stack`, `Row`, `Scroll`, `Spacer` | Host layout, clipping, and focus-follow; no widget pixel scrolling. |
 | Content | `Text`, `Image`, `Icon` | Bounded semantic content and a closed glyph vocabulary. |
+| Indeterminate activity | `LoadingIndicator` | Protocol v5, nonfocusable native arc; bounded size and required accessible label. |
 | Discrete action | `Button`, button glyph, shortcut | One focus stop; A activates; scoped shortcuts remain explicit. |
 | Two-state action | `ToggleButton`, selected Button | Visible and accessible state remains widget-owned. |
 | Read-only value | `Progress` | Not focusable and never accepts controller changes. |
@@ -45,12 +46,20 @@ GBSS design constrained by controller navigation and overlay performance.
 | Scoped dialog | `ScopedDialog` | Nested input scope and focus-independent B action; widget publishes active scope/focus. |
 | Read-only metadata row | `ValueRow` | Flat label/value hierarchy with optional description and semantic glyph; never enters focus. |
 | Full-row choice | `ChoiceRow` | One stable 44-DIP-or-larger focus target with selected, Disabled, and Busy semantics. |
+| Actionable setting | `SettingsRow` | Responsive label/description/value/status flow plus exactly one stable 44-DIP action target. |
+| Contextual action list | `ActionSheet` | Bounded vertical Scroll in a nested input scope; focus-independent B and stable author item IDs. |
 | Controller help | `ControllerHint` | Nonfocusable semantic key/label pair; documents but never implicitly binds input. |
 
 These primitives are deliberately small. Reusable components should normally
 be SDK composition helpers that emit the same bounded tree rather than new
 protocol kinds. A new protocol kind is justified only when the host must own
 unique input, accessibility, or rendering behavior—as with Slider.
+`LoadingIndicator` is the other deliberate native kind: the host must own its
+frame cadence and reduced-motion behavior so widgets do not invalidate or poll
+merely to animate presentation. It has no action, focus, Disabled, Selected,
+or Busy state. Use Compact, Standard, or Large semantic sizing and reserve it
+for work that remains visible; a fast cached read should usually keep the prior
+content or transition directly without a one-frame loading flash.
 
 The helpers now ship with a restrained warm-graphite default: regular-weight
 type, fewer nested surfaces, 10–12 DIP radii, thin dividers/tracks, compact
@@ -100,6 +109,18 @@ semantic classes. They do not add worker code, polling, or a new native node:
   or action. Selected, Disabled, and Busy state stay on that same ID across
   rerenders. The default selected glyph is Check, but authors may supply a more
   meaningful semantic leading glyph while selected state remains explicit.
+- `UI.SettingsRow(...)` keeps label, optional description, value, and status in
+  separate vertical-flow nodes so compact widths and larger text can reflow
+  them. Its only focus stop is `id.action`; Disabled and Busy apply to that
+  action without removing it from navigation. Use `ValueRow` instead when the
+  setting is entirely read-only.
+- `UI.ActionSheet(...)` accepts 1–32 stable `ActionSheetItem` records, places
+  their Buttons in a host-owned vertical Scroll, and makes the root a nested
+  input scope. Each item's supplied `Id` is its focus ID. Adjacent Up/Down edges
+  are explicit and do not skip Disabled or Busy items. B is bound on the scope
+  root, so it dismisses one navigation level even from an unavailable item or
+  when focus is temporarily absent. `Danger` is an accessible semantic tone,
+  not permission to bypass confirmation for destructive work.
 - `UI.ControllerHint(...)` creates a restrained key-cap and label from the
   closed `ControllerButton` enum. It is display-only: authors must still bind
   the matching shortcut to the active input scope or focused control. Compose
@@ -131,6 +152,8 @@ diagnostics, but must not reuse them for another node in the same snapshot.
 | `ScopedDialog(..., id, scopeId, ...)` | `id.title` and `id.content`; supplied children retain their IDs. |
 | `ValueRow(..., id, description?, glyph?)` | `id.text`, `id.label`, and `id.value`; optional `id.icon` and `id.description`. |
 | `ChoiceRow(..., id)` | None; the Button itself uses `id`. |
+| `SettingsRow(..., id, ...)` | `id.content`, `id.copy`, `id.label`, and `id.action`; optional `id.icon`, `id.description`, `id.metadata`, `id.value`, `id.status`, `id.status.label`, and `id.status.icon`. `id.action` is the only focus stop. |
+| `ActionSheet(..., id, items, ...)` | `id.title`, `id.list`, and optional `id.description`; each action Button uses its author-provided `ActionSheetItem.Id`. |
 | `ControllerHint(button, label, id)` | `id.key` and `id.label`. |
 
 Generated IDs use the same 128-character stable-ID grammar as ordinary nodes.
@@ -228,23 +251,59 @@ unavailable action and Busy for work already accepted. Neither is a visibility
 or navigation API. Avoid disabling a whole card or list because one child has
 work in flight; track pending state at the narrowest owning feature.
 
+## SettingsRow and ActionSheet pattern
+
+Open a nested ActionSheet from the SettingsRow action, then publish the sheet's
+scope and one of its item IDs. When B dispatches the sheet's back action, render
+the root again and restore `settings.output.action`:
+
+```csharp
+var outputRow = UI.SettingsRow(
+    "Output device",
+    new ComponentAction("Choose device", "settings.output.open", WidgetGlyph.Volume),
+    "settings.output",
+    description: "Used by games and media",
+    value: currentDevice,
+    status: providerAvailable ? "Available" : "Provider unavailable",
+    statusTone: providerAvailable ? StatusTone.Success : StatusTone.Warning,
+    isDisabled: !providerAvailable);
+
+var picker = UI.ActionSheet(
+    "Choose output device",
+    "settings.output.sheet",
+    "settings.output.sheet.scope",
+    "settings.output.dismiss",
+    devices.Select(device => new ActionSheetItem(
+        device.FocusId, device.Name, device.SelectAction,
+        IsBusy: device.IsPending,
+        IsDisabled: !device.CanSelect)).ToArray(),
+    description: "B returns without changing the current device.");
+
+return showPicker
+    ? new WidgetView(picker, devices[0].FocusId, ActiveInputScopeId: "settings.output.sheet.scope")
+    : new WidgetView(outputRow, "settings.output.action");
+```
+
+Do not keep a hidden catalog behind LB/RB cycling. If the option set is empty,
+render an `EmptyState` instead of constructing an ActionSheet. For more than 32
+options, provide search/category navigation or bounded paging where each page
+is its own stable surface; never silently truncate user choices.
+
 ## Remaining component design queue
 
 The following are design candidates, not current `UI.*` APIs. Implement them as
 tested composition helpers or native semantics before authors depend on names:
 
-1. **`SettingsRow`** — compact label, optional description/value/status, and
-   one controller action without recreating a thick nested card.
-2. **Picker/listbox and action sheet** — nested scrollable scopes for bounded
-   choice or contextual actions instead of cycling hidden values or crowding
-   the root.
-3. **Toast/notification model** — host-announced, time-bounded feedback that
+1. **Picker/listbox selection semantics** — ActionSheet now covers contextual
+   commands. A future selection-specific helper still needs selected-value,
+   multi-select, type-ahead, and empty/loading contracts beyond ChoiceRow.
+2. **Toast/notification model** — host-announced, time-bounded feedback that
    never steals focus; persistent failures remain in the owning surface.
-4. **Controller scrubber** — Slider-derived seek semantics, time/value labels,
+3. **Controller scrubber** — Slider-derived seek semantics, time/value labels,
    buffered/unknown state, latest-wins adjustment, and stable focus.
-5. **`MediaTile` and `AppTile`** — bounded artwork/icon, multi-line metadata,
+4. **`MediaTile` and `AppTile`** — bounded artwork/icon, multi-line metadata,
    state, and one primary full-tile action without private widget geometry.
-6. **Layout/style primitives** — per-edge borders, responsive grid/wrap, and
+5. **Layout/style primitives** — per-edge borders, responsive grid/wrap, and
    semantic monospace for diagnostics or code-like values. These need bounded
    native layout/style contracts rather than author-specific workarounds.
 

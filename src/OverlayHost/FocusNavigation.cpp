@@ -19,6 +19,27 @@ bool Overlaps(const float a0, const float a1, const float b0, const float b1) no
 
 } // namespace
 
+std::optional<PointerHitTarget> FindPointerHitTarget(
+    const float x,
+    const float y,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    // Regions follow paint/tree order; reverse search gives overlapping
+    // descendants precedence over the surface painted beneath them.
+    for (auto region = renderResult.hitRegions.rbegin();
+         region != renderResult.hitRegions.rend(); ++region) {
+        const auto scope = renderResult.focusScopes.find(region->nodeId);
+        if (scope == renderResult.focusScopes.end() ||
+            scope->second != activeScopeId) continue;
+        const auto& rect = region->rect;
+        if (rect.width <= 0.0F || rect.height <= 0.0F ||
+            x < rect.x || y < rect.y ||
+            x >= rect.x + rect.width || y >= rect.y + rect.height) continue;
+        return PointerHitTarget{region->nodeId, region->enabled};
+    }
+    return std::nullopt;
+}
+
 bool IsEnabledFocusTarget(
     const std::wstring_view id,
     const RenderResult& renderResult) noexcept {

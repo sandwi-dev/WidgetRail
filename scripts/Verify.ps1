@@ -52,6 +52,9 @@ try {
     Invoke-Checked -Description 'Build and test platform settings and themes' -Command {
         dotnet run --project 'tests\PlatformSettings.Tests\PlatformSettings.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test package-scoped widget configuration' -Command {
+        dotnet run --project 'tests\WidgetConfiguration.Tests\WidgetConfiguration.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build and test capability broker contracts' -Command {
         dotnet run --project 'tests\PlatformBroker.Tests\PlatformBroker.Tests.csproj' --configuration $Configuration
     }
@@ -75,6 +78,15 @@ try {
     }
     Invoke-Checked -Description 'Build and test Windows media-session provider' -Command {
         dotnet run --project 'tests\WindowsMediaProvider.Tests\WindowsMediaProvider.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test trusted Spotify OAuth and Web API provider' -Command {
+        dotnet run --project 'tests\WindowsSpotifyProvider.Tests\WindowsSpotifyProvider.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test trusted Spotify Web Playback host' -Command {
+        dotnet run --project 'tests\SpotifyPlaybackHost.Tests\SpotifyPlaybackHost.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test Spotify community widget' -Command {
+        dotnet run --project 'tests\SpotifyWidget.Tests\SpotifyWidget.Tests.csproj' --configuration $Configuration
     }
     Invoke-Checked -Description 'Build and test first-party Audio Mixer widget' -Command {
         dotnet run --project 'tests\AudioMixerWidget.Tests\AudioMixerWidget.Tests.csproj' --configuration $Configuration

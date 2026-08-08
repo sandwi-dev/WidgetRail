@@ -62,6 +62,7 @@
     <ClInclude Include="OverlayTargeting.h" />
     <ClInclude Include="DeclarativeRenderer.h" />
     <ClInclude Include="GuideInputCompatibility.h" />
+    <ClInclude Include="ControllerInputOwnership.h" />
     <ClInclude Include="ControllerNavigation.h" />
     <ClInclude Include="FocusNavigation.h" />
     <ClInclude Include="WidgetSurfaceFocus.h" />

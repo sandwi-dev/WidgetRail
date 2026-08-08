@@ -58,7 +58,8 @@ bridge treats the temporary package exactly like an installed community widget:
 the generic worker host runs it in a package-specific AppContainer and the
 normal lifecycle, consent broker, controller routing, GBSS compiler, and native
 renderer remain in effect. Settings reads the same session catalog, so declared
-capabilities can be reviewed and granted through Permissions & capabilities.
+capabilities can be reviewed from the exact Installed widget's **Permissions &
+configuration** page.
 
 Project mode watches the root manifest/project, bounded C# sources outside
 `bin`/`obj`/`.git`, nearest `Directory.Build.props/targets`, and GBSS sources.
@@ -221,8 +222,8 @@ remains a CLI workflow. The bridge watches accepted catalog changes and updates
 the overlay without a restart; listing/reload does not eagerly start the worker.
 
 Enablement is not capability consent. If the package declares a brokered
-service, review and grant it separately under Settings → Permissions &
-capabilities. Invalid trusted shell updates retain last-good. Invalid installed
+service, open that package under Settings → Installed widgets and use
+**Permissions & configuration**. Invalid trusted shell updates retain last-good. Invalid installed
 state/integrity removes Community registrations and retires their workers until
 the catalog is valid again.
 

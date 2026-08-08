@@ -60,6 +60,10 @@ public static class PlatformCapabilities
     public const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
+    public const string SpotifyConfigurationV1 = "external.spotify.configuration.v1";
+    public const string SpotifyAuthorizationV1 = "external.spotify.authorization.v1";
+    public const string SpotifyPlaybackReadV1 = "external.spotify.playback.read.v1";
+    public const string SpotifyPlaybackControlV1 = "external.spotify.playback.control.v1";
     public const string PrivateSecretsV1 = "storage.private-secrets.v1";
     public const string PrivateStateV1 = "storage.private-state.v1";
 
@@ -96,6 +100,13 @@ public static class PlatformCapabilities
     public const string AppLibraryLaunch = "apps.library.launch";
     public const string MediaSessionsGet = "media.sessions.get";
     public const string MediaSessionControl = "media.session.control";
+    public const string SpotifyConfigurationGet = "spotify.configuration.get";
+    public const string SpotifyConfigurationConfigure = "spotify.configuration.configure";
+    public const string SpotifyAuthorizationGet = "spotify.authorization.get";
+    public const string SpotifyAuthorizationConnect = "spotify.authorization.connect";
+    public const string SpotifyAuthorizationDisconnect = "spotify.authorization.disconnect";
+    public const string SpotifyPlaybackGet = "spotify.playback.get";
+    public const string SpotifyPlaybackControl = "spotify.playback.control";
     public const string LoopbackHttpGetJson = "loopback.http.get-json";
     public const string LoopbackHttpPostJson = "loopback.http.post-json";
     public const string PrivateSecretExists = "private-secret.exists";
@@ -116,6 +127,7 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothChanged = "network.bluetooth.changed";
     public const string RecentActivitiesChanged = "activity.recent.changed";
     public const string MediaSessionsChanged = "media.sessions.changed";
+    public const string SpotifyPlaybackChanged = "spotify.playback.changed";
 
     private static readonly IReadOnlyDictionary<string, BrokerCapabilityDefinition> Definitions =
         new Dictionary<string, BrokerCapabilityDefinition>(StringComparer.Ordinal)
@@ -167,6 +179,20 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Read, Set(MediaSessionsGet), Set(MediaSessionsChanged)),
             [MediaSessionsControlV1] = new(MediaSessionsControlV1, 1,
                 BrokerCapabilityKind.Control, Set(MediaSessionControl), Set(),
+                AllowsDashboardGesture: true),
+            [SpotifyConfigurationV1] = new(SpotifyConfigurationV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(SpotifyConfigurationGet, SpotifyConfigurationConfigure), Set(),
+                ReadOperations: Set(SpotifyConfigurationGet)),
+            [SpotifyAuthorizationV1] = new(SpotifyAuthorizationV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(SpotifyAuthorizationGet, SpotifyAuthorizationConnect,
+                    SpotifyAuthorizationDisconnect), Set(),
+                ReadOperations: Set(SpotifyAuthorizationGet)),
+            [SpotifyPlaybackReadV1] = new(SpotifyPlaybackReadV1, 1,
+                BrokerCapabilityKind.Read, Set(SpotifyPlaybackGet), Set(SpotifyPlaybackChanged)),
+            [SpotifyPlaybackControlV1] = new(SpotifyPlaybackControlV1, 1,
+                BrokerCapabilityKind.Control, Set(SpotifyPlaybackControl), Set(),
                 AllowsDashboardGesture: true),
             [PrivateSecretsV1] = new(PrivateSecretsV1, 1,
                 BrokerCapabilityKind.Control,

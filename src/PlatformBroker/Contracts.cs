@@ -311,6 +311,13 @@ public sealed record AppLibraryItemSummary(
 {
     [JsonRequired]
     public string SavedId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional bounded PNG pixels for the application icon. The trusted
+    /// provider rasterizes these pixels; no executable, shortcut, package, or
+    /// native icon location crosses the broker boundary.
+    /// </summary>
+    public string? IconPngBase64 { get; init; }
 }
 
 /// <summary>
@@ -323,6 +330,17 @@ public sealed record AppLibraryBackendItemSummary(
     [property: JsonIgnore] string StableProviderIdentity,
     string DisplayName,
     AppLibraryKind Kind);
+
+/// <summary>Trusted backend icon result; the broker validates every byte.</summary>
+public sealed record AppLibraryIconSummary(string? PngBase64);
+
+public static class AppLibraryImageLimits
+{
+    public const int MaximumPngBytes = 12 * 1024;
+    public const int MaximumPixelDimension = 64;
+    public const int MaximumResolvedIconCount = 32;
+    public const int MaximumAggregatePngBytes = 384 * 1024;
+}
 
 public sealed record AppLibraryPageRequest(
     [property: JsonRequired] int Offset,
@@ -383,7 +401,21 @@ public sealed record MediaSessionSummary(
     bool CanPause,
     bool CanTogglePlayPause,
     bool CanPrevious,
-    bool CanNext);
+    bool CanNext)
+{
+    /// <summary>
+    /// Optional canonical bounded PNG bytes. The trusted provider normalizes
+    /// GSMTC artwork; widgets never receive a path, package identity, or stream.
+    /// </summary>
+    public string? ArtworkPngBase64 { get; init; }
+}
+
+public static class MediaSessionImageLimits
+{
+    public const int MaximumPngBytes = AppLibraryImageLimits.MaximumPngBytes;
+    public const int MaximumPixelDimension = AppLibraryImageLimits.MaximumPixelDimension;
+    public const int MaximumSnapshotPngBytes = 96 * 1024;
+}
 
 public sealed record ControlMediaSessionRequest(
     [property: JsonRequired] string SessionId,
@@ -391,6 +423,110 @@ public sealed record ControlMediaSessionRequest(
 
 public sealed record MediaSessionsChangedEvent(
     IReadOnlyList<MediaSessionSummary> Sessions);
+
+/// <summary>
+/// Public Spotify application configuration. A client ID is public OAuth
+/// metadata; client secrets and tokens never cross the broker boundary.
+/// </summary>
+public sealed record SpotifyConfigurationSummary(
+    [property: JsonRequired] bool IsConfigured,
+    [property: JsonRequired] string RedirectUri);
+
+public sealed record ConfigureSpotifyClientRequest(
+    [property: JsonRequired] string ClientId);
+
+public enum SpotifyAuthorizationState
+{
+    Unconfigured,
+    Disconnected,
+    Authorizing,
+    Connected,
+    ReauthorizationRequired,
+}
+
+/// <summary>Closed user scopes supported by the v1 Spotify broker slice.</summary>
+public enum SpotifyAuthorizationScope
+{
+    PlaybackStateRead,
+    PlaybackStateControl,
+}
+
+public sealed record ConnectSpotifyRequest(
+    [property: JsonRequired] IReadOnlyList<SpotifyAuthorizationScope> RequestedScopes);
+
+public sealed record SpotifyAuthorizationSummary(
+    [property: JsonRequired] SpotifyAuthorizationState State,
+    [property: JsonRequired] IReadOnlyList<SpotifyAuthorizationScope> RequestedScopes,
+    [property: JsonRequired] IReadOnlyList<SpotifyAuthorizationScope> GrantedScopes,
+    string? DisplayMessage);
+
+public enum SpotifyPlaybackItemType
+{
+    Track,
+    Episode,
+}
+
+public enum SpotifyRepeatState
+{
+    Off,
+    Context,
+    Track,
+}
+
+/// <summary>
+/// Spotify's per-device disallow map projected onto the operations exposed by
+/// this broker version. True means the widget must not offer that operation.
+/// </summary>
+public sealed record SpotifyPlaybackDisallowedActions(
+    [property: JsonRequired] bool Pausing,
+    [property: JsonRequired] bool Resuming,
+    [property: JsonRequired] bool Seeking,
+    [property: JsonRequired] bool SkippingNext,
+    [property: JsonRequired] bool SkippingPrevious,
+    [property: JsonRequired] bool TogglingRepeatContext,
+    [property: JsonRequired] bool TogglingRepeatTrack,
+    [property: JsonRequired] bool TogglingShuffle);
+
+/// <summary>Sanitized track or episode metadata; no token or raw API document is exposed.</summary>
+public sealed record SpotifyPlaybackItemSummary(
+    [property: JsonRequired] SpotifyPlaybackItemType ItemType,
+    [property: JsonRequired] string Title,
+    [property: JsonRequired] string Subtitle,
+    string? ContextName,
+    string? ArtworkUrl,
+    string? Uri);
+
+public sealed record SpotifyPlaybackSummary(
+    [property: JsonRequired] bool IsAvailable,
+    [property: JsonRequired] bool IsPlaying,
+    [property: JsonRequired] long ProgressMilliseconds,
+    [property: JsonRequired] long DurationMilliseconds,
+    [property: JsonRequired] long CapturedAtUnixMilliseconds,
+    [property: JsonRequired] SpotifyRepeatState RepeatState,
+    [property: JsonRequired] bool ShuffleState,
+    SpotifyPlaybackItemSummary? Item,
+    [property: JsonRequired] SpotifyPlaybackDisallowedActions DisallowedActions,
+    [property: JsonRequired] string Attribution);
+
+public enum SpotifyPlaybackOperation
+{
+    Play,
+    Pause,
+    Next,
+    Previous,
+    Seek,
+    SetRepeat,
+    SetShuffle,
+}
+
+public sealed record SpotifyPlaybackCommand(
+    [property: JsonRequired] SpotifyPlaybackOperation Operation,
+    long? PositionMilliseconds,
+    SpotifyRepeatState? RepeatState,
+    bool? Enabled);
+
+public sealed record SpotifyPlaybackChangedEvent(
+    [property: JsonRequired] SpotifyPlaybackSummary Playback);
 
 public sealed record LoopbackHttpHeader(
     [property: JsonRequired] string Name,
@@ -513,6 +649,16 @@ public interface IAppLibraryPlatformBrokerBackend
         CancellationToken cancellationToken) =>
         Task.FromException(
             new BrokerException("platform_unavailable", "App launch is unavailable."));
+
+    /// <summary>
+    /// Rasterizes an icon only for an already resolved provider token. List
+    /// discovery intentionally remains text-only so enumerating hundreds of
+    /// applications cannot inflate broker or widget snapshots.
+    /// </summary>
+    Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
+        string appId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new AppLibraryIconSummary(null));
 }
 
 public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
@@ -542,6 +688,45 @@ public interface IMediaPlatformBrokerBackend : IPlatformBrokerEventSource
         CancellationToken cancellationToken) =>
         Task.FromException(
             new BrokerException("platform_unavailable", "Windows media session control is unavailable."));
+}
+
+/// <summary>
+/// Trusted Spotify provider. Every call is identity-scoped so configuration,
+/// authorization state, and tokens cannot be shared across widget packages.
+/// </summary>
+public interface ISpotifyPlatformBrokerBackend : IPlatformBrokerEventSource
+{
+    Task<SpotifyConfigurationSummary> GetSpotifyConfigurationAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyConfigurationSummary>(
+            new BrokerException("platform_unavailable", "Spotify configuration is unavailable."));
+    Task<SpotifyConfigurationSummary> ConfigureSpotifyClientAsync(
+        BrokerWidgetIdentity identity, ConfigureSpotifyClientRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyConfigurationSummary>(
+            new BrokerException("platform_unavailable", "Spotify configuration is unavailable."));
+    Task<SpotifyAuthorizationSummary> GetSpotifyAuthorizationAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyAuthorizationSummary>(
+            new BrokerException("platform_unavailable", "Spotify authorization is unavailable."));
+    Task<SpotifyAuthorizationSummary> ConnectSpotifyAsync(
+        BrokerWidgetIdentity identity, ConnectSpotifyRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyAuthorizationSummary>(
+            new BrokerException("platform_unavailable", "Spotify authorization is unavailable."));
+    Task<SpotifyAuthorizationSummary> DisconnectSpotifyAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyAuthorizationSummary>(
+            new BrokerException("platform_unavailable", "Spotify authorization is unavailable."));
+    Task<SpotifyPlaybackSummary> GetSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyPlaybackSummary>(
+            new BrokerException("platform_unavailable", "Spotify playback is unavailable."));
+    Task ControlSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaybackCommand command,
+        CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "Spotify playback control is unavailable."));
 }
 
 public interface IPrivateSecretPlatformBrokerBackend
@@ -598,7 +783,8 @@ public interface ILoopbackHttpPlatformBrokerBackend
 public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     INetworkPlatformBrokerBackend, IActivityPlatformBrokerBackend,
     IAppLibraryPlatformBrokerBackend, IBluetoothPlatformBrokerBackend,
-    IMediaPlatformBrokerBackend, IPrivateSecretPlatformBrokerBackend,
+    IMediaPlatformBrokerBackend, ISpotifyPlatformBrokerBackend,
+    IPrivateSecretPlatformBrokerBackend,
     IPrivateStatePlatformBrokerBackend, ILoopbackHttpPlatformBrokerBackend
 {
 }

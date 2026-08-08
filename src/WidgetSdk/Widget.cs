@@ -29,14 +29,31 @@ public sealed record WidgetView(
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
 
-        int RequiredProtocolVersion() => QuickActions?.Any(action => action.Capability is not null) == true
-            ? ProtocolConstants.DashboardGestureAuthorityVersion
-            : ContainsSlider(Root)
-                ? ProtocolConstants.SliderVersion
-                : Surface is not null || ContainsScroll(Root)
-                    ? ProtocolConstants.ScrollContainerVersion
-                    : ProtocolConstants.BaselineVersion;
+        int RequiredProtocolVersion()
+        {
+            var required = ProtocolConstants.BaselineVersion;
+            if (Surface is not null || ContainsScroll(Root))
+                required = Math.Max(required, ProtocolConstants.ScrollContainerVersion);
+            if (ContainsSlider(Root))
+                required = Math.Max(required, ProtocolConstants.SliderVersion);
+            if (QuickActions?.Any(action => action.Capability is not null) == true)
+                required = Math.Max(required, ProtocolConstants.DashboardGestureAuthorityVersion);
+            if (ContainsLoadingIndicator(Root))
+                required = Math.Max(required, ProtocolConstants.LoadingIndicatorVersion);
+            if (ContainsInlinePng(Root))
+                required = Math.Max(required, ProtocolConstants.InlinePngImageVersion);
+            return required;
+        }
     }
+
+    private static bool ContainsLoadingIndicator(WidgetElement element) => element switch
+    {
+        LoadingIndicatorElement => true,
+        StackElement stack => stack.Children.Any(ContainsLoadingIndicator),
+        RowElement row => row.Children.Any(ContainsLoadingIndicator),
+        ScrollElement scroll => scroll.Children.Any(ContainsLoadingIndicator),
+        _ => false,
+    };
 
     private static bool ContainsScroll(WidgetElement element) => element switch
     {
@@ -52,6 +69,16 @@ public sealed record WidgetView(
         StackElement stack => stack.Children.Any(ContainsSlider),
         RowElement row => row.Children.Any(ContainsSlider),
         ScrollElement scroll => scroll.Children.Any(ContainsSlider),
+        _ => false,
+    };
+
+    private static bool ContainsInlinePng(WidgetElement element) => element switch
+    {
+        ImageElement image when image.Source.StartsWith(
+            "data:image/png;base64,", StringComparison.Ordinal) => true,
+        StackElement stack => stack.Children.Any(ContainsInlinePng),
+        RowElement row => row.Children.Any(ContainsInlinePng),
+        ScrollElement scroll => scroll.Children.Any(ContainsInlinePng),
         _ => false,
     };
 

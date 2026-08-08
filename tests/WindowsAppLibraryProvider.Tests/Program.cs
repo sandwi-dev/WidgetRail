@@ -11,6 +11,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Opaque IDs are stable only while the registration remains current", OpaqueIdLifecycle),
     ("Public payload contains no trusted launch descriptors", PayloadIsOpaque),
     ("Trusted broker projection separates launch and stable provider identities", BrokerProjectionSeparatesIdentities),
+    ("Application icons are rasterized on demand and cached", IconsAreOnDemandAndCached),
+    ("Missing application icons degrade to an empty optional result", MissingIconFallsBack),
+    ("Application icon PNG encoder is bounded and structurally valid", IconPngIsBounded),
     ("Launch revalidates the exact current shortcut before invoking Shell", LaunchRevalidatesExactShortcut),
     ("Shell launch settings contain no arguments elevation or window delegation", ShellLaunchIsConstrained),
     ("Shell failures expose only sanitized broker errors", ShellFailureIsSanitized),
@@ -144,6 +147,63 @@ static async Task BrokerProjectionSeparatesIdentities()
     var refreshed = await backend.RefreshAppLibraryAsync(CancellationToken.None);
     Assert.Equal(item.ProviderAppId, refreshed.Single().ProviderAppId);
     Assert.Equal(item.StableProviderIdentity, refreshed.Single().StableProviderIdentity);
+}
+
+static async Task IconsAreOnDemandAndCached()
+{
+    const string privatePath = @"C:\Users\private\Icon Source.lnk";
+    var source = new FakeSource(
+        Reg("icon-app", "Icon App", StartMenuScope.CurrentUser, privatePath));
+    var iconSource = new FakeIconSource(CreateTestIcon());
+    var provider = new WindowsAppLibraryProvider(source, new FakeShellLauncher(), iconSource);
+    var appId = (await provider.GetAppsAsync()).Single().AppId;
+    Assert.Equal(0, iconSource.Calls);
+
+    var first = await provider.GetAppLibraryIconAsync(appId, CancellationToken.None);
+    var second = await provider.GetAppLibraryIconAsync(appId, CancellationToken.None);
+    Assert.True(!string.IsNullOrEmpty(first.PngBase64));
+    Assert.Equal(first.PngBase64, second.PngBase64);
+    Assert.Equal(1, iconSource.Calls);
+    Assert.False(JsonSerializer.Serialize(first).Contains("private", StringComparison.OrdinalIgnoreCase));
+    Assert.False(JsonSerializer.Serialize(first).Contains(".lnk", StringComparison.OrdinalIgnoreCase));
+}
+
+static async Task MissingIconFallsBack()
+{
+    var source = new FakeSource(
+        Reg("missing-icon", "No Icon", StartMenuScope.CurrentUser, @"C:\NoIcon.lnk"));
+    var iconSource = new FakeIconSource(null);
+    var provider = new WindowsAppLibraryProvider(source, new FakeShellLauncher(), iconSource);
+    var appId = (await provider.GetAppsAsync()).Single().AppId;
+    Assert.Equal(null, (await provider.GetAppLibraryIconAsync(
+        appId, CancellationToken.None)).PngBase64);
+    Assert.Equal(null, (await provider.GetAppLibraryIconAsync(
+        "app-00000000000000000000000000000000", CancellationToken.None)).PngBase64);
+    Assert.Equal(1, iconSource.Calls);
+}
+
+static Task IconPngIsBounded()
+{
+    var png = CreateTestIcon();
+    Assert.True(png.Length <= AppLibraryImageLimits.MaximumPngBytes);
+    Assert.True(png.AsSpan(0, 8).SequenceEqual(
+        new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
+    return Task.CompletedTask;
+}
+
+static byte[] CreateTestIcon()
+{
+    var bgra = new byte[WindowsAppIconSource.IconPixels *
+        WindowsAppIconSource.IconPixels * 4];
+    for (var index = 0; index < bgra.Length; index += 4)
+    {
+        bgra[index] = (byte)(index % 251);
+        bgra[index + 1] = (byte)((index / 3) % 251);
+        bgra[index + 2] = (byte)((index / 7) % 251);
+        bgra[index + 3] = 255;
+    }
+    return WindowsAppIconSource.EncodePng(
+        bgra, WindowsAppIconSource.IconPixels, WindowsAppIconSource.IconPixels);
 }
 
 static async Task LaunchRevalidatesExactShortcut()
@@ -328,6 +388,19 @@ file sealed class FakeShellLauncher(Exception? failure = null) : IWindowsShellLa
         cancellationToken.ThrowIfCancellationRequested();
         Paths.Add(exactShortcutPath);
         if (failure is not null) throw failure;
+    }
+}
+
+file sealed class FakeIconSource(byte[]? png) : IWindowsAppIconSource
+{
+    public int Calls { get; private set; }
+
+    public string? TryRasterizePngBase64(
+        string shortcutPath, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Calls++;
+        return png is null ? null : Convert.ToBase64String(png);
     }
 }
 

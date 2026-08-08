@@ -38,6 +38,20 @@ int main() {
     Add(result, L"far-down", {300, 210, 42, 42});
     Add(result, L"modal-button", {109, 100, 42, 42}, true, L"modal");
 
+    Check(gba::input::FindPointerHitTarget(120, 70, L"root", result)->id == L"play",
+          "pointer hit resolves visible control in active scope");
+    Check(!gba::input::FindPointerHitTarget(120, 202, L"root", result)->enabled,
+          "pointer can select a disabled control without activating it");
+    Check(!gba::input::FindPointerHitTarget(120, 110, L"root", result) ||
+              gba::input::FindPointerHitTarget(120, 110, L"root", result)->id !=
+                  L"modal-button",
+          "pointer cannot cross into a nested inactive scope");
+    Check(gba::input::FindPointerHitTarget(120, 110, L"modal", result)->id ==
+              L"modal-button",
+          "pointer resolves the active nested scope");
+    Check(!gba::input::FindPointerHitTarget(800, 800, L"root", result),
+          "pointer outside all visible geometry is ignored");
+
     Check(FindGeometricFocusTarget(L"play", NavigationDirection::Left, result) == L"previous",
           "row navigation chooses previous");
     Check(FindGeometricFocusTarget(L"play", NavigationDirection::Right, result) == L"next",

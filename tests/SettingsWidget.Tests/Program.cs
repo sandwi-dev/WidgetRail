@@ -9,7 +9,7 @@ using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Root exposes all first-party settings categories", RootCategories),
+    ("Root keeps widget permissions inside Installed Widgets", RootCategories),
     ("Settings uses a bounded controller-scroll surface", ControllerScrollSurface),
     ("Nested pages own scoped B navigation", NestedScopesAndBack),
     ("Settings composites expose controller semantics", CompositeControls),
@@ -76,7 +76,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.permissions", "category.diagnostics", "settings.refresh", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.diagnostics", "settings.refresh", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
@@ -474,9 +474,21 @@ static async Task InstalledWidgetReview()
     Assert.Contains("no process/thread suspension",
         Text(details.Root, "installed.details.residency").Text!);
     Assert.Contains("Enable reviewed widget", Button(details.Root, "installed.details.toggle").Text!);
+    Assert.Contains("Permissions & configuration",
+        Button(details.Root, "installed.details.permissions").Text!);
+
+    await Action(widget, "installed.permissions.open");
+    var permissions = Snapshot(widget);
+    Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
+    Assert.Equal("capabilities.package", permissions.ActiveInputScopeId);
+    Assert.HasShortcut(permissions.Root, "capabilities.package", ControllerButton.B, "back");
+    Assert.Contains("Installed 5", Text(permissions.Root, "capabilities.heading").Text!);
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Valid(first);
     Assert.Valid(second);
     Assert.Valid(details);
+    Assert.Valid(permissions);
 }
 
 static async Task BuiltInWidgetInventory()

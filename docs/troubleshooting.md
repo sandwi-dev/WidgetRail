@@ -303,7 +303,8 @@ Check the current [implementation status](implementation-status.md).
 When the package/provider path is available, diagnose its two independent
 permission layers separately:
 
-- In **Settings → Permissions & capabilities**, grant
+- In the widget's **Settings → Installed widgets → Permissions &
+  configuration** page, grant
   `system.network.read.v1` for coarse status and
   `system.network.wifi.read.v1` for nearby-network scan/read. Grant the
   optional `system.network.wifi.connect.v1` separately to connect. Required

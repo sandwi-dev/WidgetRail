@@ -882,18 +882,7 @@ internal static class DevGenerationBuilder
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var start = new ProcessStartInfo("dotnet")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = Path.GetDirectoryName(project)!,
-        };
-        foreach (var argument in new[]
-                 {
-                     "build", project, "--configuration", configuration, "--nologo", "--output", outputDirectory,
-                 }) start.ArgumentList.Add(argument);
+        var start = CreateBuildStartInfo(project, configuration, outputDirectory);
         using var process = Process.Start(start)
             ?? throw new CliOperationException("dotnet build could not be started.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -919,6 +908,35 @@ internal static class DevGenerationBuilder
         }
         if (process.ExitCode != 0)
             throw new CliOperationException($"dotnet build failed with exit code {process.ExitCode}.");
+    }
+
+    internal static ProcessStartInfo CreateBuildStartInfo(
+        string project,
+        string configuration,
+        string outputDirectory)
+    {
+        var start = new ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = Path.GetDirectoryName(project)!,
+        };
+        foreach (var argument in new[]
+                 {
+                     "build", project, "--configuration", configuration, "--nologo", "--output", outputDirectory,
+                     // A dev generation is an isolated, bounded build. Persistent
+                     // MSBuild/Roslyn servers can outlive it while retaining handles
+                     // to the watched source tree, racing source cleanup and leaking
+                     // dotnet/VBCSCompiler processes across rebuilds.
+                     "--disable-build-servers",
+                     "--property:UseSharedCompilation=false",
+                     "--property:BuildInParallel=false",
+                     "--property:MSBuildNodeReuse=false",
+                 }) start.ArgumentList.Add(argument);
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        return start;
     }
 
     private static async Task PumpBuildOutputAsync(
@@ -1007,7 +1025,7 @@ internal sealed class DevSourceWatcher : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var next = Capture(_source);
-        foreach (var watcher in _watchers) watcher.Dispose();
+        foreach (var watcher in _watchers) StopWatcher(watcher);
         _watchers.Clear();
         _files = next;
         var directories = CaptureWatchDirectories(_source, _files);
@@ -1057,8 +1075,18 @@ internal sealed class DevSourceWatcher : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (var watcher in _watchers) watcher.Dispose();
+        foreach (var watcher in _watchers) StopWatcher(watcher);
         _watchers.Clear();
+    }
+
+    private static void StopWatcher(FileSystemWatcher watcher)
+    {
+        // Disable first so FileSystemWatcher's Windows directory handle and
+        // outstanding ReadDirectoryChangesW request are closed synchronously.
+        // Dispose alone can race a recursive source-tree cleanup while the
+        // final native change notification is still being retired.
+        watcher.EnableRaisingEvents = false;
+        watcher.Dispose();
     }
 
     internal static HashSet<string> Capture(DevWidgetSource source)

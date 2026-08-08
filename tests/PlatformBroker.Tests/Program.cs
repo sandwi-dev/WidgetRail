@@ -17,9 +17,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
+    ("Resolved app icons are on-demand bounded and optional", AppLibraryIconsAreBounded),
     ("Durable app IDs persist and remain authority scoped", AppLibrarySavedIdsAreDurableAndScoped),
     ("Pipe host effects publish only after requested successful app launch", AppLaunchHostEffectIsSuccessBound),
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
+    ("Media session artwork is canonical bounded and snapshot-limited", MediaSessionArtworkIsBounded),
+    ("Spotify configuration authorization playback and events are scoped and lifecycle-gated", SpotifyContracts),
     ("Exact-port loopback separates visible reads from interactive controls", LoopbackHttpContracts),
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
     ("Private state is host-granted consentless identity-bound and active-lifecycle safe", PrivateStateHostGrantContracts),
@@ -68,9 +71,73 @@ foreach (var (name, run) in tests)
 if (failures != 0) Environment.Exit(1);
 Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
+static async Task AppLibraryIconsAreBounded()
+{
+    const string png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
+        "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var consent = new ConsentStore(temp.Path);
+    await consent.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryReadV1, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend(Enumerable.Range(0, 33).Select(index =>
+        new AppLibraryBackendItemSummary(
+            $"provider-{index}", $"stable-{index}", $"App {index}",
+            AppLibraryKind.Application)));
+    backend.AppLibraryIconHandler = (_, cancellationToken) =>
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new AppLibraryIconSummary(png));
+    };
+    await using var broker = new PlatformCapabilityBroker(
+        identity, [PlatformCapabilities.AppLibraryReadV1], consent, backend);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var listPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 1, identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        JsonSerializer.SerializeToElement(new AppLibraryPageRequest(0, 64),
+            BrokerJson.StrictOptions)));
+    var page = listPayload.Deserialize<AppLibraryPageSummary>(BrokerJson.StrictOptions)!;
+    Assert.Equal(33, page.Items.Count);
+    Assert.True(page.Items.All(item => item.IconPngBase64 is null));
+    Assert.Equal(0, backend.AppLibraryIconCalls);
+
+    var resolvePayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 2, identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        JsonSerializer.SerializeToElement(
+            new ResolveSavedAppLibraryItemsRequest(
+                page.Items.Select(item => item.SavedId).ToArray()),
+            BrokerJson.StrictOptions)));
+    var resolved = resolvePayload.Deserialize<ResolveSavedAppLibraryItemsSummary>(
+        BrokerJson.StrictOptions)!;
+    Assert.Equal(33, resolved.Items.Count);
+    Assert.Equal(AppLibraryImageLimits.MaximumResolvedIconCount,
+        resolved.Items.Count(item => item.IconPngBase64 is not null));
+    Assert.Equal(AppLibraryImageLimits.MaximumResolvedIconCount,
+        backend.AppLibraryIconCalls);
+
+    backend.AppLibraryIconHandler = (_, _) =>
+        Task.FromResult(new AppLibraryIconSummary("not-base64"));
+    var invalidPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 3, identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        JsonSerializer.SerializeToElement(
+            new ResolveSavedAppLibraryItemsRequest([page.Items[0].SavedId]),
+            BrokerJson.StrictOptions)));
+    Assert.Equal(null, invalidPayload.Deserialize<ResolveSavedAppLibraryItemsSummary>(
+        BrokerJson.StrictOptions)!.Items.Single().IconPngBase64);
+}
+
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(24, PlatformCapabilities.All.Count);
+    Assert.Equal(28, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -102,7 +169,8 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(mediaControl.AllowsDashboardGesture);
     Assert.True(PlatformCapabilities.All
         .Where(capability => capability.Kind == BrokerCapabilityKind.Control &&
-            capability.Id != PlatformCapabilities.MediaSessionsControlV1)
+            capability.Id != PlatformCapabilities.MediaSessionsControlV1 &&
+            capability.Id != PlatformCapabilities.SpotifyPlaybackControlV1)
         .All(capability => !capability.AllowsDashboardGesture));
     var defaultControl = new BrokerCapabilityDefinition(
         "test.future.control.v1",
@@ -561,7 +629,9 @@ static async Task CompositeProviderDomainsAreSeparated()
 {
     var audio = new SplitAudioBackend();
     var network = new SplitNetworkBackend();
-    await using var composite = new CompositePlatformBrokerBackend(audio, network);
+    var spotify = new SimulatedPlatformBrokerBackend();
+    await using var composite = new CompositePlatformBrokerBackend(
+        audio, network, spotify: spotify);
     var published = new List<BrokerPlatformEvent>();
     composite.EventPublished += (_, platformEvent) => published.Add(platformEvent);
 
@@ -581,10 +651,22 @@ static async Task CompositeProviderDomainsAreSeparated()
         PlatformCapabilities.AudioSessionsReadV1,
         PlatformCapabilities.AudioSessionsChanged,
         new AudioSessionsChangedEvent([])));
+    spotify.Publish(new(
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackChanged,
+        new SpotifyPlaybackChangedEvent(spotify.SpotifyPlayback)));
+    spotify.Publish(new(
+        PlatformCapabilities.NetworkReadV1,
+        PlatformCapabilities.NetworkStatusChanged,
+        new NetworkStatusChangedEvent(TestNetwork.Disconnected())));
 
-    Assert.Equal(2, published.Count);
+    Assert.Equal(3, published.Count);
     Assert.Equal(PlatformCapabilities.AudioSessionsReadV1, published[0].CapabilityId);
     Assert.Equal(PlatformCapabilities.NetworkReadV1, published[1].CapabilityId);
+    Assert.Equal(PlatformCapabilities.SpotifyPlaybackReadV1, published[2].CapabilityId);
+    var identity = Identity();
+    _ = await composite.GetSpotifyConfigurationAsync(identity, CancellationToken.None);
+    Assert.Equal(identity, spotify.LastSpotifyIdentity);
 }
 
 static async Task RecentActivityContracts()
@@ -1000,10 +1082,12 @@ static async Task MediaSessionContracts()
     await store.SetDecisionAsync(identity, PlatformCapabilities.MediaSessionsControlV1,
         ConsentDecision.Grant);
     var backend = new SimulatedPlatformBrokerBackend();
+    const string artwork =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==";
     backend.SetMediaSessions([
-        new("media-1", "Player", "Safe title", "Safe artist", MediaPlaybackStatus.Playing,
+        new MediaSessionSummary("media-1", "Player", "Safe title", "Safe artist", MediaPlaybackStatus.Playing,
             1_000, 10_000, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
-            true, true, true, true, true),
+            true, true, true, true, true) { ArtworkPngBase64 = artwork },
     ]);
     await using var broker = Broker(identity, store, backend,
         PlatformCapabilities.MediaSessionsReadV1,
@@ -1019,6 +1103,7 @@ static async Task MediaSessionContracts()
     Assert.DoesNotContain("aumid", json, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("process", json, StringComparison.OrdinalIgnoreCase);
     Assert.DoesNotContain("handle", json, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains(artwork, json);
 
     var visibleControl = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.MediaSessionsControlV1,
@@ -1057,6 +1142,223 @@ static async Task MediaSessionContracts()
     Assert.Equal("media-2", change.Payload.GetProperty("sessions")[0]
         .GetProperty("sessionId").GetString());
     await subscription.DisposeAsync();
+}
+
+static async Task MediaSessionArtworkIsBounded()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.MediaSessionsReadV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    var padded = PaddedPngBase64(4_000);
+    backend.SetMediaSessions(Enumerable.Range(0, 32).Select(index =>
+        new MediaSessionSummary($"media-{index}", "Player", $"Track {index}", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1_000, 1, 1, index == 0,
+            true, true, true, true, true) { ArtworkPngBase64 = padded }));
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.MediaSessionsReadV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var response = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsGet, new { }));
+    Assert.True(response.Succeeded && response.Payload is not null);
+    var sessions = response.Payload!.Value.EnumerateArray().ToArray();
+    var retainedBytes = sessions
+        .Select(item => item.GetProperty("artworkPngBase64"))
+        .Where(item => item.ValueKind == JsonValueKind.String)
+        .Sum(item => Convert.FromBase64String(item.GetString()!).Length);
+    Assert.True(retainedBytes <= MediaSessionImageLimits.MaximumSnapshotPngBytes);
+    Assert.True(sessions.Count(item => item.GetProperty("artworkPngBase64").ValueKind ==
+        JsonValueKind.String) is > 0 and < 32);
+
+    backend.SetMediaSessions([
+        new MediaSessionSummary("media-bad", "Player", "Track", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1_000, 1, 1, true,
+            true, true, true, true, true) { ArtworkPngBase64 = "not-base64" },
+    ]);
+    var malformed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsGet, new { }));
+    Assert.Equal(JsonValueKind.Null, malformed.Payload!.Value[0]
+        .GetProperty("artworkPngBase64").ValueKind);
+}
+
+static string PaddedPngBase64(int dataBytes)
+{
+    var original = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==");
+    var iend = original.Length - 12;
+    var chunk = new byte[12 + dataBytes];
+    BinaryPrimitives.WriteInt32BigEndian(chunk.AsSpan(0, 4), dataBytes);
+    "tEXt"u8.CopyTo(chunk.AsSpan(4, 4));
+    if (dataBytes > 1)
+    {
+        chunk[8] = (byte)'x';
+        chunk[9] = 0;
+    }
+    BinaryPrimitives.WriteUInt32BigEndian(chunk.AsSpan(8 + dataBytes, 4),
+        PngCrc(chunk.AsSpan(4, 4 + dataBytes)));
+    var padded = new byte[original.Length + chunk.Length];
+    original.AsSpan(0, iend).CopyTo(padded);
+    chunk.CopyTo(padded, iend);
+    original.AsSpan(iend).CopyTo(padded.AsSpan(iend + chunk.Length));
+    return Convert.ToBase64String(padded);
+}
+
+static uint PngCrc(ReadOnlySpan<byte> bytes)
+{
+    var crc = uint.MaxValue;
+    foreach (var value in bytes)
+    {
+        crc ^= value;
+        for (var bit = 0; bit < 8; bit++)
+            crc = (crc >> 1) ^ ((crc & 1) == 0 ? 0u : 0xedb88320u);
+    }
+    return ~crc;
+}
+
+static async Task SpotifyContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    foreach (var capability in new[]
+    {
+        PlatformCapabilities.SpotifyConfigurationV1,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+    })
+        await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    var backend = new SimulatedPlatformBrokerBackend
+    {
+        SpotifyPlayback = new SpotifyPlaybackSummary(
+            true, true, 12_000, 180_000, 1_000_000,
+            SpotifyRepeatState.Context, true,
+            new SpotifyPlaybackItemSummary(
+                SpotifyPlaybackItemType.Track, "Safe title", "Safe artist",
+                "Safe context", "https://i.scdn.co/image/safe", "spotify:track:safe"),
+            new SpotifyPlaybackDisallowedActions(
+                false, false, false, false, false, false, false, false),
+            "Spotify"),
+    };
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.SpotifyConfigurationV1,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackControlV1);
+
+    var createdRead = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyConfigurationV1,
+        PlatformCapabilities.SpotifyConfigurationGet, new { }));
+    Assert.Equal("lifecycle_denied", createdRead.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var configuration = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyConfigurationV1,
+        PlatformCapabilities.SpotifyConfigurationGet, new { }));
+    Assert.True(configuration.Succeeded && configuration.Payload is not null);
+    Assert.Equal("http://127.0.0.1:43827/callback/",
+        configuration.Payload!.Value.GetProperty("redirectUri").GetString());
+
+    var visibleConfigure = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyConfigurationV1,
+        PlatformCapabilities.SpotifyConfigurationConfigure,
+        new { clientId = new string('a', 32) }));
+    Assert.Equal("lifecycle_denied", visibleConfigure.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var malformedClient = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyConfigurationV1,
+        PlatformCapabilities.SpotifyConfigurationConfigure,
+        new { clientId = "contains spaces" }));
+    Assert.Equal("invalid_payload", malformedClient.ErrorCode);
+    var configured = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyConfigurationV1,
+        PlatformCapabilities.SpotifyConfigurationConfigure,
+        new { clientId = new string('b', 32) }));
+    Assert.True(configured.Succeeded);
+    Assert.Equal(identity, backend.LastSpotifyIdentity);
+
+    await store.SetDecisionAsync(identity, PlatformCapabilities.SpotifyPlaybackControlV1,
+        ConsentDecision.Deny);
+    var overScoped = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationConnect,
+        new { requestedScopes = new[] { "playbackStateRead", "playbackStateControl" } }));
+    Assert.Equal("permission_denied", overScoped.ErrorCode);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.SpotifyPlaybackControlV1,
+        ConsentDecision.Grant);
+    var connected = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationConnect,
+        new { requestedScopes = new[] { "playbackStateRead", "playbackStateControl" } }));
+    Assert.True(connected.Succeeded);
+    Assert.Equal(2, backend.LastSpotifyConnectRequest!.RequestedScopes.Count);
+
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    var backgroundRead = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackGet, new { }));
+    Assert.Equal("lifecycle_denied", backgroundRead.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var playback = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackGet, new { }));
+    Assert.True(playback.Succeeded && playback.Payload is not null);
+    Assert.Contains("Safe title", playback.Payload!.Value.GetRawText());
+    Assert.DoesNotContain("token", playback.Payload.Value.GetRawText(),
+        StringComparison.OrdinalIgnoreCase);
+
+    var visibleControl = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackControl,
+        new { operation = "next" }));
+    Assert.Equal("lifecycle_denied", visibleControl.ErrorCode);
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackControl, 81, 9, TimeSpan.FromSeconds(2));
+    var gestureControl = await broker.HandleAsync(GestureRequest(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackControl,
+        new { operation = "next" }, 81, 9));
+    Assert.True(gestureControl.Succeeded);
+    Assert.Equal(SpotifyPlaybackOperation.Next,
+        backend.LastSpotifyPlaybackCommand!.Operation);
+
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var invalidSeek = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackControl,
+        new { operation = "seek" }));
+    Assert.Equal("invalid_payload", invalidSeek.ErrorCode);
+    var seek = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackControl,
+        new { operation = "seek", positionMilliseconds = 42_000 }));
+    Assert.True(seek.Succeeded);
+
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    await using var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackChanged);
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackChanged,
+        new SpotifyPlaybackChangedEvent(backend.SpotifyPlayback)));
+    var change = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal("Safe title", change.Payload.GetProperty("playback")
+        .GetProperty("item").GetProperty("title").GetString());
+
+    backend.SpotifyPlayback = backend.SpotifyPlayback with
+    {
+        Item = backend.SpotifyPlayback.Item! with { ArtworkUrl = "http://unsafe.test/art" },
+    };
+    var invalidBackend = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackGet, new { }));
+    Assert.Equal("invalid_backend_data", invalidBackend.ErrorCode);
 }
 
 static async Task ConsentFailsClosed()

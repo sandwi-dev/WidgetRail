@@ -631,51 +631,127 @@ void CenteredWrappedStatePreservesTextFlowAndControllerTarget() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"empty-state.runtime";
     snapshot.activeInputScopeId = L"empty-state";
-    snapshot.root = Node(L"state-card", L"stack");
+    snapshot.root = Node(L"state-root", L"stack");
     snapshot.root.inputScopeId = L"empty-state";
     snapshot.root.baseStyle = {
         {L"gap", LengthList(L"8px")},
-        {L"padding", LengthList(L"12px")},
-        {L"align", Keyword(L"center")},
-        {L"justify", Keyword(L"center")},
+        {L"padding", LengthList(L"14px 16px")},
         {L"overflow", Keyword(L"clip")},
     };
 
+    auto header = Node(L"state-header", L"stack");
+    header.baseStyle = {
+        {L"gap", LengthList(L"2px")},
+        {L"flex-shrink", Number(0)},
+    };
+    auto eyebrow = Node(L"state-eyebrow", L"text");
+    eyebrow.text = L"LIBRARY";
+    eyebrow.baseStyle = {
+        {L"font-size", Length(10)},
+        {L"max-lines", Number(1)},
+    };
+    auto heading = Node(L"state-heading", L"text");
+    heading.text = L"Games & Apps";
+    heading.baseStyle = {
+        {L"font-size", Length(24)},
+        {L"line-height", Number(1.2)},
+        {L"max-lines", Number(1)},
+    };
+    header.children = {std::move(eyebrow), std::move(heading)};
+
+    auto state = Node(L"state-card", L"stack");
+    state.baseStyle = {
+        {L"gap", LengthList(L"8px")},
+        {L"padding", LengthList(L"16px")},
+        {L"align", Keyword(L"center")},
+        {L"justify", Keyword(L"center")},
+        {L"min-height", Length(230)},
+        {L"flex-grow", Number(1)},
+    };
+
+    auto icon = Node(L"state-icon", L"icon");
+    icon.glyph = L"play";
+    icon.baseStyle = {
+        {L"width", Length(28)},
+        {L"height", Length(28)},
+    };
+
     auto title = Node(L"state-title", L"text");
-    title.text = L"Build your controller-first library";
+    title.text = L"Installed apps could not be loaded";
     title.baseStyle = {
         {L"font-size", Length(18)},
         {L"line-height", Number(1.2)},
-        {L"max-lines", Number(3)},
+        {L"max-width", Length(220)},
+        {L"max-lines", Number(2)},
         {L"text-align", Keyword(L"center")},
     };
     auto help = Node(L"state-help", L"text");
-    help.text = L"Choose only the games and applications you want in the overlay, including a long custom path.";
+    help.text = L"Try again. No paths or command lines were exposed, and the trusted provider returned no private details.";
     help.baseStyle = {
         {L"font-size", Length(13)},
         {L"line-height", Number(1.35)},
-        {L"max-lines", Number(6)},
+        {L"max-width", Length(220)},
+        {L"max-lines", Number(3)},
         {L"text-align", Keyword(L"center")},
     };
     auto action = Node(L"state-action", L"button");
-    action.text = L"Add application";
-    action.actionId = L"add";
+    action.text = L"Try again";
+    action.actionId = L"retry";
+    action.glyph = L"refresh";
     action.baseStyle = {
         {L"min-width", Length(150)},
+        {L"min-height", Length(44)},
         {L"padding", LengthList(L"10px 14px")},
         {L"max-lines", Number(2)},
     };
-    snapshot.root.children = {std::move(title), std::move(help), std::move(action)};
+    state.children = {
+        std::move(icon), std::move(title), std::move(help), std::move(action)};
+    snapshot.root.children = {std::move(header), std::move(state)};
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    const auto result = renderer.Render(
-        nullptr, snapshot, L"state-action", {0.0F, 0.0F, 220.0F, 150.0F});
-    Check(result.navigationRects.contains(L"state-action"),
-          "wrapped state retains its controller action in the navigation graph");
-    Near(result.navigationRects.at(L"state-action").height, 64.0F,
-         "auto-height padded action retains measured text and controller height");
-    Check(result.navigationRects.at(L"state-action").y >= 130.0F,
-          "action flows after complete wrapped title and help instead of overlapping them");
+    struct Scenario final {
+        float width;
+        float height;
+        float textScale;
+    };
+    for (const auto scenario : {
+             Scenario{420.0F, 336.0F, 0.85F},
+             Scenario{620.0F, 374.0F, 1.0F},
+             Scenario{760.0F, 540.0F, 1.5F},
+         }) {
+        DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+        gba::DeclarativeRenderOptions options;
+        options.accessibility.textScale = scenario.textScale;
+        const auto result = renderer.Render(
+            nullptr, snapshot, L"state-action",
+            {0.0F, 0.0F, scenario.width, scenario.height}, options);
+        Check(result.navigationRects.contains(L"state-action"),
+              "wrapped state retains its controller action in the navigation graph");
+        Check(result.navigationRects.at(L"state-action").height >= 44.0F,
+              "wrapped action retains at least the controller target height");
+        for (const auto* id : {
+                 L"state-icon", L"state-title", L"state-help", L"state-action"}) {
+            Check(result.elementRects.contains(id) &&
+                      result.elementVisibleRects.contains(id),
+                  "state diagnostics expose every centered content box");
+            const auto rect = result.elementRects.at(id);
+            const auto visible = result.elementVisibleRects.at(id);
+            Near(visible.x, rect.x,
+                 "centered content does not clip its leading horizontal edge");
+            Near(visible.y, rect.y,
+                 "centered content does not clip its leading vertical edge");
+            Near(visible.width, rect.width,
+                 "centered content keeps its complete border-box width");
+            Near(visible.height, rect.height,
+                 "centered content keeps its complete border-box height");
+        }
+        const auto& titleRect = result.elementRects.at(L"state-title");
+        const auto& helpRect = result.elementRects.at(L"state-help");
+        const auto& actionRect = result.elementRects.at(L"state-action");
+        Check(helpRect.y >= titleRect.y + titleRect.height + 7.99F,
+              "wrapped detail follows the complete title without overlap");
+        Check(actionRect.y >= helpRect.y + helpRect.height + 7.99F,
+              "action follows the complete wrapped detail without overlap");
+    }
 }
 
 void WrappedPermissionCopyContributesToScrollExtent() {
@@ -1048,6 +1124,54 @@ void RealDirect2DSmoke() {
     Check(result.currentFocusRect.has_value(), "real render returns focused geometry");
     Check(result.hitRegions.size() == 4,
           "buttons and optimistic Slider render through the real Direct2D path");
+
+    WidgetSnapshot loadingSnapshot;
+    loadingSnapshot.instanceId = L"loading.runtime";
+    loadingSnapshot.activeInputScopeId = L"loading-root";
+    loadingSnapshot.root = Node(L"loading-root", L"stack");
+    auto loading = Node(L"loading", L"loadingIndicator");
+    loading.accessibilityLabel = L"Loading applications";
+    loading.indicatorSize = L"standard";
+    loadingSnapshot.root.children = {loading};
+    gba::DeclarativeRenderOptions loadingOptions;
+    loadingOptions.animationTimestampMilliseconds = 225;
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    const auto animatedLoading = renderer.Render(
+        target.Get(), loadingSnapshot, {}, {0.0F, 0.0F, 120.0F, 80.0F}, loadingOptions);
+    Check(SUCCEEDED(target->EndDraw()), "loading indicator frame draws");
+    Check(animatedLoading.succeeded, "loading indicator renders successfully");
+    Check(animatedLoading.animationActive,
+          "visible loading indicator requests another shell-owned frame");
+    Check(!animatedLoading.navigationRects.contains(L"loading") &&
+          animatedLoading.hitRegions.empty(),
+          "loading indicator is absent from focus and activation geometry");
+    Near(animatedLoading.elementRects.at(L"loading").width, 24.0F,
+         "standard loading indicator uses bounded intrinsic width");
+    Near(animatedLoading.elementRects.at(L"loading").height, 24.0F,
+         "standard loading indicator uses bounded intrinsic height");
+
+    loadingOptions.accessibility.reducedMotion = true;
+    loadingOptions.animationTimestampMilliseconds = 700;
+    target->BeginDraw();
+    const auto reducedLoading = renderer.Render(
+        target.Get(), loadingSnapshot, {}, {0.0F, 0.0F, 120.0F, 80.0F}, loadingOptions);
+    Check(SUCCEEDED(target->EndDraw()), "reduced-motion loading indicator draws");
+    Check(!reducedLoading.animationActive,
+          "reduced-motion loading indicator is an honest static cue");
+
+    WidgetSnapshot hiddenLoading = loadingSnapshot;
+    hiddenLoading.instanceId = L"loading.hidden.runtime";
+    hiddenLoading.root = Node(L"loading-scroll", L"scroll");
+    hiddenLoading.root.scrollAxis = L"vertical";
+    hiddenLoading.root.children = {FixedSpacer(L"loading-prefix", 40), loading};
+    loadingOptions.accessibility.reducedMotion = false;
+    target->BeginDraw();
+    const auto hiddenLoadingResult = renderer.Render(
+        target.Get(), hiddenLoading, {}, {0.0F, 0.0F, 120.0F, 20.0F}, loadingOptions);
+    Check(SUCCEEDED(target->EndDraw()), "offscreen loading layout draws");
+    Check(!hiddenLoadingResult.animationActive,
+          "offscreen loading indicator does not keep the shell animation cadence awake");
 
     WidgetSnapshot roundedSurface;
     roundedSurface.root = Node(L"rounded-root", L"stack");

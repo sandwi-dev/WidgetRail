@@ -44,6 +44,8 @@ The current closed capability set is:
 | `system.network.wifi.radio.control.v1` | `SetWifiRadioAsync`; software state only | Interactive only |
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, `OpenBluetoothSubscriptionAsync`, and `WatchBluetoothAsync`; sanitized radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync`; software radio only | Interactive only |
+| `system.network.bluetooth.pair.v1` | `PairBluetoothDeviceAsync(deviceId)` for one current broker-issued opaque device ID; returns an authoritative bounded pairing outcome and never implies profile connection | Interactive only |
+| `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync(deviceId)` after validating one current opaque device ID; opens the Windows-owned Bluetooth Settings surface without placing the native ID in a URI | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.apps.library.read.v1` | `HostServices.AppLibrary.GetPageAsync(offset, limit)` and `ResolveSavedAsync(savedIds)` for sanitized names, conservative kinds, short-lived launch IDs, and authority-scoped durable SavedIds | Visible or Interactive |
 | `system.apps.library.launch.v1` | `HostServices.AppLibrary.LaunchAsync(appId)` for one current broker-issued app ID | Interactive only; never dashboard gesture authority |
@@ -72,14 +74,40 @@ accept them, and no widget may infer them from the implemented network grants:
 | Planned closed authority | Intended boundary | Initial lifecycle |
 | --- | --- | --- |
 | Protected Wi-Fi credential flow | Host-owned WPA/WPA2/WPA3 Personal prompt/profile creation; no credential reaches the worker | Interactive only |
-| Bluetooth pair/unpair | Host-owned pairing ceremony through `DeviceInformationPairing`; no secret reaches the worker | Interactive only |
+| Bluetooth unpair | Host-owned disassociation ceremony; no native identifier or ceremony secret reaches the worker | Interactive only |
 | Profile-specific Bluetooth communication | A separate reviewed GATT/RFCOMM/service contract, never authority inherited from discovery | Feature-specific |
 
-There is deliberately no planned generic Bluetooth Connect/Disconnect grant.
-Windows communication is profile-specific (for example GATT or RFCOMM), so a
-future device function must define a narrower profile/service capability rather
-than inherit authority from enumeration or pairing. Enterprise Wi-Fi
-provisioning is likewise outside the initial expanded network contract.
+Pairing is implemented as association only. A `Paired` result does not mean a
+headset, controller, GATT service, or RFCOMM service is connected or usable.
+Unsupported ceremonies and management use the separately granted Windows
+Settings fallback; there is no widget-owned credential/PIN dialog. Unpair has
+no public capability yet.
+
+There is deliberately no generic Bluetooth Connect/Disconnect grant. Windows
+communication is profile-specific (for example GATT or RFCOMM), so a future
+device function must define a narrower profile/service capability rather than
+inherit authority from enumeration or pairing. Enterprise Wi-Fi provisioning
+is likewise outside the initial expanded network contract.
+
+### Spotify provider foundation
+
+The broker now defines `external.spotify.configuration.v1`,
+`external.spotify.authorization.v1`, `external.spotify.playback.read.v1`, and
+`external.spotify.playback.control.v1`, with strict configuration,
+authorization, playback, command, restriction, and event DTOs. A focused
+trusted Windows provider implements the exact PKCE callback, protected refresh
+tokens, playback projection/control, bounded rate-limit handling, and sanitized
+errors. Package-scoped public Client IDs can be managed locally through
+`gbar config`; they are not secrets.
+
+This is a tested provider foundation, not yet an author-ready shipping
+capability: `OverlayHost` does not compose the provider, the Community addon is
+not packaged, the controller-native setup UI is missing, and no live Spotify
+evidence exists. Authors must not infer Spotify authority from
+`network.loopback`, add arbitrary Internet access, store OAuth tokens in private
+widget state, or bind to provider-internal wire DTOs. Device, queue, search,
+recent, library, playlist, album, artist, and local Web Playback SDK contracts
+remain planned. See [Spotify Web API integration](spotify-integration.md).
 
 ### Host-provided private widget state
 
@@ -216,6 +244,11 @@ fail with typed codes instead of exposing a secret-entry surface to the worker.
 Wi-Fi and Bluetooth radio setters always reconcile the authoritative state.
 `partial_failure` means one native target changed and another did not; the UI
 must show the refreshed state rather than pretending the requested state won.
+Bluetooth device IDs are opaque and generation-bound. Pair only an ID from the
+current snapshot, handle every `WidgetBluetoothPairingOutcome` without
+inventing success, and wait for the following authoritative Bluetooth snapshot
+before changing paired/connected presentation. `OpenBluetoothDeviceSettingsAsync`
+is a Windows-owned management fallback, not a generic connect or unpair result.
 
 Audio device enumeration reports which sanitized endpoints are currently
 default. It intentionally has no default-device setter. Input read/control is
@@ -352,14 +385,15 @@ Settings discovers installed and bundled first-party manifests when the
 Settings widget enters a new Visible/Interactive lifetime; it does not poll.
 The controller flow is:
 
-1. **Permissions & capabilities** lists packages in one bounded vertical
-   controller Scroll.
+1. **Installed widgets** lists built-in and community packages. A opens the
+   exact widget management page; **Permissions & configuration** opens its
+   bounded capability Scroll.
 2. When unsupported declarations or inactive saved decisions exist, one
    focusable **Review unsupported or inactive access** row opens a nested,
    read-only bounded Scroll. It uses stable opaque row IDs and B-only return;
    there are no grant, cleanup, or removal actions on that page.
-3. A package page lists all supported required/optional declarations in its
-   own bounded Scroll, with Granted/Denied/Not decided state.
+3. The selected widget page lists all supported required/optional declarations
+   in its own bounded Scroll, with Granted/Denied/Not decided state.
 4. A decision page requires an explicit focused confirmation before grant.
    Deny/revoke is immediate from that same scope.
 

@@ -39,9 +39,14 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int BluetoothPairCalls { get; private set; }
     public int BluetoothManageCalls { get; private set; }
     public int MediaControlCalls { get; private set; }
+    public int SpotifyConfigurationCalls { get; private set; }
+    public int SpotifyConnectCalls { get; private set; }
+    public int SpotifyDisconnectCalls { get; private set; }
+    public int SpotifyPlaybackControlCalls { get; private set; }
     public int AppLibraryLaunchCalls { get; private set; }
     public int AppLibraryReadCalls { get; private set; }
     public int AppLibraryRefreshCalls { get; private set; }
+    public int AppLibraryIconCalls { get; private set; }
     public int LoopbackCalls { get; private set; }
     public int PrivateSecretSaveCalls { get; private set; }
     public int PrivateSecretDeleteCalls { get; private set; }
@@ -50,9 +55,14 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public LoopbackJsonRequest? LastLoopbackRequest { get; private set; }
     public Func<BrokerWidgetIdentity, int, bool, LoopbackJsonRequest,
         CancellationToken, Task<LoopbackJsonResponse>>? LoopbackHandler { get; set; }
+    public Func<string, CancellationToken, Task<AppLibraryIconSummary>>?
+        AppLibraryIconHandler { get; set; }
     public string? LastLaunchedAppId { get; private set; }
     public string? LastControlledMediaSessionId { get; private set; }
     public MediaSessionCommand? LastMediaCommand { get; private set; }
+    public BrokerWidgetIdentity? LastSpotifyIdentity { get; private set; }
+    public ConnectSpotifyRequest? LastSpotifyConnectRequest { get; private set; }
+    public SpotifyPlaybackCommand? LastSpotifyPlaybackCommand { get; private set; }
     public WifiRadioSummary WifiRadio { get; set; } = new(WifiRadioState.On, true);
     public BluetoothRadioState BluetoothRadioState { get; set; } = BluetoothRadioState.On;
     public bool CanControlBluetoothRadio { get; set; } = true;
@@ -62,6 +72,14 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public WifiScanState WifiScanState { get; set; } = WifiScanState.NotScanned;
     public AudioOutputSummary AudioOutput { get; set; } = new(0.5, false);
     public AudioInputSummary AudioInput { get; set; } = new(0.5, false);
+    public SpotifyConfigurationSummary SpotifyConfiguration { get; set; } =
+        new(false, "http://127.0.0.1:43827/callback/");
+    public SpotifyAuthorizationSummary SpotifyAuthorization { get; set; } =
+        new(SpotifyAuthorizationState.Unconfigured, [], [], null);
+    public SpotifyPlaybackSummary SpotifyPlayback { get; set; } = new(
+        false, false, 0, 0, 0, SpotifyRepeatState.Off, false, null,
+        new SpotifyPlaybackDisallowedActions(false, false, false, false,
+            false, false, false, false), "Spotify");
 
     public void SetAudioSessions(IEnumerable<AudioSessionSummary> sessions)
     {
@@ -333,6 +351,15 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.CompletedTask;
     }
 
+    public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
+        string appId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AppLibraryIconCalls++;
+        return AppLibraryIconHandler?.Invoke(appId, cancellationToken) ??
+            Task.FromResult(new AppLibraryIconSummary(null));
+    }
+
     public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
         CancellationToken cancellationToken)
     {
@@ -349,6 +376,82 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         MediaControlCalls++;
         LastControlledMediaSessionId = sessionId;
         LastMediaCommand = command;
+        return Task.CompletedTask;
+    }
+
+    public Task<SpotifyConfigurationSummary> GetSpotifyConfigurationAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyConfiguration);
+    }
+
+    public Task<SpotifyConfigurationSummary> ConfigureSpotifyClientAsync(
+        BrokerWidgetIdentity identity, ConfigureSpotifyClientRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyConfigurationCalls++;
+        LastSpotifyIdentity = identity;
+        SpotifyConfiguration = SpotifyConfiguration with { IsConfigured = true };
+        SpotifyAuthorization = new(
+            SpotifyAuthorizationState.Disconnected, [], [], null);
+        return Task.FromResult(SpotifyConfiguration);
+    }
+
+    public Task<SpotifyAuthorizationSummary> GetSpotifyAuthorizationAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyAuthorization);
+    }
+
+    public Task<SpotifyAuthorizationSummary> ConnectSpotifyAsync(
+        BrokerWidgetIdentity identity, ConnectSpotifyRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyConnectCalls++;
+        LastSpotifyIdentity = identity;
+        LastSpotifyConnectRequest = request;
+        SpotifyAuthorization = new(
+            SpotifyAuthorizationState.Connected,
+            request.RequestedScopes.ToArray(), request.RequestedScopes.ToArray(), null);
+        return Task.FromResult(SpotifyAuthorization);
+    }
+
+    public Task<SpotifyAuthorizationSummary> DisconnectSpotifyAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyDisconnectCalls++;
+        LastSpotifyIdentity = identity;
+        SpotifyAuthorization = new(
+            SpotifyConfiguration.IsConfigured
+                ? SpotifyAuthorizationState.Disconnected
+                : SpotifyAuthorizationState.Unconfigured,
+            [], [], null);
+        return Task.FromResult(SpotifyAuthorization);
+    }
+
+    public Task<SpotifyPlaybackSummary> GetSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyPlayback);
+    }
+
+    public Task ControlSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaybackCommand command,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyPlaybackControlCalls++;
+        LastSpotifyIdentity = identity;
+        LastSpotifyPlaybackCommand = command;
         return Task.CompletedTask;
     }
 

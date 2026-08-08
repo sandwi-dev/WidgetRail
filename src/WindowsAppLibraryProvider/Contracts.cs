@@ -52,3 +52,10 @@ internal interface IStartMenuApplicationSource
         StartMenuScope scope,
         CancellationToken cancellationToken);
 }
+
+internal interface IWindowsAppIconSource
+{
+    string? TryRasterizePngBase64(
+        string shortcutPath,
+        CancellationToken cancellationToken);
+}

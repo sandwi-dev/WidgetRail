@@ -25,6 +25,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Default devices and microphone controls are live controller-native and stable", DeviceAndInputControls),
     ("Optional audio stream revocation and completion clear only their own state", OptionalStreamTerminationIsIsolated),
     ("Optional audio startup failures cannot replace the working mixer with an error", OptionalStartupFailureIsIsolated),
+    ("Optional permission denial recovers without restarting healthy mixer sections", OptionalPermissionRecoveryIsIndependent),
+    ("Microphone revocation preserves semantic focus and recovers in place", OptionalRevocationPreservesSemanticFocus),
+    ("Optional availability session and lifecycle churn are generation safe", OptionalAvailabilityChurnIsGenerationSafe),
     ("Session churn preserves stable row identity and nearest anchor", StableSelectionDuringChurn),
     ("Many sessions and long labels remain bounded and uniquely focusable", ManySessionsRemainBounded),
     ("Capability failure codes render distinct recovery states", CapabilityFailureStates),
@@ -661,6 +664,154 @@ static async Task OptionalStartupFailureIsIsolated()
     await Background(widget);
 }
 
+static async Task OptionalPermissionRecoveryIsIndependent()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Working game", 0.55)],
+        Output = new WidgetAudioOutput(0.72, false),
+        Input = new WidgetAudioInput(0.4, false),
+        DeviceSubscriptionException = new WidgetCapabilityException(
+            "permission_denied", "private device permission detail"),
+    };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    await WaitUntil(() => widget.DeviceState == AudioOptionalSectionState.PermissionDenied &&
+                          widget.InputState == AudioOptionalSectionState.Healthy);
+
+    var denied = Snapshot(widget, 1);
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    Assert.Equal(0.72D, Node(denied.Root, "audio.master.volume.slider").Value);
+    Assert.Equal("Working game", widget.Sessions.Single().DisplayName);
+    Assert.Equal("audio.devices.retry",
+        Node(denied.Root, "audio.master.volume.slider").Focus!.Down);
+    Assert.Equal("audio.input.volume.slider",
+        Node(denied.Root, "audio.devices.retry").Focus!.Down);
+    Assert.True(!Nodes(denied.Root).Any(node =>
+            node.Text?.Contains("private device", StringComparison.OrdinalIgnoreCase) == true),
+        "Optional permission detail leaked into a healthy mixer.");
+
+    fake.DeviceSubscriptionException = null;
+    await widget.OnActionAsync(new("devices.retry", "audio.devices.retry"));
+    await WaitUntil(() => widget.DeviceState == AudioOptionalSectionState.Healthy);
+    var recovered = Snapshot(widget, 2);
+    Assert.Equal("Speakers", Text(recovered.Root, "audio.devices.output.name").Text);
+    Assert.Equal("audio.input.volume.slider",
+        Node(recovered.Root, "audio.master.volume.slider").Focus!.Down);
+    Assert.Equal("game", widget.Sessions.Single().SessionId);
+    Assert.Valid(recovered);
+    await Background(widget);
+}
+
+static async Task OptionalRevocationPreservesSemanticFocus()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.55), Session("chat", "Chat", 0.35)],
+        Input = new WidgetAudioInput(0.45, false),
+    };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Healthy);
+    var ready = Snapshot(widget, 10);
+    Assert.True(!await Route(widget, ready, ControllerButton.B, "audio.input.volume.slider"),
+        "B should remain host-owned while the microphone focus target is remembered.");
+
+    fake.EndInput(new WidgetCapabilityException(
+        "capability_revoked", "private revoked capability detail"));
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Revoked);
+    var revoked = Snapshot(widget, 11);
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    Assert.Equal("audio.input.retry", revoked.InitialFocusId);
+    Assert.Equal("audio.master.volume.slider",
+        Node(revoked.Root, "audio.input.retry").Focus!.Up);
+    Assert.True(Nodes(revoked.Root).Any(node => node.Id.EndsWith(".volume.slider") &&
+                                               node.Id.StartsWith("audio.session.", StringComparison.Ordinal)),
+        "Microphone revocation removed independent application controls.");
+    Assert.True(!Nodes(revoked.Root).Any(node =>
+            node.Text?.Contains("private revoked", StringComparison.OrdinalIgnoreCase) == true),
+        "Revocation detail leaked into the section recovery state.");
+
+    fake.Input = new WidgetAudioInput(0.62, true);
+    await widget.OnActionAsync(new("input.retry", "audio.input.retry"));
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Healthy &&
+                          VolumesNear(widget.Input!.Volume, 0.62));
+    var recovered = Snapshot(widget, 12);
+    Assert.Equal("audio.input.volume.slider", recovered.InitialFocusId);
+    Assert.Equal(WidgetGlyph.Muted, Node(recovered.Root, "audio.input.mute.icon").Glyph);
+    Assert.Equal(2, widget.Sessions.Count);
+    Assert.Valid(recovered);
+
+    Assert.True(!await Route(widget, recovered, ControllerButton.B, "audio.input.volume.slider"),
+        "B should remain host-owned while the recovered microphone is focused.");
+    fake.EmitInput(null, isAvailable: true);
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Empty);
+    var empty = Snapshot(widget, 13);
+    var game = SessionPrefix(empty.Root, "Game");
+    Assert.Equal($"{game}.volume.slider", empty.InitialFocusId);
+    Assert.Contains("No default microphone", Text(empty.Root, "audio.input.state.help").Text!);
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    Assert.Valid(empty);
+    await Background(widget);
+}
+
+static async Task OptionalAvailabilityChurnIsGenerationSafe()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("a", "Game", 0.3), Session("b", "Chat", 0.4)],
+        Input = new WidgetAudioInput(0.5, false),
+    };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Healthy &&
+                          widget.DeviceState == AudioOptionalSectionState.Healthy);
+    var first = Snapshot(widget, 20);
+    var chat = SessionPrefix(first.Root, "Chat");
+    Assert.True(!await Route(widget, first, ControllerButton.B, $"{chat}.volume.slider"),
+        "B should remain host-owned while session focus is remembered.");
+
+    fake.EmitInput(null, isAvailable: false);
+    fake.EmitDevices([], isAvailable: false);
+    fake.Emit([Session("b", "Chat renamed", 0.44), Session("c", "Browser", 0.2)]);
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Unavailable &&
+                          widget.DeviceState == AudioOptionalSectionState.Unavailable &&
+                          widget.Sessions.Count == 2 && widget.Sessions[0].SessionId == "b");
+    var unavailable = Snapshot(widget, 21);
+    Assert.Equal("b", widget.SelectedSessionId);
+    Assert.Equal($"{chat}.volume.slider", unavailable.InitialFocusId);
+
+    fake.Input = new WidgetAudioInput(0.65, false);
+    await widget.OnActionAsync(new("input.retry", "audio.input.retry"));
+    fake.EmitDevices([
+        new("generation-2-output", "Headset", WidgetAudioDeviceDirection.Output, true),
+        new("generation-2-input", "Headset microphone", WidgetAudioDeviceDirection.Input, true),
+    ]);
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Healthy &&
+                          widget.DeviceState == AudioOptionalSectionState.Healthy);
+    Assert.Equal("b", widget.SelectedSessionId);
+    Assert.Equal($"{chat}.volume.slider", Snapshot(widget, 22).InitialFocusId);
+
+    await Background(widget);
+    fake.InputSubscriptionException = new WidgetCapabilityException(
+        "permission_denied", "old generation denial");
+    await ActivateReady(widget);
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.PermissionDenied);
+    fake.InputSubscriptionException = null;
+    fake.Input = new WidgetAudioInput(0.7, true);
+    await widget.OnActionAsync(new("input.retry", "audio.input.retry"));
+    await WaitUntil(() => widget.InputState == AudioOptionalSectionState.Healthy &&
+                          VolumesNear(widget.Input!.Volume, 0.7));
+    var final = Snapshot(widget, 23);
+    Assert.Equal("b", widget.SelectedSessionId);
+    Assert.Equal($"{chat}.volume.slider", final.InitialFocusId);
+    Assert.True(!Nodes(final.Root).Any(node =>
+            node.Text?.Contains("old generation", StringComparison.OrdinalIgnoreCase) == true),
+        "A prior lifecycle generation leaked provider detail into the recovered view.");
+    Assert.Valid(final);
+    await Background(widget);
+}
+
 static async Task StableSelectionDuringChurn()
 {
     var fake = new FakeCapabilityClient
@@ -890,6 +1041,8 @@ static async Task ShippedAssetsValidate()
     Assert.Contains(".audio-volume-slider", style);
     Assert.Contains(".audio-mute-icon", style);
     Assert.Contains(".audio-device-card", style);
+    Assert.True(!style.Contains(".audio-session-count", StringComparison.Ordinal),
+        "Session cards still reserve a third line for ordinal app metadata.");
     Assert.True(!style.Contains(".audio-volume-action", StringComparison.Ordinal) &&
                 !style.Contains(".audio-mute-action", StringComparison.Ordinal),
         "Legacy plus/minus or text-pill mute styles remain in the shipped theme.");

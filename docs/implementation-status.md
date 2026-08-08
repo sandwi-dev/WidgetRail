@@ -1,6 +1,6 @@
 # Implementation status
 
-Status: integrated Phase 0 platform prototype, 2026-08-07
+Status: integrated Phase 0 platform prototype, 2026-08-08
 
 This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
@@ -19,12 +19,20 @@ and per-monitor placement.
 
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
-overlay. Both windows are topmost only while visible, with foreground/z-order
-observation and best-effort reassertion. While visible, Alt+Tab/external
-foreground changes retarget the panel and full-monitor backdrop. DPI, display
+overlay. Both windows are topmost only while visible. Foreground ownership is
+verified before ordinary controller polling; Alt+Tab/external foreground loss
+closes rather than retargets the visible overlay. DPI, display
 topology, work-area, and client-size messages recompute placement/resources;
 reentrant DPI placement is coalesced. This is normal DWM windowing, not game
 injection.
+
+Ordinary visible controller state is read through foreground-exclusive
+GameInput. This suppresses other GameInput clients only; XInput, Raw Input,
+direct HID, Steam Input, and remapped virtual controllers remain outside a
+normal desktop overlay's containment boundary. Arrow keys, Enter, and Escape
+provide unadvertised navigation/select/back fallbacks. Mouse hit testing uses
+the same clipped active-scope geometry as controller focus; backdrop clicks
+close and visible declarative controls receive only semantic A/select.
 
 Guide/Home shows or hides from any depth. Dashboard D-pad/left-stick movement,
 A, B, and Y are host-owned; dashboard B closes the overlay. Open widgets receive
@@ -51,7 +59,8 @@ Up/Down navigation.
 - `WidgetSdk`: typed Stack, Row, Text, Button, Progress, Slider, Scroll, Spacer,
   Image, and Icon authoring; controller-ready ToggleButton, Stepper,
   IconButton, Card, SectionHeader, StatusBadge, Divider, Alert, EmptyState,
-  SegmentedTabs, Switch, and ScopedDialog composites with stable semantic
+  SegmentedTabs, Switch, ScopedDialog, SettingsRow, and bounded nested
+  ActionSheet composites with stable semantic
   `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
@@ -89,7 +98,8 @@ Up/Down navigation.
   diagnostics.
 - `PlatformSettings`: strict atomic/cross-process appearance persistence,
   version-pinned development themes, built-in default, safe theme discovery,
-  layer composition, and last-good snapshots.
+  layer composition, last-good snapshots, and bounded package/publisher-scoped
+  public widget configuration under `widget-config`.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, host-sealed content-
   tree integrity, immutable versions, schema-1 state migration, fail-closed
   exact version pins, discovery,
@@ -124,7 +134,11 @@ Up/Down navigation.
   authoritative and multi-PHY partial failure is explicit.
 - `WindowsBluetoothProvider`: a lazy event-driven WinRT backend for sanitized
   Bluetooth software-radio state and bounded nearby/paired/connected discovery.
-  It supports software radio On/Off only. Pair/unpair and generic device
+  It supports software radio On/Off and explicit pairing of one current opaque
+  device through Windows Association Endpoint pairing. Unsupported ceremonies,
+  paired-device management, and profile-specific operations open the Windows
+  Bluetooth Settings surface through a separately consented capability. Native
+  device IDs never cross the broker. Host-owned unpair and generic device
   Connect/Disconnect are not implemented.
 - `WindowsActivityProvider`: a lazy WinEvent foreground/destroy observer with
   no polling. It keeps at most 16 eligible running applications and publishes
@@ -254,18 +268,21 @@ verify both tabs remain visible, controller-enabled, inside the viewport, and
 inset far enough for an unclipped focus border.
 The real provider returns on `WlanConnect` acceptance, then publishes
 authoritative `Connecting`, `Failed`, and refreshed status events. Its focused
-  provider and widget Release suites pass 31/31 and 17/17 respectively. Focused checks do not
-replace hardware/privacy/performance matrices, which remain open. The current
-full managed Release suite, native host suite, package required-file checks,
-hidden-startup smoke, and controller input-probe smoke pass.
+provider/widget suites and the complete Release verifier pass at milestone
+`8e8c90a`. Focused checks do not replace hardware/privacy/performance matrices,
+which remain open. The current full managed Release suite, native host suite,
+package required-file checks, hidden-startup smoke, and controller input-probe
+smoke pass.
 Available-network broker/SDK contracts and the explicit, event-driven Native
 Wi-Fi scan/connect provider are declared and rendered by the bundled widget.
 They use generation-bound opaque IDs and cover saved-profile-backed and
 unsaved-open connection starts with dedicated broker/provider/widget tests.
 Host-owned WPA Personal credential entry remains staged. Software Wi-Fi radio
-read/control and Bluetooth radio/discovery are now implemented behind separate
-grants; pair/unpair and generic Bluetooth Connect/Disconnect remain outside the
-current surface.
+read/control, Bluetooth radio/discovery, explicit pairing, and a separately
+consented Windows Settings management fallback are implemented behind granular
+grants. Unpair and generic Bluetooth Connect/Disconnect remain outside the
+current broker surface, and physical pairing still needs reversible hardware
+verification.
 
 Games & Apps has replaced Recent Apps in the bundled catalog and first-party
 package conformance path. It is an ordinary public-SDK package in the generic
@@ -273,15 +290,17 @@ AppContainer, requires `system.apps.library.read.v1`, optionally declares the
 separate `system.apps.library.launch.v1`, and loads bounded 32-item pages. Its
 default Library shows only entries the user adds from a nested horizontal
 Catalog; A toggles Catalog membership, X removes from Library, and one
-confirmed launch moves that exact item to the in-memory front. Curation and
-recent-first order are not yet persisted across worker restart/unload, even
-though the SDK now exposes authority-scoped durable `SavedId` values and
-`ResolveSavedAsync` reconciliation. The provider catalog is still loaded
-eagerly when the root activates. Launch is
+confirmed launch moves that exact item to the front. Curation, selected item,
+and recent-first order persist across worker restart/unload as authority-scoped
+durable `SavedId` values in `HostServices.PrivateState`; activation resolves
+only those saved entries to fresh short-lived launch tokens. The broad provider
+catalog is loaded only after the explicit **Add applications** action. Launch is
 enabled only while Interactive and targets only the opaque ID associated with
 the exact action source. Permission, lifecycle, healthy-empty, unavailable,
 stale-item, and generic failure states remain controller reachable and
-sanitized. A successful provider result still leaves the overlay open.
+sanitized. A successful provider result emits one generation-bound host effect
+that closes the overlay only after the exact provider launch succeeds; failure,
+denial, cancellation, or a stale widget generation keeps it open.
 
 The trusted `WindowsAppLibraryProvider` lazily scans the current-user and all-
 user Start Menu Programs roots, skips reparse points, parses bounded `.lnk`
@@ -292,17 +311,20 @@ host-only. Before launch it re-enumerates
 and requires one exact match on scope, trusted target identity, shortcut path,
 and shortcut-content fingerprint, then asks Windows Shell to open only that
 `.lnk` with no supplied arguments, elevation, working directory, or HWND.
-The provider currently discovers only Start Menu executable shortcuts, exposes
-no application icons/artwork, and reports every real entry as Application;
-AppsFolder/UWP and launcher libraries plus authoritative game classification
-remain open. Recent Apps remains only as a read-only foreground-activity API/
-test reference and is not packaged in the current overlay. See [Games & Apps](games-and-apps.md).
+The provider currently discovers only Start Menu executable shortcuts and
+reports every real entry as Application. For curated entries it rasterizes the
+trusted Shell icon into a bounded inline PNG; broad Catalog discovery stays
+text-only. AppsFolder/UWP and launcher libraries plus authoritative game
+classification remain open. Recent Apps remains only as a read-only
+foreground-activity API/test reference and is not packaged in the current
+overlay. See [Games & Apps](games-and-apps.md).
 
 Now Playing is the public-SDK media-session reference. It uses only the typed
 `HostServices.Media` surface over the authenticated broker and the event-driven
 GSMTC provider; the worker cannot open GSMTC directly. It retains duplicate
 sessions from one application through opaque broker IDs, preserves the selected
-session across complete snapshots, renders a compact controller surface, and
+session across complete snapshots, renders a compact controller surface with a
+bounded host-normalized GSMTC thumbnail when the media app publishes one, and
 interpolates active progress locally at four Hz between authoritative events.
 X/LB/RB quick actions expose play-pause/previous/next while the card is merely
 Visible. Each quick action names the one media control operation it may invoke;
@@ -607,12 +629,30 @@ with C++ installed:
   viewport/containment math is
   covered broadly; physical mixed-DPI, localization, accessibility, and visual
   regression evidence is still incomplete.
-- The code now clears unused native client pixels to the layered color key,
+- Spotify now has a typed v1 broker contract, a composed trusted provider,
+  and a controller-first Community addon core for public Client-ID configuration, PKCE with the exact
+  `http://127.0.0.1:43827/callback/`, Windows credential-vault refresh tokens,
+  player snapshots/controls, restrictions, playback events, bounded
+  `Retry-After`, and sanitized errors. The local `gbar config` workflow is
+  implemented and tested. The provider is composed by `WidgetBridge`; the
+  addon is packaged locally through the public SDK/AppContainer path and shows
+  setup guidance without opening OAuth automatically. There is no live
+  allowlisted-account evidence. Devices/queue/search/recent/library/
+  playlists/albums/artists remain staged work. A separately trusted singleton
+  Web Playback SDK/WebView2 host now implements a bounded, hardened process and
+  protocol with offline tests. Provider orchestration, PID-reuse-safe parent
+  ownership, incremental `streaming` consent, Premium/EME/autoplay live proof,
+  and any applicable Spotify streaming approval remain. See [Spotify
+  integration status](spotify-integration.md).
+- The code clears unused native client pixels to the layered color key,
   separates Now Playing snapshot reads from live-subscription failures, loads
   the Games catalog only after Add, and preserves measured intrinsic height for
-  wrapped text/buttons. GBA-036 through GBA-039 remain Verifying until the new
-  packaged Release is exercised visually; automated native and focused managed
-  regressions are not presented as a hands-on result.
+  wrapped text/buttons. The packaged Release captured after milestone
+  `8e8c90a` shows the Now Playing surface over the dimmed application without
+  the former opaque client rectangle and with one live GSMTC session. That is
+  useful standard-viewport evidence, not proof of Retry recovery or the full
+  compact/wide, DPI, contrast, transparency, and long-copy matrix. GBA-036
+  through GBA-039 therefore remain Verifying.
 - Local and bounded remote package/catalog commands plus CLI and Settings
   immutable-version selection/rollback are implemented. There is no
   graphical/file-picker installer, automatic release/update discovery, signed
@@ -694,8 +734,9 @@ with C++ installed:
   available-network scans and current saved/open result connections; it
   excludes password entry, profile creation, and automatic current SSID/signal
   access. Software Wi-Fi radio control plus separately capability-gated
-  Bluetooth radio/discovery are implemented. Staged roadmap work adds a host-
-  owned WPA Personal credential prompt and Bluetooth pair/unpair. Enterprise Wi-Fi and generic Bluetooth
+  Bluetooth radio/discovery and explicit association pairing are implemented.
+  Staged roadmap work adds a host-owned WPA Personal credential prompt and
+  unpair/profile-specific Bluetooth operations. Enterprise Wi-Fi and generic Bluetooth
   Connect/Disconnect are not promised. See
   [widget capabilities](capabilities.md) and [Windows provider
   architecture](windows-provider-architecture.md) and [Network Controls
@@ -715,19 +756,33 @@ and [troubleshooting](troubleshooting.md).
 
 ## Next vertical slices
 
-1. Complete physical mixed-DPI/accessibility/visual-regression evidence,
-   including the 150% text-scale matrix and controller focus reachability.
-2. Extend the bounded process sampler with ETW/PresentMon automation, stored
+1. Complete packaged GBA-036 through GBA-039 plus physical mixed-DPI/
+   accessibility/visual-regression evidence, including long/error states, the
+   150% text-scale matrix, and controller focus/Scroll reachability.
+2. Complete the YT Music clean Community-addon install/consent/lifecycle/crash/
+   update/rollback/uninstall proof without a trusted fallback.
+3. Add public `SettingsRow`, picker/listbox, action sheet, toast, scrubber,
+   `MediaTile`, and `AppTile` contracts, followed by per-edge borders,
+   responsive grid/wrap, semantic monospace, and bounded shell transitions.
+4. Extend Games & Apps with bounded icons, AppsFolder/launcher sources,
+   running-program capture, and a host-owned file picker while preserving
+   opaque exact launch identities.
+5. Extend the bounded process sampler with ETW/PresentMon automation, stored
    comparable baselines, latency scenarios, and per-widget resource diagnostics.
-3. Add native graphical theme preview, package remove/update discovery,
+6. Add native graphical theme preview, package remove/update discovery,
    editor schemas, controller/focus inspection, and an SDK Gallery. Complete
    packaged author-workflow evidence for the implemented `gbar dev` loop.
-4. Implement publisher signing/revocation, crash quarantine, CPU and disk/
+7. Implement publisher signing/revocation, crash quarantine, CPU and disk/
    profile quotas/cleanup, and security audit UI before public community
    distribution; migrate trusted built-ins as their desktop dependencies become
    brokered.
-5. Advance the controller-first Audio Control and Network Control roadmap from
+8. Advance the controller-first Audio Control and Network Control roadmap from
    their bounded reference slices through hardware/privacy/performance gates,
    then continue non-auth Performance, richer media, recent games detection,
    and capture references.
-6. Run the documented controller/game/presentation/anti-cheat matrix.
+9. In parallel when Spotify Development Mode credentials are available, wire
+   the tested PKCE/Web API provider foundation into the host, add the
+   controller-native setup surface, and build the core Player Community addon.
+   Keep the Web Playback SDK local-audio host as a separate later security and
+   performance slice.
+10. Run the documented controller/game/presentation/anti-cheat matrix.

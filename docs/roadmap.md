@@ -134,11 +134,13 @@ remains off until the publisher-trust gates in Phase 4.
   recovery, update/rollback, and uninstall evidence before closing GBA-030.
 - Finish Settings controller reachability, diagnostics/recovery, local package
   and theme workflows, and permission/version consistency
-- Resolve current packaged regressions before calling the local slice polished:
-  transparent native client pixels outside content surfaces (GBA-036), a real
-  Now Playing provider Retry path (GBA-037), lazy Games Catalog loading plus
-  unclipped responsive copy (GBA-038), and fully reflowing/scrollable long
-  permission descriptions (GBA-039).
+- Finish the evidence matrix for the implemented packaged-regression fixes:
+  transparent native client pixels outside content surfaces (GBA-036), a fresh
+  Now Playing read/subscription generation on Retry (GBA-037), lazy Games
+  Catalog loading plus intrinsic copy reflow (GBA-038), and measured-height
+  long permission descriptions (GBA-039). Milestone `8e8c90a` supplies focused
+  regressions and one packaged standard-viewport Now Playing capture; compact/
+  wide, scaled, error/recovery, and controller traversal evidence remains.
 - Complete controller-first Audio Control and Network Control through their
   locally testable hardware, privacy, denial, churn, and recovery gates
 - Run an explicit reversible Audio Control hardware gate on this machine:
@@ -157,9 +159,11 @@ remains off until the publisher-trust gates in Phase 4.
   minimum controller target sizes, readable non-color state, nested Back
   behavior, themeable semantic classes, and supported-DPI focus containment.
   The minimalist warm-graphite shared default and first-party retune are now
-  implemented. Next component/API increments are `SettingsRow`, a nested
-  picker/listbox, action sheet, non-focus-stealing toast, controller scrubber,
-  and purpose-built `MediaTile`/`AppTile`; then per-edge borders, responsive
+  implemented. `SettingsRow` and the bounded nested `ActionSheet` are now also
+  public, with one stable action target, scroll/focus-follow, Disabled/Busy
+  focus safety, and scope-owned B. Next component/API increments are a
+  selection-specific picker/listbox, non-focus-stealing toast, controller
+  scrubber, and purpose-built `MediaTile`/`AppTile`; then per-edge borders, responsive
   grid/wrap, and semantic monospace for diagnostics/code-like values. Preserve
   44-DIP targets, non-color state, stable IDs, and one inset focus cue. Optional
   packaged fonts are lower priority and security-sensitive; they require
@@ -176,31 +180,85 @@ remains off until the publisher-trust gates in Phase 4.
   centric staggered entrances, ambient looping motion, editorial serif/faux-
   macOS defaults, or decorative animation into the controller shell.
 - Integrate the implemented host-granted `HostServices.PrivateState` service
-  into widgets that need durable preferences. The broker/provider foundation
-  already supplies strict 64 KiB canonical JSON, revision/CAS, rate limits,
-  cross-process atomicity, restart continuity, and unsigned content-bound
-  identity. Remaining product work includes per-widget clear-local-data UI,
-  uninstall/retention policy review, storage/profile cleanup, and migrating
-  Games & Apps curation onto its implemented authority-scoped SavedId resolver.
+  into widgets that need durable preferences. Games & Apps now persists its
+  curated SavedIds, selection, and recent-first order through revision/CAS and
+  resolves them to fresh launch tokens on activation without enumerating the
+  broad catalog. Remaining product work includes per-widget clear-local-data
+  UI, uninstall/retention policy review, storage/profile cleanup, and other
+  widget-specific migrations.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance
   suite exist
-- Harden the implemented Now Playing reference: repair provider-failure Retry,
-  finish packaged lifecycle/controller evidence, then consider broader media
-  features without bypassing the typed GSMTC broker.
+- Harden the implemented Now Playing reference: its initial current-state read
+  is now independent from subscription failure, live-read failures preserve the
+  last valid snapshot, and Retry creates a fresh bounded generation. Finish
+  packaged failure/recovery, consent, lifecycle, and controller evidence, then
+  consider broader media features without bypassing the typed GSMTC broker.
 - Games & Apps replaces bundled Recent Apps with a locally testable Start Menu
-  catalog and exact opaque-ID launch. Its in-memory Library/Catalog slice now
-  lets users explicitly add/remove entries and orders confirmed launches at
-  the front. Durable curation/order, deferred Catalog-only loading, AppsFolder/
-  launcher sources, authoritative game classification, icons, history, search,
-  source grouping, running-program capture, and file-picker additions remain
-  roadmap work. Close the overlay only after the selected exact registration
-  launches successfully; failure keeps it open with feedback.
+  catalog and exact opaque-ID launch. Its durable Library lets users explicitly
+  add/remove entries, orders confirmed launches at the front, resolves only
+  saved entries on activation, and enumerates the broad Catalog only after
+  **Add applications**. A generation-bound host effect closes the overlay only
+  after the selected exact registration launches successfully; failure keeps it
+  open with feedback. AppsFolder/launcher sources, authoritative game
+  classification, icons, history, search, source grouping, running-program
+  capture, and file-picker additions remain roadmap work.
 - Capture proof and widget if Windows API tests pass
-- Discord proof after eligibility and production communications access are confirmed
+- Expand the implemented Spotify Community addon beyond its controller-first
+  player core. The trusted provider is composed by `WidgetBridge`, the local
+  `gbar config` path stores the package-scoped Client ID, and the addon is
+  packageable through the public SDK path. Next prove login/playback with an
+  allowlisted Development Mode account. The exact callback is
+  `http://127.0.0.1:43827/callback/`; there is no client-secret field. After the
+  core player, add nested device/queue, search, recent, library, playlist,
+  album, and artist surfaces from the pinned current OpenAPI subset. Add actual
+  local audio by orchestrating the implemented separately trusted singleton Web
+  Playback SDK/WebView2 host with incremental `streaming` scope, Premium
+  eligibility, PID-safe ownership, and live EME/autoplay/resource evidence.
+  Do not claim public distribution while the documented five-user Development
+  Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
+- Discord remains deferred until eligibility and production communications/RPC
+  access are confirmed; do not build against undocumented client internals. See
+  [Discord integration research](discord-integration.md).
 
 Every first-party widget contributes a focused SDK example and regression suite.
+
+### Immediate authentication-free work order
+
+These items can advance on an isolated Windows machine while Spotify and
+Discord external gates are unavailable. Order reflects current product impact,
+not irreversible API priority:
+
+1. **Close the visible regression evidence.** Exercise GBA-036 through GBA-039
+   across compact/standard/wide viewports, 100–150% text/interface scale,
+   reduced transparency, high contrast, long/error content, controller Back,
+   and first/last Scroll reachability. Add deterministic captures where manual
+   hardware is not required.
+2. **Finish the YT Music Community-addon proof.** Run clean pack/install/review/
+   consent/enable, real companion pairing, dashboard/open-widget input,
+   lifecycle/crash recovery, update/rollback, disable, and uninstall without a
+   trusted worker or direct Credential Manager/socket workaround.
+3. **Fill the public component gaps before more one-off UI.** Implement and
+   verify `SettingsRow`, picker/listbox, action sheet, non-focus-stealing toast,
+   controller scrubber, and `MediaTile`/`AppTile` as public SDK contracts. Then
+   add per-edge borders, responsive grid/wrap, and semantic monospace.
+4. **Complete motion without web-style overhead.** Add bounded composited
+   subtree translation and short shell/widget open, close, and replacement
+   transitions with reduced-motion cancellation and hidden-idle evidence.
+5. **Deepen Games & Apps through safe sources.** Add bounded icons, AppsFolder/
+   UWP and reviewed launcher adapters, running-program capture, and a host-owned
+   file picker. Keep classification evidence-backed and launch identities
+   opaque/revalidated.
+6. **Harden local providers and resource behavior.** Expand Audio/Network
+   denial/churn/recovery tests, perform reversible Bluetooth pairing only with
+   disposable hardware, add worker crash quarantine/profile cleanup, and store
+   ETW/PresentMon/working-set evidence for hidden, Visible, and Interactive
+   lifecycles.
+
+Spotify's provider/configuration tests can proceed offline; its live login,
+playback, and Community-addon evidence require a registered Development Mode
+app and allowlisted test account. Discord remains fully gated.
 
 ### First-party system-control reference widgets
 
@@ -297,14 +355,15 @@ launch re-enumerates and requires one exact unchanged shortcut before invoking
 the Windows Shell without arguments or elevation.
 
 This first slice intentionally scans only executable `.lnk` registrations in
-the current-user and all-user Start Menu Programs folders. It exposes no
-application icons/artwork and deliberately reports every real entry as
-Application rather than guessing games from filenames or paths. The host now
+the current-user and all-user Start Menu Programs folders. Curated entries can
+carry bounded host-rasterized Shell icons while broad discovery stays text-only,
+and every real entry is deliberately reported as Application rather than
+guessing games from filenames or paths. The host now
 issues an authority-scoped SavedId, stores curation/recent-first order through
 package-private compare-and-swap state, and resolves it to a fresh provider-
 lifetime launch token. The full Catalog now loads only when requested. Next
 increments should add supported AppsFolder/UWP and launcher-specific adapters,
-then an icon/artwork broker and evidence-backed game classification. Search,
+then richer source artwork and evidence-backed game classification. Search,
 grouping, history, source attribution, running-
 program capture, file-picker additions, and refresh observation must remain
 bounded and privacy reviewed. None may become arbitrary path/process launch
@@ -383,11 +442,14 @@ ACM events determine success/failure. `WlanSetInterface` with
 hardware switch, policy, or airplane-mode restriction remains authoritative.
 
 Network Controls now includes a first Bluetooth slice behind separate closed
-read and radio-control grants. The trusted WinRT provider reports sanitized,
-bounded paired/present/connected device state through event-driven discovery
-and controls only the software radio. Pair/unpair remains future host-owned
-work; it may use `DeviceInformationPairing.PairAsync`/`UnpairAsync` only after
-owner-window, consent, cancellation, and hardware review. No generic Bluetooth
+read, radio-control, pair, and manage grants. The trusted WinRT provider reports
+sanitized, bounded paired/present/connected device state through event-driven
+discovery, controls only the software radio, and pairs one current opaque
+association endpoint through `DeviceInformationPairing.PairAsync`. Unsupported
+ceremonies and paired-device management open Windows Bluetooth Settings through
+the separate manage grant. The provider refreshes authoritative state after
+every result and never equates pairing with profile connectivity. Unpair remains
+future host-owned work and physical pairing remains unverified. No generic Bluetooth
 device Connect/Disconnect command is
 promised: public Windows communication APIs are profile-specific (for example
 GATT services/characteristics and RFCOMM sockets), so each future functional
@@ -395,8 +457,8 @@ connection needs its own reviewed profile contract and capability.
 
 The Wi-Fi/Bluetooth tabs also need explicit selection semantics. A focused Wi-
 Fi row is only a candidate; it must not look Connected until authoritative WLAN
-state confirms it. A focused Bluetooth row is informational unless a separate
-pair/unpair or profile operation exists. Focus, presence, paired state, and
+state confirms it. A focused Bluetooth row is informational unless the current
+row explicitly offers Pair or Windows-managed details. Focus, presence, paired state, and
 connected state need distinct non-color cues. Tab switches must preserve each
 tab's last focus/scroll position, and refresh churn must select a stable nearest
 survivor without jumping to another action.
@@ -406,7 +468,8 @@ Later Network Control phases add:
 - a host-owned WPA Personal credential flow after the implemented explicit,
   privacy-gated available-network scans and saved/open connections; enterprise
   authentication remains unsupported initially;
-- Bluetooth host-owned pair/unpair after the implemented radio/discovery slice;
+- Bluetooth host-owned unpair and reviewed profile-specific operations after
+  the implemented radio/discovery/pair/Settings-management slice;
 - sanitized active-adapter state and Ethernet/Wi-Fi identity;
 - SSID and signal/link quality only through an explicit Windows privacy-access
   flow with required/denied/revoked states;
@@ -417,17 +480,19 @@ Later Network Control phases add:
 - safe reconnect/renew/diagnostic actions only after capability and failure-
   recovery review.
 
-Network phase dependencies through scan and saved/open connection are now
+Network phase dependencies through scan, saved/open connection, and Bluetooth
+association pairing are now
 implemented: bounded models and controller focus, separate closed grants,
 event-driven IP Helper/Native Wi-Fi, explicit scan, generation-bound IDs, and
 precise-location denial states. Remaining dependencies are the host-owned
-credential prompt, Bluetooth pairing, hardware/privacy matrices, and
+credential prompt, Bluetooth unpair/profile operations, hardware/privacy matrices, and
 measured diagnostic sampling. Identity/address details
 and recovery commands do not enter the public contract before those reviews.
 
 The user-visible first-party reference includes explicit scans and unsaved open
-networks and software Wi-Fi/Bluetooth radio controls, but still excludes
-password entry, protected profile creation/editing, and Bluetooth pairing. The staged credential flow
+networks, software Wi-Fi/Bluetooth radio controls, association pairing, and a
+Windows-owned Bluetooth management fallback, but still excludes password
+entry, protected profile creation/editing, unpair, and generic connection. The staged credential flow
 must remain host-owned and WPA Personal-only at first; it never exposes stored
 keys. Captive-portal automation, enterprise/802.1X provisioning, arbitrary
 adapter configuration, and privileged troubleshooting scripts remain outside
@@ -518,6 +583,15 @@ The current product order is:
 Do not use a first-party widget to justify a private host API that external
 widgets cannot exercise. Discord/social work remains deferred until eligibility
 and production authentication/communications access exist.
+
+Spotify is the exception to the general third-party-auth deferral because the
+product explicitly approved it as the next authenticated Community-addon proof.
+Its provider must expose reusable public SDK/broker contracts; the addon does
+not receive ambient Internet, tokens, a trusted-worker exception, or an
+undocumented desktop-client shortcut. Development Mode remains a local/tester
+milestone rather than a public-distribution claim. The optional Web Playback SDK
+runs only in a distinct trusted singleton
+host and does not create a general web capability for Community packages.
 
 The first irreversible ecosystem decisions—public API 1.0, package signing
 rules, marketplace policy, and optional web/WASM tiers—wait until these local

@@ -21,5 +21,6 @@
     <ProjectReference Include="..\WindowsMediaProvider\WindowsMediaProvider.csproj" />
     <ProjectReference Include="..\WindowsAppLibraryProvider\WindowsAppLibraryProvider.csproj" />
     <ProjectReference Include="..\WindowsCommunityProvider\WindowsCommunityProvider.csproj" />
+    <ProjectReference Include="..\WindowsSpotifyProvider\WindowsSpotifyProvider.csproj" />
   </ItemGroup>
 </Project>

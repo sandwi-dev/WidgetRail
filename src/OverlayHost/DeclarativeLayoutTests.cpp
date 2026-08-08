@@ -268,6 +268,9 @@ void WrappedIntrinsicLeavesDoNotCollapseOrOverlap() {
     auto title = Element("state-title");
     auto help = Element("state-help");
     auto action = Element("state-action");
+    // A widget author commonly supplies 44 DIPs as the controller minimum.
+    // That lower bound must not replace a taller intrinsic wrapped label.
+    action.minHeight = 44.0F;
 
     auto state = Element("state-card");
     state.mainAxisAlignment = MainAxisAlignment::Center;
@@ -282,7 +285,7 @@ void WrappedIntrinsicLeavesDoNotCollapseOrOverlap() {
         if (element.id == "state-help")
             return Size{std::min(190.0F, constraints.maximumWidth), 60.0F};
         if (element.id == "state-action")
-            return Size{std::min(150.0F, constraints.maximumWidth), 44.0F};
+            return Size{std::min(150.0F, constraints.maximumWidth), 64.0F};
         return Size{};
     };
 
@@ -296,8 +299,8 @@ void WrappedIntrinsicLeavesDoNotCollapseOrOverlap() {
          "wrapped title retains intrinsic line height");
     Near(result.Find("state-help")->borderBox.height, 60.0F,
          "wrapped help retains intrinsic paragraph height");
-    Near(result.Find("state-action")->borderBox.height, 44.0F,
-         "intrinsic action retains controller target height");
+    Near(result.Find("state-action")->borderBox.height, 64.0F,
+         "authored controller minimum does not crush taller intrinsic action");
     Check(result.Find("state-help")->borderBox.y >=
               result.Find("state-title")->borderBox.y +
                   result.Find("state-title")->borderBox.height + 7.99F,

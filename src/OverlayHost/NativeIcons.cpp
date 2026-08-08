@@ -370,6 +370,66 @@ template <std::size_t Count>
 
 } // namespace
 
+LoadingIndicatorArc ComputeLoadingIndicatorArc(
+    const std::uint64_t monotonicMilliseconds,
+    const bool reducedMotion) noexcept {
+    constexpr float sweep = 270.0F;
+    if (reducedMotion) return {-90.0F, sweep};
+    constexpr std::uint64_t periodMilliseconds = 900;
+    const auto phase = static_cast<float>(
+        monotonicMilliseconds % periodMilliseconds) /
+        static_cast<float>(periodMilliseconds);
+    return {-90.0F + phase * 360.0F, sweep};
+}
+
+bool DrawLoadingIndicator(
+    ID2D1RenderTarget* renderTarget,
+    const D2D1_RECT_F bounds,
+    ID2D1Brush* brush,
+    const std::uint64_t monotonicMilliseconds,
+    const bool reducedMotion,
+    const float strokeWidth) noexcept {
+    if (renderTarget == nullptr || brush == nullptr) return false;
+    Canvas canvas;
+    if (!TryCanvas(bounds, canvas)) return false;
+    const float stroke = SafeStroke(strokeWidth, canvas.size);
+    if (stroke <= 0.0F) return false;
+
+    const auto arc = ComputeLoadingIndicatorArc(monotonicMilliseconds, reducedMotion);
+    constexpr float pi = 3.14159265358979323846F;
+    const auto radians = [](const float degrees) noexcept {
+        return degrees * pi / 180.0F;
+    };
+    const auto center = canvas.Point(0.5F, 0.5F);
+    const auto radius = canvas.size * 0.42F;
+    const auto pointAt = [&](const float degrees) noexcept {
+        const auto angle = radians(degrees);
+        return D2D1::Point2F(
+            center.x + std::cos(angle) * radius,
+            center.y + std::sin(angle) * radius);
+    };
+    const auto start = pointAt(arc.startDegrees);
+    const auto end = pointAt(arc.startDegrees + arc.sweepDegrees);
+    const auto painted = PaintPath(
+        renderTarget, brush, stroke, PathPaint::Stroke,
+        [&](ID2D1GeometrySink* sink) {
+            sink->BeginFigure(start, D2D1_FIGURE_BEGIN_HOLLOW);
+            sink->AddArc(D2D1::ArcSegment(
+                end,
+                D2D1::SizeF(radius, radius),
+                0.0F,
+                D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                D2D1_ARC_SIZE_LARGE));
+            sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        });
+    if (painted) {
+        const auto capRadius = stroke * 0.5F;
+        FillCircle(renderTarget, brush, start, capRadius);
+        FillCircle(renderTarget, brush, end, capRadius);
+    }
+    return painted;
+}
+
 bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) noexcept {
     using Pair = std::pair<std::wstring_view, NativeIcon>;
     static constexpr std::array mappings{

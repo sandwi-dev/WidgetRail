@@ -315,14 +315,16 @@ private:
             // other renderer-measured content) must not be flexed below the
             // height it was measured to paint. Doing so assigns DirectWrite a
             // shorter box than its wrapped line metrics and collapses
-            // controller controls below their interaction contract. Authors
-            // can still opt into compression with an explicit height,
-            // flex-basis, or min-height. Keep row widths shrinkable so text can
-            // reflow responsively instead of imposing a CSS-like min-content
-            // width on every label.
+            // controller controls below their interaction contract. An
+            // authored min-height is still only a lower bound (44 DIPs is a
+            // common controller target); it is not permission to discard a
+            // taller wrapped label plus padding. Authors can opt into a fixed,
+            // potentially clipped box with an explicit height or flex-basis.
+            // Keep row widths shrinkable so text can reflow responsively
+            // instead of imposing a CSS-like min-content width on every label.
             if (!row && child.children.empty() && !child.height.has_value() &&
-                !child.flexBasis.has_value() && !child.minHeight.has_value()) {
-                minimum = std::min(measured.height, maximum);
+                !child.flexBasis.has_value()) {
+                minimum = std::max(minimum, std::min(measured.height, maximum));
             }
             const auto main = std::clamp(preferred, minimum, maximum);
             items.push_back({&child, margin, main, minimum, maximum, grow, shrink});

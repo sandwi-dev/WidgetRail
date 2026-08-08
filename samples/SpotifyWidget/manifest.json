@@ -1,0 +1,37 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.samples.spotify",
+  "publisher": "org.gbar.samples",
+  "name": "Spotify",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/SpotifyWidget.dll",
+    "type": "GameBarAlternative.Samples.SpotifyWidget.SpotifyWidget"
+  },
+  "presentation": { "icon": "music" },
+  "permissions": [
+    "external.spotify.configuration.v1",
+    "external.spotify.authorization.v1",
+    "external.spotify.playback.read.v1"
+  ],
+  "optionalPermissions": [
+    "external.spotify.playback.control.v1"
+  ],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "suspend-when-hidden"
+  },
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}

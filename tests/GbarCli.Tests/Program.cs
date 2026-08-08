@@ -66,6 +66,7 @@ if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Help describes the complete workflow", HelpWorks),
+    ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
@@ -79,6 +80,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dev discovers only bounded declared source files", DevSourceDiscoveryIsScoped),
     ("Dev package watching matches bounded pack inputs and new directories", DevPackageWatchingIsComplete),
     ("Dev builds a scaffold into a catalog-valid package", DevBuildsIsolatedPackage),
+    ("Dev builds cannot leave persistent compiler or build servers", DevBuildDisablesPersistentServers),
     ("Dev diagnostics are bounded and single-line", DevDiagnosticsAreSanitized),
     ("Dev rejects absent or forged readiness without replacing last good", DevReadinessFailsClosed),
     ("Dev rejects a broken worker entrypoint without replacing last good", DevBrokenEntrypointRetainsLastGood),
@@ -141,6 +143,40 @@ static async Task HelpWorks()
     Assert.Equal(0, theme.Code);
     foreach (var command in new[] { "new", "validate", "preview", "pack", "inspect", "install", "list" })
         Assert.Contains($"theme {command}", theme.Output);
+}
+
+static async Task WidgetConfigWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    const string widget = "org.gbar.samples.spotify";
+    const string publisher = "org.gbar.samples";
+    var root = temp.Path;
+    var set = await RunCli("config", "set", widget, "client-id", "0123456789abcdef",
+        "--publisher", publisher, "--settings-root", root);
+    Assert.Equal(0, set.Code);
+
+    var get = await RunCli("config", "get", widget, "client-id",
+        "--publisher", publisher, "--settings-root", root);
+    Assert.Equal(0, get.Code);
+    Assert.Contains("0123456789abcdef", get.Output);
+
+    var list = await RunCli("config", "list", widget,
+        "--publisher", publisher, "--settings-root", root);
+    Assert.Equal(0, list.Code);
+    Assert.Contains("client-id", list.Output);
+    Assert.DoesNotContain("0123456789abcdef", list.Output);
+
+    var rejected = await RunCli("config", "set", widget, "client-secret", "do-not-store",
+        "--publisher", publisher, "--settings-root", root);
+    Assert.Equal(2, rejected.Code);
+    Assert.Contains("Secret-like", rejected.Error);
+
+    var remove = await RunCli("config", "remove", widget, "client-id",
+        "--publisher", publisher, "--settings-root", root);
+    Assert.Equal(0, remove.Code);
+    var missing = await RunCli("config", "get", widget, "client-id",
+        "--publisher", publisher, "--settings-root", root);
+    Assert.Equal(2, missing.Code);
 }
 
 static async Task NewScaffolds()
@@ -532,6 +568,28 @@ static Task DevDiagnosticsAreSanitized()
     return Task.CompletedTask;
 }
 
+static Task DevBuildDisablesPersistentServers()
+{
+    var project = Path.Combine("C:\\source", "Widget.csproj");
+    var output = Path.Combine("C:\\staging", "payload");
+    var start = DevGenerationBuilder.CreateBuildStartInfo(project, "Release", output);
+    var arguments = start.ArgumentList.ToArray();
+
+    Assert.True(arguments.Contains("--disable-build-servers", StringComparer.Ordinal),
+        "Dev builds did not disable persistent build servers.");
+    Assert.True(arguments.Contains("--property:UseSharedCompilation=false", StringComparer.Ordinal),
+        "Dev builds did not disable the persistent Roslyn compiler server.");
+    Assert.True(arguments.Contains("--property:BuildInParallel=false", StringComparer.Ordinal),
+        "Dev builds did not bound nested build concurrency.");
+    Assert.True(arguments.Contains("--property:MSBuildNodeReuse=false", StringComparer.Ordinal),
+        "Dev builds did not disable MSBuild node reuse.");
+    Assert.Equal("1", start.Environment["MSBUILDDISABLENODEREUSE"]);
+    Assert.Equal(Path.GetDirectoryName(project), start.WorkingDirectory);
+    Assert.True(start.RedirectStandardOutput && start.RedirectStandardError,
+        "Dev build diagnostics must remain captured after process isolation was enabled.");
+    return Task.CompletedTask;
+}
+
 static async Task DevReadinessFailsClosed()
 {
     foreach (var suffix in new[] { "no-ready", "forged-ready" })
@@ -546,12 +604,15 @@ static async Task DevReadinessFailsClosed()
             DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
             TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
             TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer),
-            readyTimeout: TimeSpan.FromMilliseconds(250));
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            readyTimeout: TimeSpan.FromSeconds(2));
+        // Disabling persistent build servers intentionally makes a cold nested
+        // build slightly slower. Keep the authentication deadline at two
+        // seconds, but give the isolated build a scheduler-safe test budget.
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var run = session.RunAsync(cancellation.Token);
         await WaitUntilAsync(() => errorBuffer.ToString().Contains(
                 suffix == "no-ready" ? "did not authenticate" : "did not authenticate the exact",
-                StringComparison.Ordinal), TimeSpan.FromSeconds(4));
+                StringComparison.Ordinal), TimeSpan.FromSeconds(15));
         Assert.True(session.ActiveHostProcessId is null,
             "Unauthenticated candidate replaced the active host.");
         cancellation.Cancel();
@@ -573,13 +634,17 @@ static async Task DevRetainsAndCleans()
         DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
         TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75), output, error);
     var sessionRoot = session.SessionRoot;
-    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    // Dev intentionally disables every persistent build/compiler server. A
+    // cold Release generation can exceed ten seconds on a busy test host, so
+    // keep the product's 90-second build bound while giving this integration
+    // fixture enough scheduler headroom to observe both generations.
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(40));
     var run = session.RunAsync(cancellation.Token);
     int? activePid = null;
     try
     {
         await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(10));
+            TimeSpan.FromSeconds(20));
         var firstPid = session.ActiveHostProcessId;
         activePid = firstPid;
         Assert.True(firstPid.HasValue, "Dev host was not retained after the first good build.");
@@ -615,13 +680,13 @@ static async Task DevBrokenEntrypointRetainsLastGood()
         TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
         TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer),
         readyTimeout: TimeSpan.FromMilliseconds(250));
-    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(40));
     var run = session.RunAsync(cancellation.Token);
     int? lastGoodPid = null;
     try
     {
         await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(10));
+            TimeSpan.FromSeconds(20));
         lastGoodPid = session.ActiveHostProcessId;
         Assert.True(lastGoodPid.HasValue, "Initial valid entrypoint did not publish a last-good host.");
         var expectedPid = lastGoodPid.GetValueOrDefault();
@@ -634,7 +699,7 @@ static async Task DevBrokenEntrypointRetainsLastGood()
         }));
 
         await WaitUntilAsync(() => errorBuffer.ToString().Contains("did not authenticate", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(8));
+            TimeSpan.FromSeconds(15));
         Assert.Equal(lastGoodPid, session.ActiveHostProcessId);
         Assert.True(!Process.GetProcessById(expectedPid).HasExited,
             "Broken entrypoint probe retired the last-good host.");
@@ -663,13 +728,13 @@ static async Task DevJobReclaimsDescendants()
         DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
         TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
         TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer));
-    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(40));
     var run = session.RunAsync(cancellation.Token);
     var processIds = new List<int>();
     try
     {
         await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(10));
+            TimeSpan.FromSeconds(20));
         var hostPid = session.ActiveHostProcessId;
         Assert.True(hostPid.HasValue, "Descendant test did not retain its interactive host.");
         processIds.Add(hostPid.GetValueOrDefault());
@@ -1449,7 +1514,8 @@ file sealed class TemporaryDirectory : IDisposable
     public string Path { get; }
     public void Dispose()
     {
-        if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
+        if (Directory.Exists(Path))
+            _ = DevSession.DeleteTreeWithRetriesAsync(Path).GetAwaiter().GetResult();
     }
 }
 

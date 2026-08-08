@@ -42,7 +42,8 @@ internal sealed record NativeMediaSession(
     bool CanPause,
     bool CanTogglePlayPause,
     bool CanPrevious,
-    bool CanNext);
+    bool CanNext,
+    string? ArtworkPngBase64 = null);
 
 internal interface IWindowsMediaNativeAdapter : IAsyncDisposable
 {

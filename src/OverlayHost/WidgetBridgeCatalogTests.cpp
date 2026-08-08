@@ -89,7 +89,10 @@ int main() {
             "root": {
                 "id": "root",
                 "kind": "stack",
-                "children": [{"id":"play","kind":"button","text":"Play","actionId":"play"}]
+                "children": [
+                    {"id":"play","kind":"button","text":"Play","actionId":"play"},
+                    {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact"}
+                ]
             }
         },
         "renderStyles": {
@@ -101,11 +104,15 @@ int main() {
         }
     })json", error);
     assert(styledSnapshot && error.empty());
-    assert(styledSnapshot->root.children.size() == 1);
+    assert(styledSnapshot->root.children.size() == 2);
     const auto& styledButton = styledSnapshot->root.children.front();
     assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
     assert(styledButton.focusedStyle.at(L"scale").number == 1.05);
     assert(styledButton.pressedStyle.at(L"scale").number == 0.97);
+    const auto& loadingIndicator = styledSnapshot->root.children[1];
+    assert(loadingIndicator.kind == L"loadingIndicator");
+    assert(loadingIndicator.accessibilityLabel == L"Loading music");
+    assert(loadingIndicator.indicatorSize == L"compact");
 
     error.clear();
     const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(

@@ -362,6 +362,18 @@ struct DeclarativeRenderer::RenderPass final {
         if (node.kind == L"slider") {
             element.minWidth = std::max(element.minWidth.value_or(0.0F), 160.0F);
             element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
+        } else if (node.kind == L"loadingIndicator") {
+            const auto semanticSize = node.indicatorSize == L"compact"
+                ? 16.0F
+                : node.indicatorSize == L"large" ? 32.0F : 24.0F;
+            element.width = semanticSize;
+            element.height = semanticSize;
+            element.minWidth = semanticSize;
+            element.minHeight = semanticSize;
+            element.maxWidth = semanticSize;
+            element.maxHeight = semanticSize;
+            element.flexGrow = 0.0F;
+            element.flexShrink = 0.0F;
         }
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
@@ -397,6 +409,7 @@ struct DeclarativeRenderer::RenderPass final {
         default: element.crossAxisAlignment = declarative::CrossAxisAlignment::Stretch; break;
         }
         element.stretchCrossAxis = element.crossAxisAlignment == declarative::CrossAxisAlignment::Stretch;
+        if (node.kind == L"loadingIndicator") element.stretchCrossAxis = false;
         element.children.reserve(node.children.size());
         const float textScale = std::isfinite(options.accessibility.textScale) &&
                 options.accessibility.textScale >= 0.85F &&
@@ -819,6 +832,11 @@ struct DeclarativeRenderer::RenderPass final {
         }
         if (node.kind == L"image") return {120.0F, 120.0F};
         if (node.kind == L"icon") return {24.0F, 24.0F};
+        if (node.kind == L"loadingIndicator") {
+            if (node.indicatorSize == L"compact") return {16.0F, 16.0F};
+            if (node.indicatorSize == L"large") return {32.0F, 32.0F};
+            return {24.0F, 24.0F};
+        }
         if (node.kind == L"progress") return {160.0F, 8.0F};
         if (node.kind == L"slider") return {240.0F, kMinimumControlSize};
         return {};
@@ -1235,6 +1253,31 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    void DrawLoadingIndicatorNode(
+        const WidgetNode& node,
+        const NativeRenderStyle& style,
+        const Rect rect,
+        const float opacity) {
+        if (!target || rect.width <= 0.5F || rect.height <= 0.5F) return;
+        auto brush = Brush(target, WithOpacity(
+            style.foreground().value_or(kDefaultAccent), opacity));
+        if (!brush) return;
+        const auto timestamp = options.animationTimestampMilliseconds.value_or(0);
+        const auto stroke = style.borderWidthPx() > 0.0F
+            ? style.borderWidthPx()
+            : 2.0F;
+        if (!icons::DrawLoadingIndicator(
+                target,
+                D2DRect(rect),
+                brush.Get(),
+                timestamp,
+                options.accessibility.reducedMotion,
+                stroke)) {
+            Add(node.id, L"loading_indicator_draw",
+                L"The native loading indicator could not be drawn.");
+        }
+    }
+
     void DrawNode(
         const WidgetNode& node,
         const std::wstring_view inheritedInputScope = {}) {
@@ -1260,6 +1303,11 @@ struct DeclarativeRenderer::RenderPass final {
             options.accessibility.reducedMotion);
         const auto opacity = motion.value.opacity;
         const auto paintRect = ScaleRect(box->borderBox, motion.value.scale);
+#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+        result.elementRects[node.id] = box->borderBox;
+        result.elementVisibleRects[node.id] =
+            Intersection(box->borderBox, box->visibleBox);
+#endif
 
         if (node.kind == L"button" || node.kind == L"slider") {
             result.navigationRects[node.id] = box->borderBox;
@@ -1293,7 +1341,8 @@ struct DeclarativeRenderer::RenderPass final {
         // first duplicates that color across the complete 44-DIP hit target.
         // Authors can wrap a Slider in a Card/Row when they want a filled
         // control surface; the Slider itself stays visually lightweight.
-        if (node.kind != L"slider") DrawSurface(node, style, paintRect, opacity);
+        if (node.kind != L"slider" && node.kind != L"loadingIndicator")
+            DrawSurface(node, style, paintRect, opacity);
 
         if (node.kind == L"text") {
             DrawTextContent(node, style, box->contentBox, opacity);
@@ -1326,6 +1375,15 @@ struct DeclarativeRenderer::RenderPass final {
             DrawImage(node, style, paintRect, opacity, focused);
         } else if (node.kind == L"icon") {
             DrawSemanticIcon(node, style, box->contentBox, opacity, node.glyph);
+        } else if (node.kind == L"loadingIndicator") {
+            const auto visibleRect = Intersection(box->contentBox, box->visibleBox);
+            DrawLoadingIndicatorNode(node, style, visibleRect, opacity);
+            if (!options.accessibility.reducedMotion &&
+                visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
+                // The shell owns the next-frame cadence. Invisible or
+                // reduced-motion indicators never keep it awake.
+                result.animationActive = true;
+            }
         } else if (node.kind != L"stack" && node.kind != L"row" &&
                    node.kind != L"scroll" && node.kind != L"spacer") {
             Add(node.id, L"unknown_kind", L"Unsupported declarative node kind: " + node.kind);
@@ -1410,6 +1468,7 @@ RenderResult DeclarativeRenderer::Render(
     const auto animationTimestamp = options.animationTimestampMilliseconds.value_or(
         static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count()));
+    pass.options.animationTimestampMilliseconds = animationTimestamp;
     motionTimeline_.BeginFrame(animationTimestamp);
 
     if (bitmapTarget_ != renderTarget) {
@@ -1439,7 +1498,8 @@ RenderResult DeclarativeRenderer::Render(
     }
     pass.DrawNode(snapshot.root);
     pass.DrawDeferredFocus();
-    pass.result.animationActive = motionTimeline_.EndFrame();
+    pass.result.animationActive =
+        pass.result.animationActive || motionTimeline_.EndFrame();
     if (roundedClip) renderTarget->PopLayer();
     else if (cornerRadius > 0.0F && renderTarget) renderTarget->PopAxisAlignedClip();
     const auto hasErrors = std::any_of(

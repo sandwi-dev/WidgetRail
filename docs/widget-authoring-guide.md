@@ -35,6 +35,43 @@ The widget owns:
 There is no browser engine in the host. Do not design around HTML, DOM APIs,
 JavaScript, arbitrary SVG, custom drawing, monitor APIs, or pixel scrolling.
 
+## Public author parity and host-owned boundaries
+
+Audio Mixer, Network Controls, Games & Apps, and Now Playing are bundled for
+discovery, but their widget assemblies use the same manifest, generic
+`WidgetWorkerHost`, package-specific AppContainer, `WidgetSdk`, declarative
+renderer, lifecycle, consent broker, and capability APIs available to an
+installed Community package. YT Music goes further: it is packaged, installed,
+enabled, and isolated as a Community addon with no trusted catalog/worker
+fallback. These are the reference implementations an independent author should
+copy.
+
+An author can use today:
+
+- the complete declarative UI/controller/lifecycle SDK and safe GBSS cascade;
+- `HostServices` typed capabilities, private state, exact-port companion JSON,
+  and write-only private secrets when declared/allowed;
+- transport-free fakes through `WidgetTestHostServicesBuilder`;
+- `gbar new|validate|render|replay|dev|pack|install|enable|disable` plus immutable
+  version selection/rollback, and host-owned `gbar config` management for
+  bounded public package configuration; and
+- the same Settings permission/package review and live catalog reload path as
+  the bundled references.
+
+The host alone owns native Windows providers, OAuth/token custody, consent
+decisions, package verification/isolation, monitor/topmost windows, rendering,
+focus, image fetching, and tightly correlated shell effects such as closing
+after a confirmed app launch. A widget invokes only a documented typed SDK
+operation; it cannot create a broker request, ask for a desktop token, choose a
+native provider, open arbitrary network/OS resources, or opt out of isolation.
+Public configuration such as an integration Client ID is package/publisher
+scoped and host-managed; it is not a secret store and Community code does not
+edit its JSON files. A generic manifest schema and controller-native editor for
+author-defined configuration are still planned, so do not present
+`WidgetConfigurationStore` itself as a stable worker SDK API.
+If a useful reference widget appears to require something outside that boundary,
+add a reviewed public SDK/broker contract instead of a first-party shortcut.
+
 ## Versions: three different contracts
 
 Do not use these version numbers interchangeably.
@@ -580,6 +617,8 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.wifi.radio.control.v1` | request software Wi-Fi radio On/Off | Interactive |
 | `system.network.bluetooth.read.v1` | get/watch sanitized Bluetooth radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | request Bluetooth software radio On/Off | Interactive |
+| `system.network.bluetooth.pair.v1` | pair one current opaque Bluetooth association endpoint and receive a typed outcome | Interactive |
+| `system.network.bluetooth.manage.v1` | open Windows Bluetooth Settings after validating one current opaque device | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
 | `system.apps.library.read.v1` | page installed-app names/kinds and resolve authority-scoped durable SavedIds to current launch IDs | Visible or Interactive |
 | `system.apps.library.launch.v1` | launch one current broker-issued opaque app ID | Interactive only |
@@ -669,6 +708,12 @@ Render `WirelessAvailability`, `DetailsAccess`, and
 radio off, and unavailable WLAN service are normal bounded states; do not
 retry them on a timer, request elevation, inspect WLAN XML, or log SSIDs.
 
+Bluetooth IDs are equally opaque and current-snapshot-only. Pair through
+`PairBluetoothDeviceAsync`; do not claim success or profile connectivity until
+the returned outcome and following authoritative snapshot support it. Use
+`OpenBluetoothDeviceSettingsAsync` only as a Windows-owned management fallback.
+There is no public unpair or generic Connect/Disconnect API.
+
 ### Installed app-library example
 
 Use the typed `HostServices.AppLibrary` surface; do not turn a display name,
@@ -700,9 +745,10 @@ an opaque provider-lifetime token and never persist it. `SavedId` is the
 non-reversible publisher/package-scoped value for private state. The current
 Windows provider exposes only
 Start Menu `.lnk` registrations and conservatively reports them as
-Application. It provides no icon/artwork, AppsFolder/UWP, Steam/Xbox/other
-launcher aggregation, or authoritative game detection. See the [Games & Apps
-reference](games-and-apps.md).
+Application. Resolved curated entries may include a bounded host-rasterized
+`IconPngBase64`; broad discovery remains text-only. The provider does not yet
+support AppsFolder/UWP, Steam/Xbox/other launcher aggregation, or authoritative
+game detection. See the [Games & Apps reference](games-and-apps.md).
 
 Handle `WidgetCapabilityUnavailableException`, `WidgetCapabilityException`
 using its stable `ErrorCode`, and normal lifecycle cancellation. Common codes
@@ -897,8 +943,8 @@ New widget IDs install disabled. In Overlay Settings:
 1. Open **Installed widgets** and review identity, version, host range,
    architecture, and declarations.
 2. Enable the reviewed package.
-3. Open **Permissions & capabilities** and independently grant only the
-   capabilities you accept.
+3. On the same widget management page, open **Permissions & configuration**
+   and independently grant only the capabilities you accept.
 
 The default catalog is
 `%LOCALAPPDATA%\GameBarAlternative\widgets`. The bridge watches accepted
@@ -1055,10 +1101,11 @@ Do not design or advertise a widget around any of these yet:
 - a readable/general-purpose community secret or OAuth-token store;
 - package-relative Image/font asset resolution;
 - HTML, browser CSS, JavaScript, SVG, shaders, or native drawing payloads;
-- sliders/scrubbing, text entry, arbitrary pointer UI, or arbitrary raw HID;
+- a purpose-built media scrubber composite, text entry, arbitrary pointer UI,
+  or arbitrary raw HID (the controller-native `UI.Slider` itself is implemented);
 - `Released`/`Repeated` shortcut routing end to end;
-- enforced suspend/unload background policies, CPU/disk quotas, or profile
-  cleanup; or
+- CPU/disk quotas or AppContainer profile cleanup (versioned keep-alive,
+  cooperative suspend, and bounded idle-unload policies are implemented); or
 - universal Fullscreen Exclusive, anti-cheat, Guide-device, input-suppression,
   mixed-monitor, or game compatibility.
 

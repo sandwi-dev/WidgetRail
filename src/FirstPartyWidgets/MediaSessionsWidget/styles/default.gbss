@@ -63,14 +63,29 @@
 .media-session-pill:selected { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); color: var(--text); }
 
 .media-now-playing {
-  gap: 7px;
+  gap: 14px;
   padding: 14px 16px;
+  align: center;
   background: var(--surface-raised);
   border-color: var(--border, rgba(246, 240, 226, 0.12));
   border-width: 1px;
   corner-radius: 10px;
   flex-shrink: 0;
 }
+.media-artwork {
+  width: 76px;
+  height: 76px;
+  min-width: 76px;
+  min-height: 76px;
+  corner-radius: 8px;
+  flex-shrink: 0;
+}
+.media-artwork-placeholder {
+  padding: 21px;
+  color: var(--text-muted);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+}
+.media-track-details { min-width: 0px; gap: 7px; flex-grow: 1; }
 .media-track-title {
   color: var(--text);
   font-size: 22px;

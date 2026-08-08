@@ -1,17 +1,14 @@
 # Network Controls reference
 
 Status: **implemented and packaged prototype, automated Release verification
-passed 2026-08-07**.
+passed 2026-08-08**.
 The typed SDK, authenticated capability transport, consent UI, lifecycle
 enforcement, real event-driven Windows provider, first-party widget/worker,
-trusted catalog entry, and Release packaging hooks exist. The focused Release
-network provider and widget suites pass 31/31 and 17/17 respectively; the
-Bluetooth provider passes 11/11; the current focused PlatformBroker suite
-passes 40/40; and the last complete full managed suite, native host
-suite, packaged hidden-startup smoke, and controller input-probe smoke also
-pass. The split Wi-Fi/Bluetooth presentation still needs packaged controller
-and visual verification. Hardware/privacy matrices and performance evidence
-remain open, so this is not yet a shipped or production-support claim.
+trusted catalog entry, and Release packaging hooks exist. The focused network,
+Bluetooth, broker, SDK, and widget suites plus the complete Release verifier
+pass at milestone `8e8c90a`. The split Wi-Fi/Bluetooth presentation and real
+pairing flow still need packaged controller, visual, privacy, and reversible
+hardware verification. This is not yet a shipped or production-support claim.
 
 Network Controls is the second first-party system-control reference widget,
 after Audio Mixer. It must use the same public declarative SDK, worker
@@ -60,11 +57,12 @@ out to `netsh`, edit the registry, install a service/driver, or elevate.
 Available-network read/scan/connect is implemented end to end in the typed
 SDK, authenticated broker, Native Wi-Fi provider, bundled manifest/catalog,
 Settings consent descriptions, first-party widget, and deterministic tests.
-Software Wi-Fi radio read/control and Bluetooth radio/discovery are also
-implemented behind their own closed grants. Remaining work is deliberately
+Software Wi-Fi radio read/control, Bluetooth radio/discovery, explicit
+association pairing, and a Windows-owned management fallback are also
+implemented behind separate closed grants. Remaining work is deliberately
 separate: host-owned protected-network credential entry, enterprise
-provisioning, Bluetooth pair/unpair, and profile-specific Bluetooth
-communication. Unknown future capability names continue to fail closed.
+provisioning, Bluetooth unpair, and profile-specific Bluetooth communication.
+Unknown future capability names continue to fail closed.
 
 The implemented Wi-Fi contract is:
 
@@ -99,12 +97,18 @@ revocation must be readable without automatic retries. See Microsoft's
 and [WlanSetInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlansetinterface)
 documentation.
 
-The trusted Bluetooth provider now uses WinRT radio state plus event-driven
-device enumeration/change events to publish bounded sanitized names and
-paired/present/connected state. Radio changes are separately consented and
-reconcile the effective Windows state, including typed partial failure. Pair/
-unpair remains staged behind a future host-owned `DeviceInformationPairing`
-ceremony. A generic
+The trusted Bluetooth provider uses WinRT radio state plus event-driven device
+enumeration/change events to publish bounded sanitized names and paired/
+present/connected state. Radio changes are separately consented and reconcile
+the effective Windows state, including typed partial failure. An explicit A
+action on one current unpaired opaque device invokes Windows Association
+Endpoint `PairAsync`; every completed Windows result maps to a bounded typed
+outcome, and the provider always refreshes authoritative device state. A result
+never claims profile connectivity. Devices already paired/connected, and
+pairing outcomes that require a ceremony the overlay does not own, can open the
+Windows Bluetooth Settings page through a separate manage grant. The validated
+native device ID remains host-only and is never embedded in the Settings URI.
+Unpair is not implemented. A generic
 Bluetooth device Connect/Disconnect operation is **not** promised: Windows
 communication is profile-specific, such as GATT service/characteristic access
 or RFCOMM sockets, and each future profile integration needs a separate narrow
@@ -134,7 +138,9 @@ Declare the smallest authority in `manifest.json`:
     "system.network.wifi.connect.v1",
     "system.network.wifi.radio.control.v1",
     "system.network.bluetooth.read.v1",
-    "system.network.bluetooth.radio.control.v1"
+    "system.network.bluetooth.radio.control.v1",
+    "system.network.bluetooth.pair.v1",
+    "system.network.bluetooth.manage.v1"
   ]
 }
 ```
@@ -149,13 +155,17 @@ Declare the smallest authority in `manifest.json`:
 | `system.network.wifi.radio.control.v1` | `SetWifiRadioAsync` | Interactive only |
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, acknowledged subscription, and sanitized device/radio events | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync` | Interactive only |
+| `system.network.bluetooth.pair.v1` | `PairBluetoothDeviceAsync` for one current opaque device and typed authoritative outcome | Interactive only |
+| `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync` for one current opaque device; Windows owns the management UI | Interactive only |
 
 `permissions` means the widget considers read access essential;
-`optionalPermissions` means connection/radio/Bluetooth enhancements can degrade
-independently from coarse status, nearby-network presentation, and Wi-Fi radio
-visibility.
+`optionalPermissions` means connection/radio/pairing/management enhancements
+can degrade independently from coarse status, nearby-network presentation, and
+Wi-Fi radio visibility. Pair and manage are intentionally different decisions:
+granting read/discovery or radio control does not authorize either operation.
 Neither is auto-granted, including for first-party widgets. The user reviews
-each declaration in **Settings → Permissions & capabilities**. A grant is
+each declaration from the Network Controls entry in **Settings → Installed
+widgets → Permissions & configuration**. A grant is
 confirmed explicitly; deny and revoke take effect immediately. Consent is
 stored by package ID, publisher ID, and capability ID, while each live broker
 session is also bound to the concrete widget instance and declared set.

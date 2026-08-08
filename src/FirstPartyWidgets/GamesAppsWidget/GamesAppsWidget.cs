@@ -30,16 +30,30 @@ public enum GamesAppsPage
 /// </summary>
 public sealed class GamesAppsWidget : Widget
 {
+    private const string RetryActionId = "games.retry";
+    public const int ColdLoadingDelayMilliseconds = 150;
     public const int PageSize = 32;
     public const int MaximumItems = 512;
 
-    private static readonly WidgetSurfaceHints StandardSurface = new()
+    private static readonly WidgetSurfaceHints LibrarySurface = new()
     {
         Mode = WidgetSurfaceMode.Standard,
         PreferredWidth = 820,
-        PreferredHeight = 430,
+        PreferredHeight = 270,
         MinimumWidth = 420,
-        MinimumHeight = 320,
+        MinimumHeight = 240,
+    };
+
+    private static readonly WidgetSurfaceHints CatalogSurface = LibrarySurface with
+    {
+        PreferredHeight = 294,
+        MinimumHeight = 260,
+    };
+
+    private static readonly WidgetSurfaceHints StateSurface = LibrarySurface with
+    {
+        PreferredHeight = 280,
+        MinimumHeight = 250,
     };
 
     private readonly object _gate = new();
@@ -55,6 +69,7 @@ public sealed class GamesAppsWidget : Widget
     private string? _selectedAppId;
     private string? _launchingAppId;
     private bool _loadingMore;
+    private bool _hasLibrarySnapshot;
     private int? _nextOffset;
     private CancellationTokenSource? _activeRun;
     private long _generation;
@@ -158,7 +173,7 @@ public sealed class GamesAppsWidget : Widget
                         .Classes("games-state-card"))
                 .InputScope("games-apps")
                 .Classes("games-apps-widget", "has-state");
-            return new WidgetView(emptyRoot, "games.open-catalog", Surface: StandardSurface);
+            return new WidgetView(emptyRoot, "games.open-catalog", Surface: StateSurface);
         }
 
         var elementIds = curated.Select(item => ElementId(item.AppId)).ToArray();
@@ -169,12 +184,10 @@ public sealed class GamesAppsWidget : Widget
             var item = curated[index];
             var id = elementIds[index];
             map[id] = item.AppId;
-            var kind = item.Kind == WidgetAppLibraryKind.Game ? "GAME" : "APPLICATION";
             var right = index + 1 < curated.Length
                 ? elementIds[index + 1]
                 : "games.open-catalog";
             var button = UI.Button(item.DisplayName, "games.launch", id)
-                .Icon(WidgetGlyph.Play, $"Launch {item.DisplayName}")
                 .Shortcut(ControllerButton.X, actionId: "games.remove")
                 .Busy(string.Equals(launchingAppId, item.AppId, StringComparison.Ordinal))
                 .Disabled(launchingAppId is not null ||
@@ -184,26 +197,39 @@ public sealed class GamesAppsWidget : Widget
                 .FocusRight(right)
                 .FocusUp(id)
                 .Classes("games-card-action");
-            cards.Add(UI.Stack(id + ".card",
-                    button,
-                    UI.Row(id + ".meta",
-                            UI.Text(kind, id + ".kind", kind).Classes("games-card-kind"),
-                            UI.Text("A  Open · X  Remove", id + ".hint",
-                                    $"Press A to launch or X to remove {item.DisplayName}")
-                                .Classes("games-card-hint"))
-                        .Classes("games-card-meta"))
-                .Classes("games-card"));
+            WidgetElement icon = item.IconPngBase64 is { Length: > 0 } png
+                ? UI.InlinePngImage(
+                        png, id + ".art", $"{item.DisplayName} application icon")
+                    .Classes("games-card-art")
+                : UI.Icon(WidgetGlyph.Play, id + ".icon",
+                        $"Application icon placeholder for {item.DisplayName}")
+                    .Classes("games-card-icon");
+            var cardChildren = new List<WidgetElement>
+            {
+                UI.Row(id + ".body",
+                            icon,
+                            button)
+                        .Classes("games-card-body"),
+            };
+            if (item.Kind == WidgetAppLibraryKind.Game)
+                cardChildren.Add(UI.Text("GAME", id + ".kind", "Game")
+                    .Classes("games-card-kind", "is-game"));
+            cards.Add(UI.Stack(id + ".card", cardChildren.ToArray()).Classes("games-card"));
         }
 
         cards.Add(UI.Stack("games.open-catalog.card",
-                UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
-                    .Icon(WidgetGlyph.Play, "Choose more applications")
-                    .Disabled(launchingAppId is not null ||
-                        LifecycleState != WidgetLifecycleState.Interactive)
-                    .FocusLeft(elementIds[^1])
-                    .FocusRight("games.open-catalog")
-                    .FocusUp("games.open-catalog")
-                    .Classes("games-card-action", "games-load-more"),
+                UI.Row("games.open-catalog.body",
+                        UI.Icon(WidgetGlyph.Play, "games.open-catalog.icon",
+                                "Add applications")
+                            .Classes("games-card-icon", "is-add"),
+                        UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
+                            .Disabled(launchingAppId is not null ||
+                                LifecycleState != WidgetLifecycleState.Interactive)
+                            .FocusLeft(elementIds[^1])
+                            .FocusRight("games.open-catalog")
+                            .FocusUp("games.open-catalog")
+                            .Classes("games-card-action", "games-load-more"))
+                    .Classes("games-card-body"),
                 UI.Text($"{items.Count} available", "games.open-catalog.count",
                         $"{items.Count} applications available")
                     .Classes("games-card-kind"))
@@ -224,8 +250,9 @@ public sealed class GamesAppsWidget : Widget
                 UI.HorizontalScroll("games.library.scroll", cards.ToArray())
                     .Classes("games-library-scroll"))
             .InputScope("games-apps")
+            .Shortcut(ControllerButton.Y, RetryActionId)
             .Classes("games-apps-widget");
-        return new WidgetView(root, ElementId(selected.AppId), Surface: StandardSurface);
+        return new WidgetView(root, ElementId(selected.AppId), Surface: LibrarySurface);
     }
 
     private WidgetView RenderCatalog(
@@ -251,17 +278,20 @@ public sealed class GamesAppsWidget : Widget
                 ? elementIds[index + 1]
                 : nextOffset is not null ? "games.load-more" : id;
             cards.Add(UI.Stack(id + ".card",
-                    UI.Button(item.DisplayName, "games.toggle-curation", id)
-                        .Icon(saved ? WidgetGlyph.Check : WidgetGlyph.Play,
-                            saved ? $"Remove {item.DisplayName} from your library" :
-                                $"Add {item.DisplayName} to your library")
-                        .Selected(saved)
-                        .Disabled(launchingAppId is not null || loadingMore ||
-                            LifecycleState != WidgetLifecycleState.Interactive)
-                        .FocusLeft(index == 0 ? id : elementIds[index - 1])
-                        .FocusRight(right)
-                        .FocusUp(id)
-                        .Classes("games-card-action"),
+                    UI.Row(id + ".body",
+                            UI.Icon(saved ? WidgetGlyph.Check : WidgetGlyph.Play, id + ".icon",
+                                    saved ? $"{item.DisplayName} is saved" :
+                                        $"Application icon placeholder for {item.DisplayName}")
+                                .Classes("games-card-icon", saved ? "is-saved" : "is-available"),
+                            UI.Button(item.DisplayName, "games.toggle-curation", id)
+                                .Selected(saved)
+                                .Disabled(launchingAppId is not null || loadingMore ||
+                                    LifecycleState != WidgetLifecycleState.Interactive)
+                                .FocusLeft(index == 0 ? id : elementIds[index - 1])
+                                .FocusRight(right)
+                                .FocusUp(id)
+                                .Classes("games-card-action"))
+                        .Classes("games-card-body"),
                     UI.Text(saved ? "Saved · A removes" : "A adds to library",
                             id + ".hint", saved ? "Saved in your library" : "Add to your library")
                         .Classes("games-card-kind"))
@@ -270,15 +300,19 @@ public sealed class GamesAppsWidget : Widget
         if (nextOffset is not null)
         {
             cards.Add(UI.Stack("games.load-more.card",
-                    UI.Button("Load more", "games.load-more", "games.load-more")
-                        .Icon(WidgetGlyph.Refresh, "Load more available applications")
-                        .Busy(loadingMore)
-                        .Disabled(launchingAppId is not null || loadingMore ||
-                            LifecycleState != WidgetLifecycleState.Interactive)
-                        .FocusLeft(elementIds[^1])
-                        .FocusRight("games.load-more")
-                        .FocusUp("games.load-more")
-                        .Classes("games-card-action", "games-load-more"),
+                    UI.Row("games.load-more.body",
+                            UI.Icon(WidgetGlyph.Refresh, "games.load-more.icon",
+                                    "Load more available applications")
+                                .Classes("games-card-icon", "is-add"),
+                            UI.Button("Load more", "games.load-more", "games.load-more")
+                                .Busy(loadingMore)
+                                .Disabled(launchingAppId is not null || loadingMore ||
+                                    LifecycleState != WidgetLifecycleState.Interactive)
+                                .FocusLeft(elementIds[^1])
+                                .FocusRight("games.load-more")
+                                .FocusUp("games.load-more")
+                                .Classes("games-card-action", "games-load-more"))
+                        .Classes("games-card-body"),
                     UI.Text($"{items.Count} loaded", "games.load-more.count",
                             $"{items.Count} applications loaded")
                         .Classes("games-card-kind"))
@@ -303,7 +337,7 @@ public sealed class GamesAppsWidget : Widget
             .Classes("games-catalog");
         var root = UI.Stack("games.root", header, scope).Classes("games-apps-widget");
         return new WidgetView(root, CatalogElementId(selected.AppId),
-            ActiveInputScopeId: "games.catalog", Surface: StandardSurface);
+            ActiveInputScopeId: "games.catalog", Surface: CatalogSurface);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -368,8 +402,8 @@ public sealed class GamesAppsWidget : Widget
                 if (curatedAppId is not null)
                     await RemoveCuratedAsync(curatedAppId, cancellationToken).ConfigureAwait(false);
                 return;
-            case "retry":
-                if (IsActive) StartActiveRun(ActiveCancellationToken);
+            case RetryActionId:
+                await RetryActiveRunAsync(cancellationToken).ConfigureAwait(false);
                 return;
             case "games.load-more":
                 await LoadMoreAsync(cancellationToken).ConfigureAwait(false);
@@ -455,7 +489,9 @@ public sealed class GamesAppsWidget : Widget
     {
         var (title, help) = state switch
         {
-            GamesAppsViewState.Initial or GamesAppsViewState.Loading =>
+            GamesAppsViewState.Initial =>
+                ("Your library", "Saved games and applications appear here."),
+            GamesAppsViewState.Loading =>
                 (_page == GamesAppsPage.Catalog
                     ? "Loading applications"
                     : "Loading your library",
@@ -472,22 +508,34 @@ public sealed class GamesAppsWidget : Widget
                 ("App library unavailable", "The trusted Windows application catalog is unavailable."),
             _ => ("Installed apps could not be loaded", "Try again. No paths or command lines were exposed."),
         };
-        var retry = UI.Button("Try again", "retry", "games.retry")
-            .Icon(WidgetGlyph.Refresh, "Reload installed applications")
-            .Disabled(!IsActive)
-            .Classes("games-retry");
+        var stateChildren = new List<WidgetElement>();
+        stateChildren.Add(state == GamesAppsViewState.Loading
+            ? UI.LoadingIndicator(
+                    "games.state.loading",
+                    _page == GamesAppsPage.Catalog
+                        ? "Loading available applications"
+                        : "Loading saved applications")
+                .Classes("games-state-loading")
+            : UI.Icon(WidgetGlyph.Play, "games.state.icon", "Application library")
+                .Classes("games-state-icon"));
+        stateChildren.Add(UI.Text(title, "games.state.title", title).Classes("games-state-title"));
+        stateChildren.Add(UI.Text(help, "games.state.help", help).Classes("games-state-help"));
+        string? initialFocus = null;
+        if (state is not (GamesAppsViewState.Initial or GamesAppsViewState.Loading))
+        {
+            stateChildren.Add(UI.Button("Try again", RetryActionId, "games.retry")
+                .Icon(WidgetGlyph.Refresh, "Reload installed applications")
+                .Disabled(!IsActive)
+                .Classes("games-retry"));
+            initialFocus = "games.retry";
+        }
         var root = UI.Stack("games.root",
                 header,
-                UI.Stack("games.state",
-                        UI.Icon(WidgetGlyph.Play, "games.state.icon", "Application library")
-                            .Classes("games-state-icon"),
-                        UI.Text(title, "games.state.title", title).Classes("games-state-title"),
-                        UI.Text(help, "games.state.help", help).Classes("games-state-help"),
-                        retry)
+                UI.Stack("games.state", stateChildren.ToArray())
                     .Classes("games-state-card"))
             .InputScope("games-apps")
             .Classes("games-apps-widget", "has-state");
-        return new WidgetView(root, "games.retry", Surface: StandardSurface);
+        return new WidgetView(root, initialFocus, Surface: StateSurface);
     }
 
     private void StartActiveRun(CancellationToken activeLifetime)
@@ -496,16 +544,91 @@ public sealed class GamesAppsWidget : Widget
         var lifetime = CancellationTokenSource.CreateLinkedTokenSource(activeLifetime);
         _activeRun = lifetime;
         var generation = Interlocked.Increment(ref _generation);
+        bool hasLibrarySnapshot;
         lock (_gate)
         {
-            _viewState = GamesAppsViewState.Loading;
             _page = GamesAppsPage.Library;
-            _status = "Loading your saved library…";
+            _items = _libraryItems;
+            _nextOffset = null;
+            if (_hasLibrarySnapshot)
+            {
+                if (_selectedAppId is null || !_items.Any(item =>
+                        string.Equals(item.AppId, _selectedAppId, StringComparison.Ordinal)))
+                    _selectedAppId = ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
+                _viewState = GamesAppsViewState.Ready;
+                _status = LibraryStatusLocked();
+            }
+            else
+            {
+                _viewState = GamesAppsViewState.Initial;
+                _status = "Preparing your saved library";
+            }
             _launchingAppId = null;
             _loadingMore = false;
+            hasLibrarySnapshot = _hasLibrarySnapshot;
         }
-        Invalidate();
+        if (hasLibrarySnapshot) return;
         _ = LoadSavedLibraryAsync(generation, lifetime.Token);
+        _ = ShowColdLoadingAfterDelayAsync(generation, lifetime.Token);
+    }
+
+    private async Task ShowColdLoadingAfterDelayAsync(
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(ColdLoadingDelayMilliseconds, cancellationToken).ConfigureAwait(false);
+            lock (_gate)
+            {
+                if (Interlocked.Read(ref _generation) != generation || _hasLibrarySnapshot ||
+                    _viewState != GamesAppsViewState.Initial)
+                    return;
+                _viewState = GamesAppsViewState.Loading;
+                _status = "Loading your saved library…";
+            }
+            Invalidate();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RetryActiveRunAsync(CancellationToken cancellationToken)
+    {
+        if (!IsActive || ActiveCancellationToken.IsCancellationRequested) return;
+
+        var acquired = false;
+        try
+        {
+            acquired = await _commandGate.WaitAsync(0, cancellationToken).ConfigureAwait(false);
+            if (!acquired || !IsActive || ActiveCancellationToken.IsCancellationRequested) return;
+
+            StopActiveRun();
+            var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                ActiveCancellationToken, cancellationToken);
+            _activeRun = lifetime;
+            var generation = Interlocked.Increment(ref _generation);
+            lock (_gate)
+            {
+                _viewState = GamesAppsViewState.Loading;
+                _page = GamesAppsPage.Library;
+                _status = "Reloading your saved library…";
+                _launchingAppId = null;
+                _loadingMore = false;
+            }
+            Invalidate();
+            await LoadSavedLibraryAsync(generation, lifetime.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested || ActiveCancellationToken.IsCancellationRequested)
+        {
+            if (cancellationToken.IsCancellationRequested) throw;
+        }
+        finally
+        {
+            if (acquired) _commandGate.Release();
+        }
     }
 
     private void StopActiveRun()
@@ -536,15 +659,19 @@ public sealed class GamesAppsWidget : Widget
             lock (_gate)
             {
                 if (Interlocked.Read(ref _generation) != generation) return;
+                var liveSelectedSavedId = _libraryItems.FirstOrDefault(item =>
+                    string.Equals(item.AppId, _selectedAppId, StringComparison.Ordinal))?.SavedId;
                 _stateRevision = persisted.Revision;
                 _curatedSavedIds.Clear();
                 _curatedSavedIds.AddRange(normalized.Select(item => item.SavedId));
                 _items = normalized;
                 _libraryItems = normalized;
                 _nextOffset = null;
+                var selectedSavedId = liveSelectedSavedId ?? state.SelectedSavedId;
                 _selectedAppId = normalized.FirstOrDefault(item =>
-                    string.Equals(item.SavedId, state.SelectedSavedId,
+                    string.Equals(item.SavedId, selectedSavedId,
                         StringComparison.Ordinal))?.AppId ?? normalized.FirstOrDefault()?.AppId;
+                _hasLibrarySnapshot = true;
                 _viewState = GamesAppsViewState.Ready;
                 _status = LibraryStatusLocked();
             }
@@ -873,11 +1000,23 @@ public sealed class GamesAppsWidget : Widget
         lock (_gate)
         {
             if (Interlocked.Read(ref _generation) != generation) return;
-            _viewState = state;
-            _status = status;
-            _items = [];
-            _nextOffset = null;
-            _launchingAppId = null;
+            if (_hasLibrarySnapshot)
+            {
+                _page = GamesAppsPage.Library;
+                _items = _libraryItems;
+                _nextOffset = null;
+                _launchingAppId = null;
+                _viewState = GamesAppsViewState.Ready;
+                _status = LibraryStatusLocked() + " · refresh unavailable";
+            }
+            else
+            {
+                _viewState = state;
+                _status = status;
+                _items = [];
+                _nextOffset = null;
+                _launchingAppId = null;
+            }
         }
         Invalidate();
     }

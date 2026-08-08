@@ -33,7 +33,6 @@
 
 .audio-status,
 .audio-help,
-.audio-session-count,
 .audio-session-state {
   color: var(--text-muted);
   font-size: 12px;
@@ -150,19 +149,15 @@
   corner-radius: 8px;
 }
 
-.audio-session-details {
-  min-width: 0px;
-  flex-grow: 1;
-  flex-shrink: 1;
-  gap: 1px;
-}
-
 .audio-session-name {
   color: var(--text);
   font-size: 15px;
   font-weight: 500;
+  min-width: 0px;
   max-lines: 1;
   text-overflow: ellipsis;
+  flex-grow: 1;
+  flex-shrink: 1;
 }
 
 .audio-mute-icon {
