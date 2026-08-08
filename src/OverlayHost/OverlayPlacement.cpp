@@ -298,4 +298,95 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     };
 }
 
+ControllerGuideDensity ResolveControllerGuideDensity(
+    const float availableWidthDip,
+    const float textScale) noexcept {
+    if (!std::isfinite(availableWidthDip) || availableWidthDip <= 0.0F) {
+        return ControllerGuideDensity::Minimal;
+    }
+    const float boundedScale = std::isfinite(textScale)
+        ? std::clamp(textScale, 0.75F, 2.0F)
+        : 1.0F;
+    const float effectiveWidth = availableWidthDip / boundedScale;
+    if (effectiveWidth >= 620.0F) return ControllerGuideDensity::Full;
+    if (effectiveWidth >= 360.0F) return ControllerGuideDensity::Compact;
+    return ControllerGuideDensity::Minimal;
+}
+
+std::wstring BuildTrayControllerGuide(
+    const ControllerGuideDensity density,
+    const bool reorderMode,
+    const std::span<const ControllerGuideAction> quickActions) {
+    if (reorderMode) {
+        return density == ControllerGuideDensity::Minimal
+            ? L"Y Done   B Close"
+            : L"←→ Move   Y Done   B Close";
+    }
+
+    const std::size_t characterBudget =
+        density == ControllerGuideDensity::Full ? 78U :
+        density == ControllerGuideDensity::Compact ? 60U : 28U;
+    const std::size_t labelBudget =
+        density == ControllerGuideDensity::Full ? 14U :
+        density == ControllerGuideDensity::Compact ? 8U : 6U;
+    const std::size_t actionBudget =
+        density == ControllerGuideDensity::Minimal ? 1U : 3U;
+    constexpr std::wstring_view suffix = L"↑/A Enter   B Close";
+
+    const auto sanitize = [](const std::wstring_view value,
+                             const std::size_t limit) {
+        std::wstring result;
+        result.reserve(std::min(value.size(), limit));
+        bool priorSpace = false;
+        for (const wchar_t character : value) {
+            const bool whitespace = character == L' ' || character == L'\t' ||
+                                    character == L'\r' || character == L'\n';
+            if (whitespace) {
+                if (!result.empty() && !priorSpace) result.push_back(L' ');
+                priorSpace = true;
+            } else {
+                result.push_back(character);
+                priorSpace = false;
+            }
+            if (result.size() >= limit) break;
+        }
+        while (!result.empty() && result.back() == L' ') result.pop_back();
+        if (value.size() > result.size() && result.size() >= 2) {
+            result.back() = L'…';
+        }
+        return result;
+    };
+
+    std::wstring result;
+    std::size_t accepted{};
+    for (const auto& action : quickActions) {
+        if (accepted >= actionBudget) break;
+        const auto button = sanitize(action.button, 4U);
+        const auto label = sanitize(action.label, labelBudget);
+        if (button.empty() || label.empty()) continue;
+        std::wstring segment = button + L" " + label;
+        const std::size_t projected = result.size() +
+            (result.empty() ? 0U : 3U) + segment.size() + 3U + suffix.size();
+        if (projected > characterBudget) continue;
+        if (!result.empty()) result += L"   ";
+        result += segment;
+        ++accepted;
+    }
+    if (!result.empty()) {
+        result += L"   ";
+        result += suffix;
+        return result;
+    }
+
+    switch (density) {
+    case ControllerGuideDensity::Full:
+        return L"←→ Switch   ↑/A Enter   Y Reorder   B Close";
+    case ControllerGuideDensity::Compact:
+        return L"←→ Switch   ↑/A Enter   B Close";
+    case ControllerGuideDensity::Minimal:
+        return std::wstring{suffix};
+    }
+    return std::wstring{suffix};
+}
+
 } // namespace gba

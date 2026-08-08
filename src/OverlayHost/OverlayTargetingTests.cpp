@@ -18,6 +18,8 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
+    using gba::DisplayEnvironmentChange;
+    using gba::DisplayRefreshPlan;
     using gba::OverlayPresentationDirective;
     constexpr gba::OverlayPresentationExtent dashboard{1180, 180};
     constexpr gba::OverlayPresentationExtent compactWidget{540, 620};
@@ -51,6 +53,28 @@ int main() {
     Check(gba::DecideOverlayPresentation(true, true, dashboard, dashboard, true) ==
               OverlayPresentationDirective::Place,
           "monitor target change requests placement even at the same extent");
+    Check(gba::ShouldCommitVisiblePlacementSynchronously(
+              true, OverlayPresentationDirective::Place),
+          "visible resize or retarget commits a complete frame synchronously");
+    Check(!gba::ShouldCommitVisiblePlacementSynchronously(
+              false, OverlayPresentationDirective::Place),
+          "initial show does not add a redundant synchronous frame");
+    Check(!gba::ShouldCommitVisiblePlacementSynchronously(
+              true, OverlayPresentationDirective::Repaint),
+          "same-extent widget switch remains repaint-only");
+
+    Check(gba::DecideDisplayRefresh(false, DisplayEnvironmentChange::Dpi) ==
+              DisplayRefreshPlan{},
+          "hidden DPI changes defer work until the next authoritative show");
+    Check(gba::DecideDisplayRefresh(true, DisplayEnvironmentChange::Dpi) ==
+              DisplayRefreshPlan{true, false, true},
+          "visible DPI changes recreate resources and reposition both windows");
+    Check(gba::DecideDisplayRefresh(true, DisplayEnvironmentChange::Topology) ==
+              DisplayRefreshPlan{true, false, true},
+          "topology changes re-resolve monitor bounds without appearance churn");
+    Check(gba::DecideDisplayRefresh(true, DisplayEnvironmentChange::SystemSettings) ==
+              DisplayRefreshPlan{true, true, true},
+          "work-area settings reapply appearance and reposition both windows");
 
     gba::ForegroundTargetTracker tracker;
     tracker.SetOwnedWindows(100, 101);

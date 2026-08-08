@@ -4,8 +4,11 @@ namespace GameBarAlternative.PlatformBroker;
 public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
 {
     private readonly List<AudioSessionSummary> _audioSessions = [];
+    private readonly List<AudioDeviceSummary> _audioDevices = [];
     private readonly List<SavedNetworkProfileSummary> _networkProfiles = [];
     private readonly List<AvailableWifiNetworkSummary> _availableWifiNetworks = [];
+    private readonly List<RecentActivitySummary> _recentActivities = [];
+    private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
@@ -25,13 +28,27 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int NetworkSwitchCalls { get; private set; }
     public int WifiScanCalls { get; private set; }
     public int WifiConnectCalls { get; private set; }
+    public int WifiRadioControlCalls { get; private set; }
+    public int RecentActivityActivationCalls { get; private set; }
+    public int BluetoothRadioControlCalls { get; private set; }
+    public string? LastActivatedActivityId { get; private set; }
+    public WifiRadioSummary WifiRadio { get; set; } = new(WifiRadioState.On, true);
+    public BluetoothRadioState BluetoothRadioState { get; set; } = BluetoothRadioState.On;
+    public bool CanControlBluetoothRadio { get; set; } = true;
     public WifiScanState WifiScanState { get; set; } = WifiScanState.NotScanned;
     public AudioOutputSummary AudioOutput { get; set; } = new(0.5, false);
+    public AudioInputSummary AudioInput { get; set; } = new(0.5, false);
 
     public void SetAudioSessions(IEnumerable<AudioSessionSummary> sessions)
     {
         _audioSessions.Clear();
         _audioSessions.AddRange(sessions);
+    }
+
+    public void SetAudioDevices(IEnumerable<AudioDeviceSummary> devices)
+    {
+        _audioDevices.Clear();
+        _audioDevices.AddRange(devices);
     }
 
     public void SetSavedNetworkProfiles(IEnumerable<SavedNetworkProfileSummary> profiles)
@@ -45,6 +62,18 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         _availableWifiNetworks.Clear();
         _availableWifiNetworks.AddRange(networks);
         WifiScanState = WifiScanState.Ready;
+    }
+
+    public void SetRecentActivities(IEnumerable<RecentActivitySummary> activities)
+    {
+        _recentActivities.Clear();
+        _recentActivities.AddRange(activities);
+    }
+
+    public void SetBluetoothDevices(IEnumerable<BluetoothDeviceSummary> devices)
+    {
+        _bluetoothDevices.Clear();
+        _bluetoothDevices.AddRange(devices);
     }
 
     public void Publish(BrokerPlatformEvent platformEvent) =>
@@ -95,6 +124,35 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<AudioDeviceSummary>>(_audioDevices.ToArray());
+    }
+
+    public Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(AudioInput);
+    }
+
+    public Task SetAudioInputVolumeAsync(double volume, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AudioControlCalls++;
+        AudioInput = AudioInput with { Volume = volume };
+        return Task.CompletedTask;
+    }
+
+    public Task SetAudioInputMutedAsync(bool isMuted, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AudioControlCalls++;
+        AudioInput = AudioInput with { IsMuted = isMuted };
+        return Task.CompletedTask;
+    }
+
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -138,6 +196,63 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         WifiConnectCalls++;
+        return Task.CompletedTask;
+    }
+
+    public Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(WifiRadio);
+    }
+
+    public Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WifiRadioControlCalls++;
+        WifiRadio = new(enabled ? WifiRadioState.On : WifiRadioState.Off, true);
+        EventPublished?.Invoke(this, new BrokerPlatformEvent(
+            PlatformCapabilities.NetworkWifiRadioReadV1,
+            PlatformCapabilities.NetworkWifiRadioChanged,
+            new WifiRadioChangedEvent(WifiRadio)));
+        return Task.CompletedTask;
+    }
+
+    public Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new BluetoothSummary(
+            BluetoothRadioState, CanControlBluetoothRadio,
+            BluetoothDiscoveryState.Ready, _bluetoothDevices.ToArray()));
+    }
+
+    public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        BluetoothRadioControlCalls++;
+        BluetoothRadioState = enabled ? BluetoothRadioState.On : BluetoothRadioState.Off;
+        var snapshot = new BluetoothSummary(
+            BluetoothRadioState, CanControlBluetoothRadio,
+            BluetoothDiscoveryState.Ready, _bluetoothDevices.ToArray());
+        EventPublished?.Invoke(this, new BrokerPlatformEvent(
+            PlatformCapabilities.NetworkBluetoothReadV1,
+            PlatformCapabilities.NetworkBluetoothChanged,
+            new BluetoothChangedEvent(snapshot)));
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<RecentActivitySummary>>(_recentActivities.ToArray());
+    }
+
+    public Task ActivateRecentActivityAsync(
+        string activityId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RecentActivityActivationCalls++;
+        LastActivatedActivityId = activityId;
         return Task.CompletedTask;
     }
 }

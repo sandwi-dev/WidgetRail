@@ -278,7 +278,18 @@ public:
             return FailHresult(L"RoInitialize", runtimeResult);
         }
         runtimeInitialized_ = SUCCEEDED(runtimeResult);
-        SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+        // The packaged build embeds PerMonitorV2 in app.manifest. Keep the
+        // runtime declaration as a defense for developer/CMake builds that do
+        // not embed that manifest; the older shcore API can only request PMv1.
+        // ERROR_ACCESS_DENIED is expected when the manifest already fixed the
+        // process awareness before entry-point execution.
+        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+            const DWORD awarenessError = GetLastError();
+            if (awarenessError != ERROR_ACCESS_DENIED) {
+                AppendDiagnostic(L"Unable to request Per-Monitor-V2 DPI awareness error=" +
+                                 std::to_wstring(awarenessError));
+            }
+        }
 
         WNDCLASSEXW windowClass{sizeof(windowClass)};
         windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -661,29 +672,18 @@ private:
             }
             return 0;
         case WM_DPICHANGED:
-            DiscardGraphicsResources();
-            if (state_.surface() != gba::Surface::Hidden) {
-                ShowOverlay();
-                InvalidateRect(window_, nullptr, FALSE);
-            }
+            RefreshVisibleDisplayEnvironment(gba::DisplayEnvironmentChange::Dpi);
             return 0;
         case WM_DISPLAYCHANGE:
-            if (state_.surface() != gba::Surface::Hidden) {
-                // Display topology, taskbar work area, and accessibility
-                // settings may change without a DPI transition. Recreate the
-                // target so viewport-relative shell styles use fresh metrics.
-                DiscardGraphicsResources();
-                ShowOverlay();
-                InvalidateRect(window_, nullptr, FALSE);
-            }
+            // Display topology may change without a DPI transition. Recreate
+            // the target so viewport-relative shell styles use fresh metrics.
+            RefreshVisibleDisplayEnvironment(gba::DisplayEnvironmentChange::Topology);
             return 0;
         case WM_SETTINGCHANGE:
-            if (state_.surface() != gba::Surface::Hidden) {
-                // System high-contrast and animation settings are resolved at
-                // render time. Reapply the same immutable appearance revision
-                // so both shell and widget policy update immediately.
-                ApplyPlatformAppearance();
-            }
+            // SPI_SETWORKAREA/taskbar changes and accessibility/theme changes
+            // share this notification. Always re-read monitor work-area data,
+            // even when the bridge has not supplied an appearance revision.
+            RefreshVisibleDisplayEnvironment(gba::DisplayEnvironmentChange::SystemSettings);
             return 0;
         case WM_WINDOWPOSCHANGED:
             if (state_.surface() != gba::Surface::Hidden &&
@@ -939,7 +939,9 @@ private:
             L"hint", false, viewportWidth, viewportHeight, effectiveCanvasBackground_);
     }
 
-    void ApplyPlatformAppearance() {
+    void ApplyPlatformAppearance(
+        const bool applyPresentation = true,
+        const bool invalidateWidgetSnapshots = true) {
         const auto& current = appearanceState_.current();
         if (!current) return;
         RebuildShellStyles();
@@ -963,23 +965,25 @@ private:
         (void)DwmSetWindowAttribute(backdropWindow_, DWMWA_TRANSITIONS_FORCEDISABLED,
                                     &disableTransitions, sizeof(disableTransitions));
 
-        // Worker snapshots contain bridge-computed widget styles derived from
-        // the same platform revision. Drop every cached snapshot, then refresh
-        // only the already active/visible worker; background workers remain
-        // untouched and lazily rebuild when selected later.
-        const std::wstring visibleWidget = state_.surface() == gba::Surface::Widget
-            ? std::wstring(state_.activeWidget())
-            : std::wstring(state_.selectedWidget());
-        const bool hadVisibleSnapshot = widgetSnapshots_.contains(visibleWidget);
-        widgetSnapshots_.clear();
-        renderedSnapshotSequences_.clear();
-        if (state_.surface() != gba::Surface::Hidden && hadVisibleSnapshot &&
-            IsBridgeWidget(visibleWidget)) {
-            RefreshWidgetSnapshot(visibleWidget);
+        if (invalidateWidgetSnapshots) {
+            // Worker snapshots contain bridge-computed widget styles derived
+            // from the same platform revision. Drop every cached snapshot,
+            // then refresh only the visible worker. Live Win32 accessibility
+            // broadcasts reuse the current revision and skip this block.
+            const std::wstring visibleWidget = state_.surface() == gba::Surface::Widget
+                ? std::wstring(state_.activeWidget())
+                : std::wstring(state_.selectedWidget());
+            const bool hadVisibleSnapshot = widgetSnapshots_.contains(visibleWidget);
+            widgetSnapshots_.clear();
+            renderedSnapshotSequences_.clear();
+            if (state_.surface() != gba::Surface::Hidden && hadVisibleSnapshot &&
+                IsBridgeWidget(visibleWidget)) {
+                RefreshWidgetSnapshot(visibleWidget);
+            }
         }
 
         DiscardGraphicsResources();
-        if (state_.surface() != gba::Surface::Hidden) {
+        if (applyPresentation && state_.surface() != gba::Surface::Hidden) {
             ShowOverlay();
             InvalidateRect(window_, nullptr, FALSE);
         }
@@ -1002,6 +1006,27 @@ private:
             return;
         }
         ApplyPlatformAppearance();
+    }
+
+    void RefreshVisibleDisplayEnvironment(const gba::DisplayEnvironmentChange change) {
+        const auto plan = gba::DecideDisplayRefresh(
+            state_.surface() != gba::Surface::Hidden, change);
+        if (!plan.repositionWindows) return;
+
+        // Appearance application also invalidates widget snapshots and target
+        // resources. Suppress its placement step so one notification produces
+        // one authoritative monitor/work-area/DPI resolve. If appearance is
+        // unavailable, the placement refresh still proceeds independently.
+        if (plan.reapplyAppearance) {
+            // Applying the current appearance already recreates the target
+            // resources; do not discard them a second time for the same
+            // display-environment notification.
+            ApplyPlatformAppearance(false, false);
+        } else if (plan.recreateGraphics) {
+            DiscardGraphicsResources();
+        }
+        ShowOverlay();
+        InvalidateRect(window_, nullptr, FALSE);
     }
 
     bool RefreshWidgetCatalog() {
@@ -1158,7 +1183,7 @@ private:
         return WidgetIcon(id);
     }
 
-    void ShowOverlay() {
+    void ShowOverlay(const bool atomicVisibleTransition = false) {
         if (!placementRefreshGate_.TryEnter()) return;
         struct PlacementScope final {
             gba::PlacementRefreshGate& gate;
@@ -1239,10 +1264,12 @@ private:
             monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
             monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
             SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        const UINT overlayPlacementFlags = SWP_SHOWWINDOW | SWP_NOACTIVATE |
+            (atomicVisibleTransition && wasVisible ? SWP_NOREDRAW : 0U);
         const BOOL overlayPlaced = SetWindowPos(
             window_, HWND_TOPMOST, placement->x, placement->y,
             placement->width, placement->height,
-            SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            overlayPlacementFlags);
         if (!backdropPlaced || !overlayPlaced) {
             AppendDiagnostic(L"Overlay placement failed error=" +
                              std::to_wstring(GetLastError()));
@@ -1357,8 +1384,17 @@ private:
             HideOverlay();
             return;
         case gba::OverlayPresentationDirective::Place:
-            ShowOverlay();
-            [[fallthrough]];
+        {
+            const bool wasWindowVisible = IsWindowVisible(window_) != FALSE;
+            ShowOverlay(wasWindowVisible);
+            InvalidateRect(window_, nullptr, FALSE);
+            if (gba::ShouldCommitVisiblePlacementSynchronously(
+                    wasWindowVisible, directive)) {
+                RedrawWindow(window_, nullptr, nullptr,
+                    RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+            }
+            return;
+        }
         case gba::OverlayPresentationDirective::Repaint:
             InvalidateRect(window_, nullptr, FALSE);
             return;
@@ -1397,8 +1433,13 @@ private:
             }
             break;
         case VK_UP:
-            if (!repeated && state_.surface() == gba::Surface::Widget &&
-                state_.focusRegion() == gba::FocusRegion::Widget) MoveWidgetFocus(L"up");
+            if (!repeated && state_.surface() == gba::Surface::Widget) {
+                if (state_.focusRegion() == gba::FocusRegion::Tray) {
+                    Dispatch(gba::Command::Activate);
+                } else {
+                    MoveWidgetFocus(L"up");
+                }
+            }
             break;
         case VK_DOWN:
             if (!repeated && state_.surface() == gba::Surface::Widget &&
@@ -1462,6 +1503,9 @@ private:
                 Dispatch(gba::Command::NavigateLeft);
             } else if (direction == NavigationDirection::Right) {
                 Dispatch(gba::Command::NavigateRight);
+            } else if (gba::input::ShouldEnterWidgetFromTray(
+                           direction, event.phase)) {
+                Dispatch(gba::Command::Activate);
             }
             return;
         }
@@ -1828,6 +1872,15 @@ private:
                 focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                 InvalidateRect(window_, nullptr, FALSE);
             }
+            const auto* focusedNode = isOpen && visibleFocus
+                ? gba::input::FindNodeInInputScope(
+                    *snapshot, *visibleFocus, snapshot->activeInputScopeId)
+                : nullptr;
+            const bool trustedForegroundActivation =
+                isOpen && widget == L"recent-apps" && protocolButton == L"a" &&
+                phase == gba::input::NavigationEventPhase::Pressed && focusedNode &&
+                !focusedNode->isDisabled && !focusedNode->isBusy &&
+                focusedNode->actionId == L"recent.activate";
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
@@ -1840,7 +1893,8 @@ private:
                 phase == gba::input::NavigationEventPhase::Repeated
                     ? std::wstring_view{L"repeated"}
                     : std::wstring_view{L"pressed"},
-                requestedValue);
+                requestedValue,
+                trustedForegroundActivation);
             if (!handled) {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" input failed: " + bridge_.lastError();
@@ -2036,6 +2090,12 @@ private:
                                         DWRITE_FONT_STRETCH_NORMAL,
                                         fontSize(L"hint", hintStyle_, 14.0F), L"en-us",
                                         hintFormat_.ReleaseAndGetAddressOf());
+        if (hintFormat_) {
+            // Host chrome has one reserved row. Wrapping controller mappings
+            // into a clipped second line is never a valid responsive state;
+            // DrawWidgetFooter selects a shorter semantic guide instead.
+            hintFormat_->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        }
         writeFactory_->CreateTextFormat(L"Segoe UI Variable Display", nullptr,
                                         DWRITE_FONT_WEIGHT_SEMI_BOLD,
                                         DWRITE_FONT_STYLE_NORMAL,
@@ -2236,32 +2296,25 @@ private:
         return button;
     }
 
-    std::wstring DashboardHint() const {
-        if (state_.reorderMode()) {
-            return L"D-pad / Left stick  Move     Y  Done     B  Close";
-        }
+    std::wstring DashboardHint(const float availableWidth) const {
         if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty()) {
             return lastActionMessage_;
         }
+        std::vector<gba::ControllerGuideAction> quickActions;
         const auto* snapshot = SnapshotFor(state_.selectedWidget());
-        if (IsBridgeWidget(state_.selectedWidget()) && snapshot &&
-            !snapshot->quickActions.empty()) {
-            std::wstring prompt;
+        if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
+            quickActions.reserve(snapshot->quickActions.size());
             for (const auto& action : snapshot->quickActions) {
-                // Dashboard A/Y/B are shell navigation. Do not advertise a
-                // widget shortcut the native router cannot dispatch here.
+                // A/Y/B remain shell navigation while focus is on the tray.
                 if (action.button == L"a" || action.button == L"y" ||
                     action.button == L"b") continue;
-                if (!prompt.empty()) prompt += L"     ";
-                prompt += DisplayButton(action.button);
-                prompt += L"  ";
-                prompt += action.label;
+                quickActions.push_back({DisplayButton(action.button), action.label});
             }
-            if (!prompt.empty()) prompt += L"     ";
-            prompt += L"A  Enter widget     Y  Reorder     B / Guide  Close";
-            return prompt;
         }
-        return L"D-pad / Left stick  Switch widget     A  Enter widget     Y  Reorder     B / Guide  Close";
+        return gba::BuildTrayControllerGuide(
+            gba::ResolveControllerGuideDensity(
+                availableWidth, CurrentTextScale()),
+            state_.reorderMode(), quickActions);
     }
 
     void DrawDashboard(const float width, const float height) {
@@ -2281,7 +2334,7 @@ private:
                      dashboardTextBrush_.Get());
         DrawIconStrip(width, height);
 
-        const std::wstring hint = DashboardHint();
+        const std::wstring hint = DashboardHint(contentRight - contentLeft);
         DrawTextLine(hint, hintFormat_.Get(),
                      D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom),
                      dashboardSecondaryBrush_.Get());
@@ -2344,7 +2397,7 @@ private:
             std::min(12.0F, geometry.footerHeight * 0.25F);
         if (textBottom <= textTop + 1.0F) return;
         if (state_.focusRegion() == gba::FocusRegion::Tray) {
-            DrawTextLine(DashboardHint(), hintFormat_.Get(),
+            DrawTextLine(DashboardHint(contentRight - contentLeft), hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
                          dashboardSecondaryBrush_.Get());
             return;
@@ -2410,6 +2463,10 @@ private:
                 gba::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
                 options.surfaceBackground = effectivePanelBackground_;
+                const float panelContentInset = std::max(
+                    0.0F, geometry->widgetViewportX - panelLeft);
+                options.surfaceCornerRadiusPx = std::max(
+                    0.0F, panelCornerRadius_ - panelContentInset);
                 if (appearanceState_.current())
                     options.accessibility = CurrentAccessibilityPolicy();
                 const auto collectSliderOverrides = [&](const auto& self,

@@ -14,10 +14,15 @@
     "type": "GameBarAlternative.FirstPartyWidgets.NetworkControls.NetworkControlsWidget"
   },
   "permissions": [
-    "system.network.read.v1"
+    "system.network.read.v1",
+    "system.network.wifi.read.v1",
+    "system.network.wifi.radio.read.v1"
   ],
   "optionalPermissions": [
-    "system.network.saved-profile.switch.v1"
+    "system.network.wifi.connect.v1",
+    "system.network.wifi.radio.control.v1",
+    "system.network.bluetooth.read.v1",
+    "system.network.bluetooth.radio.control.v1"
   ],
   "backgroundPolicy": "suspend",
   "resourceRequest": {

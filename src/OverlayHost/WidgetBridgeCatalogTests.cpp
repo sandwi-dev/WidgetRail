@@ -43,6 +43,22 @@ constexpr std::string_view ValidAppearance = R"json({
 } // namespace
 
 int main() {
+    assert(gba::testing::ShouldDelegateForegroundActivation(
+        42, true, true, true, L"a", L"pressed"));
+    assert(!gba::testing::ShouldDelegateForegroundActivation(
+        0, true, true, true, L"a", L"pressed"));
+    assert(!gba::testing::ShouldDelegateForegroundActivation(
+        42, false, true, true, L"a", L"pressed"));
+    assert(!gba::testing::ShouldDelegateForegroundActivation(
+        42, true, false, true, L"a", L"pressed"));
+    assert(!gba::testing::ShouldDelegateForegroundActivation(
+        42, true, true, false, L"a", L"pressed"));
+    assert(!gba::testing::ShouldDelegateForegroundActivation(
+        42, true, true, true, L"a", L"repeated"));
+    assert(!gba::testing::ShouldDelegateForegroundActivation(
+        42, true, true, true, L"a", L"released"));
+    assert(!gba::testing::ShouldDelegateForegroundActivation(
+        42, true, true, true, L"x", L"pressed"));
     std::wstring error;
     const auto valid = gba::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{

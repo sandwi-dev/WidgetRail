@@ -64,6 +64,12 @@ try {
     Invoke-Checked -Description 'Build and test Windows network provider' -Command {
         dotnet run --project 'tests\WindowsNetworkProvider.Tests\WindowsNetworkProvider.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test Windows Bluetooth provider' -Command {
+        dotnet run --project 'tests\WindowsBluetoothProvider.Tests\WindowsBluetoothProvider.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test Windows foreground activity provider' -Command {
+        dotnet run --project 'tests\WindowsActivityProvider.Tests\WindowsActivityProvider.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build and test first-party Audio Mixer widget' -Command {
         dotnet run --project 'tests\AudioMixerWidget.Tests\AudioMixerWidget.Tests.csproj' --configuration $Configuration
     }
@@ -75,6 +81,12 @@ try {
     }
     Invoke-Checked -Description 'Build first-party Network Controls isolated worker' -Command {
         dotnet build 'src\FirstPartyWidgets\NetworkControlsWidget.Worker\NetworkControlsWidget.Worker.csproj' --configuration $Configuration --nologo
+    }
+    Invoke-Checked -Description 'Build and test first-party Recent Apps widget' -Command {
+        dotnet run --project 'tests\RecentAppsWidget.Tests\RecentAppsWidget.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build first-party Recent Apps isolated worker' -Command {
+        dotnet build 'src\FirstPartyWidgets\RecentAppsWidget.Worker\RecentAppsWidget.Worker.csproj' --configuration $Configuration --nologo
     }
     Invoke-Checked -Description 'Build and test first-party Settings widget' -Command {
         dotnet run --project 'tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj' --configuration $Configuration

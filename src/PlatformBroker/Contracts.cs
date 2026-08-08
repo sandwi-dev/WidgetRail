@@ -55,6 +55,27 @@ public sealed record SetAudioOutputVolumeRequest(
 public sealed record SetAudioOutputMutedRequest(
     [property: JsonRequired] bool IsMuted);
 
+public enum AudioDeviceDirection
+{
+    Output,
+    Input,
+}
+
+/// <summary>Sanitized active endpoint. DeviceId is host-generated and contains no endpoint ID.</summary>
+public sealed record AudioDeviceSummary(
+    string DeviceId,
+    string DisplayName,
+    AudioDeviceDirection Direction,
+    bool IsDefault);
+
+public sealed record AudioInputSummary(
+    [property: JsonRequired] double Volume,
+    [property: JsonRequired] bool IsMuted);
+public sealed record SetAudioInputVolumeRequest(
+    [property: JsonRequired] double Volume);
+public sealed record SetAudioInputMutedRequest(
+    [property: JsonRequired] bool IsMuted);
+
 public enum NetworkConnectivity
 {
     None,
@@ -155,8 +176,87 @@ public sealed record AudioSessionsChangedEvent(
 public sealed record AudioOutputChangedEvent(
     AudioOutputSummary? Output,
     bool IsAvailable = true);
+public sealed record AudioDevicesChangedEvent(
+    IReadOnlyList<AudioDeviceSummary> Devices,
+    bool IsAvailable = true);
+public sealed record AudioInputChangedEvent(
+    AudioInputSummary? Input,
+    bool IsAvailable = true);
 public sealed record NetworkStatusChangedEvent(NetworkStatusSummary Status);
 public sealed record AvailableWifiNetworksChangedEvent(AvailableWifiNetworksSummary Snapshot);
+
+public enum WifiRadioState
+{
+    On,
+    Off,
+    HardwareDisabled,
+    NoAdapter,
+    Unavailable,
+}
+
+public sealed record WifiRadioSummary(WifiRadioState State, bool CanControl);
+public sealed record SetWifiRadioStateRequest([property: JsonRequired] bool Enabled);
+public sealed record WifiRadioChangedEvent(WifiRadioSummary Radio);
+
+public enum BluetoothRadioState
+{
+    On,
+    Off,
+    HardwareDisabled,
+    NoAdapter,
+    Unavailable,
+}
+
+public enum BluetoothDiscoveryState
+{
+    Enumerating,
+    Ready,
+    Unavailable,
+}
+
+/// <summary>
+/// Sanitized Bluetooth association endpoint. DeviceId is a host-generated,
+/// process-lifetime token and never contains a native device ID, address, or handle.
+/// </summary>
+public sealed record BluetoothDeviceSummary(
+    string DeviceId,
+    string DisplayName,
+    bool IsPaired,
+    bool IsConnected,
+    bool IsPresent);
+
+public sealed record BluetoothSummary(
+    BluetoothRadioState RadioState,
+    bool CanControlRadio,
+    BluetoothDiscoveryState DiscoveryState,
+    IReadOnlyList<BluetoothDeviceSummary> Devices);
+
+public sealed record SetBluetoothRadioStateRequest([property: JsonRequired] bool Enabled);
+public sealed record BluetoothChangedEvent(BluetoothSummary Snapshot);
+
+public enum RecentActivityKind
+{
+    Unknown,
+    Application,
+    Game,
+}
+
+/// <summary>
+/// Bounded, privacy-filtered foreground activity. ActivityId is an opaque,
+/// process-lifetime token and never contains an HWND, PID, path, or package identity.
+/// </summary>
+public sealed record RecentActivitySummary(
+    string ActivityId,
+    string DisplayName,
+    RecentActivityKind Kind,
+    bool IsRunning,
+    bool IsMostRecent);
+
+public sealed record ActivateRecentActivityRequest(
+    [property: JsonRequired] string ActivityId);
+
+public sealed record RecentActivitiesChangedEvent(
+    IReadOnlyList<RecentActivitySummary> Activities);
 
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
 
@@ -174,6 +274,10 @@ public interface IAudioPlatformBrokerBackend : IPlatformBrokerEventSource
     Task<AudioOutputSummary> GetAudioOutputAsync(CancellationToken cancellationToken);
     Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken);
     Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(CancellationToken cancellationToken);
+    Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken);
+    Task SetAudioInputVolumeAsync(double volume, CancellationToken cancellationToken);
+    Task SetAudioInputMutedAsync(bool isMuted, CancellationToken cancellationToken);
 }
 
 public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource
@@ -184,13 +288,30 @@ public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource
     Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(CancellationToken cancellationToken);
     Task RequestWifiScanAsync(CancellationToken cancellationToken);
     Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken);
+    Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken);
+    Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken);
+}
+
+public interface IActivityPlatformBrokerBackend : IPlatformBrokerEventSource
+{
+    Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
+        CancellationToken cancellationToken);
+    Task ActivateRecentActivityAsync(string activityId, CancellationToken cancellationToken);
+}
+
+public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
+{
+    Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken);
+    Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken);
 }
 
 /// <summary>
 /// Complete host backend. Providers can implement the narrower audio or network
 /// contracts and be joined with <see cref="CompositePlatformBrokerBackend"/>.
 /// </summary>
-public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend, INetworkPlatformBrokerBackend
+public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
+    INetworkPlatformBrokerBackend, IActivityPlatformBrokerBackend,
+    IBluetoothPlatformBrokerBackend
 {
 }
 

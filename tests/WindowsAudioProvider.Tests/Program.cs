@@ -8,6 +8,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Sessions are sanitized, bounded, opaque, and stable through churn", SessionsAreSafeAndStable),
     ("Controls execute on the dedicated native owner thread", ControlsUseOwnerThread),
     ("Master output controls reconcile and fail independently from sessions", MasterOutputIsIndependent),
+    ("Devices stay opaque and default microphone controls reconcile", DevicesAndInputAreSafe),
     ("Native callbacks coalesce and the provider never polls", CallbacksCoalesceWithoutPolling),
     ("Live native failure and recovery publish explicit availability", ProviderAvailabilityEvents),
     ("An explicit GET reports then retries one transient enumeration failure", ExplicitGetRecoversTransientFailure),
@@ -143,6 +144,49 @@ static async Task MasterOutputIsIndependent()
         .WaitAsync(TimeSpan.FromSeconds(2));
     Assert.True(available.IsAvailable);
     Assert.True(available.Output is not null);
+}
+
+static async Task DevicesAndInputAreSafe()
+{
+    const string privateOutputId = @"SWD\MMDEVAPI\{private-output}";
+    const string privateInputId = @"SWD\MMDEVAPI\{private-input}";
+    var adapter = new FakeNativeAdapter([])
+    {
+        Devices =
+        [
+            new(privateOutputId, "Speakers", NativeAudioDeviceDirection.Output, true),
+            new(privateInputId, @"C:\private\microphone.sys", NativeAudioDeviceDirection.Input, true),
+        ],
+        Input = new NativeAudioInputSnapshot(0.35, false),
+    };
+    await using var backend = new WindowsAudioPlatformBackend(new FakeFactory(adapter));
+
+    var devices = await backend.GetAudioDevicesAsync(CancellationToken.None);
+    Assert.Equal(2, devices.Count);
+    Assert.True(devices.All(device => device.DeviceId.StartsWith("device_", StringComparison.Ordinal)));
+    Assert.False(devices.Any(device => device.DeviceId.Contains("MMDEVAPI", StringComparison.OrdinalIgnoreCase)));
+    Assert.Equal("Microphone", devices.Single(device =>
+        device.Direction == AudioDeviceDirection.Input).DisplayName);
+    var stableId = devices.Single(device => device.Direction == AudioDeviceDirection.Output).DeviceId;
+
+    adapter.Devices =
+    [
+        new(privateOutputId, "Renamed speakers", NativeAudioDeviceDirection.Output, true),
+        new(privateInputId, "USB microphone", NativeAudioDeviceDirection.Input, true),
+    ];
+    adapter.RaiseChanged();
+    await WaitUntilAsync(() => adapter.EnumerationCalls >= 2);
+    var refreshed = await backend.GetAudioDevicesAsync(CancellationToken.None);
+    Assert.Equal(stableId, refreshed.Single(device =>
+        device.Direction == AudioDeviceDirection.Output).DeviceId);
+
+    var input = await backend.GetAudioInputAsync(CancellationToken.None);
+    Assert.Equal(0.35, input.Volume, precision: 0.0001);
+    await backend.SetAudioInputVolumeAsync(0.7, CancellationToken.None);
+    await backend.SetAudioInputMutedAsync(true, CancellationToken.None);
+    input = await backend.GetAudioInputAsync(CancellationToken.None);
+    Assert.Equal(0.7, input.Volume, precision: 0.0001);
+    Assert.True(input.IsMuted);
 }
 
 static async Task CallbacksCoalesceWithoutPolling()
@@ -297,6 +341,19 @@ static async Task DisposalIsOwnerThreadSafe()
 static async Task ProductionAdapterSmoke()
 {
     if (!OperatingSystem.IsWindows()) return;
+    var apartmentInitialized = CoreAudioInterop.InitializeMta();
+    try
+    {
+        using var native = new CoreAudioNativeAdapter();
+        _ = native.EnumerateDevices();
+        if (native.IsDeviceListDegraded)
+            throw new InvalidOperationException(
+                $"Native audio-device enumeration failed ({native.DeviceListDiagnostic}).");
+    }
+    finally
+    {
+        if (apartmentInitialized) CoreAudioInterop.Uninitialize();
+    }
     await using var backend = new WindowsAudioPlatformBackend();
     var sessions = await backend.GetAudioSessionsAsync(CancellationToken.None)
         .WaitAsync(TimeSpan.FromSeconds(5));
@@ -307,6 +364,17 @@ static async Task ProductionAdapterSmoke()
         Assert.True(session.DisplayName.Length is > 0 and <= 160);
         Assert.False(session.DisplayName.Any(char.IsControl));
         Assert.True(session.Volume is >= 0 and <= 1);
+    }
+    var devices = await backend.GetAudioDevicesAsync(CancellationToken.None)
+        .WaitAsync(TimeSpan.FromSeconds(5));
+    Assert.True(devices.All(device => device.DeviceId.StartsWith("device_", StringComparison.Ordinal)));
+    Assert.True(devices.All(device => device.DisplayName.Length is > 0 and <= 160));
+    Assert.False(devices.Any(device => device.DisplayName.Any(char.IsControl)));
+    if (devices.Any(device => device.Direction == AudioDeviceDirection.Input && device.IsDefault))
+    {
+        var input = await backend.GetAudioInputAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(input.Volume is >= 0 and <= 1);
     }
 }
 
@@ -415,7 +483,15 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
     public event EventHandler? StateChanged;
     public bool IsDegraded => Volatile.Read(ref _isDegraded) != 0;
     public bool IsOutputDegraded { get; set; }
+    public bool IsDeviceListDegraded { get; set; }
+    public bool IsInputDegraded { get; set; }
     public NativeAudioOutputSnapshot? Output { get; set; } = new(0.5, false);
+    public NativeAudioInputSnapshot? Input { get; set; } = new(0.5, false);
+    public IReadOnlyList<NativeAudioDeviceSnapshot> Devices { get; set; } =
+    [
+        new("native-output", "Speakers", NativeAudioDeviceDirection.Output, true),
+        new("native-input", "Microphone", NativeAudioDeviceDirection.Input, true),
+    ];
     public ManualResetEventSlim EnumerationEntered { get; } = new(false);
     public ManualResetEventSlim AllowEnumeration { get; } = new(false);
     public List<int> NativeCallThreadIds { get; } = [];
@@ -466,6 +542,18 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
         return Output;
     }
 
+    public IReadOnlyList<NativeAudioDeviceSnapshot> EnumerateDevices()
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        return Devices;
+    }
+
+    public NativeAudioInputSnapshot? GetDefaultInput()
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        return Input;
+    }
+
     public bool TrySetSessionVolume(string nativeSessionKey, double volume)
     {
         NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
@@ -507,6 +595,24 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
         Interlocked.Increment(ref _controlCalls);
         if (Output is null || IsOutputDegraded) return false;
         Output = Output with { IsMuted = isMuted };
+        return true;
+    }
+
+    public bool TrySetDefaultInputVolume(double volume)
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        Interlocked.Increment(ref _controlCalls);
+        if (Input is null || IsInputDegraded) return false;
+        Input = Input with { Volume = volume };
+        return true;
+    }
+
+    public bool TrySetDefaultInputMuted(bool isMuted)
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        Interlocked.Increment(ref _controlCalls);
+        if (Input is null || IsInputDegraded) return false;
+        Input = Input with { IsMuted = isMuted };
         return true;
     }
 

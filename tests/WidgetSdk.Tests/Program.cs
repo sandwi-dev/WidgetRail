@@ -125,6 +125,20 @@ static async Task TypedPlatformServices()
             WidgetAudioCapabilities.SetSessionMuted,
             new WidgetCapabilityAcknowledgement(true))
         .WithResponse(
+            WidgetAudioCapabilities.GetDevices,
+            (IReadOnlyList<WidgetAudioDevice>)[
+                new("device-output", "Speakers", WidgetAudioDeviceDirection.Output, true),
+                new("device-input", "Microphone", WidgetAudioDeviceDirection.Input, true)])
+        .WithResponse(
+            WidgetAudioCapabilities.GetInput,
+            new WidgetAudioInput(0.4, false))
+        .WithResponse(
+            WidgetAudioCapabilities.SetInputVolume,
+            new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetAudioCapabilities.SetInputMuted,
+            new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
             WidgetNetworkCapabilities.GetStatus,
             new WidgetNetworkStatus(
                 WidgetNetworkConnectivity.Internet,
@@ -143,6 +157,21 @@ static async Task TypedPlatformServices()
         .WithResponse(
             WidgetNetworkCapabilities.SwitchSavedProfile,
             new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetNetworkCapabilities.GetWifiRadio,
+            new WidgetWifiRadio(WidgetWifiRadioState.On, true))
+        .WithResponse(
+            WidgetNetworkCapabilities.SetWifiRadio,
+            new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetNetworkCapabilities.GetBluetooth,
+            new WidgetBluetoothSnapshot(
+                WidgetBluetoothRadioState.On, true,
+                WidgetBluetoothDiscoveryState.Ready,
+                [new("bluetooth-1", "Controller", true, true, true)]))
+        .WithResponse(
+            WidgetNetworkCapabilities.SetBluetoothRadio,
+            new WidgetCapabilityAcknowledgement(true))
         .WithEvents(
             WidgetAudioCapabilities.SessionsChanged,
             [new WidgetAudioSessionsChanged(
@@ -154,6 +183,13 @@ static async Task TypedPlatformServices()
     Assert.Equal("audio-1", sessions.Single().SessionId);
     await widget.Audio.SetSessionVolumeAsync("audio-1", 0.5);
     await widget.Audio.SetSessionMutedAsync("audio-1", true);
+    var devices = await widget.Audio.GetDevicesAsync();
+    Assert.Equal("device-output", devices.Single(device => device.IsDefault &&
+        device.Direction == WidgetAudioDeviceDirection.Output).DeviceId);
+    var input = await widget.Audio.GetInputAsync();
+    Assert.Equal(0.4, input.Volume);
+    await widget.Audio.SetInputVolumeAsync(0.6);
+    await widget.Audio.SetInputMutedAsync(true);
 
     var status = await widget.Network.GetStatusAsync();
     Assert.Equal(WidgetNetworkConnectivity.Internet, status.Connectivity);
@@ -164,6 +200,14 @@ static async Task TypedPlatformServices()
     var profiles = await widget.Network.GetSavedProfilesAsync();
     Assert.Equal("wifi-1", profiles.Single().ProfileId);
     await widget.Network.SwitchSavedProfileAsync("wifi-1");
+    var radio = await widget.Network.GetWifiRadioAsync();
+    Assert.Equal(WidgetWifiRadioState.On, radio.State);
+    Assert.True(radio.CanControl, "Typed Wi-Fi radio response lost control availability.");
+    await widget.Network.SetWifiRadioAsync(false);
+    var bluetooth = await widget.Network.GetBluetoothAsync();
+    Assert.Equal(WidgetBluetoothRadioState.On, bluetooth.RadioState);
+    Assert.Equal("bluetooth-1", bluetooth.Devices.Single().DeviceId);
+    await widget.Network.SetBluetoothRadioAsync(false);
 
     await using var events = widget.Audio.WatchSessionsAsync().GetAsyncEnumerator();
     Assert.True(await events.MoveNextAsync(), "Typed audio event was not forwarded.");

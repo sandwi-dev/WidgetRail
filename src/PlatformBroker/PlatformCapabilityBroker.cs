@@ -114,6 +114,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly IPlatformBrokerBackend _backend;
     private readonly object _gate = new();
     private readonly List<BrokerEventSubscription> _subscriptions = [];
+    private readonly HashSet<RequestLease> _requestLeases = [];
+    private readonly HashSet<string> _revokedCapabilities = new(StringComparer.Ordinal);
     private BrokerLifecycleState _lifecycle = BrokerLifecycleState.Background;
     private long _eventSequence;
     private bool _disposed;
@@ -142,6 +144,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     {
         if (!Enum.IsDefined(lifecycle))
             throw new BrokerException("invalid_lifecycle", "Broker lifecycle is invalid.");
+        List<RequestLease> canceled = [];
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -149,7 +152,16 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 throw new BrokerException("invalid_lifecycle", "Destroying broker cannot transition.");
             _lifecycle = lifecycle;
             foreach (var subscription in _subscriptions) subscription.SetLifecycle(lifecycle);
+            foreach (var lease in _requestLeases)
+            {
+                if (!IsLifecycleAllowed(lease.Kind, lifecycle))
+                {
+                    lease.MarkCanceledLocked("lifecycle_denied");
+                    canceled.Add(lease);
+                }
+            }
         }
+        foreach (var lease in canceled) lease.SignalCancellation();
     }
 
     public async Task<BrokerResponseEnvelope> HandleAsync(
@@ -175,51 +187,102 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        BrokerLifecycleState lifecycle;
         lock (_gate)
         {
             ThrowIfDisposed();
-            lifecycle = _lifecycle;
         }
         if (request.Widget != _identity)
             throw new BrokerException("identity_mismatch", "Broker request identity does not match its channel.");
         var capability = await AuthorizeAsync(request.CapabilityId, request.Operation,
             cancellationToken).ConfigureAwait(false);
-        DemandLifecycle(capability.Kind, lifecycle);
+        using var lease = CreateRequestLease(capability, cancellationToken);
+        try
+        {
+            lease.ThrowIfBrokerCanceled();
+            return await ExecuteAuthorizedAsync(request, lease).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(
+                "The broker request was canceled by its caller.", exception, cancellationToken);
+        }
+        catch (OperationCanceledException exception) when (lease.CancellationCode is { } code)
+        {
+            throw new BrokerException(code,
+                code == "capability_revoked"
+                    ? "Capability permission was revoked while the request was running."
+                    : "Capability became unavailable in this lifecycle while the request was running.",
+                exception);
+        }
+    }
 
+    private async Task<JsonElement> ExecuteAuthorizedAsync(
+        BrokerRequestEnvelope request,
+        RequestLease lease)
+    {
+        // This is the dispatch linearization point. A host transition or
+        // consent refresh that won the broker lock first has already marked
+        // the lease, even if its cancellation callbacks are still draining.
+        lease.ThrowIfBrokerCanceled();
+        var requestToken = lease.Token;
         return request.Operation switch
         {
             PlatformCapabilities.AudioSessionsList =>
                 BrokerJson.ToElement(ValidateAudioSessions(DemandEmptyPayload(request.Payload),
-                    await _backend.GetAudioSessionsAsync(cancellationToken).ConfigureAwait(false))),
+                    await _backend.GetAudioSessionsAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.AudioSessionSetVolume =>
-                await SetAudioVolumeAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+                await SetAudioVolumeAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.AudioSessionSetMuted =>
-                await SetAudioMutedAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+                await SetAudioMutedAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.AudioOutputGet =>
                 BrokerJson.ToElement(ValidateAudioOutput(DemandEmptyPayload(request.Payload),
-                    await _backend.GetAudioOutputAsync(cancellationToken).ConfigureAwait(false))),
+                    await _backend.GetAudioOutputAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.AudioOutputSetVolume =>
-                await SetAudioOutputVolumeAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+                await SetAudioOutputVolumeAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.AudioOutputSetMuted =>
-                await SetAudioOutputMutedAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+                await SetAudioOutputMutedAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.AudioDevicesList =>
+                BrokerJson.ToElement(ValidateAudioDevices(DemandEmptyPayload(request.Payload),
+                    await _backend.GetAudioDevicesAsync(requestToken).ConfigureAwait(false))),
+            PlatformCapabilities.AudioInputGet =>
+                BrokerJson.ToElement(ValidateAudioInput(DemandEmptyPayload(request.Payload),
+                    await _backend.GetAudioInputAsync(requestToken).ConfigureAwait(false))),
+            PlatformCapabilities.AudioInputSetVolume =>
+                await SetAudioInputVolumeAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.AudioInputSetMuted =>
+                await SetAudioInputMutedAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.NetworkStatusGet =>
                 BrokerJson.ToElement(ValidateNetworkStatus(DemandEmptyPayload(request.Payload),
-                    await _backend.GetNetworkStatusAsync(cancellationToken).ConfigureAwait(false))),
+                    await _backend.GetNetworkStatusAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.NetworkSavedProfilesList =>
                 BrokerJson.ToElement(ValidateNetworkProfiles(DemandEmptyPayload(request.Payload),
-                    await _backend.GetSavedNetworkProfilesAsync(cancellationToken).ConfigureAwait(false))),
+                    await _backend.GetSavedNetworkProfilesAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.NetworkSavedProfileSwitch =>
-                await SwitchNetworkAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+                await SwitchNetworkAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.NetworkAvailableWifiGet =>
                 BrokerJson.ToElement(ValidateAvailableWifiNetworks(
                     DemandEmptyPayload(request.Payload),
-                    await _backend.GetAvailableWifiNetworksAsync(cancellationToken)
+                    await _backend.GetAvailableWifiNetworksAsync(requestToken)
                         .ConfigureAwait(false))),
             PlatformCapabilities.NetworkWifiScan =>
-                await RequestWifiScanAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+                await RequestWifiScanAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.NetworkAvailableWifiConnect =>
-                await ConnectAvailableWifiAsync(request.Payload, cancellationToken).ConfigureAwait(false),
+                await ConnectAvailableWifiAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.NetworkWifiRadioGet =>
+                BrokerJson.ToElement(ValidateWifiRadio(DemandEmptyPayload(request.Payload),
+                    await _backend.GetWifiRadioAsync(requestToken).ConfigureAwait(false))),
+            PlatformCapabilities.NetworkWifiRadioSet =>
+                await SetWifiRadioAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.NetworkBluetoothGet =>
+                BrokerJson.ToElement(ValidateBluetooth(DemandEmptyPayload(request.Payload),
+                    await _backend.GetBluetoothAsync(requestToken).ConfigureAwait(false))),
+            PlatformCapabilities.NetworkBluetoothRadioSet =>
+                await SetBluetoothRadioAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.RecentActivitiesList =>
+                BrokerJson.ToElement(ValidateRecentActivities(DemandEmptyPayload(request.Payload),
+                    await _backend.GetRecentActivitiesAsync(requestToken).ConfigureAwait(false))),
+            PlatformCapabilities.RecentActivityActivate =>
+                await ActivateRecentActivityAsync(request.Payload, requestToken).ConfigureAwait(false),
             _ => throw new BrokerException("unsupported_operation", "Broker operation is unsupported."),
         };
     }
@@ -229,31 +292,29 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         string eventType,
         CancellationToken cancellationToken = default)
     {
-        BrokerLifecycleState lifecycle;
         lock (_gate)
         {
             ThrowIfDisposed();
-            lifecycle = _lifecycle;
         }
         var capability = await AuthorizeAsync(capabilityId, operation: null,
             cancellationToken).ConfigureAwait(false);
         if (capability.Kind != BrokerCapabilityKind.Read || !capability.Events.Contains(eventType))
             throw new BrokerException("unsupported_event", "Capability event is unsupported.");
-        DemandLifecycle(BrokerCapabilityKind.Read, lifecycle);
-        var subscription = new BrokerEventSubscription(capabilityId, eventType, lifecycle);
         lock (_gate)
         {
             ThrowIfDisposed();
+            if (_revokedCapabilities.Contains(capabilityId))
+                throw new BrokerException("capability_revoked", "Capability permission was revoked.");
+            DemandLifecycle(BrokerCapabilityKind.Read, _lifecycle);
+            var subscription = new BrokerEventSubscription(capabilityId, eventType, _lifecycle);
             _subscriptions.Add(subscription);
+            return subscription;
         }
-        return subscription;
     }
 
     /// <summary>Reconciles durable consent after a UI or another process changes it.</summary>
     public async Task RefreshConsentAsync(CancellationToken cancellationToken = default)
     {
-        BrokerEventSubscription[] subscriptions;
-        lock (_gate) subscriptions = _subscriptions.ToArray();
         ConsentDocument document;
         try
         {
@@ -270,21 +331,52 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             return;
         }
 
-        foreach (var subscription in subscriptions)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var decision = document.Entries.FirstOrDefault(entry =>
+        var granted = document.Entries.Where(entry =>
                 entry.PackageId == _identity.PackageId &&
                 entry.PublisherId == _identity.PublisherId &&
-                entry.CapabilityId == subscription.CapabilityId)?.Decision;
-            if (decision != ConsentDecision.Grant) subscription.Revoke();
+                entry.Decision == ConsentDecision.Grant)
+            .Select(entry => entry.CapabilityId)
+            .ToHashSet(StringComparer.Ordinal);
+        List<RequestLease> canceled = [];
+        lock (_gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _revokedCapabilities.Clear();
+            foreach (var capabilityId in _declaredCapabilities)
+            {
+                if (!granted.Contains(capabilityId)) _revokedCapabilities.Add(capabilityId);
+            }
+            foreach (var subscription in _subscriptions)
+            {
+                if (_revokedCapabilities.Contains(subscription.CapabilityId)) subscription.Revoke();
+            }
+            foreach (var lease in _requestLeases)
+            {
+                if (_revokedCapabilities.Contains(lease.CapabilityId))
+                {
+                    lease.MarkCanceledLocked("capability_revoked");
+                    canceled.Add(lease);
+                }
+            }
         }
+        foreach (var lease in canceled) lease.SignalCancellation();
     }
 
     internal void RevokeSubscriptions()
     {
+        List<RequestLease> canceled = [];
         lock (_gate)
+        {
+            foreach (var capabilityId in _declaredCapabilities)
+                _revokedCapabilities.Add(capabilityId);
             foreach (var subscription in _subscriptions) subscription.Revoke();
+            foreach (var lease in _requestLeases)
+            {
+                lease.MarkCanceledLocked("capability_revoked");
+                canceled.Add(lease);
+            }
+        }
+        foreach (var lease in canceled) lease.SignalCancellation();
     }
 
     private async Task<BrokerCapabilityDefinition> AuthorizeAsync(
@@ -311,6 +403,96 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             : lifecycle is BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive;
         if (!allowed)
             throw new BrokerException("lifecycle_denied", "Capability is unavailable in this lifecycle.");
+    }
+
+    private static bool IsLifecycleAllowed(
+        BrokerCapabilityKind kind, BrokerLifecycleState lifecycle) =>
+        kind == BrokerCapabilityKind.Control
+            ? lifecycle == BrokerLifecycleState.Interactive
+            : lifecycle is BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive;
+
+    private RequestLease CreateRequestLease(
+        BrokerCapabilityDefinition capability,
+        CancellationToken callerCancellation)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_revokedCapabilities.Contains(capability.Id))
+                throw new BrokerException("capability_revoked", "Capability permission was revoked.");
+            DemandLifecycle(capability.Kind, _lifecycle);
+            var lease = new RequestLease(this, capability.Id, capability.Kind, callerCancellation);
+            _requestLeases.Add(lease);
+            return lease;
+        }
+    }
+
+    private void ReleaseRequestLease(RequestLease lease)
+    {
+        lock (_gate) _requestLeases.Remove(lease);
+    }
+
+    private sealed class RequestLease : IDisposable
+    {
+        private readonly PlatformCapabilityBroker _owner;
+        private readonly CancellationTokenSource _brokerCancellation = new();
+        private readonly CancellationTokenSource _linkedCancellation;
+        private string? _cancellationCode;
+        private int _disposed;
+
+        internal RequestLease(
+            PlatformCapabilityBroker owner,
+            string capabilityId,
+            BrokerCapabilityKind kind,
+            CancellationToken callerCancellation)
+        {
+            _owner = owner;
+            CapabilityId = capabilityId;
+            Kind = kind;
+            _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                callerCancellation, _brokerCancellation.Token);
+        }
+
+        internal string CapabilityId { get; }
+        internal BrokerCapabilityKind Kind { get; }
+        internal CancellationToken Token => _linkedCancellation.Token;
+        internal string? CancellationCode => Volatile.Read(ref _cancellationCode);
+
+        internal void ThrowIfBrokerCanceled()
+        {
+            Token.ThrowIfCancellationRequested();
+            if (CancellationCode is { } code)
+                throw new BrokerException(code,
+                    code == "capability_revoked"
+                        ? "Capability permission was revoked before backend dispatch."
+                        : "Capability is unavailable in this lifecycle.");
+        }
+
+        internal void MarkCanceledLocked(string code)
+        {
+            if (Volatile.Read(ref _disposed) != 0 ||
+                Interlocked.CompareExchange(ref _cancellationCode, code, null) is not null)
+                return;
+        }
+
+        internal void SignalCancellation()
+        {
+            if (CancellationCode is null) return;
+            try { _brokerCancellation.Cancel(); }
+            catch (ObjectDisposedException)
+            {
+                // A request may complete between being marked under the broker
+                // lock and signaling outside it. Completion wins safely.
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _owner.ReleaseRequestLease(this);
+            _linkedCancellation.Dispose();
+            _brokerCancellation.Dispose();
+        }
     }
 
     private async Task<JsonElement> SetAudioVolumeAsync(
@@ -355,6 +537,26 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return BrokerJson.ToElement(new { acknowledged = true });
     }
 
+    private async Task<JsonElement> SetAudioInputVolumeAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SetAudioInputVolumeRequest>(payload);
+        if (!double.IsFinite(request.Volume) || request.Volume is < 0 or > 1)
+            throw new BrokerException("invalid_payload", "Audio input volume must be between zero and one.");
+        await _backend.SetAudioInputVolumeAsync(request.Volume, cancellationToken)
+            .ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> SetAudioInputMutedAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SetAudioInputMutedRequest>(payload);
+        await _backend.SetAudioInputMutedAsync(request.IsMuted, cancellationToken)
+            .ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
     private async Task<JsonElement> SwitchNetworkAsync(
         JsonElement payload, CancellationToken cancellationToken)
     {
@@ -381,6 +583,99 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         await _backend.ConnectAvailableWifiNetworkAsync(request.NetworkId, cancellationToken)
             .ConfigureAwait(false);
         return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> SetWifiRadioAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SetWifiRadioStateRequest>(payload);
+        await _backend.SetWifiRadioAsync(request.Enabled, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> SetBluetoothRadioAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SetBluetoothRadioStateRequest>(payload);
+        await _backend.SetBluetoothRadioAsync(request.Enabled, cancellationToken)
+            .ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> ActivateRecentActivityAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ActivateRecentActivityRequest>(payload);
+        ContractValidation.OpaqueId(request.ActivityId);
+        await _backend.ActivateRecentActivityAsync(request.ActivityId, cancellationToken)
+            .ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private static IReadOnlyList<RecentActivitySummary> ValidateRecentActivities(
+        bool _, IReadOnlyList<RecentActivitySummary>? activities) =>
+        ValidateRecentActivities(activities);
+
+    private static IReadOnlyList<RecentActivitySummary> ValidateRecentActivities(
+        IReadOnlyList<RecentActivitySummary>? activities)
+    {
+        if (activities is null || activities.Count > 32)
+            throw new BrokerException("invalid_backend_data", "Recent activity result is invalid.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var mostRecentCount = 0;
+        foreach (var activity in activities)
+        {
+            if (activity is null || !Enum.IsDefined(activity.Kind))
+                throw new BrokerException("invalid_backend_data", "Recent activity entry is invalid.");
+            ContractValidation.OpaqueId(activity.ActivityId, "invalid_backend_data");
+            ContractValidation.DisplayName(activity.DisplayName);
+            if (!ids.Add(activity.ActivityId) ||
+                activity.IsMostRecent && ++mostRecentCount > 1 ||
+                activity.IsMostRecent && !activity.IsRunning)
+                throw new BrokerException("invalid_backend_data", "Recent activity entries are inconsistent.");
+        }
+        return activities.ToArray();
+    }
+
+    private static WifiRadioSummary ValidateWifiRadio(bool _, WifiRadioSummary? radio)
+    {
+        if (radio is null || !Enum.IsDefined(radio.State))
+            throw new BrokerException("invalid_backend_data", "Wi-Fi radio state is invalid.");
+        if (radio.CanControl && radio.State is WifiRadioState.HardwareDisabled or
+                WifiRadioState.NoAdapter or WifiRadioState.Unavailable)
+            throw new BrokerException("invalid_backend_data", "Wi-Fi radio control availability is invalid.");
+        return radio;
+    }
+
+    private static BluetoothSummary ValidateBluetooth(bool _, BluetoothSummary? snapshot) =>
+        ValidateBluetooth(snapshot);
+
+    private static BluetoothSummary ValidateBluetooth(BluetoothSummary? snapshot)
+    {
+        if (snapshot is null || !Enum.IsDefined(snapshot.RadioState) ||
+            !Enum.IsDefined(snapshot.DiscoveryState) || snapshot.Devices is null ||
+            snapshot.Devices.Count > BrokerJson.MaximumArrayItems)
+            throw new BrokerException("invalid_backend_data", "Bluetooth result is invalid.");
+        if (snapshot.CanControlRadio && snapshot.RadioState is BluetoothRadioState.HardwareDisabled or
+                BluetoothRadioState.NoAdapter or BluetoothRadioState.Unavailable)
+            throw new BrokerException(
+                "invalid_backend_data", "Bluetooth radio control availability is invalid.");
+        if (snapshot.DiscoveryState != BluetoothDiscoveryState.Ready && snapshot.Devices.Count != 0)
+            throw new BrokerException(
+                "invalid_backend_data", "Bluetooth discovery state contains stale devices.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var device in snapshot.Devices)
+        {
+            if (device is null)
+                throw new BrokerException("invalid_backend_data", "Bluetooth device result is invalid.");
+            ContractValidation.OpaqueId(device.DeviceId, "invalid_backend_data");
+            ContractValidation.DisplayName(device.DisplayName);
+            if (!ids.Add(device.DeviceId) || device.IsConnected && !device.IsPaired ||
+                !device.IsPaired && !device.IsPresent)
+                throw new BrokerException(
+                    "invalid_backend_data", "Bluetooth device state is inconsistent.");
+        }
+        return snapshot with { Devices = snapshot.Devices.ToArray() };
     }
 
     private static bool DemandEmptyPayload(JsonElement payload)
@@ -430,6 +725,50 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return new AudioOutputChangedEvent(
             change.Output is null ? null : ValidateAudioOutput(change.Output),
             change.IsAvailable);
+    }
+
+    private static IReadOnlyList<AudioDeviceSummary> ValidateAudioDevices(
+        bool _, IReadOnlyList<AudioDeviceSummary>? devices)
+    {
+        if (devices is null || devices.Count > BrokerJson.MaximumArrayItems)
+            throw new BrokerException("invalid_backend_data", "Audio device result is invalid.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var defaults = new HashSet<AudioDeviceDirection>();
+        foreach (var device in devices)
+        {
+            if (device is null || !Enum.IsDefined(device.Direction))
+                throw new BrokerException("invalid_backend_data", "Audio device result is invalid.");
+            ContractValidation.OpaqueId(device.DeviceId, "invalid_backend_data");
+            ContractValidation.DisplayName(device.DisplayName);
+            if (!ids.Add(device.DeviceId) || device.IsDefault && !defaults.Add(device.Direction))
+                throw new BrokerException("invalid_backend_data", "Audio device result is inconsistent.");
+        }
+        return devices.ToArray();
+    }
+
+    private static AudioInputSummary ValidateAudioInput(bool _, AudioInputSummary? input) =>
+        ValidateAudioInput(input);
+
+    private static AudioInputSummary ValidateAudioInput(AudioInputSummary? input)
+    {
+        if (input is null || !double.IsFinite(input.Volume) || input.Volume is < 0 or > 1)
+            throw new BrokerException("invalid_backend_data", "Audio input result is invalid.");
+        return input;
+    }
+
+    private static AudioDevicesChangedEvent ValidateAudioDevicesEvent(AudioDevicesChangedEvent change)
+    {
+        if (!change.IsAvailable && change.Devices.Count != 0)
+            throw new BrokerException("invalid_backend_data", "Audio device availability is inconsistent.");
+        return new AudioDevicesChangedEvent(ValidateAudioDevices(true, change.Devices), change.IsAvailable);
+    }
+
+    private static AudioInputChangedEvent ValidateAudioInputEvent(AudioInputChangedEvent change)
+    {
+        if (change.IsAvailable != (change.Input is not null))
+            throw new BrokerException("invalid_backend_data", "Audio input availability is inconsistent.");
+        return new AudioInputChangedEvent(
+            change.Input is null ? null : ValidateAudioInput(change.Input), change.IsAvailable);
     }
 
     private static NetworkStatusSummary ValidateNetworkStatus(
@@ -536,6 +875,12 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 PlatformCapabilities.AudioOutputChanged when
                     platformEvent.Payload is AudioOutputChangedEvent output =>
                     BrokerJson.ToElement(ValidateAudioOutputEvent(output)),
+                PlatformCapabilities.AudioDevicesChanged when
+                    platformEvent.Payload is AudioDevicesChangedEvent devices =>
+                    BrokerJson.ToElement(ValidateAudioDevicesEvent(devices)),
+                PlatformCapabilities.AudioInputChanged when
+                    platformEvent.Payload is AudioInputChangedEvent input =>
+                    BrokerJson.ToElement(ValidateAudioInputEvent(input)),
                 PlatformCapabilities.NetworkStatusChanged when
                     platformEvent.Payload is NetworkStatusChangedEvent network =>
                     BrokerJson.ToElement(new NetworkStatusChangedEvent(
@@ -544,6 +889,18 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     platformEvent.Payload is AvailableWifiNetworksChangedEvent wifi =>
                     BrokerJson.ToElement(new AvailableWifiNetworksChangedEvent(
                         ValidateAvailableWifiNetworks(wifi.Snapshot))),
+                PlatformCapabilities.NetworkWifiRadioChanged when
+                    platformEvent.Payload is WifiRadioChangedEvent radio =>
+                    BrokerJson.ToElement(new WifiRadioChangedEvent(
+                        ValidateWifiRadio(true, radio.Radio))),
+                PlatformCapabilities.NetworkBluetoothChanged when
+                    platformEvent.Payload is BluetoothChangedEvent bluetooth =>
+                    BrokerJson.ToElement(new BluetoothChangedEvent(
+                        ValidateBluetooth(bluetooth.Snapshot))),
+                PlatformCapabilities.RecentActivitiesChanged when
+                    platformEvent.Payload is RecentActivitiesChangedEvent activities =>
+                    BrokerJson.ToElement(new RecentActivitiesChangedEvent(
+                        ValidateRecentActivities(activities.Activities))),
                 _ => throw new BrokerException("invalid_backend_data", "Broker event payload is invalid."),
             };
             var envelope = new BrokerEventEnvelope(BrokerJson.ProtocolVersion,
@@ -575,6 +932,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        List<RequestLease> canceled;
         lock (_gate)
         {
             if (_disposed) return ValueTask.CompletedTask;
@@ -583,7 +941,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             _backend.EventPublished -= OnBackendEvent;
             foreach (var subscription in _subscriptions) subscription.Revoke();
             _subscriptions.Clear();
+            canceled = _requestLeases.ToList();
+            foreach (var lease in canceled) lease.MarkCanceledLocked("lifecycle_denied");
         }
+        foreach (var lease in canceled) lease.SignalCancellation();
         return ValueTask.CompletedTask;
     }
 }

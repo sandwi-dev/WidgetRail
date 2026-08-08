@@ -83,8 +83,14 @@
   flex-shrink: 0;
 }
 
+.network-connection-card {
+  align: center;
+  justify: space-between;
+}
+
 .network-connection-top,
 .network-wifi-note,
+.network-radio-row,
 .network-section-heading,
 .network-profile-meta {
   gap: 8px;
@@ -115,11 +121,78 @@
 }
 
 .network-connection-copy,
-.network-notice-copy {
+.network-notice-copy,
+.network-radio-copy,
+.network-section-copy {
   min-width: 0px;
   flex-grow: 1;
   flex-shrink: 1;
   gap: 1px;
+}
+
+.network-radio-row {
+  gap: 10px;
+  padding: 7px 10px;
+  min-height: 48px;
+  background: var(--network-card);
+  border-width: 0;
+  corner-radius: 10px;
+  flex-shrink: 0;
+}
+
+.network-radio-toggle {
+  min-width: 136px;
+  min-height: 36px;
+  padding: 5px 9px;
+  color: var(--text);
+  background: var(--network-control);
+  border-width: 0;
+  corner-radius: 8px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.network-radio-toggle.is-on {
+  color: var(--success);
+}
+
+.network-bluetooth-row {
+  min-height: 50px;
+}
+
+.network-bluetooth-toggle {
+  min-width: 146px;
+}
+
+.network-bluetooth-list {
+  min-height: 74px;
+  max-height: 168px;
+  flex-grow: 0;
+}
+
+.network-bluetooth-device-row {
+  min-height: 66px;
+}
+
+.network-bluetooth-state {
+  min-height: 68px;
+}
+
+.network-section-summary.is-error {
+  color: var(--network-error);
+}
+
+.network-radio-toggle:focused {
+  color: var(--text);
+  background: var(--network-control-focus);
+  outline-color: var(--network-focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+
+.network-connection-meta {
+  gap: 8px;
+  align: center;
 }
 
 .network-card-title,
@@ -156,6 +229,12 @@
   flex-shrink: 0;
 }
 
+.network-section-summary {
+  color: var(--text-muted);
+  font-size: 11px;
+  max-lines: 1;
+}
+
 .network-signal-row {
   gap: 10px;
   align: center;
@@ -175,6 +254,10 @@
   font-size: 12px;
   font-weight: 600;
   text-align: end;
+}
+
+.network-signal-value.is-empty {
+  color: transparent;
 }
 
 .network-profile-list {
@@ -205,7 +288,8 @@
 }
 
 .network-profile-button,
-.network-retry-action {
+.network-retry-action,
+.network-scan-action {
   min-height: 44px;
   padding: 7px 9px;
   color: var(--text);
@@ -228,7 +312,8 @@
 }
 
 .network-profile-button:focused,
-.network-retry-action:focused {
+.network-retry-action:focused,
+.network-scan-action:focused {
   color: var(--text);
   background: var(--network-control-focus);
   outline-color: var(--network-focus);
@@ -249,4 +334,15 @@
 
 .network-retry-action {
   background: var(--network-control);
+}
+
+.network-scan-action {
+  min-width: 132px;
+  flex-shrink: 0;
+  background: var(--network-control);
+  font-size: 12px;
+}
+
+.network-state-card {
+  min-height: 88px;
 }

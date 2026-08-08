@@ -62,6 +62,7 @@
 
 .audio-state-card,
 .audio-master-card,
+.audio-device-card,
 .audio-session-card {
   gap: 6px;
   padding: 9px 10px;
@@ -73,6 +74,54 @@
 .audio-master-card {
   background: var(--audio-master);
   flex-shrink: 0;
+}
+
+.audio-input-card,
+.audio-device-card {
+  flex-shrink: 0;
+}
+
+.audio-device-card {
+  gap: 5px;
+  padding: 8px 10px;
+}
+
+.audio-device-row {
+  gap: 8px;
+  align: center;
+}
+
+.audio-device-icon {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  color: var(--text-muted);
+  background: rgba(75, 91, 111, 0.20);
+  shape: circle;
+  flex-shrink: 0;
+}
+
+.audio-device-copy {
+  min-width: 0px;
+  gap: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+
+.audio-device-label {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  max-lines: 1;
+}
+
+.audio-device-name {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  max-lines: 1;
+  text-overflow: ellipsis;
 }
 
 .audio-state-card,

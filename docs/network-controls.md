@@ -5,7 +5,8 @@ passed 2026-08-07**.
 The typed SDK, authenticated capability transport, consent UI, lifecycle
 enforcement, real event-driven Windows provider, first-party widget/worker,
 trusted catalog entry, and Release packaging hooks exist. The focused Release
-provider and widget suites pass 18/18 and 16/16 respectively; the full managed suite, native host
+network provider and widget suites pass 31/31 and 17/17 respectively; the
+Bluetooth provider passes 11/11; PlatformBroker passes 32/32; and the full managed suite, native host
 suite, packaged hidden-startup smoke, and controller input-probe smoke also
 pass. Hardware/privacy matrices and performance evidence remain open, so this
 is not yet a shipped or production-support claim.
@@ -15,7 +16,7 @@ after Audio Mixer. It must use the same public declarative SDK, worker
 bootstrap, catalog, broker, permission, and lifecycle surfaces available to a
 community widget. It is not a privileged `OverlayHost` panel.
 
-## Version 1 scope
+## Implemented scope
 
 The initial surface is intentionally narrow:
 
@@ -26,46 +27,54 @@ The initial surface is intentionally narrow:
   availability;
 - represent current-profile/signal access as `Available`, `PrivacyRestricted`,
   or `Unavailable` rather than guessing;
-- list profiles that are already saved by Windows; and
-- let the user select one saved profile and explicitly connect while the
-  widget is open and Interactive.
+- read the provider's last bounded available-network snapshot without starting
+  a scan;
+- start one explicit available-network scan only after a controller action
+  while the widget is Interactive;
+- render currently visible networks with sanitized name, signal, security,
+  credential-required, connected, and saved-profile state; and
+- connect an exact visible saved-profile or unsaved open network by its opaque
+  scan ID while Interactive.
 
-Version 1 does **not** discover unsaved networks, prompt for or store a
-password, create/edit/delete profiles, read profile XML or key material, expose
-BSSID/MAC/IP/DNS/gateway values, open captive portals, change radio/airplane
-mode, disconnect, or silently reorder Windows profile preference. It does not
-shell out to `netsh`, edit the registry, install a service/driver, or elevate.
+The bundled surface does **not** prompt for or store a password, create/edit/
+delete protected profiles, read profile XML or key material, expose BSSID/MAC/
+  IP/DNS/gateway values, open captive portals, change airplane mode,
+disconnect, or silently reorder Windows profile preference. It does not shell
+out to `netsh`, edit the registry, install a service/driver, or elevate.
 
-## Staged Wi-Fi and Bluetooth extensions
+## Wi-Fi radio and Bluetooth slice
 
-The product roadmap now requires a controller-first view of **currently
-available Wi-Fi networks**, software Wi-Fi radio control, and Bluetooth
-radio/device controls. The broker/SDK DTOs, closed Wi-Fi capability IDs, and
-event-driven Native Wi-Fi scan/connect provider foundation now exist, but the
-first-party Network Controls surface, bundled capability declaration/consent,
-and dedicated scan/connect behavior tests are not integrated. It is therefore
-staged infrastructure, not a user-visible or shipping feature. Wi-Fi radio
-control and every Bluetooth contract/UI flow remain unimplemented. Unknown
-future capability names must continue to fail closed.
+Available-network read/scan/connect is implemented end to end in the typed
+SDK, authenticated broker, Native Wi-Fi provider, bundled manifest/catalog,
+Settings consent descriptions, first-party widget, and deterministic tests.
+Software Wi-Fi radio read/control and Bluetooth radio/discovery are also
+implemented behind their own closed grants. Remaining work is deliberately
+separate: host-owned protected-network credential entry, enterprise
+provisioning, Bluetooth pair/unpair, and profile-specific Bluetooth
+communication. Unknown future capability names continue to fail closed.
 
-The Wi-Fi work is staged as follows:
+The implemented Wi-Fi contract is:
 
-1. An explicit Interactive action requests Windows precise-location access,
-   starts one `WlanScan`, waits for completion or a bounded timeout, and reads
-   one `WlanGetAvailableNetworkList` snapshot. There is no scan loop.
+1. An explicit Interactive action starts one `WlanScan` under Windows'
+   precise-location decision, waits for completion or a bounded timeout, and
+   reads one `WlanGetAvailableNetworkList` snapshot. There is no scan loop.
+   Denial renders a stable instruction to enable permission in Windows
+   Settings; the worker does not own or fabricate an OS consent dialog.
 2. Every result receives a generation-bound opaque scan ID. It is valid only
    for that scan/provider generation and must never be persisted, logged, or
    treated as the SSID/BSSID/interface identity.
-3. Already-saved networks remain the first supported connection path. Unsaved
-   open networks are the next bounded path. New WPA/WPA2/WPA3 Personal networks
-   require a host-owned credential prompt; the worker sees only terminal/busy
-   state and never the credential.
+3. An exact current result may start a connection when it has a saved Windows
+   profile or is an unsaved open network. New WPA/WPA2/WPA3 Personal networks
+   return `credential_required`; the future prompt must be host-owned, and the
+   worker must never receive the credential.
 4. Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
    captive-portal provisioning are unsupported initially. Stored Windows keys
    are never read or exposed.
-5. Software radio control may use `WlanSetInterface` with
+5. Software radio control uses `WlanSetInterface` with
    `wlan_intf_opcode_radio_state`; it cannot override a hardware switch,
    airplane-mode policy, administrator policy, or missing/disabled adapter.
+   Multi-PHY writes reconcile the current state and return `partial_failure`
+   when targets disagree instead of reporting false success.
 
 Windows treats `WlanScan` and `WlanGetAvailableNetworkList` as precise-location
 sensitive. Consent must align with an explicit controller action and denial or
@@ -77,11 +86,12 @@ revocation must be readable without automatic retries. See Microsoft's
 and [WlanSetInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlansetinterface)
 documentation.
 
-Bluetooth is a separate future widget/provider contract. The planned host
-broker uses `Windows.Devices.Radios.Radio` for Bluetooth radio state,
-`DeviceWatcher` for device enumeration/change events, and
-`DeviceInformationPairing` for explicit pair/unpair. These WinRT paths require
-a packaged-identity/capability spike before any support claim. A generic
+The trusted Bluetooth provider now uses WinRT radio state plus event-driven
+device enumeration/change events to publish bounded sanitized names and
+paired/present/connected state. Radio changes are separately consented and
+reconcile the effective Windows state, including typed partial failure. Pair/
+unpair remains staged behind a future host-owned `DeviceInformationPairing`
+ceremony. A generic
 Bluetooth device Connect/Disconnect operation is **not** promised: Windows
 communication is profile-specific, such as GATT service/characteristic access
 or RFCOMM sockets, and each future profile integration needs a separate narrow
@@ -92,7 +102,7 @@ capability. See Microsoft's [Radio](https://learn.microsoft.com/en-us/uwp/api/wi
 and [Bluetooth RFCOMM](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/send-or-receive-files-with-rfcomm)
 documentation.
 
-There is no capability-backed dashboard quick action in version 1. A dashboard
+There is no capability-backed dashboard quick action. A dashboard
 card is only Visible, while network switching requires Interactive lifecycle.
 The user opens the widget before a connection-changing command can run.
 
@@ -103,10 +113,15 @@ Declare the smallest authority in `manifest.json`:
 ```json
 {
   "permissions": [
-    "system.network.read.v1"
+    "system.network.read.v1",
+    "system.network.wifi.read.v1",
+    "system.network.wifi.radio.read.v1"
   ],
   "optionalPermissions": [
-    "system.network.saved-profile.switch.v1"
+    "system.network.wifi.connect.v1",
+    "system.network.wifi.radio.control.v1",
+    "system.network.bluetooth.read.v1",
+    "system.network.bluetooth.radio.control.v1"
   ]
 }
 ```
@@ -115,31 +130,43 @@ Declare the smallest authority in `manifest.json`:
 | --- | --- | --- |
 | `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, `WatchStatusAsync` | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | `HostServices.Network.SwitchSavedProfileAsync` | Interactive only |
+| `system.network.wifi.read.v1` | `GetAvailableWifiAsync`, `RequestWifiScanAsync`, `OpenAvailableWifiSubscriptionAsync`, `WatchAvailableWifiAsync` | Snapshot/event read while Visible or Interactive; scan request Interactive only |
+| `system.network.wifi.connect.v1` | `ConnectAvailableWifiAsync` | Interactive only |
+| `system.network.wifi.radio.read.v1` | `GetWifiRadioAsync`, acknowledged subscription, and events | Visible or Interactive |
+| `system.network.wifi.radio.control.v1` | `SetWifiRadioAsync` | Interactive only |
+| `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, acknowledged subscription, and sanitized device/radio events | Visible or Interactive |
+| `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync` | Interactive only |
 
 `permissions` means the widget considers read access essential;
-`optionalPermissions` means connection switching can degrade independently.
+`optionalPermissions` means connection/radio/Bluetooth enhancements can degrade
+independently from coarse status, nearby-network presentation, and Wi-Fi radio
+visibility.
 Neither is auto-granted, including for first-party widgets. The user reviews
 each declaration in **Settings → Permissions & capabilities**. A grant is
 confirmed explicitly; deny and revoke take effect immediately. Consent is
 stored by package ID, publisher ID, and capability ID, while each live broker
 session is also bound to the concrete widget instance and declared set.
 
-There are two independent permission boundaries:
+There are four independent gates:
 
-1. **Overlay capability consent** decides whether the authenticated widget may
-   ask the trusted broker for network data or a saved-profile switch.
-2. **Windows privacy/location consent and policy** decide whether the trusted
+1. **Manifest declaration** requests the exact required/optional authority and
+   grants nothing by itself.
+2. **Overlay capability consent** decides whether the authenticated widget may
+   ask the trusted broker for coarse network data, available Wi-Fi, or a
+   connection attempt.
+3. **Broker identity/lifecycle enforcement** rechecks the fixed package,
+   publisher, instance, declaration, decision, and current lifecycle.
+4. **Windows privacy/location consent, hardware, and policy** decide whether the trusted
    provider may read location-sensitive Wi-Fi identity and signal information.
 
 An overlay grant cannot override a Windows denial, disabled WLAN service,
 administrator policy, unsupported adapter, or missing hardware. The widget
 must represent those states without repeatedly prompting or retrying. The
-active provider milestone deliberately does not query location-sensitive
-current-connection details automatically: Wi-Fi details default to
-`PrivacyRestricted`, with active profile/signal omitted. A future explicit
-Windows access-request flow requires its own design and must follow a clear
-controller action; opening the overlay or selecting its dashboard card must
-not trigger it.
+coarse status path does not query location-sensitive current-connection
+details automatically: those fields remain `PrivacyRestricted` and omitted.
+Nearby-network access begins only from the separate explicit scan action.
+Opening the overlay, selecting its tray item, or entering the widget does not
+scan, prompt, or retry.
 
 ## Public data model
 
@@ -199,6 +226,36 @@ public sealed record WidgetSavedNetworkProfile(
     string DisplayName,
     bool IsConnected,
     int? SignalPercent);
+
+public enum WidgetWifiScanState
+{
+    NotScanned,
+    Scanning,
+    Ready,
+    PreciseLocationDenied,
+    Unavailable,
+}
+
+public enum WidgetWifiSecurityKind
+{
+    Open,
+    Personal,
+    Enterprise,
+    Unknown,
+}
+
+public sealed record WidgetAvailableWifiNetwork(
+    string NetworkId,
+    string DisplayName,
+    int SignalPercent,
+    WidgetWifiSecurityKind Security,
+    bool CredentialRequired,
+    bool IsConnected,
+    bool HasSavedProfile);
+
+public sealed record WidgetAvailableWifiNetworks(
+    WidgetWifiScanState ScanState,
+    IReadOnlyList<WidgetAvailableWifiNetwork> Networks);
 ```
 
 `ProfileId` is a broker-issued opaque value. Treat it as a command token for
@@ -218,6 +275,15 @@ The public connectivity enum deliberately avoids exposing Windows adapter,
 address, route, and cost structures. Widget authors must not use direct WLAN or
 IP Helper calls as a fallback when a broker value is unavailable.
 
+`NetworkId` is a different token from the legacy saved `ProfileId`. It is
+valid only for the current ready scan/provider generation. A new scan clears
+the prior token map before returning `Scanning`, so retaining a row token for a
+later command fails with `resource_not_found`. It never contains the SSID,
+BSSID, interface GUID, or profile name. `DisplayName` remains sensitive
+presentation data and must not enter logs or telemetry. `SignalPercent` is
+bounded from 0 through 100. `CredentialRequired` is declarative state, not an
+invitation for the widget to collect a secret.
+
 ## Race-free event observation
 
 Network state is event driven. Open the acknowledged subscription before
@@ -226,7 +292,7 @@ fetch and subscribe:
 
 ```csharp
 private WidgetNetworkStatus? _status;
-private IReadOnlyList<WidgetSavedNetworkProfile> _profiles = [];
+private WidgetAvailableWifiNetworks? _wifi;
 
 protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
 {
@@ -238,23 +304,24 @@ private async Task ObserveNetworkAsync(CancellationToken cancellationToken)
 {
     try
     {
-        await using var subscription = await HostServices.Network
+        await using var statusSubscription = await HostServices.Network
             .OpenStatusSubscriptionAsync(cancellationToken);
+        await using var wifiSubscription = await HostServices.Network
+            .OpenAvailableWifiSubscriptionAsync(cancellationToken);
 
-        _status = await HostServices.Network.GetStatusAsync(cancellationToken);
-        _profiles = await HostServices.Network
-            .GetSavedProfilesAsync(cancellationToken);
+        var statusTask = HostServices.Network.GetStatusAsync(cancellationToken).AsTask();
+        var wifiTask = HostServices.Network.GetAvailableWifiAsync(cancellationToken).AsTask();
+        await Task.WhenAll(statusTask, wifiTask);
+        _status = statusTask.Result;
+        _wifi = wifiTask.Result;
         Invalidate();
 
-        await foreach (var change in subscription.ReadAllAsync(cancellationToken))
-        {
-            _status = change.Status;
-            // A status event does not currently include the profile list.
-            // Refresh it only in response to this event, not on a timer.
-            _profiles = await HostServices.Network
-                .GetSavedProfilesAsync(cancellationToken);
-            Invalidate();
-        }
+        // Production code runs both acknowledged streams concurrently. Each
+        // event already carries a complete bounded snapshot; neither loop
+        // polls or starts a scan.
+        await Task.WhenAll(
+            ObserveStatusAsync(statusSubscription, cancellationToken),
+            ObserveAvailableWifiAsync(wifiSubscription, cancellationToken));
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
     {
@@ -279,12 +346,19 @@ token is canceled before every state transition. Never use
 `WidgetLifetimeToken` to keep presentation/network observers alive while
 hidden.
 
-Do not start a periodic adapter/profile refresh. The trusted provider coalesces
+Do not start a periodic adapter, profile, or scan refresh. The trusted provider coalesces
 native change callbacks into complete bounded snapshots, and the broker keeps
 only the newest pending event for a slow consumer. `Render()` must remain pure
 and nonblocking; Windows and broker calls belong in lifecycle/action methods.
 
-## Saved-profile switching
+`GetAvailableWifiAsync` returns the current cached scan state. It does not call
+`WlanScan`. Call `RequestWifiScanAsync` only from an explicit Interactive
+action such as the focused Scan button. The provider publishes `Scanning`
+immediately, then `Ready`, `PreciseLocationDenied`, or `Unavailable` through
+the available-Wi-Fi subscription. Its one-shot six-second timeout is completion
+machinery for that requested scan, not recurring polling.
+
+## Connecting a visible network
 
 A switch is an explicit open-widget action:
 
@@ -293,18 +367,17 @@ public override async ValueTask OnActionAsync(
     WidgetActionEvent action,
     CancellationToken cancellationToken = default)
 {
-    if (action.ActionId != "profile.connect.item" ||
-        !_profilesByElementId.TryGetValue(action.SourceElementId, out var profile))
+    if (action.ActionId != "wifi.connect.item" ||
+        !_networksByElementId.TryGetValue(action.SourceElementId, out var network))
         return;
 
     // The immutable map was rebuilt with the rendered snapshot from opaque
-    // provider identities. Never infer the target from a display name or row.
-    SetConnectBusy(profile.ProfileId);
+    // scan IDs. Never infer the target from a display name or row index.
+    SetConnectBusy(network.NetworkId);
     try
     {
-        await HostServices.Network.SwitchSavedProfileAsync(
-            profile.ProfileId,
-            cancellationToken);
+        await HostServices.Network.ConnectAvailableWifiAsync(
+            network.NetworkId, cancellationToken);
         // Acknowledgement means Windows accepted the command path. Keep the
         // busy state until the authoritative status event confirms success or
         // a bounded failure/timeout is reported.
@@ -317,8 +390,9 @@ public override async ValueTask OnActionAsync(
 }
 ```
 
-The production provider design calls `WlanConnect` in saved-profile mode and
-observes the matching asynchronous WLAN completion/failure. Command
+The provider calls `WlanConnect` for a current result backed by an existing
+saved profile or an unsaved open network and observes the matching asynchronous
+WLAN completion/failure. Command
 acknowledgement is not a reason to fabricate a connected state. Keep optimistic
 feedback limited to a busy indicator, reconcile from the authoritative event,
 and reject a stale completion if the adapter/profile/provider generation
@@ -329,11 +403,13 @@ Controller focus stays on a stable semantic profile ID when possible; if that
 profile disappears, move to the nearest valid item and announce the change.
 Never create list element IDs from row indexes.
 
-When `WirelessAvailability` is `RadioOff`, `NoAdapter`, or
-`ServiceUnavailable`, the Connect action remains visible for stable controller
-focus but is disabled with a state-specific label. Shortcut routing rechecks
-the same condition before invoking the broker, so X/A cannot issue a doomed
-connection request during a stale render.
+Protected networks without a saved profile return `credential_required`;
+enterprise or unknown authentication without a saved profile returns
+`unsupported_authentication`. The widget renders those stable outcomes and
+directs the user to Windows where appropriate. It never shows a text field,
+receives a credential, constructs profile XML, or guesses a different target.
+An ID from an earlier scan returns `resource_not_found` and asks the user to
+scan again.
 
 ## Controller and presentation contract
 
@@ -346,8 +422,9 @@ The implemented first-party package contract is:
 
 - package ID `org.gbar.firstparty.network-controls`;
 - source `src/FirstPartyWidgets/NetworkControlsWidget`;
-- required `system.network.read.v1` and optional
-  `system.network.saved-profile.switch.v1`;
+- required `system.network.read.v1`, `system.network.wifi.read.v1`, and
+  `system.network.wifi.radio.read.v1`; optional connection, Wi-Fi radio control,
+  Bluetooth read, and Bluetooth radio-control grants;
 - x64, `suspend` background policy, 64 MiB requested memory, and 10 Hz maximum
   widget update budget; and
 - root controller input scope `network-controls`.
@@ -357,13 +434,18 @@ Its implemented stable actions are:
 | Context | Controller | Action ID | Behavior |
 | --- | --- | --- | --- |
 | Dashboard card | — | — | Read-only summary; Network Controls declares no dashboard quick actions. |
-| Open widget | D-pad/left stick Up/Down | — | Move focus through the bounded saved-profile Scroll list. |
-| Focused profile row | A or X | `profile.connect.item` | Request connection to that exact focused saved profile while Interactive. |
+| Open widget | D-pad/left stick Up/Down | — | Move through Wi-Fi radio, Scan, available networks, Bluetooth radio, and bounded device rows. Down from the final row returns focus to the tray. |
+| Focused Wi-Fi radio | A | `wifi.radio.toggle` | Request software radio On/Off while Interactive and reconcile the effective state. |
+| Focused Scan action | A | `wifi.scan` | Request one bounded scan while Interactive; there is no automatic or repeating scan. |
+| Focused network row | A or X | `wifi.connect.item` | Request connection to that exact current saved/open result while Interactive. |
+| Focused Bluetooth radio | A | `bluetooth.radio.toggle` | Request software radio On/Off while Interactive and reconcile denial/partial failure. |
+| Focused Bluetooth device | A | `bluetooth.device.info` | Select/show sanitized state only; no pair or connect command. |
 | Failure/unavailable surface | focused A | `retry` | Make one explicit refresh/recovery attempt; never start a retry loop. |
 
 There is deliberately no dashboard selection or connect action. The open
-surface does not keep a separate hidden selected-card model: stable opaque row
-IDs identify the target, and A/X resolves only against the exact focused row.
+surface does not keep a separate hidden selected-card model: generation-bound
+opaque row IDs identify the target, and A/X resolves only against the exact
+focused row.
 LB/RB and LT/RT remain available to other widget-owned behavior and do not
 cycle profiles. B is not bound by the widget root, so the host can return to
 the dashboard.
@@ -372,20 +454,24 @@ The open widget should provide:
 
 - a clear coarse connectivity/transport header and an explicit
   privacy-restricted state when current Wi-Fi identity is unavailable;
-- a controller-navigable saved-profile list with connected, busy, and signal
-  states;
+- a controller-navigable currently available-network list with security,
+  credential-required, saved, connected, busy, and signal states;
 - direct A/X activation of the exact focused row;
+- explicit Wi-Fi/Bluetooth software-radio controls plus sanitized Bluetooth
+  discovery without implying pairing or generic connection;
 - concise permission-required, denied/revoked, no-adapter, service-disabled,
   offline, local-only, failure, and timeout states; and
 - explicit focus neighbors for ambiguous layouts, with stable focus across
   status updates.
 
-Home navigation reserves D-pad/left stick, A, B, Y, and Guide. The open
+Tray navigation reserves D-pad/left stick, A, B, Y, and Guide. The open
 widget may use other buttons through its active input scope, but Network
 Controls should not overload dashboard shortcuts to bypass lifecycle or
-consent. B remains the host fallback to return from the root widget surface
-only when the active scope does not handle it; dashboard B closes, and Guide
-always toggles the overlay.
+consent. The selected panel remains visible while the tray owns focus. B at
+the widget root and Down from the last root control return focus to the tray;
+B on the tray closes, and Guide always toggles the overlay. A on the tray
+enters the already-visible widget rather than opening it. A future nested
+network dialog must own its B and cannot fall through multiple levels.
 
 Layouts must use bounded responsive units and semantic styles, not a fixed
 desktop pixel width. Verify narrow, ultrawide, 100/150/200% DPI, Windows text
@@ -400,17 +486,19 @@ change registrations:
 - IP Helper `NotifyIpInterfaceChange` and
   `NotifyNetworkConnectivityHintChange` registrations trigger aggregate and
   Ethernet snapshot refreshes.
-- One long-lived WLAN client per provider lifetime supplies ACM connection
-  lifecycle and saved-profile behavior. A radio-state-only query distinguishes
+- One long-lived WLAN client per provider lifetime supplies ACM scan/connection
+  lifecycle, available-network snapshots, and saved-profile-backed connection
+  behavior. A radio-state-only query distinguishes
   enabled/disconnected Wi-Fi from hardware or software radio-off without
   querying current connection identity. It never registers MSM notifications.
 
 IP Helper's read-only `GetNetworkConnectivityHint` supplies aggregate `None`,
-`Local`, or `Internet` state. `WlanRegisterNotification` is restricted to ACM,
-`WlanGetProfileList` supplies saved profiles, and `WlanConnect` accepts one
-already-enumerated opaque target. The provider does not call `WlanScan`,
-`WlanGetAvailableNetworkList`, BSS APIs, profile XML APIs, or an automatic
-current-connection identity query.
+`Local`, or `Internet` state. `WlanRegisterNotification` is restricted to ACM.
+Only an explicit scan command calls `WlanScan`; its completion reads one
+`WlanGetAvailableNetworkList` snapshot. `WlanGetProfileList` is used privately
+to mark visible results as saved, and `WlanConnect` accepts one current opaque
+target. The provider does not use BSS APIs, profile XML/key APIs, an automatic
+current-connection identity query, or a repeating scan loop.
 
 Callbacks enqueue bounded work and return. Native calls, model mutation,
 unregistration, and handle disposal happen on the provider's owning thread.
@@ -418,7 +506,9 @@ Coarse interface classification uses managed `NetworkInterface` snapshots and
 a route-table-only `GetBestInterface` preference after initial start, a native
 change, or explicit recovery—not a UI timer. WLAN registration requests only
 the notification sources required by the feature; no continuous scans, BSSID
-observations, or MSM notification stream are part of version 1.
+observations, or MSM notification stream are part of the implementation. A
+six-second one-shot timer bounds only an outstanding user-requested scan and is
+canceled on its terminal event.
 
 Failed IP-interface, connectivity-hint, or ACM registrations remain degraded.
 An explicit subsequent read retries the missing registration; there is no
@@ -478,31 +568,28 @@ var services = new WidgetTestHostServicesBuilder()
             ActiveProfileName: null,
             SignalPercent: null))
     .WithResponse(
-        WidgetNetworkCapabilities.GetSavedProfiles,
-        new WidgetSavedNetworkProfile[]
-        {
-            new("profile-1", "Home Wi-Fi", true, 82),
-            new("profile-2", "Office", false, null),
-        })
+        WidgetNetworkCapabilities.GetAvailableWifi,
+        new WidgetAvailableWifiNetworks(
+            WidgetWifiScanState.Ready,
+            new WidgetAvailableWifiNetwork[]
+            {
+                new("wifi_generation_7_a", "Home Wi-Fi", 82,
+                    WidgetWifiSecurityKind.Personal, false, true, true),
+                new("wifi_generation_7_b", "Guest", 61,
+                    WidgetWifiSecurityKind.Open, false, false, false),
+            }))
     .WithHandler(
-        WidgetNetworkCapabilities.SwitchSavedProfile,
+        WidgetNetworkCapabilities.ConnectAvailableWifi,
         (request, cancellationToken) =>
             ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)))
     .WithEvents(
-        WidgetNetworkCapabilities.StatusChanged,
+        WidgetNetworkCapabilities.AvailableWifiChanged,
         new[]
         {
-            new WidgetNetworkStatusChanged(
-                new WidgetNetworkStatus(
-                    Connectivity: WidgetNetworkConnectivity.Internet,
-                    Transport: WidgetNetworkTransportKind.Wifi,
-                    WirelessAvailability: WidgetNetworkWirelessAvailability.Available,
-                    DetailsAccess: WidgetNetworkDetailsAccess.PrivacyRestricted,
-                    ConnectionAttemptState: WidgetNetworkConnectionAttemptState.Connecting,
-                    AttemptProfileId: "profile-2",
-                    ActiveProfileId: null,
-                    ActiveProfileName: null,
-                    SignalPercent: null)),
+            new WidgetAvailableWifiNetworksChanged(
+                new WidgetAvailableWifiNetworks(
+                    WidgetWifiScanState.Scanning,
+                    Array.Empty<WidgetAvailableWifiNetwork>())),
         })
     .Build();
 
@@ -525,11 +612,12 @@ Required widget/provider evidence includes:
 - no adapter/WLAN service, Ethernet-only, Wi-Fi-only, offline, and local-only;
 - location permission unavailable/required/denied/revoked;
 - initial snapshot plus a change during the subscription/fetch window;
-- profile arrival/removal, active-profile and signal change;
+- available-network arrival/removal, scan-generation replacement, connected
+  and signal change;
 - connect accepted, success, terminal failure, timeout, cancellation, adapter
   removal, and stale completion after a newer command;
 - control grant denied/revoked independently from the read grant;
-- no switching while Visible or Background;
+- no scan or connection command while Visible or Background;
 - stable focus and busy state under list churn;
 - zero timer polling and bounded event coalescing; and
 - cancellation/disposal with no callback-after-free or hanging operation.
@@ -537,15 +625,15 @@ Required widget/provider evidence includes:
 ## Packaging and release evidence
 
 Do not call Network Controls shipped or production-ready until all of these are
-present and passing in the current worktree. Items 1–7 passed on 2026-08-07;
-item 8 remains open:
+present and passing in the current worktree. Items 1–7 pass in the current
+2026-08-07 worktree; item 8 remains open:
 
 1. first-party widget, worker, strict manifest, GBSS, and public-SDK-only tests;
 2. real Windows network provider with deterministic adapter tests;
 3. production bridge composition using the real provider instead of the
    simulator;
 4. trusted catalog entry plus Release packaging and required-file checks;
-5. Settings discovery/review for both declared network capabilities;
+5. Settings discovery/review for all declared network capabilities;
 6. focused broker/bridge/widget/provider suites and the full Release verifier;
 7. packaged hidden-overlay startup plus controller-visible denial/unavailable
    behavior; and

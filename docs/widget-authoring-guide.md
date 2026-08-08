@@ -532,12 +532,29 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.audio.sessions.control.v1` | set session volume/mute | Interactive |
 | `system.audio.output.read.v1` | get/watch master output | Visible or Interactive |
 | `system.audio.output.control.v1` | set master volume/mute | Interactive |
+| `system.audio.devices.read.v1` | list/watch sanitized input/output devices and default markers | Visible or Interactive |
+| `system.audio.input.read.v1` | get/watch current default microphone volume/mute | Visible or Interactive |
+| `system.audio.input.control.v1` | set current default microphone volume/mute | Interactive |
 | `system.network.read.v1` | status, saved profiles, status events | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | switch to a saved profile | Interactive |
+| `system.network.wifi.read.v1` | cached available-network snapshot/events; one explicit scan | read/events Visible or Interactive; scan Interactive |
+| `system.network.wifi.connect.v1` | connect one current saved/open scan result | Interactive |
+| `system.network.wifi.radio.read.v1` | get/watch software Wi-Fi radio state | Visible or Interactive |
+| `system.network.wifi.radio.control.v1` | request software Wi-Fi radio On/Off | Interactive |
+| `system.network.bluetooth.read.v1` | get/watch sanitized Bluetooth radio/discovery/device state | Visible or Interactive |
+| `system.network.bluetooth.radio.control.v1` | request Bluetooth software radio On/Off | Interactive |
+| `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
+| `system.activity.recent.activate.v1` | switch to one still-running opaque observation | Interactive |
 
 Required capabilities are not auto-granted. Put core authority in
 `permissions`, degradable features in `optionalPermissions`, then render
 denied/unavailable states for both.
+
+These are four separate gates: the manifest declares; the user allows or
+blocks in Settings; the broker enforces fixed identity, declaration, consent,
+and lifecycle; then the trusted provider/Windows enforce API, privacy,
+hardware, and policy rules. Declaring a capability never bypasses another gate.
+For example, nearby Wi-Fi still needs Windows precise-location permission.
 
 ### Master output example
 

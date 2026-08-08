@@ -254,12 +254,18 @@ public sealed partial class SettingsWidget
         var visible = packages.Skip(start).Take(PermissionPackagesPerPage).ToArray();
         var children = new List<WidgetElement>
         {
-            UI.Text("Permissions & capabilities", "permissions.heading", "Permissions and capabilities")
+            UI.Text("Widget access", "permissions.heading", "Widget permissions and capabilities")
                 .Classes("page-heading"),
             UI.Text(catalogValid
-                    ? "Only closed capabilities declared by each installed package are shown."
+                    ? "Widget authors request required or optional access in their manifest. " +
+                      "A request is not permission: you allow or block it here, and the host enforces your choice."
                     : diagnostic ?? "Installed package catalog is unavailable.",
                 "permissions.help", "Permissions help")
+                .Classes(catalogValid ? "page-help" : "diagnostic-error"),
+            UI.Text(catalogValid
+                    ? "Windows may separately require a system permission, such as location for nearby Wi-Fi."
+                    : "Permission controls are unavailable until the package catalog is valid.",
+                "permissions.system-help", "Windows permission help")
                 .Classes(catalogValid ? "page-help" : "diagnostic-error"),
             UI.Text($"Page {page + 1} of {lastPage + 1}", "permissions.page-label", "Package page")
                 .Classes("page-counter"),
@@ -274,7 +280,9 @@ public sealed partial class SettingsWidget
         {
             var index = start + offset;
             var package = visible[offset];
-            var label = $"{package.Name} · {package.Capabilities.Count} supported";
+            var required = package.Capabilities.Count(capability => capability.IsRequired);
+            var optional = package.Capabilities.Count - required;
+            var label = $"{package.Name} · {required} required · {optional} optional";
             var button = UI.Button(label, $"permission.select.{index}", $"permission.item.{index}")
                 .Disabled(!catalogValid).Busy(busy).Classes("setting-row");
             if (offset > 0) button = button.FocusUp($"permission.item.{index - 1}");
@@ -318,6 +326,11 @@ public sealed partial class SettingsWidget
         {
             UI.Text(package.Name, "capabilities.heading", "Selected package").Classes("page-heading"),
             UI.Text($"Publisher: {package.Publisher}", "capabilities.publisher", "Package publisher")
+                .Classes("page-help"),
+            UI.Text(
+                    "Required access is needed for a declared widget feature; blocking it can limit that feature. " +
+                    "Optional access only enables extra functionality. Neither type is allowed automatically.",
+                    "capabilities.help", "Required and optional access help")
                 .Classes("page-help"),
             UI.Text(consentValid ? $"Page {page + 1} of {lastPage + 1}" :
                     diagnostic ?? "Consent data is unavailable; changes are disabled.",
@@ -371,7 +384,7 @@ public sealed partial class SettingsWidget
         var decision = FindDecision(consent, package, capability.Id);
         var granted = decision == ConsentDecision.Grant;
         var state = DecisionLabel(decision);
-        var requirement = capability.IsRequired ? "Required" : "Optional";
+        var requirement = capability.IsRequired ? "Required access" : "Optional access";
         var children = new List<WidgetElement>
         {
             UI.Text(CapabilityName(capability.Id), "capability.heading", "Capability confirmation")
@@ -380,17 +393,24 @@ public sealed partial class SettingsWidget
                 "capability.state", "Capability state").Classes("settings-summary"),
             UI.Text(CapabilityDescription(capability.Id),
                 "capability.description", "Capability description").Classes("page-help"),
+            UI.Text(
+                    "The host allows this only when the widget identity, manifest request, your decision, " +
+                    "and its current lifecycle state all permit it.",
+                    "capability.enforcement", "Host enforcement summary").Classes("page-help"),
+            UI.Text($"Technical ID: {capability.Id}",
+                    "capability.technical-id", "Technical capability identifier")
+                .Classes("diagnostic-line"),
         };
         if (!granted)
         {
             children.Add(UI.Text(
-                $"Confirm granting this {requirement.ToLowerInvariant()} capability to " +
+                $"Confirm granting this {requirement.ToLowerInvariant()} to " +
                 $"{package.Name} from {package.Publisher}.",
                 "capability.confirmation", "Grant confirmation").Classes("page-help"));
-            children.Add(UI.Button("Grant capability", "capability.grant", "capability.grant")
+            children.Add(UI.Button("Allow access", "capability.grant", "capability.grant")
                 .Disabled(!consentValid).Busy(busy).Classes("primary-button"));
         }
-        children.Add(UI.Button(granted ? "Deny / revoke now" : "Deny",
+        children.Add(UI.Button(granted ? "Revoke access" : "Block access",
                 "capability.deny", "capability.deny")
             .Disabled(!consentValid).Busy(busy).Classes("danger-button"));
         children.Add(UI.Button("Back", "back", "capability.back").Classes("secondary-button"));
@@ -537,9 +557,9 @@ public sealed partial class SettingsWidget
 
     private static string DecisionLabel(ConsentDecision? decision) => decision switch
     {
-        ConsentDecision.Grant => "Granted",
-        ConsentDecision.Deny => "Denied",
-        _ => "Not decided",
+        ConsentDecision.Grant => "Granted by you",
+        ConsentDecision.Deny => "Denied by you",
+        _ => "Not decided — access is blocked",
     };
 
     private static string CapabilityName(string id) => id switch
@@ -548,8 +568,19 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.AudioSessionsControlV1 => "Control audio sessions",
         PlatformCapabilities.AudioOutputReadV1 => "Read master output state",
         PlatformCapabilities.AudioOutputControlV1 => "Control master output",
+        PlatformCapabilities.AudioDevicesReadV1 => "Read audio device names",
+        PlatformCapabilities.AudioInputReadV1 => "Read microphone level",
+        PlatformCapabilities.AudioInputControlV1 => "Control microphone level",
         PlatformCapabilities.NetworkReadV1 => "Read network status",
         PlatformCapabilities.NetworkSavedProfileSwitchV1 => "Switch saved network profile",
+        PlatformCapabilities.NetworkWifiReadV1 => "Find nearby Wi-Fi networks",
+        PlatformCapabilities.NetworkWifiConnectV1 => "Connect to visible Wi-Fi",
+        PlatformCapabilities.NetworkWifiRadioReadV1 => "Read Wi-Fi radio state",
+        PlatformCapabilities.NetworkWifiRadioControlV1 => "Turn Wi-Fi on or off",
+        PlatformCapabilities.NetworkBluetoothReadV1 => "See Bluetooth devices",
+        PlatformCapabilities.NetworkBluetoothRadioControlV1 => "Turn Bluetooth on or off",
+        PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
+        PlatformCapabilities.RecentActivityActivateV1 => "Switch to a running app",
         _ => "Unsupported capability",
     };
 
@@ -563,10 +594,40 @@ public sealed partial class SettingsWidget
             "See volume and mute for the current default multimedia output; no device identity.",
         PlatformCapabilities.AudioOutputControlV1 =>
             "Change master volume or mute for the current default multimedia output while interactive. It cannot switch devices.",
+        PlatformCapabilities.AudioDevicesReadV1 =>
+            "See sanitized names for active audio outputs and inputs and which devices are currently default. Raw endpoint IDs are never exposed.",
+        PlatformCapabilities.AudioInputReadV1 =>
+            "See volume and mute state for the current default multimedia microphone. It does not capture or inspect microphone audio.",
+        PlatformCapabilities.AudioInputControlV1 =>
+            "Change volume or mute for the current default multimedia microphone while the widget is interactive. It cannot record audio or switch devices.",
         PlatformCapabilities.NetworkReadV1 =>
             "See sanitized connectivity and saved-profile summaries without credentials.",
         PlatformCapabilities.NetworkSavedProfileSwitchV1 =>
             "Switch to an existing saved profile by opaque ID. It cannot create profiles or read passwords.",
+        PlatformCapabilities.NetworkWifiReadV1 =>
+            "Let Network Controls run a short scan and show nearby network names, signal strength, " +
+            "security, and connection state. Windows precise-location permission must also be enabled; " +
+            "the overlay cannot bypass that Windows setting.",
+        PlatformCapabilities.NetworkWifiConnectV1 =>
+            "Let Network Controls connect to a visible saved or open network while you are using it. " +
+            "It cannot read saved passwords. Password entry and enterprise sign-in remain in Windows.",
+        PlatformCapabilities.NetworkWifiRadioReadV1 =>
+            "See whether Wi-Fi is on, off, unavailable, or disabled by a hardware switch. No adapter identity is exposed.",
+        PlatformCapabilities.NetworkWifiRadioControlV1 =>
+            "Turn the Wi-Fi software radio on or off while Network Controls is interactive. " +
+            "It cannot override a hardware switch or Windows policy.",
+        PlatformCapabilities.NetworkBluetoothReadV1 =>
+            "See sanitized names and paired, connected, and nearby state for Bluetooth devices. " +
+            "Widgets never receive Bluetooth addresses, Windows device IDs, or handles.",
+        PlatformCapabilities.NetworkBluetoothRadioControlV1 =>
+            "Turn the Bluetooth software radio on or off while Network Controls is interactive. " +
+            "Windows permission, hardware switches, and device policy can block a change.",
+        PlatformCapabilities.RecentActivityReadV1 =>
+            "See a bounded list of privacy-filtered running applications observed after you allow access. " +
+            "Widgets receive only display names, app kinds, state, and opaque IDs—never process IDs, paths, command lines, or window handles.",
+        PlatformCapabilities.RecentActivityActivateV1 =>
+            "Switch to a still-running observed application while the widget is interactive. " +
+            "It cannot launch executables, reopen closed apps, or access their process and window identifiers.",
         _ => "This capability is not supported.",
     };
 

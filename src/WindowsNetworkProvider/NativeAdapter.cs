@@ -51,6 +51,27 @@ public enum NativeWifiConnectStartResult
     Unavailable,
 }
 
+public enum NativeWifiRadioState
+{
+    On,
+    Off,
+    HardwareDisabled,
+    NoAdapter,
+    Unavailable,
+}
+
+public enum NativeWifiRadioSetResult
+{
+    Succeeded,
+    NoAdapter,
+    HardwareDisabled,
+    PolicyDenied,
+    Unavailable,
+    PartialFailure,
+}
+
+public sealed record NativeWifiRadioSnapshot(NativeWifiRadioState State, bool CanControl);
+
 public enum NativeWifiScanOutcome
 {
     Completed,
@@ -104,6 +125,8 @@ public interface IWindowsNetworkNativeAdapter : IDisposable
     NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot();
     NativeWifiScanStartResult TryStartWifiScan();
     NativeWifiConnectStartResult TryConnectAvailableWifiNetwork(string nativeNetworkKey);
+    NativeWifiRadioSnapshot ReadWifiRadio();
+    NativeWifiRadioSetResult TrySetWifiRadio(bool enabled);
 }
 
 public interface IWindowsNetworkNativeAdapterFactory

@@ -33,6 +33,23 @@
       "quickActions": []
     },
     {
+      "id": "recent-apps",
+      "packageId": "org.gbar.firstparty.recent-apps",
+      "publisherId": "org.gbar.firstparty",
+      "name": "Recent Apps",
+      "instanceId": "recent-apps.default",
+      "icon": "play",
+      "workerExecutable": "runtime/RecentApps/RecentAppsWidget.Worker.exe",
+      "styleFile": "runtime/RecentApps/styles/default.gbss",
+      "memoryLimitMb": 48,
+      "workerArguments": [],
+      "declaredCapabilities": [
+        "system.activity.recent.read.v1",
+        "system.activity.recent.activate.v1"
+      ],
+      "quickActions": []
+    },
+    {
       "id": "audio-mixer",
       "packageId": "org.gbar.firstparty.audio-mixer",
       "publisherId": "org.gbar.firstparty",
@@ -47,7 +64,10 @@
           "system.audio.sessions.read.v1",
           "system.audio.sessions.control.v1",
           "system.audio.output.read.v1",
-          "system.audio.output.control.v1"
+          "system.audio.output.control.v1",
+          "system.audio.devices.read.v1",
+          "system.audio.input.read.v1",
+          "system.audio.input.control.v1"
       ],
       "quickActions": [
         {
@@ -79,7 +99,12 @@
       "workerArguments": [],
       "declaredCapabilities": [
         "system.network.read.v1",
-        "system.network.saved-profile.switch.v1"
+        "system.network.wifi.read.v1",
+        "system.network.wifi.connect.v1",
+        "system.network.wifi.radio.read.v1",
+        "system.network.wifi.radio.control.v1",
+        "system.network.bluetooth.read.v1",
+        "system.network.bluetooth.radio.control.v1"
       ],
       "quickActions": []
     }

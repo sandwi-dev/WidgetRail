@@ -17,6 +17,10 @@ public sealed class CoreAudioNativeAdapterFactory : IWindowsAudioNativeAdapterFa
 internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
 {
     private const uint ClsctxInprocServer = 0x1;
+    private const uint DeviceStateActive = 0x1;
+    private const uint PropertyStoreRead = 0;
+    private static readonly PropertyKey DeviceFriendlyName =
+        new(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 14);
     private readonly Guid _eventContext = Guid.NewGuid();
     private readonly IMMDeviceEnumerator _deviceEnumerator;
     private readonly EndpointNotificationClient _endpointNotifications;
@@ -29,16 +33,25 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
     private IAudioEndpointVolume? _endpointVolume;
     private SessionNotificationClient? _sessionNotifications;
     private EndpointVolumeEventsClient? _endpointVolumeNotifications;
+    private IMMDevice? _inputDevice;
+    private IAudioEndpointVolume? _inputVolume;
+    private EndpointVolumeEventsClient? _inputVolumeNotifications;
     private long _endpointGeneration;
     private int _endpointDirty = 1;
     private int _degraded = 1;
     private int _outputDegraded = 1;
+    private int _deviceListDegraded = 1;
+    private int _inputDegraded = 1;
+    private int _inputDirty = 1;
+    private int _devicesDirty = 1;
+    private IReadOnlyList<NativeAudioDeviceSnapshot> _cachedDevices = [];
     private int _disposed;
+    internal string? DeviceListDiagnostic { get; private set; }
 
     public CoreAudioNativeAdapter()
     {
         _deviceEnumerator = (IMMDeviceEnumerator)(object)new MMDeviceEnumeratorComObject();
-        _endpointNotifications = new EndpointNotificationClient(InvalidateEndpoint);
+        _endpointNotifications = new EndpointNotificationClient(InvalidateAudioTopology);
         CoreAudioInterop.ThrowIfFailed(
             _deviceEnumerator.RegisterEndpointNotificationCallback(_endpointNotifications));
     }
@@ -46,6 +59,8 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
     public event EventHandler? StateChanged;
     public bool IsDegraded => Volatile.Read(ref _degraded) != 0;
     public bool IsOutputDegraded => Volatile.Read(ref _outputDegraded) != 0;
+    public bool IsDeviceListDegraded => Volatile.Read(ref _deviceListDegraded) != 0;
+    public bool IsInputDegraded => Volatile.Read(ref _inputDegraded) != 0;
 
     public IReadOnlyList<NativeAudioSessionSnapshot> EnumerateSessions()
     {
@@ -120,6 +135,50 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         return new NativeAudioOutputSnapshot(Math.Clamp(volume, 0, 1), muted);
     }
 
+    public IReadOnlyList<NativeAudioDeviceSnapshot> EnumerateDevices()
+    {
+        ThrowIfDisposed();
+        if (Volatile.Read(ref _devicesDirty) == 0) return _cachedDevices.ToArray();
+        var devices = new List<NativeAudioDeviceSnapshot>();
+        var stage = "default-output";
+        try
+        {
+            var defaultOutput = GetDefaultDeviceId(EDataFlow.Render);
+            stage = "default-input";
+            var defaultInput = GetDefaultDeviceId(EDataFlow.Capture);
+            stage = "enumerate-output";
+            EnumerateDevices(EDataFlow.Render, NativeAudioDeviceDirection.Output, defaultOutput, devices);
+            stage = "enumerate-input";
+            EnumerateDevices(EDataFlow.Capture, NativeAudioDeviceDirection.Input, defaultInput, devices);
+            Volatile.Write(ref _deviceListDegraded, 0);
+            Volatile.Write(ref _devicesDirty, 0);
+            _cachedDevices = devices.ToArray();
+            DeviceListDiagnostic = null;
+            return _cachedDevices.ToArray();
+        }
+        catch (Exception exception)
+        {
+            Volatile.Write(ref _deviceListDegraded, 1);
+            Volatile.Write(ref _devicesDirty, 1);
+            DeviceListDiagnostic = $"{stage}:{exception.GetType().Name}:0x{exception.HResult:X8}:{exception.Message}";
+            return [];
+        }
+    }
+
+    public NativeAudioInputSnapshot? GetDefaultInput()
+    {
+        ThrowIfDisposed();
+        if (Volatile.Read(ref _inputDirty) != 0 || _inputVolume is null) RebindDefaultInput();
+        if (_inputVolume is null) return null;
+        if (_inputVolume.GetMasterVolumeLevelScalar(out var volume) < 0 ||
+            _inputVolume.GetMute(out var muted) < 0)
+        {
+            MarkInputDirty();
+            return null;
+        }
+        return new NativeAudioInputSnapshot(Math.Clamp(volume, 0, 1), muted);
+    }
+
     public bool TrySetSessionVolume(string nativeSessionKey, double volume)
     {
         ThrowIfDisposed();
@@ -175,6 +234,107 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
             return false;
         }
         return true;
+    }
+
+    public bool TrySetDefaultInputVolume(double volume)
+    {
+        ThrowIfDisposed();
+        if (_inputVolume is null) return false;
+        var context = _eventContext;
+        var hr = _inputVolume.SetMasterVolumeLevelScalar(
+            (float)Math.Clamp(volume, 0, 1), ref context);
+        if (hr < 0)
+        {
+            MarkInputDirty();
+            return false;
+        }
+        return true;
+    }
+
+    public bool TrySetDefaultInputMuted(bool isMuted)
+    {
+        ThrowIfDisposed();
+        if (_inputVolume is null) return false;
+        var context = _eventContext;
+        var hr = _inputVolume.SetMute(isMuted, ref context);
+        if (hr < 0)
+        {
+            MarkInputDirty();
+            return false;
+        }
+        return true;
+    }
+
+    private string? GetDefaultDeviceId(EDataFlow flow)
+    {
+        IMMDevice? device = null;
+        try
+        {
+            if (_deviceEnumerator.GetDefaultAudioEndpoint(flow, ERole.Multimedia, out device) < 0 ||
+                device is null || device.GetId(out var id) < 0)
+                return null;
+            return id;
+        }
+        finally
+        {
+            CoreAudioInterop.Release(device);
+        }
+    }
+
+    private void EnumerateDevices(
+        EDataFlow flow,
+        NativeAudioDeviceDirection direction,
+        string? defaultId,
+        List<NativeAudioDeviceSnapshot> result)
+    {
+        IMMDeviceCollection? collection = null;
+        try
+        {
+            CoreAudioInterop.ThrowIfFailed(
+                _deviceEnumerator.EnumAudioEndpoints(flow, DeviceStateActive, out collection));
+            if (collection is null || collection.GetCount(out var count) < 0) return;
+            count = Math.Min(count, 128);
+            for (uint index = 0; index < count; index++)
+            {
+                IMMDevice? device = null;
+                try
+                {
+                    if (collection.Item(index, out device) < 0 || device is null ||
+                        device.GetId(out var id) < 0 || string.IsNullOrEmpty(id))
+                        continue;
+                    result.Add(new NativeAudioDeviceSnapshot(
+                        id, GetDeviceFriendlyName(device), direction,
+                        string.Equals(id, defaultId, StringComparison.Ordinal)));
+                }
+                finally
+                {
+                    CoreAudioInterop.Release(device);
+                }
+            }
+        }
+        finally
+        {
+            CoreAudioInterop.Release(collection);
+        }
+    }
+
+    private static string? GetDeviceFriendlyName(IMMDevice device)
+    {
+        IPropertyStore? properties = null;
+        var value = default(PropVariant);
+        try
+        {
+            if (device.OpenPropertyStore(PropertyStoreRead, out properties) < 0 || properties is null)
+                return null;
+            var key = DeviceFriendlyName;
+            if (properties.GetValue(ref key, out value) < 0) return null;
+            return value.GetString();
+        }
+        finally
+        {
+            if (value.VariantType != 0) CoreAudioInterop.PropVariantClear(ref value);
+            CoreAudioInterop.Release(properties);
+        }
     }
 
     private void RebindDefaultEndpoint()
@@ -257,6 +417,63 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
             volume = null;
             notifications = null;
             Volatile.Write(ref _outputDegraded, 0);
+        }
+        catch (COMException) { }
+        finally
+        {
+            if (volume is not null && notifications is not null)
+            {
+                try { volume.UnregisterControlChangeNotify(notifications); }
+                catch (COMException) { }
+            }
+            CoreAudioInterop.ReleaseFinal(activation);
+        }
+    }
+
+    private void RebindDefaultInput()
+    {
+        ReleaseInputEndpoint();
+        Volatile.Write(ref _inputDegraded, 1);
+        IMMDevice? device = null;
+        try
+        {
+            var hr = _deviceEnumerator.GetDefaultAudioEndpoint(
+                EDataFlow.Capture, ERole.Multimedia, out device);
+            if (hr < 0 || device is null) return;
+            _inputDevice = device;
+            device = null;
+            TryBindInput(_inputDevice);
+        }
+        catch (COMException)
+        {
+            ReleaseInputEndpoint();
+        }
+        finally
+        {
+            Volatile.Write(ref _inputDirty, _inputDevice is null ? 1 : 0);
+            CoreAudioInterop.Release(device);
+        }
+    }
+
+    private void TryBindInput(IMMDevice device)
+    {
+        object? activation = null;
+        IAudioEndpointVolume? volume = null;
+        EndpointVolumeEventsClient? notifications = null;
+        try
+        {
+            var interfaceId = typeof(IAudioEndpointVolume).GUID;
+            if (device.Activate(ref interfaceId, ClsctxInprocServer, IntPtr.Zero, out activation) < 0 ||
+                activation is not IAudioEndpointVolume activatedVolume) return;
+            volume = activatedVolume;
+            notifications = new EndpointVolumeEventsClient(_eventContext, SignalChanged);
+            if (volume.RegisterControlChangeNotify(notifications) < 0) return;
+            _inputVolume = volume;
+            activation = null;
+            _inputVolumeNotifications = notifications;
+            volume = null;
+            notifications = null;
+            Volatile.Write(ref _inputDegraded, 0);
         }
         catch (COMException) { }
         finally
@@ -385,12 +602,16 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         SignalChanged();
     }
 
-    private void InvalidateEndpoint()
+    private void InvalidateAudioTopology()
     {
         if (Volatile.Read(ref _disposed) != 0) return;
         Volatile.Write(ref _endpointDirty, 1);
         Volatile.Write(ref _degraded, 1);
         Volatile.Write(ref _outputDegraded, 1);
+        Volatile.Write(ref _inputDirty, 1);
+        Volatile.Write(ref _inputDegraded, 1);
+        Volatile.Write(ref _deviceListDegraded, 1);
+        Volatile.Write(ref _devicesDirty, 1);
         SignalChanged();
     }
 
@@ -399,6 +620,12 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         Volatile.Write(ref _endpointDirty, 1);
         Volatile.Write(ref _degraded, 1);
         Volatile.Write(ref _outputDegraded, 1);
+    }
+
+    private void MarkInputDirty()
+    {
+        Volatile.Write(ref _inputDirty, 1);
+        Volatile.Write(ref _inputDegraded, 1);
     }
 
     private void SignalChanged()
@@ -445,6 +672,24 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         _device = null;
     }
 
+    private void ReleaseInputEndpoint()
+    {
+        if (_inputVolume is not null)
+        {
+            try
+            {
+                if (_inputVolumeNotifications is not null)
+                    _inputVolume.UnregisterControlChangeNotify(_inputVolumeNotifications);
+            }
+            catch (COMException) { }
+            CoreAudioInterop.ReleaseFinal(_inputVolume);
+            _inputVolume = null;
+        }
+        _inputVolumeNotifications = null;
+        CoreAudioInterop.ReleaseFinal(_inputDevice);
+        _inputDevice = null;
+    }
+
     private void ThrowIfDisposed()
     {
         if (Volatile.Read(ref _disposed) != 0)
@@ -458,6 +703,7 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         }
         ReleaseEndpoint();
+        ReleaseInputEndpoint();
         try { _deviceEnumerator.UnregisterEndpointNotificationCallback(_endpointNotifications); }
         catch (COMException) { }
         _createdSessions.DrainAll(CoreAudioInterop.ReleasePointer);
@@ -509,7 +755,8 @@ internal sealed class EndpointNotificationClient(Action changed) : IMMNotificati
     public int OnDeviceRemoved(string deviceId) { changed(); return 0; }
     public int OnDefaultDeviceChanged(EDataFlow flow, ERole role, string? defaultDeviceId)
     {
-        if (flow is EDataFlow.Render or EDataFlow.All && role == ERole.Multimedia) changed();
+        if (flow is EDataFlow.Render or EDataFlow.Capture or EDataFlow.All && role == ERole.Multimedia)
+            changed();
         return 0;
     }
     public int OnPropertyValueChanged(string deviceId, PropertyKey key) { changed(); return 0; }

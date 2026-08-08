@@ -4,7 +4,9 @@ Status: responsive per-monitor placement and layout contract implemented; real
 mixed-monitor hardware and visual-regression evidence remains open
 
 The overlay uses a Per-Monitor-V2-aware native window and host-rendered widget
-UI. Widget authors work in logical device-independent pixels (DIPs); they do
+UI. The packaged manifest declares Per-Monitor-V2, and developer/CMake starts
+also request `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` before window
+creation. Widget authors work in logical device-independent pixels (DIPs); they do
 not position an HWND, select a monitor, or compensate for Windows DPI.
 
 ## Monitor ownership
@@ -31,14 +33,20 @@ placement. Effective DPI comes from the resolved `HMONITOR`, not the external
 foreground HWND, so a DPI-unaware game cannot force a false 96-DPI result. The
 host responds without a polling loop:
 
-- `WM_DPICHANGED` recomputes host-owned placement instead of accepting a stale
-  fixed-size rectangle;
-- `WM_DISPLAYCHANGE` recreates display-dependent graphics resources;
-- `WM_SETTINGCHANGE` recomputes work-area placement, including taskbar changes;
+- `WM_DPICHANGED` discards display-dependent graphics and recomputes
+  host-owned placement instead of accepting a stale fixed-size rectangle;
+- `WM_DISPLAYCHANGE` recreates display-dependent graphics and re-reads monitor,
+  DPI, work area, panel, and backdrop placement;
+- `WM_SETTINGCHANGE` reapplies appearance/accessibility policy, recreates
+  graphics, and recomputes work-area placement, including taskbar changes;
 - `WM_SIZE` recreates the render target atomically so viewport-relative styles
   use the new client extent; and
 - visible foreground changes move the overlay and backdrop to the new target
   monitor.
+
+These notifications do no work while hidden; the next open resolves fresh
+state. While visible they share one pure refresh policy and one authoritative
+placement pass, avoiding a partial old-DPI/old-work-area frame.
 
 `SetWindowPos` may synchronously cause another DPI message. A reentrancy gate
 coalesces that case into one deferred placement refresh, preventing recursive
@@ -144,15 +152,16 @@ The native Release suite currently proves these policy/math seams:
   extent stability across identical snapshots;
 - 1280×720, portrait, offset-ultrawide, and combined 200%-DPI/125%-interface/
   150%-text surface clamping with host tray/footer/controller reservations;
-- more than 100,000 containment checks across dense logical boundaries for
+- 108,545 placement checks across dense logical boundaries for
   panel, widget viewport, adaptive footer, and persistent tray geometry;
 - declarative compact/clipping behavior for constrained viewports, including
   portrait cases and non-integer physical-pixel scale;
 - deterministic controller-focus recovery when resize/reflow clips the
   preferred control, with hidden controls excluded from explicit navigation
   and action dispatch; and
-- foreground self-ignore, invalid-target fallback, Alt+Tab retargeting,
-  duplicate suppression, and DPI-placement reentrancy coalescing.
+- 34 targeting checks covering foreground self-ignore, invalid-target fallback,
+  Alt+Tab retargeting, duplicate suppression, DPI-placement reentrancy
+  coalescing, and visible-versus-hidden DPI/topology/settings refresh policy.
 
 Run the native contract suite with:
 

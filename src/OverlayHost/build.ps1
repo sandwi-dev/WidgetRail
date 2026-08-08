@@ -149,6 +149,7 @@ if (-not $SkipPackaging) {
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
     $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
+    $recentAppsOutput = Join-Path $outputDirectory 'runtime\RecentApps'
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
@@ -179,6 +180,11 @@ if (-not $SkipPackaging) {
         --configuration $Configuration --no-self-contained --nologo --output $networkControlsOutput
     if ($LASTEXITCODE -ne 0) {
         throw "Network Controls worker publish failed with exit code $LASTEXITCODE."
+    }
+    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\RecentAppsWidget.Worker\RecentAppsWidget.Worker.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $recentAppsOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Recent Apps worker publish failed with exit code $LASTEXITCODE."
     }
     $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
     $settingsStylesOutput = Join-Path $settingsOutput 'styles'
@@ -238,6 +244,26 @@ if (-not $SkipPackaging) {
     )) {
         if (-not (Test-Path -LiteralPath (Join-Path $networkControlsOutput $requiredNetworkControlsFile))) {
             throw "Network Controls deployment is missing $requiredNetworkControlsFile."
+        }
+    }
+    $recentAppsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\RecentAppsWidget'
+    $recentAppsStylesOutput = Join-Path $recentAppsOutput 'styles'
+    $recentAppsPayloadOutput = Join-Path $recentAppsOutput 'payload'
+    New-Item -ItemType Directory -Force -Path $recentAppsStylesOutput, $recentAppsPayloadOutput | Out-Null
+    Copy-Item -LiteralPath (Join-Path $recentAppsProject 'manifest.json') `
+        -Destination (Join-Path $recentAppsOutput 'manifest.json') -Force
+    Copy-Item -LiteralPath (Join-Path $recentAppsProject 'styles\default.gbss') `
+        -Destination (Join-Path $recentAppsStylesOutput 'default.gbss') -Force
+    Copy-Item -LiteralPath (Join-Path $recentAppsOutput 'RecentAppsWidget.dll') `
+        -Destination (Join-Path $recentAppsPayloadOutput 'RecentAppsWidget.dll') -Force
+    foreach ($requiredRecentAppsFile in @(
+        'RecentAppsWidget.Worker.exe',
+        'manifest.json',
+        'styles\default.gbss',
+        'payload\RecentAppsWidget.dll'
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $recentAppsOutput $requiredRecentAppsFile))) {
+            throw "Recent Apps deployment is missing $requiredRecentAppsFile."
         }
     }
     Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
@@ -336,7 +362,7 @@ if (-not $SkipTests) {
         "/Fo:$bridgeCatalogTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetBridgeCatalogTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('windowsapp.lib')
+    ) + $libraryArguments + @('windowsapp.lib', 'user32.lib')
     & $cl $bridgeCatalogTestArguments
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetBridgeCatalogTests build failed with exit code $LASTEXITCODE."

@@ -147,7 +147,8 @@ remains off until the publisher-trust gates in Phase 4.
 - Performance widget only after its real local diagnostics data and acceptance
   suite exist
 - Media controls
-- Recent apps/games
+- Recent Apps first slice implemented; authoritative game classification,
+  history/relaunch, icons, and grouping remain roadmap work
 - Capture proof and widget if Windows API tests pass
 - Discord proof after eligibility and production communications access are confirmed
 
@@ -192,21 +193,22 @@ Later Audio Control phases add, in evidence-gated increments:
   Windows setter is available;
 - broader device, communications, and application-churn coverage for the
   implemented master and per-session volume/mute surface;
-- microphone mute and input level behind separate explicit capabilities;
-- default multimedia/communications-device visibility and, only where a
-  supported setter exists, controlled selection; and
+- broader capture-device/role visibility and, only where a supported setter
+  exists, controlled selection; and
 - live device/session/default-role updates without a background polling loop.
 
 Audio phase dependencies are: declarative list/slider/toggle states and stable
 controller focus; typed read/control grants and Settings consent; an
 event-driven Core Audio provider; then hardware/churn/performance evidence.
-Output switching and microphone work additionally require supported Windows
-APIs, separate permissions, privacy review, and unmistakable device feedback.
+Output switching and any audio-sample capture additionally require supported
+Windows APIs, separate permissions, privacy review, and unmistakable feedback.
 
 Endpoint master volume/mute is implemented on the current default multimedia
-render endpoint. Output-device selection, microphone controls, and default
-communications-device changes are not implemented today. Each remaining item
-requires a separate capability, privacy/feedback design, and provider/API review. No
+render endpoint. Sanitized default output/input names and current default-
+microphone volume/mute are also implemented behind independent read/control
+grants. Output-device selection and default communications-role changes are not
+implemented. Input control does not grant microphone audio capture. Each
+remaining item requires a separate capability, privacy/feedback design, and provider/API review. No
 undocumented `PolicyConfig`, registry write, or shell-automation output switch
 is acceptable.
 
@@ -229,16 +231,32 @@ does not provide a system-default setter. Do not ship an undocumented
 supported API passes the spike, default-device switching leaves the initial
 scope.
 
+**Recent Apps roadmap** now has a locally testable first slice. A trusted
+WinEvent provider observes eligible foreground/destroyed top-level windows only
+after an authorized read starts it, keeps at most 16 running applications, and
+publishes full coalescible snapshots without polling. The public model contains
+only a bounded display name, an opaque process-lifetime ID, running/most-recent
+state, and conservative kind. An optional Interactive grant can restore/switch
+only to that exact still-running observed window.
+
+The first slice intentionally does not read UserAssist or registry history,
+query Xbox services, inspect game memory, retain executable paths/PIDs/HWNDs in
+the worker, launch closed applications, or infer that an app is a game. Future
+increments may add authoritative game classification, icons, grouping, and a
+reviewed relaunch contract, but each needs a privacy/resource model and must not
+turn recent activity into an unrestricted process launcher.
+
 **Network Control roadmap** follows the Audio Control foundation. Its first
 slice uses Windows WLAN/network change notifications rather than continuously
 polling adapters and targets:
 
 - Ethernet and Wi-Fi connection state;
 - coarse active transport and Wi-Fi adapter/service/radio availability;
-- current Wi-Fi identity and signal only after a future explicit Windows
-  privacy-access flow passes review; otherwise a clear privacy-restricted
-  state with those fields omitted;
-- controller selection among already saved Wi-Fi profiles;
+- current coarse-status Wi-Fi identity and signal remain omitted when Windows
+  precise-location access is unavailable; the separate explicit scan flow
+  presents sanitized current results and clear required/denied states;
+- controller selection among current available scan results, with connection
+  limited to saved-profile-backed or unsaved open results;
 - a compact dashboard summary plus a focused open panel with explicit
   Connecting, Connected, Failed, permission, and unavailable states; and
 - the dashboard card is read-only and declares no profile-selection or connect
@@ -247,10 +265,11 @@ polling adapters and targets:
   separate host-mediated authority and must not silently disclose credentials
   or connect to an unreviewed network.
 
-Password entry, editing/creating Wi-Fi profiles, captive-portal interaction,
-and exposing stored network keys are explicitly outside the initial scope. The
-broker owns WLAN/network handles and returns sanitized state/events. Switching
-uses an existing saved profile only, requires clear focus/feedback, and must
+Password entry, editing/creating protected Wi-Fi profiles, captive-portal
+interaction, and exposing stored network keys are explicitly outside the
+current scope. The broker owns WLAN/network handles and returns sanitized
+state/events. Connection uses a current saved-profile-backed or open scan
+result, requires clear focus/feedback, and must
 handle adapter removal, airplane/radio state, connection failure, and Ethernet
 priority without trapping controller focus.
 
@@ -266,22 +285,24 @@ documented API facts, threading/lifetime rules, privacy boundary, and simulator
 matrix, and the [Network Controls reference](network-controls.md) for the
 author-facing contract and completion evidence.
 
-The next staged Network Control milestone adds controller-visible **currently
-available Wi-Fi networks** and **software Wi-Fi radio control**. The closed
-broker/SDK contracts and trusted provider foundation for explicit,
-user-initiated `WlanScan`, asynchronous completion/timeout, and a bounded
-`WlanGetAvailableNetworkList` snapshot are implemented. The first-party UI,
-bundled capability declaration/consent, dedicated scan/connect tests, and Wi-Fi
-radio control are not. Windows gates both scan/list APIs behind
+The current Network Control milestone includes controller-visible **currently
+available Wi-Fi networks**. The closed broker/SDK contracts, trusted provider,
+first-party UI, bundled capability declaration/consent, and dedicated tests for
+explicit user-initiated `WlanScan`, asynchronous completion/timeout, a bounded
+`WlanGetAvailableNetworkList` snapshot, and current saved/open result connection
+are implemented. Separate software-radio read/control grants are also
+implemented with authoritative reconciliation and explicit multi-PHY partial
+failure. Windows gates
+both scan/list APIs behind
 precise-location consent on current releases, so the flow must begin from a
 controller action, explain the OS prompt, and render required, denied, and
 revoked states without retrying. The resulting rows use generation-bound opaque
 scan IDs that expire on the next scan/provider generation; widgets never receive
 BSSID, interface identity, raw WLAN structures, profile XML, or keys.
 
-Connection support is deliberately staged: connect saved profiles first; then
-review unsaved open networks; then add a host-owned credential prompt for new
-WPA/WPA2/WPA3 Personal networks. Credentials never enter the widget snapshot,
+Connection support currently accepts saved-profile-backed and unsaved open
+results. The next step is a host-owned credential prompt for new WPA/WPA2/WPA3
+Personal networks. Credentials never enter the widget snapshot,
 worker process, widget-owned storage, diagnostics, or logs. Enterprise/802.1X,
 certificate, SIM, domain-credential, hidden-network, and captive-portal setup is
 unsupported initially. `WlanConnect` remains asynchronous and authoritative
@@ -289,24 +310,23 @@ ACM events determine success/failure. `WlanSetInterface` with
 `wlan_intf_opcode_radio_state` may control only the software radio state; a
 hardware switch, policy, or airplane-mode restriction remains authoritative.
 
-A later first-party **Bluetooth Controls** widget is also planned behind new
-closed broker capabilities and a successful packaged-identity/capability spike.
-The trusted provider will use `Windows.Devices.Radios.Radio` for Bluetooth radio
-state, `DeviceWatcher` for bounded device discovery/change events, and
-`DeviceInformationPairing.PairAsync`/`UnpairAsync` for explicit host-owned
-pairing flows. No generic Bluetooth device Connect/Disconnect command is
+Network Controls now includes a first Bluetooth slice behind separate closed
+read and radio-control grants. The trusted WinRT provider reports sanitized,
+bounded paired/present/connected device state through event-driven discovery
+and controls only the software radio. Pair/unpair remains future host-owned
+work; it may use `DeviceInformationPairing.PairAsync`/`UnpairAsync` only after
+owner-window, consent, cancellation, and hardware review. No generic Bluetooth
+device Connect/Disconnect command is
 promised: public Windows communication APIs are profile-specific (for example
 GATT services/characteristics and RFCOMM sockets), so each future functional
 connection needs its own reviewed profile contract and capability.
 
 Later Network Control phases add:
 
-- explicit, privacy-gated available-network scans with generation-bound opaque
-  IDs and no BSSID exposure;
-- saved/open-network connection first, followed by a host-owned WPA Personal
-  credential flow; enterprise authentication remains unsupported initially;
-- software Wi-Fi radio state/control with hardware/policy restrictions shown
-  as authoritative;
+- a host-owned WPA Personal credential flow after the implemented explicit,
+  privacy-gated available-network scans and saved/open connections; enterprise
+  authentication remains unsupported initially;
+- Bluetooth host-owned pair/unpair after the implemented radio/discovery slice;
 - sanitized active-adapter state and Ethernet/Wi-Fi identity;
 - SSID and signal/link quality only through an explicit Windows privacy-access
   flow with required/denied/revoked states;
@@ -317,15 +337,17 @@ Later Network Control phases add:
 - safe reconnect/renew/diagnostic actions only after capability and failure-
   recovery review.
 
-Network phase dependencies are: bounded status/profile models and controller
-focus; separate read and Interactive-only saved-profile-switch grants; the
-event-driven IP Helper/Native Wi-Fi provider; then new scan, unsaved-connect,
-credential-prompt, and radio-control capabilities; precise-location consent;
-hardware matrices; and measured diagnostic sampling. Identity/address details
+Network phase dependencies through scan and saved/open connection are now
+implemented: bounded models and controller focus, separate closed grants,
+event-driven IP Helper/Native Wi-Fi, explicit scan, generation-bound IDs, and
+precise-location denial states. Remaining dependencies are the host-owned
+credential prompt, Bluetooth pairing, hardware/privacy matrices, and
+measured diagnostic sampling. Identity/address details
 and recovery commands do not enter the public contract before those reviews.
 
-The user-visible first-party reference still excludes scans, unsaved networks,
-password entry, profile creation/editing, and radio control. The staged credential flow
+The user-visible first-party reference includes explicit scans and unsaved open
+networks and software Wi-Fi/Bluetooth radio controls, but still excludes
+password entry, protected profile creation/editing, and Bluetooth pairing. The staged credential flow
 must remain host-owned and WPA Personal-only at first; it never exposes stored
 keys. Captive-portal automation, enterprise/802.1X provisioning, arbitrary
 adapter configuration, and privileged troubleshooting scripts remain outside

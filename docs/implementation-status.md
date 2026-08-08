@@ -87,24 +87,39 @@ Up/Down navigation.
   schema-1 state migration, fail-closed exact version pins, discovery,
   enablement, and pin-preserving order persistence. Enabled compatible packages
   join complete validated live bridge revisions and remain lazy until first use.
-- `PlatformBroker`: a version-1 audio-session/network capability foundation with
-  four closed grants, SID/Low-label/PID-bound isolated endpoints plus nonce/
+- `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity
+  capability foundation with a closed versioned grant vocabulary, SID/Low-
+  label/PID-bound isolated endpoints plus nonce/
   identity authentication, manifest/consent/lifecycle enforcement, strict
   bounded DTOs/events, atomic consent persistence, bounded/coalesced
   subscriptions, and a deterministic simulator. It is connected to widget
-  `HostServices`; the trusted bridge composes the real Windows audio and network
-  backends.
+  `HostServices`; the trusted bridge composes the real Windows audio, network,
+  Bluetooth, and foreground-activity backends.
 - `WindowsAudioProvider`: an event-driven Core Audio backend for sanitized
   per-application sessions on the current default multimedia render endpoint.
   A dedicated MTA owns native objects; callbacks only enqueue coalesced refresh
-  work. It supports endpoint master volume/mute and per-session volume/mute,
-  but not output-device switching or microphone control.
+  work. It supports endpoint master volume/mute, per-session volume/mute,
+  sanitized current default-device visibility, and volume/mute for the current
+  default microphone. There is no undocumented default-device setter and no
+  microphone sample capture.
 - `WindowsNetworkProvider`: a lazy event-driven Windows backend with a dedicated
   MTA owner, bounded/coalesced queues, coarse IP Helper connectivity hints,
-  ACM-only Native Wi-Fi notifications, sanitized saved-profile enumeration,
-  and opaque saved-profile switching. Automatic reads do not query
-  location-sensitive current SSID/signal, so those details remain explicitly
-  privacy-restricted in version 1.
+  ACM-only Native Wi-Fi notifications, explicit available-network scanning,
+  generation-bound opaque result IDs, and saved/open result connection.
+  Automatic status reads still do not query location-sensitive current
+  SSID/signal, and no scan runs without an Interactive user action. Separate
+  read/control grants expose software Wi-Fi radio state through
+  `WlanQueryInterface`/`WlanSetInterface`; hardware/policy state remains
+  authoritative and multi-PHY partial failure is explicit.
+- `WindowsBluetoothProvider`: a lazy event-driven WinRT backend for sanitized
+  Bluetooth software-radio state and bounded nearby/paired/connected discovery.
+  It supports software radio On/Off only. Pair/unpair and generic device
+  Connect/Disconnect are not implemented.
+- `WindowsActivityProvider`: a lazy WinEvent foreground/destroy observer with
+  no polling. It keeps at most 16 eligible running applications and publishes
+  bounded display names plus per-process-lifetime opaque IDs; activation can
+  switch only to a still-running observed window. It does not read UserAssist,
+  launch executables, expose PID/path/HWND, or claim game classification.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
   `enable`, `disable`, and `version list|select|rollback` commands. Local and
@@ -112,11 +127,12 @@ Up/Down navigation.
   acquisition requires SHA-256 pinning, reports the actual digest, and installs
   disabled pending explicit review.
 
-The first-party Settings, Audio Mixer, and Network Controls references and the
-Clock/YT Music samples exercise the public widget path. Audio Mixer and Network
-Controls are bounded integration slices for the larger controller-first Audio
-Control and Network Control roadmap items; their presence here does not mean
-those product widgets are complete or shipped. Settings is packaged and
+The first-party Settings, Audio Mixer, Network Controls, and Recent Apps
+references and the Clock/YT Music samples exercise the public widget path.
+Audio Mixer and Network Controls are bounded integration slices for the larger
+controller-first Audio Control and Network Control roadmap items; their
+presence here does not mean those product widgets are complete or shipped.
+Settings is packaged and
 registered beside YT Music, renders through
 the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
@@ -137,36 +153,47 @@ same catalog/bridge/worker path as the other widgets. Its widget code uses only
 the public typed audio service,
 fetches once on activation, then
 reacts to provider events rather than polling. It offers controller session
-selection plus optimistic per-session volume/mute controls in Interactive and
-renders explicit permission, lifecycle, empty, unavailable, and failure states.
+ selection plus optimistic per-session volume/mute controls in Interactive and
+ renders explicit permission, lifecycle, empty, unavailable, and failure states.
+ It also shows sanitized current default output/input device names and offers
+ controller sliders/mute for the current default microphone behind independent
+ optional grants. Endpoint selection remains display-only because no supported
+ system-default setter has been adopted.
 Broader hardware/churn coverage and end-to-end hidden/visible performance evidence
 remain open; this is not yet an end-user release claim.
 
 The current Network Controls reference slice runs as an out-of-process
 first-party SDK widget and worker with trusted catalog and Release-build
-packaging wiring. It requires the network read capability, makes saved-profile
-switching optional and
-Interactive-only, opens its acknowledged status subscription before snapshots,
-and never polls. It declares no dashboard quick actions. The open widget renders
-every saved profile in one bounded vertical Scroll; D-pad/left-stick Up/Down
-moves focus, and A or X routes through the exact focused row without LB/RB or
-LT/RT profile cycling.
+packaging wiring. It requires coarse network and available-Wi-Fi read grants,
+makes current saved/open result connection optional and Interactive-only,
+opens acknowledged status and available-Wi-Fi subscriptions before snapshots,
+and never polls. It declares no dashboard quick actions. The open widget
+renders the current ready scan in one bounded vertical Scroll; D-pad/left-stick
+Up/Down moves focus, A starts one explicit scan from the Scan control, and A or
+X routes a connection through the exact focused row without LB/RB or LT/RT
+cycling.
 The real provider returns on `WlanConnect` acceptance, then publishes
 authoritative `Connecting`, `Failed`, and refreshed status events. Its focused
-provider and widget Release suites pass 18/18 and 16/16 respectively. Focused checks do not
+  provider and widget Release suites pass 31/31 and 17/17 respectively. Focused checks do not
 replace hardware/privacy/performance matrices, which remain open. The current
 full managed Release suite, native host suite, package required-file checks,
 hidden-startup smoke, and controller input-probe smoke pass.
-Available-network broker/SDK contracts and an explicit, event-driven Native
-Wi-Fi scan/connect provider foundation are implemented behind separate closed
-capabilities. They use generation-bound opaque IDs and cover saved-profile and
-unsaved-open connection starts, but are not yet declared or rendered by the
-bundled Network Controls widget and lack dedicated behavior tests; the passing
-Network Controls count does not claim them. Host-owned WPA Personal credential
-entry, Wi-Fi software-radio control, and all Bluetooth radio/device/pairing
-surfaces remain staged roadmap work. The researched continuation uses
-`WlanSetInterface` and packaged WinRT Radio/DeviceWatcher/
-DeviceInformationPairing APIs.
+Available-network broker/SDK contracts and the explicit, event-driven Native
+Wi-Fi scan/connect provider are declared and rendered by the bundled widget.
+They use generation-bound opaque IDs and cover saved-profile-backed and
+unsaved-open connection starts with dedicated broker/provider/widget tests.
+Host-owned WPA Personal credential entry remains staged. Software Wi-Fi radio
+read/control and Bluetooth radio/discovery are now implemented behind separate
+grants; pair/unpair and generic Bluetooth Connect/Disconnect remain outside the
+current surface.
+
+Recent Apps is packaged beside the other first-party widgets. It opens an
+acknowledged recent-activity subscription before fetching once per active
+lifetime, renders a bounded controller Scroll, preserves opaque selection
+across full-snapshot events, and makes activation optional/Interactive-only.
+Every observed entry is currently classified conservatively as Application;
+there is no registry/Xbox history import, authoritative game detector, relaunch,
+or arbitrary process targeting.
 
 YT Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
 connection attempt, and renders media metadata, artwork, transport state, and
@@ -187,7 +214,13 @@ focus into its controls and publishes Interactive; root B or a root Down
 boundary returns focus to the still-visible tray; tray B closes; and nested
 scopes remain contained. Guide is a region-independent global toggle. The
 built-in themes also use non-shrinking fixed regions, a thin native Slider
-track inside the 44-DIP target, and lighter typography/radii/spacing. These
+ track inside the 44-DIP target, and lighter typography/radii/spacing. Pressed
+ Up from the tray now enters the visible widget. Scroll focus-follow snaps the
+ first and last focusable descendants to the true extent boundaries. The
+ controller guide is density-aware and no-wrap, the widget viewport has a
+ host-owned rounded clip, and size-changing widget swaps commit one synchronous
+ complete repaint after a no-redraw move to avoid an intermediate black frame.
+ These
 changes remain in Verifying until packaged controller and screenshot evidence
 is recorded in GBA-015 and GBA-016.
 
@@ -344,27 +377,30 @@ version unsigned authority derivation. Bridge
 passes 24/24, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted built-in Job-only policy, and mandatory installed-package isolation
-metadata. PlatformBroker passes 23/23, including closed isolated-client SID/
+metadata. PlatformBroker passes 32/32, including closed isolated-client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
-consent/lifecycle gates, and revocation. An actual AppContainer-to-broker
+consent/lifecycle gates, revocation, and cancellation of already in-flight
+provider work when lifecycle or consent changes. An actual AppContainer-to-broker
 request integration also passes with the exact SID, Low-label global endpoint,
 expected PID, nonce, and widget identity checks in force.
-The generic worker-host suite passes 9/9, including that real typed broker
-request from an AppContainer worker. Audio provider and Audio Mixer pass 14/14
-and 22/22; Network provider and Network Controls pass 18/18 and 16/16.
+ The generic worker-host suite passes 9/9, including that real typed broker
+ request from an AppContainer worker. Audio provider and Audio Mixer pass 15/15
+ and 24/24; Network provider and Network Controls pass 31/31 and 17/17.
+ Bluetooth provider passes 11/11; Recent Apps and its Windows activity provider
+ pass 8/8 and 10/10; Settings passes 34/34.
 Pre-resume native fault injection and an installed package launched through the
 published Bridge/catalog layout remain explicit release-test gaps.
-Network Controls and its Windows provider retain their focused 16/16 and 18/18
+Network Controls and its Windows provider retain their focused 17/17 and 31/31
 coverage for controller/focus, lifecycle/no-poll subscription ordering,
 privacy/explicit state, optimistic command reconciliation, opaque identity,
 native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
 The full native aggregate passes. Focused native suites report Controller
-Navigation 70 checks, Slider Interaction 2,071, Focus Navigation 17, Widget Surface
-Focus 16, Declarative Renderer 4,233, and Native Icons 188. Display-sensitive evidence includes 187
-declarative-layout checks, 668 placement/render-metric/surface-geometry checks,
-and 18 foreground-target/reentrancy checks, alongside state-machine,
+Navigation 73 checks, Slider Interaction 2,071, Focus Navigation 17, Widget Surface
+Focus 16, Declarative Renderer 4,245, and Native Icons 188. Display-sensitive evidence includes 187
+declarative-layout checks, 108,545 placement/render-metric/surface-geometry
+checks, and 34 foreground-target/display-refresh/reentrancy checks, alongside state-machine,
 remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer
 suites. It covers deterministic tiny/portrait/negative-coordinate/wide/4K and
 72–480-DPI math plus 150% font-size/letter-spacing adaptation. The platform
@@ -389,7 +425,7 @@ with C++ installed:
 ## Honest limitations
 
 - The generic native renderer handles the current declarative node kinds and
-  renders YT Music, Settings, Audio Mixer, Network Controls, and installed
+  renders YT Music, Settings, Audio Mixer, Network Controls, Recent Apps, and installed
   widgets through catalog descriptors. Responsive viewport/containment math is
   covered broadly; physical mixed-DPI, localization, accessibility, and visual
   regression evidence is still incomplete.
@@ -414,7 +450,8 @@ with C++ installed:
 - Win32k system-call disable is not enabled for managed workers because the
   tested mitigation caused CoreCLR DLL initialization failure (`0xC0000142`).
   Job Object UI restrictions remain enabled.
-- Closed audio/network manifest permissions are enforced through the broker.
+- Closed audio/network/Bluetooth/recent-activity manifest permissions are
+  enforced through the broker.
   Community AppContainers have zero OS capabilities/network authority and no
   general desktop token; direct resource access is limited to explicit
   read/execute runtime/package grants. OS capability APIs remain brokered.
@@ -434,6 +471,11 @@ with C++ installed:
   Visible/Interactive work is canceled, and the current broker denies every
   capability in Background. Manifest `backgroundPolicy`, resource-policy, and
   opt-in suspend/unload enforcement are not implemented yet.
+- Recent activity observation starts lazily on the first authorized read, then
+  remains event-driven until the bridge/backend is disposed. Consent revocation
+  blocks delivery and activation and cancels in-flight broker requests, but
+  immediately stopping provider-side observation and clearing its bounded
+  in-memory history on read-consent revoke is future hardening.
 - GBSS compilation and bridge-global layering are implemented. `selected`,
   `disabled`, and `busy` snapshot state participates in the complete
   `base`/`focused` maps. A transient `pressed` map and every future dynamic
@@ -450,19 +492,20 @@ with C++ installed:
 - Audio Mixer is a bounded first-party public-SDK reference slice: its widget,
   package/catalog integration, and event-driven per-session Core Audio provider
   exist, while the controller-first **Audio Control** roadmap remains
-  incomplete. That roadmap adds supported output/default-role selection and
-  explicit-capability microphone mute/level only after provider, privacy,
-  hardware, and performance review. Network Controls is likewise a bounded
+  incomplete. It now includes explicit-capability default-microphone mute/level
+  and sanitized default-device visibility, but supported output/default-role
+  selection remains unresolved and microphone sample capture is out of scope.
+  Network Controls is likewise a bounded
   reference slice with provider, worker, catalog, controller, and packaging
   evidence—not a completed **Network Control** product widget. Its roadmap adds
   privacy-gated identity/link details, bounded IP/gateway/DNS summaries,
   measured throughput/latency/loss diagnostics, and reviewed recovery actions.
-  The implemented version 1 explicitly excludes password entry, profile
-  creation, scans, radio controls, and automatic current SSID/signal access.
-  Staged roadmap work adds precise-location-gated available-network scans,
-  saved/open connection first, a host-owned WPA Personal credential prompt,
-  software Wi-Fi radio control, and separately capability-gated Bluetooth
-  radio/enumeration/pair/unpair. Enterprise Wi-Fi and generic Bluetooth
+  The implemented reference includes precise-location-gated explicit
+  available-network scans and current saved/open result connections; it
+  excludes password entry, profile creation, and automatic current SSID/signal
+  access. Software Wi-Fi radio control plus separately capability-gated
+  Bluetooth radio/discovery are implemented. Staged roadmap work adds a host-
+  owned WPA Personal credential prompt and Bluetooth pair/unpair. Enterprise Wi-Fi and generic Bluetooth
   Connect/Disconnect are not promised. See
   [widget capabilities](capabilities.md) and [Windows provider
   architecture](windows-provider-architecture.md) and [Network Controls

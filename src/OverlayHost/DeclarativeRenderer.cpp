@@ -451,6 +451,55 @@ struct DeclarativeRenderer::RenderPass final {
         return path;
     }
 
+    static void CollectFocusableDescendants(
+        const WidgetNode& node,
+        const std::wstring_view inheritedScope,
+        const std::wstring_view matchingScope,
+        std::vector<std::wstring_view>& ids) {
+        const std::wstring_view inputScope = !node.inputScopeId.empty()
+            ? std::wstring_view(node.inputScopeId)
+            : inheritedScope.empty() ? std::wstring_view(node.id) : inheritedScope;
+        if ((node.kind == L"button" || node.kind == L"slider") &&
+            inputScope == matchingScope) {
+            ids.emplace_back(node.id);
+        }
+        for (const auto& child : node.children) {
+            CollectFocusableDescendants(child, inputScope, matchingScope, ids);
+        }
+    }
+
+    static std::wstring_view ScopeForPath(
+        const std::vector<const WidgetNode*>& path,
+        const std::size_t count) {
+        std::wstring_view scope;
+        for (std::size_t index = 0; index < std::min(count, path.size()); ++index) {
+            const auto& node = *path[index];
+            if (!node.inputScopeId.empty()) scope = node.inputScopeId;
+            else if (scope.empty()) scope = node.id;
+        }
+        return scope;
+    }
+
+    [[nodiscard]] std::pair<bool, bool> FocusedBoundaryOf(
+        const WidgetNode& scroll) const {
+        const auto focusPath = FocusPath();
+        if (focusPath.empty()) return {};
+        const auto focusedScope = ScopeForPath(focusPath, focusPath.size());
+        std::vector<const WidgetNode*> scrollPath;
+        if (!FindNodePath(snapshot->root, scroll.id, scrollPath) ||
+            scrollPath.empty()) return {};
+        const auto inheritedScope = ScopeForPath(
+            scrollPath, scrollPath.size() - 1U);
+        std::vector<std::wstring_view> focusableIds;
+        CollectFocusableDescendants(
+            scroll, inheritedScope, focusedScope, focusableIds);
+        if (focusableIds.empty()) return {};
+        return {
+            focusableIds.front() == focusedId,
+            focusableIds.back() == focusedId,
+        };
+    }
+
     [[nodiscard]] bool FollowFocusedDescendant() {
         if (focusedId.empty()) return false;
         const auto* focusBox = layout.Find(NarrowStableId(focusedId));
@@ -469,7 +518,33 @@ struct DeclarativeRenderer::RenderPass final {
             auto desired = scrollBox->scrollOffset;
             const auto& viewportBox = scrollBox->contentBox;
             const auto& targetRect = focusBox->borderBox;
-            if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical) {
+            const auto [atLeadingBoundary, atTrailingBoundary] =
+                FocusedBoundaryOf(scroll);
+            const auto focusVisibleAt = [&](const float candidateOffset) {
+                const float delta = scrollBox->scrollOffset - candidateOffset;
+                if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical) {
+                    const float top = targetRect.y + delta;
+                    return top >= viewportBox.y - kRevealEpsilon &&
+                           top + targetRect.height <=
+                               viewportBox.y + viewportBox.height + kRevealEpsilon;
+                }
+                const float left = targetRect.x + delta;
+                return left >= viewportBox.x - kRevealEpsilon &&
+                       left + targetRect.width <=
+                           viewportBox.x + viewportBox.width + kRevealEpsilon;
+            };
+            if (atLeadingBoundary && focusVisibleAt(0.0F)) {
+                // A just-enough reveal would stop as soon as the first control
+                // became visible and could leave non-focusable heading/content
+                // above it clipped. The first focus target represents the true
+                // leading edge of a controller-only scroll surface.
+                desired = 0.0F;
+            } else if (atTrailingBoundary &&
+                       focusVisibleAt(scrollBox->maximumScrollOffset)) {
+                // Reaching the last control must expose trailing status/help
+                // content and the complete rounded card boundary as well.
+                desired = scrollBox->maximumScrollOffset;
+            } else if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical) {
                 if (targetRect.y < viewportBox.y)
                     desired -= viewportBox.y - targetRect.y;
                 else if (targetRect.y + targetRect.height > viewportBox.y + viewportBox.height)
@@ -1309,8 +1384,30 @@ RenderResult DeclarativeRenderer::Render(
         bitmapTarget_ = renderTarget;
     }
     pass.BuildLayout();
+    const auto cornerRadius = std::isfinite(options.surfaceCornerRadiusPx)
+        ? std::clamp(options.surfaceCornerRadiusPx, 0.0F,
+                     std::min(viewport.width, viewport.height) * 0.5F)
+        : 0.0F;
+    const bool roundedClip = cornerRadius > 0.0F && renderTarget &&
+        EnsureSurfaceClip(renderTarget, viewport, cornerRadius);
+    if (roundedClip) {
+        D2D1_LAYER_PARAMETERS parameters{};
+        parameters.contentBounds = D2DRect(viewport);
+        parameters.geometricMask = surfaceClipGeometry_.Get();
+        parameters.maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
+        parameters.maskTransform = D2D1::Matrix3x2F::Identity();
+        parameters.opacity = 1.0F;
+        renderTarget->PushLayer(parameters, surfaceClipLayer_.Get());
+    } else if (cornerRadius > 0.0F && renderTarget) {
+        pass.Add({}, L"surface_clip_fallback",
+                 L"Rounded host viewport clip could not be created.");
+        renderTarget->PushAxisAlignedClip(
+            D2DRect(viewport), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    }
     pass.DrawNode(snapshot.root);
     pass.DrawDeferredFocus();
+    if (roundedClip) renderTarget->PopLayer();
+    else if (cornerRadius > 0.0F && renderTarget) renderTarget->PopAxisAlignedClip();
     const auto hasErrors = std::any_of(
         pass.result.diagnostics.begin(),
         pass.result.diagnostics.end(),
@@ -1324,6 +1421,46 @@ RenderResult DeclarativeRenderer::Render(
 void DeclarativeRenderer::DiscardTargetResources() noexcept {
     bitmaps_.clear();
     bitmapTarget_ = nullptr;
+    surfaceClipLayer_.Reset();
+    surfaceClipGeometry_.Reset();
+    surfaceClipTarget_ = nullptr;
+    surfaceClipRect_ = {};
+    surfaceClipRadius_ = 0.0F;
+}
+
+bool DeclarativeRenderer::EnsureSurfaceClip(
+    ID2D1RenderTarget* renderTarget,
+    const Rect viewport,
+    const float radius) {
+    const auto sameRect = [](const Rect& left, const Rect& right) {
+        return std::abs(left.x - right.x) <= 0.01F &&
+               std::abs(left.y - right.y) <= 0.01F &&
+               std::abs(left.width - right.width) <= 0.01F &&
+               std::abs(left.height - right.height) <= 0.01F;
+    };
+    if (surfaceClipTarget_ == renderTarget && surfaceClipLayer_ &&
+        surfaceClipGeometry_ && sameRect(surfaceClipRect_, viewport) &&
+        std::abs(surfaceClipRadius_ - radius) <= 0.01F) {
+        return true;
+    }
+
+    surfaceClipLayer_.Reset();
+    surfaceClipGeometry_.Reset();
+    surfaceClipTarget_ = nullptr;
+    if (!d2dFactory_ || !renderTarget ||
+        FAILED(d2dFactory_->CreateRoundedRectangleGeometry(
+            {D2DRect(viewport), radius, radius},
+            surfaceClipGeometry_.ReleaseAndGetAddressOf())) ||
+        FAILED(renderTarget->CreateLayer(
+            nullptr, surfaceClipLayer_.ReleaseAndGetAddressOf()))) {
+        surfaceClipLayer_.Reset();
+        surfaceClipGeometry_.Reset();
+        return false;
+    }
+    surfaceClipTarget_ = renderTarget;
+    surfaceClipRect_ = viewport;
+    surfaceClipRadius_ = radius;
+    return true;
 }
 
 void DeclarativeRenderer::ForgetWidgetState(

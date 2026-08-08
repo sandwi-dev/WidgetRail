@@ -35,6 +35,14 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             FullMode = BoundedChannelFullMode.DropOldest,
             AllowSynchronousContinuations = false,
         });
+    private readonly Channel<WifiRadioSummary> _radioEvents =
+        Channel.CreateBounded<WifiRadioSummary>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+            AllowSynchronousContinuations = false,
+        });
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _threadExited = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _stateGate = new();
@@ -47,6 +55,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         new Dictionary<string, string>(StringComparer.Ordinal);
     private AvailableWifiNetworksSummary _availableWifi =
         new(WifiScanState.NotScanned, []);
+    private WifiRadioSummary _wifiRadio = new(WifiRadioState.Unavailable, false);
     private IReadOnlyDictionary<string, string> _wifiNativeKeysByOpaqueId =
         new Dictionary<string, string>(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _wifiOpaqueIds = new(StringComparer.Ordinal);
@@ -169,6 +178,24 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken)
+    {
+        await EnsureReadableAsync(cancellationToken).ConfigureAwait(false);
+        lock (_stateGate) return _wifiRadio;
+    }
+
+    public async Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfDisposed();
+        if (_ownerUnavailable)
+            throw new BrokerException("platform_unavailable", "Windows Wi-Fi radio control is unavailable.");
+        var command = new SetWifiRadioCommand(enabled, cancellationToken);
+        EnqueueCommand(command);
+        await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private void EnqueueCommand(NetworkCommand command)
     {
         try
@@ -251,6 +278,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             Volatile.Write(ref _activeGeneration, adapter.Generation);
             adapter.StateChanged += OnNativeStateChanged;
             Refresh(adapter, publish: false);
+            RefreshWifiRadio(adapter, publish: false);
             _ready.TrySetResult();
 
             foreach (var command in _commands.GetConsumingEnumerable())
@@ -261,6 +289,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         Interlocked.Exchange(ref _refreshQueued, 0);
                         Refresh(adapter, publish: true);
                         RefreshAvailableWifi(adapter, publish: true);
+                        RefreshWifiRadio(adapter, publish: true);
                         break;
                     case RetryRefreshCommand retry:
                         if (retry.CancellationToken.IsCancellationRequested)
@@ -269,6 +298,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         {
                             Refresh(adapter, publish: true);
                             RefreshAvailableWifi(adapter, publish: true);
+                            RefreshWifiRadio(adapter, publish: true);
                             retry.Completion.TrySetResult();
                         }
                         break;
@@ -283,6 +313,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         break;
                     case ConnectAvailableWifiCommand connectWifi:
                         ExecuteConnectAvailableWifi(adapter, connectWifi);
+                        break;
+                    case SetWifiRadioCommand radio:
+                        ExecuteSetWifiRadio(adapter, radio);
                         break;
                 }
             }
@@ -324,10 +357,15 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         connectWifi.Completion.TrySetException(
                             new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
                         break;
+                    case SetWifiRadioCommand radio:
+                        radio.Completion.TrySetException(
+                            new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
+                        break;
                 }
             }
             _events.Writer.TryComplete();
             _wifiEvents.Writer.TryComplete();
+            _radioEvents.Writer.TryComplete();
             lock (_stateGate)
             {
                 CancelConnectionAttemptTimerLocked();
@@ -345,7 +383,8 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         {
             ThrowIfDisposed();
             if (_started != 0) return;
-            _eventPump = Task.WhenAll(DispatchEventsAsync(), DispatchWifiEventsAsync());
+            _eventPump = Task.WhenAll(
+                DispatchEventsAsync(), DispatchWifiEventsAsync(), DispatchRadioEventsAsync());
             _ownerThread = new Thread(OwnerThreadMain)
             {
                 IsBackground = true,
@@ -598,6 +637,92 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         {
             command.Completion.TrySetException(new BrokerException(
                 "platform_unavailable", "Windows Wi-Fi connection control is unavailable.", exception));
+        }
+    }
+
+    private void ExecuteSetWifiRadio(IWindowsNetworkNativeAdapter adapter, SetWifiRadioCommand command)
+    {
+        if (command.CancellationToken.IsCancellationRequested)
+        {
+            command.Completion.TrySetCanceled(command.CancellationToken);
+            return;
+        }
+        Exception? failure = null;
+        try
+        {
+            var result = adapter.TrySetWifiRadio(command.Enabled);
+            switch (result)
+            {
+                case NativeWifiRadioSetResult.NoAdapter:
+                    throw new BrokerException("wifi_no_adapter", "No Wi-Fi adapter is available.");
+                case NativeWifiRadioSetResult.HardwareDisabled:
+                    throw new BrokerException(
+                        "wifi_hardware_disabled", "Wi-Fi is disabled by a hardware switch.");
+                case NativeWifiRadioSetResult.PolicyDenied:
+                    throw new BrokerException(
+                        "wifi_radio_policy_denied", "Windows policy denied Wi-Fi radio control.");
+                case NativeWifiRadioSetResult.Unavailable:
+                    throw new BrokerException(
+                        "platform_unavailable", "Windows Wi-Fi radio control is unavailable.");
+                case NativeWifiRadioSetResult.PartialFailure:
+                    throw new BrokerException(
+                        "wifi_radio_partial_failure",
+                        "Windows changed only part of the Wi-Fi radio state and restoration could not be guaranteed.");
+            }
+        }
+        catch (Exception exception)
+        {
+            failure = exception is BrokerException
+                ? exception
+                : new BrokerException(
+                    "platform_unavailable", "Windows Wi-Fi radio control failed.", exception);
+        }
+        finally
+        {
+            // Once Native Wi-Fi was reached, success, failure, partial failure,
+            // and caller cancellation all reconcile from Windows. Never restore
+            // a pre-command cache after a non-atomic multi-PHY operation.
+            Refresh(adapter, publish: true);
+            RefreshWifiRadio(adapter, publish: true);
+            RefreshAvailableWifi(adapter, publish: true);
+        }
+        if (failure is null) command.Completion.TrySetResult();
+        else command.Completion.TrySetException(failure);
+    }
+
+    private void RefreshWifiRadio(IWindowsNetworkNativeAdapter adapter, bool publish)
+    {
+        try
+        {
+            var native = adapter.ReadWifiRadio();
+            var state = native.State switch
+            {
+                NativeWifiRadioState.On => WifiRadioState.On,
+                NativeWifiRadioState.Off => WifiRadioState.Off,
+                NativeWifiRadioState.HardwareDisabled => WifiRadioState.HardwareDisabled,
+                NativeWifiRadioState.NoAdapter => WifiRadioState.NoAdapter,
+                _ => WifiRadioState.Unavailable,
+            };
+            var snapshot = new WifiRadioSummary(state,
+                native.CanControl && state is WifiRadioState.On or WifiRadioState.Off);
+            bool changed;
+            lock (_stateGate)
+            {
+                changed = snapshot != _wifiRadio;
+                _wifiRadio = snapshot;
+            }
+            if (publish && changed) _radioEvents.Writer.TryWrite(snapshot);
+        }
+        catch
+        {
+            var unavailable = new WifiRadioSummary(WifiRadioState.Unavailable, false);
+            bool changed;
+            lock (_stateGate)
+            {
+                changed = _wifiRadio != unavailable;
+                _wifiRadio = unavailable;
+            }
+            if (publish && changed) _radioEvents.Writer.TryWrite(unavailable);
         }
     }
 
@@ -856,6 +981,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             _profiles = [];
             _nativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
             _availableWifi = new AvailableWifiNetworksSummary(WifiScanState.Unavailable, []);
+            _wifiRadio = new WifiRadioSummary(WifiRadioState.Unavailable, false);
             _wifiNativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
             _wifiOpaqueIds.Clear();
             _mappedWifiScanGeneration = -1;
@@ -872,6 +998,8 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         if (publish && changed) _events.Writer.TryWrite(UnavailableStatus);
         if (publish) _wifiEvents.Writer.TryWrite(
             new AvailableWifiNetworksSummary(WifiScanState.Unavailable, []));
+        if (publish) _radioEvents.Writer.TryWrite(
+            new WifiRadioSummary(WifiRadioState.Unavailable, false));
     }
 
     private async Task DispatchEventsAsync()
@@ -900,6 +1028,24 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                 PlatformCapabilities.NetworkWifiReadV1,
                 PlatformCapabilities.NetworkAvailableWifiChanged,
                 new AvailableWifiNetworksChangedEvent(snapshot));
+            var handlers = EventPublished;
+            if (handlers is null) continue;
+            foreach (EventHandler<BrokerPlatformEvent> handler in handlers.GetInvocationList())
+            {
+                try { handler(this, platformEvent); }
+                catch { }
+            }
+        }
+    }
+
+    private async Task DispatchRadioEventsAsync()
+    {
+        await foreach (var radio in _radioEvents.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            var platformEvent = new BrokerPlatformEvent(
+                PlatformCapabilities.NetworkWifiRadioReadV1,
+                PlatformCapabilities.NetworkWifiRadioChanged,
+                new WifiRadioChangedEvent(radio));
             var handlers = EventPublished;
             if (handlers is null) continue;
             foreach (EventHandler<BrokerPlatformEvent> handler in handlers.GetInvocationList())
@@ -991,6 +1137,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             if (_started == 0)
             {
                 _events.Writer.TryComplete();
+                _radioEvents.Writer.TryComplete();
                 _ready.TrySetResult();
                 _threadExited.TrySetResult();
             }
@@ -1026,6 +1173,12 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private sealed record ConnectAvailableWifiCommand(
         string NetworkId,
         CancellationToken CancellationToken) : NetworkCommand
+    {
+        public TaskCompletionSource Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+    private sealed record SetWifiRadioCommand(bool Enabled, CancellationToken CancellationToken)
+        : NetworkCommand
     {
         public TaskCompletionSource Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);

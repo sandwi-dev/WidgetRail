@@ -36,12 +36,16 @@ guarantees that are available now.
   observations, current measurements, and remaining ETW/PresentMon evidence.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
-- [Widget capabilities](capabilities.md) — typed audio/network services,
+- [Widget capabilities](capabilities.md) — typed audio/network/Bluetooth/recent-
+  activity services,
   manifest declarations, lifecycle/consent behavior, errors, testing, and the
   current security boundary.
 - [Network Controls reference](network-controls.md) — implemented first-party
-  integration, saved-profile-only scope, controller UX, privacy/location
+  integration, explicit available-Wi-Fi scan/current saved-open connection,
+  controller UX, privacy/location
   gates, event-driven authoring, tests, and remaining release evidence.
+- [Recent Apps reference](recent-apps.md) — event-driven foreground activity,
+  opaque identity, exact live-window activation, controller UX, and limits.
 
 ## Distribution and operations
 

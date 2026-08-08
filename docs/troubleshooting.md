@@ -302,16 +302,20 @@ When the package/provider path is available, diagnose its two independent
 permission layers separately:
 
 - In **Settings → Permissions & capabilities**, grant
-  `system.network.read.v1` to show status/profiles and, separately,
-  `system.network.saved-profile.switch.v1` to connect. Required capabilities
-  are not auto-granted. Switching is denied unless the widget is Interactive.
-- Version 1 deliberately does not query location-sensitive active Wi-Fi
+  `system.network.read.v1` for coarse status and
+  `system.network.wifi.read.v1` for nearby-network scan/read. Grant the
+  optional `system.network.wifi.connect.v1` separately to connect. Required
+  capabilities are not auto-granted; scan and connect are denied unless the
+  widget is Interactive.
+- Coarse status deliberately does not query location-sensitive active Wi-Fi
   profile/signal automatically. Expect `PrivacyRestricted` with those fields
-  omitted even after an overlay read grant; Ethernet/aggregate connectivity and
-  saved-profile enumeration can remain available. A future Windows access
-  request cannot be implied by overlay consent.
-- Only profiles already saved by Windows are eligible. An absent network cannot
-  be scanned, created, or supplied with a password through version 1.
+  omitted. Nearby-network listing is a separate explicit scan: Windows also
+  requires precise-location consent and returns a readable required/denied
+  state when it is absent. Opening/selecting the widget does not prompt or scan.
+- Only networks in the current ready scan are eligible. Saved-profile-backed
+  and unsaved open results may connect; a protected unsaved result reports
+  `credential_required` and must currently be completed in Windows Settings.
+  An ID from an earlier scan reports `resource_not_found`; scan again.
 - WLAN connection is asynchronous. An accepted command should display bounded
   busy feedback until a native status event confirms success or reports a
   terminal failure/timeout; acknowledgement alone is not “connected.”

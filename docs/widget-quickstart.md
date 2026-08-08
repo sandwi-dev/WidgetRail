@@ -67,12 +67,16 @@ contain `_` or `-`.
 
 If the widget needs a platform service, declare only a supported closed ID in
 manifest `permissions` (core requirement) or `optionalPermissions` (degradable
-feature), then call the typed `HostServices.Audio` or `HostServices.Network`
+feature), then call the typed `HostServices.Audio`, `HostServices.Network`, or
+`HostServices.RecentActivity`
 API. Required capabilities are not auto-granted. See [widget
 capabilities](capabilities.md); do not create raw broker messages or hard-code
 operation IDs. The [Network Controls reference](network-controls.md) is the
-complete example for an event-driven read subscription, saved-profile-only
-Interactive control, Windows privacy degradation, and transport-free tests.
+complete example for event-driven status/available-Wi-Fi subscriptions,
+explicit Interactive scanning, current saved/open result connection, Windows
+privacy degradation, and transport-free tests.
+The [Recent Apps reference](recent-apps.md) shows a separate read/activate
+contract with event-driven opaque OS identity.
 
 Custom worker executables should delegate host startup to the public runtime
 bootstrap instead of parsing pipe or broker arguments:

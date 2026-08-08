@@ -20,6 +20,32 @@ enum class OverlayPresentationDirective {
     Place,
 };
 
+enum class DisplayEnvironmentChange {
+    Dpi,
+    Topology,
+    SystemSettings,
+};
+
+struct DisplayRefreshPlan final {
+    bool recreateGraphics{};
+    bool reapplyAppearance{};
+    bool repositionWindows{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const DisplayRefreshPlan&,
+        const DisplayRefreshPlan&) noexcept = default;
+};
+
+// Pure policy for Win32 display notifications. Hidden windows resolve current
+// state when next shown. Visible windows always re-read monitor/work-area/DPI;
+// system settings additionally reapply accessibility and theme policy.
+[[nodiscard]] constexpr DisplayRefreshPlan DecideDisplayRefresh(
+    const bool visible,
+    const DisplayEnvironmentChange change) noexcept {
+    if (!visible) return {};
+    return {true, change == DisplayEnvironmentChange::SystemSettings, true};
+}
+
 // Pure presentation policy shared by state transitions and asynchronous
 // snapshot refreshes. A visible HWND only needs another placement pass when
 // its requested logical extent or monitor target changed. Selection, focus,
@@ -40,6 +66,16 @@ enum class OverlayPresentationDirective {
         return OverlayPresentationDirective::Place;
     }
     return OverlayPresentationDirective::Repaint;
+}
+
+/// A resize or monitor move of an already visible HWND must commit its new
+/// frame before returning to the message loop; otherwise DWM can briefly show
+/// the newly exposed client strip. Initial show and repaint-only transitions
+/// do not need this synchronous path.
+[[nodiscard]] constexpr bool ShouldCommitVisiblePlacementSynchronously(
+    const bool wasWindowVisible,
+    const OverlayPresentationDirective directive) noexcept {
+    return wasWindowVisible && directive == OverlayPresentationDirective::Place;
 }
 
 // Pure foreground-target state used by the HWND host and deterministic tests.

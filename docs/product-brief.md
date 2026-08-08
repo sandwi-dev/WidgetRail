@@ -51,16 +51,19 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
 ## Initial first-party widget candidates
 
 - Audio Mixer: event-driven per-application session volume/mute on the current
-  default multimedia render endpoint through brokered Core Audio capabilities;
-  no master/output-switch/microphone control in the initial integration
-- Network Controls: event-driven aggregate/Ethernet/Wi-Fi transport and adapter
-  availability, saved-profile switching in its Interactive surface, and
-  brokered WLAN/network capabilities; no password entry, automatic
+  default multimedia render endpoint, master volume/mute, sanitized default-
+  device visibility, and current default-microphone volume/mute; no output-
+  device switching or microphone sample capture
+- Network Controls: event-driven aggregate/Ethernet/Wi-Fi state, explicit
+  nearby scans, saved/open connection, software Wi-Fi/Bluetooth radio control,
+  and sanitized Bluetooth discovery; no password entry, pairing, generic
+  Bluetooth connection, automatic
   location-sensitive current-SSID query, or signal disclosure in the initial
   scope
 - Performance: CPU, GPU, VRAM, RAM, frame-rate sources, and bounded history
 - Media: system media session controls
-- Recent applications and games
+- Recent Apps: event-driven bounded running-application observations and exact
+  live-window activation; no history/relaunch or authoritative game detection
 - Screenshot and capture controls
 - Notifications and quick settings
 - Discord: account linking, friends/presence, invitations, app-managed parties, and voice

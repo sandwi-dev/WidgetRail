@@ -93,6 +93,17 @@ enum class ControllerActionRoute {
            !hasExplicitTarget && !hasGeometricTarget;
 }
 
+/// Up is the spatial inverse of leaving a root widget through its lower
+/// boundary: from the tray it enters the already visible widget without
+/// activating the focused widget control. Repeats are ignored so a held stick
+/// cannot immediately move again inside the widget after the region changes.
+[[nodiscard]] constexpr bool ShouldEnterWidgetFromTray(
+    const NavigationDirection direction,
+    const NavigationEventPhase phase) noexcept {
+    return direction == NavigationDirection::Up &&
+           phase == NavigationEventPhase::Pressed;
+}
+
 /// A self-loop is useful for containing focus in a nested scope, but it is not
 /// movement at a root boundary. Treat only a distinct enabled destination as
 /// an explicit move so Down on a last-row self-loop can enter the shell tray.

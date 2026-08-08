@@ -226,7 +226,8 @@ public:
         long long sequence,
         long long monotonicTimestampMicroseconds,
         std::wstring_view phase = L"pressed",
-        std::optional<double> requestedValue = std::nullopt);
+        std::optional<double> requestedValue = std::nullopt,
+        bool trustedForegroundActivation = false);
     [[nodiscard]] const std::wstring& lastError() const noexcept { return lastError_; }
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
@@ -254,6 +255,13 @@ private:
 
 #ifdef GBA_WIDGET_BRIDGE_CLIENT_TESTING
 namespace gba::testing {
+[[nodiscard]] bool ShouldDelegateForegroundActivation(
+    DWORD trustedBridgeProcessId,
+    bool trustedBridgeProcessLive,
+    bool trustedBridgeProcessIdMatches,
+    bool trustedActivationInput,
+    std::wstring_view button,
+    std::wstring_view phase) noexcept;
 [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
     std::string_view payloadUtf8,
     std::wstring& error);

@@ -1,0 +1,149 @@
+:root {
+  --recent-accent: #8ad8ff;
+  --recent-focus: #83cdec;
+  --recent-surface: rgba(14, 18, 26, 0.98);
+  --recent-card: rgba(34, 41, 54, 0.94);
+  --recent-card-most-recent: rgba(29, 50, 63, 0.98);
+  --recent-control-focus: rgba(65, 80, 99, 0.99);
+  --recent-error: #ff7c91;
+}
+
+.recent-apps-widget {
+  width: 100vw;
+  min-width: 0px;
+  max-width: 520px;
+  gap: 8px;
+  padding: 14px;
+  background: var(--recent-surface);
+  color: var(--text);
+  overflow: clip;
+}
+
+.recent-header {
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.recent-eyebrow {
+  color: var(--recent-accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  max-lines: 1;
+  text-transform: uppercase;
+}
+
+.recent-title {
+  color: var(--text);
+  font-size: 23px;
+  font-weight: 600;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+
+.recent-status,
+.recent-state-help {
+  color: var(--text-muted);
+  font-size: 12px;
+  max-lines: 2;
+}
+
+.recent-status.is-live,
+.recent-item-state.is-most-recent {
+  color: var(--success);
+}
+
+.recent-status.is-error {
+  color: var(--recent-error);
+}
+
+.recent-section-heading,
+.recent-item-meta {
+  gap: 8px;
+  align: center;
+  justify: space-between;
+  flex-shrink: 0;
+}
+
+.recent-section-label,
+.recent-section-count,
+.recent-item-kind,
+.recent-item-state {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  max-lines: 1;
+  text-transform: uppercase;
+}
+
+.recent-section-count {
+  color: var(--recent-accent);
+  letter-spacing: 0.02em;
+}
+
+.recent-list {
+  min-height: 170px;
+  max-height: 344px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 6px;
+  padding: 1px 3px 1px 1px;
+  overflow: clip;
+}
+
+.recent-item,
+.recent-state-card {
+  gap: 2px;
+  padding: 3px 4px 6px;
+  background: var(--recent-card);
+  border-width: 0;
+  corner-radius: 10px;
+  flex-shrink: 0;
+}
+
+.recent-item.is-most-recent {
+  background: var(--recent-card-most-recent);
+}
+
+.recent-item-button,
+.recent-retry {
+  min-height: 44px;
+  padding: 7px 9px;
+  color: var(--text);
+  background: transparent;
+  border-width: 0;
+  corner-radius: 8px;
+  max-lines: 1;
+  text-overflow: ellipsis;
+  transition-duration: 90ms;
+  transition-easing: ease-out;
+}
+
+.recent-item-button:focused,
+.recent-retry:focused {
+  background: var(--recent-control-focus);
+  outline-color: var(--recent-focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+
+.recent-item-meta {
+  padding: 0px 10px;
+}
+
+.recent-state-card {
+  gap: 8px;
+  padding: 12px;
+}
+
+.recent-state-title {
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+  max-lines: 1;
+}
+
+.recent-retry {
+  background: rgba(49, 58, 73, 0.96);
+}

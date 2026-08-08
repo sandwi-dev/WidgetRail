@@ -1,6 +1,9 @@
 #pragma once
 
 #include <optional>
+#include <span>
+#include <string>
+#include <string_view>
 
 namespace gba {
 
@@ -107,6 +110,32 @@ struct OverlaySurfaceGeometry final {
     float footerY{};
     float footerHeight{};
 };
+
+enum class ControllerGuideDensity {
+    Minimal,
+    Compact,
+    Full,
+};
+
+/// Selects a single-line controller guide for the actual content width and
+/// accessibility text scale. The returned density only removes secondary
+/// commands; it never relies on word wrapping inside fixed host chrome.
+[[nodiscard]] ControllerGuideDensity ResolveControllerGuideDensity(
+    float availableWidthDip,
+    float textScale) noexcept;
+
+struct ControllerGuideAction final {
+    std::wstring_view button;
+    std::wstring_view label;
+};
+
+/// Builds a sanitized, character-bounded one-line tray guide. Contextual
+/// widget actions are preferred when present so hover shortcuts remain
+/// discoverable; required Enter/Back escape actions are always retained.
+[[nodiscard]] std::wstring BuildTrayControllerGuide(
+    ControllerGuideDensity density,
+    bool reorderMode,
+    std::span<const ControllerGuideAction> quickActions = {});
 
 /// Computes a bottom-centered physical-pixel window rectangle that is fully
 /// contained by the monitor work area. Logical dimensions and margins are

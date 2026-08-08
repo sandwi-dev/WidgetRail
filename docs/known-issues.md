@@ -8,6 +8,7 @@ in the packaged Release overlay and the closing commit is recorded.
 
 ## Status vocabulary
 
+- **Open** — user-visible behavior is confirmed and acceptance work is not yet complete.
 - **Confirmed** — reproduced by a user or deterministic/local evidence.
 - **Investigating** — the owning layer is being traced; no root-cause claim yet.
 - **Implementing** — a root cause and durable design are selected.
@@ -21,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | The all-session controller-scroll mixer and stable focus restoration are implemented; packaged visual/controller verification remains. |
-| GBA-004 | P1 | Verifying | OverlayHost presentation / invalidation | The persistent icon tray flickers when moving between widgets. |
+| GBA-004 | P1 | Verifying | OverlayHost presentation / invalidation | Size-changing widget swaps now move without redraw and synchronously commit one complete frame; packaged visual verification remains. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -30,10 +31,15 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-010 | P2 | Verifying | Platform diagnostics transport | End-to-end request deadlines and bounded client timeout validation are implemented. |
 | GBA-011 | P0 | Verifying | Widget SDK / host focus / Audio Mixer | Focus-safe disabled/busy semantics and per-session Audio reconciliation are implemented; packaged controller verification remains. |
 | GBA-012 | P1 | Verifying | Declarative renderer / component styles | Effective surface/ancestor focus clipping and non-scaling full-width defaults are implemented; packaged visual verification remains. |
-| GBA-013 | P1 | Verifying | Network Controls / widget SDK | The full-width controller-scroll profile list and focused-row routing are implemented; packaged visual/controller verification remains. |
+| GBA-013 | P1 | Verifying | Network Controls / widget SDK | The full-width controller-scroll available-network list, explicit scan, and focused-row routing are implemented; packaged visual/controller verification remains. |
 | GBA-014 | P0 | Verifying | YT Music / Widget SDK routing / native icons | Window-wide transport shortcuts and Previous/Next glyph orientation are corrected; packaged controller/visual verification remains. |
 | GBA-015 | P1 | Verifying | Declarative renderer / built-in widget themes | Fixed regions no longer shrink into clipping, Sliders use a thin native track inside their controller target, and the built-in surfaces use a lighter visual hierarchy; packaged visual verification remains. |
 | GBA-016 | P0 | Verifying | OverlayHost focus / lifecycle / controller routing | The selected widget panel now remains visible while the tray owns focus, with one-level Back, automatic tray preview, and root-boundary return behavior; packaged controller evidence remains. |
+| GBA-017 | P0 | Verifying | Declarative renderer / scroll focus | Focus-follow now snaps the first/last focusable descendant to the true scroll extent; packaged controller verification remains. |
+| GBA-018 | P1 | Verifying | OverlayHost controller routing | Pressed D-pad/left-stick Up from the tray now enters the visible widget without dispatching a widget action. |
+| GBA-019 | P1 | Verifying | OverlayHost controller guide / layout | The guide is density-aware, contextual, bounded, and no-wrap; compact/high-scale visual evidence remains. |
+| GBA-020 | P1 | Verifying | OverlayHost panel clipping / renderer | A cached host-owned rounded viewport clip now masks opaque widget roots; packaged visual evidence remains. |
+| GBA-021 | P1 | Verifying | OverlayHost targeting / DPI | Visible DPI, topology, taskbar/work-area, and appearance changes now share one dynamic refresh policy; physical mixed-monitor/hot-plug evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -49,7 +55,7 @@ and restored 100%. The redesigned widget no longer infers a selected card from
 global trigger shortcuts: every visible application row has stable opaque IDs
 and an immutable action map that resolves directly to the provider's exact raw
 session ID. Removed or stale actions fail closed. The Audio provider and Audio
-Mixer Release suites pass 14/14 and 22/22. This proves the provider and widget
+Mixer Release suites pass 15/15 and 24/24. This proves the provider and widget
 seams independently, but not yet the exact packaged worker-to-broker path
 against a playing application.
 
@@ -119,21 +125,20 @@ Audio Mixer Release suites pass, including rapid absolute Slider updates,
 5. Empty, one-session, many-session, long-label, 720p/high-scale, and live churn
    tests pass.
 
-## GBA-004 — Icon tray flickers between widgets
+## GBA-004 — Widget switching can flash tray/panel spacing
 
-**Evidence:** User-visible flicker occurs when changing the selected/open widget
-in the packaged Release overlay.
+**Evidence:** The user reports a transient black border/spacing flash when
+switching specifically from Audio Mixer to Network Controls in the packaged
+Release overlay. This means the earlier same-extent placement optimization is
+not sufficient evidence that presentation is visually continuous.
 
-**Root cause and implementation evidence:** Dashboard navigation called
-`ShowOverlay()` for every selection change and then posted a snapshot refresh
-that called `ShowOverlay()` again. Both paths issued `SetWindowPos(...,
-SWP_SHOWWINDOW)` even when the monitor and requested surface extent were
-unchanged, creating redundant HWND/DWM presentation churn around a full-window
-Direct2D repaint. The host now uses a pure presentation policy: opening,
-retargeting, or an extent change requests placement; selection, focus, and
-same-extent snapshot changes request repaint only. `OverlayTargetingTests`
-proves those boundaries and the complete native Debug suite passes. Packaged
-Release visual verification is still required before closing this issue.
+**Root cause and implementation evidence:** The Audio-to-Network transition
+changes the requested panel extent, so Windows could expose an intermediate
+cleared/recreated surface between placement and the later repaint. Visible
+extent changes now use `SWP_NOREDRAW`, rebuild against the final client size,
+then synchronously commit one complete `RedrawWindow(...RDW_UPDATENOW...)`
+frame. Same-extent transitions remain repaint-only. Placement/targeting tests
+cover both branches; packaged Release visual verification is still required.
 
 **Acceptance:**
 
@@ -159,7 +164,7 @@ the whole overlay from any level. No other widget action is captured as Back.
 **Implementation evidence:** Native routing now expresses dashboard A/B/Y,
 open-widget delivery, root fallback, and nested non-bubbling as a pure ownership
 policy. Managed snapshot validation and the bridge reject dashboard B quick
-actions. Controller navigation passes 49 checks; nested Settings Back behavior
+actions. Controller navigation passes 73 checks; nested Settings Back behavior
 passes its focused Release suite.
 
 ## GBA-006 — View-specific surface transitions must resize
@@ -173,7 +178,7 @@ resolved extents through the pure presentation policy. Equal extents repaint;
 changed extents place exactly once.
 
 **Implementation evidence:** Catalog, action-result, invalidation, and async
-snapshot paths use one refresh-and-presentation helper. Targeting passes 27
+snapshot paths use one refresh-and-presentation helper. Targeting passes 31
 policy checks and the native Release suite is green.
 
 ## GBA-007 — Scroll focus must always remain visibly recoverable
@@ -264,7 +269,7 @@ focus identity. Audio now renders one Slider focus target per master/session
 row, with A mute and absolute left/right volume. Independent per-session/output
 state coalesces rapid volume targets latest-wins, retains authoritative state
 through stale post-acknowledgement events, and rolls back bounded failures. The
-SDK Release suite passes 41/41 and Audio Mixer passes 22/22, including the exact
+SDK Release suite passes 41/41 and Audio Mixer passes 24/24, including the exact
 application-mute focus regression. Packaged controller evidence is still
 required before closing.
 
@@ -289,7 +294,7 @@ an inset outline and no scale transform. Settings removes its full-width focus
 growth. Deferred native focus decoration now starts with the render surface,
 intersects every Scroll or `overflow: clip` ancestor, and preserves explicit
 `overflow: visible`. Platform theme Release tests pass 13/13; native renderer
-tests pass 4,233 checks including nested non-Scroll clips, scaled root-edge
+tests pass 4,245 checks including nested non-Scroll clips, scaled root-edge
 controls, visible-overflow freedom, and retained Scroll behavior. Packaged
 screenshots at supported scale settings remain required before closing.
 
@@ -304,21 +309,23 @@ than a scannable controller list.
 
 1. Content uses the resolved compact surface width without viewport-relative
    double-constraining or horizontal overflow.
-2. Current transport, radio/privacy state, and saved-profile actions use a
+2. Current transport, radio/privacy state, explicit scan, and available-network actions use a
    clear visual hierarchy with concise alert, empty, connecting, and failure
    states.
-3. Saved profiles form a bounded vertical controller-scroll list with stable
+3. Current available networks form a bounded vertical controller-scroll list with stable
    IDs, focus restoration, and no shoulder/trigger cycling.
 4. Empty, one-profile, many-profile, long-label, radio-off, wired-only,
    connecting/failure, 720p, high-DPI, and text-scale regressions pass.
 
 **Implementation evidence:** Network now consumes the resolved compact width
-and publishes every saved profile as a stable identity-derived row in one
-bounded vertical Scroll. A and X route through the exact focused row; LB/RB
-cycling, dashboard quick actions, and selected-row fallback are removed.
-Pending rows remain focused and focus survives reorder/churn. Network Controls
-passes 16/16 and the catalog passes 21/21; packaged visual/controller evidence
-remains.
+and publishes the current ready scan as generation-bound identity-derived rows
+in one bounded vertical Scroll. A explicitly scans from the Scan control; A
+and X connect the exact current saved/open focused result. No scan occurs on
+activation or a timer. LB/RB cycling and dashboard quick actions are absent.
+Credential-required and unsupported authentication remain typed, sanitized
+states. Pending rows remain focused and selection survives within a scan
+generation. Network Controls passes 17/17, WindowsNetworkProvider 31/31, and
+PlatformBroker 32/32; packaged visual/controller/privacy evidence remains.
 
 ## GBA-014 — YT Music window shortcuts and transport glyphs are focus-dependent or reversed
 
@@ -391,7 +398,7 @@ flex. The native Slider draws a thin track within its unchanged 44-DIP
 controller target instead of painting a second full control background. The
 built-in platform theme and all four packaged widget themes use the revised
 lighter typography, radius, spacing, and surface treatment. Declarative
-Renderer passes 4,233 checks. Packaged visual screenshots are still required
+Renderer passes 4,245 checks. Packaged visual screenshots are still required
 before closing.
 
 ## GBA-016 — Returning to the tray must not hide the selected widget panel
@@ -428,9 +435,80 @@ tray; tray Back closes; tray selection swaps the visible widget; A enters its
 controls; and a root-scope Down boundary returns to the tray without escaping
 nested scopes. Guide remains region-independent. Lifecycle transitions publish
 `Visible` for a previewed panel and `Interactive` only while its controls own
-focus. Controller Navigation passes 70 checks and Declarative Renderer passes
-4,233 checks. Packaged hands-on controller evidence remains required before
+focus. Controller Navigation passes 73 checks and Declarative Renderer passes
+4,245 checks. Packaged hands-on controller evidence remains required before
 closing.
+
+## GBA-017 — Scroll boundaries do not fully reveal the first/last control
+
+**Evidence:** Current packaged hands-on testing reports that a Scroll can stop
+with its top or bottom focus target only partially visible.
+
+**Acceptance:** Focus-follow reveal includes the control, focus decoration, and
+container padding at both boundaries; repeated Up/Down cannot leave the focused
+target clipped, and compact/high-scale/nested-scroll regressions pass.
+
+**Implementation evidence:** The renderer now identifies the first/last
+focusable descendant of each Scroll and snaps those endpoints to offset zero or
+the maximum extent while preserving nested fixed-point reveal. Declarative
+Renderer passes 4,245 checks. Status remains Verifying pending packaged input
+and screenshot evidence.
+
+## GBA-018 — Tray Up should enter the visible widget
+
+**Evidence:** A enters the already-visible widget from the tray, but Up does not
+provide the spatially natural equivalent transition.
+
+**Acceptance:** Pressed Up or upward left-stick navigation from a tray item
+enters that item's visible panel at its remembered/root focus. It must not
+activate a control, change selection, or escape a nested widget scope.
+
+**Implementation evidence:** Host routing maps only a pressed Up boundary from
+the tray (not a repeat or widget action) to the existing enter-widget path for
+both D-pad and left stick. Controller Navigation passes 73 checks. Status
+remains Verifying pending packaged controller evidence.
+
+## GBA-019 — Controller guide wraps and clips
+
+**Evidence:** The current packaged footer/control guide wraps and clips labels,
+making button assignments visually noisy and difficult to scan.
+
+**Acceptance:** The guide uses a compact non-wrapping hierarchy, prioritizes
+context-relevant actions, truncates or adapts safely at compact/high-scale
+sizes, and never overlaps panel or tray bounds.
+
+**Implementation evidence:** The host now chooses guide density from available
+width and text scale, emits one no-wrap line, sanitizes bounded labels, and
+retains up to three selected-widget quick actions alongside host navigation.
+Status remains Verifying pending compact/high-scale visual-matrix evidence.
+
+## GBA-020 — Rounded panel corners clip content
+
+**Evidence:** Packaged hands-on testing reports visible clipping around rounded
+floating-panel corners.
+
+**Acceptance:** Background, border, focus decoration, and child clips share one
+inset corner geometry at every supported DPI/interface/text scale, with no
+content loss or square artifact.
+
+**Implementation evidence:** The native renderer owns a cached rounded viewport
+clip/mask, preventing an opaque widget root from painting square panel corners;
+a WIC pixel regression covers the mask. Status remains Verifying pending
+packaged screenshots.
+
+## GBA-021 — Display changes must refresh all dependent geometry atomically
+
+**Evidence:** DPI, display-topology, and system-setting notifications previously
+used separate partial refresh paths, allowing work-area or appearance changes
+to miss an authoritative monitor/DPI placement pass.
+
+**Implementation evidence:** The Per-Monitor-V2 host now maps visible DPI,
+topology, and system-settings changes through one tested refresh policy that
+recreates graphics, conditionally reapplies appearance, and performs one fresh
+monitor/work-area/DPI placement. Hidden notifications defer all work to the
+next open. Placement passes 108,545 checks and Targeting 34 checks. Status
+remains Verifying until physical mixed-DPI migration, hot-plug, taskbar-edge,
+and accessibility/theme screenshots are retained.
 
 ## Closed issues
 

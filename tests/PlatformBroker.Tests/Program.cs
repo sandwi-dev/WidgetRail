@@ -12,17 +12,26 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Request JSON is strict and bounded", RequestsAreStrictAndBounded),
     ("Audio operations expose sanitized task-shaped DTOs", AudioOperationsAreSanitized),
     ("Master output capability validates payload lifecycle and events", MasterOutputContracts),
+    ("Audio device and input permissions are granular opaque and lifecycle-gated", AudioDeviceInputContracts),
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
+    ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
+    ("Recent activity read and activation use separate consent and lifecycle gates", RecentActivityContracts),
+    ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
+    ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
     ("Consent updates are atomic across store instances", ConsentUpdatesAreAtomic),
     ("Subscriptions coalesce and suspend with lifecycle", EventsCoalesceAcrossLifecycle),
     ("Consent revocation terminates subscriptions", RevocationTerminatesSubscriptions),
     ("Lifecycle gates read control and destroying states", LifecycleGatesOperations),
+    ("Lifecycle transitions cancel leased reads and controls before effects", LifecycleCancelsLeasedRequests),
+    ("Consent denial corruption and deletion cancel leased requests", ConsentLossCancelsLeasedRequests),
     ("Cancellation reaches the broker boundary", CancellationIsObserved),
     ("Broker pipe scopes and isolated client SIDs are closed", BrokerPipeScopesAreClosed),
     ("Pipe framing rejects oversized payloads before allocation", PipeFramesAreBounded),
     ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
     ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
     ("Pipe request cancellation reaches the fixed backend", PipeCancellationIsObserved),
+    ("Pipe lifecycle transitions cancel leased reads and controls", PipeLifecycleCancelsLeasedRequests),
+    ("Pipe consent revocation cancels a leased control before effects", PipeConsentCancelsLeasedControl),
     ("Pipe events coalesce suspend and unsubscribe", PipeEventsAreBounded),
     ("Pipe consent denial revokes a live subscription", PipeConsentDenialRevokesLiveSubscription),
     ("Pipe consent corruption fails closed", PipeMalformedConsentRevokesLiveSubscription),
@@ -50,7 +59,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(8, PlatformCapabilities.All.Count);
+    Assert.Equal(17, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -115,6 +124,67 @@ static async Task CompositeProviderDomainsAreSeparated()
     Assert.Equal(2, published.Count);
     Assert.Equal(PlatformCapabilities.AudioSessionsReadV1, published[0].CapabilityId);
     Assert.Equal(PlatformCapabilities.NetworkReadV1, published[1].CapabilityId);
+}
+
+static async Task RecentActivityContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetRecentActivities(
+    [
+        new RecentActivitySummary("activity-one", "Safe App", RecentActivityKind.Application,
+            IsRunning: true, IsMostRecent: true),
+    ]);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.RecentActivityReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.RecentActivityActivateV1,
+        ConsentDecision.Grant);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.RecentActivityReadV1,
+        PlatformCapabilities.RecentActivityActivateV1);
+
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var read = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.RecentActivityReadV1,
+        PlatformCapabilities.RecentActivitiesList, new { }));
+    Assert.True(read.Succeeded);
+    Assert.True(!read.Payload!.Value.GetRawText().Contains("pid", StringComparison.OrdinalIgnoreCase));
+
+    var visibleControl = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.RecentActivityActivateV1,
+        PlatformCapabilities.RecentActivityActivate,
+        new { activityId = "activity-one" }));
+    Assert.Equal("lifecycle_denied", visibleControl.ErrorCode);
+
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var activated = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.RecentActivityActivateV1,
+        PlatformCapabilities.RecentActivityActivate,
+        new { activityId = "activity-one" }));
+    Assert.True(activated.Succeeded);
+    Assert.Equal("activity-one", backend.LastActivatedActivityId);
+
+    var malformed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.RecentActivityActivateV1,
+        PlatformCapabilities.RecentActivityActivate,
+        new { activityId = "bad id with spaces" }));
+    Assert.Equal("invalid_payload", malformed.ErrorCode);
+
+    var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.RecentActivityReadV1,
+        PlatformCapabilities.RecentActivitiesChanged);
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.RecentActivityReadV1,
+        PlatformCapabilities.RecentActivitiesChanged,
+        new RecentActivitiesChangedEvent(
+        [
+            new RecentActivitySummary("activity-two", "Another App",
+                RecentActivityKind.Application, true, true),
+        ])));
+    var change = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal(PlatformCapabilities.RecentActivitiesChanged, change.EventType);
 }
 
 static async Task ConsentFailsClosed()
@@ -298,6 +368,69 @@ static async Task MasterOutputContracts()
     await subscription.DisposeAsync();
 }
 
+static async Task AudioDeviceInputContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    foreach (var capability in new[]
+             {
+                 PlatformCapabilities.AudioDevicesReadV1,
+                 PlatformCapabilities.AudioInputReadV1,
+                 PlatformCapabilities.AudioInputControlV1,
+             })
+        await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var backend = AudioBackend();
+    backend.SetAudioDevices([
+        new AudioDeviceSummary("device_output", "Speakers", AudioDeviceDirection.Output, true),
+        new AudioDeviceSummary("device_input", "Microphone", AudioDeviceDirection.Input, true),
+    ]);
+    backend.AudioInput = new AudioInputSummary(0.4, false);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.AudioDevicesReadV1,
+        PlatformCapabilities.AudioInputReadV1,
+        PlatformCapabilities.AudioInputControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var devices = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioDevicesReadV1, PlatformCapabilities.AudioDevicesList, new { }));
+    Assert.True(devices.Succeeded && devices.Payload is not null);
+    var deviceJson = devices.Payload!.Value.GetRawText();
+    Assert.Contains("device_output", deviceJson);
+    Assert.Contains("Speakers", deviceJson);
+    Assert.DoesNotContain("MMDEVAPI", deviceJson, StringComparison.OrdinalIgnoreCase);
+    var input = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioInputReadV1, PlatformCapabilities.AudioInputGet, new { }));
+    Assert.True(input.Succeeded && input.Payload is not null);
+
+    var visibleControl = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioInputControlV1, PlatformCapabilities.AudioInputSetMuted,
+        new { isMuted = true }));
+    Assert.Equal("lifecycle_denied", visibleControl.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var volume = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioInputControlV1, PlatformCapabilities.AudioInputSetVolume,
+        new { volume = 0.65 }));
+    Assert.True(volume.Succeeded);
+    Assert.Equal(0.65, backend.AudioInput.Volume);
+    var malformed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioInputControlV1, PlatformCapabilities.AudioInputSetVolume,
+        new { volume = 1.5 }));
+    Assert.Equal("invalid_payload", malformed.ErrorCode);
+
+    var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.AudioDevicesReadV1,
+        PlatformCapabilities.AudioDevicesChanged);
+    backend.Publish(new(PlatformCapabilities.AudioDevicesReadV1,
+        PlatformCapabilities.AudioDevicesChanged,
+        new AudioDevicesChangedEvent([
+            new AudioDeviceSummary("device_input", "USB microphone", AudioDeviceDirection.Input, true),
+        ])));
+    var change = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Contains("USB microphone", change.Payload.GetRawText());
+    await subscription.DisposeAsync();
+}
+
 static async Task NetworkOperationsAreSanitized()
 {
     using var temp = new TemporaryDirectory();
@@ -347,6 +480,198 @@ static async Task NetworkOperationsAreSanitized()
     var publicProperties = typeof(SwitchSavedNetworkProfileRequest).GetProperties()
         .Select(property => property.Name).ToArray();
     Assert.SequenceEqual(["ProfileId"], publicProperties);
+}
+
+static async Task AvailableWifiContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiConnectV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAvailableWifiNetworks([
+        new("wifi_0123456789abcdef0123456789abcdef", "Cafe Wi-Fi", 74,
+            WifiSecurityKind.Open, false, false, false),
+        new("wifi_fedcba9876543210fedcba9876543210", "Saved home", 92,
+            WifiSecurityKind.Personal, false, true, true),
+    ]);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.NetworkWifiReadV1,
+        PlatformCapabilities.NetworkWifiConnectV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var listed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiReadV1,
+        PlatformCapabilities.NetworkAvailableWifiGet, new { }));
+    Assert.True(listed.Succeeded && listed.Payload is not null);
+    var json = listed.Payload!.Value.GetRawText();
+    Assert.Contains("Cafe Wi-Fi", json);
+    Assert.Contains("Saved home", json);
+    Assert.DoesNotContain("password", json, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("bssid", json, StringComparison.OrdinalIgnoreCase);
+
+    var malformedGet = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiReadV1,
+        PlatformCapabilities.NetworkAvailableWifiGet, new { refresh = true }));
+    Assert.Equal("invalid_payload", malformedGet.ErrorCode);
+    var malformedScan = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiReadV1,
+        PlatformCapabilities.NetworkWifiScan, new { poll = true }));
+    Assert.Equal("invalid_payload", malformedScan.ErrorCode);
+
+    var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.NetworkWifiReadV1,
+        PlatformCapabilities.NetworkAvailableWifiChanged);
+    backend.Publish(new(
+        PlatformCapabilities.NetworkWifiReadV1,
+        PlatformCapabilities.NetworkAvailableWifiChanged,
+        new AvailableWifiNetworksChangedEvent(new(
+            WifiScanState.PreciseLocationDenied, []))));
+    var deniedEvent = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal("preciseLocationDenied",
+        deniedEvent.Payload.GetProperty("snapshot").GetProperty("scanState").GetString());
+
+    var scanned = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiReadV1,
+        PlatformCapabilities.NetworkWifiScan, new { }));
+    Assert.True(scanned.Succeeded);
+    Assert.Equal(1, backend.WifiScanCalls);
+
+    var visibleConnect = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiConnectV1,
+        PlatformCapabilities.NetworkAvailableWifiConnect,
+        new { networkId = "wifi_0123456789abcdef0123456789abcdef" }));
+    Assert.Equal("lifecycle_denied", visibleConnect.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var malformedConnect = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiConnectV1,
+        PlatformCapabilities.NetworkAvailableWifiConnect,
+        new { networkId = "Cafe Wi-Fi" }));
+    Assert.Equal("invalid_payload", malformedConnect.ErrorCode);
+    var connected = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiConnectV1,
+        PlatformCapabilities.NetworkAvailableWifiConnect,
+        new { networkId = "wifi_0123456789abcdef0123456789abcdef" }));
+    Assert.True(connected.Succeeded);
+    Assert.Equal(1, backend.WifiConnectCalls);
+    await subscription.DisposeAsync();
+}
+
+static async Task WifiRadioContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiRadioReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiRadioControlV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend
+    {
+        WifiRadio = new WifiRadioSummary(WifiRadioState.On, true),
+    };
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.NetworkWifiRadioReadV1,
+        PlatformCapabilities.NetworkWifiRadioControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var read = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiRadioReadV1,
+        PlatformCapabilities.NetworkWifiRadioGet, new { }));
+    Assert.True(read.Succeeded);
+    Assert.Equal("on", read.Payload!.Value.GetProperty("state").GetString());
+    var malformed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiRadioReadV1,
+        PlatformCapabilities.NetworkWifiRadioGet, new { adapter = "secret" }));
+    Assert.Equal("invalid_payload", malformed.ErrorCode);
+
+    var deniedWhileVisible = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiRadioControlV1,
+        PlatformCapabilities.NetworkWifiRadioSet, new { enabled = false }));
+    Assert.Equal("lifecycle_denied", deniedWhileVisible.ErrorCode);
+
+    var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.NetworkWifiRadioReadV1,
+        PlatformCapabilities.NetworkWifiRadioChanged);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var changed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiRadioControlV1,
+        PlatformCapabilities.NetworkWifiRadioSet, new { enabled = false }));
+    Assert.True(changed.Succeeded);
+    Assert.Equal(1, backend.WifiRadioControlCalls);
+    var radioEvent = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal("off", radioEvent.Payload.GetProperty("radio").GetProperty("state").GetString());
+
+    var malformedSet = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkWifiRadioControlV1,
+        PlatformCapabilities.NetworkWifiRadioSet, new { enabled = false, force = true }));
+    Assert.Equal("invalid_payload", malformedSet.ErrorCode);
+    await subscription.DisposeAsync();
+}
+
+static async Task BluetoothContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkBluetoothReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkBluetoothRadioControlV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend
+    {
+        BluetoothRadioState = BluetoothRadioState.On,
+        CanControlBluetoothRadio = true,
+    };
+    backend.SetBluetoothDevices([
+        new("bluetooth-1", "Wireless controller", true, true, true),
+        new("bluetooth-2", "Nearby keyboard", false, false, true),
+    ]);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.NetworkBluetoothReadV1,
+        PlatformCapabilities.NetworkBluetoothRadioControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var malformed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothReadV1,
+        PlatformCapabilities.NetworkBluetoothGet, new { nativeId = "secret" }));
+    Assert.Equal("invalid_payload", malformed.ErrorCode);
+
+    var listed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothReadV1,
+        PlatformCapabilities.NetworkBluetoothGet, new { }));
+    Assert.True(listed.Succeeded && listed.Payload is not null);
+    var json = listed.Payload!.Value.GetRawText();
+    Assert.Contains("Wireless controller", json);
+    Assert.Contains("Nearby keyboard", json);
+    Assert.DoesNotContain("address", json, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("handle", json, StringComparison.OrdinalIgnoreCase);
+
+    var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.NetworkBluetoothReadV1,
+        PlatformCapabilities.NetworkBluetoothChanged);
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.NetworkBluetoothReadV1,
+        PlatformCapabilities.NetworkBluetoothChanged,
+        new BluetoothChangedEvent(new BluetoothSummary(
+            BluetoothRadioState.Off, true, BluetoothDiscoveryState.Ready, []))));
+    var change = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal("off", change.Payload.GetProperty("snapshot").GetProperty("radioState").GetString());
+
+    var visibleControl = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothRadioControlV1,
+        PlatformCapabilities.NetworkBluetoothRadioSet, new { enabled = false }));
+    Assert.Equal("lifecycle_denied", visibleControl.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var changed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothRadioControlV1,
+        PlatformCapabilities.NetworkBluetoothRadioSet, new { enabled = false }));
+    Assert.True(changed.Succeeded);
+    Assert.Equal(1, backend.BluetoothRadioControlCalls);
+    await subscription.DisposeAsync();
 }
 
 static async Task ConsentUpdatesAreAtomic()
@@ -439,6 +764,84 @@ static async Task LifecycleGatesOperations()
         "invalid_lifecycle");
 }
 
+static async Task LifecycleCancelsLeasedRequests()
+{
+    using var readTemp = new TemporaryDirectory();
+    var identity = Identity();
+    var readStore = new ConsentStore(readTemp.Path);
+    await readStore.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
+        ConsentDecision.Grant);
+    var readBackend = new LeaseBlockingBrokerBackend(blockRead: true, blockControl: false);
+    await using (var broker = Broker(identity, readStore, readBackend,
+                     PlatformCapabilities.AudioSessionsReadV1))
+    {
+        broker.SetLifecycle(BrokerLifecycleState.Visible);
+        var pending = broker.HandleAsync(Request(identity,
+            PlatformCapabilities.AudioSessionsReadV1,
+            PlatformCapabilities.AudioSessionsList, new { }));
+        await readBackend.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        broker.SetLifecycle(BrokerLifecycleState.Background);
+        var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("lifecycle_denied", response.ErrorCode);
+        await readBackend.ReadCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    using var controlTemp = new TemporaryDirectory();
+    var controlStore = new ConsentStore(controlTemp.Path);
+    await controlStore.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
+        ConsentDecision.Grant);
+    var controlBackend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: true);
+    await using (var broker = Broker(identity, controlStore, controlBackend,
+                     PlatformCapabilities.AudioSessionsControlV1))
+    {
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+        var pending = broker.HandleAsync(Request(identity,
+            PlatformCapabilities.AudioSessionsControlV1,
+            PlatformCapabilities.AudioSessionSetMuted,
+            new { sessionId = "audio-1", isMuted = true }));
+        await controlBackend.ControlStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        broker.SetLifecycle(BrokerLifecycleState.Visible);
+        var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("lifecycle_denied", response.ErrorCode);
+        await controlBackend.ControlCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, controlBackend.ControlEffects);
+    }
+}
+
+static async Task ConsentLossCancelsLeasedRequests()
+{
+    foreach (var mutation in new[] { "deny", "corrupt", "delete" })
+    {
+        using var temp = new TemporaryDirectory();
+        var identity = Identity();
+        var store = new ConsentStore(temp.Path);
+        await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
+            ConsentDecision.Grant);
+        var backend = new LeaseBlockingBrokerBackend(blockRead: true, blockControl: false);
+        await using var broker = Broker(identity, store, backend,
+            PlatformCapabilities.AudioSessionsReadV1);
+        broker.SetLifecycle(BrokerLifecycleState.Visible);
+        var pending = broker.HandleAsync(Request(identity,
+            PlatformCapabilities.AudioSessionsReadV1,
+            PlatformCapabilities.AudioSessionsList, new { }));
+        await backend.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var document = System.IO.Path.Combine(temp.Path, "consent-v1.json");
+        if (mutation == "deny")
+            await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
+                ConsentDecision.Deny);
+        else if (mutation == "corrupt")
+            await File.WriteAllTextAsync(document, "{ malformed");
+        else
+            File.Delete(document);
+
+        await broker.RefreshConsentAsync();
+        var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("capability_revoked", response.ErrorCode);
+        await backend.ReadCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+}
+
 static async Task CancellationIsObserved()
 {
     using var temp = new TemporaryDirectory();
@@ -454,6 +857,20 @@ static async Task CancellationIsObserved()
     await Assert.ThrowsAsync<OperationCanceledException>(async () =>
         await broker.HandleAsync(Request(identity, PlatformCapabilities.AudioSessionsReadV1,
             PlatformCapabilities.AudioSessionsList, new { }), cancellation.Token));
+
+    var blocking = new LeaseBlockingBrokerBackend(blockRead: true, blockControl: false);
+    await using var racingBroker = Broker(identity, store, blocking,
+        PlatformCapabilities.AudioSessionsReadV1);
+    racingBroker.SetLifecycle(BrokerLifecycleState.Visible);
+    using var racingCancellation = new CancellationTokenSource();
+    var pending = racingBroker.HandleAsync(Request(identity,
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList, new { }), racingCancellation.Token);
+    await blocking.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    racingCancellation.Cancel();
+    racingBroker.SetLifecycle(BrokerLifecycleState.Background);
+    await Assert.ThrowsAsync<OperationCanceledException>(
+        async () => await pending.WaitAsync(TimeSpan.FromSeconds(2)));
 }
 
 static async Task PipeFramesAreBounded()
@@ -543,6 +960,87 @@ static async Task PipeCancellationIsObserved()
     cancellation.Cancel();
     await Assert.ThrowsAsync<OperationCanceledException>(() => request);
     await backend.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static async Task PipeLifecycleCancelsLeasedRequests()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
+        ConsentDecision.Grant);
+    var backend = new LeaseBlockingBrokerBackend(blockRead: true, blockControl: true);
+    var pipeName = $"gba-broker-lease-lifecycle-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity,
+        [PlatformCapabilities.AudioSessionsReadV1, PlatformCapabilities.AudioSessionsControlV1],
+        store, backend, TransportOptions(requestTimeout: TimeSpan.FromSeconds(5)),
+        new string('L', 64));
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce,
+        TransportOptions(requestTimeout: TimeSpan.FromSeconds(5)));
+    await client.ConnectAsync();
+
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    var read = client.RequestAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList, new { });
+    await backend.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    server.SetLifecycle(BrokerLifecycleState.Background);
+    Assert.Equal("lifecycle_denied",
+        (await read.WaitAsync(TimeSpan.FromSeconds(2))).ErrorCode);
+
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+    var control = client.RequestAsync(
+        PlatformCapabilities.AudioSessionsControlV1,
+        PlatformCapabilities.AudioSessionSetMuted,
+        new { sessionId = "audio-1", isMuted = true });
+    await backend.ControlStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    Assert.Equal("lifecycle_denied",
+        (await control.WaitAsync(TimeSpan.FromSeconds(2))).ErrorCode);
+    Assert.Equal(0, backend.ControlEffects);
+
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static async Task PipeConsentCancelsLeasedControl()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
+        ConsentDecision.Grant);
+    var backend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: true);
+    var pipeName = $"gba-broker-lease-consent-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity, [PlatformCapabilities.AudioSessionsControlV1], store, backend,
+        TransportOptions(requestTimeout: TimeSpan.FromSeconds(5)), new string('R', 64));
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce,
+        TransportOptions(requestTimeout: TimeSpan.FromSeconds(5)));
+    await client.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+
+    var pending = client.RequestAsync(
+        PlatformCapabilities.AudioSessionsControlV1,
+        PlatformCapabilities.AudioSessionSetMuted,
+        new { sessionId = "audio-1", isMuted = true });
+    await backend.ControlStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await new ConsentStore(temp.Path).SetDecisionAsync(
+        identity, PlatformCapabilities.AudioSessionsControlV1, ConsentDecision.Deny);
+    var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal("capability_revoked", response.ErrorCode);
+    await backend.ControlCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(0, backend.ControlEffects);
+
     await client.DisposeAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
 }
@@ -773,6 +1271,110 @@ sealed class BrokerPipeHarness : IAsyncDisposable
     }
 }
 
+sealed class LeaseBlockingBrokerBackend : IPlatformBrokerBackend
+{
+    private readonly bool _blockRead;
+    private readonly bool _blockControl;
+    private int _controlEffects;
+
+    public LeaseBlockingBrokerBackend(bool blockRead, bool blockControl)
+    {
+        _blockRead = blockRead;
+        _blockControl = blockControl;
+    }
+
+    public event EventHandler<BrokerPlatformEvent>? EventPublished;
+    public TaskCompletionSource ReadStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReadCancellationObserved { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ControlStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ControlCancellationObserved { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public int ControlEffects => Volatile.Read(ref _controlEffects);
+
+    public async Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(
+        CancellationToken cancellationToken)
+    {
+        ReadStarted.TrySetResult();
+        if (_blockRead)
+        {
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            catch (OperationCanceledException)
+            {
+                ReadCancellationObserved.TrySetResult();
+                throw;
+            }
+        }
+        return [];
+    }
+
+    public Task SetAudioSessionVolumeAsync(
+        string sessionId, double volume, CancellationToken cancellationToken) =>
+        BlockControlAsync(cancellationToken);
+
+    public Task SetAudioSessionMutedAsync(
+        string sessionId, bool isMuted, CancellationToken cancellationToken) =>
+        BlockControlAsync(cancellationToken);
+
+    private async Task BlockControlAsync(CancellationToken cancellationToken)
+    {
+        ControlStarted.TrySetResult();
+        if (_blockControl)
+        {
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            catch (OperationCanceledException)
+            {
+                ControlCancellationObserved.TrySetResult();
+                throw;
+            }
+        }
+        Interlocked.Increment(ref _controlEffects);
+    }
+
+    public Task<AudioOutputSummary> GetAudioOutputAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AudioOutputSummary(0.5, false));
+    public Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AudioDeviceSummary>>([]);
+    public Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AudioInputSummary(0.5, false));
+    public Task SetAudioInputVolumeAsync(double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioInputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(TestNetwork.Disconnected());
+    public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SavedNetworkProfileSummary>>([]);
+    public Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AvailableWifiNetworksSummary(WifiScanState.NotScanned, []));
+    public Task RequestWifiScanAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new WifiRadioSummary(WifiRadioState.On, true));
+    public Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<RecentActivitySummary>>([]);
+    public Task ActivateRecentActivityAsync(string activityId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new BluetoothSummary(
+            BluetoothRadioState.Unavailable, false, BluetoothDiscoveryState.Unavailable, []));
+    public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
+}
+
 sealed class BlockingBrokerBackend : IPlatformBrokerBackend
 {
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
@@ -804,6 +1406,14 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
         Task.CompletedTask;
     public Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+    public Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AudioDeviceSummary>>([]);
+    public Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AudioInputSummary(0.5, false));
+    public Task SetAudioInputVolumeAsync(double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioInputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
         Task.FromResult(TestNetwork.Disconnected());
     public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken) =>
@@ -814,6 +1424,19 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
         Task.FromResult(new AvailableWifiNetworksSummary(WifiScanState.NotScanned, []));
     public Task RequestWifiScanAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new WifiRadioSummary(WifiRadioState.On, true));
+    public Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
+        CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<RecentActivitySummary>>([]);
+    public Task ActivateRecentActivityAsync(string activityId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new BluetoothSummary(
+            BluetoothRadioState.Unavailable, false, BluetoothDiscoveryState.Unavailable, []));
+    public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken) =>
         Task.CompletedTask;
 
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
@@ -834,6 +1457,14 @@ sealed class SplitAudioBackend : IAudioPlatformBrokerBackend
         Task.CompletedTask;
     public Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+    public Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AudioDeviceSummary>>([]);
+    public Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new AudioInputSummary(0.5, false));
+    public Task SetAudioInputVolumeAsync(double volume, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task SetAudioInputMutedAsync(bool isMuted, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }
 
@@ -850,6 +1481,10 @@ sealed class SplitNetworkBackend : INetworkPlatformBrokerBackend
         Task.FromResult(new AvailableWifiNetworksSummary(WifiScanState.NotScanned, []));
     public Task RequestWifiScanAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+    public Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new WifiRadioSummary(WifiRadioState.On, true));
+    public Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken) =>
         Task.CompletedTask;
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }

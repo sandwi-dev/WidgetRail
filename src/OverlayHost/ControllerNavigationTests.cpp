@@ -146,6 +146,19 @@ int main() {
           "an explicit Down edge wins before the tray");
     Check(!ShouldTransferFocusToTray(NavigationDirection::Down, true, false, true),
           "a geometric Down target wins before the tray");
+    using gba::input::ShouldEnterWidgetFromTray;
+    Check(ShouldEnterWidgetFromTray(
+              NavigationDirection::Up,
+              gba::input::NavigationEventPhase::Pressed),
+          "tray Up enters the already visible widget controls");
+    Check(!ShouldEnterWidgetFromTray(
+              NavigationDirection::Up,
+              gba::input::NavigationEventPhase::Repeated),
+          "held tray Up cannot spill a repeated move into widget controls");
+    Check(!ShouldEnterWidgetFromTray(
+              NavigationDirection::Down,
+              gba::input::NavigationEventPhase::Pressed),
+          "tray Down does not invent a second entry direction");
     using gba::input::IsDistinctFocusMove;
     Check(IsDistinctFocusMove(L"current", L"next", true),
           "a distinct enabled explicit target is a real focus move");

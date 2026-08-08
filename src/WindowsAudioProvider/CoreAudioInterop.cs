@@ -13,6 +13,9 @@ internal static class CoreAudioInterop
     [DllImport("ole32.dll")]
     private static extern void CoUninitialize();
 
+    [DllImport("ole32.dll")]
+    internal static extern int PropVariantClear(ref PropVariant value);
+
     internal static bool InitializeMta()
     {
         var hr = CoInitializeEx(IntPtr.Zero, CoinitMultithreaded);
@@ -95,8 +98,25 @@ internal enum AudioSessionDisconnectReason
 [StructLayout(LayoutKind.Sequential)]
 internal readonly struct PropertyKey
 {
-    private readonly Guid _formatId;
-    private readonly uint _propertyId;
+    internal PropertyKey(Guid formatId, uint propertyId)
+    {
+        FormatId = formatId;
+        PropertyId = propertyId;
+    }
+
+    internal readonly Guid FormatId;
+    internal readonly uint PropertyId;
+}
+
+[StructLayout(LayoutKind.Explicit, Size = 24)]
+internal struct PropVariant
+{
+    [FieldOffset(0)] internal ushort VariantType;
+    [FieldOffset(8)] internal IntPtr PointerValue;
+
+    internal string? GetString() => VariantType == 31 && PointerValue != IntPtr.Zero
+        ? Marshal.PtrToStringUni(PointerValue)
+        : null;
 }
 
 [ComImport]
@@ -110,11 +130,32 @@ internal sealed class MMDeviceEnumeratorComObject
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 internal interface IMMDeviceEnumerator
 {
-    [PreserveSig] int EnumAudioEndpoints(EDataFlow dataFlow, uint stateMask, out IntPtr devices);
+    [PreserveSig] int EnumAudioEndpoints(EDataFlow dataFlow, uint stateMask, out IMMDeviceCollection? devices);
     [PreserveSig] int GetDefaultAudioEndpoint(EDataFlow dataFlow, ERole role, out IMMDevice? endpoint);
     [PreserveSig] int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice? device);
     [PreserveSig] int RegisterEndpointNotificationCallback(IMMNotificationClient client);
     [PreserveSig] int UnregisterEndpointNotificationCallback(IMMNotificationClient client);
+}
+
+[ComImport]
+[Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMMDeviceCollection
+{
+    [PreserveSig] int GetCount(out uint count);
+    [PreserveSig] int Item(uint index, out IMMDevice? device);
+}
+
+[ComImport]
+[Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IPropertyStore
+{
+    [PreserveSig] int GetCount(out uint count);
+    [PreserveSig] int GetAt(uint index, out PropertyKey key);
+    [PreserveSig] int GetValue(ref PropertyKey key, out PropVariant value);
+    [PreserveSig] int SetValue(ref PropertyKey key, ref PropVariant value);
+    [PreserveSig] int Commit();
 }
 
 [ComImport]
@@ -127,7 +168,7 @@ internal interface IMMDevice
         uint classContext,
         IntPtr activationParameters,
         [MarshalAs(UnmanagedType.IUnknown)] out object? activatedInterface);
-    [PreserveSig] int OpenPropertyStore(uint access, out IntPtr properties);
+    [PreserveSig] int OpenPropertyStore(uint access, out IPropertyStore? properties);
     [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string? id);
     [PreserveSig] int GetState(out uint state);
 }

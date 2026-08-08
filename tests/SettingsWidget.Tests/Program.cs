@@ -32,6 +32,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed widget review reloads only on activation", InstalledWidgetActivationReload),
     ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
     ("Permissions use nested controller scopes and bounded package pages", PermissionScopesAndPagination),
+    ("Permission screens explain declarations consent enforcement and Windows access", PermissionModelIsClear),
+    ("Bluetooth permission copy states privacy and radio-control boundaries", BluetoothPermissionCopy),
     ("Capability grant confirms and deny revokes atomically", GrantAndRevoke),
     ("Consent decisions isolate package publisher identities", PublisherIsolation),
     ("Undeclared capabilities and decisions are never actionable", UndeclaredCapabilitiesAreHidden),
@@ -730,6 +732,79 @@ static async Task PermissionScopesAndPagination()
     Assert.Valid(second);
     Assert.Valid(capabilities);
     Assert.Valid(decision);
+}
+
+static async Task PermissionModelIsClear()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(catalogRoot, "dev.test.network", "dev.publisher.network", "Network helper",
+        [PlatformCapabilities.NetworkWifiReadV1],
+        [PlatformCapabilities.NetworkWifiConnectV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+
+    await Action(widget, "open.permissions");
+    var packages = Snapshot(widget);
+    Assert.Contains("request", Text(packages.Root, "permissions.help").Text!);
+    Assert.Contains("not permission", Text(packages.Root, "permissions.help").Text!);
+    Assert.Contains("host enforces", Text(packages.Root, "permissions.help").Text!);
+    Assert.Contains("Windows may separately require", Text(packages.Root, "permissions.system-help").Text!);
+    Assert.Contains("1 required · 1 optional", Button(packages.Root, "permission.item.0").Text!);
+
+    await Action(widget, "permission.select.0");
+    var capabilities = Snapshot(widget);
+    Assert.Contains("Neither type is allowed automatically",
+        Text(capabilities.Root, "capabilities.help").Text!);
+    Assert.Contains("Required", Button(capabilities.Root, "capability.item.0").Text!);
+    Assert.Contains("access is blocked", Button(capabilities.Root, "capability.item.0").Text!);
+    Assert.Contains("Optional", Button(capabilities.Root, "capability.item.1").Text!);
+
+    await Action(widget, "capability.select.0");
+    var decision = Snapshot(widget);
+    Assert.Contains("Windows precise-location permission",
+        Text(decision.Root, "capability.description").Text!);
+    Assert.Contains("widget identity", Text(decision.Root, "capability.enforcement").Text!);
+    Assert.Contains(PlatformCapabilities.NetworkWifiReadV1,
+        Text(decision.Root, "capability.technical-id").Text!);
+    Assert.Equal("Allow access", Button(decision.Root, "capability.grant").Text);
+    Assert.Equal("Block access", Button(decision.Root, "capability.deny").Text);
+
+    await Action(widget, "back");
+    await Action(widget, "capability.select.1");
+    var optional = Snapshot(widget);
+    Assert.Contains("cannot read saved passwords",
+        Text(optional.Root, "capability.description").Text!);
+    Assert.Valid(packages);
+    Assert.Valid(capabilities);
+    Assert.Valid(decision);
+    Assert.Valid(optional);
+}
+
+static async Task BluetoothPermissionCopy()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(catalogRoot, "dev.test.bluetooth", "dev.publisher.bluetooth", "Bluetooth helper",
+        [PlatformCapabilities.NetworkBluetoothReadV1],
+        [PlatformCapabilities.NetworkBluetoothRadioControlV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    await Action(widget, "capability.select.0");
+    var read = Snapshot(widget);
+    Assert.Contains("addresses", Text(read.Root, "capability.description").Text!);
+    Assert.Contains("device IDs", Text(read.Root, "capability.description").Text!);
+    await Action(widget, "back");
+    await Action(widget, "capability.select.1");
+    var control = Snapshot(widget);
+    Assert.Contains("hardware switches", Text(control.Root, "capability.description").Text!);
+    Assert.Contains("device policy", Text(control.Root, "capability.description").Text!);
+    Assert.Valid(read);
+    Assert.Valid(control);
 }
 
 static async Task GrantAndRevoke()

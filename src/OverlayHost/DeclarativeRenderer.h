@@ -67,6 +67,10 @@ struct DeclarativeRenderOptions final {
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
     std::optional<NativeColor> surfaceBackground;
+    /// Host-owned rounded viewport mask. Widget roots may paint an opaque
+    /// full-viewport background, but cannot square off the shell panel's
+    /// corners or paint into detached host chrome.
+    float surfaceCornerRadiusPx{};
     NativeAccessibilityPolicy accessibility;
     /// Exact node-ID optimistic values owned by the controller slider state.
     /// The immutable widget snapshot remains authoritative after acknowledgement
@@ -126,11 +130,20 @@ private:
         ID2D1RenderTarget* renderTarget,
         const WidgetNode& node,
         RenderPass& pass);
+    [[nodiscard]] bool EnsureSurfaceClip(
+        ID2D1RenderTarget* renderTarget,
+        declarative::Rect viewport,
+        float radius);
 
     ID2D1Factory* d2dFactory_{};
     IDWriteFactory* writeFactory_{};
     RemoteImageCache* imageCache_{};
     ID2D1RenderTarget* bitmapTarget_{};
+    ID2D1RenderTarget* surfaceClipTarget_{};
+    declarative::Rect surfaceClipRect_{};
+    float surfaceClipRadius_{};
+    Microsoft::WRL::ComPtr<ID2D1Layer> surfaceClipLayer_;
+    Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> surfaceClipGeometry_;
     std::unordered_map<std::wstring, Microsoft::WRL::ComPtr<ID2D1Bitmap>> bitmaps_;
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
     std::uint64_t scrollStateAccessClock_{};

@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.firstparty.recent-apps",
+  "publisher": "org.gbar.firstparty",
+  "name": "Recent Apps",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/RecentAppsWidget.dll",
+    "type": "GameBarAlternative.FirstPartyWidgets.RecentApps.RecentAppsWidget"
+  },
+  "permissions": [
+    "system.activity.recent.read.v1"
+  ],
+  "optionalPermissions": [
+    "system.activity.recent.activate.v1"
+  ],
+  "backgroundPolicy": "suspend",
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 10
+  },
+  "architectures": [
+    "x64"
+  ]
+}

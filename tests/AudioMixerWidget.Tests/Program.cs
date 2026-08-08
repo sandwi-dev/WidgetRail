@@ -21,6 +21,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("External authoritative changes apply when no command is pending", ExternalAuthoritativeUpdate),
     ("Mute and volume failures roll back with bounded feedback", OptimisticRollback),
     ("Master output updates immediately reconciles and rolls back", MasterOutputControls),
+    ("Default devices and microphone controls are live controller-native and stable", DeviceAndInputControls),
+    ("Optional audio stream revocation and completion clear only their own state", OptionalStreamTerminationIsIsolated),
     ("Session churn preserves stable row identity and nearest anchor", StableSelectionDuringChurn),
     ("Many sessions and long labels remain bounded and uniquely focusable", ManySessionsRemainBounded),
     ("Capability failure codes render distinct recovery states", CapabilityFailureStates),
@@ -98,10 +100,12 @@ static async Task ExplicitFocusGraph()
     var game = SessionPrefix(snapshot.Root, "Game");
     var chat = SessionPrefix(snapshot.Root, "Chat");
     Assert.SequenceEqual(
-        ["audio.master.volume.slider", $"{game}.volume.slider", $"{chat}.volume.slider"],
+        ["audio.master.volume.slider", "audio.input.volume.slider", $"{game}.volume.slider", $"{chat}.volume.slider"],
         sliders.Keys);
-    Assert.Equal($"{game}.volume.slider", sliders["audio.master.volume.slider"].Focus!.Down);
-    Assert.Equal("audio.master.volume.slider", sliders[$"{game}.volume.slider"].Focus!.Up);
+    Assert.Equal("audio.input.volume.slider", sliders["audio.master.volume.slider"].Focus!.Down);
+    Assert.Equal("audio.master.volume.slider", sliders["audio.input.volume.slider"].Focus!.Up);
+    Assert.Equal($"{game}.volume.slider", sliders["audio.input.volume.slider"].Focus!.Down);
+    Assert.Equal("audio.input.volume.slider", sliders[$"{game}.volume.slider"].Focus!.Up);
     Assert.Equal($"{chat}.volume.slider", sliders[$"{game}.volume.slider"].Focus!.Down);
     Assert.Equal($"{game}.volume.slider", sliders[$"{chat}.volume.slider"].Focus!.Up);
     Assert.True(sliders.Values.All(slider => slider.Focus?.Left is null && slider.Focus?.Right is null),
@@ -479,6 +483,108 @@ static async Task MasterOutputControls()
     await Background(widget);
 }
 
+static async Task DeviceAndInputControls()
+{
+    var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Devices =
+        [
+            new("safe-output", "Living room speakers", WidgetAudioDeviceDirection.Output, true),
+            new("safe-input", "USB microphone", WidgetAudioDeviceDirection.Input, true),
+        ],
+        Input = new WidgetAudioInput(0.45, false),
+        ControlGate = gate.Task,
+    };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var ready = Snapshot(widget, 0);
+    Assert.Equal("Living room speakers", Text(ready.Root, "audio.devices.output.name").Text);
+    Assert.Equal("USB microphone", Text(ready.Root, "audio.devices.input.name").Text);
+    Assert.Equal("audio.input.volume.slider",
+        Node(ready.Root, "audio.master.volume.slider").Focus!.Down);
+    var game = SessionPrefix(ready.Root, "Game");
+    Assert.Equal($"{game}.volume.slider", Node(ready.Root, "audio.input.volume.slider").Focus!.Down);
+    Assert.Equal("audio.input.volume.slider", Node(ready.Root, $"{game}.volume.slider").Focus!.Up);
+
+    await widget.OnActionAsync(
+        new("input.volume.set", "audio.input.volume.slider", RequestedValue: 0.6));
+    await WaitUntil(() => fake.InputVolumeRequests.Count == 1);
+    Assert.Near(0.6D, Node(Snapshot(widget, 1).Root, "audio.input.volume.slider").Value!.Value);
+    fake.EmitInput(new WidgetAudioInput(0.45, false));
+    await Task.Delay(30);
+    Assert.Near(0.6D, widget.Input!.Volume);
+    gate.SetResult();
+    await Task.Delay(30);
+
+    fake.ControlGate = null;
+    await widget.OnActionAsync(new("input.mute.toggle", "audio.input.volume.slider"));
+    await WaitUntil(() => fake.InputMuteRequests.Count == 1);
+    Assert.Equal(true, widget.Input!.IsMuted);
+    fake.EmitInput(new WidgetAudioInput(0.6, true));
+    await WaitUntil(() => Node(Snapshot(widget, 2).Root, "audio.input.mute.icon").Glyph == WidgetGlyph.Muted);
+
+    fake.EmitDevices([
+        new("safe-output", "Headphones", WidgetAudioDeviceDirection.Output, true),
+        new("safe-input", "USB microphone", WidgetAudioDeviceDirection.Input, true),
+    ]);
+    await WaitUntil(() => Text(Snapshot(widget, 3).Root, "audio.devices.output.name").Text == "Headphones");
+    Assert.Equal("audio.input.volume.slider", Node(Snapshot(widget, 4).Root,
+        "audio.input.volume.slider").Id);
+    await Background(widget);
+}
+
+static async Task OptionalStreamTerminationIsIsolated()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Devices =
+        [
+            new("safe-output", "Speakers", WidgetAudioDeviceDirection.Output, true),
+            new("safe-input", "Microphone", WidgetAudioDeviceDirection.Input, true),
+        ],
+        Input = new WidgetAudioInput(0.5, false),
+    };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    await WaitUntil(() => widget.Devices.Count == 2 && widget.Input is not null);
+
+    fake.EndDevices(new WidgetCapabilityException(
+        "capability_revoked", "Device permission was revoked."));
+    await WaitUntil(() => widget.Devices.Count == 0);
+    Assert.True(widget.Input is not null,
+        "Device-list revocation incorrectly cleared independent microphone state.");
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    Assert.Equal("game", widget.Sessions.Single().SessionId);
+
+    fake.EndInput();
+    await WaitUntil(() => widget.Input is null);
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    Assert.Equal("game", widget.Sessions.Single().SessionId);
+    Assert.Equal(2, fake.CanceledSubscriptions);
+
+    // A non-capability stream failure is still consumed and reconciled rather
+    // than becoming an unobserved task fault or terminating required audio.
+    await Background(widget);
+    await ActivateReady(widget);
+    await WaitUntil(() => widget.Devices.Count == 2 && widget.Input is not null);
+    fake.EndDevices(new WidgetCapabilityException(
+        "permission_denied", "Device permission is denied."));
+    await WaitUntil(() => widget.Devices.Count == 0);
+    Assert.True(widget.Input is not null,
+        "Device permission denial incorrectly cleared independent microphone state.");
+    fake.EndInput(new InvalidOperationException("provider details must not leak"));
+    await WaitUntil(() => widget.Input is null);
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    Assert.Equal("game", widget.Sessions.Single().SessionId);
+    Assert.True(!Text(Snapshot(widget, 1).Root, "audio.status").Text!
+            .Contains("provider details", StringComparison.Ordinal),
+        "Unexpected auxiliary provider details leaked into widget status.");
+    await Background(widget);
+}
+
 static async Task StableSelectionDuringChurn()
 {
     var fake = new FakeCapabilityClient
@@ -611,23 +717,23 @@ static async Task LifecycleAndNoPolling()
     Assert.Equal(0, fake.SubscriptionCount);
 
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
-    await WaitUntil(() => widget.ViewState == AudioMixerViewState.Ready && fake.SubscriptionCount == 2);
+    await WaitUntil(() => widget.ViewState == AudioMixerViewState.Ready && fake.SubscriptionCount == 4);
     Assert.Equal(1, widget.ActivationCount);
     Assert.Equal(1, widget.FetchCount);
     Assert.Equal(1, fake.GetCalls);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
     await Task.Delay(120);
     Assert.Equal(1, fake.GetCalls);
-    Assert.Equal(2, fake.SubscriptionCount);
+    Assert.Equal(4, fake.SubscriptionCount);
 
     await Background(widget);
-    await WaitUntil(() => fake.CanceledSubscriptions == 2);
+    await WaitUntil(() => fake.CanceledSubscriptions == 4);
     var calls = fake.GetCalls;
     await Task.Delay(120);
     Assert.Equal(calls, fake.GetCalls);
 
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
-    await WaitUntil(() => fake.GetCalls == 2 && fake.SubscriptionCount == 4);
+    await WaitUntil(() => fake.GetCalls == 2 && fake.SubscriptionCount == 8);
     Assert.Equal(2, widget.ActivationCount);
     await Background(widget);
 }
@@ -643,7 +749,7 @@ static async Task SubscriptionPrecedesSnapshot()
     await Activate(widget);
     await WaitUntil(() => widget.ViewState == AudioMixerViewState.Ready &&
                           widget.SelectedSessionId == "new");
-    Assert.Equal(2, fake.SubscriptionCount);
+    Assert.Equal(4, fake.SubscriptionCount);
     Assert.Equal(1, fake.GetCalls);
     Assert.Equal("Gap event", widget.Sessions.Single().DisplayName);
     Assert.Equal(0.8D, widget.Sessions.Single().Volume);
@@ -677,8 +783,17 @@ static async Task ShippedAssetsValidate()
     var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(Path.Combine(project, "manifest.json")));
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
-    Assert.SequenceEqual(["system.audio.sessions.read.v1", "system.audio.output.read.v1"], manifest.Permissions);
-    Assert.SequenceEqual(["system.audio.sessions.control.v1", "system.audio.output.control.v1"], manifest.OptionalPermissions);
+    Assert.SequenceEqual([
+        "system.audio.sessions.read.v1",
+        "system.audio.output.read.v1",
+    ], manifest.Permissions);
+    Assert.SequenceEqual([
+        "system.audio.sessions.control.v1",
+        "system.audio.output.control.v1",
+        "system.audio.devices.read.v1",
+        "system.audio.input.read.v1",
+        "system.audio.input.control.v1",
+    ], manifest.OptionalPermissions);
     Assert.Equal("suspend", manifest.BackgroundPolicy);
     Assert.Equal(64, manifest.ResourceRequest.MemoryMb);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
@@ -695,6 +810,7 @@ static async Task ShippedAssetsValidate()
     Assert.Contains("max-height: 340px", style);
     Assert.Contains(".audio-volume-slider", style);
     Assert.Contains(".audio-mute-icon", style);
+    Assert.Contains(".audio-device-card", style);
     Assert.True(!style.Contains(".audio-volume-action", StringComparison.Ordinal) &&
                 !style.Contains(".audio-mute-action", StringComparison.Ordinal),
         "Legacy plus/minus or text-pill mute styles remain in the shipped theme.");
@@ -907,10 +1023,14 @@ file sealed class FakeCapabilityClient
     private readonly object _gate = new();
     private readonly List<Channel<WidgetAudioSessionsChanged>> _subscribers = [];
     private readonly List<Channel<WidgetAudioOutputChanged>> _outputSubscribers = [];
+    private readonly List<Channel<WidgetAudioDevicesChanged>> _deviceSubscribers = [];
+    private readonly List<Channel<WidgetAudioInputChanged>> _inputSubscribers = [];
     private readonly Queue<ControlPlan> _sessionVolumePlans = [];
     private readonly Queue<ControlPlan> _sessionMutePlans = [];
     private readonly Queue<ControlPlan> _outputVolumePlans = [];
     private readonly Queue<ControlPlan> _outputMutePlans = [];
+    private readonly Queue<ControlPlan> _inputVolumePlans = [];
+    private readonly Queue<ControlPlan> _inputMutePlans = [];
     private int _getCalls;
     private int _subscriptionCount;
     private int _canceledSubscriptions;
@@ -918,6 +1038,12 @@ file sealed class FakeCapabilityClient
     public bool IsAvailable => true;
     public IReadOnlyList<WidgetAudioSession> Sessions { get; set; } = [];
     public WidgetAudioOutput Output { get; set; } = new(0.6, false);
+    public IReadOnlyList<WidgetAudioDevice> Devices { get; set; } =
+    [
+        new("device-output", "Speakers", WidgetAudioDeviceDirection.Output, true),
+        new("device-input", "Microphone", WidgetAudioDeviceDirection.Input, true),
+    ];
+    public WidgetAudioInput Input { get; set; } = new(0.5, false);
     public Exception? GetException { get; set; }
     public Exception? ControlException { get; set; }
     public Task? ControlGate { get; set; }
@@ -926,6 +1052,8 @@ file sealed class FakeCapabilityClient
     public List<SetWidgetAudioSessionMutedRequest> MuteRequests { get; } = [];
     public List<SetWidgetAudioOutputVolumeRequest> OutputVolumeRequests { get; } = [];
     public List<SetWidgetAudioOutputMutedRequest> OutputMuteRequests { get; } = [];
+    public List<SetWidgetAudioInputVolumeRequest> InputVolumeRequests { get; } = [];
+    public List<SetWidgetAudioInputMutedRequest> InputMuteRequests { get; } = [];
     public int GetCalls => Volatile.Read(ref _getCalls);
     public int SubscriptionCount => Volatile.Read(ref _subscriptionCount);
     public int CanceledSubscriptions => Volatile.Read(ref _canceledSubscriptions);
@@ -948,6 +1076,16 @@ file sealed class FakeCapabilityClient
     public void PlanOutputMute(Task? gate = null, Exception? failure = null)
     {
         lock (_gate) _outputMutePlans.Enqueue(new ControlPlan(gate, failure));
+    }
+
+    public void PlanInputVolume(Task? gate = null, Exception? failure = null)
+    {
+        lock (_gate) _inputVolumePlans.Enqueue(new ControlPlan(gate, failure));
+    }
+
+    public void PlanInputMute(Task? gate = null, Exception? failure = null)
+    {
+        lock (_gate) _inputMutePlans.Enqueue(new ControlPlan(gate, failure));
     }
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
@@ -975,12 +1113,34 @@ file sealed class FakeCapabilityClient
             WidgetAudioCapabilities.SetOutputMuted,
             (request, cancellationToken) => InvokeAsync(
                 WidgetAudioCapabilities.SetOutputMuted, request, cancellationToken))
+        .WithHandler(
+            WidgetAudioCapabilities.GetDevices,
+            (request, cancellationToken) => InvokeAsync(
+                WidgetAudioCapabilities.GetDevices, request, cancellationToken))
+        .WithHandler(
+            WidgetAudioCapabilities.GetInput,
+            (request, cancellationToken) => InvokeAsync(
+                WidgetAudioCapabilities.GetInput, request, cancellationToken))
+        .WithHandler(
+            WidgetAudioCapabilities.SetInputVolume,
+            (request, cancellationToken) => InvokeAsync(
+                WidgetAudioCapabilities.SetInputVolume, request, cancellationToken))
+        .WithHandler(
+            WidgetAudioCapabilities.SetInputMuted,
+            (request, cancellationToken) => InvokeAsync(
+                WidgetAudioCapabilities.SetInputMuted, request, cancellationToken))
         .WithEventStream(
             WidgetAudioCapabilities.SessionsChanged,
             OpenEventStream)
         .WithEventStream(
             WidgetAudioCapabilities.OutputChanged,
             OpenOutputEventStream)
+        .WithEventStream(
+            WidgetAudioCapabilities.DevicesChanged,
+            OpenDeviceEventStream)
+        .WithEventStream(
+            WidgetAudioCapabilities.InputChanged,
+            OpenInputEventStream)
         .Build();
 
     public async ValueTask<TResponse> InvokeAsync<TRequest, TResponse>(
@@ -1001,6 +1161,10 @@ file sealed class FakeCapabilityClient
             if (GetException is not null) throw GetException;
             return (TResponse)(object)Output;
         }
+        if (operation.OperationId == WidgetAudioCapabilities.GetDevices.OperationId)
+            return (TResponse)(object)Devices.ToArray();
+        if (operation.OperationId == WidgetAudioCapabilities.GetInput.OperationId)
+            return (TResponse)(object)Input;
         if (operation.OperationId == WidgetAudioCapabilities.SetSessionVolume.OperationId)
         {
             ControlPlan plan;
@@ -1053,6 +1217,34 @@ file sealed class FakeCapabilityClient
             Output = Output with { IsMuted = control.IsMuted };
             return (TResponse)(object)new WidgetCapabilityAcknowledgement(true);
         }
+        if (operation.OperationId == WidgetAudioCapabilities.SetInputVolume.OperationId)
+        {
+            var control = (SetWidgetAudioInputVolumeRequest)(object)request!;
+            ControlPlan plan;
+            lock (_gate)
+            {
+                InputVolumeRequests.Add(control);
+                plan = NextPlan(_inputVolumePlans);
+            }
+            if (plan.Gate is not null) await plan.Gate.WaitAsync(cancellationToken);
+            if (plan.Failure is not null) throw plan.Failure;
+            Input = Input with { Volume = control.Volume };
+            return (TResponse)(object)new WidgetCapabilityAcknowledgement(true);
+        }
+        if (operation.OperationId == WidgetAudioCapabilities.SetInputMuted.OperationId)
+        {
+            var control = (SetWidgetAudioInputMutedRequest)(object)request!;
+            ControlPlan plan;
+            lock (_gate)
+            {
+                InputMuteRequests.Add(control);
+                plan = NextPlan(_inputMutePlans);
+            }
+            if (plan.Gate is not null) await plan.Gate.WaitAsync(cancellationToken);
+            if (plan.Failure is not null) throw plan.Failure;
+            Input = Input with { IsMuted = control.IsMuted };
+            return (TResponse)(object)new WidgetCapabilityAcknowledgement(true);
+        }
         throw new WidgetCapabilityException("unsupported_operation", operation.OperationId);
     }
 
@@ -1087,6 +1279,34 @@ file sealed class FakeCapabilityClient
         return ReadOutputEvents(channel, cancellationToken);
     }
 
+    private IAsyncEnumerable<WidgetAudioDevicesChanged> OpenDeviceEventStream(
+        CancellationToken cancellationToken)
+    {
+        var channel = Channel.CreateBounded<WidgetAudioDevicesChanged>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+        lock (_gate) _deviceSubscribers.Add(channel);
+        Interlocked.Increment(ref _subscriptionCount);
+        return ReadDeviceEvents(channel, cancellationToken);
+    }
+
+    private IAsyncEnumerable<WidgetAudioInputChanged> OpenInputEventStream(
+        CancellationToken cancellationToken)
+    {
+        var channel = Channel.CreateBounded<WidgetAudioInputChanged>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+        lock (_gate) _inputSubscribers.Add(channel);
+        Interlocked.Increment(ref _subscriptionCount);
+        return ReadInputEvents(channel, cancellationToken);
+    }
+
     private async IAsyncEnumerable<WidgetAudioSessionsChanged> ReadEvents(
         Channel<WidgetAudioSessionsChanged> channel,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -1119,6 +1339,38 @@ file sealed class FakeCapabilityClient
         }
     }
 
+    private async IAsyncEnumerable<WidgetAudioDevicesChanged> ReadDeviceEvents(
+        Channel<WidgetAudioDevicesChanged> channel,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                yield return item;
+        }
+        finally
+        {
+            lock (_gate) _deviceSubscribers.Remove(channel);
+            Interlocked.Increment(ref _canceledSubscriptions);
+        }
+    }
+
+    private async IAsyncEnumerable<WidgetAudioInputChanged> ReadInputEvents(
+        Channel<WidgetAudioInputChanged> channel,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                yield return item;
+        }
+        finally
+        {
+            lock (_gate) _inputSubscribers.Remove(channel);
+            Interlocked.Increment(ref _canceledSubscriptions);
+        }
+    }
+
     public void Emit(IReadOnlyList<WidgetAudioSession> sessions, bool isAvailable = true)
     {
         Sessions = sessions;
@@ -1135,6 +1387,38 @@ file sealed class FakeCapabilityClient
         lock (_gate) subscribers = _outputSubscribers.ToArray();
         foreach (var subscriber in subscribers)
             subscriber.Writer.TryWrite(new WidgetAudioOutputChanged(output, isAvailable));
+    }
+
+    public void EmitDevices(IReadOnlyList<WidgetAudioDevice> devices, bool isAvailable = true)
+    {
+        Devices = devices;
+        Channel<WidgetAudioDevicesChanged>[] subscribers;
+        lock (_gate) subscribers = _deviceSubscribers.ToArray();
+        foreach (var subscriber in subscribers)
+            subscriber.Writer.TryWrite(new WidgetAudioDevicesChanged(devices, isAvailable));
+    }
+
+    public void EmitInput(WidgetAudioInput? input, bool isAvailable = true)
+    {
+        if (input is not null) Input = input;
+        Channel<WidgetAudioInputChanged>[] subscribers;
+        lock (_gate) subscribers = _inputSubscribers.ToArray();
+        foreach (var subscriber in subscribers)
+            subscriber.Writer.TryWrite(new WidgetAudioInputChanged(input, isAvailable));
+    }
+
+    public void EndDevices(Exception? error = null)
+    {
+        Channel<WidgetAudioDevicesChanged>[] subscribers;
+        lock (_gate) subscribers = _deviceSubscribers.ToArray();
+        foreach (var subscriber in subscribers) subscriber.Writer.TryComplete(error);
+    }
+
+    public void EndInput(Exception? error = null)
+    {
+        Channel<WidgetAudioInputChanged>[] subscribers;
+        lock (_gate) subscribers = _inputSubscribers.ToArray();
+        foreach (var subscriber in subscribers) subscriber.Writer.TryComplete(error);
     }
 }
 

@@ -80,6 +80,48 @@ void SurfaceContained(
 int main() {
     using namespace gba;
 
+    Check(ResolveControllerGuideDensity(800.0F, 1.0F) ==
+              ControllerGuideDensity::Full,
+          "wide footer uses the complete single-line controller guide");
+    Check(ResolveControllerGuideDensity(520.0F, 1.0F) ==
+              ControllerGuideDensity::Compact,
+          "compact widget uses the abbreviated single-line controller guide");
+    Check(ResolveControllerGuideDensity(320.0F, 1.0F) ==
+              ControllerGuideDensity::Minimal,
+          "narrow widget preserves only essential controller guidance");
+    Check(ResolveControllerGuideDensity(800.0F, 1.5F) ==
+              ControllerGuideDensity::Compact,
+          "large accessibility text selects a safer guide density");
+    Check(ResolveControllerGuideDensity(
+              std::numeric_limits<float>::quiet_NaN(), 1.0F) ==
+              ControllerGuideDensity::Minimal,
+          "invalid guide width fails to the non-wrapping minimal form");
+    const std::array quickActions{
+        ControllerGuideAction{L"LB", L"Previous track"},
+        ControllerGuideAction{L"X", L"Play / pause"},
+        ControllerGuideAction{L"RB", L"Next track"},
+    };
+    const auto contextualGuide = BuildTrayControllerGuide(
+        ControllerGuideDensity::Compact, false, quickActions);
+    Check(contextualGuide.find(L"LB ") != std::wstring::npos &&
+              contextualGuide.find(L"X ") != std::wstring::npos &&
+              contextualGuide.find(L"RB ") != std::wstring::npos,
+          "compact YT guide keeps all three hover quick actions discoverable");
+    Check(contextualGuide.find(L"↑/A Enter") != std::wstring::npos &&
+              contextualGuide.find(L"B Close") != std::wstring::npos,
+          "contextual guide retains enter and escape affordances");
+    Check(contextualGuide.size() <= 60U &&
+              contextualGuide.find_first_of(L"\r\n") == std::wstring::npos,
+          "compact contextual guide is sanitized to one bounded line");
+    const std::array hostileAction{
+        ControllerGuideAction{L"LB\nRB", L"A deliberately enormous\nwidget supplied label"},
+    };
+    const auto hostileGuide = BuildTrayControllerGuide(
+        ControllerGuideDensity::Minimal, false, hostileAction);
+    Check(hostileGuide.size() <= 28U &&
+              hostileGuide.find_first_of(L"\r\n") == std::wstring::npos,
+          "untrusted widget hint text cannot wrap or overflow minimal chrome");
+
     const auto legacySurface = ResolveWidgetSurfaceTarget(std::nullopt, 1.0F);
     CheckNear(legacySurface.windowWidthDip, 1180.0F,
               "missing hints preserve the v1 window width");
@@ -268,6 +310,58 @@ int main() {
                       value->x + value->width / 2 + 1 == work.left + (work.right - work.left) / 2,
                   "placement is horizontally centered");
         }
+    }
+
+    // Model the host's event-driven re-resolution path rather than assuming a
+    // resize is merely proportional. Taskbars can move between edges, the
+    // destination monitor can use negative desktop coordinates, and a monitor
+    // migration can change work area and DPI at the same time.
+    struct DisplayState final {
+        PhysicalRect work;
+        unsigned int dpi;
+        float interfaceScale;
+    };
+    const auto resolvePlacement = [&](const DisplayState state) {
+        const auto surface = ResolveWidgetSurface(
+            standardRequest,
+            WidgetSurfaceConstraints{
+                state.work, state.dpi, state.interfaceScale, 1.0F});
+        Check(surface.has_value(), "display transition resolves widget surface");
+        const auto placement = ComputeOverlayPlacement(
+            state.work, state.dpi,
+            surface->windowWidthDip * state.interfaceScale,
+            surface->windowHeightDip * state.interfaceScale);
+        Check(placement.has_value(), "display transition resolves physical placement");
+        FullyContained(*placement, state.work);
+        const auto metrics = ComputeOverlayRenderMetrics(
+            placement->width, placement->height, state.dpi, state.interfaceScale);
+        Check(metrics.has_value(), "display transition resolves logical viewport");
+        const auto geometry = ComputeOverlaySurfaceGeometry(
+            metrics->viewportWidthDip, metrics->viewportHeightDip,
+            surface->panelWidthDip);
+        Check(geometry.has_value(), "display transition resolves contained shell geometry");
+        SurfaceContained(*geometry, metrics->viewportWidthDip, metrics->viewportHeightDip);
+        return *placement;
+    };
+    constexpr std::array displayTransitions{
+        DisplayState{{0, 0, 1920, 1080}, 96U, 1.0F},       // no taskbar reservation
+        DisplayState{{0, 0, 1920, 1040}, 96U, 1.0F},       // bottom taskbar
+        DisplayState{{72, 0, 1920, 1080}, 96U, 1.0F},      // left taskbar
+        DisplayState{{0, 48, 1920, 1080}, 96U, 1.0F},      // top taskbar
+        DisplayState{{0, 0, 1856, 1080}, 96U, 1.0F},       // right taskbar
+        DisplayState{{-3840, -160, 0, 2000}, 192U, 1.0F},  // mixed-DPI monitor migration
+        DisplayState{{1920, 80, 7040, 1400}, 144U, 1.25F}, // offset 32:9 + UI zoom
+        DisplayState{{0, 0, 640, 320}, 192U, 1.25F},       // constrained high-DPI work area
+    };
+    auto previousTransitionPlacement = resolvePlacement(displayTransitions.front());
+    for (std::size_t index = 1; index < displayTransitions.size(); ++index) {
+        const auto placement = resolvePlacement(displayTransitions[index]);
+        Check(placement.x != previousTransitionPlacement.x ||
+                  placement.y != previousTransitionPlacement.y ||
+                  placement.width != previousTransitionPlacement.width ||
+                  placement.height != previousTransitionPlacement.height,
+              "work-area, monitor, DPI, or zoom change produces fresh placement");
+        previousTransitionPlacement = placement;
     }
 
     for (const auto work : {

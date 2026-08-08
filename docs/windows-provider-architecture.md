@@ -41,22 +41,35 @@ eventual widgets:
 | `system.audio.sessions.control.v1` | Set volume/mute for one opaque session while Interactive. |
 | `system.audio.output.read.v1` | Read volume/mute for the current default multimedia render endpoint and subscribe to bounded changes; no endpoint identity. |
 | `system.audio.output.control.v1` | Set master volume/mute for the current default multimedia render endpoint while Interactive; no device switching. |
+| `system.audio.devices.read.v1` | Read sanitized endpoint names/direction/default markers and subscribe to changes; no raw endpoint IDs. |
+| `system.audio.input.read.v1` | Read/watch volume and mute for the current default capture endpoint; no sample capture. |
+| `system.audio.input.control.v1` | Set volume/mute for the current default capture endpoint while Interactive. |
 | `system.network.read.v1` | Read sanitized connectivity/saved-profile state and subscribe to bounded network-change events. |
 | `system.network.saved-profile.switch.v1` | Connect one opaque already-saved profile while Interactive; no profile creation or secrets. |
+| `system.network.wifi.read.v1` | Read the cached available-network snapshot, explicitly request one scan while Interactive, and subscribe to bounded scan snapshots. |
+| `system.network.wifi.connect.v1` | Connect one current generation-bound saved/open scan result while Interactive; no credential entry. |
+| `system.network.wifi.radio.read.v1` | Read/watch effective software/hardware/policy Wi-Fi radio state. |
+| `system.network.wifi.radio.control.v1` | Request software Wi-Fi radio On/Off while Interactive; hardware/policy remains authoritative. |
+| `system.network.bluetooth.read.v1` | Read/watch sanitized Bluetooth radio/discovery/device state; no native IDs. |
+| `system.network.bluetooth.radio.control.v1` | Request Bluetooth software radio On/Off while Interactive. |
+| `system.activity.recent.read.v1` | Read/watch bounded eligible running foreground observations as opaque IDs. |
+| `system.activity.recent.activate.v1` | Switch to one exact still-running observation while Interactive; no launch. |
 
-Endpoint master-volume/mute now has separate read and control capabilities.
-Output switching, endpoint enumeration/identity, and capture-endpoint control
-remain outside this contract; capture control never implies audio-sample
-access. The broker currently rechecks authenticated package,
+Endpoint master-volume/mute, sanitized device visibility, and default-capture
+volume/mute have separate grants. Output/default-role switching and audio-
+sample capture remain outside this contract; capture volume control never
+implies sample access. The broker currently rechecks authenticated package,
 publisher, and instance identity, manifest declaration, durable grant/deny
 state, and lifecycle on each operation. Read operations are allowed only while
 Visible or Interactive; control operations require Interactive. Destroying
-revokes subscriptions, while Background retains only the latest bounded event.
+revokes subscriptions; Background denies these capabilities. Lifecycle/consent
+changes also cancel already in-flight provider operations.
 
 The typed contract is connected end to end through the generic worker host,
 bridge-owned authenticated broker companion, Settings consent flow, and
 deterministic backends. The trusted bridge composes
-`WindowsAudioPlatformBackend` with `WindowsNetworkPlatformBackend`. Both are
+`WindowsAudioPlatformBackend`, `WindowsNetworkPlatformBackend`,
+`WindowsBluetoothPlatformBackend`, and `WindowsActivityPlatformBackend`. They are
 working narrow OS services for declared and explicitly granted widgets; this
 does not close their hardware, privacy, performance, or hostile-code release
 gates. See [widget capabilities](capabilities.md) for the author-facing API.
@@ -116,10 +129,12 @@ model completely, atomically publish it, then unregister/release the old graph.
 Use one provider event-context GUID to reconcile optimistic widget feedback
 without suppressing changes from other clients.
 
-The implemented command set is per-session volume and mute through opaque
-session IDs. Endpoint master volume/mute is not exposed. Capture-endpoint or
-microphone control needs a separate grant; an activity meter would access
-capture data and requires a different capability and privacy review.
+The implemented command set includes per-session and endpoint master volume/
+mute through opaque targets, plus volume/mute for the current default capture
+endpoint. Device enumeration publishes sanitized input/output labels and
+default markers. It does not provide an endpoint/default-role setter. A
+microphone activity meter or sample capture would access capture data and
+requires a different capability and privacy review.
 
 #### Output-device switching gate
 
@@ -250,18 +265,17 @@ access-request flow needs its own capability/privacy review, stable packaged
 application identity, controller-triggered prompt, and deterministic
 required/denied/revoked states without retry loops.
 
-### Staged available-network and radio design
+### Implemented available-network and software-radio path
 
-The available-network broker/SDK contracts and provider foundation are
-implemented behind separate `system.network.wifi.read.v1` and
-`system.network.wifi.connect.v1` capabilities. They are not declared by the
-bundled Network Controls package or rendered by its UI, and the new path still
-needs dedicated behavior tests before it is shipping. Radio control remains a
-later capability/API milestone rather than an extension of
-`system.network.read.v1` or the saved-profile-switch grant:
+The available-network broker/SDK contracts, provider, bundled Network Controls
+surface, manifest/catalog declarations, Settings consent copy, and dedicated
+behavior tests are implemented behind separate `system.network.wifi.read.v1`
+and `system.network.wifi.connect.v1` capabilities. Radio read/control is
+implemented as separate `system.network.wifi.radio.*.v1` grants rather than an
+extension of `system.network.read.v1` or the saved-profile-switch grant:
 
-1. An explicit Interactive controller action aligns the Windows
-   precise-location request with the user's intent. A denial or revocation
+1. An explicit Interactive controller action aligns the location-sensitive
+   Windows call with the user's intent. A denial or revocation
    returns a stable privacy state and never starts a retry/prompt loop.
 2. The provider issues one `WlanScan`, waits for ACM completion or a bounded
    timeout, then reads one `WlanGetAvailableNetworkList` snapshot. It does not
@@ -270,15 +284,17 @@ later capability/API milestone rather than an extension of
    generation-bound opaque scan ID. The ID expires on the next scan or provider
    generation. BSSID, interface GUID, raw SSID bytes, authentication structures,
    profile XML, and keys never cross the broker or enter logs.
-4. Connection rolls out saved profiles first and unsaved open networks second.
+4. Connection accepts current saved-profile-backed and unsaved open results.
    A later host-owned credential prompt may create/connect a new WPA/WPA2/WPA3
    Personal profile without exposing the secret to the widget worker.
    Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
    captive-portal provisioning are unsupported initially.
 5. Software radio control uses `WlanSetInterface` only after a separate
-   Interactive capability/consent review. Hardware-off, airplane-mode,
+   Interactive grant/consent check. Hardware-off, airplane-mode,
    administrator policy, service loss, or unsupported PHY remains authoritative
-   and is never represented as a successful toggle.
+   and is never represented as a successful toggle. Multi-PHY mutation either
+   rolls back or returns typed `partial_failure`, then publishes the refreshed
+   authoritative state.
 
 WLAN callbacks only enqueue bounded notification codes and interface identity.
 Unregister/close from the provider thread, never from the callback.
@@ -291,7 +307,7 @@ Command and event queues are bounded, status/profile reads use the last complete
 snapshot, burst callbacks coalesce, and disposal unregisters native resources
 on the owner thread. No provider timer runs while the system is unchanged.
 
-## Bluetooth provider roadmap (not implemented)
+## Bluetooth provider
 
 ### Microsoft-documented API facts
 
@@ -311,16 +327,38 @@ on the owner thread. No provider timer runs while the system is unchanged.
   Connect/Disconnect promise. See [Bluetooth GATT client](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/gatt-client)
   and [Bluetooth RFCOMM](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/send-or-receive-files-with-rfcomm).
 
-### Platform design
+### Implemented boundary and remaining work
 
-Bluetooth radio read/control, device enumeration, and pair/unpair will be new
-closed broker capabilities only after a packaged-identity, manifest-capability,
-desktop owner-window, privacy, and hardware matrix passes. The host owns all
-system prompts and pairing ceremonies; the widget receives bounded opaque IDs,
-sanitized labels/states, and stable results. It never receives a pairing secret
-or raw device handle. Generic Connect/Disconnect remains out of scope; a future
-GATT or RFCOMM integration must declare its exact profile/service authority and
-resource/lifecycle policy.
+Bluetooth radio read/control and event-driven device enumeration are
+implemented as separate closed broker capabilities. The trusted WinRT adapter
+publishes bounded opaque IDs, sanitized names, and paired/present/connected
+state; native device IDs, addresses, handles, and pairing secrets never cross
+the broker. Software-radio changes reconcile effective state and report
+hardware/user/system denial, no adapter, unavailable, or partial failure.
+
+Pair/unpair is not implemented. A future host-owned pairing ceremony requires
+desktop owner-window, consent, cancellation, and hardware evidence. Generic
+Connect/Disconnect remains out of scope; a future GATT or RFCOMM integration
+must declare its exact profile/service authority and resource/lifecycle policy.
+
+## Foreground-activity provider
+
+The trusted activity backend lazily installs out-of-context foreground and
+destroy WinEvent hooks after the first authorized read, then updates a bounded
+16-entry running-app model without polling. It excludes shell/secure/overlay/
+widget windows, sanitizes version-resource names, rotates the opaque ID when a
+process lifetime changes, and publishes no PID, path, command line, HWND, or
+process key. Every entry is currently classified conservatively as
+`Application`; most-recent is ordering metadata, not a game/foreground claim.
+
+Activation accepts only one current opaque observation, revalidates the exact
+window/process lifetime, restores it if minimized, and requests a normal
+`SetForegroundWindow`. It cannot relaunch an exited app or target arbitrary
+processes. Windows may refuse the switch. Observation remains event-driven
+until backend disposal after it first starts; consent revocation blocks broker
+delivery/activation and cancels in-flight work, but immediate native-observer
+shutdown/history clear on revocation is future hardening. See the
+[Recent Apps reference](recent-apps.md).
 
 ## Privilege and privacy boundary
 
@@ -364,7 +402,8 @@ resource/lifecycle policy.
 **Implemented foundation plus planned fixtures.** `PlatformBroker` defines the
 provider-neutral interface and a deterministic simulated backend. Its contract
 tests cover the closed capability vocabulary, fail-closed consent, identity
-binding, strict bounded requests, sanitized DTOs, saved-profile-only switching,
+binding, strict bounded requests, sanitized DTOs, explicit available-network
+scan/read, generation-bound saved/open connection targeting,
 atomic consent updates, lifecycle/event coalescing, revocation, and
 cancellation. The richer churn fixtures below and hardware integration remain
 planned.
@@ -372,7 +411,7 @@ planned.
 | Simulator | Required deterministic fixtures |
 | --- | --- |
 | Audio | Empty machine; endpoint add/remove/default change; session create/state/volume/disconnect; self versus external event-context GUID; device invalidation during a command; duplicate/out-of-order callback; Audio service unavailable. |
-| Network | Ethernet up/down/cost change; no WLAN service/adapter; saved-profile list; connect success/failure/timeout; adapter removed mid-connect; location prompt/deny/revoke; stale completion after a newer command. |
+| Network | Ethernet up/down/cost change; no WLAN service/adapter; explicit scan success/timeout/deny; generation rollover; saved/open connect success/failure/timeout; credential-required/unsupported authentication; adapter removed mid-connect; stale completion after a newer command. |
 
 Every fake event carries a sequence/revision and virtual timestamp. Tests assert
 coalescing, stale-event rejection, controller-readable errors, cancellation,
@@ -421,9 +460,9 @@ Win32k system-call disable is not an active mitigation because its tested
 configuration prevented CoreCLR DLL initialization (`0xC0000142`); Job Object
 UI restrictions remain enabled.
 
-Audio Mixer and Network Controls are implemented first-party integration
-references that exercise the real Core Audio and network backends. They do not
-imply master-volume, output-switch, microphone, current-SSID privacy access, or
-production security support. Hardware/privacy/performance gates remain. See the
+Audio Mixer, Network Controls, and Recent Apps are implemented first-party
+integration references. They do not imply output/default-role switching,
+microphone sample capture, Bluetooth pairing/generic connection, current-SSID
+privacy access, or production security support. Hardware/privacy/performance gates remain. See the
 [Network Controls reference](network-controls.md) for its authoring,
 controller, test, and packaging contract.

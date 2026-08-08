@@ -341,6 +341,42 @@ WidgetNode FixedButton(const wchar_t* id, const double height = 44.0) {
     return button;
 }
 
+void ScrollFocusReachesTrueContentBoundaries() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"bounded-scroll.runtime";
+    snapshot.activeInputScopeId = L"scroll";
+    snapshot.root = Node(L"scroll", L"scroll");
+    snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.children = {
+        FixedSpacer(L"leading-content", 30),
+        FixedButton(L"first"),
+        FixedButton(L"middle"),
+        FixedButton(L"last"),
+        FixedSpacer(L"trailing-content", 30),
+    };
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto trailing = renderer.Render(
+        nullptr, snapshot, L"last", {0.0F, 0.0F, 240.0F, 100.0F});
+    Near(trailing.scrollOffsets.at(L"scroll"), 92.0F,
+         "last focus target exposes the true trailing content boundary");
+    Check(trailing.focusRects.contains(L"last"),
+          "last focus target remains visible at the true trailing boundary");
+
+    const auto leading = renderer.Render(
+        nullptr, snapshot, L"first", {0.0F, 0.0F, 240.0F, 100.0F});
+    Near(leading.scrollOffsets.at(L"scroll"), 0.0F,
+         "first focus target restores the true leading content boundary");
+    Check(leading.focusRects.contains(L"first"),
+          "first focus target remains visible at the true leading boundary");
+
+    const auto middle = renderer.Render(
+        nullptr, snapshot, L"middle", {0.0F, 0.0F, 240.0F, 100.0F});
+    Check(middle.scrollOffsets.at(L"scroll") > 0.0F &&
+              middle.scrollOffsets.at(L"scroll") < 92.0F,
+          "middle focus retains minimal reveal instead of snapping to an edge");
+}
+
 void NestedScrollFocusFollowReachesFixedPoint() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"nested.runtime";
@@ -626,6 +662,43 @@ void RealDirect2DSmoke() {
     Check(result.hitRegions.size() == 4,
           "buttons and optimistic Slider render through the real Direct2D path");
 
+    WidgetSnapshot roundedSurface;
+    roundedSurface.root = Node(L"rounded-root", L"stack");
+    roundedSurface.root.baseStyle = {
+        {L"background", Color(L"#00ff00")},
+    };
+    gba::DeclarativeRenderOptions roundedOptions;
+    roundedOptions.surfaceCornerRadiusPx = 18.0F;
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    const Rect roundedViewport{20.0F, 20.0F, 120.0F, 80.0F};
+    const auto roundedResult = renderer.Render(
+        target.Get(), roundedSurface, {}, roundedViewport, roundedOptions);
+    Check(SUCCEEDED(target->EndDraw()), "rounded surface draw completes");
+    Check(roundedResult.succeeded, "rounded host surface clip renders successfully");
+    ComPtr<IWICBitmapLock> roundedLock;
+    const WICRect roundedLockArea{0, 0, 640, 360};
+    Check(SUCCEEDED(canvas->Lock(
+        &roundedLockArea, WICBitmapLockRead,
+        roundedLock.ReleaseAndGetAddressOf())),
+        "rounded surface bitmap locks");
+    UINT roundedStride = 0;
+    UINT roundedByteCount = 0;
+    BYTE* roundedPixels = nullptr;
+    Check(SUCCEEDED(roundedLock->GetStride(&roundedStride)),
+          "rounded surface stride is available");
+    Check(SUCCEEDED(roundedLock->GetDataPointer(
+              &roundedByteCount, &roundedPixels)),
+          "rounded surface pixels are available");
+    const auto greenAt = [&](const UINT x, const UINT y) {
+        return roundedPixels[y * roundedStride + x * 4U + 1U];
+    };
+    Check(greenAt(21, 21) < 32,
+          "opaque widget root cannot square off the host panel corner");
+    Check(greenAt(40, 40) > 200,
+          "rounded clip preserves widget content away from the corner");
+    roundedLock.Reset();
+
     slider.baseStyle = {
         {L"background", Color(L"#00ff00")},
         {L"height", Length(44)},
@@ -693,6 +766,7 @@ int main() {
     SliderPlanningAndAccessibilityTargets();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
+    ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();
     IrrevealableClipsDoNotBecomeFocusTraps();
     ScrollStateCapEvictsOnlyInactiveLruEntries();

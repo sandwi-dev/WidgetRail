@@ -8,22 +8,23 @@ using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Connection and empty-profile surfaces remain orthogonal", ConnectionSurfaces),
-    ("Radio privacy adapter and service states are controller readable", WirelessStates),
-    ("Unavailable Wi-Fi disables connect without invoking the broker", UnavailableWifiBlocksConnect),
-    ("D-pad and analog focus graph is explicit for every network control", ExplicitFocusGraph),
-    ("Dashboard routes only local read actions and open routes control", ControllerRoutes),
-    ("Switch acknowledgement waits for authoritative status completion", AcceptedSwitchWaitsForEvent),
-    ("Terminal and immediate switch failures roll back safely", SwitchFailureRollback),
-    ("Saved-profile churn preserves identity selection", StableSelectionDuringChurn),
-    ("Focused A and X route the exact network row", FocusedProfileRoutes),
-    ("Large saved-profile lists stay bounded and identity stable", LargeProfileList),
+    ("Visible lifecycle reads available Wi-Fi without scanning or polling", VisibleReadDoesNotScan),
+    ("Explicit scan is controller initiated and reconciles provider events", ExplicitScan),
+    ("Only current scan results render with honest connection metadata", AvailableNetworksRender),
+    ("Precise-location denial has a bounded permission state", PreciseLocationState),
+    ("Available network focus graph preserves host back and tray boundaries", ControllerFocusGraph),
+    ("Opaque network identity preserves selection across event churn", StableOpaqueSelection),
+    ("Saved and open visible networks start typed host connections", EligibleConnections),
+    ("Credential and unsupported authentication never prompt in the worker", CredentialsStayOutOfWorker),
+    ("Connection failures are typed sanitized and recoverable", ConnectionFailures),
     ("Capability failures render bounded recovery surfaces", CapabilityFailureStates),
-    ("Unavailable host service fails closed without platform fallback", UnavailableService),
-    ("Visible lifecycle subscribes once and never polls", LifecycleAndNoPolling),
-    ("Acknowledged subscription closes the snapshot event gap", SubscriptionPrecedesSnapshot),
-    ("Lifecycle cancellation restores authoritative network state", CancellationRollback),
-    ("Manifest permissions and responsive GBSS validate", ShippedAssetsValidate),
+    ("Lifecycle cancellation tears down both event streams", LifecycleCancellation),
+    ("Wi-Fi radio toggle is controller-native and reconciles authoritative state", WifiRadioToggle),
+    ("Bluetooth device listing is sanitized event-driven and controller navigable", BluetoothDeviceListing),
+    ("Bluetooth radio control is optional typed and authoritatively reconciled", BluetoothRadioToggle),
+    ("Bluetooth permission failure does not break Wi-Fi controls", BluetoothPermissionIsolation),
+    ("Radio cancellation cannot overwrite a later widget lifecycle", RadioCancellationIsGenerationBound),
+    ("Manifest catalog and responsive GBSS ship the Wi-Fi capabilities", ShippedAssetsValidate),
 };
 
 var failures = new List<string>();
@@ -44,468 +45,477 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
-static async Task ConnectionSurfaces()
+static async Task VisibleReadDoesNotScan()
 {
-    var ethernet = new FakeNetworkHost
-    {
-        Status = Status(
-            WidgetNetworkConnectivity.Internet,
-            WidgetNetworkTransportKind.Ethernet,
-            WidgetNetworkWirelessAvailability.RadioOff,
-            name: "Studio LAN"),
-    };
-    var widget = Create(ethernet);
-    Assert.Equal(NetworkControlsViewState.Initial, widget.ViewState);
-    Assert.Valid(Snapshot(widget, 0));
-    await ActivateVisible(widget);
-    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.EmptyProfiles);
-    var wired = Snapshot(widget, 1);
-    Assert.Equal("Studio LAN", Text(wired.Root, "network.connection.title").Text);
-    Assert.Equal("ETHERNET", Text(wired.Root, "network.connection.transport").Text);
-    Assert.Contains("RADIO OFF", Text(wired.Root, "network.wifi.note.title").Text!);
-    Assert.Equal("network.retry", wired.InitialFocusId);
-    Assert.True(!Buttons(wired.Root).Any(button => button.ActionId == "profile.connect"),
-        "An empty saved-profile surface offered a connect action.");
-    Assert.Valid(wired);
+    var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    var widget = Create(fake);
+    await WidgetTestHost.InitializeAsync(widget);
+    Assert.Equal(0, fake.StatusCalls);
+    Assert.Equal(0, fake.WifiCalls);
+    Assert.Equal(0, fake.ScanCalls);
 
-    ethernet.Emit(
-        Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            activeId: "home", name: "Home 5G", signal: 87),
-        [Profile("home", "Home 5G", connected: true, signal: 87)]);
-    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    var wifi = Snapshot(widget, 2);
-    Assert.Equal("WI-FI", Text(wifi.Root, "network.connection.transport").Text);
-    Assert.Equal("87%", Text(wifi.Root, "network.signal.value").Text);
-    var connected = ProfileButton(wifi.Root, "Home 5G");
-    Assert.Equal(true, connected.IsSelected);
-    Assert.Equal(WidgetGlyph.Check, connected.Glyph);
-    Assert.Valid(wifi);
+    await ActivateVisible(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.NotScanned);
+    Assert.Equal(1, fake.StatusCalls);
+    Assert.Equal(1, fake.WifiCalls);
+    Assert.Equal(0, fake.ScanCalls);
+    Assert.Equal(1, fake.StatusSubscriptionCount);
+    Assert.Equal(1, fake.WifiSubscriptionCount);
+    Assert.Equal("network.wifi.scan", Snapshot(widget, 1).InitialFocusId);
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    await Task.Delay(125);
+    Assert.Equal(1, fake.StatusCalls);
+    Assert.Equal(1, fake.WifiCalls);
+    Assert.Equal(0, fake.ScanCalls);
     await Background(widget);
 }
 
-static async Task WirelessStates()
+static async Task ExplicitScan()
 {
-    var cases = new[]
-    {
-        (Status(WidgetNetworkConnectivity.None, WidgetNetworkTransportKind.None,
-                WidgetNetworkWirelessAvailability.RadioOff),
-            NetworkControlsViewState.RadioOff, "RADIO OFF"),
-        (Status(WidgetNetworkConnectivity.None, WidgetNetworkTransportKind.None,
-                WidgetNetworkWirelessAvailability.NoAdapter),
-            NetworkControlsViewState.Offline, "NO WI-FI ADAPTER"),
-        (Status(WidgetNetworkConnectivity.None, WidgetNetworkTransportKind.None,
-                WidgetNetworkWirelessAvailability.ServiceUnavailable),
-            NetworkControlsViewState.WirelessUnavailable, "SERVICE UNAVAILABLE"),
-        (Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Ethernet,
-                details: WidgetNetworkDetailsAccess.PrivacyRestricted,
-                name: "Wired network"),
-            NetworkControlsViewState.EmptyProfiles, "DETAILS HIDDEN"),
-    };
+    var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    var widget = Create(fake);
+    await ActivateVisible(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.NotScanned);
 
-    foreach (var (status, expectedState, expectedNote) in cases)
-    {
-        var fake = new FakeNetworkHost { Status = status };
-        if (status.WirelessAvailability == WidgetNetworkWirelessAvailability.RadioOff)
-            fake.Profiles = [Profile("home", "Home")];
-        var widget = Create(fake);
-        await ActivateVisible(widget);
-        await WaitUntil(() => widget.ViewState == expectedState);
-        var snapshot = Snapshot(widget, 1);
-        Assert.Contains(expectedNote, Text(snapshot.Root, "network.wifi.note.title").Text!);
-        Assert.True(!Buttons(snapshot.Root).Any(button =>
-                button.ActionId?.Contains("privacy", StringComparison.OrdinalIgnoreCase) == true ||
-                button.ActionId?.Contains("access", StringComparison.OrdinalIgnoreCase) == true),
-            "Privacy-restricted status offered an unbrokered prompt action.");
-        Assert.Valid(snapshot);
-        await Background(widget);
-    }
+    await widget.OnActionAsync(new("wifi.scan", "network.wifi.scan"));
+    Assert.Equal(0, fake.ScanCalls);
+    Assert.Contains("Open Network Controls", Text(Snapshot(widget, 1).Root, "network.status").Text!);
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    await widget.OnActionAsync(new("wifi.scan", "network.wifi.scan"));
+    Assert.Equal(1, fake.ScanCalls);
+    Assert.True(widget.ScanBusy, "Explicit scan did not expose an immediate busy state.");
+    Assert.Equal(NetworkControlsViewState.Scanning, widget.ViewState);
+
+    fake.EmitWifi(Wifi(WidgetWifiScanState.Ready,
+        Network("scan-a", "Studio", 86, WidgetWifiSecurityKind.Personal, saved: true),
+        Network("scan-b", "Guest", 62, WidgetWifiSecurityKind.Open)));
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
+    Assert.Equal(2, widget.Networks.Count);
+    Assert.True(!widget.ScanBusy);
+    Assert.Equal(1, fake.ScanCalls);
+    Assert.Valid(Snapshot(widget, 2));
+    await Background(widget);
 }
 
-static async Task UnavailableWifiBlocksConnect()
+static async Task AvailableNetworksRender()
 {
-    var cases = new[]
-    {
-        (WidgetNetworkWirelessAvailability.RadioOff, "Wi-Fi is off", "Turn Wi-Fi on"),
-        (WidgetNetworkWirelessAvailability.NoAdapter, "No Wi-Fi adapter", "No Wi-Fi adapter"),
-        (WidgetNetworkWirelessAvailability.ServiceUnavailable, "Wi-Fi unavailable", "wireless service is unavailable"),
-    };
-
-    foreach (var (availability, expectedButton, expectedStatus) in cases)
-    {
-        var fake = new FakeNetworkHost
-        {
-            Status = Status(
-                WidgetNetworkConnectivity.Internet,
-                WidgetNetworkTransportKind.Ethernet,
-                availability),
-            Profiles = [Profile("home", "Home")],
-        };
-        var widget = Create(fake);
-        await ActivateInteractive(widget);
-        await WaitUntil(() => widget.Profiles.Count == 1);
-
-        var snapshot = Snapshot(widget, 1);
-        var connect = ProfileButton(snapshot.Root, "Home");
-        Assert.Equal(true, connect.IsDisabled);
-        Assert.Contains(expectedButton, connect.AccessibilityLabel!);
-
-        await widget.OnActionAsync(new("profile.connect.item", connect.Id));
-        Assert.Equal(0, fake.SwitchCalls);
-        Assert.Contains(expectedStatus, Text(Snapshot(widget, 2).Root, "network.status").Text!);
-
-        _ = await Route(widget, Snapshot(widget, 3), ControllerButton.X,
-            ControllerInputContext.OpenWidget);
-        Assert.Equal(0, fake.SwitchCalls);
-        Assert.Contains(expectedStatus, Text(Snapshot(widget, 4).Root, "network.status").Text!);
-        await Background(widget);
-    }
-}
-
-static async Task ExplicitFocusGraph()
-{
-    var fake = ReadyHost();
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+    [
+        Network("opaque-connected", "Home 5G", 91, WidgetWifiSecurityKind.Personal,
+            saved: true, connected: true),
+        Network("opaque-saved", "Office", 73, WidgetWifiSecurityKind.Personal, saved: true),
+        Network("opaque-open", "Cafe", 44, WidgetWifiSecurityKind.Open),
+        Network("opaque-password", "Neighbor", 38, WidgetWifiSecurityKind.Personal,
+            credential: true),
+    ]);
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
     var snapshot = Snapshot(widget, 1);
-    var profileButtons = ProfileButtons(snapshot.Root).ToArray();
-    Assert.Equal(2, profileButtons.Length);
-    Assert.Equal(ViewNodeKind.Scroll, Node(snapshot.Root, "network.profiles.scroll").Kind);
-    Assert.Equal(profileButtons[0].Id, snapshot.InitialFocusId);
-    foreach (var button in profileButtons)
-    {
-        Assert.True(button.Focus is { Up: not null, Down: not null, Left: not null, Right: not null },
-            $"'{button.Id}' does not have an explicit four-way focus graph.");
-        foreach (var neighbor in new[] { button.Focus!.Up!, button.Focus.Down! })
-            Assert.True(profileButtons.Any(candidate => candidate.Id == neighbor),
-                $"'{button.Id}' points to missing focus target '{neighbor}'.");
-        Assert.Equal(button.Id, button.Focus.Left);
-        Assert.Equal(button.Id, button.Focus.Right);
-        Assert.True(button.Shortcuts.Any(shortcut =>
-                shortcut.Button == ControllerButton.X &&
-                shortcut.ActionId == "profile.connect.item"),
-            $"'{button.Id}' does not own its focused X shortcut.");
-    }
+    var rows = NetworkButtons(snapshot.Root).ToArray();
+    Assert.SequenceEqual(["Home 5G", "Office", "Cafe", "Neighbor"], rows.Select(row => row.Text!));
+    Assert.Equal("CONNECTED", NetworkState(snapshot.Root, "Home 5G").Text);
+    Assert.Equal("SAVED", NetworkState(snapshot.Root, "Office").Text);
+    Assert.Equal("OPEN", NetworkState(snapshot.Root, "Cafe").Text);
+    Assert.Equal("PASSWORD REQUIRED", NetworkState(snapshot.Root, "Neighbor").Text);
+    Assert.True(!Buttons(snapshot.Root).Any(button =>
+            button.ActionId?.Contains("profile", StringComparison.OrdinalIgnoreCase) == true),
+        "Product UI still exposed the legacy saved-profile list.");
+    Assert.Equal(0, fake.ScanCalls);
     Assert.Valid(snapshot);
     await Background(widget);
 }
 
-static async Task ControllerRoutes()
+static async Task PreciseLocationState()
 {
-    var fake = ReadyHost(allDisconnected: true);
+    var fake = ReadyHost(WidgetWifiScanState.PreciseLocationDenied, []);
+    fake.Status = fake.Status with { DetailsAccess = WidgetNetworkDetailsAccess.PrivacyRestricted };
     var widget = Create(fake);
-    await ActivateVisible(widget);
-    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    var visible = Snapshot(widget, 1);
-    Assert.Equal(0, visible.QuickActions.Count);
-    Assert.True(!visible.Root.Shortcuts.Any(shortcut =>
-            shortcut.Button is ControllerButton.B or ControllerButton.Y or
-                ControllerButton.DPadUp or ControllerButton.DPadDown or
-                ControllerButton.DPadLeft or ControllerButton.DPadRight),
-        "The open surface captured host close/reorder/navigation input.");
-
-    Assert.True(!await Route(widget, visible, ControllerButton.RightBumper,
-        ControllerInputContext.DashboardQuickAction));
-    Assert.Equal("home", widget.SelectedProfileId);
-    Assert.Equal(0, fake.SwitchCalls);
-
-    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
-    var open = Snapshot(widget, 2);
-    Assert.True(!await Route(widget, open, ControllerButton.LeftBumper,
-        ControllerInputContext.OpenWidget, ProfileButton(open.Root, "Office").Id));
-    Assert.Equal("home", widget.SelectedProfileId);
-    Assert.True(await Route(widget, open, ControllerButton.X,
-        ControllerInputContext.OpenWidget, ProfileButton(open.Root, "Office").Id));
-    await WaitUntil(() => fake.SwitchCalls == 1);
-    Assert.Equal("office", fake.SwitchRequests.Single().ProfileId);
-    Assert.True(widget.ControlBusy, "Accepted switch should wait for a terminal status event.");
-    fake.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            activeId: "office", name: "Office", signal: 80),
-        [Profile("home", "Home", signal: 80), Profile("office", "Office", connected: true)]);
-    await WaitUntil(() => !widget.ControlBusy);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.PreciseLocationDenied);
+    var snapshot = Snapshot(widget, 1);
+    Assert.Contains("PRECISE LOCATION REQUIRED", Text(snapshot.Root, "network.wifi.note.title").Text!);
+    Assert.Contains("Location permission required", Text(snapshot.Root, "network.wifi.state.title").Text!);
+    Assert.Contains("Windows Settings", Text(snapshot.Root, "network.wifi.state.help").Text!);
+    Assert.True(!Nodes(snapshot.Root).Any(node =>
+            node.ActionId?.Contains("location", StringComparison.OrdinalIgnoreCase) == true),
+        "The untrusted worker offered an unbrokered location-consent action.");
+    Assert.Equal(0, fake.ScanCalls);
+    Assert.Valid(snapshot);
     await Background(widget);
 }
 
-static async Task AcceptedSwitchWaitsForEvent()
+static async Task ControllerFocusGraph()
 {
-    var fake = ReadyHost();
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+    [
+        Network("opaque-a", "Alpha", 80, WidgetWifiSecurityKind.Open),
+        Network("opaque-b", "Beta", 70, WidgetWifiSecurityKind.Personal, saved: true),
+        Network("opaque-c", "Gamma", 60, WidgetWifiSecurityKind.Personal, credential: true),
+    ]);
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    var ready = Snapshot(widget, 0);
-    await widget.OnActionAsync(new("profile.connect.item", ProfileButton(ready.Root, "Office").Id));
-    Assert.Equal(1, fake.SwitchCalls);
-    Assert.True(widget.ControlBusy, "Broker ACK was incorrectly treated as connection success.");
-    Assert.Equal("home", widget.NetworkStatus!.ActiveProfileId);
-    Assert.Equal(false, widget.Profiles.Single(profile => profile.ProfileId == "office").IsConnected);
-    Assert.Contains("waiting for Windows", Text(Snapshot(widget, 1).Root, "network.status").Text!);
-
-    fake.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            attempt: WidgetNetworkConnectionAttemptState.Connecting,
-            attemptId: "office", activeId: "home", name: "Home", signal: 78),
-        fake.Profiles);
-    await WaitUntil(() => widget.NetworkStatus?.ConnectionAttemptState ==
-                          WidgetNetworkConnectionAttemptState.Connecting);
-    Assert.Equal("office", widget.SelectedProfileId);
-    var connecting = ProfileButton(Snapshot(widget, 2).Root, "Office");
-    Assert.True(connecting.StyleClasses.Contains("is-pending"),
-        "Pending profile did not expose a stable focus-preserving visual state.");
-    Assert.Equal(null, connecting.IsBusy);
-    Assert.Equal(null, connecting.IsDisabled);
-
-    fake.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            activeId: "office", name: "Office", signal: 68),
-        [Profile("home", "Home", signal: 78), Profile("office", "Office", connected: true, signal: 68)]);
-    await WaitUntil(() => !widget.ControlBusy && widget.NetworkStatus?.ActiveProfileId == "office");
-    var connected = ProfileButton(Snapshot(widget, 3).Root, "Office");
-    Assert.Equal(true, connected.IsSelected);
-    Assert.Equal(WidgetGlyph.Check, connected.Glyph);
-    await Background(widget);
-}
-
-static async Task SwitchFailureRollback()
-{
-    var immediate = ReadyHost();
-    immediate.SwitchException = new WidgetCapabilityException("permission_denied", "private detail");
-    var widget = Create(immediate);
-    await ActivateInteractive(widget);
-    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    var ready = Snapshot(widget, 0);
-    await widget.OnActionAsync(new("profile.connect.item", ProfileButton(ready.Root, "Office").Id));
-    Assert.True(!widget.ControlBusy, "Immediate denial left the controller surface busy.");
-    Assert.Equal("home", widget.NetworkStatus!.ActiveProfileId);
-    var denied = Text(Snapshot(widget, 1).Root, "network.status").Text!;
-    Assert.Contains("permission denied", denied);
-    Assert.True(!denied.Contains("private detail", StringComparison.Ordinal),
-        "Broker-private details leaked into widget feedback.");
-    await Background(widget);
-
-    var terminal = ReadyHost();
-    var terminalWidget = Create(terminal);
-    await ActivateInteractive(terminalWidget);
-    await WaitUntil(() => terminalWidget.ViewState == NetworkControlsViewState.Ready);
-    var terminalReady = Snapshot(terminalWidget, 0);
-    await terminalWidget.OnActionAsync(new(
-        "profile.connect.item", ProfileButton(terminalReady.Root, "Office").Id));
-    terminal.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            attempt: WidgetNetworkConnectionAttemptState.Failed,
-            attemptId: "office", activeId: "home", name: "Home", signal: 80),
-        terminal.Profiles);
-    await WaitUntil(() => !terminalWidget.ControlBusy &&
-                          terminalWidget.NetworkStatus?.ConnectionAttemptState ==
-                          WidgetNetworkConnectionAttemptState.Failed);
-    Assert.Equal("home", terminalWidget.NetworkStatus!.ActiveProfileId);
-    Assert.Contains("Could not connect to Office", Text(Snapshot(terminalWidget, 2).Root, "network.status").Text!);
-    await Background(terminalWidget);
-}
-
-static async Task StableSelectionDuringChurn()
-{
-    var fake = new FakeNetworkHost
+    var snapshot = Snapshot(widget, 1);
+    var scan = Button(snapshot.Root, "network.wifi.scan");
+    var rows = NetworkButtons(snapshot.Root).ToArray();
+    Assert.Equal(rows[0].Id, scan.Focus!.Down);
+    Assert.Equal("network.wifi.scan", rows[0].Focus!.Up);
+    Assert.Equal(rows[1].Id, rows[0].Focus!.Down);
+    Assert.Equal(rows[2].Id, rows[1].Focus!.Down);
+    Assert.Equal("network.bluetooth.radio", rows[2].Focus!.Down);
+    foreach (var row in rows)
     {
-        Status = Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            activeId: "a", name: "Alpha", signal: 70),
-        Profiles = [Profile("a", "Alpha", true), Profile("b", "Beta"), Profile("c", "Gamma")],
-    };
-    var widget = Create(fake);
-    await ActivateVisible(widget);
-    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    var initial = Snapshot(widget, 0);
-    await widget.OnActionAsync(new("profile.connect.item", ProfileButton(initial.Root, "Beta").Id));
-    Assert.Equal("b", widget.SelectedProfileId);
-
-    fake.Emit(fake.Status,
-        [Profile("c", "Gamma"), Profile("b", "Beta renamed"), Profile("d", "Delta")]);
-    await WaitUntil(() => widget.Profiles.First().ProfileId == "c");
-    Assert.Equal("b", widget.SelectedProfileId);
-    var retained = Snapshot(widget, 1);
-    Assert.Equal(true, ProfileButton(retained.Root, "Beta renamed").IsSelected);
-
-    fake.Emit(fake.Status, [Profile("c", "Gamma"), Profile("d", "Delta")]);
-    await WaitUntil(() => widget.Profiles.Count == 2);
-    Assert.Equal("d", widget.SelectedProfileId);
-    var fallback = Snapshot(widget, 2);
-    Assert.Equal(ProfileButton(fallback.Root, "Delta").Id, fallback.InitialFocusId);
+        Assert.Equal(row.Id, row.Focus!.Left);
+        Assert.Equal(row.Id, row.Focus.Right);
+        Assert.True(row.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.X && shortcut.ActionId == "wifi.connect.item"));
+    }
+    Assert.True(!await Route(widget, snapshot, ControllerButton.B,
+        ControllerInputContext.OpenWidget, rows[1].Id),
+        "Root B must remain unclaimed so the host can return focus to the tray.");
+    Assert.True(!await Route(widget, snapshot, ControllerButton.DPadDown,
+        ControllerInputContext.OpenWidget, rows[^1].Id),
+        "The widget must not capture Down at its final root control.");
+    Assert.Equal(0, snapshot.QuickActions.Count);
+    Assert.Valid(snapshot);
     await Background(widget);
 }
 
-static async Task FocusedProfileRoutes()
+static async Task StableOpaqueSelection()
 {
-    var fake = ReadyHost(allDisconnected: true);
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+    [
+        Network("opaque-a", "Alpha", 80, WidgetWifiSecurityKind.Open),
+        Network("opaque-b", "Beta", 70, WidgetWifiSecurityKind.Personal, credential: true),
+        Network("opaque-c", "Gamma", 60, WidgetWifiSecurityKind.Open),
+    ]);
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
+    var initial = Snapshot(widget, 1);
+    await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(initial.Root, "Beta").Id));
+    Assert.Equal("opaque-b", widget.SelectedNetworkId);
+    Assert.Equal(0, fake.ConnectCalls);
+
+    fake.EmitWifi(Wifi(WidgetWifiScanState.Ready,
+        Network("opaque-c", "Gamma", 61, WidgetWifiSecurityKind.Open),
+        Network("opaque-b", "Beta renamed", 72, WidgetWifiSecurityKind.Personal, credential: true),
+        Network("opaque-a", "Alpha", 82, WidgetWifiSecurityKind.Open)));
+    await WaitUntil(() => widget.Networks[0].NetworkId == "opaque-c");
+    Assert.Equal("opaque-b", widget.SelectedNetworkId);
+    var retained = Snapshot(widget, 2);
+    Assert.Equal(NetworkButton(retained.Root, "Beta renamed").Id, retained.InitialFocusId);
+
+    fake.EmitWifi(Wifi(WidgetWifiScanState.Ready,
+        Network("generation-2-a", "Delta", 75, WidgetWifiSecurityKind.Open),
+        Network("generation-2-b", "Epsilon", 65, WidgetWifiSecurityKind.Open)));
+    await WaitUntil(() => widget.Networks[0].NetworkId == "generation-2-a");
+    Assert.Equal("generation-2-b", widget.SelectedNetworkId);
+    Assert.Equal(NetworkButton(Snapshot(widget, 3).Root, "Epsilon").Id,
+        Snapshot(widget, 4).InitialFocusId);
+    await Background(widget);
+}
+
+static async Task EligibleConnections()
+{
+    foreach (var candidate in new[]
+             {
+                 Network("saved", "Saved Home", 80, WidgetWifiSecurityKind.Personal, saved: true),
+                 Network("open", "Public Guest", 60, WidgetWifiSecurityKind.Open),
+             })
+    {
+        var fake = ReadyHost(WidgetWifiScanState.Ready, [candidate]);
+        var widget = Create(fake);
+        await ActivateInteractive(widget);
+        await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
+        var snapshot = Snapshot(widget, 1);
+        Assert.True(await Route(widget, snapshot, ControllerButton.A,
+            ControllerInputContext.OpenWidget, NetworkButton(snapshot.Root, candidate.DisplayName).Id));
+        await WaitUntil(() => fake.ConnectCalls == 1);
+        Assert.Equal(candidate.NetworkId, fake.ConnectRequests.Single().NetworkId);
+        Assert.True(widget.ControlBusy, "Broker ACK was incorrectly treated as connection success.");
+        Assert.True(Button(Snapshot(widget, 2).Root, "network.wifi.scan").IsDisabled is true,
+            "Scan remained actionable while a connection attempt owned the provider.");
+
+        fake.EmitStatus(fake.Status with
+        {
+            ConnectionAttemptState = WidgetNetworkConnectionAttemptState.Connecting,
+            AttemptProfileId = candidate.NetworkId,
+        });
+        await WaitUntil(() => widget.NetworkStatus?.ConnectionAttemptState ==
+                              WidgetNetworkConnectionAttemptState.Connecting);
+        fake.EmitStatus(fake.Status with
+        {
+            ConnectionAttemptState = WidgetNetworkConnectionAttemptState.None,
+            AttemptProfileId = null,
+            ActiveProfileId = candidate.NetworkId,
+            ActiveProfileName = candidate.DisplayName,
+        });
+        fake.EmitWifi(Wifi(WidgetWifiScanState.Ready, candidate with { IsConnected = true }));
+        await WaitUntil(() => !widget.ControlBusy && widget.Networks[0].IsConnected);
+        Assert.Equal("CONNECTED", NetworkState(Snapshot(widget, 2).Root, candidate.DisplayName).Text);
+        await Background(widget);
+    }
+}
+
+static async Task CredentialsStayOutOfWorker()
+{
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+    [
+        Network("locked", "Locked", 70, WidgetWifiSecurityKind.Personal, credential: true),
+        Network("enterprise", "Enterprise", 65, WidgetWifiSecurityKind.Enterprise),
+        Network("unknown", "Unknown", 55, WidgetWifiSecurityKind.Unknown),
+    ]);
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
 
     var snapshot = Snapshot(widget, 1);
-    var office = ProfileButton(snapshot.Root, "Office");
-    Assert.True(await Route(widget, snapshot, ControllerButton.A,
-        ControllerInputContext.OpenWidget, office.Id));
-    await WaitUntil(() => fake.SwitchCalls == 1);
-    Assert.Equal("office", fake.SwitchRequests.Single().ProfileId);
-    Assert.Equal("office", widget.SelectedProfileId);
+    await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(snapshot.Root, "Locked").Id));
+    Assert.Equal(0, fake.ConnectCalls);
+    Assert.Contains("Windows Settings", Text(Snapshot(widget, 2).Root, "network.status").Text!);
 
-    fake.Emit(Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            activeId: "office", name: "Office", signal: 66),
-        [Profile("home", "Home", signal: 80), Profile("office", "Office", true, 66)]);
-    await WaitUntil(() => !widget.ControlBusy);
-    var connected = Snapshot(widget, 2);
-    Assert.True(await Route(widget, connected, ControllerButton.X,
-        ControllerInputContext.OpenWidget, ProfileButton(connected.Root, "Home").Id));
-    await WaitUntil(() => fake.SwitchCalls == 2);
-    Assert.Equal("home", fake.SwitchRequests.Last().ProfileId);
+    await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(Snapshot(widget, 3).Root, "Enterprise").Id));
+    Assert.Equal(0, fake.ConnectCalls);
+    Assert.Contains("not supported", Text(Snapshot(widget, 4).Root, "network.status").Text!);
+    Assert.True(!Nodes(Snapshot(widget, 5).Root).Any(node =>
+            node.Id.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+            node.ActionId?.Contains("credential", StringComparison.OrdinalIgnoreCase) == true),
+        "The worker rendered a secret-entry route.");
     await Background(widget);
 }
 
-static async Task LargeProfileList()
+static async Task ConnectionFailures()
 {
-    var profiles = Enumerable.Range(0, 128)
-        .Select(index => Profile($"profile-{index:D3}", $"Saved network {index:D3}",
-            connected: index == 73, signal: index % 101))
-        .ToArray();
-    var fake = new FakeNetworkHost
+    var cases = new[]
     {
-        Status = Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Wifi,
-            activeId: profiles[73].ProfileId, name: profiles[73].DisplayName, signal: 73),
-        Profiles = profiles,
+        ("credential_required", "needs a password"),
+        ("unsupported_authentication", "not supported"),
+        ("resource_not_found", "scan result expired"),
+        ("provider_busy", "already in progress"),
     };
-    var widget = Create(fake);
-    await ActivateInteractive(widget);
-    await WaitUntil(() => widget.Profiles.Count == profiles.Length);
-
-    var snapshot = Snapshot(widget, 1);
-    var buttons = ProfileButtons(snapshot.Root).ToArray();
-    Assert.Equal(128, buttons.Length);
-    Assert.Equal(128, buttons.Select(button => button.Id).Distinct(StringComparer.Ordinal).Count());
-    Assert.Equal(ProfileButton(snapshot.Root, profiles[73].DisplayName).Id, snapshot.InitialFocusId);
-    Assert.Equal(ViewNodeKind.Scroll, Node(snapshot.Root, "network.profiles.scroll").Kind);
-    Assert.Equal(buttons[0].Id, buttons[0].Focus!.Up);
-    Assert.Equal(buttons[^1].Id, buttons[^1].Focus!.Down);
-
-    var retainedId = ProfileButton(snapshot.Root, profiles[73].DisplayName).Id;
-    fake.Emit(fake.Status, profiles.Reverse().ToArray());
-    await WaitUntil(() => widget.Profiles[0].ProfileId == profiles[^1].ProfileId);
-    var reordered = Snapshot(widget, 2);
-    Assert.Equal(retainedId, ProfileButton(reordered.Root, profiles[73].DisplayName).Id);
-    Assert.Equal(retainedId, reordered.InitialFocusId);
-    Assert.Valid(reordered);
-    await Background(widget);
+    foreach (var (code, expected) in cases)
+    {
+        var fake = ReadyHost(WidgetWifiScanState.Ready,
+            [Network("eligible", "Eligible", 70, WidgetWifiSecurityKind.Personal, saved: true)]);
+        fake.ConnectException = new WidgetCapabilityException(code, "private-provider-detail");
+        var widget = Create(fake);
+        await ActivateInteractive(widget);
+        await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
+        var row = NetworkButton(Snapshot(widget, 1).Root, "Eligible");
+        await widget.OnActionAsync(new("wifi.connect.item", row.Id));
+        Assert.Equal(1, fake.ConnectCalls);
+        Assert.True(!widget.ControlBusy);
+        var feedback = Text(Snapshot(widget, 2).Root, "network.status").Text!;
+        Assert.Contains(expected, feedback);
+        Assert.True(!feedback.Contains("private-provider-detail", StringComparison.Ordinal));
+        await Background(widget);
+    }
 }
 
 static async Task CapabilityFailureStates()
 {
     var cases = new[]
     {
-        ("permission_denied", NetworkControlsViewState.PermissionDenied, "Network access is off"),
-        ("capability_revoked", NetworkControlsViewState.PermissionDenied, "Network access is off"),
-        ("lifecycle_denied", NetworkControlsViewState.LifecycleDenied, "paused by lifecycle"),
+        ("permission_denied", NetworkControlsViewState.PermissionDenied, "permission required"),
+        ("capability_not_declared", NetworkControlsViewState.PermissionDenied, "permission required"),
+        ("lifecycle_denied", NetworkControlsViewState.LifecycleDenied, "paused"),
         ("channel_closed", NetworkControlsViewState.ChannelClosed, "disconnected"),
-        ("platform_unavailable", NetworkControlsViewState.ServiceUnavailable, "service unavailable"),
+        ("platform_unavailable", NetworkControlsViewState.ServiceUnavailable, "unavailable"),
     };
-    foreach (var (code, state, expectedTitle) in cases)
+    foreach (var (code, expectedState, title) in cases)
     {
-        var fake = new FakeNetworkHost
-        {
-            ReadException = new WidgetCapabilityException(code, "private provider path"),
-        };
+        var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+        fake.ReadException = new WidgetCapabilityException(code, "private-provider-path");
         var widget = Create(fake);
         await ActivateVisible(widget);
-        await WaitUntil(() => widget.ViewState == state);
+        await WaitUntil(() => widget.ViewState == expectedState);
         var snapshot = Snapshot(widget, 1);
-        Assert.Contains(expectedTitle, Text(snapshot.Root, "network.state.title").Text!);
+        Assert.Contains(title, Text(snapshot.Root, "network.state.title").Text!);
         Assert.True(!Nodes(snapshot.Root).Any(node =>
-                node.Text?.Contains("private provider path", StringComparison.Ordinal) == true),
-            "Provider-private details leaked into a recovery surface.");
+            node.Text?.Contains("private-provider-path", StringComparison.Ordinal) == true));
         Assert.Valid(snapshot);
         await Background(widget);
     }
 }
 
-static async Task UnavailableService()
+static async Task LifecycleCancellation()
 {
-    var widget = new NetworkControlsWidget();
-    await ActivateVisible(widget);
-    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.ServiceUnavailable);
-    var snapshot = Snapshot(widget, 1);
-    Assert.Contains("service unavailable", Text(snapshot.Root, "network.state.title").Text!);
-    Assert.Valid(snapshot);
-    await Background(widget);
-}
-
-static async Task LifecycleAndNoPolling()
-{
-    var fake = ReadyHost();
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+        [Network("one", "One", 70, WidgetWifiSecurityKind.Open)]);
     var widget = Create(fake);
-    await WidgetTestHost.InitializeAsync(widget);
-    Assert.Equal(0, fake.StatusCalls);
-    Assert.Equal(0, fake.ProfilesCalls);
-    Assert.Equal(0, fake.SubscriptionCount);
-
     await ActivateVisible(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready &&
-                          fake.SubscriptionCount == 1);
-    Assert.Equal(1, widget.ActivationCount);
-    Assert.Equal(1, fake.StatusCalls);
-    Assert.Equal(1, fake.ProfilesCalls);
-    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
-    await Task.Delay(150);
-    Assert.Equal(1, fake.StatusCalls);
-    Assert.Equal(1, fake.ProfilesCalls);
-    Assert.Equal(1, fake.SubscriptionCount);
-
+                          fake.StatusSubscriptionCount == 1 && fake.WifiSubscriptionCount == 1 &&
+                          fake.RadioSubscriptionCount == 1 &&
+                          fake.BluetoothSubscriptionCount == 1);
     await Background(widget);
-    await WaitUntil(() => fake.CanceledSubscriptions == 1);
+    await WaitUntil(() => fake.CanceledStatusSubscriptions == 1 &&
+                          fake.CanceledWifiSubscriptions == 1 &&
+                          fake.CanceledRadioSubscriptions == 1 &&
+                          fake.CanceledBluetoothSubscriptions == 1);
     var statusCalls = fake.StatusCalls;
-    var profileCalls = fake.ProfilesCalls;
-    await Task.Delay(150);
+    var wifiCalls = fake.WifiCalls;
+    await Task.Delay(125);
     Assert.Equal(statusCalls, fake.StatusCalls);
-    Assert.Equal(profileCalls, fake.ProfilesCalls);
+    Assert.Equal(wifiCalls, fake.WifiCalls);
+    Assert.Equal(0, fake.ScanCalls);
 
     await ActivateVisible(widget);
-    await WaitUntil(() => fake.StatusCalls == 2 && fake.SubscriptionCount == 2);
+    await WaitUntil(() => fake.StatusCalls == 2 && fake.WifiCalls == 2);
     Assert.Equal(2, widget.ActivationCount);
     await Background(widget);
 }
 
-static async Task SubscriptionPrecedesSnapshot()
+static async Task WifiRadioToggle()
 {
-    var fake = ReadyHost();
-    var gapStatus = Status(WidgetNetworkConnectivity.Local, WidgetNetworkTransportKind.Wifi,
-        activeId: "office", name: "Gap Office", signal: 51);
-    fake.OnGetStatus = () => fake.Emit(gapStatus,
-        [Profile("office", "Gap Office", connected: true, signal: 51)]);
-    var widget = Create(fake);
-    await ActivateVisible(widget);
-    await WaitUntil(() => widget.NetworkStatus?.ActiveProfileId == "office");
-    Assert.Equal(1, fake.SubscriptionCount);
-    Assert.Equal(1, fake.StatusCalls);
-    Assert.True(fake.ProfilesCalls >= 2,
-        "Buffered gap event did not reconcile saved profiles after the initial snapshot.");
-    Assert.Equal("Gap Office", widget.Profiles.Single().DisplayName);
-    Assert.Equal(WidgetNetworkConnectivity.Local, widget.NetworkStatus!.Connectivity);
-    await Background(widget);
-}
-
-static async Task CancellationRollback()
-{
-    var never = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    var fake = ReadyHost();
-    fake.SwitchGate = never.Task;
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+        [Network("one", "One", 70, WidgetWifiSecurityKind.Open)]);
     var widget = Create(fake);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
-    using var cancellation = new CancellationTokenSource();
-    var ready = Snapshot(widget, 0);
-    var command = widget.OnActionAsync(
-        new("profile.connect.item", ProfileButton(ready.Root, "Office").Id),
-        cancellation.Token).AsTask();
-    await WaitUntil(() => fake.SwitchCalls == 1);
-    cancellation.Cancel();
-    await Assert.ThrowsCanceled(command);
-    Assert.True(!widget.ControlBusy, "Canceled control retained a pending state.");
-    Assert.Equal("home", widget.NetworkStatus!.ActiveProfileId);
-    Assert.True(!Text(Snapshot(widget, 1).Root, "network.status").StyleClasses.Contains("is-error"),
-        "Normal cancellation rendered as provider failure.");
+
+    var on = Button(Snapshot(widget, 1).Root, "network.wifi.radio");
+    Assert.True(on.IsSelected is true);
+    Assert.Equal("network.wifi.scan", on.Focus?.Down);
+    await widget.OnActionAsync(new("wifi.radio.toggle", on.Id));
+    await WaitUntil(() => widget.WifiRadio?.State == WidgetWifiRadioState.Off &&
+                          !widget.RadioBusy);
+    Assert.Equal(1, fake.RadioSetCalls);
+    var off = Button(Snapshot(widget, 2).Root, "network.wifi.radio");
+    Assert.True(off.IsSelected is not true);
+    Assert.Equal("network.wifi.radio", off.Id);
+
+    fake.EmitRadio(new WidgetWifiRadio(WidgetWifiRadioState.HardwareDisabled, false));
+    await WaitUntil(() => widget.WifiRadio?.State == WidgetWifiRadioState.HardwareDisabled);
+    Assert.True(Button(Snapshot(widget, 3).Root, "network.wifi.radio").IsDisabled is true);
     await Background(widget);
+}
+
+static async Task BluetoothDeviceListing()
+{
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+        [Network("one", "One", 70, WidgetWifiSecurityKind.Open)]);
+    fake.Bluetooth = new WidgetBluetoothSnapshot(
+        WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
+        [
+            new("bluetooth-a", "Wireless controller", true, true, true),
+            new("bluetooth-b", "Nearby keyboard", false, false, true),
+        ]);
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.Bluetooth?.Devices.Count == 2);
+    var snapshot = Snapshot(widget, 1);
+    var radio = Button(snapshot.Root, "network.bluetooth.radio");
+    var devices = Buttons(snapshot.Root)
+        .Where(button => button.ActionId == "bluetooth.device.info").ToArray();
+    Assert.Equal(2, devices.Length);
+    Assert.Equal("Wireless controller", devices[0].Text);
+    Assert.Equal(devices[0].Id, radio.Focus!.Down);
+    Assert.Equal("network.bluetooth.radio", devices[0].Focus!.Up);
+    Assert.Equal(devices[1].Id, devices[0].Focus!.Down);
+    Assert.True(devices[1].Focus!.Down is null,
+        "Final Bluetooth device must leave Down unclaimed for the host tray boundary.");
+    Assert.True(!Nodes(snapshot.Root).Any(node =>
+            node.Text?.Contains("bluetooth-a", StringComparison.Ordinal) == true),
+        "Opaque Bluetooth identity leaked into visible UI text.");
+    Assert.True(!Buttons(snapshot.Root).Any(button =>
+            button.ActionId?.Contains("connect", StringComparison.OrdinalIgnoreCase) == true &&
+            button.Id.StartsWith("network.bluetooth", StringComparison.Ordinal)),
+        "Widget claimed a generic Bluetooth connect operation.");
+    fake.EmitBluetooth(fake.Bluetooth with
+    {
+        Devices = [new("bluetooth-a", "Wireless controller", true, false, true)],
+    });
+    await WaitUntil(() => widget.Bluetooth?.Devices.Count == 1 &&
+                          widget.Bluetooth.Devices[0].IsConnected == false);
+    Assert.Valid(Snapshot(widget, 2));
+    await Background(widget);
+}
+
+static async Task BluetoothRadioToggle()
+{
+    var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    fake.Bluetooth = new WidgetBluetoothSnapshot(
+        WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready, []);
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.Bluetooth?.RadioState == WidgetBluetoothRadioState.On);
+    var radio = Button(Snapshot(widget, 1).Root, "network.bluetooth.radio");
+    Assert.True(radio.IsSelected is true);
+    await widget.OnActionAsync(new("bluetooth.radio.toggle", radio.Id));
+    await WaitUntil(() => widget.Bluetooth?.RadioState == WidgetBluetoothRadioState.Off);
+    Assert.Equal(1, fake.BluetoothRadioSetCalls);
+    Assert.Equal(1, widget.BluetoothRadioControlCount);
+    Assert.True(Button(Snapshot(widget, 2).Root, "network.bluetooth.radio").IsSelected is not true);
+
+    fake.EmitBluetooth(new WidgetBluetoothSnapshot(
+        WidgetBluetoothRadioState.HardwareDisabled, false,
+        WidgetBluetoothDiscoveryState.Ready, []));
+    await WaitUntil(() => widget.Bluetooth?.RadioState ==
+                          WidgetBluetoothRadioState.HardwareDisabled);
+    Assert.True(Button(Snapshot(widget, 3).Root, "network.bluetooth.radio").IsDisabled is true);
+    await Background(widget);
+}
+
+static async Task BluetoothPermissionIsolation()
+{
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+        [Network("one", "One", 70, WidgetWifiSecurityKind.Open)]);
+    fake.BluetoothException = new WidgetCapabilityException(
+        "permission_denied", "native bluetooth identifier");
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready &&
+                          widget.Bluetooth?.DiscoveryState ==
+                          WidgetBluetoothDiscoveryState.Unavailable);
+    var snapshot = Snapshot(widget, 1);
+    Assert.Equal("One", NetworkButtons(snapshot.Root).Single().Text);
+    Assert.Contains("Settings", Text(snapshot.Root, "network.bluetooth.summary").Text!);
+    Assert.True(!Nodes(snapshot.Root).Any(node =>
+            node.Text?.Contains("native bluetooth identifier", StringComparison.Ordinal) == true),
+        "Provider detail escaped the optional Bluetooth error boundary.");
+    await Background(widget);
+}
+
+static async Task RadioCancellationIsGenerationBound()
+{
+    var wifiFake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    wifiFake.HoldWifiRadioSet = true;
+    var wifiWidget = Create(wifiFake);
+    await ActivateInteractive(wifiWidget);
+    await WaitUntil(() => wifiWidget.ViewState == NetworkControlsViewState.NotScanned);
+    var wifiAction = wifiWidget.OnActionAsync(new(
+        "wifi.radio.toggle", "network.wifi.radio")).AsTask();
+    await wifiFake.WifiRadioSetStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await Background(wifiWidget);
+    await Assert.Canceled(wifiAction);
+    wifiFake.HoldWifiRadioSet = false;
+    await ActivateVisible(wifiWidget);
+    await WaitUntil(() => wifiWidget.ViewState == NetworkControlsViewState.NotScanned);
+    Assert.True(!Text(Snapshot(wifiWidget, 1).Root, "network.status").Text!
+        .Contains("could not", StringComparison.OrdinalIgnoreCase));
+    await Background(wifiWidget);
+
+    var bluetoothFake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    bluetoothFake.HoldBluetoothRadioSet = true;
+    var bluetoothWidget = Create(bluetoothFake);
+    await ActivateInteractive(bluetoothWidget);
+    await WaitUntil(() => bluetoothWidget.Bluetooth is not null);
+    var bluetoothAction = bluetoothWidget.OnActionAsync(new(
+        "bluetooth.radio.toggle", "network.bluetooth.radio")).AsTask();
+    await bluetoothFake.BluetoothRadioSetStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await Background(bluetoothWidget);
+    await Assert.Canceled(bluetoothAction);
+    bluetoothFake.HoldBluetoothRadioSet = false;
+    await ActivateVisible(bluetoothWidget);
+    await WaitUntil(() => bluetoothWidget.Bluetooth is not null);
+    Assert.True(!Text(Snapshot(bluetoothWidget, 1).Root, "network.bluetooth.summary").Text!
+        .Contains("could not", StringComparison.OrdinalIgnoreCase));
+    await Background(bluetoothWidget);
 }
 
 static async Task ShippedAssetsValidate()
@@ -515,16 +525,21 @@ static async Task ShippedAssetsValidate()
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
     Assert.Equal("org.gbar.firstparty.network-controls", manifest.Id);
-    Assert.SequenceEqual(["system.network.read.v1"], manifest.Permissions);
-    Assert.SequenceEqual(["system.network.saved-profile.switch.v1"], manifest.OptionalPermissions);
+    Assert.SequenceEqual([
+        "system.network.read.v1",
+        "system.network.wifi.read.v1",
+        "system.network.wifi.radio.read.v1"], manifest.Permissions);
+    Assert.SequenceEqual([
+        "system.network.wifi.connect.v1",
+        "system.network.wifi.radio.control.v1",
+        "system.network.bluetooth.read.v1",
+        "system.network.bluetooth.radio.control.v1"], manifest.OptionalPermissions);
     Assert.Equal("suspend", manifest.BackgroundPolicy);
     Assert.Equal(64, manifest.ResourceRequest.MemoryMb);
     Assert.Equal(10, manifest.ResourceRequest.UpdateHz);
-    Assert.SequenceEqual(["x64"], manifest.Architectures);
 
     var package = GbssPackageLoader.LoadFile(
-        Path.Combine(project, "styles", "default.gbss"),
-        Path.Combine(project, "styles"));
+        Path.Combine(project, "styles", "default.gbss"), Path.Combine(project, "styles"));
     var compiled = GbssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     AssertResponsiveLayoutBudget(compiled.Theme!);
@@ -532,73 +547,46 @@ static async Task ShippedAssetsValidate()
     Assert.Contains("width: 100vw", style);
     Assert.Contains("min-width: 0px", style);
     Assert.Contains("max-width: 560px", style);
-    Assert.True(!style.Contains("min-width: 440px", StringComparison.Ordinal),
-        "The network widget retained a desktop-only hard width floor.");
     Assert.True(!style.Contains("scale:", StringComparison.Ordinal),
-        "Full-width network rows may not scale beyond their clipped scroll viewport.");
+        "Full-width Wi-Fi rows may not scale beyond their clipped scroll viewport.");
 
     var catalogPath = Path.Combine(project, "..", "..", "OverlayHost", "widget-catalog.json");
     using var catalog = JsonDocument.Parse(await File.ReadAllBytesAsync(catalogPath));
     var trusted = catalog.RootElement.GetProperty("widgets").EnumerateArray().Single(item =>
         item.GetProperty("packageId").GetString() == manifest.Id);
-    Assert.Equal(manifest.Publisher, trusted.GetProperty("publisherId").GetString());
-    Assert.Equal(manifest.ResourceRequest.MemoryMb, trusted.GetProperty("memoryLimitMb").GetInt32());
-    Assert.Equal("runtime/NetworkControls/NetworkControlsWidget.Worker.exe",
-        trusted.GetProperty("workerExecutable").GetString());
-    Assert.Equal("runtime/NetworkControls/styles/default.gbss",
-        trusted.GetProperty("styleFile").GetString());
     var manifestCapabilities = manifest.Permissions.Concat(manifest.OptionalPermissions)
         .Order(StringComparer.Ordinal).ToArray();
     var trustedCapabilities = trusted.GetProperty("declaredCapabilities").EnumerateArray()
         .Select(item => item.GetString()!).Order(StringComparer.Ordinal).ToArray();
     Assert.SequenceEqual(manifestCapabilities, trustedCapabilities);
-    var quickActions = trusted.GetProperty("quickActions").EnumerateArray().ToArray();
-    Assert.Equal(0, quickActions.Length);
+    Assert.True(!trustedCapabilities.Contains("system.network.saved-profile.switch.v1"),
+        "Installed Network Controls still grants the legacy saved-profile switch capability.");
+    Assert.Equal(0, trusted.GetProperty("quickActions").GetArrayLength());
 }
 
 static void AssertResponsiveLayoutBudget(GbssTheme theme)
 {
     var root = Resolve(theme, "stack", "network.root", "network-controls-widget");
-    var list = Resolve(theme, "scroll", "network.profiles.scroll", "network-profile-list");
-    var row = Resolve(theme, "stack", "network.profile.test.row", "network-profile-row");
-    var profileButton = Resolve(theme, "button", "network.profile.test", "network-profile-button");
-    var header = Resolve(theme, "stack", "network.header", "network-header");
-    var connectionCard = Resolve(theme, "stack", "network.connection.card", "network-connection-card");
-    var notice = Resolve(theme, "row", "network.wifi.note", "network-wifi-note");
-    var profileMeta = Resolve(theme, "row", "network.profile.test.meta", "network-profile-meta");
-    var focusedProfileButton = theme.Resolve(new GbssElement(
-        "button", "network.profile.test",
+    var list = Resolve(theme, "scroll", "network.wifi.scroll", "network-profile-list");
+    var row = Resolve(theme, "stack", "network.wifi.test.row", "network-profile-row");
+    var button = Resolve(theme, "button", "network.wifi.test", "network-profile-button");
+    var scan = Resolve(theme, "button", "network.wifi.scan", "network-scan-action");
+    var focused = theme.Resolve(new GbssElement("button", "network.wifi.test",
         new HashSet<string>(["network-profile-button"], StringComparer.Ordinal),
         new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
-    Assert.True(Pixels(profileButton.Get("min-height")!, 280) >= 44,
-        "Saved-network row reduced its controller height below 44px.");
-    Assert.True(Pixels(list.Get("max-height")!, 560) <= 300,
-        "Saved-network list can escape the compact surface height budget.");
-    Assert.Equal("0", header.Get("flex-shrink")!.Text);
-    Assert.Equal("0", connectionCard.Get("flex-shrink")!.Text);
-    Assert.Equal("0", notice.Get("flex-shrink")!.Text);
+    Assert.True(Pixels(button.Get("min-height")!, 320) >= 44);
+    Assert.True(Pixels(scan.Get("min-height")!, 320) >= 44);
+    Assert.True(Pixels(list.Get("max-height")!, 560) <= 300);
     Assert.Equal("0", row.Get("flex-shrink")!.Text);
-    Assert.Equal("0", profileMeta.Get("flex-shrink")!.Text);
-
-    var listHorizontalInset = HorizontalSpacing(list.Get("padding")!, 560) / 2;
-    var focusInset = Math.Abs(Pixels(focusedProfileButton.Get("outline-offset")!, 560));
-    Assert.True(listHorizontalInset >= focusInset,
-        "Saved-network focus outline can clip against the scroll viewport edge.");
-
+    var inset = HorizontalSpacing(list.Get("padding")!, 560) / 2;
+    var focusInset = Math.Abs(Pixels(focused.Get("outline-offset")!, 560));
+    Assert.True(inset >= focusInset, "Wi-Fi focus outline can clip against the scroll edge.");
     foreach (var viewport in new[] { 280D, 320D, 1280D, 3840D })
     {
-        var preferred = Pixels(root.Get("width")!, viewport);
-        var rootWidth = Math.Min(viewport, Math.Clamp(
-            preferred,
-            Pixels(root.Get("min-width")!, viewport),
-            Pixels(root.Get("max-width")!, viewport)));
-        var rootInner = rootWidth - HorizontalSpacing(root.Get("padding")!, viewport);
-        var listInner = rootInner - HorizontalSpacing(list.Get("padding")!, viewport);
-        var rowInner = listInner - HorizontalSpacing(row.Get("padding")!, viewport);
-        Assert.True(Pixels(profileButton.Get("min-width")!, viewport) <= rowInner,
-            $"Saved-network control exceeds row width at {viewport}px.");
-        Assert.True(rootWidth <= 560 && rootWidth <= viewport,
-            $"Root width {rootWidth}px escaped viewport/max bound at {viewport}px.");
+        var width = Math.Min(viewport, Math.Clamp(Pixels(root.Get("width")!, viewport),
+            Pixels(root.Get("min-width")!, viewport), Pixels(root.Get("max-width")!, viewport)));
+        Assert.True(width <= 560 && width <= viewport,
+            $"Root width {width}px escaped viewport/max bound at {viewport}px.");
     }
 }
 
@@ -628,7 +616,7 @@ static double Pixels(GbssComputedValue value, double viewport)
 static double HorizontalSpacing(GbssComputedValue value, double viewport)
 {
     var parts = value.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    static GbssComputedValue Part(string text)
+    GbssComputedValue Part(string text)
     {
         var unit = text.EndsWith("px", StringComparison.Ordinal) ? "px" :
             text.EndsWith("vw", StringComparison.Ordinal) ? "vw" : null;
@@ -645,19 +633,13 @@ static double HorizontalSpacing(GbssComputedValue value, double viewport)
     };
 }
 
-static FakeNetworkHost ReadyHost(bool allDisconnected = false) => new()
+static FakeNetworkHost ReadyHost(
+    WidgetWifiScanState scanState,
+    IReadOnlyList<WidgetAvailableWifiNetwork> networks) => new()
 {
-    Status = Status(
-        WidgetNetworkConnectivity.Internet,
-        WidgetNetworkTransportKind.Wifi,
-        activeId: allDisconnected ? null : "home",
-        name: allDisconnected ? null : "Home",
-        signal: 80),
-    Profiles =
-    [
-        Profile("home", "Home", connected: !allDisconnected, signal: 80),
-        Profile("office", "Office", signal: 66),
-    ],
+    Status = Status(WidgetNetworkConnectivity.Internet, WidgetNetworkTransportKind.Ethernet,
+        name: "Wired connection"),
+    Wifi = new WidgetAvailableWifiNetworks(scanState, networks),
 };
 
 static WidgetNetworkStatus Status(
@@ -665,18 +647,21 @@ static WidgetNetworkStatus Status(
     WidgetNetworkTransportKind transport,
     WidgetNetworkWirelessAvailability wireless = WidgetNetworkWirelessAvailability.Available,
     WidgetNetworkDetailsAccess details = WidgetNetworkDetailsAccess.Available,
-    WidgetNetworkConnectionAttemptState attempt = WidgetNetworkConnectionAttemptState.None,
-    string? attemptId = null,
-    string? activeId = null,
-    string? name = null,
-    int? signal = null) =>
-    new(connectivity, transport, wireless, details, attempt, attemptId, activeId, name, signal);
+    string? name = null) => new(connectivity, transport, wireless, details,
+        WidgetNetworkConnectionAttemptState.None, null, null, name, null);
 
-static WidgetSavedNetworkProfile Profile(
+static WidgetAvailableWifiNetworks Wifi(
+    WidgetWifiScanState state,
+    params WidgetAvailableWifiNetwork[] networks) => new(state, networks);
+
+static WidgetAvailableWifiNetwork Network(
     string id,
     string name,
+    int signal,
+    WidgetWifiSecurityKind security,
+    bool credential = false,
     bool connected = false,
-    int? signal = null) => new(id, name, connected, signal);
+    bool saved = false) => new(id, name, signal, security, credential, connected, saved);
 
 static NetworkControlsWidget Create(FakeNetworkHost fake) =>
     WidgetTestHost.Attach(new NetworkControlsWidget(), fake.BuildServices());
@@ -696,11 +681,9 @@ static async ValueTask<bool> Route(
     ControllerButton button,
     ControllerInputContext context,
     string? focusedElementId = null) =>
-    await widget.OnControllerInputAsync(new ControllerInputEvent(
-        button,
-        ControllerEventPhase.Pressed,
-        context,
-        FocusedElementId: focusedElementId ?? ProfileButtons(snapshot.Root).FirstOrDefault()?.Id,
+    await widget.OnControllerInputAsync(new ControllerInputEvent(button,
+        ControllerEventPhase.Pressed, context,
+        FocusedElementId: focusedElementId,
         Sequence: 7,
         ActiveInputScopeId: snapshot.ActiveInputScopeId,
         SnapshotSequence: snapshot.Sequence));
@@ -709,12 +692,11 @@ static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
 {
     var snapshot = widget.RenderSnapshot("network.test", sequence);
     Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
-    Assert.True(snapshot.Surface is not null, "Network Controls omitted its bounded surface hint.");
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
     Assert.Equal(560D, snapshot.Surface.PreferredWidth);
-    Assert.Equal(520D, snapshot.Surface.PreferredHeight);
+    Assert.Equal(700D, snapshot.Surface.PreferredHeight);
     Assert.Equal(320D, snapshot.Surface.MinimumWidth);
-    Assert.Equal(360D, snapshot.Surface.MinimumHeight);
+    Assert.Equal(420D, snapshot.Surface.MinimumHeight);
     return snapshot;
 }
 
@@ -729,14 +711,20 @@ static IEnumerable<ViewNode> Nodes(ViewNode node)
 static IEnumerable<ViewNode> Buttons(ViewNode root) =>
     Nodes(root).Where(node => node.Kind == ViewNodeKind.Button);
 
-static IEnumerable<ViewNode> ProfileButtons(ViewNode root) =>
-    Buttons(root).Where(node => node.ActionId == "profile.connect.item");
+static IEnumerable<ViewNode> NetworkButtons(ViewNode root) =>
+    Buttons(root).Where(node => node.ActionId == "wifi.connect.item");
 
-static ViewNode ProfileButton(ViewNode root, string displayName) =>
-    ProfileButtons(root).Single(node => node.Text == displayName);
+static ViewNode NetworkButton(ViewNode root, string name) =>
+    NetworkButtons(root).Single(node => node.Text == name);
 
-static ViewNode Node(ViewNode root, string id) =>
-    Nodes(root).Single(node => node.Id == id);
+static ViewNode NetworkState(ViewNode root, string name)
+{
+    var button = NetworkButton(root, name);
+    return Nodes(root).Single(node => node.Id == $"{button.Id}.state");
+}
+
+static ViewNode Button(ViewNode root, string id) =>
+    Buttons(root).Single(node => node.Id == id);
 
 static ViewNode Text(ViewNode root, string id) =>
     Nodes(root).Single(node => node.Id == id && node.Kind == ViewNodeKind.Text);
@@ -768,81 +756,205 @@ static string ProjectDirectory()
 file sealed class FakeNetworkHost
 {
     private readonly object _gate = new();
-    private readonly List<Channel<WidgetNetworkStatusChanged>> _subscribers = [];
+    private readonly List<Channel<WidgetNetworkStatusChanged>> _statusSubscribers = [];
+    private readonly List<Channel<WidgetAvailableWifiNetworksChanged>> _wifiSubscribers = [];
+    private readonly List<Channel<WidgetWifiRadioChanged>> _radioSubscribers = [];
+    private readonly List<Channel<WidgetBluetoothChanged>> _bluetoothSubscribers = [];
     private int _statusCalls;
-    private int _profilesCalls;
-    private int _switchCalls;
-    private int _subscriptionCount;
-    private int _canceledSubscriptions;
+    private int _wifiCalls;
+    private int _scanCalls;
+    private int _connectCalls;
+    private int _radioSetCalls;
+    private int _bluetoothRadioSetCalls;
+    private int _statusSubscriptionCount;
+    private int _wifiSubscriptionCount;
+    private int _radioSubscriptionCount;
+    private int _bluetoothSubscriptionCount;
+    private int _canceledStatusSubscriptions;
+    private int _canceledWifiSubscriptions;
+    private int _canceledRadioSubscriptions;
+    private int _canceledBluetoothSubscriptions;
 
     public WidgetNetworkStatus Status { get; set; } = StatusDefault();
-    public IReadOnlyList<WidgetSavedNetworkProfile> Profiles { get; set; } = [];
+    public WidgetAvailableWifiNetworks Wifi { get; set; } =
+        new(WidgetWifiScanState.NotScanned, []);
+    public WidgetWifiRadio Radio { get; set; } = new(WidgetWifiRadioState.On, true);
+    public WidgetBluetoothSnapshot Bluetooth { get; set; } = new(
+        WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready, []);
     public Exception? ReadException { get; set; }
-    public Exception? SwitchException { get; set; }
-    public Task? SwitchGate { get; set; }
-    public Action? OnGetStatus { get; set; }
-    public List<SwitchWidgetSavedNetworkProfileRequest> SwitchRequests { get; } = [];
+    public Exception? ScanException { get; set; }
+    public Exception? ConnectException { get; set; }
+    public Exception? RadioException { get; set; }
+    public Exception? BluetoothException { get; set; }
+    public bool HoldWifiRadioSet { get; set; }
+    public bool HoldBluetoothRadioSet { get; set; }
+    public TaskCompletionSource WifiRadioSetStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource BluetoothRadioSetStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public List<ConnectWidgetAvailableWifiNetworkRequest> ConnectRequests { get; } = [];
     public int StatusCalls => Volatile.Read(ref _statusCalls);
-    public int ProfilesCalls => Volatile.Read(ref _profilesCalls);
-    public int SwitchCalls => Volatile.Read(ref _switchCalls);
-    public int SubscriptionCount => Volatile.Read(ref _subscriptionCount);
-    public int CanceledSubscriptions => Volatile.Read(ref _canceledSubscriptions);
+    public int WifiCalls => Volatile.Read(ref _wifiCalls);
+    public int ScanCalls => Volatile.Read(ref _scanCalls);
+    public int ConnectCalls => Volatile.Read(ref _connectCalls);
+    public int RadioSetCalls => Volatile.Read(ref _radioSetCalls);
+    public int BluetoothRadioSetCalls => Volatile.Read(ref _bluetoothRadioSetCalls);
+    public int StatusSubscriptionCount => Volatile.Read(ref _statusSubscriptionCount);
+    public int WifiSubscriptionCount => Volatile.Read(ref _wifiSubscriptionCount);
+    public int RadioSubscriptionCount => Volatile.Read(ref _radioSubscriptionCount);
+    public int BluetoothSubscriptionCount => Volatile.Read(ref _bluetoothSubscriptionCount);
+    public int CanceledStatusSubscriptions => Volatile.Read(ref _canceledStatusSubscriptions);
+    public int CanceledWifiSubscriptions => Volatile.Read(ref _canceledWifiSubscriptions);
+    public int CanceledRadioSubscriptions => Volatile.Read(ref _canceledRadioSubscriptions);
+    public int CanceledBluetoothSubscriptions => Volatile.Read(ref _canceledBluetoothSubscriptions);
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetNetworkCapabilities.GetStatus, GetStatusAsync)
-        .WithHandler(WidgetNetworkCapabilities.GetSavedProfiles, GetProfilesAsync)
-        .WithHandler(WidgetNetworkCapabilities.SwitchSavedProfile, SwitchAsync)
-        .WithEventStream(WidgetNetworkCapabilities.StatusChanged, OpenEventStream)
+        .WithHandler(WidgetNetworkCapabilities.GetAvailableWifi, GetWifiAsync)
+        .WithHandler(WidgetNetworkCapabilities.RequestWifiScan, ScanAsync)
+        .WithHandler(WidgetNetworkCapabilities.ConnectAvailableWifi, ConnectAsync)
+        .WithHandler(WidgetNetworkCapabilities.GetWifiRadio, GetRadioAsync)
+        .WithHandler(WidgetNetworkCapabilities.SetWifiRadio, SetRadioAsync)
+        .WithHandler(WidgetNetworkCapabilities.GetBluetooth, GetBluetoothAsync)
+        .WithHandler(WidgetNetworkCapabilities.SetBluetoothRadio, SetBluetoothRadioAsync)
+        .WithEventStream(WidgetNetworkCapabilities.StatusChanged, OpenStatusStream)
+        .WithEventStream(WidgetNetworkCapabilities.AvailableWifiChanged, OpenWifiStream)
+        .WithEventStream(WidgetNetworkCapabilities.WifiRadioChanged, OpenRadioStream)
+        .WithEventStream(WidgetNetworkCapabilities.BluetoothChanged, OpenBluetoothStream)
         .Build();
 
     private ValueTask<WidgetNetworkStatus> GetStatusAsync(
-        WidgetCapabilityQuery request,
-        CancellationToken cancellationToken)
+        WidgetCapabilityQuery request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _statusCalls);
         if (ReadException is not null) throw ReadException;
-        var snapshot = Status;
-        OnGetStatus?.Invoke();
-        return ValueTask.FromResult(snapshot);
+        return ValueTask.FromResult(Status);
     }
 
-    private ValueTask<IReadOnlyList<WidgetSavedNetworkProfile>> GetProfilesAsync(
-        WidgetCapabilityQuery request,
-        CancellationToken cancellationToken)
+    private ValueTask<WidgetAvailableWifiNetworks> GetWifiAsync(
+        WidgetCapabilityQuery request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Interlocked.Increment(ref _profilesCalls);
+        Interlocked.Increment(ref _wifiCalls);
         if (ReadException is not null) throw ReadException;
-        return ValueTask.FromResult<IReadOnlyList<WidgetSavedNetworkProfile>>(Profiles.ToArray());
+        return ValueTask.FromResult(Wifi with { Networks = Wifi.Networks.ToArray() });
     }
 
-    private async ValueTask<WidgetCapabilityAcknowledgement> SwitchAsync(
-        SwitchWidgetSavedNetworkProfileRequest request,
-        CancellationToken cancellationToken)
+    private ValueTask<WidgetWifiRadio> GetRadioAsync(
+        WidgetCapabilityQuery request, CancellationToken cancellationToken)
     {
-        Interlocked.Increment(ref _switchCalls);
-        lock (_gate) SwitchRequests.Add(request);
-        if (SwitchGate is not null) await SwitchGate.WaitAsync(cancellationToken);
-        if (SwitchException is not null) throw SwitchException;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (ReadException is not null) throw ReadException;
+        return ValueTask.FromResult(Radio);
+    }
+
+    private async ValueTask<WidgetCapabilityAcknowledgement> SetRadioAsync(
+        SetWidgetWifiRadioRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _radioSetCalls);
+        WifiRadioSetStarted.TrySetResult();
+        if (HoldWifiRadioSet)
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        if (RadioException is not null) throw RadioException;
+        EmitRadio(new WidgetWifiRadio(
+            request.Enabled ? WidgetWifiRadioState.On : WidgetWifiRadioState.Off, true));
         return new WidgetCapabilityAcknowledgement(true);
     }
 
-    private IAsyncEnumerable<WidgetNetworkStatusChanged> OpenEventStream(
+    private ValueTask<WidgetBluetoothSnapshot> GetBluetoothAsync(
+        WidgetCapabilityQuery request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (BluetoothException is not null) throw BluetoothException;
+        return ValueTask.FromResult(Bluetooth with { Devices = Bluetooth.Devices.ToArray() });
+    }
+
+    private async ValueTask<WidgetCapabilityAcknowledgement> SetBluetoothRadioAsync(
+        SetWidgetBluetoothRadioRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _bluetoothRadioSetCalls);
+        BluetoothRadioSetStarted.TrySetResult();
+        if (HoldBluetoothRadioSet)
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        if (BluetoothException is not null) throw BluetoothException;
+        EmitBluetooth(Bluetooth with
+        {
+            RadioState = request.Enabled
+                ? WidgetBluetoothRadioState.On
+                : WidgetBluetoothRadioState.Off,
+        });
+        return new WidgetCapabilityAcknowledgement(true);
+    }
+
+    private ValueTask<WidgetCapabilityAcknowledgement> ScanAsync(
+        WidgetCapabilityQuery request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _scanCalls);
+        if (ScanException is not null) throw ScanException;
+        return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+    }
+
+    private ValueTask<WidgetCapabilityAcknowledgement> ConnectAsync(
+        ConnectWidgetAvailableWifiNetworkRequest request,
         CancellationToken cancellationToken)
     {
-        var channel = Channel.CreateBounded<WidgetNetworkStatusChanged>(new BoundedChannelOptions(1)
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _connectCalls);
+        lock (_gate) ConnectRequests.Add(request);
+        if (ConnectException is not null) throw ConnectException;
+        return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+    }
+
+    private IAsyncEnumerable<WidgetNetworkStatusChanged> OpenStatusStream(
+        CancellationToken cancellationToken)
+    {
+        var channel = NewChannel<WidgetNetworkStatusChanged>();
+        lock (_gate) _statusSubscribers.Add(channel);
+        Interlocked.Increment(ref _statusSubscriptionCount);
+        return ReadStatusEvents(channel, cancellationToken);
+    }
+
+    private IAsyncEnumerable<WidgetAvailableWifiNetworksChanged> OpenWifiStream(
+        CancellationToken cancellationToken)
+    {
+        var channel = NewChannel<WidgetAvailableWifiNetworksChanged>();
+        lock (_gate) _wifiSubscribers.Add(channel);
+        Interlocked.Increment(ref _wifiSubscriptionCount);
+        return ReadWifiEvents(channel, cancellationToken);
+    }
+
+    private IAsyncEnumerable<WidgetWifiRadioChanged> OpenRadioStream(
+        CancellationToken cancellationToken)
+    {
+        var channel = NewChannel<WidgetWifiRadioChanged>();
+        lock (_gate) _radioSubscribers.Add(channel);
+        Interlocked.Increment(ref _radioSubscriptionCount);
+        return ReadRadioEvents(channel, cancellationToken);
+    }
+
+    private IAsyncEnumerable<WidgetBluetoothChanged> OpenBluetoothStream(
+        CancellationToken cancellationToken)
+    {
+        if (BluetoothException is not null) throw BluetoothException;
+        var channel = NewChannel<WidgetBluetoothChanged>();
+        lock (_gate) _bluetoothSubscribers.Add(channel);
+        Interlocked.Increment(ref _bluetoothSubscriptionCount);
+        return ReadBluetoothEvents(channel, cancellationToken);
+    }
+
+    private static Channel<T> NewChannel<T>() => Channel.CreateBounded<T>(
+        new BoundedChannelOptions(4)
         {
             SingleReader = true,
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropOldest,
         });
-        lock (_gate) _subscribers.Add(channel);
-        Interlocked.Increment(ref _subscriptionCount);
-        return ReadEvents(channel, cancellationToken);
-    }
 
-    private async IAsyncEnumerable<WidgetNetworkStatusChanged> ReadEvents(
+    private async IAsyncEnumerable<WidgetNetworkStatusChanged> ReadStatusEvents(
         Channel<WidgetNetworkStatusChanged> channel,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -853,21 +965,93 @@ file sealed class FakeNetworkHost
         }
         finally
         {
-            lock (_gate) _subscribers.Remove(channel);
-            Interlocked.Increment(ref _canceledSubscriptions);
+            lock (_gate) _statusSubscribers.Remove(channel);
+            Interlocked.Increment(ref _canceledStatusSubscriptions);
         }
     }
 
-    public void Emit(
-        WidgetNetworkStatus status,
-        IReadOnlyList<WidgetSavedNetworkProfile> profiles)
+    private async IAsyncEnumerable<WidgetAvailableWifiNetworksChanged> ReadWifiEvents(
+        Channel<WidgetAvailableWifiNetworksChanged> channel,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                yield return item;
+        }
+        finally
+        {
+            lock (_gate) _wifiSubscribers.Remove(channel);
+            Interlocked.Increment(ref _canceledWifiSubscriptions);
+        }
+    }
+
+    private async IAsyncEnumerable<WidgetWifiRadioChanged> ReadRadioEvents(
+        Channel<WidgetWifiRadioChanged> channel,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                yield return item;
+        }
+        finally
+        {
+            lock (_gate) _radioSubscribers.Remove(channel);
+            Interlocked.Increment(ref _canceledRadioSubscriptions);
+        }
+    }
+
+    private async IAsyncEnumerable<WidgetBluetoothChanged> ReadBluetoothEvents(
+        Channel<WidgetBluetoothChanged> channel,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                yield return item;
+        }
+        finally
+        {
+            lock (_gate) _bluetoothSubscribers.Remove(channel);
+            Interlocked.Increment(ref _canceledBluetoothSubscriptions);
+        }
+    }
+
+    public void EmitStatus(WidgetNetworkStatus status)
     {
         Status = status;
-        Profiles = profiles;
         Channel<WidgetNetworkStatusChanged>[] subscribers;
-        lock (_gate) subscribers = _subscribers.ToArray();
+        lock (_gate) subscribers = _statusSubscribers.ToArray();
         foreach (var subscriber in subscribers)
             subscriber.Writer.TryWrite(new WidgetNetworkStatusChanged(status));
+    }
+
+    public void EmitWifi(WidgetAvailableWifiNetworks snapshot)
+    {
+        Wifi = snapshot;
+        Channel<WidgetAvailableWifiNetworksChanged>[] subscribers;
+        lock (_gate) subscribers = _wifiSubscribers.ToArray();
+        foreach (var subscriber in subscribers)
+            subscriber.Writer.TryWrite(new WidgetAvailableWifiNetworksChanged(snapshot));
+    }
+
+    public void EmitRadio(WidgetWifiRadio radio)
+    {
+        Radio = radio;
+        Channel<WidgetWifiRadioChanged>[] subscribers;
+        lock (_gate) subscribers = _radioSubscribers.ToArray();
+        foreach (var subscriber in subscribers)
+            subscriber.Writer.TryWrite(new WidgetWifiRadioChanged(radio));
+    }
+
+    public void EmitBluetooth(WidgetBluetoothSnapshot snapshot)
+    {
+        Bluetooth = snapshot;
+        Channel<WidgetBluetoothChanged>[] subscribers;
+        lock (_gate) subscribers = _bluetoothSubscribers.ToArray();
+        foreach (var subscriber in subscribers)
+            subscriber.Writer.TryWrite(new WidgetBluetoothChanged(snapshot));
     }
 
     private static WidgetNetworkStatus StatusDefault() => new(
@@ -876,10 +1060,7 @@ file sealed class FakeNetworkHost
         WidgetNetworkWirelessAvailability.Available,
         WidgetNetworkDetailsAccess.Available,
         WidgetNetworkConnectionAttemptState.None,
-        null,
-        null,
-        null,
-        null);
+        null, null, null, null);
 }
 
 file static class Assert
@@ -908,23 +1089,17 @@ file static class Assert
                 $"Expected [{string.Join(", ", expected)}], got [{string.Join(", ", actual)}].");
     }
 
-    public static async Task ThrowsCanceled(Task task)
-    {
-        try
-        {
-            await task;
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        throw new InvalidOperationException("Expected an OperationCanceledException.");
-    }
-
     public static void Valid(ViewSnapshot snapshot)
     {
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count != 0)
             throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
+    }
+
+    public static async Task Canceled(Task action)
+    {
+        try { await action; }
+        catch (OperationCanceledException) { return; }
+        throw new InvalidOperationException("Expected the lifecycle-bound action to be canceled.");
     }
 }

@@ -84,11 +84,13 @@ public sealed class WidgetHostServices
         Capabilities = capabilityClient ?? throw new ArgumentNullException(nameof(capabilityClient));
         Audio = new WidgetAudioService(capabilityClient);
         Network = new WidgetNetworkService(capabilityClient);
+        RecentActivity = new WidgetRecentActivityService(capabilityClient);
     }
 
     public IWidgetCapabilityClient Capabilities { get; }
     public WidgetAudioService Audio { get; }
     public WidgetNetworkService Network { get; }
+    public WidgetRecentActivityService RecentActivity { get; }
 
     internal static WidgetHostServices Unavailable { get; } =
         new(UnavailableWidgetCapabilityClient.Instance);

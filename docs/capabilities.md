@@ -2,13 +2,14 @@
 
 Status: typed SDK services, authenticated local transport, lifecycle/consent
 enforcement, controller Settings review, deterministic simulators, and narrow
-real Core Audio and Windows network backends are implemented. The production
-bridge composes both real providers. Network hardware/privacy matrices plus
+real Core Audio, Windows network/Bluetooth, and foreground-activity backends are
+implemented. The production bridge composes those trusted providers. Hardware/
+privacy matrices plus
 broader performance evidence remain release gates; the current
 automated packaged Release suite passes.
 
 Network Controls is the second implemented first-party integration milestone.
-Its saved-profile-only behavior, Windows privacy boundary, lifecycle pattern,
+Its explicit available-Wi-Fi scan/connect behavior, Windows privacy boundary, lifecycle pattern,
 and remaining hardware/release gates are documented in the [Network Controls
 reference](network-controls.md).
 
@@ -30,20 +31,29 @@ The current closed capability set is:
 | `system.audio.sessions.control.v1` | `SetSessionVolumeAsync` and `SetSessionMutedAsync` | Interactive only |
 | `system.audio.output.read.v1` | `HostServices.Audio.GetOutputAsync`, `OpenOutputSubscriptionAsync`, and `WatchOutputAsync` | Visible or Interactive |
 | `system.audio.output.control.v1` | `SetOutputVolumeAsync` and `SetOutputMutedAsync` | Interactive only |
+| `system.audio.devices.read.v1` | `GetDevicesAsync`, `OpenDevicesSubscriptionAsync`, and `WatchDevicesAsync`; sanitized input/output names and default markers only | Visible or Interactive |
+| `system.audio.input.read.v1` | `GetInputAsync`, `OpenInputSubscriptionAsync`, and `WatchInputAsync` for current default microphone volume/mute | Visible or Interactive |
+| `system.audio.input.control.v1` | `SetInputVolumeAsync` and `SetInputMutedAsync` for the current default microphone | Interactive only |
 | `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, and `WatchStatusAsync` | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | `SwitchSavedProfileAsync` | Interactive only |
+| `system.network.wifi.read.v1` | `GetAvailableWifiAsync`, `RequestWifiScanAsync`, `OpenAvailableWifiSubscriptionAsync`, and `WatchAvailableWifiAsync` | Read/events while Visible or Interactive; scan Interactive only |
+| `system.network.wifi.connect.v1` | `ConnectAvailableWifiAsync` for a current saved/open scan result | Interactive only |
+| `system.network.wifi.radio.read.v1` | `GetWifiRadioAsync`, `OpenWifiRadioSubscriptionAsync`, and `WatchWifiRadioAsync` | Visible or Interactive |
+| `system.network.wifi.radio.control.v1` | `SetWifiRadioAsync`; software state only | Interactive only |
+| `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, `OpenBluetoothSubscriptionAsync`, and `WatchBluetoothAsync`; sanitized radio/discovery/device state | Visible or Interactive |
+| `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync`; software radio only | Interactive only |
+| `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
+| `system.activity.recent.activate.v1` | `ActivateAsync` for one still-running opaque observation | Interactive only |
 
 The following authority domains are **planned only**. Their final capability
 IDs and typed SDK surfaces are not assigned, the manifest validator does not
-accept them, and no widget may infer them from the current network grants:
+accept them, and no widget may infer them from the implemented network grants:
 
 | Planned closed authority | Intended boundary | Initial lifecycle |
 | --- | --- | --- |
-| Available Wi-Fi scan/read | One explicit, precise-location-gated scan; generation-bound opaque result IDs; no BSSID or raw WLAN structures | Interactive only |
-| Unsaved Wi-Fi connect | Saved/open networks first; a later host-owned WPA Personal credential prompt; no credential reaches the worker | Interactive only |
-| Wi-Fi software-radio control | `WlanSetInterface` software state only; hardware/policy state remains authoritative | Interactive only |
-| Bluetooth radio read/control | Packaged-identity/capability-gated `Windows.Devices.Radios.Radio` state and explicit state change | Read while Visible/Interactive; control Interactive only |
-| Bluetooth device read/pair/unpair | Bounded `DeviceWatcher` results and host-owned pairing ceremony through `DeviceInformationPairing` | Read while Visible/Interactive; pair/unpair Interactive only |
+| Protected Wi-Fi credential flow | Host-owned WPA/WPA2/WPA3 Personal prompt/profile creation; no credential reaches the worker | Interactive only |
+| Bluetooth pair/unpair | Host-owned pairing ceremony through `DeviceInformationPairing`; no secret reaches the worker | Interactive only |
+| Profile-specific Bluetooth communication | A separate reviewed GATT/RFCOMM/service contract, never authority inherited from discovery | Feature-specific |
 
 There is deliberately no planned generic Bluetooth Connect/Disconnect grant.
 Windows communication is profile-specific (for example GATT or RFCOMM), so a
@@ -73,6 +83,18 @@ are essential versus degradable; authors must still render a useful unavailable
 state. An installed package declaring an unknown capability is skipped by the
 bridge rather than receiving an open-ended permission.
 
+The permission boundary has four independent layers:
+
+1. The author declares required or optional capability IDs in the manifest.
+   A declaration requests review; it grants nothing.
+2. The user explicitly allows, blocks, or revokes each declaration in Settings.
+   Required declarations are still blocked until allowed.
+3. The authenticated broker binds package, publisher, instance, declared set,
+   durable decision, and current lifecycle before every operation or event.
+4. The trusted native provider and Windows apply their own API, privacy,
+   hardware, and policy rules. Overlay consent cannot bypass Windows precise-
+   location access, a hardware radio switch, or device policy.
+
 The bridge watches the installed package catalog without polling. After a
 complete validated reload, an enable/disable, install, update, manifest, or
 style change publishes a new semantic catalog revision. A worker whose fixed
@@ -88,13 +110,39 @@ a catalog or worker restart.
 
 The reusable provider definitions and DTOs live in `WidgetSdk`:
 
-- `WidgetAudioCapabilities`, `WidgetAudioSession`, `WidgetAudioOutput`,
-  `WidgetAudioSessionsChanged`, and `WidgetAudioOutputChanged`;
+- `WidgetAudioCapabilities`, session/output/device/input DTOs, and their
+  full-snapshot change events;
 - `WidgetNetworkCapabilities`, `WidgetNetworkStatus`,
   `WidgetNetworkConnectivity`, `WidgetNetworkTransportKind`,
   `WidgetNetworkWirelessAvailability`, `WidgetNetworkDetailsAccess`,
   `WidgetNetworkConnectionAttemptState`, `WidgetSavedNetworkProfile`, and
-  `WidgetNetworkStatusChanged`.
+  `WidgetNetworkStatusChanged`; and `WidgetWifiScanState`,
+  `WidgetWifiSecurityKind`, `WidgetAvailableWifiNetwork`,
+  `WidgetAvailableWifiNetworks`, `WidgetWifiRadio`, Bluetooth radio/discovery/
+  device snapshots, and their full-snapshot change events; and
+- `WidgetRecentActivityCapabilities`, `WidgetRecentActivity`, and
+  `WidgetRecentActivitiesChanged`.
+
+`GetAvailableWifiAsync` reads the last bounded scan snapshot and never starts a
+scan. `RequestWifiScanAsync` is a separate explicit Interactive operation.
+Every result ID expires on the next scan/provider generation and must not be
+persisted or derived from display text. `ConnectAvailableWifiAsync` accepts
+only that current opaque ID; credential-required and unsupported authentication
+fail with typed codes instead of exposing a secret-entry surface to the worker.
+Wi-Fi and Bluetooth radio setters always reconcile the authoritative state.
+`partial_failure` means one native target changed and another did not; the UI
+must show the refreshed state rather than pretending the requested state won.
+
+Audio device enumeration reports which sanitized endpoints are currently
+default. It intentionally has no default-device setter. Input read/control is
+limited to volume/mute on the current default capture endpoint and does not
+grant audio capture, an activity meter, endpoint IDs, or sample data.
+
+Recent activity is a bounded, event-driven list of eligible foreground windows.
+The worker receives only opaque lifetime IDs, bounded display names, running/
+most-recent markers, and a conservative kind. Activation accepts only a live ID
+already issued by the authorized read provider; it cannot launch an executable
+or target an arbitrary process/window.
 
 `WidgetAudioSessionsChanged.IsAvailable` distinguishes a live Core Audio
 provider loss from a healthy empty session list. On `false`, clear stale
