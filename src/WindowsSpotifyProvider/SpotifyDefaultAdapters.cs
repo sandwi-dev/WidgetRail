@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Channels;
 
 namespace GameBarAlternative.WindowsSpotifyProvider;
 
@@ -155,19 +156,24 @@ internal sealed class LoopbackSpotifyAuthorizationCallbackReceiver :
     private const int CallbackPort = 43827;
     private const int MaximumRequestHeaderBytes = 16 * 1024;
     private const int MaximumAcceptedConnections = 16;
+    private const int MaximumConcurrentClients = 4;
     private static readonly TimeSpan ClientHeaderTimeout = TimeSpan.FromSeconds(2);
 
     public async Task<SpotifyAuthorizationCallback> ReceiveAsync(
-        Uri exactRedirectUri, TimeSpan timeout, CancellationToken cancellationToken)
+        Uri exactRedirectUri, string expectedState, TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         if (exactRedirectUri.AbsoluteUri != WindowsSpotifyPlatformBackend.ExactRedirectUri)
             throw new SpotifyProviderException(
                 "invalid_redirect_uri", "Spotify redirect URI is not the host redirect URI.");
+        if (string.IsNullOrWhiteSpace(expectedState) || expectedState.Length > 256)
+            throw new SpotifyProviderException(
+                "invalid_callback", "Spotify sign-in callback state was invalid.");
         var listener = new TcpListener(IPAddress.Loopback, CallbackPort)
         {
             ExclusiveAddressUse = true,
         };
-        try { listener.Start(1); }
+        try { listener.Start(MaximumAcceptedConnections); }
         catch (SocketException exception)
         {
             throw new SpotifyProviderException(
@@ -176,43 +182,36 @@ internal sealed class LoopbackSpotifyAuthorizationCallbackReceiver :
 
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         bounded.CancelAfter(timeout);
+        var clients = Channel.CreateBounded<TcpClient>(new BoundedChannelOptions(
+            MaximumConcurrentClients)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleWriter = true,
+            SingleReader = false,
+        });
+        var completion = new TaskCompletionSource<SpotifyAuthorizationCallback>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var acceptTask = AcceptClientsAsync(listener, clients.Writer, bounded.Token);
+        var clientTasks = Enumerable.Range(0, MaximumConcurrentClients)
+            .Select(_ => ProcessClientsAsync(
+                clients.Reader, exactRedirectUri, expectedState, completion, bounded.Token))
+            .ToArray();
         try
         {
             // Browsers, endpoint-security tools, and proxy helpers can open a
             // speculative loopback connection before the actual navigation.
-            // Keep the one authorization listener alive across a small bounded
-            // number of malformed probes instead of consuming the only accept.
-            for (var attempt = 0; attempt < MaximumAcceptedConnections; attempt++)
-            {
-                using var client = await listener.AcceptTcpClientAsync(bounded.Token)
-                    .ConfigureAwait(false);
-                try
-                {
-                    using var clientHeaderLifetime =
-                        CancellationTokenSource.CreateLinkedTokenSource(bounded.Token);
-                    clientHeaderLifetime.CancelAfter(ClientHeaderTimeout);
-                    var callback = await ReceiveClientAsync(
-                        client, exactRedirectUri, clientHeaderLifetime.Token)
-                        .ConfigureAwait(false);
-                    return callback;
-                }
-                catch (SpotifyProviderException exception) when (
-                    exception.Code == "invalid_callback")
-                {
-                    // The timeout remains the primary bound. A local process
-                    // cannot create an unbounded connection/task/resource loop.
-                }
-                catch (IOException)
-                {
-                    // A probe that connects and closes without a complete HTTP
-                    // request is not the user's Spotify callback.
-                }
-                catch (OperationCanceledException) when (!bounded.IsCancellationRequested)
-                {
-                    // A connected local probe cannot hold the callback port for
-                    // the complete five-minute authorization window.
-                }
-            }
+            // A bounded set of readers prevents a silent probe from occupying
+            // the only accept slot. Invalid paths, malformed requests, and
+            // wrong-state callbacks cannot consume the authorization listener.
+            var processing = Task.WhenAll(clientTasks.Prepend(acceptTask));
+            var completed = await Task.WhenAny(completion.Task, processing)
+                .ConfigureAwait(false);
+            if (completed == completion.Task)
+                return await completion.Task.ConfigureAwait(false);
+            await processing.ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (bounded.IsCancellationRequested)
+                throw new OperationCanceledException(bounded.Token);
             throw new SpotifyProviderException(
                 "invalid_callback", "Spotify sign-in callback was invalid.");
         }
@@ -221,12 +220,81 @@ internal sealed class LoopbackSpotifyAuthorizationCallbackReceiver :
             throw new SpotifyProviderException(
                 "authorization_timeout", "Spotify sign-in timed out.", exception);
         }
-        finally { listener.Stop(); }
+        finally
+        {
+            bounded.Cancel();
+            listener.Stop();
+            clients.Writer.TryComplete();
+            while (clients.Reader.TryRead(out var pending)) pending.Dispose();
+            try { await Task.WhenAll(clientTasks.Prepend(acceptTask)).ConfigureAwait(false); }
+            catch (Exception exception) when (exception is OperationCanceledException or
+                SocketException or ObjectDisposedException) { }
+        }
+    }
+
+    private static async Task AcceptClientsAsync(
+        TcpListener listener,
+        ChannelWriter<TcpClient> writer,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            for (var attempt = 0; attempt < MaximumAcceptedConnections; attempt++)
+            {
+                var client = await listener.AcceptTcpClientAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                try
+                {
+                    await writer.WriteAsync(client, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    client.Dispose();
+                    throw;
+                }
+            }
+        }
+        finally { writer.TryComplete(); }
+    }
+
+    private static async Task ProcessClientsAsync(
+        ChannelReader<TcpClient> reader,
+        Uri exactRedirectUri,
+        string expectedState,
+        TaskCompletionSource<SpotifyAuthorizationCallback> completion,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var client in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            using (client)
+            using (var clientHeaderLifetime =
+                   CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                clientHeaderLifetime.CancelAfter(ClientHeaderTimeout);
+                try
+                {
+                    var callback = await ReceiveClientAsync(
+                        client, exactRedirectUri, expectedState, clientHeaderLifetime.Token)
+                        .ConfigureAwait(false);
+                    completion.TrySetResult(callback);
+                    return;
+                }
+                catch (SpotifyProviderException exception) when (
+                    exception.Code == "invalid_callback") { }
+                catch (IOException) { }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // One silent local client cannot occupy a receiver for the
+                    // complete authorization window.
+                }
+            }
+        }
     }
 
     private static async Task<SpotifyAuthorizationCallback> ReceiveClientAsync(
         TcpClient client,
         Uri exactRedirectUri,
+        string expectedState,
         CancellationToken cancellationToken)
     {
         if (client.Client.RemoteEndPoint is not IPEndPoint remote ||
@@ -253,10 +321,17 @@ internal sealed class LoopbackSpotifyAuthorizationCallbackReceiver :
             throw new SpotifyProviderException(
                 "invalid_callback", "Spotify sign-in callback was invalid.");
         var query = ParseQuery(callbackUri.Query);
+        var code = query.GetValueOrDefault("code");
+        var state = query.GetValueOrDefault("state");
+        var error = query.GetValueOrDefault("error");
+        if (!string.Equals(state, expectedState, StringComparison.Ordinal) ||
+            (string.IsNullOrWhiteSpace(code) == string.IsNullOrWhiteSpace(error)))
+            throw new SpotifyProviderException(
+                "invalid_callback", "Spotify sign-in callback was invalid.");
         try
         {
             await WriteResponseAsync(stream,
-                query.ContainsKey("error") ? "Spotify sign-in was not completed." :
+                error is not null ? "Spotify sign-in was not completed." :
                     "Spotify is connected. You can close this window.", cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -266,8 +341,7 @@ internal sealed class LoopbackSpotifyAuthorizationCallbackReceiver :
             // the browser closes before reading the friendly completion page.
         }
         return new SpotifyAuthorizationCallback(
-            query.GetValueOrDefault("code"), query.GetValueOrDefault("state"),
-            query.GetValueOrDefault("error"), query.GetValueOrDefault("error_description"));
+            code, state, error, query.GetValueOrDefault("error_description"));
     }
 
     private static async Task<string> ReadRequestAsync(

@@ -694,7 +694,7 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. Community package 0.1.6
+  setup guidance without opening OAuth automatically. Community package 0.1.7
   uses a compact responsive layout, puts the complete setup instructions in a
   controller VerticalScroll, and uses shared centered icon/label button
   placement rather than widget-specific offsets. Setup now shows the
@@ -705,8 +705,8 @@ with C++ installed:
   the worker, while B remains navigation-only. An Interactive Connect that has
   already opened the system browser acknowledges the action immediately and
   retains only that exact broker request through Visible/Background using the
-  widget's Created-to-Destroying lifetime. The listener waits at most five
-  minutes; the broker's exact Connect deadline is seven minutes so bounded
+  widget's Created-to-Destroying lifetime. The listener waits at most fifteen
+  minutes; the broker's exact Connect deadline is seventeen minutes so bounded
   token exchange, retry/backoff, and credential-vault persistence have the
   remaining two minutes. No listener exists before an explicit Connect. New
   Background controls remain denied, while revoke, Destroying, and cancellation
@@ -714,7 +714,7 @@ with C++ installed:
   idle unload from destroying this already-started authorization while the
   browser owns foreground; active polling and ordinary presentation work still
   stop outside their lifecycle. The loopback receiver tolerates at most 16
-  malformed/early-close local probes inside the same five-minute listener,
+  malformed/early-close local probes inside the same fifteen-minute listener,
   while requiring loopback origin, exact host, GET/HTTP/1.1, callback path,
   and OAuth state before accepting the real callback. There is no live
   allowlisted-account evidence. Devices/queue/search/recent/library/

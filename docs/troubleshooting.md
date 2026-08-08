@@ -50,20 +50,20 @@ lifetime, so the exact Connect lease and listener remain alive for the bounded
 callback even though new inactive controls are still denied.
 
 The temporary listener is created only after an explicit Connect action and
-waits at most five minutes; there is no listener while the addon is merely open,
+waits at most fifteen minutes; there is no listener while the addon is merely open,
 Visible, or Background. The broker grants only that exact Spotify authorization
-`connect` operation a seven-minute deadline. The remaining two minutes cover
+`connect` operation a seventeen-minute deadline. The remaining two minutes cover
 bounded token exchange, retry/backoff, and credential-vault persistence.
-Package 0.1.6 uses `keep-alive` so idle unload cannot destroy the one explicit
-attempt, and the listener tolerates at most 16 malformed or early-close local
-probes within the same five-minute window. It still rejects a non-loopback peer,
+Package 0.1.7 uses `keep-alive` so idle unload cannot destroy the one explicit
+attempt, and the listener tolerates at most 16 bounded local connections within
+the same fifteen-minute window. It still rejects a non-loopback peer,
 wrong Host/path/method/version, or mismatched OAuth state.
 Disconnect, Destroying, consent revocation, explicit reload/disposal, caller
 cancellation, and timeout intentionally close the listener. Do not repeatedly
 press Connect or launch a second worker while one attempt is active.
 
 If refusal occurs immediately, confirm the overlay/bridge/provider and Spotify
-Community package 0.1.6 were rebuilt and installed together, then inspect
+Community package 0.1.7 were rebuilt and installed together, then inspect
 `%LOCALAPPDATA%\GameBarAlternative\overlay.log` for lifecycle, port-collision,
 state, timeout, or provider diagnostics. Never paste authorization codes,
 verifiers, access/refresh tokens, or credential-vault contents into logs or an

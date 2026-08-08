@@ -7,7 +7,7 @@ The intended product is a separately installable Community addon backed by a
 trusted, reusable Spotify provider. The current repository implements the
 typed v1 broker surface, a trusted Web API/PKCE provider, protected refresh-token
 storage, package configuration storage, local configuration CLI, production
-`WidgetBridge` composition, Spotify Community addon package 0.1.6, and an
+`WidgetBridge` composition, Spotify Community addon package 0.1.7, and an
 isolated WebView2 Web Playback SDK host. It
 does not yet connect the playback-host protocol to the provider lifecycle,
 expose a controller-native text editor, or prove a live
@@ -74,21 +74,21 @@ move the widget through Visible and Background without canceling that
 already-started request. This does not permit a new connect or any other control
 from an inactive state.
 
-Package 0.1.6 selects explicit `keep-alive` residency so the bridge cannot idle-
+Package 0.1.7 selects explicit `keep-alive` residency so the bridge cannot idle-
 unload the worker while this one user-started browser authorization is in
 flight. Active polling, progress interpolation, snapshots, invalidations, and
 ordinary presentation work still follow their Visible/Interactive lifetimes;
 `keep-alive` is not background provider authority.
 
 The temporary callback listener is created only by that explicit Connect action
-and waits at most five minutes; there is no idle/background listener. Browsers,
+and waits at most fifteen minutes; there is no idle/background listener. Browsers,
 endpoint-security tools, and proxy helpers may speculatively connect to the
 loopback port. The receiver therefore tolerates at most 16 malformed or early-
-close local probes inside the same five-minute window instead of consuming the
+close local probes inside the same fifteen-minute window instead of consuming the
 only accept. Every accepted callback still requires a loopback peer, exact
 `Host: 127.0.0.1:43827`, `GET`/`HTTP/1.1`, exact callback path, and matching
 OAuth state. The exact
-broker Connect deadline is seven minutes. Its remaining two minutes cover only
+broker Connect deadline is seventeen minutes. Its remaining two minutes cover only
 bounded authorization-code exchange, HTTP retry/backoff, and credential-vault
 persistence after the human callback window. Disconnect is not exempt.
 Destroying, consent revocation, caller/pipe cancellation, or callback/deadline
@@ -145,7 +145,7 @@ exactly:
 - Connect/Reconnect and Disconnect actions with explicit status; and
 - no client-secret field.
 
-Package 0.1.6 places the full instruction card in a controller VerticalScroll,
+Package 0.1.7 places the full instruction card in a controller VerticalScroll,
 assigns a fresh Scroll node identity on every explicit setup entry so a prior
 bottom offset cannot hide the title/first step, uses compact responsive spacing/
 wrapping, and keeps Connect/Setup/Refresh/

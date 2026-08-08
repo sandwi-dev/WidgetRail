@@ -241,12 +241,12 @@ remains off until the publisher-trust gates in Phase 4.
   immediately and only that in-flight authorization task continues on the
   widget's Created-to-Destroying lifetime while browser activation moves the
   widget through Visible/Background. No callback listener exists while idle,
-  and new inactive controls remain denied. The listener window is five minutes;
-  the exact broker Connect deadline is seven minutes, leaving two bounded
+  and new inactive controls remain denied. The listener window is fifteen minutes;
+  the exact broker Connect deadline is seventeen minutes, leaving two bounded
   minutes for token exchange, retry/backoff, and credential-vault persistence.
-  Revoke, Destroying, and cancellation still terminate it. Package 0.1.6 uses
+  Revoke, Destroying, and cancellation still terminate it. Package 0.1.7 uses
   `keep-alive` so idle unload cannot destroy the one explicit in-flight OAuth
-  task, accepts at most 16 malformed/early-close local probes inside the same
+  task, accepts at most 16 bounded local connections inside the same
   listener window, and gives every setup entry a fresh Scroll identity. No live
   allowlisted-account success is claimed. Beyond the core player, add nested device/queue, search, recent,
   library, playlist,

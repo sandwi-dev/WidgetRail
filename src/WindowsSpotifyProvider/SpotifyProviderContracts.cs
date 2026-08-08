@@ -157,7 +157,8 @@ internal interface ISpotifyBrowserLauncher
 internal interface ISpotifyAuthorizationCallbackReceiver
 {
     Task<SpotifyAuthorizationCallback> ReceiveAsync(
-        Uri exactRedirectUri, TimeSpan timeout, CancellationToken cancellationToken);
+        Uri exactRedirectUri, string expectedState, TimeSpan timeout,
+        CancellationToken cancellationToken);
 }
 
 internal interface ISpotifyDelay

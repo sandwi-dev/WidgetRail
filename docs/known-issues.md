@@ -61,7 +61,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-040 | P0 | Verifying | Native declarative layout / Spotify / responsive text | Intrinsic leaves now measure height against their authored width/max-width before layout, with exact Spotify state/setup regressions at compact and 150% text scales; packaged visual verification remains. |
 | GBA-041 | P0 | Verifying | OverlayHost / controller input ownership | A visibility-scoped GameInput lease keeps navigation alive when foreground activation is denied and uses exclusivity when confirmed; packaged backend/game evidence remains. |
 | GBA-042 | P0 | Verifying | Spotify configuration / Settings permissions | Unsigned packages can resolve one unambiguous owning-publisher public configuration document; `final-schema-v2-20260808-final` proves Spotify 0.1.6 unconfigured/setup standalone widget-body rendering, but Settings package-path injection and live configure/connect/revoke evidence remain. |
-| GBA-043 | P0 | Verifying | Spotify OAuth / broker lifecycle / pipe timeout | Package 0.1.6 keeps the explicit Connect task resident through browser-triggered Visible/Background and tolerates 16 bounded local callback probes inside the five-minute listener; the exact broker operation remains seven minutes and live packaged authorization evidence remains. |
+| GBA-043 | P0 | Verifying | Spotify OAuth / broker lifecycle / pipe timeout | The explicit Connect task remains resident through browser-triggered Visible/Background, tolerates bounded local probes, and now has a fifteen-minute callback plus seventeen-minute exact broker deadline; live packaged authorization evidence remains. |
 | GBA-044 | P1 | Confirmed | OverlayHost / XInput Guide compatibility / performance | The schema-2 Hidden smoke recorded about 32 host timer messages per second with zero controller timers, paints, or Direct2D frames; the always-on 25 ms ordinal-100 compatibility timer is the remaining hidden cadence. |
 
 ## GBA-001 — Per-application audio controls have no real effect
@@ -1314,13 +1314,13 @@ Even without a transition, the pipe's ordinary three-second request deadline
 was shorter than the authorization callback window, producing
 `ERR_CONNECTION_REFUSED` when Spotify returned.
 
-**Implementation/current evidence:** Package 0.1.6 acknowledges an explicit
+**Implementation/current evidence:** Package 0.1.7 acknowledges an explicit
 Interactive Connect action immediately and runs only its authorization task on
 the widget's Created-to-Destroying lifetime. The already-created broker lease
 therefore survives browser-triggered Visible/Background. New connect/control
 requests in Background remain denied; disconnect has no continuation. The
 temporary callback listener is created only for the explicit action and waits
-at most five minutes. The exact broker operation has a seven-minute deadline,
+at most fifteen minutes. The exact broker operation has a seventeen-minute deadline,
 leaving two bounded minutes for token exchange, retry/backoff, and credential-
 vault persistence. The package selects `keep-alive` residency so idle unload
 cannot destroy this already-started authorization while the browser owns
@@ -1330,6 +1330,12 @@ same listener window, while still requiring loopback origin, exact host/path,
 GET/HTTP/1.1, and matching OAuth state before accepting the callback.
 Destroying, consent revocation, caller/pipe cancellation, and callback/deadline
 timeout still cancel and close the listener.
+The refusal session's host log records Spotify A at `08:23:13.620`, browser
+foreground at `08:23:14.050`, and later browser foreground at `08:30:45.100`:
+451.48 seconds after the initial action, 151.48 seconds beyond the former
+five-minute listener and 31.48 seconds beyond the former seven-minute broker
+deadline. That local timing motivated the fifteen/seventeen-minute human-flow
+bounds; it is not a successful packaged callback claim.
 PlatformBroker's focused Release suite passes with exact-operation,
 Background denial, disconnect, Destroying, revocation, cancellation, and
 timeout-policy coverage. Widget coverage asserts immediate action completion,
@@ -1344,9 +1350,9 @@ callback evidence in acceptance item 5 is captured.
    to survive browser-triggered Visible/Background.
 2. New inactive connect/playback controls and disconnect remain denied.
 3. The temporary listener exists only during explicit Connect and waits at most
-   five minutes. A bounded number of speculative/malformed local probes cannot
+   fifteen minutes. A bounded number of speculative/malformed local probes cannot
    consume the real callback, and none bypass exact origin/host/path/state
-   validation. Only the exact broker Connect receives a seven-minute deadline;
+   validation. Only the exact broker Connect receives a seventeen-minute deadline;
    its remaining two minutes are bounded token exchange/retry/vault budget, not
    a general long request timeout.
 4. Destroying, revoke/consent loss, caller/pipe cancellation, malformed state,

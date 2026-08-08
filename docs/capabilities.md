@@ -120,9 +120,9 @@ The package selects `keep-alive` residency so idle unload cannot destroy that
 already-started explicit authorization task while the browser owns foreground;
 this does not keep its active polling or presentation work running. The
 temporary callback listener exists only during this explicit attempt and
-waits at most five minutes. It tolerates at most 16 malformed or early-close
+waits at most fifteen minutes. It tolerates at most 16 malformed or early-close
 local probes within that same window, but accepts only loopback origin, the
-exact host/path and GET/HTTP/1.1 shape, and the matching OAuth state. The exact broker Connect deadline is seven minutes,
+exact host/path and GET/HTTP/1.1 shape, and the matching OAuth state. The exact broker Connect deadline is seventeen minutes,
 leaving two minutes for bounded token exchange, retry/backoff, and vault
 persistence. A new Background connect, disconnect, playback control, or other
 provider request is still denied. Destroying, consent revocation, pipe/caller

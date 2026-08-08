@@ -6,6 +6,7 @@ using GameBarAlternative.WidgetStyling;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
+    ("Disconnected copy and paired actions remain bounded and centered", DisconnectedLayoutContract),
     ("Unconfigured state provides safe exact setup guidance", UnconfiguredSetup),
     ("Setup is a nested B-dismissible input scope", NestedSetupBack),
     ("Setup uses a bounded controller-native scroll surface", SetupUsesVerticalScroll),
@@ -49,6 +50,56 @@ static async Task OpeningNeverConnects()
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
     Assert.Equal(0, harness.ConnectCalls);
     Assert.Equal("spotify.connect", widget.Render().InitialFocusId);
+    await StopAsync(widget);
+}
+
+static async Task DisconnectedLayoutContract()
+{
+    var harness = new SpotifyHarness { Configured = true, Connected = false };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
+    var snapshot = widget.Render().CreateSnapshot("spotify.layout", 1);
+
+    var detail = Find(snapshot.Root, "spotify.state-detail");
+    Assert.Equal(
+        "Spotify opens a browser and uses PKCE. Your credentials stay in the trusted host.",
+        detail.Text);
+    Assert.Equal("Connect", Find(snapshot.Root, "spotify.connect").Text);
+    Assert.Equal("Setup", Find(snapshot.Root, "spotify.setup.open").Text);
+    Assert.Equal("spotify.connect", snapshot.InitialFocusId);
+    Assert.Equal(620d, snapshot.Surface?.MinimumWidth);
+    Assert.Equal(400d, snapshot.Surface?.MinimumHeight);
+
+    var source = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory, "styles", "default.gbss"));
+    var parsed = GbssParser.Parse(source, "styles/default.gbss");
+    Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
+    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+    var theme = compiled.Theme!;
+    var detailStyle = theme.Resolve(new GbssElement(
+        "text", StyleClasses: new HashSet<string>(["spotify-state-detail"])))!;
+    Assert.Equal("100%", detailStyle.Get("width")?.Text);
+    Assert.Equal("0px", detailStyle.Get("min-width")?.Text);
+    Assert.Equal("560px", detailStyle.Get("max-width")?.Text);
+    Assert.Equal("0", detailStyle.Get("flex-shrink")?.Text);
+    Assert.Equal("4", detailStyle.Get("max-lines")?.Text);
+    Assert.Equal("1.35", detailStyle.Get("line-height")?.Text);
+    Assert.Equal("center", detailStyle.Get("text-align")?.Text);
+
+    var actionRow = theme.Resolve(new GbssElement(
+        "row", StyleClasses: new HashSet<string>(["spotify-connect-actions"])))!;
+    Assert.Equal("100%", actionRow.Get("width")?.Text);
+    Assert.Equal("wrap", actionRow.Get("flex-wrap")?.Text);
+    Assert.Equal("0", actionRow.Get("flex-shrink")?.Text);
+    var button = theme.Resolve(new GbssElement(
+        "button", StyleClasses: new HashSet<string>(
+            ["spotify-primary", "spotify-responsive-action"])))!;
+    Assert.Equal("center", button.Get("text-align")?.Text);
+    Assert.Equal("44px", button.Get("min-height")?.Text);
+    Assert.Equal("1.25", button.Get("line-height")?.Text);
+    Assert.Equal("2", button.Get("max-lines")?.Text);
+    Assert.Equal("1", button.Get("flex-grow")?.Text);
     await StopAsync(widget);
 }
 

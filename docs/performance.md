@@ -108,12 +108,12 @@ action acknowledges immediately, while the authorization task uses the widget's
 Created-to-Destroying lifetime as browser foreground moves it through Visible/
 Background. It is one retained lease, not permission to start inactive work:
 new Background connect/control and disconnect requests remain denied. Its
-temporary listener exists only during that action and waits at most five
-minutes. Spotify package 0.1.6 uses `keep-alive` so idle unload cannot destroy
+temporary listener exists only during that action and waits at most fifteen
+minutes. Spotify package 0.1.7 uses `keep-alive` so idle unload cannot destroy
 that in-flight task while the browser owns foreground; normal active polling/
 presentation still stops with lifecycle tokens. The listener tolerates at most
 16 malformed or early-close local probes inside the same time bound. The exact
-broker deadline is seven minutes, leaving two bounded
+broker deadline is seventeen minutes, leaving two bounded
 minutes for token exchange, retry/backoff, and vault persistence. Revocation,
 Destroying, cancellation, or timeout still terminates it. Installed/community workers cannot bypass
 the general denial with a desktop token or AppContainer network/OS

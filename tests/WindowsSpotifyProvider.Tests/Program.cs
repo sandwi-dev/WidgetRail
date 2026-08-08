@@ -23,6 +23,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Expired refresh authorization is deleted and requires reconnect", ExpiredRefreshIsDeleted),
     ("Browser failure cancels the pending callback listener", BrowserFailureCancelsCallback),
     ("Loopback callback survives a speculative probe", LoopbackCallbackSurvivesProbe),
+    ("Loopback callback is not blocked by a silent probe", LoopbackCallbackBypassesSilentProbe),
+    ("Loopback callback ignores a wrong-state request", LoopbackCallbackRejectsWrongState),
     ("Occupied callback port never opens the browser", OccupiedCallbackPortStopsBrowser),
     ("Trusted playback host gets only a short-lived scoped token lease", TrustedHostTokenLease),
     ("Provider implements typed broker mappings without exposing tokens", BrokerContractMapping),
@@ -67,6 +69,7 @@ static async Task PkceContract()
 
     Assert.Equal(WindowsSpotifyPlatformBackend.ExactRedirectUri, callback.RedirectUri);
     Assert.Equal(WindowsSpotifyPlatformBackend.AuthorizationCallbackTimeout, callback.Timeout);
+    Assert.Equal(TimeSpan.FromMinutes(15), callback.Timeout);
     Assert.Equal("S256", callback.ChallengeMethod);
     Assert.True(callback.State!.Length >= 32);
     Assert.Equal("refresh-one", vault.Token);
@@ -385,6 +388,7 @@ static async Task LoopbackCallbackSurvivesProbe()
     var receiver = new LoopbackSpotifyAuthorizationCallbackReceiver();
     var receive = receiver.ReceiveAsync(
         new Uri(WindowsSpotifyPlatformBackend.ExactRedirectUri),
+        "verified-state",
         TimeSpan.FromSeconds(5), CancellationToken.None);
 
     // Simulate a browser/security preconnect that opens and closes before the
@@ -405,6 +409,52 @@ static async Task LoopbackCallbackSurvivesProbe()
     Assert.Equal("authorization-code", callback.Code);
     Assert.Equal("verified-state", callback.State);
     Assert.Equal(null, callback.Error);
+}
+
+static async Task LoopbackCallbackBypassesSilentProbe()
+{
+    var receiver = new LoopbackSpotifyAuthorizationCallbackReceiver();
+    var receive = receiver.ReceiveAsync(
+        new Uri(WindowsSpotifyPlatformBackend.ExactRedirectUri),
+        "verified-state",
+        TimeSpan.FromSeconds(5), CancellationToken.None);
+
+    using var silentProbe = new TcpClient();
+    await silentProbe.ConnectAsync(IPAddress.Loopback, 43827);
+    var started = DateTimeOffset.UtcNow;
+    await SendCallbackAsync("authorization-code", "verified-state");
+
+    var callback = await receive;
+    Assert.True(DateTimeOffset.UtcNow - started < TimeSpan.FromSeconds(1));
+    Assert.Equal("authorization-code", callback.Code);
+}
+
+static async Task LoopbackCallbackRejectsWrongState()
+{
+    var receiver = new LoopbackSpotifyAuthorizationCallbackReceiver();
+    var receive = receiver.ReceiveAsync(
+        new Uri(WindowsSpotifyPlatformBackend.ExactRedirectUri),
+        "verified-state",
+        TimeSpan.FromSeconds(5), CancellationToken.None);
+
+    await SendCallbackAsync("interfering-code", "wrong-state");
+    await SendCallbackAsync("authorization-code", "verified-state");
+
+    var callback = await receive;
+    Assert.Equal("authorization-code", callback.Code);
+    Assert.Equal("verified-state", callback.State);
+}
+
+static async Task SendCallbackAsync(string code, string state)
+{
+    using var client = new TcpClient();
+    await client.ConnectAsync(IPAddress.Loopback, 43827);
+    using var stream = client.GetStream();
+    var request = Encoding.ASCII.GetBytes(
+        $"GET /callback/?code={code}&state={state} HTTP/1.1\r\n" +
+        "Host: 127.0.0.1:43827\r\nConnection: close\r\n\r\n");
+    await stream.WriteAsync(request);
+    await stream.FlushAsync();
 }
 
 static async Task OccupiedCallbackPortStopsBrowser()
@@ -590,7 +640,8 @@ internal sealed class CoordinatedCallback : ISpotifyAuthorizationCallbackReceive
     internal TimeSpan Timeout { get; private set; }
 
     public Task<SpotifyAuthorizationCallback> ReceiveAsync(
-        Uri exactRedirectUri, TimeSpan timeout, CancellationToken cancellationToken)
+        Uri exactRedirectUri, string expectedState, TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         RedirectUri = exactRedirectUri.AbsoluteUri;
         Timeout = timeout;
@@ -649,7 +700,8 @@ internal sealed class RecordingBrowser : ISpotifyBrowserLauncher
 internal sealed class NullCallback : ISpotifyAuthorizationCallbackReceiver
 {
     public Task<SpotifyAuthorizationCallback> ReceiveAsync(
-        Uri exactRedirectUri, TimeSpan timeout, CancellationToken cancellationToken) =>
+        Uri exactRedirectUri, string expectedState, TimeSpan timeout,
+        CancellationToken cancellationToken) =>
         throw new InvalidOperationException("Callback was not expected.");
 }
 
@@ -658,7 +710,8 @@ internal sealed class CancellationAwareCallback : ISpotifyAuthorizationCallbackR
     internal bool WasCanceled { get; private set; }
 
     public Task<SpotifyAuthorizationCallback> ReceiveAsync(
-        Uri exactRedirectUri, TimeSpan timeout, CancellationToken cancellationToken)
+        Uri exactRedirectUri, string expectedState, TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
         var completion = new TaskCompletionSource<SpotifyAuthorizationCallback>(
             TaskCreationOptions.RunContinuationsAsynchronously);

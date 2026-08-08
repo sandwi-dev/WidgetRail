@@ -722,7 +722,7 @@ acknowledges immediately, while its authorization task uses the widget's
 Created-to-Destroying lifetime as browser foreground moves it through Visible/
 Background. The temporary callback listener exists only for that attempt; it
 cannot start inactive work and is canceled by Destroying, revoke, caller/pipe
-cancellation, or its bounded timeout. Spotify 0.1.6 explicitly selects
+cancellation, or its bounded timeout. Spotify 0.1.7 explicitly selects
 `keep-alive` so idle unload cannot destroy the already-started task while the
 browser owns foreground; its polling, progress, rendering, and ordinary broker
 work still obey visible/state lifetimes. The

@@ -24,7 +24,7 @@ public sealed class WindowsSpotifyPlatformBackend :
     // outlive the overlay window. Keep the listener bounded, but do not apply
     // the ordinary short broker request deadline to a human OAuth flow.
     internal static readonly TimeSpan AuthorizationCallbackTimeout =
-        TimeSpan.FromMinutes(5);
+        TimeSpan.FromMinutes(15);
 
     private const int MaximumClientIdCharacters = 128;
     private const int MaximumAutomaticRetryDelaySeconds = 30;
@@ -197,7 +197,7 @@ public sealed class WindowsSpotifyPlatformBackend :
                 // ReceiveAsync starts the loopback listener synchronously before
                 // yielding, so the browser can never beat listener startup.
                 var callback = await ReceiveAuthorizationAsync(
-                    authorizationUri, cancellationToken).ConfigureAwait(false);
+                    authorizationUri, expectedState, cancellationToken).ConfigureAwait(false);
                 ValidateCallback(callback, expectedState);
                 var token = await ExchangeAuthorizationCodeAsync(
                     configuration.ClientId, callback.Code!, verifier, scopes, cancellationToken)
@@ -405,12 +405,13 @@ public sealed class WindowsSpotifyPlatformBackend :
     }
 
     private async Task<SpotifyAuthorizationCallback> ReceiveAuthorizationAsync(
-        Uri authorizationUri, CancellationToken cancellationToken)
+        Uri authorizationUri, string expectedState, CancellationToken cancellationToken)
     {
         using var authorizationLifetime =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var callbackTask = _callback.ReceiveAsync(
-            RedirectUri, AuthorizationCallbackTimeout, authorizationLifetime.Token);
+            RedirectUri, expectedState, AuthorizationCallbackTimeout,
+            authorizationLifetime.Token);
         try
         {
             // ReceiveAsync starts the listener before its first await, but an

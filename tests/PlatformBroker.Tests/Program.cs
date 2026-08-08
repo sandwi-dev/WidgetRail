@@ -43,6 +43,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
     ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
     ("Pipe Spotify authorization timeout is exact and callback-bounded", PipeSpotifyAuthorizationTimeoutIsExact),
+    ("Pipe Spotify connect remains live when foreground loss backgrounds the widget", PipeSpotifyConnectSurvivesBackground),
     ("Pipe loopback timeout extends only the declared long operation", PipeLoopbackTimeoutIsOperationSpecific),
     ("Pipe transports a near-limit loopback JSON response", PipeLoopbackNearLimitResponse),
     ("Pipe request cancellation reaches the fixed backend", PipeCancellationIsObserved),
@@ -585,13 +586,73 @@ static Task PipeSpotifyAuthorizationTimeoutIsExact()
         CapabilityId = PlatformCapabilities.SpotifyConfigurationV1,
     };
 
-    Assert.Equal(TimeSpan.FromMinutes(7),
+    Assert.Equal(TimeSpan.FromMinutes(17),
         BrokerPipeRequestTimeoutPolicy.Resolve(options, connect));
     Assert.Equal(options.RequestTimeout,
         BrokerPipeRequestTimeoutPolicy.Resolve(options, disconnect));
     Assert.Equal(options.RequestTimeout,
         BrokerPipeRequestTimeoutPolicy.Resolve(options, unrelatedConnectName));
     return Task.CompletedTask;
+}
+
+static async Task PipeSpotifyConnectSurvivesBackground()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(
+        identity, PlatformCapabilities.SpotifyAuthorizationV1, ConsentDecision.Grant);
+    await store.SetDecisionAsync(
+        identity, PlatformCapabilities.SpotifyPlaybackReadV1, ConsentDecision.Grant);
+    var backend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: false);
+    var pipeName = $"gba-broker-spotify-background-{Guid.NewGuid():N}";
+    var options = TransportOptions(requestTimeout: TimeSpan.FromSeconds(2));
+    await using var server = new BrokerPipeServer(
+        pipeName,
+        identity,
+        [
+            PlatformCapabilities.SpotifyAuthorizationV1,
+            PlatformCapabilities.SpotifyPlaybackReadV1,
+        ],
+        store,
+        backend,
+        options,
+        new string('S', 64));
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce, options);
+    await client.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+
+    var pending = client.RequestAsync(
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationConnect,
+        new { requestedScopes = new[] { "playbackStateRead" } });
+    await backend.SpotifyConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    // Opening the system browser moves the overlay through the same Background
+    // transition used by Alt-Tab. The one already-authorized Connect request
+    // must retain both ends of the pipe while ordinary background work remains denied.
+    server.SetLifecycle(BrokerLifecycleState.Background);
+    await Task.Delay(50);
+    Assert.True(!pending.IsCompleted,
+        "Background completed or canceled the in-flight Spotify pipe request.");
+    Assert.True(!backend.SpotifyConnectCancellationObserved.Task.IsCompleted,
+        "Background canceled Spotify Connect after it crossed the broker pipe.");
+
+    backend.SpotifyConnectRelease.TrySetResult();
+    var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(response.Succeeded, response.ErrorCode);
+    Assert.Equal(1, backend.SpotifyConnectEffects);
+
+    var denied = await client.RequestAsync(
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationConnect,
+        new { requestedScopes = new[] { "playbackStateRead" } });
+    Assert.Equal("lifecycle_denied", denied.ErrorCode);
+
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
 }
 
 static async Task PipeLoopbackNearLimitResponse()
