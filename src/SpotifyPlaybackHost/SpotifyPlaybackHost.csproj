@@ -12,6 +12,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <ProjectReference Include="..\SpotifyPlaybackProtocol\SpotifyPlaybackProtocol.csproj" />
   </ItemGroup>
   <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup>

@@ -62,6 +62,20 @@ public enum WidgetSurfaceMode
 }
 
 /// <summary>
+/// Host-resolved responsive visibility. Conditional nodes remain in the
+/// immutable snapshot, but the host excludes an inactive node and its complete
+/// subtree from layout, paint, pointer input, controller focus, shortcuts, and
+/// accessibility exposure.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ResponsiveVisibility>))]
+public enum ResponsiveVisibility
+{
+    Always,
+    CompactOnly,
+    ExpandedOnly,
+}
+
+/// <summary>
 /// Bounded logical-DIP hints for the currently published view. The host may
 /// choose any smaller or larger safe size; widgets must remain responsive.
 /// Width/height pairs are atomic so partially specified geometry cannot leak
@@ -176,6 +190,11 @@ public sealed record ViewNode
 {
     public required string Id { get; init; }
     public required ViewNodeKind Kind { get; init; }
+    /// <summary>
+    /// Optional protocol-v9 responsive condition. Omission is equivalent to
+    /// <see cref="ResponsiveVisibility.Always"/>.
+    /// </summary>
+    public ResponsiveVisibility? VisibleWhen { get; init; }
     public string? Text { get; init; }
     public string? AccessibilityLabel { get; init; }
     /// <summary>A localized, human-readable value announced for value controls.</summary>

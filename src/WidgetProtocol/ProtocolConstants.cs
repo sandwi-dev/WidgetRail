@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -13,6 +13,7 @@ public static class ProtocolConstants
     public const int InlinePngImageVersion = 6;
     public const int ActionSurfaceVersion = 7;
     public const int ResponsiveGridVersion = 8;
+    public const int ResponsiveVisibilityVersion = 9;
     public const double MinimumSurfaceWidth = 240;
     public const double MaximumSurfaceWidth = 1_600;
     public const double MinimumSurfaceHeight = 180;

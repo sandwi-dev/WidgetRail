@@ -43,6 +43,10 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int SpotifyConnectCalls { get; private set; }
     public int SpotifyDisconnectCalls { get; private set; }
     public int SpotifyPlaybackControlCalls { get; private set; }
+    public int SpotifyTransferCalls { get; private set; }
+    public int SpotifyQueueAddCalls { get; private set; }
+    public int SpotifyPlaybackStartCalls { get; private set; }
+    public int SpotifyLocalPlaybackControlCalls { get; private set; }
     public int AppLibraryLaunchCalls { get; private set; }
     public int AppLibraryReadCalls { get; private set; }
     public int AppLibraryRefreshCalls { get; private set; }
@@ -63,6 +67,9 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public BrokerWidgetIdentity? LastSpotifyIdentity { get; private set; }
     public ConnectSpotifyRequest? LastSpotifyConnectRequest { get; private set; }
     public SpotifyPlaybackCommand? LastSpotifyPlaybackCommand { get; private set; }
+    public TransferSpotifyPlaybackRequest? LastSpotifyTransferRequest { get; private set; }
+    public AddSpotifyQueueItemRequest? LastSpotifyQueueAddRequest { get; private set; }
+    public StartSpotifyPlaybackRequest? LastSpotifyStartRequest { get; private set; }
     public WifiRadioSummary WifiRadio { get; set; } = new(WifiRadioState.On, true);
     public BluetoothRadioState BluetoothRadioState { get; set; } = BluetoothRadioState.On;
     public bool CanControlBluetoothRadio { get; set; } = true;
@@ -80,6 +87,12 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         false, false, 0, 0, 0, SpotifyRepeatState.Off, false, null,
         new SpotifyPlaybackDisallowedActions(false, false, false, false,
             false, false, false, false), "Spotify");
+    public SpotifyDevicesSummary SpotifyDevices { get; set; } = new([]);
+    public SpotifyQueueSummary SpotifyQueue { get; set; } = new(null, [], false);
+    public SpotifyLocalPlaybackSummary SpotifyLocalPlayback { get; set; } = new(
+        SpotifyLocalPlaybackState.Disabled, "This PC · Game Bar", null, null);
+    public SpotifyPlaylistPageSummary SpotifyPlaylists { get; set; } = new([], 0, 20, 0);
+    public SpotifyPlaylistItemsSummary? SpotifyPlaylistItems { get; set; }
 
     public void SetAudioSessions(IEnumerable<AudioSessionSummary> sessions)
     {
@@ -453,6 +466,110 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         LastSpotifyIdentity = identity;
         LastSpotifyPlaybackCommand = command;
         return Task.CompletedTask;
+    }
+
+    public Task<SpotifyDevicesSummary> GetSpotifyDevicesAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyDevices);
+    }
+
+    public Task TransferSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, TransferSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyTransferCalls++;
+        LastSpotifyIdentity = identity;
+        LastSpotifyTransferRequest = request;
+        return Task.CompletedTask;
+    }
+
+    public Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyQueue);
+    }
+
+    public Task AddSpotifyQueueItemAsync(
+        BrokerWidgetIdentity identity, AddSpotifyQueueItemRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyQueueAddCalls++;
+        LastSpotifyIdentity = identity;
+        LastSpotifyQueueAddRequest = request;
+        return Task.CompletedTask;
+    }
+
+    public Task StartSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, StartSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyPlaybackStartCalls++;
+        LastSpotifyIdentity = identity;
+        LastSpotifyStartRequest = request;
+        return Task.CompletedTask;
+    }
+
+    public Task<SpotifyLocalPlaybackSummary> GetSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyLocalPlayback);
+    }
+
+    public Task<SpotifyLocalPlaybackSummary> ControlSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, SpotifyLocalPlaybackCommand command,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SpotifyLocalPlaybackControlCalls++;
+        LastSpotifyIdentity = identity;
+        SpotifyLocalPlayback = command.Operation switch
+        {
+            SpotifyLocalPlaybackOperation.StartAndTransfer => SpotifyLocalPlayback with
+            {
+                State = SpotifyLocalPlaybackState.Active,
+                DisplayMessage = "Playing here",
+            },
+            SpotifyLocalPlaybackOperation.Stop => SpotifyLocalPlayback with
+            {
+                State = SpotifyLocalPlaybackState.Disabled,
+                DisplayMessage = null,
+            },
+            SpotifyLocalPlaybackOperation.SetVolume => SpotifyLocalPlayback with
+            {
+                VolumePercent = command.VolumePercent,
+            },
+            _ => SpotifyLocalPlayback,
+        };
+        return Task.FromResult(SpotifyLocalPlayback);
+    }
+
+    public Task<SpotifyPlaylistPageSummary> GetSpotifyPlaylistsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistPageRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyPlaylists);
+    }
+
+    public Task<SpotifyPlaylistItemsSummary> GetSpotifyPlaylistItemsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastSpotifyIdentity = identity;
+        return Task.FromResult(SpotifyPlaylistItems ?? throw new BrokerException(
+            "not_found", "Spotify playlist is unavailable."));
     }
 
     public Task<PrivateSecretMetadataSummary> GetPrivateSecretMetadataAsync(

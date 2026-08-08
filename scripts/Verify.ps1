@@ -85,6 +85,9 @@ try {
     Invoke-Checked -Description 'Build and test trusted Spotify Web Playback host' -Command {
         dotnet run --project 'tests\SpotifyPlaybackHost.Tests\SpotifyPlaybackHost.Tests.csproj' --configuration $Configuration
     }
+    Invoke-Checked -Description 'Build and test trusted Spotify playback process client' -Command {
+        dotnet run --project 'tests\SpotifyPlaybackClient.Tests\SpotifyPlaybackClient.Tests.csproj' --configuration $Configuration
+    }
     Invoke-Checked -Description 'Build and test Spotify community widget' -Command {
         dotnet run --project 'tests\SpotifyWidget.Tests\SpotifyWidget.Tests.csproj' --configuration $Configuration
     }

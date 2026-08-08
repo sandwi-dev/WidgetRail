@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GameBarAlternative.SpotifyPlaybackHost;
+using GameBarAlternative.SpotifyPlayback;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -92,6 +93,13 @@ static Task TokenLeaseContract()
 
 static Task ProtocolContract()
 {
+    var encoded = SpotifyPlaybackProtocolCodec.EncodeRequest(
+        "parent-1", "set_volume", new { volume = 0.5 });
+    var encodedRequest = SpotifyPlaybackProtocolCodec.DecodeRequest(encoded);
+    Assert.Equal("parent-1", encodedRequest.RequestId);
+    Assert.Equal("set_volume", encodedRequest.Type);
+    Assert.Equal(0.5, encodedRequest.Payload.GetProperty("volume").GetDouble());
+
     var request = SpotifyPlaybackProtocolCodec.DecodeRequest(
         "{\"version\":1,\"requestId\":\"r-1\",\"type\":\"pause\",\"payload\":{}}");
     Assert.Equal("r-1", request.RequestId);
@@ -121,6 +129,15 @@ static Task EventContract()
     Assert.Equal("device-1",
         document.RootElement.GetProperty("payload").GetProperty("deviceId").GetString());
     Assert.True(json.Length <= SpotifyPlaybackProtocol.MaximumMessageCharacters);
+
+    var decoded = SpotifyPlaybackProtocolCodec.DecodeEvent(json);
+    Assert.Equal("ready", decoded.Type);
+    Assert.Equal<string?>(null, decoded.RequestId);
+    Assert.Equal("device-1", decoded.Payload.GetProperty("deviceId").GetString());
+    Assert.Throws<SpotifyPlaybackProtocolException>(() =>
+        SpotifyPlaybackProtocolCodec.DecodeEvent(
+            "{\"version\":1,\"requestId\":null,\"type\":\"ready\",\"payload\":{},\"extra\":true}"),
+        "invalid_message");
     return Task.CompletedTask;
 }
 

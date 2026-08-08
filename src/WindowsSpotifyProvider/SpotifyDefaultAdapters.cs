@@ -10,6 +10,7 @@ namespace GameBarAlternative.WindowsSpotifyProvider;
 internal sealed class SpotifyHttpTransport : ISpotifyHttpTransport
 {
     internal const int MaximumResponseBytes = 512 * 1024;
+    internal const int MaximumRequestBytes = 64 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly HttpClient _client;
 
@@ -39,9 +40,24 @@ internal sealed class SpotifyHttpTransport : ISpotifyHttpTransport
             Version = HttpVersion.Version20,
             VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
         };
+        if (request.FormBody is not null && request.JsonBody is not null)
+            throw new SpotifyProviderException(
+                "invalid_request", "Spotify request content is invalid.");
         if (request.FormBody is not null)
+        {
+            if (StrictUtf8.GetByteCount(request.FormBody) > MaximumRequestBytes)
+                throw new SpotifyProviderException(
+                    "invalid_request", "Spotify request content is too large.");
             message.Content = new StringContent(
                 request.FormBody, StrictUtf8, "application/x-www-form-urlencoded");
+        }
+        else if (request.JsonBody is not null)
+        {
+            if (StrictUtf8.GetByteCount(request.JsonBody) > MaximumRequestBytes)
+                throw new SpotifyProviderException(
+                    "invalid_request", "Spotify request content is too large.");
+            message.Content = new StringContent(request.JsonBody, StrictUtf8, "application/json");
+        }
         if (request.Headers is not null)
         {
             foreach (var (name, value) in request.Headers)

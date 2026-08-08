@@ -73,6 +73,8 @@ public static class PlatformCapabilities
     public const string SpotifyAuthorizationV1 = "external.spotify.authorization.v1";
     public const string SpotifyPlaybackReadV1 = "external.spotify.playback.read.v1";
     public const string SpotifyPlaybackControlV1 = "external.spotify.playback.control.v1";
+    public const string SpotifyLocalPlaybackV1 = "external.spotify.local-playback.v1";
+    public const string SpotifyPlaylistsReadV1 = "external.spotify.playlists.read.v1";
     public const string PrivateSecretsV1 = "storage.private-secrets.v1";
     public const string PrivateStateV1 = "storage.private-state.v1";
 
@@ -116,6 +118,15 @@ public static class PlatformCapabilities
     public const string SpotifyAuthorizationDisconnect = "spotify.authorization.disconnect";
     public const string SpotifyPlaybackGet = "spotify.playback.get";
     public const string SpotifyPlaybackControl = "spotify.playback.control";
+    public const string SpotifyPlaybackDevicesGet = "spotify.playback.devices.get";
+    public const string SpotifyPlaybackTransfer = "spotify.playback.transfer";
+    public const string SpotifyPlaybackQueueGet = "spotify.playback.queue.get";
+    public const string SpotifyPlaybackQueueAdd = "spotify.playback.queue.add";
+    public const string SpotifyPlaybackStart = "spotify.playback.start";
+    public const string SpotifyLocalPlaybackGet = "spotify.local-playback.get";
+    public const string SpotifyLocalPlaybackControl = "spotify.local-playback.control";
+    public const string SpotifyPlaylistsGet = "spotify.playlists.get";
+    public const string SpotifyPlaylistItemsGet = "spotify.playlists.items.get";
     public const string LoopbackHttpGetJson = "loopback.http.get-json";
     public const string LoopbackHttpPostJson = "loopback.http.post-json";
     public const string PrivateSecretExists = "private-secret.exists";
@@ -200,10 +211,22 @@ public static class PlatformCapabilities
                 ReadOperations: Set(SpotifyAuthorizationGet),
                 InFlightContinuationOperations: Set(SpotifyAuthorizationConnect)),
             [SpotifyPlaybackReadV1] = new(SpotifyPlaybackReadV1, 1,
-                BrokerCapabilityKind.Read, Set(SpotifyPlaybackGet), Set(SpotifyPlaybackChanged)),
+                BrokerCapabilityKind.Read,
+                Set(SpotifyPlaybackGet, SpotifyPlaybackDevicesGet, SpotifyPlaybackQueueGet),
+                Set(SpotifyPlaybackChanged)),
             [SpotifyPlaybackControlV1] = new(SpotifyPlaybackControlV1, 1,
-                BrokerCapabilityKind.Control, Set(SpotifyPlaybackControl), Set(),
+                BrokerCapabilityKind.Control,
+                Set(SpotifyPlaybackControl, SpotifyPlaybackTransfer,
+                    SpotifyPlaybackQueueAdd, SpotifyPlaybackStart), Set(),
                 AllowsDashboardGesture: true),
+            [SpotifyLocalPlaybackV1] = new(SpotifyLocalPlaybackV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(SpotifyLocalPlaybackGet, SpotifyLocalPlaybackControl), Set(),
+                AllowsDashboardGesture: false,
+                ReadOperations: Set(SpotifyLocalPlaybackGet)),
+            [SpotifyPlaylistsReadV1] = new(SpotifyPlaylistsReadV1, 1,
+                BrokerCapabilityKind.Read,
+                Set(SpotifyPlaylistsGet, SpotifyPlaylistItemsGet), Set()),
             [PrivateSecretsV1] = new(PrivateSecretsV1, 1,
                 BrokerCapabilityKind.Control,
                 Set(PrivateSecretExists, PrivateSecretMetadata,

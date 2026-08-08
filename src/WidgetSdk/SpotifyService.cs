@@ -27,6 +27,12 @@ public enum WidgetSpotifyAuthorizationScope
 {
     PlaybackStateRead,
     PlaybackStateControl,
+    LocalPlayback,
+    PlaylistsRead,
+    LibraryRead,
+    LibraryModify,
+    RecentlyPlayedRead,
+    UserTopRead,
 }
 
 public sealed record ConnectWidgetSpotifyRequest(
@@ -106,6 +112,118 @@ public sealed record WidgetSpotifyPlaybackCommand(
 public sealed record WidgetSpotifyPlaybackChanged(
     [property: JsonRequired] WidgetSpotifyPlaybackSummary Playback);
 
+public enum WidgetSpotifyLocalPlaybackState
+{
+    Disabled,
+    Starting,
+    Ready,
+    Active,
+    NotReady,
+    ReauthorizationRequired,
+    PremiumRequired,
+    Unavailable,
+    Error,
+}
+
+/// <summary>
+/// Sanitized state for the trusted singleton Web Playback SDK host. The SDK's
+/// access token and Spotify device ID never cross the widget boundary.
+/// </summary>
+public sealed record WidgetSpotifyLocalPlaybackSummary(
+    [property: JsonRequired] WidgetSpotifyLocalPlaybackState State,
+    [property: JsonRequired] string DeviceName,
+    int? VolumePercent,
+    string? DisplayMessage);
+
+public enum WidgetSpotifyLocalPlaybackOperation
+{
+    StartAndTransfer,
+    Stop,
+    SetVolume,
+}
+
+public sealed record WidgetSpotifyLocalPlaybackCommand(
+    [property: JsonRequired] WidgetSpotifyLocalPlaybackOperation Operation,
+    int? VolumePercent = null,
+    bool? ContinuePlaying = null);
+
+public sealed record WidgetSpotifyDeviceSummary(
+    [property: JsonRequired] string DeviceId,
+    [property: JsonRequired] string Name,
+    [property: JsonRequired] string Type,
+    [property: JsonRequired] bool IsActive,
+    [property: JsonRequired] bool IsRestricted,
+    [property: JsonRequired] bool SupportsVolume,
+    int? VolumePercent,
+    [property: JsonRequired] bool IsLocalHost);
+
+public sealed record WidgetSpotifyDevicesSummary(
+    [property: JsonRequired] IReadOnlyList<WidgetSpotifyDeviceSummary> Devices);
+
+public sealed record TransferWidgetSpotifyPlaybackRequest(
+    [property: JsonRequired] string DeviceId,
+    [property: JsonRequired] bool ContinuePlaying);
+
+/// <summary>A bounded track or episode used by queue and collection surfaces.</summary>
+public sealed record WidgetSpotifyMediaItemSummary(
+    [property: JsonRequired] WidgetSpotifyPlaybackItemType ItemType,
+    [property: JsonRequired] string Title,
+    [property: JsonRequired] string Subtitle,
+    [property: JsonRequired] long DurationMilliseconds,
+    string? ArtworkUrl,
+    [property: JsonRequired] string Uri,
+    [property: JsonRequired] string SpotifyUrl,
+    [property: JsonRequired] bool IsPlayable);
+
+public sealed record WidgetSpotifyQueueSummary(
+    WidgetSpotifyMediaItemSummary? CurrentlyPlaying,
+    [property: JsonRequired] IReadOnlyList<WidgetSpotifyMediaItemSummary> Items,
+    [property: JsonRequired] bool IsTruncated);
+
+public sealed record AddWidgetSpotifyQueueItemRequest(
+    [property: JsonRequired] string Uri,
+    string? DeviceId = null);
+
+public sealed record WidgetSpotifyPlaylistSummary(
+    [property: JsonRequired] string PlaylistId,
+    [property: JsonRequired] string Name,
+    string? Description,
+    string? ArtworkUrl,
+    [property: JsonRequired] string SpotifyUrl,
+    [property: JsonRequired] string Uri,
+    [property: JsonRequired] string OwnerName,
+    [property: JsonRequired] bool IsCollaborative,
+    bool? IsPublic,
+    [property: JsonRequired] int ItemCount);
+
+public sealed record WidgetSpotifyPlaylistPageRequest(
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit);
+
+public sealed record WidgetSpotifyPlaylistPageSummary(
+    [property: JsonRequired] IReadOnlyList<WidgetSpotifyPlaylistSummary> Items,
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit,
+    [property: JsonRequired] int Total);
+
+public sealed record WidgetSpotifyPlaylistItemsRequest(
+    [property: JsonRequired] string PlaylistId,
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit);
+
+public sealed record WidgetSpotifyPlaylistItemsSummary(
+    [property: JsonRequired] WidgetSpotifyPlaylistSummary Playlist,
+    [property: JsonRequired] IReadOnlyList<WidgetSpotifyMediaItemSummary> Items,
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit,
+    [property: JsonRequired] int Total);
+
+public sealed record StartWidgetSpotifyPlaybackRequest(
+    string? ContextUri,
+    IReadOnlyList<string>? ItemUris,
+    string? DeviceId = null,
+    int? Offset = null);
+
 /// <summary>Exact, versioned Spotify capability contracts understood by the broker.</summary>
 public static class WidgetSpotifyCapabilities
 {
@@ -113,6 +231,8 @@ public static class WidgetSpotifyCapabilities
     public const string AuthorizationCapabilityId = "external.spotify.authorization.v1";
     public const string PlaybackReadCapabilityId = "external.spotify.playback.read.v1";
     public const string PlaybackControlCapabilityId = "external.spotify.playback.control.v1";
+    public const string LocalPlaybackCapabilityId = "external.spotify.local-playback.v1";
+    public const string PlaylistsReadCapabilityId = "external.spotify.playlists.read.v1";
 
     public const string ConfigurationGetOperationId = "spotify.configuration.get";
     public const string ConfigurationConfigureOperationId = "spotify.configuration.configure";
@@ -121,6 +241,15 @@ public static class WidgetSpotifyCapabilities
     public const string AuthorizationDisconnectOperationId = "spotify.authorization.disconnect";
     public const string PlaybackGetOperationId = "spotify.playback.get";
     public const string PlaybackControlOperationId = "spotify.playback.control";
+    public const string PlaybackDevicesGetOperationId = "spotify.playback.devices.get";
+    public const string PlaybackTransferOperationId = "spotify.playback.transfer";
+    public const string PlaybackQueueGetOperationId = "spotify.playback.queue.get";
+    public const string PlaybackQueueAddOperationId = "spotify.playback.queue.add";
+    public const string PlaybackStartOperationId = "spotify.playback.start";
+    public const string LocalPlaybackGetOperationId = "spotify.local-playback.get";
+    public const string LocalPlaybackControlOperationId = "spotify.local-playback.control";
+    public const string PlaylistsGetOperationId = "spotify.playlists.get";
+    public const string PlaylistItemsGetOperationId = "spotify.playlists.items.get";
     public const string PlaybackChangedEventType = "spotify.playback.changed";
 
     public static WidgetCapabilityOperation<WidgetCapabilityQuery,
@@ -151,6 +280,42 @@ public static class WidgetSpotifyCapabilities
         WidgetCapabilityAcknowledgement> ControlPlayback { get; } =
         new(PlaybackControlCapabilityId, PlaybackControlOperationId);
 
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery,
+        WidgetSpotifyDevicesSummary> GetDevices { get; } =
+        new(PlaybackReadCapabilityId, PlaybackDevicesGetOperationId);
+
+    public static WidgetCapabilityOperation<TransferWidgetSpotifyPlaybackRequest,
+        WidgetCapabilityAcknowledgement> TransferPlayback { get; } =
+        new(PlaybackControlCapabilityId, PlaybackTransferOperationId);
+
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery,
+        WidgetSpotifyQueueSummary> GetQueue { get; } =
+        new(PlaybackReadCapabilityId, PlaybackQueueGetOperationId);
+
+    public static WidgetCapabilityOperation<AddWidgetSpotifyQueueItemRequest,
+        WidgetCapabilityAcknowledgement> AddToQueue { get; } =
+        new(PlaybackControlCapabilityId, PlaybackQueueAddOperationId);
+
+    public static WidgetCapabilityOperation<StartWidgetSpotifyPlaybackRequest,
+        WidgetCapabilityAcknowledgement> StartPlayback { get; } =
+        new(PlaybackControlCapabilityId, PlaybackStartOperationId);
+
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery,
+        WidgetSpotifyLocalPlaybackSummary> GetLocalPlayback { get; } =
+        new(LocalPlaybackCapabilityId, LocalPlaybackGetOperationId);
+
+    public static WidgetCapabilityOperation<WidgetSpotifyLocalPlaybackCommand,
+        WidgetSpotifyLocalPlaybackSummary> ControlLocalPlayback { get; } =
+        new(LocalPlaybackCapabilityId, LocalPlaybackControlOperationId);
+
+    public static WidgetCapabilityOperation<WidgetSpotifyPlaylistPageRequest,
+        WidgetSpotifyPlaylistPageSummary> GetPlaylists { get; } =
+        new(PlaylistsReadCapabilityId, PlaylistsGetOperationId);
+
+    public static WidgetCapabilityOperation<WidgetSpotifyPlaylistItemsRequest,
+        WidgetSpotifyPlaylistItemsSummary> GetPlaylistItems { get; } =
+        new(PlaylistsReadCapabilityId, PlaylistItemsGetOperationId);
+
     public static WidgetCapabilityEvent<WidgetSpotifyPlaybackChanged> PlaybackChanged { get; } =
         new(PlaybackReadCapabilityId, PlaybackChangedEventType);
 }
@@ -164,6 +329,8 @@ public sealed class WidgetSpotifyService
     public const string ExactRedirectUri = "http://127.0.0.1:43827/callback/";
     public const int MaximumClientIdCharacters = 128;
     public const long MaximumPositionMilliseconds = 604_800_000;
+    public const int MaximumCollectionPageSize = 50;
+    public const int MaximumCollectionOffset = 100_000;
 
     private readonly IWidgetCapabilityClient _client;
 
@@ -201,7 +368,7 @@ public sealed class WidgetSpotifyService
     {
         ArgumentNullException.ThrowIfNull(requestedScopes);
         var normalized = requestedScopes.ToArray();
-        if (normalized.Length is < 1 or > 2)
+        if (normalized.Length is < 1 or > 8)
             throw new ArgumentOutOfRangeException(nameof(requestedScopes));
         if (normalized.Any(scope => !Enum.IsDefined(scope)))
             throw new ArgumentOutOfRangeException(nameof(requestedScopes));
@@ -238,6 +405,90 @@ public sealed class WidgetSpotifyService
             throw new WidgetCapabilityException(
                 "malformed_response",
                 "The Spotify provider returned an invalid acknowledgement.");
+    }
+
+    public ValueTask<WidgetSpotifyDevicesSummary> GetDevicesAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(WidgetSpotifyCapabilities.GetDevices,
+            new WidgetCapabilityQuery(), cancellationToken);
+
+    public async ValueTask TransferPlaybackAsync(
+        string deviceId,
+        bool continuePlaying,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOpaqueSpotifyId(deviceId, nameof(deviceId));
+        await RequireAcknowledgementAsync(
+            WidgetSpotifyCapabilities.TransferPlayback,
+            new TransferWidgetSpotifyPlaybackRequest(deviceId, continuePlaying),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public ValueTask<WidgetSpotifyQueueSummary> GetQueueAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(WidgetSpotifyCapabilities.GetQueue,
+            new WidgetCapabilityQuery(), cancellationToken);
+
+    public async ValueTask AddToQueueAsync(
+        string uri,
+        string? deviceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateSpotifyUri(uri, nameof(uri));
+        if (deviceId is not null) ValidateOpaqueSpotifyId(deviceId, nameof(deviceId));
+        await RequireAcknowledgementAsync(
+            WidgetSpotifyCapabilities.AddToQueue,
+            new AddWidgetSpotifyQueueItemRequest(uri, deviceId),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask StartPlaybackAsync(
+        StartWidgetSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateStartPlayback(request);
+        await RequireAcknowledgementAsync(
+            WidgetSpotifyCapabilities.StartPlayback, request, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public ValueTask<WidgetSpotifyLocalPlaybackSummary> GetLocalPlaybackAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(WidgetSpotifyCapabilities.GetLocalPlayback,
+            new WidgetCapabilityQuery(), cancellationToken);
+
+    public ValueTask<WidgetSpotifyLocalPlaybackSummary> ControlLocalPlaybackAsync(
+        WidgetSpotifyLocalPlaybackCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLocalPlaybackCommand(command);
+        return _client.InvokeAsync(
+            WidgetSpotifyCapabilities.ControlLocalPlayback, command, cancellationToken);
+    }
+
+    public ValueTask<WidgetSpotifyPlaylistPageSummary> GetPlaylistsAsync(
+        int offset,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePage(offset, limit);
+        return _client.InvokeAsync(
+            WidgetSpotifyCapabilities.GetPlaylists,
+            new WidgetSpotifyPlaylistPageRequest(offset, limit), cancellationToken);
+    }
+
+    public ValueTask<WidgetSpotifyPlaylistItemsSummary> GetPlaylistItemsAsync(
+        string playlistId,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOpaqueSpotifyId(playlistId, nameof(playlistId));
+        ValidatePage(offset, limit);
+        return _client.InvokeAsync(
+            WidgetSpotifyCapabilities.GetPlaylistItems,
+            new WidgetSpotifyPlaylistItemsRequest(playlistId, offset, limit),
+            cancellationToken);
     }
 
     public ValueTask PlayAsync(CancellationToken cancellationToken = default) =>
@@ -329,5 +580,80 @@ public sealed class WidgetSpotifyService
         };
         if (!valid)
             throw new ArgumentException("Spotify playback command is invalid.", nameof(command));
+    }
+
+    private async ValueTask RequireAcknowledgementAsync<TRequest>(
+        WidgetCapabilityOperation<TRequest, WidgetCapabilityAcknowledgement> operation,
+        TRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _client.InvokeAsync(operation, request, cancellationToken)
+            .ConfigureAwait(false);
+        if (response is null || !response.Acknowledged)
+            throw new WidgetCapabilityException(
+                "malformed_response",
+                "The Spotify provider returned an invalid acknowledgement.");
+    }
+
+    private static void ValidateLocalPlaybackCommand(WidgetSpotifyLocalPlaybackCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (!Enum.IsDefined(command.Operation))
+            throw new ArgumentOutOfRangeException(nameof(command));
+        var valid = command.Operation switch
+        {
+            WidgetSpotifyLocalPlaybackOperation.StartAndTransfer =>
+                command.VolumePercent is null && command.ContinuePlaying is not null,
+            WidgetSpotifyLocalPlaybackOperation.Stop =>
+                command.VolumePercent is null && command.ContinuePlaying is null,
+            WidgetSpotifyLocalPlaybackOperation.SetVolume =>
+                command.VolumePercent is >= 0 and <= 100 && command.ContinuePlaying is null,
+            _ => false,
+        };
+        if (!valid)
+            throw new ArgumentException(
+                "Spotify local-playback command is invalid.", nameof(command));
+    }
+
+    private static void ValidateStartPlayback(StartWidgetSpotifyPlaybackRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if ((request.ContextUri is null) == (request.ItemUris is null) ||
+            request.ItemUris is { Count: < 1 or > 50 } || request.Offset is < 0 ||
+            request.Offset is not null && request.ContextUri is null)
+            throw new ArgumentException("Spotify playback selection is invalid.", nameof(request));
+        if (request.ContextUri is not null)
+            ValidateSpotifyUri(request.ContextUri, nameof(request));
+        if (request.ItemUris is not null)
+        {
+            if (request.ItemUris.Any(string.IsNullOrWhiteSpace))
+                throw new ArgumentException("Spotify playback URI is invalid.", nameof(request));
+            foreach (var uri in request.ItemUris) ValidateSpotifyUri(uri, nameof(request));
+        }
+        if (request.DeviceId is not null)
+            ValidateOpaqueSpotifyId(request.DeviceId, nameof(request));
+    }
+
+    private static void ValidateSpotifyUri(string uri, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uri, parameterName);
+        if (uri.Length > 2_048 || uri.Any(char.IsControl) ||
+            !uri.StartsWith("spotify:", StringComparison.Ordinal) ||
+            uri.Count(character => character == ':') < 2)
+            throw new ArgumentException("Spotify URI is invalid.", parameterName);
+    }
+
+    private static void ValidateOpaqueSpotifyId(string value, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
+        if (value.Length > 256 || value.Any(character => character is < '!' or > '~'))
+            throw new ArgumentException("Spotify identifier is invalid.", parameterName);
+    }
+
+    private static void ValidatePage(int offset, int limit)
+    {
+        if (offset is < 0 or > MaximumCollectionOffset ||
+            limit is < 1 or > MaximumCollectionPageSize)
+            throw new ArgumentOutOfRangeException(nameof(limit));
     }
 }

@@ -1,3 +1,5 @@
+using GameBarAlternative.SpotifyPlayback;
+
 namespace GameBarAlternative.SpotifyPlaybackHost;
 
 /// <summary>Pure deterministic lifecycle for the single SDK player instance.</summary>

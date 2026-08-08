@@ -177,6 +177,48 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         CancellationToken cancellationToken) =>
         _spotify.ControlSpotifyPlaybackAsync(identity, command, cancellationToken);
 
+    public Task<SpotifyDevicesSummary> GetSpotifyDevicesAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        _spotify.GetSpotifyDevicesAsync(identity, cancellationToken);
+
+    public Task TransferSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, TransferSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken) =>
+        _spotify.TransferSpotifyPlaybackAsync(identity, request, cancellationToken);
+
+    public Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        _spotify.GetSpotifyQueueAsync(identity, cancellationToken);
+
+    public Task AddSpotifyQueueItemAsync(
+        BrokerWidgetIdentity identity, AddSpotifyQueueItemRequest request,
+        CancellationToken cancellationToken) =>
+        _spotify.AddSpotifyQueueItemAsync(identity, request, cancellationToken);
+
+    public Task StartSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, StartSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken) =>
+        _spotify.StartSpotifyPlaybackAsync(identity, request, cancellationToken);
+
+    public Task<SpotifyLocalPlaybackSummary> GetSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        _spotify.GetSpotifyLocalPlaybackAsync(identity, cancellationToken);
+
+    public Task<SpotifyLocalPlaybackSummary> ControlSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, SpotifyLocalPlaybackCommand command,
+        CancellationToken cancellationToken) =>
+        _spotify.ControlSpotifyLocalPlaybackAsync(identity, command, cancellationToken);
+
+    public Task<SpotifyPlaylistPageSummary> GetSpotifyPlaylistsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistPageRequest request,
+        CancellationToken cancellationToken) =>
+        _spotify.GetSpotifyPlaylistsAsync(identity, request, cancellationToken);
+
+    public Task<SpotifyPlaylistItemsSummary> GetSpotifyPlaylistItemsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistItemsRequest request,
+        CancellationToken cancellationToken) =>
+        _spotify.GetSpotifyPlaylistItemsAsync(identity, request, cancellationToken);
+
     public Task<PrivateSecretMetadataSummary> GetPrivateSecretMetadataAsync(
         BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
         _privateSecrets.GetPrivateSecretMetadataAsync(identity, slot, cancellationToken);

@@ -85,6 +85,11 @@ struct ButtonContentPlacement final {
 struct DeclarativeRenderOptions final {
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
+    /// Host surface dimensions before detached chrome (such as the controller
+    /// guide footer) is removed from the widget content viewport. Responsive
+    /// branches describe the surface the widget requested, not an internal
+    /// post-chrome layout rectangle.
+    std::optional<declarative::Size> responsiveViewport;
     std::optional<NativeColor> surfaceBackground;
     /// Host-owned rounded viewport mask. Widget roots may paint an opaque
     /// full-viewport background, but cannot square off the shell panel's

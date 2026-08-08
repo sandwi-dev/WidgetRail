@@ -257,6 +257,7 @@ struct DeclarativeRenderer::RenderPass final {
     std::wstring focusedId;
     std::wstring pressedId;
     Rect viewport;
+    bool compactMode{};
     DeclarativeRenderOptions options;
     std::unordered_map<std::string, PreparedNode> prepared;
     std::unordered_map<std::string, PresentationNode> presentation;
@@ -268,6 +269,12 @@ struct DeclarativeRenderer::RenderPass final {
     Rect deferredFocusRect{};
     float deferredFocusOpacity{1.0F};
     std::optional<Rect> deferredFocusClip;
+
+    [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
+        return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
+            (compactMode && node.visibleWhen == L"compactOnly") ||
+            (!compactMode && node.visibleWhen == L"expandedOnly");
+    }
 
     void Add(
         const std::wstring_view nodeId,
@@ -480,6 +487,7 @@ struct DeclarativeRenderer::RenderPass final {
             ? options.accessibility.textScale
             : 1.0F;
         for (const auto& child : node.children) {
+            if (!IsResponsiveVisible(child)) continue;
             element.children.push_back(PrepareNode(
                 child,
                 narrowId,
@@ -519,6 +527,7 @@ struct DeclarativeRenderer::RenderPass final {
         const float inheritedTranslationX,
         const float inheritedTranslationY,
         const Rect ancestorClip) {
+        if (!IsResponsiveVisible(node)) return;
         const auto narrowId = NarrowStableId(node.id);
         const auto preparedNode = prepared.find(narrowId);
         const auto* box = layout.Find(narrowId);
@@ -564,6 +573,7 @@ struct DeclarativeRenderer::RenderPass final {
     void VisitScrollNodes(
         const WidgetNode& node,
         const std::function<void(const WidgetNode&)>& callback) const {
+        if (!IsResponsiveVisible(node)) return;
         if (node.kind == L"scroll") callback(node);
         for (const auto& child : node.children) VisitScrollNodes(child, callback);
     }
@@ -579,15 +589,17 @@ struct DeclarativeRenderer::RenderPass final {
 
     [[nodiscard]] std::vector<const WidgetNode*> FocusPath() const {
         std::vector<const WidgetNode*> path;
+        if (!prepared.contains(NarrowStableId(focusedId))) return path;
         if (!focusedId.empty()) (void)FindNodePath(snapshot->root, focusedId, path);
         return path;
     }
 
-    static void CollectFocusableDescendants(
+    void CollectFocusableDescendants(
         const WidgetNode& node,
         const std::wstring_view inheritedScope,
         const std::wstring_view matchingScope,
-        std::vector<std::wstring_view>& ids) {
+        std::vector<std::wstring_view>& ids) const {
+        if (!IsResponsiveVisible(node)) return;
         const std::wstring_view inputScope = !node.inputScopeId.empty()
             ? std::wstring_view(node.inputScopeId)
             : inheritedScope.empty() ? std::wstring_view(node.id) : inheritedScope;
@@ -970,7 +982,8 @@ struct DeclarativeRenderer::RenderPass final {
             options.surfaceBackground);
         LayoutOptions layoutOptions;
         layoutOptions.pixelScale = options.pixelScale;
-        layoutOptions.responsiveViewport = Size{viewport.width, viewport.height};
+        layoutOptions.responsiveViewport = options.responsiveViewport.value_or(
+            Size{viewport.width, viewport.height});
         layout = declarative::ComputeLayout(
             root,
             viewport,
@@ -1691,6 +1704,10 @@ RenderResult DeclarativeRenderer::Render(
     pass.focusedId = focusedElementId;
     pass.pressedId = options.pressedElementId;
     pass.viewport = viewport;
+    const auto responsiveViewport = options.responsiveViewport.value_or(
+        Size{viewport.width, viewport.height});
+    pass.compactMode = responsiveViewport.width < 960.0F ||
+        responsiveViewport.height < 540.0F;
     pass.options = options;
     if (!FiniteRect(viewport) || viewport.width < 0.0F || viewport.height < 0.0F) {
         pass.Add({}, L"invalid_viewport", L"Viewport must contain finite non-negative geometry.",

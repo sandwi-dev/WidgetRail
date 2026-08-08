@@ -120,6 +120,9 @@ struct WidgetNode final {
     std::wstring imageFit;
     std::wstring glyph;
     std::wstring indicatorSize;
+    // Empty and "always" are equivalent. Protocol-v9 conditional values are
+    // interpreted only by the native host against its compact breakpoint.
+    std::wstring visibleWhen;
     std::wstring inputScopeId;
     std::wstring scrollAxis;
     std::wstring actionSurfaceOrientation;

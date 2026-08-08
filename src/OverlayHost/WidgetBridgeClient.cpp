@@ -472,6 +472,10 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");
     node.indicatorSize = OptionalString(source, L"indicatorSize");
+    node.visibleWhen = OptionalString(source, L"visibleWhen");
+    if (!node.visibleWhen.empty() && node.visibleWhen != L"always" &&
+        node.visibleWhen != L"compactOnly" && node.visibleWhen != L"expandedOnly")
+        throw winrt::hresult_invalid_argument();
     node.inputScopeId = OptionalString(source, L"inputScopeId");
     node.scrollAxis = OptionalString(source, L"scrollAxis");
     node.actionSurfaceOrientation = OptionalString(source, L"actionSurfaceOrientation");

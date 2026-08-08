@@ -12,6 +12,46 @@ public abstract record WidgetElement(string Id)
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         return id;
     }
+
+    /// <summary>
+    /// Makes this element and its complete subtree active only in the selected
+    /// host-resolved responsive mode. Inactive branches own no geometry,
+    /// paint, pointer input, controller focus, shortcuts, or accessibility.
+    /// </summary>
+    public WidgetElement VisibleWhen(ResponsiveVisibility visibility)
+    {
+        if (!Enum.IsDefined(visibility))
+            throw new ArgumentOutOfRangeException(nameof(visibility));
+        return this is ResponsiveBranchElement branch
+            ? branch with { Visibility = visibility }
+            : new ResponsiveBranchElement(this, visibility);
+    }
+}
+
+/// <summary>
+/// A serialization-only responsive modifier. It does not introduce a layout
+/// node or change the wrapped element's stable ID.
+/// </summary>
+public sealed record ResponsiveBranchElement : WidgetElement
+{
+    internal ResponsiveBranchElement(WidgetElement child, ResponsiveVisibility visibility)
+        : base((child ?? throw new ArgumentNullException(nameof(child))).Id)
+    {
+        if (!Enum.IsDefined(visibility))
+            throw new ArgumentOutOfRangeException(nameof(visibility));
+        Child = child;
+        Visibility = visibility;
+        StyleClasses = child.StyleClasses;
+    }
+
+    public WidgetElement Child { get; init; }
+    public ResponsiveVisibility Visibility { get; init; }
+
+    internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with
+    {
+        VisibleWhen = Visibility,
+        StyleClasses = StyleClasses,
+    };
 }
 
 public sealed record StackElement : WidgetElement

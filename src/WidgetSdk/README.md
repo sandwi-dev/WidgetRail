@@ -36,6 +36,17 @@ optional 1–32 column cap. The Grid is not focusable; children keep their stabl
 IDs and normal focus graph. Put unbounded collections in a host-owned Scroll.
 Settings uses this same public helper for its root category surface.
 
+Use `element.VisibleWhen(ResponsiveVisibility.CompactOnly)` and
+`ExpandedOnly` when the same semantic view needs substantially different
+composition below the host's compact breakpoint (less than 960 DIPs wide or
+540 DIPs high). `UI.ResponsiveBranch(...)` is the equivalent non-fluent form.
+This protocol-v9 modifier adds no layout container and preserves the wrapped
+element's stable ID. The inactive element and its complete subtree are absent
+from native layout, paint, pointer hit testing, controller focus, shortcuts,
+and accessibility. Keep the root unconditional and give mutually exclusive
+branches distinct stable IDs; use ordinary responsive Grid/Row wrapping when
+the content hierarchy itself does not need to change.
+
 Use `UI.CodeText(text, id, accessibilityLabel?)` for bounded diagnostics or
 commands. It emits one nonfocusable Text node with `.gbar-code-text`, preserves
 whitespace, and caps content/accessibility text at 4,096 characters. It does

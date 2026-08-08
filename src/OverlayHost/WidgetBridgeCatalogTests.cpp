@@ -91,7 +91,7 @@ int main() {
                 "kind": "stack",
                 "children": [
                     {"id":"play","kind":"button","text":"Play","actionId":"play"},
-                    {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact"},
+                    {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact","visibleWhen":"compactOnly"},
                     {
                         "id":"album","kind":"actionSurface","actionId":"open-album",
                         "accessibilityLabel":"Open album","actionSurfaceOrientation":"horizontal",
@@ -134,6 +134,7 @@ int main() {
     assert(loadingIndicator.kind == L"loadingIndicator");
     assert(loadingIndicator.accessibilityLabel == L"Loading music");
     assert(loadingIndicator.indicatorSize == L"compact");
+    assert(loadingIndicator.visibleWhen == L"compactOnly");
     const auto& actionSurface = styledSnapshot->root.children[2];
     (void)actionSurface;
     assert(actionSurface.kind == L"actionSurface");
@@ -168,6 +169,22 @@ int main() {
         }
     })json", error);
     assert(!invalidGrid && !error.empty());
+
+    error.clear();
+    const auto invalidVisibility = gba::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "sequence": 1,
+            "widgetInstanceId": "visibility.invalid",
+            "activeInputScopeId": "root",
+            "root": {
+                "id": "root", "kind": "stack",
+                "children": [
+                    {"id":"bad","kind":"text","text":"Bad","visibleWhen":"sometimes"}
+                ]
+            }
+        }
+    })json", error);
+    assert(!invalidVisibility && !error.empty());
 
     error.clear();
     const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(

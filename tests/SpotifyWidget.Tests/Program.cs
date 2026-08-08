@@ -15,8 +15,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Setup check refreshes newly saved configuration without starting OAuth", SetupCheckRefreshesConfiguration),
     ("Connect action acknowledges while OAuth remains pending", ConnectAcknowledgesWhilePending),
     ("OAuth survives Background and reconciles when visible", ConnectSurvivesBackground),
-    ("Explicit connect requests only playback scopes", ExplicitConnect),
+    ("Explicit connect requests the four implemented least-privilege scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
+    ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
+    ("Collection pages load lazily and remain cached", LazyPageLoading),
+    ("Playlist detail is a B-dismissible navigation entry", PlaylistDetailBack),
+    ("Devices expose trusted local playback and safe transfer actions", DeviceActions),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
     ("Failed controls roll back optimistic state", FailedControlRollback),
@@ -37,6 +41,9 @@ foreach (var (name, run) in tests)
     {
         failures.Add($"FAIL {name}: {exception.Message}");
         Console.WriteLine(failures[^1]);
+        if (exception is ProtocolValidationException protocol)
+            foreach (var error in protocol.Errors)
+                Console.WriteLine($"  {error.Path}: {error.Code}: {error.Message}");
     }
 }
 
@@ -317,6 +324,8 @@ static async Task ExplicitConnect()
     {
         WidgetSpotifyAuthorizationScope.PlaybackStateRead,
         WidgetSpotifyAuthorizationScope.PlaybackStateControl,
+        WidgetSpotifyAuthorizationScope.LocalPlayback,
+        WidgetSpotifyAuthorizationScope.PlaylistsRead,
     }, harness.LastScopes!);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     Assert.Equal(SpotifyWidgetViewState.Ready, widget.ViewState);
@@ -346,6 +355,88 @@ static async Task ReadyControllerUi()
     Assert.True(snapshot.QuickActions.All(action => action.Capability?.CapabilityId ==
         WidgetSpotifyCapabilities.PlaybackControlCapabilityId),
         "Quick actions bypass the public playback-control authority.");
+    await StopAsync(widget);
+}
+
+static async Task ResponsiveNavigation()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var snapshot = widget.RenderSnapshot("spotify.responsive", 1);
+    Assert.Equal(ProtocolConstants.ResponsiveVisibilityVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ResponsiveVisibility.ExpandedOnly,
+        Find(snapshot.Root, "spotify.shell.wide").VisibleWhen);
+    Assert.Equal(ResponsiveVisibility.CompactOnly,
+        Find(snapshot.Root, "spotify.shell.compact").VisibleWhen);
+    Assert.True(Find(snapshot.Root, "spotify.nav.wide.player").IsSelected == true,
+        "Wide player destination was not selected.");
+    Assert.True(Find(snapshot.Root, "spotify.nav.compact.player").IsSelected == true,
+        "Compact player destination was not selected.");
+    var compactPlayerScroll = Find(snapshot.Root, "spotify.player.compact.scroll");
+    Assert.Equal(ViewNodeKind.Scroll, compactPlayerScroll.Kind);
+    Assert.NotNull(Find(compactPlayerScroll, "spotify.player.compact.play-toggle"));
+    await StopAsync(widget);
+}
+
+static async Task LazyPageLoading()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    Assert.Equal(0, harness.QueueCalls);
+    Assert.Equal(0, harness.PlaylistCalls);
+
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
+    Assert.Equal(1, harness.QueueCalls);
+    Assert.NotNull(Find(widget.RenderSnapshot("spotify.queue", 1).Root,
+        "spotify.queue.item.wide.0"));
+    await widget.OnActionAsync(new("spotify.nav.player", "spotify.nav.wide.player"));
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
+    Assert.Equal(1, harness.QueueCalls);
+
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    Assert.Equal(1, harness.PlaylistCalls);
+    Assert.NotNull(Find(widget.RenderSnapshot("spotify.playlists", 1).Root,
+        "spotify.playlist.item.wide.0"));
+    await StopAsync(widget);
+}
+
+static async Task PlaylistDetailBack()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.compact.0"));
+    var detail = widget.RenderSnapshot("spotify.playlist.detail", 1);
+    Assert.NotNull(Find(detail.Root, "spotify.playlist.track.wide.0"));
+    AssertShortcut(detail.Root, ControllerButton.B, "spotify.playlist.back");
+    Assert.Equal("spotify.playlist.play.compact", detail.InitialFocusId);
+    await widget.OnActionAsync(new("spotify.playlist.back", "spotify.playlist.play.compact"));
+    var list = widget.RenderSnapshot("spotify.playlist.list", 2);
+    Assert.NotNull(Find(list.Root, "spotify.playlist.item.wide.0"));
+    Assert.Equal("spotify.playlist.item.compact.0", list.InitialFocusId);
+    Assert.True(!list.Root.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.B),
+        "Playlist root unexpectedly consumed B instead of returning to the tray.");
+    await StopAsync(widget);
+}
+
+static async Task DeviceActions()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.wide.devices"));
+    var snapshot = widget.RenderSnapshot("spotify.devices", 1);
+    Assert.NotNull(Find(snapshot.Root, "spotify.local.wide.action"));
+    Assert.NotNull(Find(snapshot.Root, "spotify.device.wide.1"));
+
+    await widget.OnActionAsync(new("spotify.local.start", "spotify.local.wide.action"));
+    Assert.Equal(WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
+        harness.LocalCommands.Single().Operation);
+    await widget.OnActionAsync(new("spotify.device.select.1", "spotify.device.wide.1"));
+    Assert.Equal("remote-device", harness.TransferredDevices.Single());
     await StopAsync(widget);
 }
 
@@ -430,6 +521,11 @@ static Task ManifestContract()
         WidgetSpotifyCapabilities.PlaybackReadCapabilityId), "Playback read permission missing.");
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaybackControlCapabilityId), "Control must remain optional.");
+    Assert.True(manifest.OptionalPermissions.Contains(
+        WidgetSpotifyCapabilities.LocalPlaybackCapabilityId), "Local playback must remain optional.");
+    Assert.True(manifest.OptionalPermissions.Contains(
+        WidgetSpotifyCapabilities.PlaylistsReadCapabilityId), "Playlist reading must remain optional.");
+    Assert.Equal("0.2.0", manifest.Version);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
@@ -505,9 +601,43 @@ file sealed class SpotifyHarness
     public int ConnectCalls { get; private set; }
     public int ConfigurationCalls { get; private set; }
     public int PlaybackCalls { get; private set; }
+    public int QueueCalls { get; private set; }
+    public int PlaylistCalls { get; private set; }
+    public int DeviceCalls { get; private set; }
     public IReadOnlyList<WidgetSpotifyAuthorizationScope>? LastScopes { get; private set; }
     public List<WidgetSpotifyPlaybackCommand> Commands { get; } = [];
+    public List<WidgetSpotifyLocalPlaybackCommand> LocalCommands { get; } = [];
+    public List<string> TransferredDevices { get; } = [];
+    public List<StartWidgetSpotifyPlaybackRequest> StartedPlayback { get; } = [];
     public WidgetSpotifyPlaybackSummary Playback { get; set; } = PlaybackSnapshot();
+    public WidgetSpotifyQueueSummary Queue { get; set; } = new(
+        new WidgetSpotifyMediaItemSummary(WidgetSpotifyPlaybackItemType.Track,
+            "Small Hours", "Northern Lines", 240_000,
+            "https://i.scdn.co/image/current", "spotify:track:current",
+            "https://open.spotify.com/track/current", true),
+        [new WidgetSpotifyMediaItemSummary(WidgetSpotifyPlaybackItemType.Track,
+            "Midnight Run", "Northern Lines", 201_000,
+            "https://i.scdn.co/image/next", "spotify:track:next",
+            "https://open.spotify.com/track/next", true)], false);
+    public WidgetSpotifyPlaylistPageSummary Playlists { get; set; } = new(
+        [new WidgetSpotifyPlaylistSummary("playlist-one", "Night Drive", "Late-night focus",
+            "https://i.scdn.co/image/playlist", "https://open.spotify.com/playlist/playlist-one",
+            "spotify:playlist:playlist-one", "Listener", false, true, 1)], 0, 50, 1);
+    public WidgetSpotifyPlaylistItemsSummary PlaylistDetail { get; set; } = new(
+        new WidgetSpotifyPlaylistSummary("playlist-one", "Night Drive", "Late-night focus",
+            "https://i.scdn.co/image/playlist", "https://open.spotify.com/playlist/playlist-one",
+            "spotify:playlist:playlist-one", "Listener", false, true, 1),
+        [new WidgetSpotifyMediaItemSummary(WidgetSpotifyPlaybackItemType.Track,
+            "Midnight Run", "Northern Lines", 201_000,
+            "https://i.scdn.co/image/next", "spotify:track:next",
+            "https://open.spotify.com/track/next", true)], 0, 50, 1);
+    public WidgetSpotifyDevicesSummary Devices { get; set; } = new(
+        [new WidgetSpotifyDeviceSummary("local-placeholder", "Game Bar Alternative",
+            "Computer", false, false, true, 60, true),
+         new WidgetSpotifyDeviceSummary("remote-device", "Living Room", "Speaker",
+            true, false, true, 45, false)]);
+    public WidgetSpotifyLocalPlaybackSummary LocalPlayback { get; set; } = new(
+        WidgetSpotifyLocalPlaybackState.Ready, "Game Bar Alternative", 60, "Ready to play here");
     public WidgetHostServices Services { get; }
 
     public SpotifyHarness()
@@ -553,6 +683,63 @@ file sealed class SpotifyHarness
                     return ValueTask.FromResult(Playback);
                 })
             .WithHandler(WidgetSpotifyCapabilities.ControlPlayback, ControlAsync)
+            .WithHandler(WidgetSpotifyCapabilities.GetQueue,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    QueueCalls++;
+                    return ValueTask.FromResult(Queue);
+                })
+            .WithHandler(WidgetSpotifyCapabilities.GetPlaylists,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    PlaylistCalls++;
+                    return ValueTask.FromResult(Playlists);
+                })
+            .WithHandler(WidgetSpotifyCapabilities.GetPlaylistItems,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return ValueTask.FromResult(PlaylistDetail);
+                })
+            .WithHandler(WidgetSpotifyCapabilities.GetDevices,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    DeviceCalls++;
+                    return ValueTask.FromResult(Devices);
+                })
+            .WithHandler(WidgetSpotifyCapabilities.TransferPlayback,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    TransferredDevices.Add(request.DeviceId);
+                    return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+                })
+            .WithHandler(WidgetSpotifyCapabilities.StartPlayback,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    StartedPlayback.Add(request);
+                    return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+                })
+            .WithHandler(WidgetSpotifyCapabilities.GetLocalPlayback,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return ValueTask.FromResult(LocalPlayback);
+                })
+            .WithHandler(WidgetSpotifyCapabilities.ControlLocalPlayback,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    LocalCommands.Add(request);
+                    LocalPlayback = request.Operation == WidgetSpotifyLocalPlaybackOperation.Stop
+                        ? LocalPlayback with { State = WidgetSpotifyLocalPlaybackState.Disabled }
+                        : LocalPlayback with { State = WidgetSpotifyLocalPlaybackState.Active };
+                    return ValueTask.FromResult(LocalPlayback);
+                })
             .Build();
     }
 

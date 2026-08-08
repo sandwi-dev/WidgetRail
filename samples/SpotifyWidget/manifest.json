@@ -3,7 +3,7 @@
   "id": "org.gbar.samples.spotify",
   "publisher": "org.gbar.samples",
   "name": "Spotify",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -20,7 +20,9 @@
     "external.spotify.playback.read.v1"
   ],
   "optionalPermissions": [
-    "external.spotify.playback.control.v1"
+    "external.spotify.playback.control.v1",
+    "external.spotify.local-playback.v1",
+    "external.spotify.playlists.read.v1"
   ],
   "residencyPolicy": {
     "schemaVersion": 1,

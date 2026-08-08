@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),
     ("Protocol v2 scroll containers round-trip with host-owned semantics", ScrollContainersRoundTrip),
     ("Baseline widgets remain protocol v1 compatible", BaselineProtocolCompatibility),
+    ("Protocol v9 responsive branches are semantic and versioned", ResponsiveVisibilityRoundTrip),
     ("Scroll containers and surface hints fail closed", ScrollAndSurfaceValidation),
     ("Duplicate stable IDs are rejected", DuplicateIdsAreRejected),
     ("Broken focus neighbors are rejected", BrokenFocusIsRejected),
@@ -578,6 +579,10 @@ static async Task SpotifyTypedContracts()
         WidgetSpotifyCapabilities.PlaybackReadCapabilityId);
     Assert.Equal("external.spotify.playback.control.v1",
         WidgetSpotifyCapabilities.PlaybackControlCapabilityId);
+    Assert.Equal("external.spotify.local-playback.v1",
+        WidgetSpotifyCapabilities.LocalPlaybackCapabilityId);
+    Assert.Equal("external.spotify.playlists.read.v1",
+        WidgetSpotifyCapabilities.PlaylistsReadCapabilityId);
     Assert.Equal("spotify.configuration.get",
         WidgetSpotifyCapabilities.GetConfiguration.OperationId);
     Assert.Equal("spotify.configuration.configure",
@@ -592,11 +597,19 @@ static async Task SpotifyTypedContracts()
         WidgetSpotifyCapabilities.GetPlayback.OperationId);
     Assert.Equal("spotify.playback.control",
         WidgetSpotifyCapabilities.ControlPlayback.OperationId);
+    Assert.Equal("spotify.playback.devices.get",
+        WidgetSpotifyCapabilities.GetDevices.OperationId);
+    Assert.Equal("spotify.playback.queue.get",
+        WidgetSpotifyCapabilities.GetQueue.OperationId);
+    Assert.Equal("spotify.local-playback.control",
+        WidgetSpotifyCapabilities.ControlLocalPlayback.OperationId);
+    Assert.Equal("spotify.playlists.get",
+        WidgetSpotifyCapabilities.GetPlaylists.OperationId);
     Assert.Equal("spotify.playback.changed",
         WidgetSpotifyCapabilities.PlaybackChanged.EventType);
     Assert.Equal("http://127.0.0.1:43827/callback/",
         WidgetSpotifyService.ExactRedirectUri);
-    Assert.Equal(2, Enum.GetValues<WidgetSpotifyAuthorizationScope>().Length);
+    Assert.Equal(8, Enum.GetValues<WidgetSpotifyAuthorizationScope>().Length);
     Assert.Equal(7, Enum.GetValues<WidgetSpotifyPlaybackOperation>().Length);
 
     var publicSpotifyMembers = typeof(WidgetSpotifyService).Assembly.GetExportedTypes()
@@ -659,6 +672,48 @@ static async Task SpotifyTypedContracts()
                 Assert.Equal<long?>(42_000, request.PositionMilliseconds);
                 return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
             })
+        .WithResponse(
+            WidgetSpotifyCapabilities.GetDevices,
+            new WidgetSpotifyDevicesSummary([
+                new("device-opaque", "This PC", "computer", true, false, true, 75, true),
+            ]))
+        .WithHandler(
+            WidgetSpotifyCapabilities.TransferPlayback,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal("device-opaque", request.DeviceId);
+                Assert.True(request.ContinuePlaying, "Transfer did not retain playback state.");
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+            })
+        .WithResponse(
+            WidgetSpotifyCapabilities.GetQueue,
+            new WidgetSpotifyQueueSummary(null, [
+                new(WidgetSpotifyPlaybackItemType.Track, "Queued", "Artist", 180_000,
+                    null, "spotify:track:queued", "https://open.spotify.com/track/queued", true),
+            ], false))
+        .WithResponse(
+            WidgetSpotifyCapabilities.GetLocalPlayback,
+            new WidgetSpotifyLocalPlaybackSummary(
+                WidgetSpotifyLocalPlaybackState.Ready, "This PC · Game Bar", 75, null))
+        .WithHandler(
+            WidgetSpotifyCapabilities.ControlLocalPlayback,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal(WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
+                    request.Operation);
+                return ValueTask.FromResult(new WidgetSpotifyLocalPlaybackSummary(
+                    WidgetSpotifyLocalPlaybackState.Active,
+                    "This PC · Game Bar", 75, "Playing here"));
+            })
+        .WithResponse(
+            WidgetSpotifyCapabilities.GetPlaylists,
+            new WidgetSpotifyPlaylistPageSummary([
+                new("playlist-opaque", "Gaming", null, null,
+                    "https://open.spotify.com/playlist/playlist-opaque",
+                    "spotify:playlist:playlist-opaque", "Owner", false, true, 12),
+            ], 0, 20, 1))
         .Build();
     var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
 
@@ -677,6 +732,16 @@ static async Task SpotifyTypedContracts()
         (await widget.Spotify.DisconnectAsync()).State);
     Assert.Equal("Typed title", (await widget.Spotify.GetPlaybackAsync()).Item!.Title);
     await widget.Spotify.SeekAsync(42_000);
+    Assert.Equal("This PC", (await widget.Spotify.GetDevicesAsync()).Devices.Single().Name);
+    await widget.Spotify.TransferPlaybackAsync("device-opaque", continuePlaying: true);
+    Assert.Equal("Queued", (await widget.Spotify.GetQueueAsync()).Items.Single().Title);
+    Assert.Equal(WidgetSpotifyLocalPlaybackState.Ready,
+        (await widget.Spotify.GetLocalPlaybackAsync()).State);
+    Assert.Equal(WidgetSpotifyLocalPlaybackState.Active,
+        (await widget.Spotify.ControlLocalPlaybackAsync(new(
+            WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
+            ContinuePlaying: true))).State);
+    Assert.Equal("Gaming", (await widget.Spotify.GetPlaylistsAsync(0, 20)).Items.Single().Name);
 }
 
 static async Task SpotifyInputValidation()
@@ -726,6 +791,25 @@ static async Task SpotifyInputValidation()
         .AsTask().GetAwaiter().GetResult());
     Assert.Throws<ArgumentException>(() => widget.Spotify.ControlPlaybackAsync(
             new(WidgetSpotifyPlaybackOperation.SetShuffle))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.TransferPlaybackAsync(
+            "bad\ndevice", continuePlaying: true)
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.AddToQueueAsync(
+            "https://open.spotify.com/track/not-a-uri")
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.StartPlaybackAsync(
+            new StartWidgetSpotifyPlaybackRequest(
+                "spotify:playlist:one", ["spotify:track:two"]))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.ControlLocalPlaybackAsync(
+            new WidgetSpotifyLocalPlaybackCommand(
+                WidgetSpotifyLocalPlaybackOperation.SetVolume, VolumePercent: 101))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() => widget.Spotify.GetPlaylistsAsync(0, 51)
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.GetPlaylistItemsAsync(
+            "bad playlist", 0, 20)
         .AsTask().GetAwaiter().GetResult());
 
     using var cancellation = new CancellationTokenSource();
@@ -856,6 +940,74 @@ static Task SnapshotRoundTrip()
     Assert.Equal(42L, restored.Sequence);
     Assert.Equal("previous", restored.InitialFocusId);
     Assert.Equal(2, restored.Root.Children.Count);
+    return Task.CompletedTask;
+}
+
+static Task ResponsiveVisibilityRoundTrip()
+{
+    var compact = UI.Stack("compact.branch",
+            UI.Text("Compact", "compact.label"),
+            UI.Button("Compact action", "compact.activate", "compact.action")
+                .Shortcut(ControllerButton.X))
+        .Classes("compact-base")
+        .VisibleWhen(ResponsiveVisibility.CompactOnly)
+        .AddClasses("compact-responsive");
+    var expanded = UI.ResponsiveBranch(
+        ResponsiveVisibility.ExpandedOnly,
+        UI.Stack("expanded.branch",
+            UI.Text("Expanded", "expanded.label"),
+            UI.Button("Expanded action", "expanded.activate", "expanded.action")
+                .Shortcut(ControllerButton.Y)));
+    var snapshot = new WidgetView(
+        UI.Stack("root", compact, expanded),
+        "compact.action").CreateSnapshot("responsive.instance", 9);
+
+    Assert.Equal(ProtocolConstants.ResponsiveVisibilityVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ResponsiveVisibility.CompactOnly, snapshot.Root.Children[0].VisibleWhen);
+    Assert.Equal(ResponsiveVisibility.ExpandedOnly, snapshot.Root.Children[1].VisibleWhen);
+    Assert.True(snapshot.Root.Children[0].StyleClasses.SequenceEqual(
+        new[] { "compact-base", "compact-responsive" }, StringComparer.Ordinal),
+        "Responsive modifiers must compose with classes before and after the modifier.");
+    Assert.Equal("compact.branch", snapshot.Root.Children[0].Id);
+    var json = Encoding.UTF8.GetString(SnapshotJson.Serialize(snapshot));
+    Assert.True(json.Contains("\"visibleWhen\":\"compactOnly\"", StringComparison.Ordinal),
+        "Compact visibility was not serialized with the closed enum value.");
+    Assert.True(json.Contains("\"visibleWhen\":\"expandedOnly\"", StringComparison.Ordinal),
+        "Expanded visibility was not serialized with the closed enum value.");
+    var restored = SnapshotJson.Deserialize(Encoding.UTF8.GetBytes(json));
+    Assert.Equal(ResponsiveVisibility.ExpandedOnly, restored.Root.Children[1].VisibleWhen);
+
+    var legacy = snapshot with { ProtocolVersion = ProtocolConstants.ResponsiveGridVersion };
+    Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+        error.Code == "feature_requires_version" &&
+        error.Path.EndsWith("visibleWhen", StringComparison.Ordinal)),
+        "Responsive visibility must fail closed before protocol v9.");
+    var invalid = snapshot with
+    {
+        Root = snapshot.Root with
+        {
+            Children =
+            [
+                snapshot.Root.Children[0] with
+                {
+                    VisibleWhen = (ResponsiveVisibility)999,
+                },
+            ],
+        },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(invalid).Any(error =>
+        error.Code == "invalid_responsive_visibility"),
+        "Unknown responsive visibility values must fail closed.");
+    var conditionalRoot = snapshot with
+    {
+        Root = snapshot.Root with { VisibleWhen = ResponsiveVisibility.CompactOnly },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(conditionalRoot).Any(error =>
+        error.Code == "conditional_root_not_allowed"),
+        "The root must remain present in every responsive mode.");
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        UI.Text("Invalid", "invalid.visibility")
+            .VisibleWhen((ResponsiveVisibility)999));
     return Task.CompletedTask;
 }
 

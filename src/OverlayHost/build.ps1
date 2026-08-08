@@ -247,6 +247,7 @@ if (-not $SkipPackaging) {
     }
 
     $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
+    $spotifyPlaybackHostOutput = Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost'
     $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
@@ -260,6 +261,12 @@ if (-not $SkipPackaging) {
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetBridge publish failed with exit code $LASTEXITCODE."
+    }
+    & dotnet publish (Join-Path $projectDirectory '..\SpotifyPlaybackHost\SpotifyPlaybackHost.csproj') `
+        --configuration $Configuration --no-self-contained --nologo --output $spotifyPlaybackHostOutput
+    if ($LASTEXITCODE -ne 0 -or
+        -not (Test-Path -LiteralPath (Join-Path $spotifyPlaybackHostOutput 'SpotifyPlaybackHost.exe'))) {
+        throw "Spotify playback host publish failed with exit code $LASTEXITCODE."
     }
     & dotnet publish (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $workerHostOutput

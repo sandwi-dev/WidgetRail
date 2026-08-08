@@ -18,6 +18,8 @@ public sealed class WindowsSpotifyPlatformBackend :
     public const string ExactRedirectUri = "http://127.0.0.1:43827/callback/";
     public const string PlaybackReadScope = "user-read-playback-state";
     public const string PlaybackControlScope = "user-modify-playback-state";
+    public const string PlaylistReadPrivateScope = "playlist-read-private";
+    public const string PlaylistReadCollaborativeScope = "playlist-read-collaborative";
     public const string StreamingScope = "streaming";
 
     // Browser sign-in is an explicit user interaction and can legitimately
@@ -29,10 +31,17 @@ public sealed class WindowsSpotifyPlatformBackend :
     private const int MaximumClientIdCharacters = 128;
     private const int MaximumAutomaticRetryDelaySeconds = 30;
     private const int MaximumHttpAttempts = 3;
+    private const int MaximumDevices = 64;
+    private const int MaximumQueueItems = 100;
+    private const int MaximumCollectionPageSize = 50;
+    private const int MaximumCollectionOffset = 100_000;
     private static readonly Uri RedirectUri = new(ExactRedirectUri, UriKind.Absolute);
     private static readonly Uri AuthorizeUri = new("https://accounts.spotify.com/authorize");
     private static readonly Uri TokenUri = new("https://accounts.spotify.com/api/token");
     private static readonly Uri PlayerUri = new("https://api.spotify.com/v1/me/player");
+    private static readonly Uri DevicesUri = new("https://api.spotify.com/v1/me/player/devices");
+    private static readonly Uri QueueUri = new("https://api.spotify.com/v1/me/player/queue");
+    private static readonly Uri PlaylistsUri = new("https://api.spotify.com/v1/me/playlists");
     private static readonly string[] BaseScopes = [PlaybackReadScope, PlaybackControlScope];
     private static readonly HashSet<string> SupportedIncrementalScopes = new(StringComparer.Ordinal)
     {
@@ -43,6 +52,7 @@ public sealed class WindowsSpotifyPlatformBackend :
         "playlist-read-collaborative",
         "user-library-read",
         "user-library-modify",
+        "user-top-read",
         StreamingScope,
     };
 
@@ -53,6 +63,7 @@ public sealed class WindowsSpotifyPlatformBackend :
     private readonly ISpotifyAuthorizationCallbackReceiver _callback;
     private readonly ISpotifyDelay _delay;
     private readonly TimeProvider _time;
+    private readonly SpotifyLocalPlaybackManager _localPlayback;
     private readonly ConcurrentDictionary<string, IntegrationState> _states = new();
     private readonly object _rateLimitGate = new();
     private DateTimeOffset _rateLimitedUntil;
@@ -81,7 +92,8 @@ public sealed class WindowsSpotifyPlatformBackend :
         ISpotifyBrowserLauncher browser,
         ISpotifyAuthorizationCallbackReceiver callback,
         ISpotifyDelay delay,
-        TimeProvider time)
+        TimeProvider time,
+        SpotifyLocalPlaybackManager? localPlayback = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
@@ -90,6 +102,8 @@ public sealed class WindowsSpotifyPlatformBackend :
         _callback = callback ?? throw new ArgumentNullException(nameof(callback));
         _delay = delay ?? throw new ArgumentNullException(nameof(delay));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _localPlayback = localPlayback ?? new SpotifyLocalPlaybackManager(
+            DefaultPlaybackHostPath(), AcquireTrustedHostAccessTokenAsync);
     }
 
     public async Task<SpotifyProviderConfiguration> GetConfigurationAsync(
@@ -107,6 +121,10 @@ public sealed class WindowsSpotifyPlatformBackend :
     {
         ThrowIfDisposed();
         ValidateClientId(clientId);
+        var existing = await _configuration.ReadAsync(identity, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing?.ClientId == clientId) return;
+        await _localPlayback.StopAsync(identity, cancellationToken).ConfigureAwait(false);
         var state = StateFor(identity);
         await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -259,6 +277,7 @@ public sealed class WindowsSpotifyPlatformBackend :
         SpotifyIntegrationIdentity identity, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        await _localPlayback.StopAsync(identity, cancellationToken).ConfigureAwait(false);
         var state = StateFor(identity);
         await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -287,6 +306,9 @@ public sealed class WindowsSpotifyPlatformBackend :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (await _localPlayback.TryControlAsync(identity, command, cancellationToken)
+                .ConfigureAwait(false))
+            return;
         var (method, uri) = BuildControlRequest(command);
         var response = await SendPlayerRequestAsync(
             identity, method, uri, PlaybackControlScope, cancellationToken)
@@ -297,6 +319,7 @@ public sealed class WindowsSpotifyPlatformBackend :
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        await _localPlayback.DisposeAsync().ConfigureAwait(false);
         foreach (var state in _states.Values) state.Gate.Dispose();
         _states.Clear();
         await _http.DisposeAsync().ConfigureAwait(false);
@@ -337,11 +360,12 @@ public sealed class WindowsSpotifyPlatformBackend :
             ArgumentNullException.ThrowIfNull(request);
             var providerIdentity = ToProviderIdentity(identity);
             var brokerScopes = ValidateBrokerScopes(request.RequestedScopes);
-            await ConnectAsync(providerIdentity, brokerScopes.Select(ToScope).ToArray(),
+            var providerScopes = ExpandBrokerScopes(brokerScopes);
+            await ConnectAsync(providerIdentity, providerScopes,
                 cancellationToken).ConfigureAwait(false);
             return MapAuthorization(
                 await GetAuthorizationAsync(providerIdentity,
-                    brokerScopes.Select(ToScope).ToArray(), cancellationToken).ConfigureAwait(false),
+                    providerScopes, cancellationToken).ConfigureAwait(false),
                 brokerScopes);
         });
 
@@ -371,12 +395,244 @@ public sealed class WindowsSpotifyPlatformBackend :
                 ToProviderCommand(command), cancellationToken).ConfigureAwait(false);
         });
 
+    public Task<SpotifyDevicesSummary> GetSpotifyDevicesAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        BrokerCallAsync(async () =>
+        {
+            var response = await SendPlayerRequestAsync(
+                ToProviderIdentity(identity), HttpMethod.Get, DevicesUri,
+                PlaybackReadScope, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == 204)
+                return MergeLocalDevice(ToProviderIdentity(identity), []);
+            EnsureSuccess(response);
+            return MergeLocalDevice(ToProviderIdentity(identity), ParseDevices(response.Body).Devices);
+        });
+
+    public Task TransferSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, TransferSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken) => BrokerCallAsync(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            if (request.DeviceId == SpotifyLocalPlaybackManager.PublicDeviceId)
+            {
+                await StartAndTransferLocalPlaybackAsync(
+                    ToProviderIdentity(identity), request.ContinuePlaying, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            ValidateOpaqueId(request.DeviceId, "device identifier");
+            await TransferPlaybackToDeviceAsync(ToProviderIdentity(identity), request.DeviceId,
+                request.ContinuePlaying, cancellationToken).ConfigureAwait(false);
+        });
+
+    public Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        BrokerCallAsync(async () =>
+        {
+            var response = await SendPlayerRequestAsync(
+                ToProviderIdentity(identity), HttpMethod.Get, QueueUri,
+                PlaybackReadScope, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == 204) return new SpotifyQueueSummary(null, [], false);
+            EnsureSuccess(response);
+            return ParseQueue(response.Body);
+        });
+
+    public Task AddSpotifyQueueItemAsync(
+        BrokerWidgetIdentity identity, AddSpotifyQueueItemRequest request,
+        CancellationToken cancellationToken) => BrokerCallAsync(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ValidateSpotifyUri(request.Uri);
+            var providerIdentity = ToProviderIdentity(identity);
+            var deviceId = await ResolveDeviceIdAsync(
+                providerIdentity, request.DeviceId, cancellationToken).ConfigureAwait(false);
+            if (deviceId is not null) ValidateOpaqueId(deviceId, "device identifier");
+            var query = "?uri=" + Uri.EscapeDataString(request.Uri) +
+                (deviceId is null ? string.Empty :
+                    "&device_id=" + Uri.EscapeDataString(deviceId));
+            var response = await SendPlayerRequestAsync(
+                providerIdentity, HttpMethod.Post, new Uri(QueueUri + query),
+                PlaybackControlScope, cancellationToken).ConfigureAwait(false);
+            EnsureSuccess(response, allowNoContent: true);
+        });
+
+    public Task StartSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, StartSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken) => BrokerCallAsync(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ValidateStartPlayback(request);
+            var providerIdentity = ToProviderIdentity(identity);
+            var requestedLocalHost =
+                request.DeviceId == SpotifyLocalPlaybackManager.PublicDeviceId;
+            var deviceId = await ResolveDeviceIdAsync(
+                providerIdentity, request.DeviceId, cancellationToken).ConfigureAwait(false);
+            var uri = new Uri("https://api.spotify.com/v1/me/player/play" +
+                (deviceId is null ? string.Empty :
+                    "?device_id=" + Uri.EscapeDataString(deviceId)));
+            string body;
+            if (request.ContextUri is not null)
+            {
+                body = request.Offset is { } offset
+                    ? JsonSerializer.Serialize(new
+                    {
+                        context_uri = request.ContextUri,
+                        offset = new { position = offset },
+                    })
+                    : JsonSerializer.Serialize(new { context_uri = request.ContextUri });
+            }
+            else
+            {
+                body = JsonSerializer.Serialize(new { uris = request.ItemUris });
+            }
+            var response = await SendPlayerRequestAsync(
+                providerIdentity, HttpMethod.Put, uri,
+                PlaybackControlScope, cancellationToken, body).ConfigureAwait(false);
+            EnsureSuccess(response, allowNoContent: true);
+            if (requestedLocalHost) _localPlayback.MarkActive(providerIdentity);
+        });
+
+    public Task<SpotifyLocalPlaybackSummary> GetSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        BrokerCallAsync(() => Task.FromResult(
+            _localPlayback.GetSummary(ToProviderIdentity(identity))));
+
+    public Task<SpotifyLocalPlaybackSummary> ControlSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, SpotifyLocalPlaybackCommand command,
+        CancellationToken cancellationToken) => BrokerCallAsync(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(command);
+            var providerIdentity = ToProviderIdentity(identity);
+            switch (command.Operation)
+            {
+                case SpotifyLocalPlaybackOperation.StartAndTransfer:
+                    await StartAndTransferLocalPlaybackAsync(
+                        providerIdentity, command.ContinuePlaying!.Value, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
+                case SpotifyLocalPlaybackOperation.Stop:
+                    await _localPlayback.StopAsync(providerIdentity, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
+                case SpotifyLocalPlaybackOperation.SetVolume:
+                    await _localPlayback.SetVolumeAsync(
+                        providerIdentity, command.VolumePercent!.Value, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
+                default:
+                    throw new SpotifyProviderException(
+                        "invalid_request", "Spotify local-playback command is invalid.");
+            }
+            return _localPlayback.GetSummary(providerIdentity);
+        });
+
+    public Task<SpotifyPlaylistPageSummary> GetSpotifyPlaylistsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistPageRequest request,
+        CancellationToken cancellationToken) => BrokerCallAsync(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ValidatePage(request.Offset, request.Limit);
+            var uri = new Uri(PlaylistsUri + "?offset=" + request.Offset.ToString(
+                CultureInfo.InvariantCulture) + "&limit=" + request.Limit.ToString(
+                    CultureInfo.InvariantCulture));
+            var response = await SendPlayerRequestAsync(
+                ToProviderIdentity(identity), HttpMethod.Get, uri,
+                PlaylistReadPrivateScope, cancellationToken,
+                additionalRequiredScope: PlaylistReadCollaborativeScope).ConfigureAwait(false);
+            EnsureSuccess(response);
+            return ParsePlaylistPage(response.Body, request.Offset, request.Limit);
+        });
+
+    public Task<SpotifyPlaylistItemsSummary> GetSpotifyPlaylistItemsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistItemsRequest request,
+        CancellationToken cancellationToken) => BrokerCallAsync(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ValidateOpaqueId(request.PlaylistId, "playlist identifier");
+            ValidatePage(request.Offset, request.Limit);
+            var escapedId = Uri.EscapeDataString(request.PlaylistId);
+            var baseUri = "https://api.spotify.com/v1/playlists/" + escapedId;
+            var providerIdentity = ToProviderIdentity(identity);
+            var playlistResponse = await SendPlayerRequestAsync(
+                providerIdentity, HttpMethod.Get, new Uri(baseUri),
+                PlaylistReadPrivateScope, cancellationToken,
+                additionalRequiredScope: PlaylistReadCollaborativeScope).ConfigureAwait(false);
+            EnsureSuccess(playlistResponse);
+            var playlist = ParsePlaylistDocument(playlistResponse.Body);
+            var itemsUri = new Uri(baseUri + "/items?offset=" + request.Offset.ToString(
+                CultureInfo.InvariantCulture) + "&limit=" + request.Limit.ToString(
+                    CultureInfo.InvariantCulture));
+            var itemsResponse = await SendPlayerRequestAsync(
+                providerIdentity, HttpMethod.Get, itemsUri,
+                PlaylistReadPrivateScope, cancellationToken,
+                additionalRequiredScope: PlaylistReadCollaborativeScope).ConfigureAwait(false);
+            EnsureSuccess(itemsResponse);
+            return ParsePlaylistItems(
+                playlist, itemsResponse.Body, request.Offset, request.Limit);
+        });
+
+    private async Task StartAndTransferLocalPlaybackAsync(
+        SpotifyIntegrationIdentity identity,
+        bool continuePlaying,
+        CancellationToken cancellationToken)
+    {
+        var started = await _localPlayback.StartAsync(identity, cancellationToken)
+            .ConfigureAwait(false);
+        await TransferPlaybackToDeviceAsync(
+            identity, started.SpotifyDeviceId, continuePlaying, cancellationToken)
+            .ConfigureAwait(false);
+        _localPlayback.MarkActive(identity);
+    }
+
+    private async Task<string?> ResolveDeviceIdAsync(
+        SpotifyIntegrationIdentity identity,
+        string? requestedDeviceId,
+        CancellationToken cancellationToken)
+    {
+        if (requestedDeviceId != SpotifyLocalPlaybackManager.PublicDeviceId)
+            return requestedDeviceId;
+        var current = _localPlayback.GetSpotifyDeviceId(identity);
+        if (current is not null) return current;
+        var started = await _localPlayback.StartAsync(identity, cancellationToken)
+            .ConfigureAwait(false);
+        return started.SpotifyDeviceId;
+    }
+
+    private async Task TransferPlaybackToDeviceAsync(
+        SpotifyIntegrationIdentity identity,
+        string deviceId,
+        bool continuePlaying,
+        CancellationToken cancellationToken)
+    {
+        ValidateOpaqueId(deviceId, "device identifier");
+        var body = JsonSerializer.Serialize(new
+        {
+            device_ids = new[] { deviceId },
+            play = continuePlaying,
+        });
+        var response = await SendPlayerRequestAsync(
+            identity, HttpMethod.Put, PlayerUri,
+            PlaybackControlScope, cancellationToken, body).ConfigureAwait(false);
+        EnsureSuccess(response, allowNoContent: true);
+    }
+
+    private SpotifyDevicesSummary MergeLocalDevice(
+        SpotifyIntegrationIdentity identity,
+        IReadOnlyList<SpotifyDeviceSummary> devices)
+    {
+        var local = _localPlayback.GetPublicDevice(identity);
+        if (local is null) return new SpotifyDevicesSummary(devices.ToArray());
+        return new SpotifyDevicesSummary(devices.Take(MaximumDevices - 1).Append(local).ToArray());
+    }
+
     private async Task<SpotifyHttpResponse> SendPlayerRequestAsync(
         SpotifyIntegrationIdentity identity,
         HttpMethod method,
         Uri uri,
         string requiredScope,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? jsonBody = null,
+        string? additionalRequiredScope = null)
     {
         ThrowIfDisposed();
         var state = StateFor(identity);
@@ -388,8 +644,11 @@ public sealed class WindowsSpotifyPlatformBackend :
             var token = await GetAccessTokenLockedAsync(
                 identity, configuration, state, requiredScope, forceRefresh: false,
                 cancellationToken).ConfigureAwait(false);
+            if (additionalRequiredScope is not null)
+                EnsureScope(token.GrantedScopes, additionalRequiredScope);
             var response = await SendWithRetryAsync(
-                new SpotifyHttpRequest(method, uri, Bearer(token.Value)), cancellationToken)
+                new SpotifyHttpRequest(
+                    method, uri, Bearer(token.Value), JsonBody: jsonBody), cancellationToken)
                 .ConfigureAwait(false);
             if (response.StatusCode != 401) return response;
 
@@ -397,8 +656,11 @@ public sealed class WindowsSpotifyPlatformBackend :
             token = await GetAccessTokenLockedAsync(
                 identity, configuration, state, requiredScope, forceRefresh: true,
                 cancellationToken).ConfigureAwait(false);
+            if (additionalRequiredScope is not null)
+                EnsureScope(token.GrantedScopes, additionalRequiredScope);
             return await SendWithRetryAsync(
-                new SpotifyHttpRequest(method, uri, Bearer(token.Value)), cancellationToken)
+                new SpotifyHttpRequest(
+                    method, uri, Bearer(token.Value), JsonBody: jsonBody), cancellationToken)
                 .ConfigureAwait(false);
         }
         finally { state.Gate.Release(); }
@@ -656,6 +918,205 @@ public sealed class WindowsSpotifyPlatformBackend :
         }
     }
 
+    private static SpotifyDevicesSummary ParseDevices(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = RequireObject(document.RootElement);
+            var devices = RequireArray(root, "devices");
+            if (devices.GetArrayLength() > MaximumDevices)
+                throw InvalidSpotifyResponse("Spotify returned too many playback devices.");
+            var result = new List<SpotifyDeviceSummary>(devices.GetArrayLength());
+            foreach (var value in devices.EnumerateArray())
+            {
+                var device = RequireObject(value);
+                var id = RequiredIdentifier(device, "id");
+                var volume = OptionalNullableInt32(device, "volume_percent");
+                if (volume is < 0 or > 100)
+                    throw InvalidSpotifyResponse("Spotify returned an invalid device volume.");
+                result.Add(new SpotifyDeviceSummary(
+                    id,
+                    RequiredDisplayString(device, "name", 160),
+                    RequiredDisplayString(device, "type", 160),
+                    OptionalNullableBoolean(device, "is_active") ?? false,
+                    OptionalNullableBoolean(device, "is_restricted") ?? false,
+                    OptionalNullableBoolean(device, "supports_volume") ?? false,
+                    volume,
+                    false));
+            }
+            return new SpotifyDevicesSummary(result);
+        }
+        catch (SpotifyProviderException) { throw; }
+        catch (JsonException exception)
+        {
+            throw InvalidSpotifyResponse("Spotify returned invalid playback devices.", exception);
+        }
+    }
+
+    private static SpotifyQueueSummary ParseQueue(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = RequireObject(document.RootElement);
+            SpotifyMediaItemSummary? current = null;
+            if (root.TryGetProperty("currently_playing", out var currentElement) &&
+                currentElement.ValueKind == JsonValueKind.Object)
+                current = ParseMediaItem(currentElement);
+            var queue = RequireArray(root, "queue");
+            var items = new List<SpotifyMediaItemSummary>(
+                Math.Min(queue.GetArrayLength(), MaximumQueueItems));
+            var truncated = queue.GetArrayLength() > MaximumQueueItems;
+            foreach (var item in queue.EnumerateArray())
+            {
+                if (items.Count == MaximumQueueItems) break;
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                if (ParseMediaItem(item) is { } parsed) items.Add(parsed);
+            }
+            return new SpotifyQueueSummary(current, items, truncated);
+        }
+        catch (SpotifyProviderException) { throw; }
+        catch (JsonException exception)
+        {
+            throw InvalidSpotifyResponse("Spotify returned an invalid queue.", exception);
+        }
+    }
+
+    private static SpotifyPlaylistPageSummary ParsePlaylistPage(
+        string body, int requestedOffset, int requestedLimit)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = RequireObject(document.RootElement);
+            var offset = RequiredBoundedInt32(root, "offset", 0, MaximumCollectionOffset);
+            var limit = RequiredBoundedInt32(root, "limit", 1, MaximumCollectionPageSize);
+            var total = RequiredBoundedInt32(root, "total", 0, int.MaxValue);
+            if (offset != requestedOffset || limit > requestedLimit)
+                throw InvalidSpotifyResponse("Spotify returned an inconsistent playlist page.");
+            var values = RequireArray(root, "items");
+            if (values.GetArrayLength() > limit)
+                throw InvalidSpotifyResponse("Spotify returned too many playlists.");
+            var items = new List<SpotifyPlaylistSummary>(values.GetArrayLength());
+            foreach (var value in values.EnumerateArray())
+            {
+                if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) continue;
+                items.Add(ParsePlaylist(value));
+            }
+            return new SpotifyPlaylistPageSummary(items, offset, limit, total);
+        }
+        catch (SpotifyProviderException) { throw; }
+        catch (JsonException exception)
+        {
+            throw InvalidSpotifyResponse("Spotify returned an invalid playlist page.", exception);
+        }
+    }
+
+    private static SpotifyPlaylistSummary ParsePlaylistDocument(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return ParsePlaylist(document.RootElement);
+        }
+        catch (SpotifyProviderException) { throw; }
+        catch (JsonException exception)
+        {
+            throw InvalidSpotifyResponse("Spotify returned an invalid playlist.", exception);
+        }
+    }
+
+    private static SpotifyPlaylistItemsSummary ParsePlaylistItems(
+        SpotifyPlaylistSummary playlist, string body, int requestedOffset, int requestedLimit)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = RequireObject(document.RootElement);
+            var offset = RequiredBoundedInt32(root, "offset", 0, MaximumCollectionOffset);
+            var limit = RequiredBoundedInt32(root, "limit", 1, MaximumCollectionPageSize);
+            var total = RequiredBoundedInt32(root, "total", 0, int.MaxValue);
+            if (offset != requestedOffset || limit > requestedLimit)
+                throw InvalidSpotifyResponse("Spotify returned an inconsistent playlist item page.");
+            var values = RequireArray(root, "items");
+            if (values.GetArrayLength() > limit)
+                throw InvalidSpotifyResponse("Spotify returned too many playlist items.");
+            var items = new List<SpotifyMediaItemSummary>(values.GetArrayLength());
+            foreach (var wrapper in values.EnumerateArray())
+            {
+                if (wrapper.ValueKind != JsonValueKind.Object ||
+                    !wrapper.TryGetProperty("item", out var item) ||
+                    item.ValueKind != JsonValueKind.Object) continue;
+                if (ParseMediaItem(item) is { } parsed) items.Add(parsed);
+            }
+            return new SpotifyPlaylistItemsSummary(playlist, items, offset, limit, total);
+        }
+        catch (SpotifyProviderException) { throw; }
+        catch (JsonException exception)
+        {
+            throw InvalidSpotifyResponse("Spotify returned invalid playlist items.", exception);
+        }
+    }
+
+    private static SpotifyPlaylistSummary ParsePlaylist(JsonElement value)
+    {
+        var playlist = RequireObject(value);
+        var id = RequiredIdentifier(playlist, "id");
+        var count = 0;
+        if (playlist.TryGetProperty("items", out var itemPage) &&
+            itemPage.ValueKind == JsonValueKind.Object)
+            count = OptionalNullableInt32(itemPage, "total") ?? 0;
+        else if (playlist.TryGetProperty("tracks", out var trackPage) &&
+            trackPage.ValueKind == JsonValueKind.Object)
+            count = OptionalNullableInt32(trackPage, "total") ?? 0;
+        if (count < 0) throw InvalidSpotifyResponse("Spotify returned an invalid playlist size.");
+
+        var ownerName = "Spotify";
+        if (playlist.TryGetProperty("owner", out var owner) &&
+            owner.ValueKind == JsonValueKind.Object)
+            ownerName = OptionalDisplayString(owner, "display_name", 160) ?? "Spotify";
+        return new SpotifyPlaylistSummary(
+            id,
+            RequiredDisplayString(playlist, "name", 160),
+            OptionalDisplayString(playlist, "description", 160),
+            ReadImageArray(playlist),
+            BuildSpotifyUrl("playlist", id),
+            "spotify:playlist:" + id,
+            ownerName,
+            OptionalNullableBoolean(playlist, "collaborative") ?? false,
+            OptionalNullableBoolean(playlist, "public"),
+            count);
+    }
+
+    private static SpotifyMediaItemSummary? ParseMediaItem(JsonElement value)
+    {
+        var item = RequireObject(value);
+        var type = OptionalString(item, "type", 32);
+        if (type is not ("track" or "episode")) return null;
+        var id = OptionalString(item, "id", 256);
+        var uri = OptionalString(item, "uri", 2_048);
+        if (id is null || uri is null) return null;
+        ValidateOpaqueId(id, "media identifier", "invalid_response");
+        ValidateSpotifyUri(uri, "invalid_response");
+        var duration = OptionalInt64(item, "duration_ms") ?? 0;
+        if (duration is < 0 or > 604_800_000)
+            throw InvalidSpotifyResponse("Spotify returned an invalid media duration.");
+        var subtitle = type == "track" ? JoinArtistNames(item) : ReadEpisodeShow(item);
+        return new SpotifyMediaItemSummary(
+            type == "track" ? SpotifyPlaybackItemType.Track : SpotifyPlaybackItemType.Episode,
+            RequiredDisplayString(item, "name", 160),
+            SanitizeDisplayValue(subtitle, 160) ?? "Spotify",
+            duration,
+            ReadArtwork(item, type),
+            uri,
+            BuildSpotifyUrl(type, id),
+            OptionalNullableBoolean(item, "is_playable") ?? true);
+    }
+
+    private static string BuildSpotifyUrl(string type, string id) =>
+        "https://open.spotify.com/" + type + "/" + Uri.EscapeDataString(id);
+
     private static SpotifyProviderPlaybackActions ReadActions(JsonElement root)
     {
         var disallows = default(JsonElement);
@@ -779,7 +1240,7 @@ public sealed class WindowsSpotifyPlatformBackend :
     private static IReadOnlySet<string> ValidateScopes(IReadOnlyCollection<string> scopes)
     {
         ArgumentNullException.ThrowIfNull(scopes);
-        if (scopes.Count is 0 or > 8)
+        if (scopes.Count is 0 or > 12)
             throw new SpotifyProviderException("invalid_scope", "Spotify permission request is invalid.");
         var result = new HashSet<string>(StringComparer.Ordinal);
         foreach (var scope in scopes)
@@ -890,6 +1351,142 @@ public sealed class WindowsSpotifyPlatformBackend :
         return value;
     }
 
+    private static JsonElement RequireObject(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object)
+            throw InvalidSpotifyResponse("Spotify response was invalid.");
+        return value;
+    }
+
+    private static JsonElement RequireArray(JsonElement parent, string property)
+    {
+        if (!parent.TryGetProperty(property, out var value) ||
+            value.ValueKind != JsonValueKind.Array)
+            throw InvalidSpotifyResponse("Spotify response was missing required data.");
+        return value;
+    }
+
+    private static string RequiredIdentifier(JsonElement parent, string property)
+    {
+        var value = RequiredString(parent, property, 256);
+        ValidateOpaqueId(value, "identifier", "invalid_response");
+        return value;
+    }
+
+    private static string RequiredDisplayString(
+        JsonElement parent, string property, int maximum) =>
+        OptionalDisplayString(parent, property, maximum) ??
+        throw InvalidSpotifyResponse("Spotify response was missing display data.");
+
+    private static string? OptionalDisplayString(
+        JsonElement parent, string property, int maximum)
+    {
+        if (!parent.TryGetProperty(property, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+        if (value.ValueKind != JsonValueKind.String)
+            throw InvalidSpotifyResponse("Spotify response display data was invalid.");
+        return SanitizeDisplayValue(value.GetString(), maximum);
+    }
+
+    private static string? SanitizeDisplayValue(string? value, int maximum)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var sanitized = new string(value.Where(character => !char.IsControl(character))
+            .Take(maximum).ToArray()).Trim();
+        return sanitized.Length == 0 ? null : sanitized;
+    }
+
+    private static int RequiredBoundedInt32(
+        JsonElement parent, string property, int minimum, int maximum)
+    {
+        var value = OptionalNullableInt32(parent, property);
+        if (value is null || value < minimum || value > maximum)
+            throw InvalidSpotifyResponse("Spotify response contained an invalid number.");
+        return value.Value;
+    }
+
+    private static int? OptionalNullableInt32(JsonElement parent, string property)
+    {
+        if (!parent.TryGetProperty(property, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var parsed))
+            throw InvalidSpotifyResponse("Spotify response contained an invalid number.");
+        return parsed;
+    }
+
+    private static bool? OptionalNullableBoolean(JsonElement parent, string property)
+    {
+        if (!parent.TryGetProperty(property, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw InvalidSpotifyResponse("Spotify response contained an invalid boolean."),
+        };
+    }
+
+    private static string? ReadImageArray(JsonElement parent)
+    {
+        if (!parent.TryGetProperty("images", out var images) ||
+            images.ValueKind != JsonValueKind.Array) return null;
+        foreach (var image in images.EnumerateArray())
+        {
+            if (image.ValueKind != JsonValueKind.Object) continue;
+            var url = OptionalString(image, "url", 2_048);
+            if (url is not null && Uri.TryCreate(url, UriKind.Absolute, out var parsed) &&
+                parsed.Scheme == Uri.UriSchemeHttps && parsed.IsDefaultPort &&
+                string.IsNullOrEmpty(parsed.UserInfo)) return url;
+        }
+        return null;
+    }
+
+    private static SpotifyProviderException InvalidSpotifyResponse(
+        string message, Exception? innerException = null) =>
+        new("invalid_response", message, innerException);
+
+    private static void ValidateOpaqueId(
+        string value, string label, string errorCode = "invalid_request")
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 256 ||
+            value.Any(character => character is < '!' or > '~'))
+            throw new SpotifyProviderException(
+                errorCode, $"Spotify {label} is invalid.");
+    }
+
+    private static void ValidateSpotifyUri(
+        string value, string errorCode = "invalid_request")
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 2_048 ||
+            value.Any(char.IsControl) ||
+            !value.StartsWith("spotify:", StringComparison.Ordinal) ||
+            value.Count(character => character == ':') < 2)
+            throw new SpotifyProviderException(
+                errorCode, "Spotify URI is invalid.");
+    }
+
+    private static void ValidatePage(int offset, int limit)
+    {
+        if (offset is < 0 or > MaximumCollectionOffset ||
+            limit is < 1 or > MaximumCollectionPageSize)
+            throw new SpotifyProviderException(
+                "invalid_request", "Spotify page request is invalid.");
+    }
+
+    private static void ValidateStartPlayback(StartSpotifyPlaybackRequest request)
+    {
+        if ((request.ContextUri is null) == (request.ItemUris is null) ||
+            request.ItemUris is { Count: < 1 or > MaximumCollectionPageSize } ||
+            request.Offset is < 0 || request.Offset is not null && request.ContextUri is null)
+            throw new SpotifyProviderException(
+                "invalid_request", "Spotify playback selection is invalid.");
+        if (request.ContextUri is not null) ValidateSpotifyUri(request.ContextUri);
+        if (request.ItemUris is not null)
+            foreach (var uri in request.ItemUris) ValidateSpotifyUri(uri);
+        if (request.DeviceId is not null)
+            ValidateOpaqueId(request.DeviceId, "device identifier");
+    }
+
     private static bool OptionalBoolean(JsonElement parent, string property) =>
         parent.TryGetProperty(property, out var element) && element.ValueKind == JsonValueKind.True;
 
@@ -955,6 +1552,9 @@ public sealed class WindowsSpotifyPlatformBackend :
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
+    private static string DefaultPlaybackHostPath() => Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory, "..", "SpotifyPlaybackHost", "SpotifyPlaybackHost.exe"));
+
     private static SpotifyIntegrationIdentity ToProviderIdentity(BrokerWidgetIdentity identity)
     {
         ArgumentNullException.ThrowIfNull(identity);
@@ -970,35 +1570,43 @@ public sealed class WindowsSpotifyPlatformBackend :
         IReadOnlyList<SpotifyAuthorizationScope> scopes)
     {
         ArgumentNullException.ThrowIfNull(scopes);
-        if (scopes.Count is 0 or > 2 || scopes.Distinct().Count() != scopes.Count ||
-            scopes.Any(scope => scope is not (SpotifyAuthorizationScope.PlaybackStateRead or
-                SpotifyAuthorizationScope.PlaybackStateControl)))
+        if (scopes.Count is 0 or > 8 || scopes.Distinct().Count() != scopes.Count ||
+            scopes.Any(scope => !Enum.IsDefined(scope)))
             throw new SpotifyProviderException(
                 "invalid_scope", "Spotify permission request is unsupported.");
         return scopes.ToArray();
     }
 
-    private static string ToScope(SpotifyAuthorizationScope scope) => scope switch
+    private static IReadOnlyList<string> ExpandBrokerScopes(
+        IReadOnlyList<SpotifyAuthorizationScope> scopes) => scopes
+        .SelectMany(ToScopes).Distinct(StringComparer.Ordinal).ToArray();
+
+    private static IReadOnlyList<string> ToScopes(SpotifyAuthorizationScope scope) => scope switch
     {
-        SpotifyAuthorizationScope.PlaybackStateRead => PlaybackReadScope,
-        SpotifyAuthorizationScope.PlaybackStateControl => PlaybackControlScope,
+        SpotifyAuthorizationScope.PlaybackStateRead => [PlaybackReadScope],
+        SpotifyAuthorizationScope.PlaybackStateControl => [PlaybackControlScope],
+        SpotifyAuthorizationScope.LocalPlayback => [StreamingScope],
+        SpotifyAuthorizationScope.PlaylistsRead =>
+            [PlaylistReadPrivateScope, PlaylistReadCollaborativeScope],
+        SpotifyAuthorizationScope.LibraryRead => ["user-library-read"],
+        SpotifyAuthorizationScope.LibraryModify => ["user-library-modify"],
+        SpotifyAuthorizationScope.RecentlyPlayedRead => ["user-read-recently-played"],
+        SpotifyAuthorizationScope.UserTopRead => ["user-top-read"],
         _ => throw new SpotifyProviderException(
             "invalid_scope", "Spotify permission request is unsupported."),
     };
 
-    private static SpotifyAuthorizationScope? ToBrokerScope(string scope) => scope switch
-    {
-        PlaybackReadScope => SpotifyAuthorizationScope.PlaybackStateRead,
-        PlaybackControlScope => SpotifyAuthorizationScope.PlaybackStateControl,
-        _ => null,
-    };
+    private static bool HasBrokerScope(
+        IReadOnlySet<string> granted, SpotifyAuthorizationScope scope) =>
+        ToScopes(scope).All(granted.Contains);
 
     private static SpotifyAuthorizationSummary MapAuthorization(
         SpotifyProviderAuthorization authorization,
         IReadOnlyList<SpotifyAuthorizationScope> requested)
     {
-        var granted = (authorization.GrantedScopes ?? [])
-            .Select(ToBrokerScope).Where(scope => scope.HasValue).Select(scope => scope!.Value)
+        var providerGranted = (authorization.GrantedScopes ?? [])
+            .ToHashSet(StringComparer.Ordinal);
+        var granted = requested.Where(scope => HasBrokerScope(providerGranted, scope))
             .Distinct().Order().ToArray();
         var state = !authorization.IsConfigured ? SpotifyAuthorizationState.Unconfigured :
             authorization.IsAuthorizing ? SpotifyAuthorizationState.Authorizing :

@@ -46,12 +46,26 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.ActionSurfaceVersion);
             if (ContainsGrid(Root))
                 required = Math.Max(required, ProtocolConstants.ResponsiveGridVersion);
+            if (ContainsResponsiveVisibility(Root))
+                required = Math.Max(required, ProtocolConstants.ResponsiveVisibilityVersion);
             return required;
         }
     }
 
+    private static bool ContainsResponsiveVisibility(WidgetElement element) => element switch
+    {
+        ResponsiveBranchElement => true,
+        StackElement stack => stack.Children.Any(ContainsResponsiveVisibility),
+        RowElement row => row.Children.Any(ContainsResponsiveVisibility),
+        ScrollElement scroll => scroll.Children.Any(ContainsResponsiveVisibility),
+        ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsResponsiveVisibility),
+        GridElement grid => grid.Children.Any(ContainsResponsiveVisibility),
+        _ => false,
+    };
+
     private static bool ContainsLoadingIndicator(WidgetElement element) => element switch
     {
+        ResponsiveBranchElement branch => ContainsLoadingIndicator(branch.Child),
         LoadingIndicatorElement => true,
         StackElement stack => stack.Children.Any(ContainsLoadingIndicator),
         RowElement row => row.Children.Any(ContainsLoadingIndicator),
@@ -63,6 +77,7 @@ public sealed record WidgetView(
 
     private static bool ContainsScroll(WidgetElement element) => element switch
     {
+        ResponsiveBranchElement branch => ContainsScroll(branch.Child),
         ScrollElement => true,
         StackElement stack => stack.Children.Any(ContainsScroll),
         RowElement row => row.Children.Any(ContainsScroll),
@@ -73,6 +88,7 @@ public sealed record WidgetView(
 
     private static bool ContainsSlider(WidgetElement element) => element switch
     {
+        ResponsiveBranchElement branch => ContainsSlider(branch.Child),
         SliderElement => true,
         ScrubberElement => true,
         StackElement stack => stack.Children.Any(ContainsSlider),
@@ -85,6 +101,7 @@ public sealed record WidgetView(
 
     private static bool ContainsActionSurface(WidgetElement element) => element switch
     {
+        ResponsiveBranchElement branch => ContainsActionSurface(branch.Child),
         ActionSurfaceElement => true,
         StackElement stack => stack.Children.Any(ContainsActionSurface),
         RowElement row => row.Children.Any(ContainsActionSurface),
@@ -95,6 +112,7 @@ public sealed record WidgetView(
 
     private static bool ContainsGrid(WidgetElement element) => element switch
     {
+        ResponsiveBranchElement branch => ContainsGrid(branch.Child),
         GridElement => true,
         StackElement stack => stack.Children.Any(ContainsGrid),
         RowElement row => row.Children.Any(ContainsGrid),
@@ -105,6 +123,7 @@ public sealed record WidgetView(
 
     private static bool ContainsInlinePng(WidgetElement element) => element switch
     {
+        ResponsiveBranchElement branch => ContainsInlinePng(branch.Child),
         ImageElement image when image.Source.StartsWith(
             "data:image/png;base64,", StringComparison.Ordinal) => true,
         ButtonElement button when button.LeadingImageSource?.StartsWith(
@@ -119,6 +138,7 @@ public sealed record WidgetView(
 
     private static string RootScopeId(WidgetElement root) => root switch
     {
+        ResponsiveBranchElement branch => RootScopeId(branch.Child),
         StackElement stack => stack.InputScopeId ?? stack.Id,
         RowElement row => row.InputScopeId ?? row.Id,
         ScrollElement scroll => scroll.InputScopeId ?? scroll.Id,

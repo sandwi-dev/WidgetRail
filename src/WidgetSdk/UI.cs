@@ -5,6 +5,19 @@ namespace GameBarAlternative.WidgetSdk;
 
 public static partial class UI
 {
+    /// <summary>
+    /// Applies host-resolved responsive visibility without adding a layout
+    /// container. Prefer the fluent <see cref="WidgetElement.VisibleWhen"/>
+    /// form when it reads more naturally.
+    /// </summary>
+    public static WidgetElement ResponsiveBranch(
+        ResponsiveVisibility visibility,
+        WidgetElement child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        return child.VisibleWhen(visibility);
+    }
+
     public static StackElement Stack(string id, params WidgetElement[] children) =>
         new(id, CopyChildren(children));
 

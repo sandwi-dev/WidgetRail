@@ -3553,6 +3553,10 @@ private:
                 };
                 gba::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
+                options.responsiveViewport = gba::declarative::Size{
+                    geometry->panelWidth,
+                    geometry->panelHeight,
+                };
                 options.surfaceBackground = effectivePanelBackground_;
                 const float panelContentInset = std::max(
                     0.0F, geometry->widgetViewportX - panelLeft);

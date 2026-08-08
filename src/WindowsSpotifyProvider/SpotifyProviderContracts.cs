@@ -115,7 +115,8 @@ internal sealed record SpotifyHttpRequest(
     HttpMethod Method,
     Uri Uri,
     IReadOnlyDictionary<string, string>? Headers = null,
-    string? FormBody = null);
+    string? FormBody = null,
+    string? JsonBody = null);
 
 internal sealed record SpotifyHttpResponse(
     int StatusCode,

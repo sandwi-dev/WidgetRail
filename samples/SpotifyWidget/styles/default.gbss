@@ -1,7 +1,7 @@
 .spotify-widget {
   width: 100vw;
   min-width: 0px;
-  max-width: 760px;
+  max-width: 980px;
   gap: 8px;
   padding: 14px 16px;
   background: var(--surface);
@@ -255,3 +255,199 @@
   max-lines: 4;
   corner-radius: 8px;
 }
+
+/* Spotify 0.2 controller shell. Expanded mode keeps transport persistent while
+   the right context pane changes; compact mode presents one destination. */
+.spotify-shell {
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 10px;
+  overflow: clip;
+}
+.spotify-shell-wide { align: stretch; }
+.spotify-shell-compact { gap: 8px; }
+.spotify-navigation {
+  width: 142px;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 8px;
+  background: var(--surface-raised);
+  corner-radius: 12px;
+}
+.spotify-nav-button {
+  width: 100%;
+  min-height: 43px;
+  padding: 9px 11px;
+  justify: start;
+  gap: 9px;
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  max-lines: 1;
+}
+.spotify-nav-button:selected {
+  color: var(--text);
+  background: var(--surface-active, #262623);
+}
+.spotify-nav-button:focused {
+  color: var(--text);
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.spotify-navigation-tabs { flex-shrink: 0; }
+.spotify-compact-player-scroll {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+.gbar-segmented-tabs__tab {
+  min-width: 0px;
+  flex-grow: 1;
+  padding: 8px 7px;
+  font-size: 10px;
+  max-lines: 1;
+}
+.spotify-player-pane {
+  width: 340px;
+  min-width: 290px;
+  min-height: 0px;
+  flex-shrink: 0;
+  overflow: clip;
+}
+.spotify-context-pane,
+.spotify-compact-pane {
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  overflow: clip;
+}
+.spotify-player-card {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 8px;
+  padding: 14px;
+  align: center;
+  justify: center;
+  background: var(--surface-raised);
+  corner-radius: 12px;
+  overflow: clip;
+}
+.spotify-artwork-frame,
+.spotify-artwork,
+.spotify-artwork-placeholder {
+  width: 142px;
+  height: 142px;
+}
+.spotify-artwork-placeholder { padding: 46px; }
+.spotify-details {
+  width: 100%;
+  min-width: 0px;
+  align: center;
+  gap: 2px;
+}
+.spotify-track-title {
+  width: 100%;
+  font-size: 21px;
+  line-height: 1.15;
+  max-lines: 2;
+  text-align: center;
+}
+.spotify-track-subtitle,
+.spotify-context {
+  width: 100%;
+  max-lines: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+.spotify-primary-controls {
+  width: 100%;
+  gap: 7px;
+  justify: center;
+}
+.spotify-transport { width: 40px; height: 40px; padding: 9px; }
+.spotify-play { width: 52px; height: 52px; padding: 13px; }
+.spotify-secondary-action { width: 36px; height: 36px; padding: 8px; }
+.spotify-page {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-raised);
+  corner-radius: 12px;
+  overflow: clip;
+}
+.spotify-page-scroll {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 6px;
+  padding: 2px;
+  overflow: clip;
+}
+.spotify-page-loading { align: center; justify: center; }
+.spotify-page-error { justify: center; }
+.spotify-page-action {
+  min-width: 96px;
+  min-height: 40px;
+  padding: 8px 12px;
+  color: var(--text);
+  background: var(--surface-active, #262623);
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+}
+.spotify-page-action.is-quiet { color: var(--text-muted); background: transparent; }
+.spotify-page-action:focused {
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.spotify-media-row {
+  width: 100%;
+  min-width: 0px;
+  min-height: 64px;
+  flex-shrink: 0;
+  padding: 7px 9px;
+  gap: 9px;
+  background: transparent;
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+}
+.gbar-tile__artwork { width: 48px; height: 48px; corner-radius: 6px; }
+.gbar-tile__content { min-width: 0px; gap: 1px; }
+.gbar-tile__title { font-size: 13px; font-weight: 500; max-lines: 1; text-overflow: ellipsis; }
+.gbar-tile__subtitle,
+.gbar-tile__metadata,
+.gbar-tile__state { font-size: 10px; max-lines: 1; text-overflow: ellipsis; }
+.spotify-media-row:focused {
+  background: var(--surface-active, #262623);
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.spotify-device-row { width: 100%; min-width: 0px; flex-shrink: 0; }
+.spotify-player-overview { justify: center; }
+.spotify-playlist-detail { padding: 10px 12px 12px; }

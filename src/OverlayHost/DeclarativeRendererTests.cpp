@@ -266,6 +266,83 @@ void PlanningMetadataAndKinds() {
         "planning is deterministic (y)");
 }
 
+void ResponsiveVisibilityExcludesInactiveSubtrees() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"responsive.instance";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"root", L"stack");
+    snapshot.root.inputScopeId = L"root";
+
+    auto compact = Node(L"compact.branch", L"stack");
+    compact.visibleWhen = L"compactOnly";
+    auto compactButton = Node(L"compact.action", L"button");
+    compactButton.text = L"Compact action";
+    compactButton.accessibilityLabel = L"Compact-only action";
+    compactButton.actionId = L"compact.activate";
+    compactButton.shortcuts.push_back({L"x", L"compact.shortcut", L"pressed"});
+    auto compactCopy = Node(L"compact.copy", L"text");
+    compactCopy.text = L"Compact-only accessibility copy";
+    compactCopy.accessibilityLabel = L"Compact-only accessibility copy";
+    compact.children = {compactButton, compactCopy};
+
+    auto expanded = Node(L"expanded.branch", L"stack");
+    expanded.visibleWhen = L"expandedOnly";
+    auto expandedButton = Node(L"expanded.action", L"button");
+    expandedButton.text = L"Expanded action";
+    expandedButton.accessibilityLabel = L"Expanded-only action";
+    expandedButton.actionId = L"expanded.activate";
+    expandedButton.shortcuts.push_back({L"y", L"expanded.shortcut", L"pressed"});
+    auto expandedCopy = Node(L"expanded.copy", L"text");
+    expandedCopy.text = L"Expanded-only accessibility copy";
+    expandedCopy.accessibilityLabel = L"Expanded-only accessibility copy";
+    expanded.children = {expandedButton, expandedCopy};
+    snapshot.root.children = {compact, expanded};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto expandedResult = renderer.Render(
+        nullptr, snapshot, L"expanded.action", {0.0F, 0.0F, 960.0F, 540.0F});
+    Check(expandedResult.elementRects.contains(L"expanded.branch"),
+          "expanded branch participates at the exact non-compact threshold");
+    Check(expandedResult.elementRects.contains(L"expanded.copy"),
+          "expanded presentational/accessibility content participates");
+    Check(expandedResult.focusRects.contains(L"expanded.action"),
+          "expanded action participates in focus and hit-test geometry");
+    Check(!expandedResult.elementRects.contains(L"compact.branch") &&
+          !expandedResult.elementRects.contains(L"compact.copy") &&
+          !expandedResult.focusRects.contains(L"compact.action") &&
+          !expandedResult.navigationRects.contains(L"compact.action") &&
+          !expandedResult.focusScopes.contains(L"compact.action"),
+          "inactive compact subtree owns no layout, paint, focus, shortcut target, or accessibility geometry");
+
+    const auto compactResult = renderer.Render(
+        nullptr, snapshot, L"compact.action", {0.0F, 0.0F, 959.0F, 540.0F});
+    Check(compactResult.elementRects.contains(L"compact.branch") &&
+          compactResult.elementRects.contains(L"compact.copy") &&
+          compactResult.focusRects.contains(L"compact.action"),
+          "compact branch participates below the existing 960-DIP breakpoint");
+    Check(!compactResult.elementRects.contains(L"expanded.branch") &&
+          !compactResult.elementRects.contains(L"expanded.copy") &&
+          !compactResult.focusRects.contains(L"expanded.action") &&
+          !compactResult.navigationRects.contains(L"expanded.action") &&
+          !compactResult.focusScopes.contains(L"expanded.action"),
+          "inactive expanded subtree owns no layout, paint, focus, shortcut target, or accessibility geometry");
+
+    const auto compactByHeight = renderer.Render(
+        nullptr, snapshot, L"compact.action", {0.0F, 0.0F, 1200.0F, 539.0F});
+    Check(compactByHeight.focusRects.contains(L"compact.action") &&
+          !compactByHeight.focusRects.contains(L"expanded.action"),
+          "height uses the same existing 540-DIP compact breakpoint");
+
+    gba::DeclarativeRenderOptions surfaceOptions;
+    surfaceOptions.responsiveViewport = Size{980.0F, 560.0F};
+    const auto footerReducedContent = renderer.Render(
+        nullptr, snapshot, L"expanded.action",
+        {0.0F, 0.0F, 960.0F, 505.0F}, surfaceOptions);
+    Check(footerReducedContent.focusRects.contains(L"expanded.action") &&
+          !footerReducedContent.focusRects.contains(L"compact.action"),
+          "responsive branches use the pre-footer surface rather than the reduced content viewport");
+}
+
 void SliderPlanningAndAccessibilityTargets() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"slider.runtime";
@@ -1992,6 +2069,7 @@ int main() {
     AccessibleStatePresentation();
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();
+    ResponsiveVisibilityExcludesInactiveSubtrees();
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
     ResponsiveGridFlowsThroughNativePlanning();

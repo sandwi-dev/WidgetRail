@@ -432,6 +432,39 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             PlatformCapabilities.SpotifyPlaybackControl =>
                 await ControlSpotifyPlaybackAsync(request.Payload, requestToken)
                     .ConfigureAwait(false),
+            PlatformCapabilities.SpotifyPlaybackDevicesGet =>
+                BrokerJson.ToElement(ValidateSpotifyDevices(
+                    DemandEmptyPayload(request.Payload),
+                    await _backend.GetSpotifyDevicesAsync(_identity, requestToken)
+                        .ConfigureAwait(false))),
+            PlatformCapabilities.SpotifyPlaybackTransfer =>
+                await TransferSpotifyPlaybackAsync(request.Payload, requestToken)
+                    .ConfigureAwait(false),
+            PlatformCapabilities.SpotifyPlaybackQueueGet =>
+                BrokerJson.ToElement(ValidateSpotifyQueue(
+                    DemandEmptyPayload(request.Payload),
+                    await _backend.GetSpotifyQueueAsync(_identity, requestToken)
+                        .ConfigureAwait(false))),
+            PlatformCapabilities.SpotifyPlaybackQueueAdd =>
+                await AddSpotifyQueueItemAsync(request.Payload, requestToken)
+                    .ConfigureAwait(false),
+            PlatformCapabilities.SpotifyPlaybackStart =>
+                await StartSpotifyPlaybackAsync(request.Payload, requestToken)
+                    .ConfigureAwait(false),
+            PlatformCapabilities.SpotifyLocalPlaybackGet =>
+                BrokerJson.ToElement(ValidateSpotifyLocalPlayback(
+                    DemandEmptyPayload(request.Payload),
+                    await _backend.GetSpotifyLocalPlaybackAsync(_identity, requestToken)
+                        .ConfigureAwait(false))),
+            PlatformCapabilities.SpotifyLocalPlaybackControl =>
+                BrokerJson.ToElement(await ControlSpotifyLocalPlaybackAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.SpotifyPlaylistsGet =>
+                BrokerJson.ToElement(await GetSpotifyPlaylistsAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.SpotifyPlaylistItemsGet =>
+                BrokerJson.ToElement(await GetSpotifyPlaylistItemsAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
             PlatformCapabilities.LoopbackHttpGetJson =>
                 await SendLoopbackJsonAsync(request, lease, isPost: false).ConfigureAwait(false),
             PlatformCapabilities.LoopbackHttpPostJson =>
@@ -1252,6 +1285,66 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return BrokerJson.ToElement(new { acknowledged = true });
     }
 
+    private async Task<JsonElement> TransferSpotifyPlaybackAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<TransferSpotifyPlaybackRequest>(payload);
+        ValidateSpotifyIdentifier(request.DeviceId, "Spotify device identifier");
+        await _backend.TransferSpotifyPlaybackAsync(
+            _identity, request, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> AddSpotifyQueueItemAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<AddSpotifyQueueItemRequest>(payload);
+        ValidateSpotifyUri(request.Uri);
+        if (request.DeviceId is not null)
+            ValidateSpotifyIdentifier(request.DeviceId, "Spotify device identifier");
+        await _backend.AddSpotifyQueueItemAsync(
+            _identity, request, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> StartSpotifyPlaybackAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<StartSpotifyPlaybackRequest>(payload);
+        ValidateSpotifyStartPlayback(request);
+        await _backend.StartSpotifyPlaybackAsync(
+            _identity, request, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<SpotifyLocalPlaybackSummary> ControlSpotifyLocalPlaybackAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var command = BrokerJson.ParsePayload<SpotifyLocalPlaybackCommand>(payload);
+        ValidateSpotifyLocalPlaybackCommand(command);
+        return ValidateSpotifyLocalPlayback(await _backend.ControlSpotifyLocalPlaybackAsync(
+            _identity, command, cancellationToken).ConfigureAwait(false));
+    }
+
+    private async Task<SpotifyPlaylistPageSummary> GetSpotifyPlaylistsAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SpotifyPlaylistPageRequest>(payload);
+        ValidateSpotifyPage(request.Offset, request.Limit);
+        return ValidateSpotifyPlaylistPage(await _backend.GetSpotifyPlaylistsAsync(
+            _identity, request, cancellationToken).ConfigureAwait(false));
+    }
+
+    private async Task<SpotifyPlaylistItemsSummary> GetSpotifyPlaylistItemsAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SpotifyPlaylistItemsRequest>(payload);
+        ValidateSpotifyIdentifier(request.PlaylistId, "Spotify playlist identifier");
+        ValidateSpotifyPage(request.Offset, request.Limit);
+        return ValidateSpotifyPlaylistItems(await _backend.GetSpotifyPlaylistItemsAsync(
+            _identity, request, cancellationToken).ConfigureAwait(false));
+    }
+
     private async Task<JsonElement> SendLoopbackJsonAsync(
         BrokerRequestEnvelope envelope,
         RequestLease primaryLease,
@@ -1702,7 +1795,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private static IReadOnlyList<SpotifyAuthorizationScope> ValidateSpotifyScopes(
         IReadOnlyList<SpotifyAuthorizationScope>? scopes, string errorCode)
     {
-        if (scopes is null || scopes.Count > 2 ||
+        if (scopes is null || scopes.Count > 8 ||
             scopes.Any(scope => !Enum.IsDefined(scope)) ||
             scopes.Distinct().Count() != scopes.Count)
             throw new BrokerException(errorCode, "Spotify authorization scopes are invalid.");
@@ -1775,6 +1868,184 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         };
         if (!valid)
             throw new BrokerException("invalid_payload", "Spotify playback command is invalid.");
+    }
+
+    private static SpotifyDevicesSummary ValidateSpotifyDevices(
+        bool _, SpotifyDevicesSummary? summary) => ValidateSpotifyDevices(summary);
+
+    private static SpotifyDevicesSummary ValidateSpotifyDevices(SpotifyDevicesSummary? summary)
+    {
+        if (summary?.Devices is null || summary.Devices.Count > 64)
+            throw new BrokerException("invalid_backend_data", "Spotify devices are invalid.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var device in summary.Devices)
+        {
+            if (device is null)
+                throw new BrokerException("invalid_backend_data", "Spotify device is invalid.");
+            ValidateSpotifyIdentifier(device.DeviceId, "Spotify device identifier",
+                "invalid_backend_data");
+            ContractValidation.DisplayName(device.Name);
+            ContractValidation.DisplayName(device.Type);
+            if (!ids.Add(device.DeviceId) || device.VolumePercent is < 0 or > 100 ||
+                device.IsRestricted && device.IsLocalHost)
+                throw new BrokerException("invalid_backend_data", "Spotify device is invalid.");
+        }
+        return new SpotifyDevicesSummary(summary.Devices.ToArray());
+    }
+
+    private static SpotifyQueueSummary ValidateSpotifyQueue(
+        bool _, SpotifyQueueSummary? summary) => ValidateSpotifyQueue(summary);
+
+    private static SpotifyQueueSummary ValidateSpotifyQueue(SpotifyQueueSummary? summary)
+    {
+        if (summary?.Items is null || summary.Items.Count > 100)
+            throw new BrokerException("invalid_backend_data", "Spotify queue is invalid.");
+        if (summary.CurrentlyPlaying is not null)
+            ValidateSpotifyMediaItem(summary.CurrentlyPlaying);
+        foreach (var item in summary.Items) ValidateSpotifyMediaItem(item);
+        return new SpotifyQueueSummary(
+            summary.CurrentlyPlaying, summary.Items.ToArray(), summary.IsTruncated);
+    }
+
+    private static SpotifyLocalPlaybackSummary ValidateSpotifyLocalPlayback(
+        bool _, SpotifyLocalPlaybackSummary? summary) =>
+        ValidateSpotifyLocalPlayback(summary);
+
+    private static SpotifyLocalPlaybackSummary ValidateSpotifyLocalPlayback(
+        SpotifyLocalPlaybackSummary? summary)
+    {
+        if (summary is null || !Enum.IsDefined(summary.State) ||
+            summary.VolumePercent is < 0 or > 100)
+            throw new BrokerException(
+                "invalid_backend_data", "Spotify local playback state is invalid.");
+        ContractValidation.DisplayName(summary.DeviceName);
+        if (summary.DisplayMessage is { } message) ContractValidation.DisplayName(message);
+        return summary;
+    }
+
+    private static void ValidateSpotifyLocalPlaybackCommand(SpotifyLocalPlaybackCommand command)
+    {
+        if (!Enum.IsDefined(command.Operation))
+            throw new BrokerException(
+                "invalid_payload", "Spotify local-playback operation is invalid.");
+        var valid = command.Operation switch
+        {
+            SpotifyLocalPlaybackOperation.StartAndTransfer =>
+                command.VolumePercent is null && command.ContinuePlaying is not null,
+            SpotifyLocalPlaybackOperation.Stop =>
+                command.VolumePercent is null && command.ContinuePlaying is null,
+            SpotifyLocalPlaybackOperation.SetVolume =>
+                command.VolumePercent is >= 0 and <= 100 && command.ContinuePlaying is null,
+            _ => false,
+        };
+        if (!valid)
+            throw new BrokerException(
+                "invalid_payload", "Spotify local-playback command is invalid.");
+    }
+
+    private static SpotifyPlaylistPageSummary ValidateSpotifyPlaylistPage(
+        SpotifyPlaylistPageSummary? page)
+    {
+        if (page?.Items is null || page.Offset < 0 || page.Limit is < 1 or > 50 ||
+            page.Total < 0 || page.Items.Count > page.Limit ||
+            page.Items.Count != 0 && (long)page.Offset + page.Items.Count > page.Total)
+            throw new BrokerException("invalid_backend_data", "Spotify playlist page is invalid.");
+        foreach (var playlist in page.Items) ValidateSpotifyPlaylist(playlist);
+        return page with { Items = page.Items.ToArray() };
+    }
+
+    private static SpotifyPlaylistItemsSummary ValidateSpotifyPlaylistItems(
+        SpotifyPlaylistItemsSummary? page)
+    {
+        if (page?.Items is null || page.Playlist is null || page.Offset < 0 ||
+            page.Limit is < 1 or > 50 || page.Total < 0 || page.Items.Count > page.Limit ||
+            page.Items.Count != 0 && (long)page.Offset + page.Items.Count > page.Total)
+            throw new BrokerException(
+                "invalid_backend_data", "Spotify playlist items are invalid.");
+        ValidateSpotifyPlaylist(page.Playlist);
+        foreach (var item in page.Items) ValidateSpotifyMediaItem(item);
+        return page with { Items = page.Items.ToArray() };
+    }
+
+    private static void ValidateSpotifyPlaylist(SpotifyPlaylistSummary playlist)
+    {
+        if (playlist is null || playlist.ItemCount < 0)
+            throw new BrokerException("invalid_backend_data", "Spotify playlist is invalid.");
+        ValidateSpotifyIdentifier(playlist.PlaylistId, "Spotify playlist identifier",
+            "invalid_backend_data");
+        ContractValidation.DisplayName(playlist.Name);
+        ContractValidation.DisplayName(playlist.OwnerName);
+        if (playlist.Description is { } description) ContractValidation.DisplayName(description);
+        ValidateSpotifyUri(playlist.Uri, "invalid_backend_data");
+        ValidateSpotifyUrl(playlist.SpotifyUrl, "Spotify URL");
+        if (playlist.ArtworkUrl is { } artwork) ValidateSpotifyArtwork(artwork);
+    }
+
+    private static void ValidateSpotifyMediaItem(SpotifyMediaItemSummary item)
+    {
+        if (item is null || !Enum.IsDefined(item.ItemType) ||
+            item.DurationMilliseconds is < 0 or > 604_800_000)
+            throw new BrokerException("invalid_backend_data", "Spotify media item is invalid.");
+        ContractValidation.DisplayName(item.Title);
+        ContractValidation.DisplayName(item.Subtitle);
+        ValidateSpotifyUri(item.Uri, "invalid_backend_data");
+        ValidateSpotifyUrl(item.SpotifyUrl, "Spotify URL");
+        if (item.ArtworkUrl is { } artwork) ValidateSpotifyArtwork(artwork);
+    }
+
+    private static void ValidateSpotifyStartPlayback(StartSpotifyPlaybackRequest request)
+    {
+        if ((request.ContextUri is null) == (request.ItemUris is null) ||
+            request.ItemUris is { Count: < 1 or > 50 } || request.Offset is < 0 ||
+            request.Offset is not null && request.ContextUri is null)
+            throw new BrokerException("invalid_payload", "Spotify playback selection is invalid.");
+        if (request.ContextUri is not null) ValidateSpotifyUri(request.ContextUri);
+        if (request.ItemUris is not null)
+            foreach (var uri in request.ItemUris) ValidateSpotifyUri(uri);
+        if (request.DeviceId is not null)
+            ValidateSpotifyIdentifier(request.DeviceId, "Spotify device identifier");
+    }
+
+    private static void ValidateSpotifyPage(int offset, int limit)
+    {
+        if (offset is < 0 or > 100_000 || limit is < 1 or > 50)
+            throw new BrokerException("invalid_payload", "Spotify page request is invalid.");
+    }
+
+    private static void ValidateSpotifyIdentifier(
+        string value, string label, string errorCode = "invalid_payload")
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 256 ||
+            value.Any(character => character is < '!' or > '~'))
+            throw new BrokerException(errorCode, $"{label} is invalid.");
+    }
+
+    private static void ValidateSpotifyUri(string value, string errorCode = "invalid_payload")
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > MaximumSpotifyUriCharacters ||
+            value.Any(char.IsControl) || !value.StartsWith("spotify:", StringComparison.Ordinal) ||
+            value.Count(character => character == ':') < 2)
+            throw new BrokerException(errorCode, "Spotify URI is invalid.");
+    }
+
+    private static void ValidateSpotifyUrl(string value, string label)
+    {
+        if (value.Length > MaximumSpotifyArtworkUrlCharacters ||
+            !Uri.TryCreate(value, UriKind.Absolute, out var parsed) ||
+            parsed.Scheme != Uri.UriSchemeHttps ||
+            !parsed.Host.Equals("open.spotify.com", StringComparison.OrdinalIgnoreCase) ||
+            !parsed.IsDefaultPort || !string.IsNullOrEmpty(parsed.UserInfo))
+            throw new BrokerException("invalid_backend_data", $"{label} is invalid.");
+    }
+
+    private static void ValidateSpotifyArtwork(string value)
+    {
+        if (value.Length > MaximumSpotifyArtworkUrlCharacters ||
+            !Uri.TryCreate(value, UriKind.Absolute, out var parsed) ||
+            parsed.Scheme != Uri.UriSchemeHttps || !parsed.IsDefaultPort ||
+            !string.IsNullOrEmpty(parsed.UserInfo))
+            throw new BrokerException(
+                "invalid_backend_data", "Spotify artwork URL is invalid.");
     }
 
     private static WifiRadioSummary ValidateWifiRadio(bool _, WifiRadioSummary? radio)

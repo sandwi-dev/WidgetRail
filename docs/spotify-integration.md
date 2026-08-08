@@ -1,23 +1,26 @@
 # Spotify Web API integration
 
-Status: **trusted provider, isolated Web Playback host, and Community addon core
-implemented; live account proof remains in progress as of 2026-08-08**.
+Status: **trusted provider, isolated Web Playback host orchestration, and
+Community addon 0.2.0 implemented; live WebView2 playback proof remains in
+progress as of 2026-08-08**.
 
 The intended product is a separately installable Community addon backed by a
 trusted, reusable Spotify provider. The current repository implements the
 typed v1 broker surface, a trusted Web API/PKCE provider, protected refresh-token
 storage, package configuration storage, local configuration CLI, production
-`WidgetBridge` composition, Spotify Community addon package 0.1.7, and an
-isolated WebView2 Web Playback SDK host. It
-does not yet connect the playback-host protocol to the provider lifecycle,
-expose a controller-native text editor, or prove a live
-Spotify login.
+`WidgetBridge` composition, Spotify Community addon package 0.2.0, and a lazily
+started isolated WebView2 Web Playback SDK host. The provider owns its process
+lifecycle, short-lived streaming-token handoff, safe local-device alias,
+transfer, queue, and playlist operations. It does not yet expose a
+controller-native text editor or prove live encrypted audio playback in the
+supported WebView2 runtime.
 
 The metadata/control path uses Spotify's official Web API and reviewed OpenAPI
 schema, not desktop-client reverse engineering, browser scraping, or private
 endpoints. A separate trusted Web Playback SDK host now implements the bounded
 local-audio process boundary; it is not a general WebView or Community-worker
-web permission. Production orchestration and live device proof remain. The Spotify application, OAuth login, quota,
+web permission. Provider orchestration is implemented; live device proof
+remains. The Spotify application, OAuth login, quota,
 Premium eligibility, and terms remain external requirements.
 
 ### Implemented foundation versus remaining product work
@@ -28,10 +31,10 @@ Premium eligibility, and terms remain external requirements.
 | Broker contract | Implemented capability IDs and strict DTOs for configuration, authorization, playback read/control, and playback-change events. |
 | Trusted provider | Implemented PKCE, exact loopback callback, refresh-token vault, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized errors. |
 | Native composition | `WidgetBridge` constructs the Windows Spotify provider through the same typed broker used by every widget. |
-| Community addon | Version 0.1.6 controller-first player core implemented, tested, and locally packageable through the same public SDK/AppContainer path as third-party addons. Its real seek control uses the public `UI.Scrubber` contract. |
+| Community addon | Version 0.2.0 implements responsive Player, Queue, Playlists, and Devices surfaces through the same public SDK/AppContainer path as third-party addons. Its seek control uses the public `UI.Scrubber` contract. |
 | Setup UI | Compact controller setup/instructions are implemented with a VerticalScroll, responsive actions, and a fresh Scroll identity on every explicit setup entry; a controller-native Client-ID editor is planned, so the CLI below remains the current testable configuration path. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
-| Local Web Playback SDK audio | Isolated singleton WebView2 host and offline protocol tests implemented; provider orchestration and live device proof remain. |
+| Local Web Playback SDK audio | Isolated singleton WebView2 host, lifecycle/token orchestration, sanitized local-device projection, and offline protocol/process tests implemented; live account/device proof remains. |
 
 ## Current external gate
 

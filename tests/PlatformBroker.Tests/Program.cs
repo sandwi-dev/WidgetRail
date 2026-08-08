@@ -140,7 +140,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(28, PlatformCapabilities.All.Count);
+    Assert.Equal(30, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -1339,6 +1339,8 @@ static async Task SpotifyContracts()
         PlatformCapabilities.SpotifyAuthorizationV1,
         PlatformCapabilities.SpotifyPlaybackReadV1,
         PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyLocalPlaybackV1,
+        PlatformCapabilities.SpotifyPlaylistsReadV1,
     })
         await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
 
@@ -1353,12 +1355,35 @@ static async Task SpotifyContracts()
             new SpotifyPlaybackDisallowedActions(
                 false, false, false, false, false, false, false, false),
             "Spotify"),
+        SpotifyDevices = new SpotifyDevicesSummary([
+            new("opaque-device", "This PC", "computer", true, false, true, 70, true),
+        ]),
+        SpotifyQueue = new SpotifyQueueSummary(null, [
+            new(SpotifyPlaybackItemType.Track, "Queued", "Artist", 180_000,
+                null, "spotify:track:queued", "https://open.spotify.com/track/queued", true),
+        ], false),
+        SpotifyLocalPlayback = new SpotifyLocalPlaybackSummary(
+            SpotifyLocalPlaybackState.Ready, "This PC · Game Bar", 70, null),
+        SpotifyPlaylists = new SpotifyPlaylistPageSummary([
+            new("playlist", "Gaming", null, null,
+                "https://open.spotify.com/playlist/playlist",
+                "spotify:playlist:playlist", "Owner", false, true, 1),
+        ], 0, 20, 1),
+        SpotifyPlaylistItems = new SpotifyPlaylistItemsSummary(
+            new("playlist", "Gaming", null, null,
+                "https://open.spotify.com/playlist/playlist",
+                "spotify:playlist:playlist", "Owner", false, true, 1),
+            [new(SpotifyPlaybackItemType.Track, "Track", "Artist", 180_000,
+                null, "spotify:track:item", "https://open.spotify.com/track/item", true)],
+            0, 20, 1),
     };
     await using var broker = Broker(identity, store, backend,
         PlatformCapabilities.SpotifyConfigurationV1,
         PlatformCapabilities.SpotifyAuthorizationV1,
         PlatformCapabilities.SpotifyPlaybackReadV1,
-        PlatformCapabilities.SpotifyPlaybackControlV1);
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyLocalPlaybackV1,
+        PlatformCapabilities.SpotifyPlaylistsReadV1);
 
     var createdRead = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.SpotifyConfigurationV1,
@@ -1447,6 +1472,55 @@ static async Task SpotifyContracts()
         PlatformCapabilities.SpotifyPlaybackControl,
         new { operation = "seek", positionMilliseconds = 42_000 }));
     Assert.True(seek.Succeeded);
+
+    var devices = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackDevicesGet, new { }));
+    Assert.True(devices.Succeeded);
+    Assert.Contains("This PC", devices.Payload!.Value.GetRawText());
+    var transfer = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackTransfer,
+        new { deviceId = "opaque-device", continuePlaying = true }));
+    Assert.True(transfer.Succeeded);
+    Assert.Equal("opaque-device", backend.LastSpotifyTransferRequest!.DeviceId);
+    var queue = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackReadV1,
+        PlatformCapabilities.SpotifyPlaybackQueueGet, new { }));
+    Assert.True(queue.Succeeded);
+    Assert.Contains("Queued", queue.Payload!.Value.GetRawText());
+    var addQueue = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackQueueAdd,
+        new { uri = "spotify:track:queued", deviceId = "opaque-device" }));
+    Assert.True(addQueue.Succeeded);
+    var start = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackStart,
+        new { contextUri = "spotify:playlist:playlist", offset = 0 }));
+    Assert.True(start.Succeeded);
+    var local = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyLocalPlaybackV1,
+        PlatformCapabilities.SpotifyLocalPlaybackGet, new { }));
+    Assert.True(local.Succeeded);
+    var localStart = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyLocalPlaybackV1,
+        PlatformCapabilities.SpotifyLocalPlaybackControl,
+        new { operation = "startAndTransfer", continuePlaying = true }));
+    Assert.True(localStart.Succeeded);
+    Assert.Contains("active", localStart.Payload!.Value.GetRawText());
+    var playlists = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaylistsReadV1,
+        PlatformCapabilities.SpotifyPlaylistsGet,
+        new { offset = 0, limit = 20 }));
+    Assert.True(playlists.Succeeded);
+    Assert.Contains("Gaming", playlists.Payload!.Value.GetRawText());
+    var playlistItems = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaylistsReadV1,
+        PlatformCapabilities.SpotifyPlaylistItemsGet,
+        new { playlistId = "playlist", offset = 0, limit = 20 }));
+    Assert.True(playlistItems.Succeeded);
+    Assert.Contains("Track", playlistItems.Payload!.Value.GetRawText());
 
     broker.SetLifecycle(BrokerLifecycleState.Visible);
     await using var subscription = await broker.SubscribeAsync(

@@ -176,6 +176,18 @@ public static class ViewSnapshotValidator
             CheckIdentifier(node.Id, $"{path}.id", "node ID");
             if (!Enum.IsDefined(node.Kind))
                 Add($"{path}.kind", "invalid_node_kind", "The node kind is not supported.");
+            if (node.VisibleWhen is { } visibility)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.ResponsiveVisibilityVersion)
+                    Add($"{path}.visibleWhen", "feature_requires_version",
+                        $"Responsive visibility requires protocol version {ProtocolConstants.ResponsiveVisibilityVersion} or later.");
+                if (!Enum.IsDefined(visibility))
+                    Add($"{path}.visibleWhen", "invalid_responsive_visibility",
+                        "The responsive visibility mode is not supported.");
+                if (depth == 1 && visibility is not ResponsiveVisibility.Always)
+                    Add($"{path}.visibleWhen", "conditional_root_not_allowed",
+                        "The root must remain visible; apply responsive visibility to one of its descendants.");
+            }
 
             CheckString(node.Text, $"{path}.text");
             CheckString(node.AccessibilityLabel, $"{path}.accessibilityLabel");

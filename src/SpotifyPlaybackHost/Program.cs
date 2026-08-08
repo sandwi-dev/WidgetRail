@@ -1,3 +1,5 @@
+using GameBarAlternative.SpotifyPlayback;
+
 namespace GameBarAlternative.SpotifyPlaybackHost;
 
 internal static class Program

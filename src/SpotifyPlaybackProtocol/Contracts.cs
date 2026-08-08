@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace GameBarAlternative.SpotifyPlayback;
 
 public static class SpotifyPlaybackProtocol
 {
@@ -12,35 +12,6 @@ public static class SpotifyPlaybackProtocol
     public const int MaximumPendingCommands = 64;
     public const long MaximumSeekMilliseconds = 604_800_000;
     public const string RequiredScope = "streaming";
-}
-
-internal sealed class PendingPageResponses
-{
-    private readonly Dictionary<string, string> _expected = new(StringComparer.Ordinal);
-
-    internal int Count => _expected.Count;
-
-    internal void Register(string requestId, string expectedType)
-    {
-        if (_expected.Count >= SpotifyPlaybackProtocol.MaximumPendingCommands ||
-            !_expected.TryAdd(requestId, expectedType))
-            throw new SpotifyPlaybackProtocolException(
-                "too_many_pending_commands",
-                "The Spotify playback host has too many pending commands.");
-    }
-
-    internal bool TryConsume(string requestId, string actualType)
-    {
-        if (!_expected.TryGetValue(requestId, out var expectedType) ||
-            (actualType != "command_failed" && actualType != expectedType))
-            return false;
-        _expected.Remove(requestId);
-        return true;
-    }
-
-    internal void Cancel(string requestId) => _expected.Remove(requestId);
-
-    internal void Clear() => _expected.Clear();
 }
 
 public enum SpotifyPlaybackLifecycleState
@@ -108,12 +79,13 @@ public sealed record SpotifyPlaybackConnectOptions(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(DeviceName);
         if (DeviceName.Length > SpotifyPlaybackProtocol.MaximumDeviceNameCharacters ||
-            DeviceName.Any(character => char.IsControl(character)))
+            DeviceName.Any(char.IsControl))
             throw new SpotifyPlaybackProtocolException(
                 "invalid_device_name", "The Spotify device name is invalid.");
         if (!double.IsFinite(InitialVolume) || InitialVolume is < 0 or > 1)
             throw new SpotifyPlaybackProtocolException(
-                "invalid_volume", "The Spotify playback volume must be between zero and one.");
+                "invalid_volume",
+                "The Spotify playback volume must be between zero and one.");
         ArgumentNullException.ThrowIfNull(Preconditions);
         Preconditions.Validate();
     }
@@ -191,6 +163,13 @@ public sealed record SpotifyPlaybackEvent(
     string Type,
     string? RequestId,
     object? Payload);
+
+/// <summary>A validated event received by the trusted parent process.</summary>
+public sealed record SpotifyPlaybackEventEnvelope(
+    int Version,
+    string Type,
+    string? RequestId,
+    JsonElement Payload);
 
 public sealed class SpotifyPlaybackProtocolException : Exception
 {

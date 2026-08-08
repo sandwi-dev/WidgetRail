@@ -9,6 +9,7 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
 {
     private const int GenericCredential = 1;
     private const int MaximumRefreshTokenUtf8Bytes = 4096;
+    private const int MaximumGrantedScopes = 12;
 
     public Task<SpotifyRefreshCredential?> ReadAsync(
         SpotifyIntegrationIdentity identity, CancellationToken cancellationToken)
@@ -37,7 +38,8 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
                     ?? throw new JsonException("Credential was null.");
                 ValidateClientId(document.ClientId);
                 ValidateToken(document.RefreshToken);
-                if (document.GrantedScopes is null || document.GrantedScopes.Length > 8 ||
+                if (document.GrantedScopes is null ||
+                    document.GrantedScopes.Length > MaximumGrantedScopes ||
                     document.GrantedScopes.Any(scope => string.IsNullOrWhiteSpace(scope) ||
                         scope.Length > 128 || scope.Any(character => character is < '!' or > '~')))
                     throw new JsonException("Credential scopes were invalid.");
@@ -64,7 +66,8 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
         ArgumentNullException.ThrowIfNull(credential);
         ValidateClientId(credential.ClientId);
         ValidateToken(credential.RefreshToken);
-        if (credential.GrantedScopes.Count > 8 || credential.GrantedScopes.Any(scope =>
+        if (credential.GrantedScopes.Count > MaximumGrantedScopes ||
+            credential.GrantedScopes.Any(scope =>
                 string.IsNullOrWhiteSpace(scope) || scope.Length > 128 ||
                 scope.Any(character => character is < '!' or > '~')))
             throw new SpotifyProviderException(

@@ -449,6 +449,12 @@ public enum SpotifyAuthorizationScope
 {
     PlaybackStateRead,
     PlaybackStateControl,
+    LocalPlayback,
+    PlaylistsRead,
+    LibraryRead,
+    LibraryModify,
+    RecentlyPlayedRead,
+    UserTopRead,
 }
 
 public sealed record ConnectSpotifyRequest(
@@ -527,6 +533,113 @@ public sealed record SpotifyPlaybackCommand(
 
 public sealed record SpotifyPlaybackChangedEvent(
     [property: JsonRequired] SpotifyPlaybackSummary Playback);
+
+public enum SpotifyLocalPlaybackState
+{
+    Disabled,
+    Starting,
+    Ready,
+    Active,
+    NotReady,
+    ReauthorizationRequired,
+    PremiumRequired,
+    Unavailable,
+    Error,
+}
+
+public sealed record SpotifyLocalPlaybackSummary(
+    [property: JsonRequired] SpotifyLocalPlaybackState State,
+    [property: JsonRequired] string DeviceName,
+    int? VolumePercent,
+    string? DisplayMessage);
+
+public enum SpotifyLocalPlaybackOperation
+{
+    StartAndTransfer,
+    Stop,
+    SetVolume,
+}
+
+public sealed record SpotifyLocalPlaybackCommand(
+    [property: JsonRequired] SpotifyLocalPlaybackOperation Operation,
+    int? VolumePercent,
+    bool? ContinuePlaying);
+
+public sealed record SpotifyDeviceSummary(
+    [property: JsonRequired] string DeviceId,
+    [property: JsonRequired] string Name,
+    [property: JsonRequired] string Type,
+    [property: JsonRequired] bool IsActive,
+    [property: JsonRequired] bool IsRestricted,
+    [property: JsonRequired] bool SupportsVolume,
+    int? VolumePercent,
+    [property: JsonRequired] bool IsLocalHost);
+
+public sealed record SpotifyDevicesSummary(
+    [property: JsonRequired] IReadOnlyList<SpotifyDeviceSummary> Devices);
+
+public sealed record TransferSpotifyPlaybackRequest(
+    [property: JsonRequired] string DeviceId,
+    [property: JsonRequired] bool ContinuePlaying);
+
+public sealed record SpotifyMediaItemSummary(
+    [property: JsonRequired] SpotifyPlaybackItemType ItemType,
+    [property: JsonRequired] string Title,
+    [property: JsonRequired] string Subtitle,
+    [property: JsonRequired] long DurationMilliseconds,
+    string? ArtworkUrl,
+    [property: JsonRequired] string Uri,
+    [property: JsonRequired] string SpotifyUrl,
+    [property: JsonRequired] bool IsPlayable);
+
+public sealed record SpotifyQueueSummary(
+    SpotifyMediaItemSummary? CurrentlyPlaying,
+    [property: JsonRequired] IReadOnlyList<SpotifyMediaItemSummary> Items,
+    [property: JsonRequired] bool IsTruncated);
+
+public sealed record AddSpotifyQueueItemRequest(
+    [property: JsonRequired] string Uri,
+    string? DeviceId);
+
+public sealed record SpotifyPlaylistSummary(
+    [property: JsonRequired] string PlaylistId,
+    [property: JsonRequired] string Name,
+    string? Description,
+    string? ArtworkUrl,
+    [property: JsonRequired] string SpotifyUrl,
+    [property: JsonRequired] string Uri,
+    [property: JsonRequired] string OwnerName,
+    [property: JsonRequired] bool IsCollaborative,
+    bool? IsPublic,
+    [property: JsonRequired] int ItemCount);
+
+public sealed record SpotifyPlaylistPageRequest(
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit);
+
+public sealed record SpotifyPlaylistPageSummary(
+    [property: JsonRequired] IReadOnlyList<SpotifyPlaylistSummary> Items,
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit,
+    [property: JsonRequired] int Total);
+
+public sealed record SpotifyPlaylistItemsRequest(
+    [property: JsonRequired] string PlaylistId,
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit);
+
+public sealed record SpotifyPlaylistItemsSummary(
+    [property: JsonRequired] SpotifyPlaylistSummary Playlist,
+    [property: JsonRequired] IReadOnlyList<SpotifyMediaItemSummary> Items,
+    [property: JsonRequired] int Offset,
+    [property: JsonRequired] int Limit,
+    [property: JsonRequired] int Total);
+
+public sealed record StartSpotifyPlaybackRequest(
+    string? ContextUri,
+    IReadOnlyList<string>? ItemUris,
+    string? DeviceId,
+    int? Offset);
 
 public sealed record LoopbackHttpHeader(
     [property: JsonRequired] string Name,
@@ -727,6 +840,48 @@ public interface ISpotifyPlatformBrokerBackend : IPlatformBrokerEventSource
         CancellationToken cancellationToken) =>
         Task.FromException(
             new BrokerException("platform_unavailable", "Spotify playback control is unavailable."));
+    Task<SpotifyDevicesSummary> GetSpotifyDevicesAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyDevicesSummary>(
+            new BrokerException("platform_unavailable", "Spotify devices are unavailable."));
+    Task TransferSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, TransferSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "Spotify device transfer is unavailable."));
+    Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyQueueSummary>(
+            new BrokerException("platform_unavailable", "Spotify queue is unavailable."));
+    Task AddSpotifyQueueItemAsync(
+        BrokerWidgetIdentity identity, AddSpotifyQueueItemRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "Spotify queue control is unavailable."));
+    Task StartSpotifyPlaybackAsync(
+        BrokerWidgetIdentity identity, StartSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "Spotify playback selection is unavailable."));
+    Task<SpotifyLocalPlaybackSummary> GetSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyLocalPlaybackSummary>(
+            new BrokerException("platform_unavailable", "Spotify local playback is unavailable."));
+    Task<SpotifyLocalPlaybackSummary> ControlSpotifyLocalPlaybackAsync(
+        BrokerWidgetIdentity identity, SpotifyLocalPlaybackCommand command,
+        CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyLocalPlaybackSummary>(
+            new BrokerException("platform_unavailable", "Spotify local playback is unavailable."));
+    Task<SpotifyPlaylistPageSummary> GetSpotifyPlaylistsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistPageRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyPlaylistPageSummary>(
+            new BrokerException("platform_unavailable", "Spotify playlists are unavailable."));
+    Task<SpotifyPlaylistItemsSummary> GetSpotifyPlaylistItemsAsync(
+        BrokerWidgetIdentity identity, SpotifyPlaylistItemsRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<SpotifyPlaylistItemsSummary>(
+            new BrokerException("platform_unavailable", "Spotify playlist items are unavailable."));
 }
 
 public interface IPrivateSecretPlatformBrokerBackend
