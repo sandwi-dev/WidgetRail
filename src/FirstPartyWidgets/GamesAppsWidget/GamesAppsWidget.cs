@@ -174,7 +174,7 @@ public sealed class GamesAppsWidget : Widget
         if (curated.Length == 0)
         {
             lock (_gate) _appByElementId = new Dictionary<string, string>(StringComparer.Ordinal);
-            var add = UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
+            var add = UI.Button("Add app", "games.open-catalog", "games.open-catalog")
                 .Icon(WidgetGlyph.Play, "Choose applications for your library")
                 .Disabled(LifecycleState != WidgetLifecycleState.Interactive)
                 .Classes("games-retry");
@@ -229,7 +229,7 @@ public sealed class GamesAppsWidget : Widget
             rows.Add(tile);
         }
 
-        rows.Add(UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
+        rows.Add(UI.Button("Add app", "games.open-catalog", "games.open-catalog")
             .Icon(WidgetGlyph.Play, $"Browse {items.Count} available applications")
             .Disabled(launchingAppId is not null ||
                 LifecycleState != WidgetLifecycleState.Interactive)

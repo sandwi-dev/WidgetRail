@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using GameBarAlternative.WindowsSpotifyProvider;
@@ -20,6 +22,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Generic widget configuration adapter stays package scoped", ConfigurationAdapterScope),
     ("Expired refresh authorization is deleted and requires reconnect", ExpiredRefreshIsDeleted),
     ("Browser failure cancels the pending callback listener", BrowserFailureCancelsCallback),
+    ("Loopback callback survives a speculative probe", LoopbackCallbackSurvivesProbe),
+    ("Occupied callback port never opens the browser", OccupiedCallbackPortStopsBrowser),
     ("Trusted playback host gets only a short-lived scoped token lease", TrustedHostTokenLease),
     ("Provider implements typed broker mappings without exposing tokens", BrokerContractMapping),
     ("Incremental scopes are explicit and closed", IncrementalScopes),
@@ -376,6 +380,59 @@ static async Task BrowserFailureCancelsCallback()
     Assert.True(callback.WasCanceled);
 }
 
+static async Task LoopbackCallbackSurvivesProbe()
+{
+    var receiver = new LoopbackSpotifyAuthorizationCallbackReceiver();
+    var receive = receiver.ReceiveAsync(
+        new Uri(WindowsSpotifyPlatformBackend.ExactRedirectUri),
+        TimeSpan.FromSeconds(5), CancellationToken.None);
+
+    // Simulate a browser/security preconnect that opens and closes before the
+    // real callback navigation sends its request.
+    using var probe = new TcpClient();
+    await probe.ConnectAsync(IPAddress.Loopback, 43827);
+
+    using var callbackClient = new TcpClient();
+    await callbackClient.ConnectAsync(IPAddress.Loopback, 43827);
+    using var stream = callbackClient.GetStream();
+    var request = Encoding.ASCII.GetBytes(
+        "GET /callback/?code=authorization-code&state=verified-state HTTP/1.1\r\n" +
+        "Host: 127.0.0.1:43827\r\nConnection: close\r\n\r\n");
+    await stream.WriteAsync(request);
+    await stream.FlushAsync();
+
+    var callback = await receive;
+    Assert.Equal("authorization-code", callback.Code);
+    Assert.Equal("verified-state", callback.State);
+    Assert.Equal(null, callback.Error);
+}
+
+static async Task OccupiedCallbackPortStopsBrowser()
+{
+    var occupied = new TcpListener(IPAddress.Loopback, 43827)
+    {
+        ExclusiveAddressUse = true,
+    };
+    occupied.Start(1);
+    try
+    {
+        var browser = new RecordingBrowser();
+        await using var backend = Backend(
+            new FakeConfigurationStore("Client123456789"),
+            new FakeVault(),
+            new FakeHttp(_ => throw new InvalidOperationException()),
+            browser,
+            new LoopbackSpotifyAuthorizationCallbackReceiver());
+        await Assert.ThrowsAsync<SpotifyProviderException>(
+            () => backend.ConnectAsync(Identity(), default), "callback_unavailable");
+        Assert.Equal(0, browser.OpenCalls);
+    }
+    finally
+    {
+        occupied.Stop();
+    }
+}
+
 static async Task TrustedHostTokenLease()
 {
     var scopes = new HashSet<string>(StringComparer.Ordinal)
@@ -575,6 +632,18 @@ internal sealed class NullBrowser : ISpotifyBrowserLauncher
 {
     public Task OpenAsync(Uri uri, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("Browser was not expected.");
+}
+
+internal sealed class RecordingBrowser : ISpotifyBrowserLauncher
+{
+    internal int OpenCalls { get; private set; }
+
+    public Task OpenAsync(Uri uri, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        OpenCalls++;
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class NullCallback : ISpotifyAuthorizationCallbackReceiver

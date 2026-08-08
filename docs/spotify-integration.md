@@ -7,7 +7,7 @@ The intended product is a separately installable Community addon backed by a
 trusted, reusable Spotify provider. The current repository implements the
 typed v1 broker surface, a trusted Web API/PKCE provider, protected refresh-token
 storage, package configuration storage, local configuration CLI, production
-`WidgetBridge` composition, Spotify Community addon package 0.1.4, and an
+`WidgetBridge` composition, Spotify Community addon package 0.1.6, and an
 isolated WebView2 Web Playback SDK host. It
 does not yet connect the playback-host protocol to the provider lifecycle,
 expose a controller-native text editor, or prove a live
@@ -28,8 +28,8 @@ Premium eligibility, and terms remain external requirements.
 | Broker contract | Implemented capability IDs and strict DTOs for configuration, authorization, playback read/control, and playback-change events. |
 | Trusted provider | Implemented PKCE, exact loopback callback, refresh-token vault, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized errors. |
 | Native composition | `WidgetBridge` constructs the Windows Spotify provider through the same typed broker used by every widget. |
-| Community addon | Version 0.1.4 controller-first player core implemented, tested, and locally packageable through the same public SDK/AppContainer path as third-party addons. Its real seek control uses the public `UI.Scrubber` contract. |
-| Setup UI | Compact controller setup/instructions are implemented with a VerticalScroll and responsive actions; a controller-native Client-ID editor is planned, so the CLI below remains the current testable configuration path. |
+| Community addon | Version 0.1.6 controller-first player core implemented, tested, and locally packageable through the same public SDK/AppContainer path as third-party addons. Its real seek control uses the public `UI.Scrubber` contract. |
+| Setup UI | Compact controller setup/instructions are implemented with a VerticalScroll, responsive actions, and a fresh Scroll identity on every explicit setup entry; a controller-native Client-ID editor is planned, so the CLI below remains the current testable configuration path. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
 | Local Web Playback SDK audio | Isolated singleton WebView2 host and offline protocol tests implemented; provider orchestration and live device proof remain. |
 
@@ -74,8 +74,20 @@ move the widget through Visible and Background without canceling that
 already-started request. This does not permit a new connect or any other control
 from an inactive state.
 
+Package 0.1.6 selects explicit `keep-alive` residency so the bridge cannot idle-
+unload the worker while this one user-started browser authorization is in
+flight. Active polling, progress interpolation, snapshots, invalidations, and
+ordinary presentation work still follow their Visible/Interactive lifetimes;
+`keep-alive` is not background provider authority.
+
 The temporary callback listener is created only by that explicit Connect action
-and waits at most five minutes; there is no idle/background listener. The exact
+and waits at most five minutes; there is no idle/background listener. Browsers,
+endpoint-security tools, and proxy helpers may speculatively connect to the
+loopback port. The receiver therefore tolerates at most 16 malformed or early-
+close local probes inside the same five-minute window instead of consuming the
+only accept. Every accepted callback still requires a loopback peer, exact
+`Host: 127.0.0.1:43827`, `GET`/`HTTP/1.1`, exact callback path, and matching
+OAuth state. The exact
 broker Connect deadline is seven minutes. Its remaining two minutes cover only
 bounded authorization-code exchange, HTTP retry/backoff, and credential-vault
 persistence after the human callback window. Disconnect is not exempt.
@@ -133,8 +145,10 @@ exactly:
 - Connect/Reconnect and Disconnect actions with explicit status; and
 - no client-secret field.
 
-Package 0.1.4 places the full instruction card in a controller VerticalScroll,
-uses compact responsive spacing/wrapping, and keeps Connect/Setup/Refresh/
+Package 0.1.6 places the full instruction card in a controller VerticalScroll,
+assigns a fresh Scroll node identity on every explicit setup entry so a prior
+bottom offset cannot hide the title/first step, uses compact responsive spacing/
+wrapping, and keeps Connect/Setup/Refresh/
 Disconnect actions on the shared centered icon-and-label button geometry. These
 are layout and navigation fixes; they do not weaken the authorization boundary
 or make OAuth start automatically.

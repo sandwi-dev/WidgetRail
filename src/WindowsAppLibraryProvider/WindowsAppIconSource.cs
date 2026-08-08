@@ -15,6 +15,7 @@ internal sealed class WindowsAppIconSource : IWindowsAppIconSource
     internal const int IconPixels = 48;
     private const uint ShgfiIcon = 0x000000100;
     private const uint ShgfiLargeIcon = 0x000000000;
+    private const uint ShgfiPidl = 0x000000008;
     private const uint DiNormal = 0x0003;
     private static readonly byte[] PngSignature =
         [137, 80, 78, 71, 13, 10, 26, 10];
@@ -56,6 +57,53 @@ internal sealed class WindowsAppIconSource : IWindowsAppIconSource
         finally
         {
             if (icon != 0) DestroyIcon(icon);
+        }
+    }
+
+    public string? TryRasterizeAppsFolderPngBase64(
+        string aumid,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!OperatingSystem.IsWindows() ||
+            WindowsAppsFolderApplicationSource.NormalizeAumid(aumid) is null)
+            return null;
+
+        nint itemIdList = 0;
+        nint icon = 0;
+        try
+        {
+            var result = SHParseDisplayName(
+                "shell:AppsFolder\\" + aumid, 0, out itemIdList, 0, out _);
+            if (result < 0 || itemIdList == 0) return null;
+            cancellationToken.ThrowIfCancellationRequested();
+            var shellFileInfo = new ShellFileInfo();
+            if (SHGetFileInfoFromPidl(
+                    itemIdList,
+                    0,
+                    ref shellFileInfo,
+                    (uint)Marshal.SizeOf<ShellFileInfo>(),
+                    ShgfiIcon | ShgfiLargeIcon | ShgfiPidl) == 0 ||
+                shellFileInfo.Icon == 0)
+                return null;
+            icon = shellFileInfo.Icon;
+            cancellationToken.ThrowIfCancellationRequested();
+            var bgra = RenderIcon(icon, cancellationToken);
+            if (bgra is null) return null;
+            var png = EncodePng(bgra, IconPixels, IconPixels);
+            if (png.Length > AppLibraryImageLimits.MaximumPngBytes) return null;
+            return Convert.ToBase64String(png);
+        }
+        catch (Exception exception) when (exception is ArgumentException or
+            ExternalException or IOException or UnauthorizedAccessException or
+            OutOfMemoryException)
+        {
+            return null;
+        }
+        finally
+        {
+            if (icon != 0) DestroyIcon(icon);
+            if (itemIdList != 0) CoTaskMemFree(itemIdList);
         }
     }
 
@@ -244,6 +292,19 @@ internal sealed class WindowsAppIconSource : IWindowsAppIconSource
     private static extern nint SHGetFileInfo(
         string path, uint fileAttributes, ref ShellFileInfo fileInfo,
         uint fileInfoSize, uint flags);
+
+    [DllImport("shell32.dll", EntryPoint = "SHGetFileInfoW", SetLastError = true)]
+    private static extern nint SHGetFileInfoFromPidl(
+        nint itemIdList, uint fileAttributes, ref ShellFileInfo fileInfo,
+        uint fileInfoSize, uint flags);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHParseDisplayName(
+        string name, nint bindContext, out nint itemIdList,
+        uint requestedAttributes, out uint attributes);
+
+    [DllImport("ole32.dll")]
+    private static extern void CoTaskMemFree(nint value);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

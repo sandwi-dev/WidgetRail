@@ -145,7 +145,16 @@ remains off until the publisher-trust gates in Phase 4.
   width text reflow, visible controller lease fallback, Spotify public-config
   resolution/permission metadata, full-row vertical Games & Apps lists, and
   stable Now Playing transport visuals (GBA-040 through GBA-042). Packaged
-  visual/controller evidence remains for those fixes as well.
+  visual/controller evidence remains for those fixes as well. The auth-free
+  `final-schema-v2-20260808-final` bundle adds retained package archives,
+  AppContainer snapshots, production computed styles, 12 standalone widget-
+  body WIC PNGs across four profiles, and digest-bearing traces for covered
+  GBA-038/GBA-042 paths. It does not cover
+  GBA-036/037/039/040/041, the remaining Games error/long/max-page states, live
+  OAuth, or manual hardware/window behavior. Settings generic-worker startup
+  is an explicit recorded gap rather than substituted evidence. The retained
+  Spotify 0.1.6 archive covers the accepted setup/button presentation, but the
+  auth-free bundle does not prove live callback or lifecycle behavior.
 - Complete controller-first Audio Control and Network Control through their
   locally testable hardware, privacy, denial, churn, and recovery gates
 - Run an explicit reversible Audio Control hardware gate on this machine:
@@ -177,14 +186,17 @@ remains off until the publisher-trust gates in Phase 4.
   immutable asset brokering/licensing/bounds and must never become arbitrary
   font loading. Verify every component at supported text/interface scales
   instead of tuning only current widgets.
-- Extend the implemented native opacity/scale/translation transition slice.
+- Extend the implemented native opacity/scale/translation and shell/content transition slice.
   Bounded `translate-x`/`translate-y` now move true subtree presentation
   geometry shared by paint, clip, focus, hit testing, navigation, and Scroll
   focus-follow without changing layout. Interruption/retarget, reduced-motion
   cancellation, replacement isolation, and settled hidden-idle behavior have
-  deterministic native coverage. The transient pressed-state map is connected
-  to exact physical actions. Remaining motion work is short shell/widget open,
-  close, and replacement transitions plus packaged visual/performance evidence.
+  deterministic native coverage. Shell open/close now use bounded 140/100 ms
+  opacity tracks and new/replaced widget content uses a 100 ms reveal; reversal,
+  reduced motion, same-identity no-flash, focus snap, and one-shot hide have
+  native coverage. The transient pressed-state map is connected to exact
+  physical actions. Remaining motion work is packaged visual/frame-time
+  evidence plus later product-target transitions.
   Do not import web-
   centric staggered entrances, ambient looping motion, editorial serif/faux-
   macOS defaults, or decorative animation into the controller shell.
@@ -210,8 +222,10 @@ remains off until the publisher-trust gates in Phase 4.
   saved entries on activation, and enumerates the broad Catalog only after
   **Add applications**. A generation-bound host effect closes the overlay only
   after the selected exact registration launches successfully; failure keeps it
-  open with feedback. AppsFolder/launcher sources, authoritative game
-  classification, icons, history, search, source grouping, running-program
+  open with feedback. Bounded current-user AppsFolder/AUMID discovery, exact
+  revalidated null-argument activation, and curated Shell icons are now
+  implemented beside Start Menu shortcuts. Launcher sources, authoritative game
+  classification, history, search, source grouping, running-program
   capture, and file-picker additions remain roadmap work.
 - Capture proof and widget if Windows API tests pass
 - Expand the implemented Spotify Community addon beyond its controller-first
@@ -227,9 +241,11 @@ remains off until the publisher-trust gates in Phase 4.
   and new inactive controls remain denied. The listener window is five minutes;
   the exact broker Connect deadline is seven minutes, leaving two bounded
   minutes for token exchange, retry/backoff, and credential-vault persistence.
-  Revoke, Destroying, and cancellation still terminate it. Package 0.1.4 also
-  makes setup vertically scrollable and compacts the responsive player/setup
-  layout. Beyond the core player, add nested device/queue, search, recent,
+  Revoke, Destroying, and cancellation still terminate it. Package 0.1.6 uses
+  `keep-alive` so idle unload cannot destroy the one explicit in-flight OAuth
+  task, accepts at most 16 malformed/early-close local probes inside the same
+  listener window, and gives every setup entry a fresh Scroll identity. No live
+  allowlisted-account success is claimed. Beyond the core player, add nested device/queue, search, recent,
   library, playlist,
   album, and artist surfaces from the pinned current OpenAPI subset. Add actual
   local audio by orchestrating the implemented separately trusted singleton Web
@@ -249,12 +265,15 @@ These items can advance on an isolated Windows machine while Spotify and
 Discord external gates are unavailable. Order reflects current product impact,
 not irreversible API priority:
 
-1. **Close the visible regression evidence.** Exercise GBA-036 through GBA-042
+1. **Continue the visible regression evidence.** Exercise GBA-036 through GBA-042
    across compact/standard/wide viewports, 100–150% text/interface scale,
    reduced transparency, high contrast, long/error content, controller Back,
    first/last Scroll reachability, and foreground-activation denial. Confirm
    Spotify setup and permission copy without treating live OAuth as a local
-   gate. Add deterministic captures where manual hardware is not required.
+   gate. `final-schema-v2-20260808-final` supplies deterministic retained-
+   package/standalone-widget-body captures for the covered GBA-038/GBA-042
+   paths; retain the recorded Settings activation gap and add the uncaptured/
+   error/manual cases without broadening what that run proves.
 2. **Finish the YT Music Community-addon proof.** Run clean pack/install/review/
    consent/enable, real companion pairing, dashboard/open-widget input,
    lifecycle/crash recovery, update/rollback, disable, and uninstall without a
@@ -270,14 +289,14 @@ not irreversible API priority:
    hands-on packaged visual/controller/accessibility testing on the relaunched
    overlay, then design advanced/virtualized collections
    and optional font assets without weakening controller or package safety.
-4. **Complete motion without web-style overhead.** Subtree translation is now
-   implemented with reduced-motion and hidden-idle evidence. Add short shell/
-   widget open, close, and replacement transitions and capture packaged visual/
-   performance evidence.
-5. **Deepen Games & Apps through safe sources.** Add bounded icons, AppsFolder/
-   UWP and reviewed launcher adapters, running-program capture, and a host-owned
-   file picker. Keep classification evidence-backed and launch identities
-   opaque/revalidated.
+4. **Prove motion without web-style overhead.** Subtree translation plus bounded
+   140/100 ms shell open/close and 100 ms widget-identity reveal are implemented
+   with reduced-motion and no-settled-idle native evidence. Capture packaged
+   visual/frame-time evidence before adding later product-target transitions.
+5. **Deepen Games & Apps through safe sources.** Start Menu and bounded
+   AppsFolder/AUMID sources plus curated icons are implemented. Add reviewed
+   launcher adapters, running-program capture, and a host-owned file picker.
+   Keep classification evidence-backed and launch identities opaque/revalidated.
 6. **Harden local providers and resource behavior.** Expand Audio/Network
    denial/churn/recovery tests, perform reversible Bluetooth pairing only with
    disposable hardware, add worker crash quarantine/profile cleanup, and store
@@ -382,16 +401,17 @@ targets, arguments, AUMIDs, package identities, PIDs, and HWNDs private; every
 launch re-enumerates and requires one exact unchanged shortcut before invoking
 the Windows Shell without arguments or elevation.
 
-This first slice intentionally scans only executable `.lnk` registrations in
-the current-user and all-user Start Menu Programs folders. Curated entries can
+This slice scans executable `.lnk` registrations in the current-user/all-user
+Start Menu Programs folders plus bounded current-user AppsFolder/AUMID
+registrations on a trusted STA lane. Curated entries can
 carry bounded host-rasterized Shell icons while broad discovery stays text-only,
 and every real entry is deliberately reported as Application rather than
 guessing games from filenames or paths. The host now
 issues an authority-scoped SavedId, stores curation/recent-first order through
 package-private compare-and-swap state, and resolves it to a fresh provider-
 lifetime launch token. The full Catalog now loads only when requested. Next
-increments should add supported AppsFolder/UWP and launcher-specific adapters,
-then richer source artwork and evidence-backed game classification. Search,
+increments should add reviewed launcher-specific adapters, then richer source
+artwork and evidence-backed game classification. Search,
 grouping, history, source attribution, running-
 program capture, file-picker additions, and refresh observation must remain
 bounded and privacy reviewed. None may become arbitrary path/process launch

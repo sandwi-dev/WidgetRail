@@ -1568,9 +1568,12 @@ struct DeclarativeRenderer::RenderPass final {
             const auto alignment = hasText && hasTextAlignment
                 ? style.textAlign()
                 : NativeTextAlign::Center;
+            const auto stateCueReserve = reserveStateCue
+                ? std::min(34.0F, textRect.width * 0.25F)
+                : 0.0F;
             const auto textBudget = std::max(
                 1.0F, textRect.width - (hasLeading && hasText ? iconSize + 8.0F : 0.0F) -
-                    (reserveStateCue ? 68.0F : 0.0F));
+                    stateCueReserve);
             const auto measured = hasText
                 ? MeasureText(node, style, {textBudget, textRect.height})
                 : Size{};
@@ -1937,16 +1940,17 @@ ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
         return {{}, {}};
     }
 
-    // A trailing semantic cue must not collide with the primary content. Use
-    // the same reservation on both sides so the icon-label group remains
-    // visually centered in the complete button rather than drifting left.
+    // A trailing semantic cue must not collide with the primary content, but
+    // it consumes space on the trailing side only. Reserving the same amount
+    // on both sides needlessly starves compact icon-label buttons (especially
+    // disabled controls, which also render a trailing unavailable cue).
     const auto cueInset = reserveTrailingStateCue
         ? std::min(34.0F, content.width * 0.25F)
         : 0.0F;
     const Rect safe{
-        content.x + cueInset,
+        content.x,
         content.y,
-        std::max(0.0F, content.width - cueInset * 2.0F),
+        std::max(0.0F, content.width - cueInset),
         content.height,
     };
     const auto resolvedLeading = hasLeading && std::isfinite(leadingSize)
@@ -1961,11 +1965,26 @@ ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
         : 0.0F;
     const auto groupWidth = resolvedLeading + gap + resolvedText;
     const auto remaining = std::max(0.0F, safe.width - groupWidth);
-    const auto groupX = safe.x + std::clamp(
+    auto groupX = safe.x + std::clamp(
         alignment == NativeTextAlign::Start ? 0.0F :
         alignment == NativeTextAlign::End ? remaining : remaining * 0.5F,
         0.0F,
         remaining);
+    auto textX = groupX + resolvedLeading + gap;
+    if (alignment == NativeTextAlign::Center && hasText) {
+        // A button label is the primary affordance. Keep the label itself on
+        // the control's visual center and place a leading icon beside it when
+        // there is room. Centering the complete icon-label group makes every
+        // label drift right by half the icon/gap, which is especially visible
+        // in paired controller actions such as Spotify Connect and Setup.
+        const auto centeredTextX = content.x + (content.width - resolvedText) * 0.5F;
+        const auto leadingX = centeredTextX - gap - resolvedLeading;
+        if ((!hasLeading || leadingX >= safe.x) &&
+            centeredTextX + resolvedText <= safe.x + safe.width) {
+            textX = centeredTextX;
+            groupX = hasLeading ? leadingX : centeredTextX;
+        }
+    }
     const Rect leading{
         groupX,
         safe.y + (safe.height - resolvedLeading) * 0.5F,
@@ -1973,7 +1992,7 @@ ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
         resolvedLeading,
     };
     const Rect text{
-        groupX + resolvedLeading + gap,
+        textX,
         safe.y,
         resolvedText,
         safe.height,

@@ -3,7 +3,7 @@
   "id": "org.gbar.samples.spotify",
   "publisher": "org.gbar.samples",
   "name": "Spotify",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -24,7 +24,7 @@
   ],
   "residencyPolicy": {
     "schemaVersion": 1,
-    "mode": "suspend-when-hidden"
+    "mode": "keep-alive"
   },
   "resourceRequest": {
     "memoryMb": 48,

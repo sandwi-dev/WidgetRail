@@ -753,6 +753,13 @@ static Task PackageValidates()
     var package = GbssPackageLoader.Load("styles/default.gbss", new GbssFileSourceProvider(root));
     var compiled = GbssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+    var stateTitle = compiled.Theme!.Resolve(new GbssElement(
+        "text", StyleClasses: new HashSet<string>(["games-state-title"])))!;
+    var stateHelp = compiled.Theme.Resolve(new GbssElement(
+        "text", StyleClasses: new HashSet<string>(["games-state-help"])))!;
+    Assert.Equal("0", stateTitle.Get("flex-shrink")?.Text);
+    Assert.Equal("center", stateTitle.Get("text-align")?.Text);
+    Assert.Equal("0", stateHelp.Get("flex-shrink")?.Text);
     return Task.CompletedTask;
 }
 

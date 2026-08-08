@@ -55,6 +55,13 @@ unbounded caches, or unnecessary helper processes.
   and a settled or hidden surface schedules no animation frames. Translation
   is resolved once as shared subtree presentation geometry rather than by
   separately animating paint, focus, hit testing, and Scroll behavior.
+- The host shell reuses the existing visible-controller cadence for a 140 ms
+  ease-out open and 100 ms ease-in close. A new/replaced widget identity uses a
+  100 ms content-opacity reveal from 0.78; same-identity snapshot refreshes do
+  not flash. Reversals retarget from the presented alpha, entering widget focus
+  can snap content visible, reduced motion snaps/cancels immediately, and the
+  timeline owns no thread/timer or follow-up frame after settlement. Physical
+  hide happens once only after the close track reaches zero.
 
 Job memory containment is not a CPU or disk/profile quota. Installed/community
 workers separately have mandatory capability-free AppContainer isolation with
@@ -99,7 +106,11 @@ Created-to-Destroying lifetime as browser foreground moves it through Visible/
 Background. It is one retained lease, not permission to start inactive work:
 new Background connect/control and disconnect requests remain denied. Its
 temporary listener exists only during that action and waits at most five
-minutes. The exact broker deadline is seven minutes, leaving two bounded
+minutes. Spotify package 0.1.6 uses `keep-alive` so idle unload cannot destroy
+that in-flight task while the browser owns foreground; normal active polling/
+presentation still stops with lifecycle tokens. The listener tolerates at most
+16 malformed or early-close local probes inside the same time bound. The exact
+broker deadline is seven minutes, leaving two bounded
 minutes for token exchange, retry/backoff, and vault persistence. Revocation,
 Destroying, cancellation, or timeout still terminates it. Installed/community workers cannot bypass
 the general denial with a desktop token or AppContainer network/OS

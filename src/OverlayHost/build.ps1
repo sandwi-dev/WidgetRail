@@ -80,6 +80,7 @@ $styleTestObjectDirectory = Join-Path $outputDirectory 'obj\style-tests'
 $motionTestObjectDirectory = Join-Path $outputDirectory 'obj\motion-tests'
 $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
 $targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
+$transitionTestObjectDirectory = Join-Path $outputDirectory 'obj\transition-tests'
 $guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
 $inputOwnershipTestObjectDirectory = Join-Path $outputDirectory 'obj\input-ownership-tests'
 $navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
@@ -90,7 +91,7 @@ $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -122,6 +123,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
     (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
     (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+    (Join-Path $projectDirectory 'OverlayTransition.cpp'),
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
     (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
@@ -454,6 +456,22 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'OverlayTargetingTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayTargetingTests failed with exit code $LASTEXITCODE."
+    }
+
+    $transitionTestArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayTransitionTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayTransition.cpp'),
+        "/Fo:$transitionTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayTransitionTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $transitionTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTransitionTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayTransitionTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTransitionTests failed with exit code $LASTEXITCODE."
     }
 
     $guideTestArguments = $common + @(

@@ -26,6 +26,7 @@ add_executable(OverlayHost WIN32
     DeclarativeMotion.cpp
     OverlayPlacement.cpp
     OverlayTargeting.cpp
+    OverlayTransition.cpp
     DeclarativeRenderer.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
@@ -105,6 +106,14 @@ if(GBA_BUILD_TESTS)
     target_compile_features(OverlayTargetingTests PRIVATE cxx_std_20)
     target_compile_options(OverlayTargetingTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME OverlayTargetingTests COMMAND OverlayTargetingTests)
+
+    add_executable(OverlayTransitionTests
+        OverlayTransitionTests.cpp OverlayTransition.cpp)
+    target_compile_features(OverlayTransitionTests PRIVATE cxx_std_20)
+    target_compile_options(OverlayTransitionTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(OverlayTransitionTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME OverlayTransitionTests COMMAND OverlayTransitionTests)
 
     add_executable(GuideInputCompatibilityTests
         GuideInputCompatibilityTests.cpp GuideInputCompatibility.cpp)

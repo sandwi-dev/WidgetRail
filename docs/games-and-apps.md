@@ -116,44 +116,55 @@ lifecycle, payload validation, and provider validation are independent gates.
 
 ## Trusted Windows provider boundary
 
-The current provider scans only the current-user and all-user Start Menu
-Programs folders. It:
+The current provider merges two bounded trusted Windows sources: current-user/
+all-user Start Menu Programs shortcuts and the current user's Shell
+`AppsFolder` namespace. It:
 
 - enumerates at most 4,096 `.lnk` candidates, to a maximum directory depth of
   16, without following reparse points;
 - accepts bounded shortcuts whose resolved target is an `.exe` or `.com`;
+- enumerates at most 2,048 AppsFolder items on one bounded process-wide Shell
+  STA lane, retains only a canonical AppUserModelID (AUMID) plus sanitized
+  display text, and treats a malformed/disappearing item as an isolated skip;
 - sanitizes display names, deduplicates the same trusted target identity, and
   publishes at most 512 entries;
 - assigns random opaque IDs that stay stable only while that registration
   remains in the current provider snapshot; and
-- rasterizes the Shell icon on demand to a bounded 48 by 48 RGBA PNG, caches it
-  by shortcut-content fingerprint, and returns only pixels; and
+- rasterizes a shortcut or AppsFolder Shell icon on demand to a bounded 48 by
+  48 RGBA PNG, caches it by the exact registration revalidation key, and
+  returns only pixels; and
 - exposes a separate stable private provider fingerprint only to the host
   broker, which derives non-reversible authority-scoped SavedIds with HMAC; and
 - keeps shortcut paths, raw provider identities, arguments, host key, and file
   fingerprints out of widget IPC.
 
 Launch does not trust a stale opaque-ID lookup by itself. Immediately before
-calling the Windows Shell, the provider re-enumerates and requires exactly one
-registration with the same scope, target identity, full shortcut path, and
-shortcut-content fingerprint. It then invokes only the Shell `open` verb on
-that exact fully qualified `.lnk`, with no supplied arguments, working
-directory, elevation verb, or window delegation. Missing, moved, changed,
-duplicated, or unknown registrations fail as `app_not_found`; platform and
-Shell failures are sanitized before returning to widget code.
+launch, the provider re-enumerates the exact source on the Shell STA lane.
+A shortcut must still have one matching scope, target identity, full path, and
+content fingerprint; AppsFolder must still expose exactly one matching
+canonical AUMID and revalidation key. Shortcuts use only Shell `open` on the
+exact fully qualified `.lnk`, without supplied arguments, working directory,
+elevation verb, or owner window. AppsFolder activation uses
+`IApplicationActivationManager.ActivateApplication` with the exact revalidated
+AUMID and null arguments; the returned PID is discarded. Missing, moved,
+changed, duplicated, or unknown registrations fail as `app_not_found`;
+platform and Shell failures are sanitized before returning to widget code.
 
 ## Honest limitations
 
-- Discovery is Start Menu `.lnk`-only. AppsFolder/UWP registrations, Steam,
-  Xbox, Epic, GOG, and other launcher libraries are not integrated.
+- Discovery covers bounded Start Menu `.lnk` and current-user AppsFolder/AUMID
+  registrations. Steam, Xbox, Epic, GOG, and other launcher-library catalogs
+  are not integrated; AppsFolder coverage is not a promise that every package,
+  alias, launcher-owned game, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,
   authoritative game classification, source-aware grouping, and broader source
   reconciliation remain tracked as [GBA-033](known-issues.md).
-- Shell icons are available only for resolved curated Start Menu entries.
+- Shell icons are available only for resolved curated Start Menu or AppsFolder
+  entries.
   Missing, malformed, or over-budget icons use the host semantic Play glyph;
   broad Catalog discovery intentionally does not rasterize hundreds of icons.
 - The public kind enum supports Unknown, Application, and Game, but the real
-  Start Menu provider deliberately reports every current entry as Application.
+  Windows provider deliberately reports every current entry as Application.
   Filename/path guessing is not authoritative game classification.
 - There is no search, grouping, install/uninstall,
   game history, foreground switching, running-program capture, file picker, or
@@ -170,11 +181,12 @@ Focused tests cover empty curated Library, Catalog-on-demand and empty-Catalog
 recovery, nested Catalog add/remove, B return, vertical controller focus,
 confirmed recent-first ordering, failed-launch order retention, durable
 SavedIds across fresh worker instances, opaque selected launch, bounded paging,
-sanitized failure states, and manifest/GBSS validation. Provider tests cover lazy refresh,
-sanitization and bounds,
-opaque-ID lifetime, payload privacy, on-demand icon caching and bounds, exact shortcut revalidation, constrained
-Shell invocation, sanitized errors, cancellation, and a non-mutating real Start
-Menu scan. Broker, SDK, bridge, Settings, and first-party conformance suites
+sanitized failure states, and manifest/GBSS validation. Provider tests cover
+lazy refresh, sanitization and bounds, opaque-ID lifetime, payload privacy,
+on-demand icon caching and bounds, exact shortcut/AUMID revalidation,
+constrained Shell/packaged activation, STA queue cancellation, source-failure
+isolation, sanitized errors, and non-mutating real Start Menu plus AppsFolder
+scans. Broker, SDK, bridge, Settings, and first-party conformance suites
 cover separate read/launch consent, lifecycle denial, invalid payload/backend
 data, transport mapping, permission copy, packaged AppContainer startup, render,
 and a simulated launch.

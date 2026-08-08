@@ -5,56 +5,85 @@ using GameBarAlternative.PlatformBroker;
 namespace GameBarAlternative.WindowsAppLibraryProvider;
 
 /// <summary>
-/// Lazily builds a bounded catalog of executable-backed .lnk registrations in
-/// the current-user and all-user Start Menu Programs folders. Launch resolves a
-/// provider-owned opaque ID and re-reads that exact shortcut before invoking the
-/// Windows Shell; packaged AppsFolder entries are not yet inventoried.
+/// Lazily builds one bounded catalog from Start Menu shortcuts and AppsFolder.
+/// Launch resolves a provider-owned opaque ID and exactly revalidates its
+/// trusted registration before invoking the corresponding Windows launcher.
 /// </summary>
 public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
 {
     internal const int MaximumApps = 512;
     internal const int MaximumDisplayNameLength = 120;
 
-    private readonly IStartMenuApplicationSource _source;
+    private readonly IStartMenuApplicationSource _startMenuSource;
+    private readonly IAppsFolderApplicationSource _appsFolderSource;
     private readonly IWindowsShellLauncher _shellLauncher;
+    private readonly IWindowsPackagedAppLauncher _packagedAppLauncher;
     private readonly IWindowsAppIconSource _iconSource;
+    private readonly IShellStaExecutor _shellSta;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly object _stateGate = new();
     private readonly Dictionary<string, string> _opaqueIdsByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<WindowsAppLibraryItem>? _snapshot;
-    private Dictionary<string, StartMenuRegistration> _registrationsByOpaqueId =
+    private Dictionary<string, WindowsLaunchRegistration> _registrationsByOpaqueId =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _iconsByRevalidationKey =
         new(StringComparer.Ordinal);
+    private IReadOnlyList<AppsFolderRegistration> _lastGoodAppsFolderRegistrations = [];
 
     public WindowsAppLibraryProvider() : this(
         new WindowsStartMenuApplicationSource(),
+        new WindowsAppsFolderApplicationSource(),
         new WindowsShellLauncher(),
-        new WindowsAppIconSource())
+        new WindowsPackagedAppLauncher(),
+        new WindowsAppIconSource(),
+        ShellStaExecutor.Shared)
     {
     }
 
     internal WindowsAppLibraryProvider(IStartMenuApplicationSource source) :
-        this(source, new WindowsShellLauncher(), new WindowsAppIconSource())
+        this(source, EmptyAppsFolderApplicationSource.Instance,
+            new WindowsShellLauncher(), new WindowsPackagedAppLauncher(),
+            new WindowsAppIconSource(), ShellStaExecutor.Shared)
     {
     }
 
     internal WindowsAppLibraryProvider(
         IStartMenuApplicationSource source,
         IWindowsShellLauncher shellLauncher) :
-        this(source, shellLauncher, new WindowsAppIconSource())
+        this(source, EmptyAppsFolderApplicationSource.Instance,
+            shellLauncher, new WindowsPackagedAppLauncher(),
+            new WindowsAppIconSource(), ShellStaExecutor.Shared)
     {
     }
 
     internal WindowsAppLibraryProvider(
         IStartMenuApplicationSource source,
         IWindowsShellLauncher shellLauncher,
-        IWindowsAppIconSource iconSource)
+        IWindowsAppIconSource iconSource) :
+        this(source, EmptyAppsFolderApplicationSource.Instance,
+            shellLauncher, new WindowsPackagedAppLauncher(), iconSource,
+            ShellStaExecutor.Shared)
     {
-        _source = source ?? throw new ArgumentNullException(nameof(source));
+    }
+
+    internal WindowsAppLibraryProvider(
+        IStartMenuApplicationSource startMenuSource,
+        IAppsFolderApplicationSource appsFolderSource,
+        IWindowsShellLauncher shellLauncher,
+        IWindowsPackagedAppLauncher packagedAppLauncher,
+        IWindowsAppIconSource iconSource,
+        IShellStaExecutor shellSta)
+    {
+        _startMenuSource = startMenuSource ??
+            throw new ArgumentNullException(nameof(startMenuSource));
+        _appsFolderSource = appsFolderSource ??
+            throw new ArgumentNullException(nameof(appsFolderSource));
         _shellLauncher = shellLauncher ?? throw new ArgumentNullException(nameof(shellLauncher));
+        _packagedAppLauncher = packagedAppLauncher ??
+            throw new ArgumentNullException(nameof(packagedAppLauncher));
         _iconSource = iconSource ?? throw new ArgumentNullException(nameof(iconSource));
+        _shellSta = shellSta ?? throw new ArgumentNullException(nameof(shellSta));
     }
 
     /// <summary>Returns the cached immutable snapshot, scanning lazily on first use.</summary>
@@ -126,30 +155,18 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            StartMenuRegistration? registered;
+            WindowsLaunchRegistration? registered;
             lock (_stateGate)
                 _registrationsByOpaqueId.TryGetValue(appId, out registered);
-            if (registered is null || !IsExactLaunchRegistration(registered))
+            if (registered is null || !IsStructurallyValid(registered))
                 throw AppUnavailable();
 
-            var current = await Task.Run(
-                () => _source.ReadExact(
-                    registered.ShortcutPath, registered.Scope, cancellationToken),
-                cancellationToken)
-                .ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (current is null || !IsExactLaunchRegistration(current) ||
-                current.Scope != registered.Scope ||
-                !string.Equals(current.IdentityKey, registered.IdentityKey,
-                    StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(current.ShortcutPath, registered.ShortcutPath,
-                    StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(current.RevalidationKey, registered.RevalidationKey,
-                    StringComparison.Ordinal))
-                throw AppUnavailable();
-
-            cancellationToken.ThrowIfCancellationRequested();
-            _shellLauncher.Launch(current.ShortcutPath, cancellationToken);
+            await _shellSta.RunAsync(
+                token =>
+                {
+                    RevalidateAndLaunch(registered, token);
+                    return true;
+                }, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -167,7 +184,8 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         catch (Exception exception) when (exception is IOException or
             UnauthorizedAccessException or System.Security.SecurityException or
             System.ComponentModel.Win32Exception or InvalidOperationException or
-            ArgumentException or NotSupportedException)
+            ArgumentException or NotSupportedException or
+            System.Runtime.InteropServices.COMException)
         {
             throw new BrokerException(
                 "launch_failed", "Windows could not launch this app.", exception);
@@ -187,7 +205,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            StartMenuRegistration? registration;
+            WindowsLaunchRegistration? registration;
             lock (_stateGate)
                 _registrationsByOpaqueId.TryGetValue(appId, out registration);
             if (registration is null) return new AppLibraryIconSummary(null);
@@ -199,13 +217,21 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                     return new AppLibraryIconSummary(cached);
             }
 
-            var png = await Task.Run(
-                () => _iconSource.TryRasterizePngBase64(
-                    registration.ShortcutPath, cancellationToken),
-                cancellationToken).ConfigureAwait(false);
+            var png = await _shellSta.RunAsync(
+                token => registration switch
+                {
+                    StartMenuRegistration shortcut =>
+                        _iconSource.TryRasterizePngBase64(shortcut.ShortcutPath, token),
+                    AppsFolderRegistration packaged =>
+                        _iconSource.TryRasterizeAppsFolderPngBase64(packaged.Aumid, token),
+                    _ => null,
+                }, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            lock (_stateGate)
-                _iconsByRevalidationKey[registration.RevalidationKey] = png;
+            if (png is not null)
+            {
+                lock (_stateGate)
+                    _iconsByRevalidationKey[registration.RevalidationKey] = png;
+            }
             return new AppLibraryIconSummary(png);
         }
         finally
@@ -228,10 +254,38 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                 }
             }
 
-            var registrations = await Task.Run(
-                () => _source.Enumerate(cancellationToken), cancellationToken).ConfigureAwait(false);
+            var scan = await _shellSta.RunAsync(
+                token =>
+                {
+                    var startMenu = _startMenuSource.Enumerate(token);
+                    try
+                    {
+                        return new AppsFolderScan(
+                            startMenu, _appsFolderSource.Enumerate(token), true);
+                    }
+                    catch (AppsFolderEnumerationException)
+                    {
+                        return new AppsFolderScan(startMenu, [], false);
+                    }
+                }, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            return Commit(registrations);
+            IReadOnlyList<AppsFolderRegistration> appsFolder;
+            if (scan.AppsFolderAuthoritative)
+            {
+                appsFolder = scan.AppsFolder;
+            }
+            else
+            {
+                lock (_stateGate) appsFolder = _lastGoodAppsFolderRegistrations;
+            }
+            var registrations = scan.StartMenu
+                .Cast<WindowsLaunchRegistration>()
+                .Concat(appsFolder)
+                .ToArray();
+            return Commit(
+                registrations,
+                clearAppsFolderIcons: force,
+                scan.AppsFolderAuthoritative ? scan.AppsFolder : null);
         }
         finally
         {
@@ -240,7 +294,9 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     }
 
     private IReadOnlyList<WindowsAppLibraryItem> Commit(
-        IReadOnlyList<StartMenuRegistration>? registrations)
+        IReadOnlyList<WindowsLaunchRegistration>? registrations,
+        bool clearAppsFolderIcons,
+        IReadOnlyList<AppsFolderRegistration>? authoritativeAppsFolder)
     {
         var candidates = (registrations ?? [])
             .Where(IsStructurallyValid)
@@ -251,8 +307,8 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
             .GroupBy(candidate => candidate.Registration.IdentityKey,
                 StringComparer.OrdinalIgnoreCase)
             .Select(group => group
-                .OrderBy(candidate => candidate.Registration.Scope)
-                .ThenBy(candidate => candidate.Registration.ShortcutPath,
+                .OrderBy(candidate => SourceOrder(candidate.Registration))
+                .ThenBy(candidate => SourceLocator(candidate.Registration),
                     StringComparer.OrdinalIgnoreCase)
                 .First())
             .OrderBy(candidate => candidate.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -263,6 +319,17 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
 
         lock (_stateGate)
         {
+            if (clearAppsFolderIcons)
+            {
+                foreach (var packaged in _registrationsByOpaqueId.Values
+                             .OfType<AppsFolderRegistration>())
+                    _iconsByRevalidationKey.Remove(packaged.RevalidationKey);
+            }
+            if (authoritativeAppsFolder is not null)
+            {
+                _lastGoodAppsFolderRegistrations = Array.AsReadOnly(
+                    authoritativeAppsFolder.Where(IsStructurallyValid).ToArray());
+            }
             var liveIdentities = candidates
                 .Select(candidate => candidate.Registration.IdentityKey)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -277,7 +344,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                          .Where(key => !liveRevalidationKeys.Contains(key)).ToArray())
                 _iconsByRevalidationKey.Remove(stale);
 
-            var byId = new Dictionary<string, StartMenuRegistration>(StringComparer.Ordinal);
+            var byId = new Dictionary<string, WindowsLaunchRegistration>(StringComparer.Ordinal);
             var snapshot = new WindowsAppLibraryItem[candidates.Length];
             for (var index = 0; index < candidates.Length; index++)
             {
@@ -310,18 +377,65 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
             return false;
         }
         lock (_stateGate)
-            return _registrationsByOpaqueId.TryGetValue(opaqueId, out registration);
+        {
+            var found = _registrationsByOpaqueId.TryGetValue(opaqueId, out var candidate) &&
+                candidate is StartMenuRegistration;
+            registration = candidate as StartMenuRegistration;
+            return found;
+        }
     }
 
-    private static bool IsStructurallyValid(StartMenuRegistration registration) =>
+    internal bool TryResolvePackagedForLaunch(
+        string opaqueId, out AppsFolderRegistration? registration)
+    {
+        if (string.IsNullOrWhiteSpace(opaqueId))
+        {
+            registration = null;
+            return false;
+        }
+        lock (_stateGate)
+        {
+            var found = _registrationsByOpaqueId.TryGetValue(opaqueId, out var candidate) &&
+                candidate is AppsFolderRegistration;
+            registration = candidate as AppsFolderRegistration;
+            return found;
+        }
+    }
+
+    private static bool IsStructurallyValid(WindowsLaunchRegistration registration) =>
         registration is not null &&
-        Enum.IsDefined(registration.Scope) &&
         !string.IsNullOrWhiteSpace(registration.IdentityKey) &&
         registration.IdentityKey.Length <= 128 &&
-        !string.IsNullOrWhiteSpace(registration.ShortcutPath) &&
-        registration.ShortcutPath.Length <= 32_767 &&
         !string.IsNullOrWhiteSpace(registration.RevalidationKey) &&
-        registration.RevalidationKey.Length <= 128;
+        registration.RevalidationKey.Length <= 128 &&
+        registration switch
+        {
+            StartMenuRegistration shortcut =>
+                Enum.IsDefined(shortcut.Scope) &&
+                !string.IsNullOrWhiteSpace(shortcut.ShortcutPath) &&
+                shortcut.ShortcutPath.Length <= 32_767,
+            AppsFolderRegistration packaged =>
+                WindowsAppsFolderApplicationSource.NormalizeAumid(packaged.Aumid) is { } aumid &&
+                string.Equals(aumid, packaged.Aumid, StringComparison.Ordinal),
+            _ => false,
+        };
+
+    private static int SourceOrder(WindowsLaunchRegistration registration) =>
+        registration switch
+        {
+            StartMenuRegistration { Scope: StartMenuScope.CurrentUser } => 0,
+            StartMenuRegistration => 1,
+            AppsFolderRegistration => 2,
+            _ => int.MaxValue,
+        };
+
+    private static string SourceLocator(WindowsLaunchRegistration registration) =>
+        registration switch
+        {
+            StartMenuRegistration shortcut => shortcut.ShortcutPath,
+            AppsFolderRegistration packaged => packaged.Aumid,
+            _ => string.Empty,
+        };
 
     private static bool IsExactLaunchRegistration(StartMenuRegistration registration)
     {
@@ -338,8 +452,72 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         }
     }
 
+    private void RevalidateAndLaunch(
+        WindowsLaunchRegistration registered,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        switch (registered)
+        {
+            case StartMenuRegistration shortcut:
+            {
+                if (!IsExactLaunchRegistration(shortcut)) throw AppUnavailable();
+                var current = _startMenuSource.ReadExact(
+                    shortcut.ShortcutPath, shortcut.Scope, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (current is null || !IsExactLaunchRegistration(current) ||
+                    current.Scope != shortcut.Scope ||
+                    !string.Equals(current.IdentityKey, shortcut.IdentityKey,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(current.ShortcutPath, shortcut.ShortcutPath,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(current.RevalidationKey, shortcut.RevalidationKey,
+                        StringComparison.Ordinal))
+                    throw AppUnavailable();
+                _shellLauncher.Launch(current.ShortcutPath, cancellationToken);
+                return;
+            }
+            case AppsFolderRegistration packaged:
+            {
+                var current = _appsFolderSource.ReadExact(packaged.Aumid, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (current is null || !IsStructurallyValid(current) ||
+                    !string.Equals(current.IdentityKey, packaged.IdentityKey,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(current.Aumid, packaged.Aumid,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(current.RevalidationKey, packaged.RevalidationKey,
+                        StringComparison.Ordinal))
+                    throw AppUnavailable();
+                _packagedAppLauncher.Launch(current.Aumid, cancellationToken);
+                return;
+            }
+            default:
+                throw AppUnavailable();
+        }
+    }
+
     private static BrokerException AppUnavailable() =>
         new("app_not_found", "The selected app is no longer available.");
+
+    private sealed class EmptyAppsFolderApplicationSource : IAppsFolderApplicationSource
+    {
+        internal static EmptyAppsFolderApplicationSource Instance { get; } = new();
+        public IReadOnlyList<AppsFolderRegistration> Enumerate(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return [];
+        }
+
+        public AppsFolderRegistration? ReadExact(
+            string aumid,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return null;
+        }
+    }
 
     internal static string? SanitizeDisplayName(string? value)
     {
@@ -377,6 +555,11 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     }
 
     private sealed record Candidate(
-        StartMenuRegistration Registration,
+        WindowsLaunchRegistration Registration,
         string? DisplayName);
+
+    private sealed record AppsFolderScan(
+        IReadOnlyList<StartMenuRegistration> StartMenu,
+        IReadOnlyList<AppsFolderRegistration> AppsFolder,
+        bool AppsFolderAuthoritative);
 }

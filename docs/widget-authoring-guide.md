@@ -762,12 +762,13 @@ that are no longer available. Read is allowed only in Visible or Interactive;
 launch is separately declared/consented and Interactive-only. Treat `AppId` as
 an opaque provider-lifetime token and never persist it. `SavedId` is the
 non-reversible publisher/package-scoped value for private state. The current
-Windows provider exposes only
-Start Menu `.lnk` registrations and conservatively reports them as
-Application. Resolved curated entries may include a bounded host-rasterized
-`IconPngBase64`; broad discovery remains text-only. The provider does not yet
-support AppsFolder/UWP, Steam/Xbox/other launcher aggregation, or authoritative
-game detection. See the [Games & Apps reference](games-and-apps.md).
+Windows provider exposes bounded Start Menu `.lnk` plus current-user
+AppsFolder/AUMID registrations and conservatively reports them as Application.
+Resolved curated entries may include a bounded host-rasterized
+`IconPngBase64`; broad discovery remains text-only. Paths, AUMIDs, arguments,
+and activation PIDs remain provider-private. The provider does not yet support
+Steam/Xbox/other launcher aggregation or authoritative game detection. See the
+[Games & Apps reference](games-and-apps.md).
 
 Handle `WidgetCapabilityUnavailableException`, `WidgetCapabilityException`
 using its stable `ErrorCode`, and normal lifecycle cancellation. Common codes

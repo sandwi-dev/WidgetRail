@@ -100,7 +100,7 @@ tokens, playback projection/control, bounded rate-limit handling, and sanitized
 errors. Package-scoped public Client IDs can be managed locally through
 `gbar config`; they are not secrets.
 
-`WidgetBridge` composes this provider, and Spotify Community addon 0.1.4 is
+`WidgetBridge` composes this provider, and Spotify Community addon 0.1.6 is
 locally packageable through the same public SDK/AppContainer path as an
 independent addon. Its controller setup instructions and player core are
 implemented; editing the Client ID remains a local `gbar config` workflow and
@@ -116,8 +116,13 @@ A `connect` operation must begin with an explicit action while Interactive. The
 action acknowledges immediately, and its authorization task uses the widget's
 Created-to-Destroying lifetime. If opening the system browser moves the widget
 through Visible/Background, that already-created request lease may continue.
-The temporary callback listener exists only during this explicit attempt and
-waits at most five minutes. The exact broker Connect deadline is seven minutes,
+The package selects `keep-alive` residency so idle unload cannot destroy that
+already-started explicit authorization task while the browser owns foreground;
+this does not keep its active polling or presentation work running. The
+temporary callback listener exists only during this explicit attempt and
+waits at most five minutes. It tolerates at most 16 malformed or early-close
+local probes within that same window, but accepts only loopback origin, the
+exact host/path and GET/HTTP/1.1 shape, and the matching OAuth state. The exact broker Connect deadline is seven minutes,
 leaving two minutes for bounded token exchange, retry/backoff, and vault
 persistence. A new Background connect, disconnect, playback control, or other
 provider request is still denied. Destroying, consent revocation, pipe/caller

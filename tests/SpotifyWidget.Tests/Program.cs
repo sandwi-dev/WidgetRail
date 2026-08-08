@@ -9,8 +9,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unconfigured state provides safe exact setup guidance", UnconfiguredSetup),
     ("Setup is a nested B-dismissible input scope", NestedSetupBack),
     ("Setup uses a bounded controller-native scroll surface", SetupUsesVerticalScroll),
+    ("Reopening setup starts a fresh scroll entry", SetupReopenResetsScrollIdentity),
     ("Setup code and text styles remain compact and bounded", SetupCodeAndTextAreBounded),
-    ("Setup Done refreshes newly saved configuration without starting OAuth", SetupDoneRefreshesConfiguration),
+    ("Setup check refreshes newly saved configuration without starting OAuth", SetupCheckRefreshesConfiguration),
     ("Connect action acknowledges while OAuth remains pending", ConnectAcknowledgesWhilePending),
     ("OAuth survives Background and reconciles when visible", ConnectSurvivesBackground),
     ("Explicit connect requests only playback scopes", ExplicitConnect),
@@ -92,7 +93,7 @@ static async Task NestedSetupBack()
     await StopAsync(widget);
 }
 
-static async Task SetupDoneRefreshesConfiguration()
+static async Task SetupCheckRefreshesConfiguration()
 {
     var harness = new SpotifyHarness { Configured = false, Connected = false };
     var widget = await StartAsync(harness);
@@ -101,15 +102,15 @@ static async Task SetupDoneRefreshesConfiguration()
         "spotify.setup.open", "spotify.setup.open"));
     var setup = widget.RenderSnapshot("spotify.test", 5);
     Assert.Equal("spotify.setup.done", setup.InitialFocusId);
-    var readsBeforeDone = harness.ConfigurationCalls;
+    var readsBeforeCheck = harness.ConfigurationCalls;
 
     // Simulates `config set` completing while the setup page remains open.
     harness.Configured = true;
     await widget.OnActionAsync(new WidgetActionEvent(
         "spotify.setup.done", "spotify.setup.done"));
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
-    Assert.True(harness.ConfigurationCalls > readsBeforeDone,
-        "Done did not perform a fresh configuration read.");
+    Assert.True(harness.ConfigurationCalls > readsBeforeCheck,
+        "Check configuration did not perform a fresh configuration read.");
     Assert.Equal(0, harness.ConnectCalls);
     Assert.Equal("spotify.connect", widget.Render().InitialFocusId);
     await StopAsync(widget);
@@ -124,7 +125,7 @@ static async Task SetupUsesVerticalScroll()
         "spotify.setup.open", "spotify.setup.open"));
 
     var setup = widget.RenderSnapshot("spotify.test", 6);
-    var scroll = Find(setup.Root, "spotify.setup-scroll");
+    var scroll = FindPrefix(setup.Root, "spotify.setup-scroll.");
     Assert.Equal(ViewNodeKind.Scroll, scroll.Kind);
     Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
     Assert.Equal("spotify.setup", scroll.InputScopeId);
@@ -137,7 +138,9 @@ static async Task SetupUsesVerticalScroll()
         "Setup command no longer uses the semantic CodeText component.");
     Assert.True(command.StyleClasses.Contains("spotify-setup-command"),
         "Setup command lost its bounded widget style class.");
-    Assert.NotNull(Find(scroll, "spotify.setup.done"));
+    var card = Find(scroll, "spotify.setup-card");
+    Assert.Equal("spotify.setup.done", card.Children[1].Id);
+    Assert.Equal("Check configuration", card.Children[1].Text);
     Assert.Equal("spotify.setup.done", setup.InitialFocusId);
     Assert.True(setup.Surface?.MinimumHeight <= 404,
         "Setup requires a surface taller than the compact widget viewport.");
@@ -158,11 +161,31 @@ static Task SetupCodeAndTextAreBounded()
     var command = compiled.Theme.Resolve(new GbssElement(
         "text", StyleClasses: new HashSet<string>(
             ["gbar-code-text", "spotify-setup-command"])))!;
-    Assert.Equal("2", step.Get("max-lines")?.Text);
-    Assert.Equal("1.25", step.Get("line-height")?.Text);
-    Assert.Equal("3", command.Get("max-lines")?.Text);
+    Assert.Equal("3", step.Get("max-lines")?.Text);
+    Assert.Equal("1.3", step.Get("line-height")?.Text);
+    Assert.Equal("4", command.Get("max-lines")?.Text);
     Assert.Equal("1.25", command.Get("line-height")?.Text);
     return Task.CompletedTask;
+}
+
+static async Task SetupReopenResetsScrollIdentity()
+{
+    var harness = new SpotifyHarness { Configured = false };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Unconfigured);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open"));
+    var first = FindPrefix(widget.RenderSnapshot("spotify.test", 7).Root,
+        "spotify.setup-scroll.").Id;
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.close", "spotify.setup.done"));
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open"));
+    var second = FindPrefix(widget.RenderSnapshot("spotify.test", 8).Root,
+        "spotify.setup-scroll.").Id;
+    Assert.True(!string.Equals(first, second, StringComparison.Ordinal),
+        "Setup reused the prior scroll identity and could restore a clipped offset.");
+    await StopAsync(widget);
 }
 
 static async Task ConnectAcknowledgesWhilePending()
@@ -357,7 +380,7 @@ static Task ManifestContract()
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaybackControlCapabilityId), "Control must remain optional.");
     Assert.NotNull(manifest.ResidencyPolicy);
-    Assert.Equal(WidgetResidencyPolicies.SuspendWhenHidden, manifest.ResidencyPolicy!.Mode);
+    Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
 }
 
@@ -400,6 +423,17 @@ static ViewNode Find(ViewNode node, string id)
         catch (InvalidOperationException) { }
     }
     throw new InvalidOperationException($"Node '{id}' was not found.");
+}
+
+static ViewNode FindPrefix(ViewNode node, string prefix)
+{
+    if (node.Id.StartsWith(prefix, StringComparison.Ordinal)) return node;
+    foreach (var child in node.Children)
+    {
+        try { return FindPrefix(child, prefix); }
+        catch (InvalidOperationException) { }
+    }
+    throw new InvalidOperationException($"Node prefix '{prefix}' was not found.");
 }
 
 static void AssertShortcut(ViewNode root, ControllerButton button, string action)

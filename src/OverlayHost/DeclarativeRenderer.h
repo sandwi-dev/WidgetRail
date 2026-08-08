@@ -75,7 +75,8 @@ struct ImagePlacement final {
 };
 
 /// Button content treats an optional leading icon plus label as one visual
-/// group. The complete group follows start/center/end alignment together.
+/// group for edge alignment. Center alignment keeps the primary label itself
+/// centered and places the leading icon beside it when space permits.
 struct ButtonContentPlacement final {
     declarative::Rect leading;
     declarative::Rect text;

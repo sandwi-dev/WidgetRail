@@ -189,6 +189,51 @@ startup smoke:
 .\scripts\Verify.ps1 -Configuration Release
 ```
 
+The auth-free evidence pipeline adds a reproducible real-package, standalone
+widget-body render slice without pretending that deterministic pixels replace
+physical display testing:
+
+```powershell
+.\scripts\Capture-OverlayEvidence.ps1 -Configuration Release
+```
+
+It launches selected retained `.gbarwidget` archives through the generic
+AppContainer worker and simulated authenticated broker, exports validated
+semantic snapshots plus production computed GBSS styles, then parses those
+snapshots through the native bridge model and renders offscreen with a harness
+built from the recorded production Direct2D renderer sources. This is not an
+`OverlayHost.exe` shell/window capture: it excludes backdrop, z-order, tray and
+footer composition, focus/input ownership, transitions, the onscreen
+compositor, and physical-display fidelity.
+
+The schema-v2 manifest records the exact package archives, every retained
+snapshot/trace/index/PNG, the retained renderer executable, source revision and
+dirty-state digest, source-file hashes, toolchain versions, bounded stage
+results, and SHA-256/length inventory. Every external process has a timeout and
+full process-tree termination. Generation fails on any renderer diagnostic or
+semantic path/secret scan finding; the verifier also rejects missing, extra, or
+mismatched retained files. Build intermediates stay outside the published
+bundle. Verify a retained bundle independently with:
+
+```powershell
+.\scripts\Capture-OverlayEvidence.ps1 `
+  -VerifyManifest .\artifacts\evidence\auth-free\<build-id>\manifest.json
+```
+
+Golden full-image hashes are deliberately not pass criteria because Windows
+font/raster revisions can change pixels without violating layout semantics.
+
+The retained `final-schema-v2-20260808-final` development run produced 12 Games &
+Apps/Spotify PNGs from five authoritative snapshots with zero renderer
+diagnostics. Its independently verified inventory contains 24 retained files,
+including the exact Games & Apps, Settings, and Spotify 0.1.6 archives. It
+supplies auth-free widget-body evidence only for the covered GBA-038/GBA-042
+paths. Settings exited before connecting through the generic package worker
+because its host-owned settings/catalog service path is not yet injectable;
+that sanitized gap is recorded in the manifest, not replaced with a hand-built
+snapshot. No live Spotify OAuth/callback, controller ownership, topmost-window,
+shell transition, or physical-monitor result follows from this run.
+
 ## Remaining evidence
 
 Deterministic geometry is necessary but not sufficient for professional visual

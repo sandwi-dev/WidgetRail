@@ -413,6 +413,12 @@ public sealed class WindowsSpotifyPlatformBackend :
             RedirectUri, AuthorizationCallbackTimeout, authorizationLifetime.Token);
         try
         {
+            // ReceiveAsync starts the listener before its first await, but an
+            // immediate bind failure is captured in the returned Task. Observe
+            // that completed task before opening a browser so users are never
+            // sent to a redirect URI that has no listening server.
+            if (callbackTask.IsCompleted)
+                return await callbackTask.ConfigureAwait(false);
             await _browser.OpenAsync(authorizationUri, cancellationToken).ConfigureAwait(false);
             return await callbackTask.ConfigureAwait(false);
         }

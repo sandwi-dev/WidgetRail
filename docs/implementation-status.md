@@ -330,20 +330,20 @@ sanitized. A successful provider result emits one generation-bound host effect
 that closes the overlay only after the exact provider launch succeeds; failure,
 denial, cancellation, or a stale widget generation keeps it open.
 
-The trusted `WindowsAppLibraryProvider` lazily scans the current-user and all-
-user Start Menu Programs roots, skips reparse points, parses bounded `.lnk`
-registrations, deduplicates trusted descriptors, and exposes only sanitized
+The trusted `WindowsAppLibraryProvider` lazily merges the bounded current-user/
+all-user Start Menu Programs roots with the current user's Shell AppsFolder on
+one process-wide bounded STA lane. It skips shortcut reparse points, accepts
+canonical AUMIDs, deduplicates trusted descriptors, and exposes only sanitized
 names, conservative kinds, short-lived random launch IDs, and broker-derived
-authority-scoped durable SavedIds. Raw stable provider identity remains
-host-only. Before launch it re-enumerates
-and requires one exact match on scope, trusted target identity, shortcut path,
-and shortcut-content fingerprint, then asks Windows Shell to open only that
-`.lnk` with no supplied arguments, elevation, working directory, or HWND.
-The provider currently discovers only Start Menu executable shortcuts and
-reports every real entry as Application. For curated entries it rasterizes the
-trusted Shell icon into a bounded inline PNG; broad Catalog discovery stays
-text-only. AppsFolder/UWP and launcher libraries plus authoritative game
-classification remain open. Recent Apps remains only as a read-only
+authority-scoped durable SavedIds. Raw paths, AUMIDs, stable provider identity,
+arguments, and returned activation PIDs remain host-only. Before launch it
+re-enumerates the exact source. A shortcut must retain its scope, target,
+path, and fingerprint before constrained Shell open; an AppsFolder entry must
+retain exactly one canonical AUMID/revalidation identity before null-argument
+`ActivateApplication`. For curated entries it rasterizes the trusted shortcut
+or AppsFolder Shell icon into a bounded inline PNG; broad Catalog discovery
+stays text-only. Launcher libraries and authoritative game classification
+remain open. Recent Apps remains only as a read-only
 foreground-activity API/test reference and is not packaged in the current
 overlay. See [Games & Apps](games-and-apps.md).
 
@@ -685,12 +685,13 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. Community package 0.1.4
+  setup guidance without opening OAuth automatically. Community package 0.1.6
   uses a compact responsive layout, puts the complete setup instructions in a
   controller VerticalScroll, and uses shared centered icon/label button
   placement rather than widget-specific offsets. Setup now shows the
   source-tree-runnable `dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config ...`
-  command; **Done** performs one bounded fresh configuration and
+  command; every explicit setup entry receives a fresh Scroll identity so a
+  restored bottom offset cannot hide the heading, and **Check configuration** performs one bounded fresh configuration and
   authorization read so a newly saved Client ID takes effect without restarting
   the worker, while B remains navigation-only. An Interactive Connect that has
   already opened the system browser acknowledges the action immediately and
@@ -700,7 +701,13 @@ with C++ installed:
   token exchange, retry/backoff, and credential-vault persistence have the
   remaining two minutes. No listener exists before an explicit Connect. New
   Background controls remain denied, while revoke, Destroying, and cancellation
-  still terminate the attempt. There is no live
+  still terminate the attempt. Its explicit `keep-alive` residency prevents
+  idle unload from destroying this already-started authorization while the
+  browser owns foreground; active polling and ordinary presentation work still
+  stop outside their lifecycle. The loopback receiver tolerates at most 16
+  malformed/early-close local probes inside the same five-minute listener,
+  while requiring loopback origin, exact host, GET/HTTP/1.1, callback path,
+  and OAuth state before accepting the real callback. There is no live
   allowlisted-account evidence. Devices/queue/search/recent/library/
   playlists/albums/artists remain staged work. A separately trusted singleton
   Web Playback SDK/WebView2 host now implements a bounded, hardened process and
@@ -774,8 +781,13 @@ with C++ installed:
   remains down and reconciles it across snapshot/focus changes. Stable node
   opacity/scale/translation targets animate through bounded native transitions.
   Translation uses shared subtree paint/clip/focus/hit/navigation/Scroll
-  geometry without changing layout. Shell/widget transitions and future dynamic
-  semantic states remain open.
+  geometry without changing layout. The shell now opens with a bounded 140 ms
+  ease-out opacity track, closes with a 100 ms ease-in track, and reveals a new
+  or replaced widget identity from subtle 0.78 opacity over 100 ms. Reversals
+  retarget from the presented value, ordinary same-identity snapshots never
+  flash, entering widget focus snaps content visible, reduced motion snaps and
+  cancels, and settled/hidden state schedules no idle frames. Packaged visual/
+  frame-time evidence and future dynamic semantic states remain open.
 - Controller Settings, strict persistence, version-pinned theme selection,
   no-poll watching, last-good revisions, and globally layered widget styles are
   implemented. Safe theme scaffold/validate/computed-preview/pack/inspect/
@@ -822,11 +834,19 @@ and [troubleshooting](troubleshooting.md).
 
 ## Next vertical slices
 
-1. Complete packaged GBA-036 through GBA-042 plus physical mixed-DPI/
+1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/
    accessibility/visual-regression evidence, including long/error states, the
    150% text-scale matrix, controller focus/Scroll reachability, a denied-
-   activation controller lease, and Spotify setup/permission copy. Live
-   Spotify authorization is a separate authenticated evidence gate.
+   activation controller lease, Settings permission copy, and the uncaptured
+   error/long/max-page states. The auth-free
+   `final-schema-v2-20260808-final` bundle records retained package
+   archives, AppContainer snapshots, computed styles, 12 standalone widget-
+   body PNGs, traces, source/toolchain provenance, and an exact SHA-256 file
+   inventory for the covered GBA-038/GBA-042 paths. It includes Spotify 0.1.6
+   and the accepted setup/button layout. Settings generic-worker activation
+   remains an explicit gap. Live Spotify authorization, callback behavior,
+   shell/window composition, and hardware input are separate evidence gates,
+   so GBA-038 and GBA-042 remain Verifying.
 2. Complete the YT Music clean Community-addon install/consent/lifecycle/crash/
    update/rollback/uninstall proof without a trusted fallback.
 3. Complete hands-on packaged visual/accessibility/controller evidence for the
@@ -835,9 +855,10 @@ and [troubleshooting](troubleshooting.md).
    Scrubber, Toast, rich tiles, protocol-v8 ResponsiveGrid, per-edge borders,
    and CodeText are implemented; Settings, Spotify, and Games & Apps provide
    production uses. After that gate, design advanced/virtualized collections,
-   optional packaged-font brokering, and bounded shell transitions without
+   optional packaged-font brokering, and further motion polish without
    importing browser layout or arbitrary asset loading.
-4. Extend Games & Apps with bounded icons, AppsFolder/launcher sources,
+4. Extend Games & Apps beyond its bounded Start Menu plus AppsFolder sources
+   with reviewed launcher adapters,
    running-program capture, and a host-owned file picker while preserving
    opaque exact launch identities.
 5. Extend the bounded process sampler with ETW/PresentMon automation, stored

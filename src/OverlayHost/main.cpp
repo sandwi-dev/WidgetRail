@@ -8,6 +8,7 @@
 #include "NativeStyle.h"
 #include "OverlayPlacement.h"
 #include "OverlayTargeting.h"
+#include "OverlayTransition.h"
 #include "PressedInteraction.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
@@ -74,6 +75,12 @@ constexpr gba::NativeColor kDefaultPanel{
     0x1B / 255.0F, 0x1F / 255.0F, 0x29 / 255.0F, 1.0F};
 constexpr gba::NativeColor kDefaultAccent{
     0xFC / 255.0F, 0x3F / 255.0F, 0x6C / 255.0F, 1.0F};
+
+enum class OverlayShowResult {
+    Shown,
+    Deferred,
+    Failed,
+};
 
 D2D1_COLOR_F D2DColor(const gba::NativeColor& color) noexcept {
     return D2D1::ColorF(color.red, color.green, color.blue, color.alpha);
@@ -783,6 +790,12 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kCatalogRefreshMessage: {
+            if (state_.surface() == gba::Surface::Hidden) {
+                KillTimer(window_, kCatalogRetryTimer);
+                bridge_.AbandonWidgetCatalogChangedRevision();
+                catalogRetryAttempts_ = 0;
+                return 0;
+            }
             bool refreshed = false;
             RefreshAndApplyPresentation([&] {
                 refreshed = RefreshWidgetCatalog();
@@ -804,6 +817,7 @@ private:
             return 0;
         }
         case kSnapshotRefreshMessage:
+            if (state_.surface() == gba::Surface::Hidden) return 0;
             RefreshAndApplyPresentation([&] { RefreshCurrentBridgeSnapshot(); });
             return 0;
         case kForegroundChangedMessage:
@@ -844,6 +858,25 @@ private:
             return 0;
         case WM_TIMER:
             if (wParam == kControllerTimer) {
+                const auto now = GetTickCount64();
+                if (overlayTransition_.active()) {
+                    AdvanceOverlayTransition(now);
+                }
+                if (awaitingSuccessfulOpenPaint_ &&
+                    now >= nextOpenPaintRetryAt_) {
+                    nextOpenPaintRetryAt_ = now + 100;
+                    InvalidateRect(window_, nullptr, FALSE);
+                }
+                // Closing changes semantic state immediately. The existing
+                // controller timer is retained only long enough to finish the
+                // bounded physical fade; no input or worker work runs behind
+                // the hidden surface.
+                if (state_.surface() == gba::Surface::Hidden) return 0;
+                // A newly shown or device-lost HWND is deliberately alpha-zero
+                // until D2D commits a complete frame. Do not let an invisible
+                // surface consume navigation or advance its worker meanwhile;
+                // Guide/F1 continue to arrive through their dedicated paths.
+                if (awaitingSuccessfulOpenPaint_) return 0;
                 PollController();
                 (void)bridge_.PumpEvents();
                 if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
@@ -1110,6 +1143,35 @@ private:
             RestoreFocusForActiveSurface(state_.activeWidget());
         }
 
+        const auto now = GetTickCount64();
+        if (priorSurface == gba::Surface::Hidden &&
+            state_.surface() != gba::Surface::Hidden) {
+            if (awaitingSuccessfulOpenPaint_ || !IsWindowVisible(window_)) {
+                awaitingSuccessfulOpenPaint_ = true;
+                nextOpenPaintRetryAt_ = now + 100;
+                overlayTransition_.PrepareInitialOpen();
+            } else {
+                overlayTransition_.BeginOpen(
+                    now, CurrentAccessibilityPolicy().reducedMotion);
+            }
+            AdvanceOverlayTransition(now);
+        }
+        if (gba::ShouldRevealWidgetContent(
+                priorSurface == gba::Surface::Widget, priorActive,
+                state_.surface() == gba::Surface::Widget,
+                state_.activeWidget())) {
+            RequestWidgetContentReveal(state_.activeWidget());
+        }
+        if (gba::ShouldSnapWidgetContentVisible(
+                state_.surface() == gba::Surface::Widget,
+                priorFocusRegion == gba::FocusRegion::Widget,
+                state_.focusRegion() == gba::FocusRegion::Widget)) {
+            SnapWidgetContentVisible();
+        }
+        if (state_.surface() == gba::Surface::Hidden) {
+            pendingContentRevealWidget_.clear();
+        }
+
         if (state_.surface() != gba::Surface::Hidden) {
             const bool enteredBridgeWidget =
                 state_.surface() == gba::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
@@ -1256,14 +1318,16 @@ private:
             if (backdropBrush_) DeleteObject(backdropBrush_);
             backdropBrush_ = replacement;
         }
-        const BYTE opacity = static_cast<BYTE>(std::lround(
+        targetBackdropOpacity_ = static_cast<BYTE>(std::lround(
             std::clamp(current->backdropOpacity, 0.35, 0.8) * 255.0));
-        SetLayeredWindowAttributes(backdropWindow_, 0, opacity, LWA_ALPHA);
+        // Sampling here makes an accessibility change to reduced motion snap
+        // an in-flight transition immediately rather than waiting for a timer.
+        AdvanceOverlayTransition(GetTickCount64());
         InvalidateRect(backdropWindow_, nullptr, TRUE);
 
-        const BOOL disableTransitions = CurrentAccessibilityPolicy().reducedMotion
-            ? TRUE
-            : FALSE;
+        // The host owns every physical animation. Leaving DWM transitions on
+        // can add an unbounded second animation around show/hide and resize.
+        const BOOL disableTransitions = TRUE;
         (void)DwmSetWindowAttribute(window_, DWMWA_TRANSITIONS_FORCEDISABLED,
                                     &disableTransitions, sizeof(disableTransitions));
         (void)DwmSetWindowAttribute(backdropWindow_, DWMWA_TRANSITIONS_FORCEDISABLED,
@@ -1423,6 +1487,11 @@ private:
                 ids.push_back(descriptor.id);
             }
         }
+        const std::wstring runtimeRevealWidget =
+            state_.surface() == gba::Surface::Widget &&
+                    runtimeChanged(state_.activeWidget())
+                ? std::wstring(state_.activeWidget())
+                : std::wstring{};
         if (!lifecycleBridgeWidget_.empty() && runtimeChanged(lifecycleBridgeWidget_)) {
             lifecycleBridgeWidget_.clear();
             lifecycleBridgeState_.reset();
@@ -1434,6 +1503,11 @@ private:
             SavePersistentState(state_.persistent());
         }
         SyncWidgetActivity();
+        if (!runtimeRevealWidget.empty() &&
+            state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == runtimeRevealWidget) {
+            RequestWidgetContentReveal(runtimeRevealWidget);
+        }
         return true;
     }
 
@@ -1502,8 +1576,99 @@ private:
         return WidgetIcon(id);
     }
 
-    void ShowOverlay(const bool atomicVisibleTransition = false) {
-        if (!placementRefreshGate_.TryEnter()) return;
+    void ApplyTransitionWindowOpacity(const float opacityFactor) {
+        const auto factor = std::clamp(opacityFactor, 0.0F, 1.0F);
+        const auto overlayOpacity = static_cast<BYTE>(std::lround(
+            static_cast<float>(targetOverlayOpacity_) * factor));
+        const auto backdropOpacity = static_cast<BYTE>(std::lround(
+            static_cast<float>(targetBackdropOpacity_) * factor));
+        if (!appliedOverlayOpacity_ || *appliedOverlayOpacity_ != overlayOpacity) {
+            // The overlay relies on this key for transparent pixels. Alpha
+            // updates must never silently drop LWA_COLORKEY.
+            if (SetLayeredWindowAttributes(
+                    window_, RGB(1, 2, 3), overlayOpacity,
+                    LWA_ALPHA | LWA_COLORKEY)) {
+                appliedOverlayOpacity_ = overlayOpacity;
+            } else {
+                AppendDiagnostic(L"Overlay alpha update failed error=" +
+                                 std::to_wstring(GetLastError()));
+            }
+        }
+        if (!appliedBackdropOpacity_ ||
+            *appliedBackdropOpacity_ != backdropOpacity) {
+            if (SetLayeredWindowAttributes(
+                    backdropWindow_, 0, backdropOpacity, LWA_ALPHA)) {
+                appliedBackdropOpacity_ = backdropOpacity;
+            } else {
+                AppendDiagnostic(L"Backdrop alpha update failed error=" +
+                                 std::to_wstring(GetLastError()));
+            }
+        }
+    }
+
+    void ReprimeOpenAfterRenderTargetLoss() {
+        if (state_.surface() == gba::Surface::Hidden) return;
+        awaitingSuccessfulOpenPaint_ = true;
+        nextOpenPaintRetryAt_ = GetTickCount64() + 100;
+        overlayTransition_.PrepareInitialOpen();
+        overlayTransitionSample_ = overlayTransition_.Sample(
+            GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+        ApplyTransitionWindowOpacity(0.0F);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    void BeginOpenAfterSuccessfulPaint() {
+        if (!awaitingSuccessfulOpenPaint_ ||
+            state_.surface() == gba::Surface::Hidden) return;
+        awaitingSuccessfulOpenPaint_ = false;
+        nextOpenPaintRetryAt_ = 0;
+        const auto now = GetTickCount64();
+        overlayTransition_.BeginOpen(
+            now, CurrentAccessibilityPolicy().reducedMotion);
+        AdvanceOverlayTransition(now);
+    }
+
+    void AdvanceOverlayTransition(const ULONGLONG timestamp) {
+        const auto previousContentOpacity =
+            overlayTransitionSample_.contentOpacity;
+        overlayTransitionSample_ = overlayTransition_.Sample(
+            timestamp, CurrentAccessibilityPolicy().reducedMotion);
+        ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
+        if (state_.surface() != gba::Surface::Hidden &&
+            std::abs(previousContentOpacity -
+                     overlayTransitionSample_.contentOpacity) > 0.0001F) {
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        if (overlayTransition_.TakeHideCompletion() &&
+            state_.surface() == gba::Surface::Hidden) {
+            HideOverlay();
+        }
+    }
+
+    void RequestWidgetContentReveal(const std::wstring_view widgetId) {
+        if (widgetId.empty()) return;
+        if (SnapshotFor(widgetId)) {
+            pendingContentRevealWidget_.clear();
+            overlayTransition_.BeginContentReveal(
+                GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+        } else {
+            pendingContentRevealWidget_ = widgetId;
+            // A loading placeholder is host feedback, not the incoming
+            // immutable widget snapshot. Keep it stable and reveal only once
+            // the requested runtime publishes content.
+            overlayTransition_.SnapContentVisible();
+        }
+        AdvanceOverlayTransition(GetTickCount64());
+    }
+
+    void SnapWidgetContentVisible() {
+        pendingContentRevealWidget_.clear();
+        overlayTransition_.SnapContentVisible();
+        AdvanceOverlayTransition(GetTickCount64());
+    }
+
+    OverlayShowResult ShowOverlay(const bool atomicVisibleTransition = false) {
+        if (!placementRefreshGate_.TryEnter()) return OverlayShowResult::Deferred;
         struct PlacementScope final {
             gba::PlacementRefreshGate& gate;
             HWND notifyWindow;
@@ -1529,13 +1694,13 @@ private:
         const HMONITOR monitor = MonitorFromWindow(targetWindow, MONITOR_DEFAULTTONEAREST);
         if (!monitor) {
             AppendDiagnostic(L"Unable to resolve target monitor for overlay");
-            return;
+            return OverlayShowResult::Failed;
         }
         MONITORINFO monitorInfo{sizeof(monitorInfo)};
         if (!GetMonitorInfoW(monitor, &monitorInfo)) {
             AppendDiagnostic(L"GetMonitorInfoW failed error=" +
                              std::to_wstring(GetLastError()));
-            return;
+            return OverlayShowResult::Failed;
         }
         const RECT& work = monitorInfo.rcWork;
         // The foreground game may be DPI-unaware, in which case
@@ -1563,7 +1728,7 @@ private:
                 });
             if (!resolved) {
                 AppendDiagnostic(L"Unable to resolve a safe widget surface");
-                return;
+                return OverlayShowResult::Failed;
             }
             desiredWidthDip = resolved->windowWidthDip;
             desiredHeightDip = resolved->windowHeightDip;
@@ -1574,9 +1739,10 @@ private:
             desiredHeightDip * interfaceScale);
         if (!placement) {
             AppendDiagnostic(L"Unable to compute a safe overlay placement");
-            return;
+            return OverlayShowResult::Failed;
         }
 
+        ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
         const BOOL backdropPlaced = SetWindowPos(
             backdropWindow_, HWND_TOPMOST,
             monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
@@ -1592,7 +1758,7 @@ private:
         if (!backdropPlaced || !overlayPlaced) {
             AppendDiagnostic(L"Overlay placement failed error=" +
                              std::to_wstring(GetLastError()));
-            return;
+            return OverlayShowResult::Failed;
         }
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
@@ -1607,6 +1773,7 @@ private:
             SetTimer(window_, kControllerTimer, 16, nullptr);
             PrimeControllerState();
         }
+        return OverlayShowResult::Shown;
     }
 
     void HideOverlay() {
@@ -1616,6 +1783,9 @@ private:
         lastControllerForegroundExclusive_.reset();
         lastForegroundOwnership_.reset();
         declarativeMotionActive_ = false;
+        pendingContentRevealWidget_.clear();
+        awaitingSuccessfulOpenPaint_ = false;
+        nextOpenPaintRetryAt_ = 0;
         KillTimer(window_, kCatalogRetryTimer);
         KillTimer(window_, kForegroundLossTimer);
         bridge_.AbandonWidgetCatalogChangedRevision();
@@ -1711,14 +1881,35 @@ private:
         case gba::OverlayPresentationDirective::None:
             return;
         case gba::OverlayPresentationDirective::Hide:
-            HideOverlay();
+            // Lifecycle/background state was committed before presentation.
+            // Shut down semantic input immediately, then defer only HWND
+            // hiding, resource discard, and foreground restoration.
+            visibleControllerReadLease_ = false;
+            lastControllerReadPath_ = gba::input::ControllerReadPath::None;
+            lastControllerForegroundExclusive_.reset();
+            lastForegroundOwnership_.reset();
+            overlayTransition_.BeginClose(
+                GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+            SetTimer(window_, kControllerTimer, 16, nullptr);
+            AdvanceOverlayTransition(GetTickCount64());
             return;
         case gba::OverlayPresentationDirective::Place:
         {
             const bool wasWindowVisible = IsWindowVisible(window_) != FALSE;
-            ShowOverlay(wasWindowVisible);
+            const auto result = ShowOverlay(wasWindowVisible);
+            if (result == OverlayShowResult::Failed && !wasWindowVisible &&
+                state_.surface() != gba::Surface::Hidden) {
+                AppendDiagnostic(
+                    L"Initial overlay presentation failed; restoring hidden state");
+                Dispatch(gba::Command::CloseOverlay);
+                return;
+            }
             InvalidateRect(window_, nullptr, FALSE);
-            if (gba::ShouldCommitVisiblePlacementSynchronously(
+            const bool initialFrameCommitRequired =
+                result == OverlayShowResult::Shown &&
+                !wasWindowVisible && awaitingSuccessfulOpenPaint_;
+            if (initialFrameCommitRequired ||
+                gba::ShouldCommitVisiblePlacementSynchronously(
                     wasWindowVisible, directive)) {
                 RedrawWindow(window_, nullptr, nullptr,
                     RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
@@ -1854,6 +2045,7 @@ private:
     }
 
     void HandleKey(const UINT key, const bool repeated) {
+        if (state_.surface() == gba::Surface::Hidden) return;
         const auto phase = repeated
             ? gba::input::NavigationEventPhase::Repeated
             : gba::input::NavigationEventPhase::Pressed;
@@ -2327,9 +2519,12 @@ private:
         focusedElementId_.clear();
         widgetSnapshots_.erase(widgetId);
         renderedSnapshotSequences_.erase(widgetId);
+        pendingContentRevealWidget_ = widgetId;
+        overlayTransition_.SnapContentVisible();
 
         const auto restarted = bridge_.RestartWidget(widgetId);
         if (!restarted || !*restarted) {
+            pendingContentRevealWidget_.clear();
             lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
                                  L" reload failed: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -2380,6 +2575,13 @@ private:
             : state_.selectedWidget();
         if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
         widgetSnapshots_.insert_or_assign(std::wstring(widgetId), std::move(*snapshot));
+        if (currentWidget == widgetId &&
+            pendingContentRevealWidget_ == widgetId) {
+            pendingContentRevealWidget_.clear();
+            overlayTransition_.BeginContentReveal(
+                GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+            AdvanceOverlayTransition(GetTickCount64());
+        }
         if (currentWidget == widgetId) RestoreFocusForActiveSurface(widgetId);
         if (const auto* current = SnapshotFor(widgetId);
             currentWidget == widgetId && current &&
@@ -2870,6 +3072,9 @@ private:
         const HRESULT result = renderTarget_->EndDraw();
         if (result == D2DERR_RECREATE_TARGET) {
             DiscardGraphicsResources();
+            ReprimeOpenAfterRenderTargetLoss();
+        } else if (SUCCEEDED(result)) {
+            BeginOpenAfterSuccessfulPaint();
         }
         EndPaint(window_, &paint);
     }
@@ -3127,6 +3332,22 @@ private:
         renderTarget_->FillRoundedRectangle(panel, cardBrush_.Get());
 
         if (bridgeWidget) {
+            ComPtr<ID2D1Layer> contentLayer;
+            bool contentLayerPushed = false;
+            if (overlayTransitionSample_.contentOpacity < 0.999F &&
+                SUCCEEDED(renderTarget_->CreateLayer(
+                    nullptr, contentLayer.ReleaseAndGetAddressOf()))) {
+                auto layerParameters = D2D1::LayerParameters();
+                layerParameters.contentBounds = D2D1::RectF(
+                    geometry->widgetViewportX,
+                    geometry->widgetViewportY,
+                    geometry->widgetViewportX + geometry->widgetViewportWidth,
+                    geometry->widgetViewportY + geometry->widgetViewportHeight);
+                layerParameters.opacity = std::clamp(
+                    overlayTransitionSample_.contentOpacity, 0.0F, 1.0F);
+                renderTarget_->PushLayer(layerParameters, contentLayer.Get());
+                contentLayerPushed = true;
+            }
             const auto* snapshot = SnapshotFor(widget);
             if (snapshot && declarativeRenderer_) {
                 const gba::declarative::Rect viewport{
@@ -3198,6 +3419,7 @@ private:
                                          panelLeft + panelWidth - 30, 110),
                              secondaryBrush_.Get());
             }
+            if (contentLayerPushed) renderTarget_->PopLayer();
             DrawWidgetFooter(*geometry);
             DrawIconStrip(width, height, &*geometry);
             return;
@@ -3289,6 +3511,15 @@ private:
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
     bool declarativeMotionActive_{};
+    gba::OverlayTransitionTimeline overlayTransition_;
+    gba::OverlayTransitionSample overlayTransitionSample_{};
+    bool awaitingSuccessfulOpenPaint_{};
+    ULONGLONG nextOpenPaintRetryAt_{};
+    std::wstring pendingContentRevealWidget_;
+    BYTE targetOverlayOpacity_{248};
+    BYTE targetBackdropOpacity_{kBackdropOpacity};
+    std::optional<BYTE> appliedOverlayOpacity_;
+    std::optional<BYTE> appliedBackdropOpacity_;
 
     ComPtr<IGameInput> gameInput_;
     gba::input::XInputGuideCompatibility guideCompatibility_;

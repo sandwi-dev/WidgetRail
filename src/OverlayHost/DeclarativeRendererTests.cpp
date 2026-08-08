@@ -102,26 +102,33 @@ void ImagePlacementMath() {
     Near(invalid.source.width, 0.0F, "invalid source is empty");
 }
 
-void ButtonContentPlacementCentersTheVisualGroup() {
+void ButtonContentPlacementCentersThePrimaryLabel() {
     const Rect content{0.0F, 0.0F, 170.0F, 60.0F};
     const auto iconAndText = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 28.0F, 56.0F, true, true, false);
-    Near(iconAndText.leading.x, 39.0F,
-         "icon-label group starts at its centered visual bound");
-    Near(iconAndText.text.x, 75.0F,
-         "button label follows the centered leading icon and gap");
-    Near((iconAndText.leading.x + iconAndText.text.x + iconAndText.text.width) * 0.5F,
+    Near(iconAndText.leading.x, 21.0F,
+         "leading icon sits immediately before the centered label");
+    Near(iconAndText.text.x, 57.0F,
+         "button label starts from its exact centered visual bound");
+    Near(iconAndText.text.x + iconAndText.text.width * 0.5F,
          85.0F,
-         "icon-label group is centered in the complete button");
+         "button label is centered in the complete button");
     Near(iconAndText.leading.y, 16.0F,
          "leading icon is vertically centered in the content box");
 
     const auto withCue = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 28.0F, 56.0F, true, true, true);
-    Near(withCue.leading.x, 39.0F,
-         "symmetric cue reservation does not push primary content off center");
-    Near(withCue.text.x, 75.0F,
-         "state cue cannot collide with the centered button label");
+    Near(withCue.leading.x, 21.0F,
+         "trailing state cue does not reserve nonexistent leading space");
+    Near(withCue.text.x, 57.0F,
+         "state cue preserves the centered button label when it does not collide");
+
+    const auto compactWithCue = DeclarativeRenderer::ComputeButtonContentPlacement(
+        {0.0F, 0.0F, 122.0F, 44.0F}, 28.0F, 45.0F, true, true, true);
+    Near(compactWithCue.text.width, 45.0F,
+         "compact disabled icon-label button retains the complete measured label");
+    Check(compactWithCue.text.x + compactWithCue.text.width <= 91.5F,
+         "compact button label remains clear of the trailing state cue");
 
     const auto textOnly = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 0.0F, 40.0F, false, true, false);
@@ -1908,11 +1915,11 @@ void RealDirect2DSmoke() {
         "authored alignment translates the icon-label group without splitting it");
     const auto leadingToCenter = centerBounds.minimumX - startBounds.minimumX;
     const auto centerToTrailing = endBounds.minimumX - centerBounds.minimumX;
-    Check(leadingToCenter == centerToTrailing,
-        "explicit center is midway between the edge-aligned visual groups");
-    Near(visualCenter(centerBounds),
-        (visualCenter(startBounds) + visualCenter(endBounds)) * 0.5F,
-        "explicit center preserves the complete group's raster geometry");
+    Check(leadingToCenter < centerToTrailing,
+        "centered labels leave the leading icon on the label's leading side");
+    Check(visualCenter(centerBounds) <
+            centerRect.x + centerRect.width * 0.5F,
+        "centering the primary label intentionally places the complete icon-label group left of center");
     Check(startBounds.maximumX < static_cast<int>(startRect.x + startRect.width * 0.5F),
         "explicit start paints the complete group in the leading half");
     Check(endBounds.minimumX > static_cast<int>(endRect.x + endRect.width * 0.5F),
@@ -1981,7 +1988,7 @@ int main() {
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
     ImagePlacementMath();
-    ButtonContentPlacementCentersTheVisualGroup();
+    ButtonContentPlacementCentersThePrimaryLabel();
     AccessibleStatePresentation();
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();

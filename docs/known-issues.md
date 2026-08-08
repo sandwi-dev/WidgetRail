@@ -45,23 +45,23 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-024 | P1 | Verifying | Gbar CLI / OverlayHost / WidgetBridge | Authenticated candidate-worker readiness, last-good recovery, complete bounded watching, and observable cleanup are implemented; packaged author-workflow evidence remains. |
 | GBA-025 | P0 | Verifying | Controller quick actions / capability broker | A dormant non-authorizing host reservation now activates one exact-operation broker lease only at the typed call; packaged controller/media evidence remains. |
 | GBA-026 | P1 | Verifying | Reference widgets / package isolation | Four built-in brokered references plus the YT Music Community addon pass real-package generic-AppContainer conformance; packaged overlay evidence remains. |
-| GBA-027 | P0 | Verifying | Games & Apps / app-library broker / provider | Games & Apps replaced bundled Recent Apps with Start Menu catalog reads and exact revalidated opaque-ID launch; packaged controller/visual verification remains. |
+| GBA-027 | P0 | Verifying | Games & Apps / app-library broker / provider | Games & Apps replaced bundled Recent Apps with bounded Start Menu plus AppsFolder catalog reads and exact source-revalidated opaque-ID launch; packaged controller/visual verification remains. |
 | GBA-028 | P0 | Verifying | PlatformBroker consent migration / Settings permissions | The exact retired Recent Apps activation capability is tombstoned; unsupported/inactive details moved to a safe bounded read-only Review page, and packaged visual verification remains. |
 | GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
 | GBA-030 | P0 | Verifying | YT Music packaging / community isolation / local companion broker | YT Music now uses the public Community package/AppContainer/loopback/secret path without a trusted fallback; clean packaged controller and lifecycle evidence remains. |
 | GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | The shared default, responsive Row/Grid, Picker, Scrubber, Toast, CodeText, per-edge borders, and protocol-v7 ActionSurface/MediaTile/AppTile exist; Settings and Games & Apps provide production adoption, and the full Release gate is green while hands-on packaged scale/accessibility evidence remains. |
-| GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes now interpolate bounded opacity/scale/translation with true subtree geometry, reduced-motion cancellation, and settled hidden-idle behavior; packaged visual/performance evidence remains. |
-| GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation and close-after-correlated-success are implemented; broader sources, icons, classification, and packaged controller evidence remain. |
+| GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes interpolate bounded opacity/scale/translation; shell open/close and widget identity reveals now use bounded 140/100 ms tracks with reduced-motion cancellation and no settled idle frames. Packaged visual/performance evidence remains. |
+| GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation, Start Menu plus AppsFolder discovery, exact revalidated launch, and close-after-correlated-success are implemented; launcher sources, classification, and packaged controller evidence remain. |
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
 | GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
 | GBA-036 | P1 | Verifying | OverlayHost / native composition / declarative surface | The native client clears unused pixels to the layered color key and one packaged standard-viewport capture shows no opaque canvas; the broader paint/scale/contrast matrix remains. |
 | GBA-037 | P0 | Verifying | Now Playing / media provider / retry | Current-state reads are independent from live subscription failure and Retry creates a fresh generation; packaged provider-failure recovery remains to verify visually. |
-| GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | Activation resolves only durable saved entries and Catalog loads only on Add; intrinsic layout regressions cover the clipped empty/card copy, with packaged visual verification remaining. |
+| GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | Activation resolves only durable saved entries and Catalog loads only on Add; `final-schema-v2-20260808-final` proves retained-package empty/catalog/populated standalone widget-body captures, while loading/failure/long/max-page, shell, and controller evidence remain. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
 | GBA-040 | P0 | Verifying | Native declarative layout / Spotify / responsive text | Intrinsic leaves now measure height against their authored width/max-width before layout, with exact Spotify state/setup regressions at compact and 150% text scales; packaged visual verification remains. |
 | GBA-041 | P0 | Verifying | OverlayHost / controller input ownership | A visibility-scoped GameInput lease keeps navigation alive when foreground activation is denied and uses exclusivity when confirmed; packaged backend/game evidence remains. |
-| GBA-042 | P0 | Verifying | Spotify configuration / Settings permissions | Unsigned packages can resolve one unambiguous owning-publisher public configuration document, and Settings names all four Spotify grants; packaged authorization/revoke evidence remains. |
-| GBA-043 | P0 | Verifying | Spotify OAuth / broker lifecycle / pipe timeout | Package 0.1.4 acknowledges explicit Connect immediately and retains only that authorization task through browser-triggered Visible/Background; the listener is bounded to five minutes and the exact broker operation to seven, while live packaged authorization evidence remains. |
+| GBA-042 | P0 | Verifying | Spotify configuration / Settings permissions | Unsigned packages can resolve one unambiguous owning-publisher public configuration document; `final-schema-v2-20260808-final` proves Spotify 0.1.6 unconfigured/setup standalone widget-body rendering, but Settings package-path injection and live configure/connect/revoke evidence remain. |
+| GBA-043 | P0 | Verifying | Spotify OAuth / broker lifecycle / pipe timeout | Package 0.1.6 keeps the explicit Connect task resident through browser-triggered Visible/Background and tolerates 16 bounded local callback probes inside the five-minute listener; the exact broker operation remains seven minutes and live packaged authorization evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -942,13 +942,18 @@ motion snaps/cancels. Translation moves true subtree presentation geometry:
 paint, clips, focus, hit targets, controller navigation, and Scroll focus-follow
 share one result while layout allocation remains static. Replacement identity
 does not inherit stale motion, and settled/hidden content does not request an
-animation loop. Other properties and shell-level transitions remain immediate,
-and packaged visual/performance evidence is still open.
+animation loop. The host now also owns a separate bounded shell/content
+timeline: 140 ms ease-out open, 100 ms ease-in close, and 100 ms new/replaced-
+identity reveal from 0.78 opacity. Reversals start from the presented alpha,
+same-identity snapshots do not flash, entering widget focus can snap the reveal,
+physical hide is one-shot after zero opacity, and reduced motion/settlement own
+no follow-up frames. Other properties remain immediate, and packaged visual/
+performance evidence is still open.
 
 **Acceptance:**
 
-1. Documentation identifies the exact animated property set and does not imply
-   that unsupported properties or shell transitions animate.
+1. Documentation identifies the exact node and shell/content animated sets and
+   does not imply that unsupported properties animate.
 2. A host-owned bounded clock interpolates only an explicit safe property set,
    with deterministic start, interruption, retarget, and completion behavior.
 3. Reduced motion makes every transition immediate and stops outstanding work.
@@ -956,21 +961,26 @@ and packaged visual/performance evidence is still open.
    coalesces visible nodes and respects performance budgets.
 5. Native tests plus packaged visual/performance evidence cover focus, selected,
    busy, rapid reversal, resize/DPI change, and widget replacement.
-6. The transient pressed-state pipeline and subtree translation are
-   implemented. Follow-on scope covers shell/widget open, close, and replacement
-   transitions; those are not implied by node-level motion.
+6. The transient pressed-state pipeline, subtree translation, and bounded
+   shell open/close/widget-identity reveal are implemented. Follow-on scope is
+   packaged visual/frame-time evidence and later explicitly designed events.
 
 ## GBA-033 — Games & Apps needs durable curated launch semantics
 
 **Evidence:** The current slice safely pages executable-backed Start Menu
-shortcuts into a nested Catalog where A adds/removes entries from a separate
-Library view. The Library supports explicit removal and moves an exact item to
+shortcuts plus bounded current-user AppsFolder/AUMID registrations into a
+nested Catalog where A adds/removes entries from a separate Library view. The
+Library supports explicit removal and moves an exact item to
 the front only after launch success. The SDK/broker/provider issue an
 authority-scoped durable SavedId, resolve it to a fresh launch token, and the
 widget persists curation/recent-first order through private compare-and-swap
 state. A host-owned effect closes only after the exact provider success and is
-rejected for stale widget generations. Icons, source-aware grouping, game
-classification, and broader catalog sources remain absent.
+rejected for stale widget generations. Start Menu and AppsFolder launch both
+re-enumerate and require one exact unchanged registration before constrained
+Shell/null-argument activation; raw paths, AUMIDs, arguments, and PIDs never
+cross IPC. Curated shortcut/AppsFolder icons use the bounded pixel contract.
+Source-aware grouping, game classification, launcher catalogs, and richer
+artwork remain absent.
 
 **Acceptance:**
 
@@ -1120,8 +1130,16 @@ root and loads the catalog after **Add applications**. Library and Catalog use
 vertical full-width rows: the icon and two-line application name share one
 Button focus target instead of outlining an inner label. The native column
 allocator preserves measured height for auto-height intrinsic wrapped leaves.
-Focused lifecycle/layout regressions are green; refreshed packaged visual
-evidence remains outstanding.
+Focused lifecycle/layout regressions are green. The auth-free
+`final-schema-v2-20260808-final` pipeline additionally launched the exact
+retained package in AppContainer,
+recorded that the root reached `games.open-catalog` before the first broad
+catalog read, then captured catalog add and populated-library return through
+the simulated broker. Six native WIC PNGs cover empty, catalog, and populated
+snapshots across compact/default, 150%-text/reduced-transparency, standard,
+and wide/high-contrast profiles with production computed styles and recorded
+SHA-256s. Loading, failure, long-name, maximum-page, focus traversal, and a
+hands-on packaged overlay pass remain outstanding, so status stays Verifying.
 
 **Acceptance:**
 
@@ -1183,10 +1201,16 @@ cover the Spotify Client-ID state card and setup card at compact width and at
 150% text, in addition to the generic centered-state and permission Scroll
 coverage. The full native Release suite is green at milestone `9f1af0b`;
 refreshed packaged screenshots remain outstanding, so status remains Verifying.
-Spotify package 0.1.4 additionally places the instruction card in a controller
+Spotify package 0.1.6 additionally places the instruction card in a controller
 VerticalScroll, uses compact responsive wrapping, and relies on shared centered
 button icon/label placement; those changes remove widget-specific spacer/
-alignment compensation but still require packaged visual evidence.
+alignment compensation. A fresh Scroll identity on each setup entry prevents a
+retained bottom offset from hiding the title/first step. The auth-free
+`final-schema-v2-20260808-final` bundle captured Spotify 0.1.6 Client-ID/
+setup surfaces at four viewport/DPI/accessibility profiles with complete,
+centered labels and instructions. It does not cover localized copy, the full
+packaged shell/window matrix, live OAuth, or callback behavior. Status remains
+Verifying.
 
 **Acceptance:**
 
@@ -1194,7 +1218,7 @@ alignment compensation but still require packaged visual evidence.
    intrinsic height at the effective content width, including padding.
 2. Centered state-card title/detail/action flow does not overlap or clip at
    compact and standard surfaces through 150% text scale.
-3. Spotify setup title, instructions, exact redirect URI, command, and Done
+3. Spotify setup title, instructions, exact redirect URI, command, and Check configuration
    action remain fully readable/reachable without widget-specific spacer or
    margin compensation.
 4. Width constraints, flex shrink, explicit fixed height, max-lines, Scroll,
@@ -1245,22 +1269,29 @@ required**. Settings also rendered all four supported Spotify grants as
 exact runtime-authority document first, then permits an unsigned authority to
 read one unambiguous declared-publisher document whose namespace owns the
 package ID. Ambiguous matches fail closed. Consent, private state, OAuth tokens,
-and credentials retain exact digest authority. Spotify Setup **Done** performs
+and credentials retain exact digest authority. Spotify Setup **Check configuration** performs
 a serialized bounded fresh configuration read without starting OAuth, and
 Settings has names/descriptions for all four Spotify capabilities. Focused
-configuration, provider, widget, and Settings tests are green; packaged live
-authorization confirmation remains.
+configuration, provider, widget, and Settings tests are green. The auth-free
+`final-schema-v2-20260808-final` run launched the retained Spotify 0.1.6
+package through AppContainer,
+captured its unconfigured/setup states and semantic action trace, rendered six
+native profile PNGs with production styles, and recorded package/snapshot/PNG
+digests. Settings could not start through the same generic worker because its
+host-owned settings/catalog services are not injectable there; the run records
+that gap. It therefore proves neither Settings permission rendering nor live
+configure/connect/revoke. Status remains Verifying.
 
 **Acceptance:**
 
 1. The source-tree CLI command runs without a PATH install, and a successful
-   write becomes visible after **Done** without restarting the bridge.
+   write becomes visible after **Check configuration** without restarting the bridge.
 2. Only one owning declared-publisher document can resolve; ambiguous or
    unrelated documents do not cross package boundaries.
 3. Client secrets and OAuth tokens remain outside public configuration.
 4. Settings shows accurate names, descriptions, required/optional state, and
    decisions for all Spotify capabilities.
-5. Packaged testing covers configure, digest update, Done refresh, connect,
+5. Packaged testing covers configure, digest update, configuration check, connect,
    revoke, and malformed/ambiguous recovery.
 
 ## GBA-043 — Browser activation canceled Spotify authorization
@@ -1272,7 +1303,7 @@ Even without a transition, the pipe's ordinary three-second request deadline
 was shorter than the authorization callback window, producing
 `ERR_CONNECTION_REFUSED` when Spotify returned.
 
-**Implementation/current evidence:** Package 0.1.4 acknowledges an explicit
+**Implementation/current evidence:** Package 0.1.6 acknowledges an explicit
 Interactive Connect action immediately and runs only its authorization task on
 the widget's Created-to-Destroying lifetime. The already-created broker lease
 therefore survives browser-triggered Visible/Background. New connect/control
@@ -1280,9 +1311,15 @@ requests in Background remain denied; disconnect has no continuation. The
 temporary callback listener is created only for the explicit action and waits
 at most five minutes. The exact broker operation has a seven-minute deadline,
 leaving two bounded minutes for token exchange, retry/backoff, and credential-
-vault persistence. Destroying, consent revocation, caller/pipe cancellation,
-and callback/deadline timeout still cancel and close the listener.
-PlatformBroker's focused Release suite passes 48/48 with exact-operation,
+vault persistence. The package selects `keep-alive` residency so idle unload
+cannot destroy this already-started authorization while the browser owns
+foreground; active polling/presentation still follows lifecycle tokens. The
+receiver tolerates at most 16 malformed or early-close local probes inside the
+same listener window, while still requiring loopback origin, exact host/path,
+GET/HTTP/1.1, and matching OAuth state before accepting the callback.
+Destroying, consent revocation, caller/pipe cancellation, and callback/deadline
+timeout still cancel and close the listener.
+PlatformBroker's focused Release suite passes with exact-operation,
 Background denial, disconnect, Destroying, revocation, cancellation, and
 timeout-policy coverage. Widget coverage asserts immediate action completion,
 Background continuation, no implicit listener/connect, and Destroying
@@ -1296,7 +1333,9 @@ callback evidence in acceptance item 5 is captured.
    to survive browser-triggered Visible/Background.
 2. New inactive connect/playback controls and disconnect remain denied.
 3. The temporary listener exists only during explicit Connect and waits at most
-   five minutes. Only the exact broker Connect receives a seven-minute deadline;
+   five minutes. A bounded number of speculative/malformed local probes cannot
+   consume the real callback, and none bypass exact origin/host/path/state
+   validation. Only the exact broker Connect receives a seven-minute deadline;
    its remaining two minutes are bounded token exchange/retry/vault budget, not
    a general long request timeout.
 4. Destroying, revoke/consent loss, caller/pipe cancellation, malformed state,

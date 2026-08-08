@@ -370,12 +370,13 @@ delivery and cancels in-flight work, while immediate native-observer shutdown/
 history clear on revocation remains future hardening. Recent Apps is retained
 only as the [read-only activity reference](recent-apps.md), not a bundled widget.
 
-## Start Menu application-library provider
+## Start Menu and AppsFolder application-library provider
 
-The trusted application-library provider scans only current-user and all-user
-Start Menu Programs folders. Enumeration is bounded by candidate count,
-directory depth, shortcut size, catalog size, and sanitized display-name
-length; it never follows reparse points. It accepts `.lnk` registrations whose
+The trusted application-library provider merges current-user/all-user Start
+Menu Programs shortcuts with the current user's Shell `AppsFolder`. Shortcut
+enumeration is bounded by candidate count, directory depth, shortcut size,
+catalog size, and sanitized display-name length; it never follows reparse
+points. It accepts `.lnk` registrations whose
 resolved target is an `.exe` or `.com`, deduplicates an internal target/
 arguments identity, and returns random short-lived provider launch IDs plus one
 host-only stable identity. The broker uses the latter with a persisted host key
@@ -383,27 +384,38 @@ and authenticated publisher/package IDs to derive a non-reversible durable
 SavedId. Raw stable identities, paths, targets, arguments, shortcut
 fingerprints, AUMIDs, package identities, PIDs, and HWNDs stay inside the host.
 
+AppsFolder enumeration runs on one process-wide bounded STA queue, visits at
+most 2,048 Shell items, and retains only sanitized display text plus a strict
+canonical AUMID. A malformed or disappearing item is skipped without failing
+the other source. The AUMID remains provider-private and contributes only to a
+host identity/revalidation digest; neither it nor a Shell object crosses IPC.
+
 Widgets persist only SavedIds in private state. The read capability's bounded
 resolver accepts at most 64 unique SavedIds, refreshes the provider, preserves
 request order, omits unavailable registrations, and returns fresh launch IDs.
 Another widget authority cannot correlate or resolve those SavedIds.
 
 Launch is a separate Interactive-only capability. The provider resolves a
-current opaque ID, re-enumerates, and requires exactly one unchanged match for
-scope, trusted target identity, full shortcut path, and shortcut-content
-fingerprint. Only then does it invoke the Windows Shell `open` verb on that
-exact `.lnk`, with no supplied arguments, working directory, elevation verb,
-or owner window. Stale, moved, modified, duplicated, and unknown registrations
-fail closed.
+current opaque ID and re-enumerates the exact source on its STA lane. A
+shortcut requires exactly one unchanged scope, target identity, full path, and
+content fingerprint before Shell `open` with no supplied arguments, working
+directory, elevation verb, or owner window. An AppsFolder entry requires
+exactly one unchanged canonical AUMID/revalidation identity before
+`IApplicationActivationManager.ActivateApplication` with null arguments; its
+returned PID is discarded. Stale, moved, modified, duplicated, and unknown
+registrations fail closed.
 
-The present source does not enumerate AppsFolder/UWP or launcher libraries and
-conservatively reports every real item as Application. For the user's curated
-library only, it resolves the Shell icon on demand inside the trusted provider,
-rasterizes it to a 48 by 48 RGBA PNG, and exposes only bounded pixels. Discovery
-pages remain text-only; at most 32 resolved icons and 384 KiB of source pixels
-cross one broker response, with a semantic fallback for missing or malformed
-icons. Shortcut, executable, icon-location, AUMID, and package paths never cross
-the broker boundary. See the [Games & Apps reference](games-and-apps.md).
+The present source does not enumerate Steam/Xbox/Epic/GOG launcher libraries
+and conservatively reports every real item as Application. AppsFolder is a
+Windows Shell view, not a guarantee that every installed package, alias, or
+launcher-owned game is returned under every Windows policy. For the user's
+curated library only, the provider resolves the shortcut or AppsFolder Shell
+icon on demand, rasterizes it to a 48 by 48 RGBA PNG, and exposes only bounded
+pixels. Discovery pages remain text-only; at most 32 resolved icons and 384 KiB
+of source pixels cross one broker response, with a semantic fallback for
+missing or malformed icons. Shortcut, executable, icon-location, AUMID,
+package, and PID data never cross the broker boundary. See the [Games & Apps
+reference](games-and-apps.md).
 
 ## Privilege and privacy boundary
 
@@ -508,7 +520,7 @@ UI restrictions remain enabled.
 Audio Mixer, Network Controls, and Games & Apps are implemented first-party
 integration references. They do not imply output/default-role switching,
 microphone sample capture, Bluetooth unpair/generic connection, current-SSID
-privacy access, AppsFolder/launcher coverage, app icons, authoritative game
+privacy access, launcher-library coverage, authoritative game
 classification, or production security support. Hardware/privacy/performance gates remain. See the
 [Network Controls reference](network-controls.md) for its authoring,
 controller, test, and packaging contract.

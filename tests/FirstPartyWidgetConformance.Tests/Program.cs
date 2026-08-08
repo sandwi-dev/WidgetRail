@@ -5,6 +5,8 @@ using GameBarAlternative.FirstPartyWidgets.AudioMixer;
 using GameBarAlternative.FirstPartyWidgets.GamesApps;
 using GameBarAlternative.FirstPartyWidgets.MediaSessions;
 using GameBarAlternative.FirstPartyWidgets.NetworkControls;
+using GameBarAlternative.FirstPartyWidgets.Settings;
+using GameBarAlternative.Samples.SpotifyWidget;
 using GameBarAlternative.Samples.YtMusicWidget;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetBridge;
@@ -12,10 +14,22 @@ using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
+using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 
 if (!OperatingSystem.IsWindows())
 {
     Console.WriteLine("FirstPartyWidgetConformance.Tests skipped: Windows AppContainer is required.");
+    return 0;
+}
+
+var evidenceOutputIndex = Array.IndexOf(args, "--evidence-output");
+if (evidenceOutputIndex >= 0)
+{
+    if (evidenceOutputIndex + 1 >= args.Length ||
+        string.IsNullOrWhiteSpace(args[evidenceOutputIndex + 1]))
+        throw new ArgumentException("--evidence-output requires a directory.");
+    await ExportEvidenceAsync(Path.GetFullPath(args[evidenceOutputIndex + 1]));
     return 0;
 }
 
@@ -376,6 +390,287 @@ static string FindRepositoryRootForTest()
     throw new DirectoryNotFoundException("Repository root was not found.");
 }
 
+static async Task ExportEvidenceAsync(string outputDirectory)
+{
+    Directory.CreateDirectory(outputDirectory);
+    var snapshotDirectory = Path.Combine(outputDirectory, "snapshots");
+    var traceDirectory = Path.Combine(outputDirectory, "traces");
+    var packageDirectory = Path.Combine(outputDirectory, "packages");
+    Directory.CreateDirectory(snapshotDirectory);
+    Directory.CreateDirectory(traceDirectory);
+    Directory.CreateDirectory(packageDirectory);
+
+    using var deployment = await Deployment.CreateAsync(
+        installAsCommunity: true,
+        includeEvidencePackages: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    Assert.True(installed.InstalledCatalogValid,
+        "The installed catalog was rejected while exporting evidence.");
+
+    var exported = new List<EvidenceSnapshotDescriptor>();
+    var traces = new List<EvidenceTraceDescriptor>();
+    var gaps = new List<EvidenceGapDescriptor>();
+    foreach (var package in deployment.Packages.Where(package =>
+                 package.Manifest.Id is
+                    "org.gbar.firstparty.games-apps" or
+                    "org.gbar.firstparty.settings" or
+                    "org.gbar.samples.spotify"))
+    {
+        try
+        {
+        var configured = installed.Catalog.GetConfigured(package.Manifest.Id);
+        var backend = CreateBackend();
+        using var consentRoot = new TemporaryDirectory("gba-evidence-consent");
+        var consent = new ConsentStore(consentRoot.Path);
+        var identity = new BrokerWidgetIdentity(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId);
+        foreach (var capability in configured.DeclaredCapabilities)
+            await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+        await using var client = new WidgetProcessClient(new WidgetProcessOptions
+        {
+            ExecutablePath = configured.WorkerExecutable,
+            Arguments = configured.WorkerArguments,
+            WidgetInstanceId = configured.InstanceId,
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            RequestTimeout = TimeSpan.FromSeconds(8),
+            MaximumRestartAttempts = 0,
+            MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
+            IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+            IsolationKey = configured.IsolationKey,
+            ReadOnlyPaths = configured.ReadOnlyPaths,
+            CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+                configured.PackageId,
+                configured.PublisherId,
+                configured.InstanceId,
+                configured.DeclaredCapabilities,
+                consent,
+                backend,
+                context),
+        });
+
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+        var initial = await WaitForSnapshotAsync(client, package.ExpectedText);
+        await ExportSnapshotAsync(package, configured, "initial", initial);
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+
+        if (package.Manifest.Id == "org.gbar.firstparty.games-apps")
+        {
+            var open = Nodes(initial.Root).Single(node =>
+                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent("games.open-catalog", open.Id));
+            var catalog = await WaitForActionSnapshotAsync(
+                client, "games.toggle-curation", "Conformance Library App");
+            await ExportSnapshotAsync(package, configured, "catalog", catalog);
+            var add = Nodes(catalog.Root).Single(node =>
+                string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent("games.toggle-curation", add.Id));
+            var selected = await WaitForActionSnapshotAsync(
+                client, "games.toggle-curation", "Conformance Library App", selected: true);
+            await client.SendActionAsync(new WidgetActionEvent("back", selected.Root.Id));
+            var populated = await WaitForActionSnapshotAsync(
+                client, "games.launch", "Conformance Library App");
+            await ExportSnapshotAsync(package, configured, "populated", populated);
+            traces.Add(await WriteTraceAsync("GBA-038-games-apps", new
+            {
+                issue = "GBA-038",
+                authority = "real installed package in AppContainer with simulated broker",
+                steps = new[]
+                {
+                    new { action = "visible", invariant = "root exposes games.open-catalog without catalog enumeration" },
+                    new { action = "games.open-catalog", invariant = "catalog exposes Conformance Library App" },
+                    new { action = "games.toggle-curation", invariant = "selected state becomes true" },
+                    new { action = "back", invariant = "curated root exposes games.launch" },
+                },
+                observed = new
+                {
+                    backend.AppLibraryReadCalls,
+                    initialNodeCount = Nodes(initial.Root).Count(),
+                    catalogNodeCount = Nodes(catalog.Root).Count(),
+                    populatedNodeCount = Nodes(populated.Root).Count(),
+                },
+            }));
+        }
+        else if (package.Manifest.Id == "org.gbar.samples.spotify")
+        {
+            var setup = Nodes(initial.Root).Single(node =>
+                string.Equals(node.ActionId, "spotify.setup.open", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent("spotify.setup.open", setup.Id));
+            var setupSnapshot = await WaitForSnapshotAsync(client, "Spotify setup");
+            await ExportSnapshotAsync(package, configured, "setup", setupSnapshot);
+            traces.Add(await WriteTraceAsync("GBA-042-spotify-auth-free", new
+            {
+                issue = "GBA-042",
+                authority = "real installed community package in AppContainer with simulated broker",
+                steps = new[]
+                {
+                    new { action = "visible", invariant = "unconfigured state exposes spotify.setup.open" },
+                    new { action = "spotify.setup.open", invariant = "setup view exposes exact redirect guidance and Check configuration action" },
+                },
+                observed = new
+                {
+                    initialNodeCount = Nodes(initial.Root).Count(),
+                    setupNodeCount = Nodes(setupSnapshot.Root).Count(),
+                    configured = backend.SpotifyConfiguration.IsConfigured,
+                },
+                limitation = "OAuth browser authorization is intentionally not exercised by auth-free evidence.",
+            }));
+        }
+        else
+        {
+            traces.Add(await WriteTraceAsync("GBA-039-settings-root", new
+            {
+                issue = "GBA-039",
+                authority = "real installed package in AppContainer",
+                steps = new[]
+                {
+                    new { action = "visible", invariant = "settings root renders through the generic worker" },
+                },
+                observed = new { nodeCount = Nodes(initial.Root).Count() },
+                limitation = "Installed-widget permission detail requires host-owned settings/catalog path injection and is not claimed by this slice.",
+            }));
+        }
+
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+        await client.StopAsync();
+        }
+        catch (Exception exception)
+        {
+            gaps.Add(new EvidenceGapDescriptor(
+                package.Manifest.Id,
+                exception.GetType().Name,
+                SanitizeEvidenceMessage(exception.Message)));
+            Console.Error.WriteLine(
+                $"EVIDENCE GAP {package.Manifest.Id}: {exception.GetType().Name}: " +
+                SanitizeEvidenceMessage(exception.Message));
+        }
+    }
+
+    var packageEvidence = deployment.Packages
+        .Where(package => package.Manifest.Id is
+            "org.gbar.firstparty.games-apps" or
+            "org.gbar.firstparty.settings" or
+            "org.gbar.samples.spotify")
+        .Select(package => PreservePackageArchive(package, packageDirectory))
+        .OrderBy(package => package.Id, StringComparer.Ordinal)
+        .ToArray();
+    var index = new
+    {
+        schemaVersion = 1,
+        generatedUtc = DateTimeOffset.UtcNow,
+        evidenceAuthority = "standalone widget-body harness: retained installed .gbarwidget archive -> generic AppContainer worker -> simulated broker companion -> production bridge style resolver",
+        packages = packageEvidence,
+        snapshots = exported,
+        traces,
+        gaps,
+        limitations = new[]
+        {
+            "The backend is deterministic and simulated; no external accounts, radio hardware, or process launch is used.",
+            "PNG rendering is a separate standalone widget-body stage built from production renderer sources; this index contains authoritative semantic snapshots and computed GBSS styles.",
+            "This harness does not exercise the OverlayHost window, shell/tray/footer composition, z-order, focus ownership, input routing, or shell/widget transition fidelity.",
+            "Settings permission-detail and Spotify OAuth completion are not claimed by this first slice.",
+        },
+    };
+    await File.WriteAllTextAsync(
+        Path.Combine(outputDirectory, "evidence-index.json"),
+        JsonSerializer.Serialize(index, CreateEvidenceJsonOptions()));
+    Console.WriteLine($"Exported {exported.Count} authoritative snapshots and {traces.Count} traces to {outputDirectory}.");
+
+    async Task ExportSnapshotAsync(
+        PackageFixture package,
+        ConfiguredWidget configured,
+        string state,
+        ViewSnapshot snapshot)
+    {
+        var validation = ViewSnapshotValidator.Validate(snapshot);
+        Assert.Equal(0, validation.Count);
+        var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, configured.CompiledTheme);
+        using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+        var fileName = $"{package.Manifest.Id}.{state}.json";
+        var path = Path.Combine(snapshotDirectory, fileName);
+        var payload = new
+        {
+            snapshot = snapshotDocument.RootElement.Clone(),
+            renderStyles,
+        };
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(payload, CreateEvidenceJsonOptions()));
+        var allNodes = Nodes(snapshot.Root).ToArray();
+        exported.Add(new EvidenceSnapshotDescriptor(
+            package.Manifest.Id,
+            state,
+            $"snapshots/{fileName}",
+            snapshot.Sequence,
+            allNodes.Length,
+            allNodes.Select(node => node.Id).Distinct(StringComparer.Ordinal).Count() == allNodes.Length,
+            renderStyles.Count == allNodes.Length,
+            snapshot.InitialFocusId));
+    }
+
+    async Task<EvidenceTraceDescriptor> WriteTraceAsync(string name, object payload)
+    {
+        var fileName = $"{name}.json";
+        await File.WriteAllTextAsync(
+            Path.Combine(traceDirectory, fileName),
+            JsonSerializer.Serialize(payload, CreateEvidenceJsonOptions()));
+        return new EvidenceTraceDescriptor(name, $"traces/{fileName}");
+    }
+}
+
+static EvidencePackageDescriptor PreservePackageArchive(
+    PackageFixture package,
+    string packageDirectory)
+{
+    var fileName = $"{package.Manifest.Id}-{package.Manifest.Version}.gbarwidget";
+    var destination = Path.Combine(packageDirectory, fileName);
+    File.Copy(package.PackagePath, destination, overwrite: false);
+    return new EvidencePackageDescriptor(
+        package.Manifest.Id,
+        package.Manifest.Version,
+        package.Manifest.Publisher,
+        $"packages/{fileName}",
+        Convert.ToHexString(SHA256.HashData(
+            File.ReadAllBytes(destination))).ToLowerInvariant());
+}
+
+static string SanitizeEvidenceMessage(string message)
+{
+    if (string.IsNullOrWhiteSpace(message)) return "The evidence stage failed without a diagnostic.";
+
+    var sanitized = System.Text.RegularExpressions.Regex.Replace(
+        message,
+        @"(?i)(?:(?<![a-z0-9+.-])[a-z]:[\\/]|\\\\|/home/|/users/)[^\r\n\""']+",
+        "[local-path-redacted]");
+    sanitized = System.Text.RegularExpressions.Regex.Replace(
+        sanitized,
+        @"(?i)([?&](?:code|state|access_token|refresh_token|client_secret)=)[^&\s]+",
+        "$1[secret-redacted]");
+    sanitized = System.Text.RegularExpressions.Regex.Replace(
+        sanitized,
+        @"(?i)bearer\s+[a-z0-9._~+\-/]+=*",
+        "Bearer [secret-redacted]");
+    sanitized = sanitized.Replace(Environment.UserName, "[user-redacted]",
+        StringComparison.OrdinalIgnoreCase).Trim();
+    if (sanitized.Length > 500) sanitized = sanitized[..500];
+    return sanitized;
+}
+
+static JsonSerializerOptions CreateEvidenceJsonOptions()
+{
+    var options = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+    options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    return options;
+}
+
 static async Task RunCatalogAsync(
     BridgeCatalog catalog,
     IReadOnlyList<PackageFixture> packages,
@@ -654,7 +949,9 @@ file sealed class Deployment : IDisposable
     public required IReadOnlyList<PackageFixture> Packages { get; init; }
     public PackageFixture? YtMusicPackage { get; init; }
 
-    public static async Task<Deployment> CreateAsync(bool installAsCommunity)
+    public static async Task<Deployment> CreateAsync(
+        bool installAsCommunity,
+        bool includeEvidencePackages = false)
     {
         var temporary = new TemporaryDirectory("gba-firstparty-conformance");
         try
@@ -668,21 +965,31 @@ file sealed class Deployment : IDisposable
             CopyWorkerHostDeployment(AppContext.BaseDirectory, workerDirectory);
             var workerHost = Path.Combine(workerDirectory, "WidgetWorkerHost.exe");
 
-            var packageSpecs = new[]
+            var packageSpecs = new List<PackageSpec>
             {
-                new PackageSpec("media-sessions", "MediaSessions", WidgetGlyph.Music,
+                new PackageSpec("media-sessions", "src/FirstPartyWidgets/MediaSessionsWidget", "MediaSessions", WidgetGlyph.Music,
                     typeof(MediaSessionsWidget), "Conformance Song"),
-                new PackageSpec("games-apps", "GamesApps", WidgetGlyph.Play,
+                new PackageSpec("games-apps", "src/FirstPartyWidgets/GamesAppsWidget", "GamesApps", WidgetGlyph.Play,
                     typeof(GamesAppsWidget), "Build your library"),
-                new PackageSpec("audio-mixer", "AudioMixer", WidgetGlyph.Volume,
+                new PackageSpec("audio-mixer", "src/FirstPartyWidgets/AudioMixerWidget", "AudioMixer", WidgetGlyph.Volume,
                     typeof(AudioMixerWidget), "Conformance Game"),
-                new PackageSpec("network-controls", "NetworkControls", WidgetGlyph.Wifi,
+                new PackageSpec("network-controls", "src/FirstPartyWidgets/NetworkControlsWidget", "NetworkControls", WidgetGlyph.Wifi,
                     typeof(NetworkControlsWidget), "Conformance Wi-Fi"),
             };
+            if (includeEvidencePackages)
+            {
+                packageSpecs.Add(new PackageSpec(
+                    "settings", "src/FirstPartyWidgets/SettingsWidget", "Settings",
+                    WidgetGlyph.Settings, typeof(SettingsWidget), "Overlay"));
+                packageSpecs.Add(new PackageSpec(
+                    "spotify", "samples/SpotifyWidget", "Spotify",
+                    WidgetGlyph.Music, typeof(SpotifyWidget), "Client ID required"));
+            }
             var fixtures = new List<PackageFixture>();
             foreach (var spec in packageSpecs)
             {
-                var projectRoot = Path.Combine(repo, "src", "FirstPartyWidgets", $"{spec.Directory}Widget");
+                var projectRoot = Path.GetFullPath(
+                    spec.ProjectRelativeRoot.Replace('/', Path.DirectorySeparatorChar), repo);
                 var manifest = ManifestJson.Deserialize(
                     await File.ReadAllBytesAsync(Path.Combine(projectRoot, "manifest.json")));
                 Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
@@ -913,6 +1220,7 @@ file sealed class Deployment : IDisposable
 
 file sealed record PackageSpec(
     string ShellId,
+    string ProjectRelativeRoot,
     string Directory,
     WidgetGlyph Icon,
     Type WidgetType,
@@ -926,6 +1234,32 @@ file sealed record PackageFixture(
     string BundleRoot,
     string PackagePath,
     IReadOnlyList<string> DeclaredCapabilities);
+
+file sealed record EvidenceSnapshotDescriptor(
+    string PackageId,
+    string State,
+    string SnapshotPath,
+    long Sequence,
+    int NodeCount,
+    bool NodeIdsUnique,
+    bool EveryNodeHasComputedStyles,
+    string? InitialFocusId);
+
+file sealed record EvidencePackageDescriptor(
+    string Id,
+    string Version,
+    string Publisher,
+    string Archive,
+    string ArchiveSha256);
+
+file sealed record EvidenceTraceDescriptor(
+    string Name,
+    string TracePath);
+
+file sealed record EvidenceGapDescriptor(
+    string PackageId,
+    string ErrorType,
+    string Message);
 
 file sealed class TemporaryDirectory : IDisposable
 {

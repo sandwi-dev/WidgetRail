@@ -55,6 +55,7 @@ public sealed class SpotifyWidget : Widget
     private WidgetSpotifyPlaybackOperation? _pendingOperation;
     private string _status = "Spotify loads when this widget becomes visible";
     private bool _showSetup;
+    private long _setupViewGeneration;
     private long _activeGeneration;
     private Task? _pollTask;
     private Task? _progressTask;
@@ -84,7 +85,8 @@ public sealed class SpotifyWidget : Widget
             showSetup = _showSetup;
         }
 
-        if (showSetup) return RenderSetup(status);
+        if (showSetup)
+            return RenderSetup(status, Volatile.Read(ref _setupViewGeneration));
         var header = Header(status, state);
         return state switch
         {
@@ -174,7 +176,14 @@ public sealed class SpotifyWidget : Widget
             switch (action.ActionId)
             {
                 case "spotify.setup.open":
-                    lock (_gate) _showSetup = true;
+                    lock (_gate)
+                    {
+                        _showSetup = true;
+                        // Opening setup is a new navigation entry. A fresh scroll
+                        // identity prevents the renderer from restoring an old bottom
+                        // offset and hiding the title or first instructions.
+                        _setupViewGeneration++;
+                    }
                     Invalidate();
                     return;
                 case "spotify.setup.close":
@@ -723,12 +732,19 @@ public sealed class SpotifyWidget : Widget
             .InputScope(InputScope).Classes("spotify-widget"),
         InitialFocusId: "spotify.refresh", Surface: StandardSurface);
 
-    private static WidgetView RenderSetup(string status)
+    private static WidgetView RenderSetup(string status, long setupViewGeneration)
     {
         var instructions = UI.Stack("spotify.setup-card",
                         UI.Text("Spotify setup", "spotify.setup-title",
                                 "Spotify developer app setup")
                             .Classes("spotify-state-title", "spotify-setup-title"),
+                        // Keep the only focus target at the top of the scroll
+                        // surface. Placing it after the instructions makes the
+                        // renderer correctly reveal that focused descendant,
+                        // which opens the page already scrolled past its title.
+                        UI.Button("Check configuration", "spotify.setup.done",
+                                "spotify.setup.done")
+                            .Classes("spotify-primary"),
                         UI.Text("1. Create an app in the Spotify developer dashboard.",
                                 "spotify.setup-step-1").Classes("spotify-setup-step"),
                         UI.Text($"2. Add this exact redirect URI: {WidgetSpotifyService.ExactRedirectUri}",
@@ -737,11 +753,10 @@ public sealed class SpotifyWidget : Widget
                                 "spotify.setup-step-3").Classes("spotify-setup-step"),
                         UI.CodeText("dotnet run --project .\\tools\\GbarCli\\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples",
                                 "spotify.setup-command", "Client ID configuration command")
-                            .AddClasses("spotify-setup-command"),
-                        UI.Button("Done", "spotify.setup.done", "spotify.setup.done")
-                            .Classes("spotify-primary"))
+                            .AddClasses("spotify-setup-command"))
                     .Classes("spotify-setup-card");
-        var setupScroll = UI.VerticalScroll("spotify.setup-scroll", instructions)
+        var setupScroll = UI.VerticalScroll(
+                $"spotify.setup-scroll.{setupViewGeneration}", instructions)
             .InputScope(SetupScope)
             .Shortcut(ControllerButton.B, "spotify.setup.close")
             .Classes("spotify-setup-scroll");

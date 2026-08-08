@@ -263,23 +263,25 @@ semantic label.
 
 ## Motion
 
-The implemented declarative renderer animates paint-only `opacity` and `scale`
-for stable nodes from GBSS transition declarations. It retargets without a
-visible jump, caps duration/node count, reuses the visible controller frame
-cadence, and stops invalidating after every transition settles. Reduced motion
-snaps and cancels. Layout, color, progress width, shell open/close, flyout
-translation, reorder, pressed state, and artwork crossfade in the table below
-remain product targets unless separately documented as implemented.
+The implemented declarative renderer animates bounded opacity, scale, and true
+subtree translation for stable nodes from GBSS transition declarations. The
+host also owns bounded shell/content opacity tracks: open is 140 ms ease-out,
+close is 100 ms ease-in, and a new/replaced widget identity reveals from 0.78
+to 1 over 100 ms ease-out. These tracks retarget without a visible jump, reuse
+the visible controller frame cadence, never flash on same-identity snapshots,
+and stop scheduling after settlement. Reduced motion snaps and cancels. Other
+layout/color/progress/reorder/pressed/artwork entries below remain product
+targets unless separately documented as implemented.
 
 Target motion language:
 
 | Event | Duration | Easing | Motion |
 | --- | ---: | --- | --- |
-| Overlay open | 160 ms | ease-out | Veil fade; content .985 → 1 scale |
-| Overlay close | 100 ms | ease-in-out | Content 1 → .99; fade |
+| Overlay open (implemented) | 140 ms | ease-out | Shell opacity 0 → 1 |
+| Overlay close (implemented) | 100 ms | ease-in | Shell opacity presented value → 0; then one physical hide |
 | Focus change | 90 ms | ease-out | Ring crossfade; card 1 → 1.025 |
 | Flyout replace | 120 ms | ease-out | 8-logical-pixel vertical settle + fade |
-| Widget open | 160 ms | ease-out | Card-to-surface crossfade; no long zoom |
+| Widget identity reveal (implemented) | 100 ms | ease-out | Content opacity .78 → 1; widget focus can snap visible |
 | Reorder move | 140 ms | spring | One-slot translation; neighbors settle |
 | Press | 60/90 ms | ease-out | 1 → .96 on press, release to focused scale |
 | Progress | 100 ms | linear | Width interpolation only |
@@ -287,9 +289,10 @@ Target motion language:
 No idle pulsing, parallax, automatic carousels, or decorative particle motion.
 Artwork changes crossfade for 180 ms; never rotate or zoom album art.
 
-Reduced motion sets all durations to 0 except an optional 80 ms opacity fade,
-removes scale/translation, and updates progress discretely. Focus ring state
-changes immediately.
+Reduced motion sets the implemented shell/content and declarative transition
+durations to 0, removes scale/translation, and updates progress discretely.
+Focus ring state changes immediately. A future optional accessibility-approved
+opacity fade must not be inferred from the current zero-duration shell path.
 
 ## Accessibility overrides
 
