@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Master output updates immediately reconciles and rolls back", MasterOutputControls),
     ("Default devices and microphone controls are live controller-native and stable", DeviceAndInputControls),
     ("Optional audio stream revocation and completion clear only their own state", OptionalStreamTerminationIsIsolated),
+    ("Optional audio startup failures cannot replace the working mixer with an error", OptionalStartupFailureIsIsolated),
     ("Session churn preserves stable row identity and nearest anchor", StableSelectionDuringChurn),
     ("Many sessions and long labels remain bounded and uniquely focusable", ManySessionsRemainBounded),
     ("Capability failure codes render distinct recovery states", CapabilityFailureStates),
@@ -633,6 +634,33 @@ static async Task OptionalStreamTerminationIsIsolated()
     await Background(widget);
 }
 
+static async Task OptionalStartupFailureIsIsolated()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Working game audio", 0.55)],
+        DeviceSubscriptionException = new IOException("private device transport detail"),
+        InputGetException = new InvalidOperationException("private microphone provider detail"),
+    };
+    var widget = Create(fake);
+
+    await ActivateReady(widget);
+    var snapshot = Snapshot(widget, 1);
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    Assert.Equal("Working game audio", widget.Sessions.Single().DisplayName);
+    Assert.Equal(0, widget.Devices.Count);
+    Assert.True(widget.Input is null,
+        "Optional microphone startup failure leaked a stale input control.");
+    Assert.True(!Text(snapshot.Root, "audio.status").Text!.Contains(
+            "unexpected", StringComparison.OrdinalIgnoreCase),
+        "Optional enrichment failure replaced the working mixer with a whole-widget error.");
+    Assert.True(!Nodes(snapshot.Root).Any(node =>
+            node.Text?.Contains("private", StringComparison.OrdinalIgnoreCase) == true),
+        "Optional provider details leaked into widget UI.");
+    Assert.Valid(snapshot);
+    await Background(widget);
+}
+
 static async Task StableSelectionDuringChurn()
 {
     var fake = new FakeCapabilityClient
@@ -1093,6 +1121,10 @@ file sealed class FakeCapabilityClient
     ];
     public WidgetAudioInput Input { get; set; } = new(0.5, false);
     public Exception? GetException { get; set; }
+    public Exception? DeviceGetException { get; set; }
+    public Exception? InputGetException { get; set; }
+    public Exception? DeviceSubscriptionException { get; set; }
+    public Exception? InputSubscriptionException { get; set; }
     public Exception? ControlException { get; set; }
     public Task? ControlGate { get; set; }
     public Action? OnGet { get; set; }
@@ -1210,9 +1242,15 @@ file sealed class FakeCapabilityClient
             return (TResponse)(object)Output;
         }
         if (operation.OperationId == WidgetAudioCapabilities.GetDevices.OperationId)
+        {
+            if (DeviceGetException is not null) throw DeviceGetException;
             return (TResponse)(object)Devices.ToArray();
+        }
         if (operation.OperationId == WidgetAudioCapabilities.GetInput.OperationId)
+        {
+            if (InputGetException is not null) throw InputGetException;
             return (TResponse)(object)Input;
+        }
         if (operation.OperationId == WidgetAudioCapabilities.SetSessionVolume.OperationId)
         {
             ControlPlan plan;
@@ -1330,6 +1368,7 @@ file sealed class FakeCapabilityClient
     private IAsyncEnumerable<WidgetAudioDevicesChanged> OpenDeviceEventStream(
         CancellationToken cancellationToken)
     {
+        if (DeviceSubscriptionException is not null) throw DeviceSubscriptionException;
         var channel = Channel.CreateBounded<WidgetAudioDevicesChanged>(new BoundedChannelOptions(1)
         {
             SingleReader = true,
@@ -1344,6 +1383,7 @@ file sealed class FakeCapabilityClient
     private IAsyncEnumerable<WidgetAudioInputChanged> OpenInputEventStream(
         CancellationToken cancellationToken)
     {
+        if (InputSubscriptionException is not null) throw InputSubscriptionException;
         var channel = Channel.CreateBounded<WidgetAudioInputChanged>(new BoundedChannelOptions(1)
         {
             SingleReader = true,

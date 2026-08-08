@@ -594,13 +594,31 @@ public sealed class AudioMixerWidget : Widget
                 deviceSubscription = await HostServices.Audio
                     .OpenDevicesSubscriptionAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (WidgetCapabilityException) { deviceSubscription = null; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // Device names are optional enrichment. A provider/transport
+                // failure here must not take master output and per-app audio
+                // controls down with it.
+                deviceSubscription = null;
+            }
             try
             {
                 inputSubscription = await HostServices.Audio
                     .OpenInputSubscriptionAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (WidgetCapabilityException) { inputSubscription = null; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // Microphone state is independent optional enrichment.
+                inputSubscription = null;
+            }
             Interlocked.Increment(ref _fetchCount);
             var output = await HostServices.Audio.GetOutputAsync(cancellationToken).ConfigureAwait(false);
             var sessions = await HostServices.Audio.GetSessionsAsync(cancellationToken).ConfigureAwait(false);
@@ -614,7 +632,11 @@ public sealed class AudioMixerWidget : Widget
                     ApplyDevices(await HostServices.Audio.GetDevicesAsync(cancellationToken)
                         .ConfigureAwait(false), generation);
                 }
-                catch (WidgetCapabilityException) { ClearDevices(generation); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception) { ClearDevices(generation); }
             }
             if (inputSubscription is not null)
             {
@@ -623,7 +645,11 @@ public sealed class AudioMixerWidget : Widget
                     ApplyInput(await HostServices.Audio.GetInputAsync(cancellationToken)
                         .ConfigureAwait(false), generation);
                 }
-                catch (WidgetCapabilityException) { ClearInput(generation); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception) { ClearInput(generation); }
             }
 
             using var observers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

@@ -123,6 +123,10 @@ static async Task AvailableNetworksRender()
     Assert.Equal("SAVED", NetworkState(snapshot.Root, "Office").Text);
     Assert.Equal("OPEN", NetworkState(snapshot.Root, "Cafe").Text);
     Assert.Equal("PASSWORD REQUIRED", NetworkState(snapshot.Root, "Neighbor").Text);
+    Assert.True(rows.All(row => row.IsSelected is not true),
+        "Remembered Wi-Fi focus was exposed as a connected checkmark.");
+    Assert.Equal(WidgetGlyph.Check, rows.Single(row => row.Text == "Home 5G").Glyph);
+    Assert.Equal(WidgetGlyph.Wifi, rows.Single(row => row.Text == "Office").Glyph);
     Assert.True(!Buttons(snapshot.Root).Any(button =>
             button.ActionId?.Contains("profile", StringComparison.OrdinalIgnoreCase) == true),
         "Product UI still exposed the legacy saved-profile list.");
@@ -435,6 +439,8 @@ static async Task BluetoothDeviceListing()
         .Where(button => button.ActionId == "bluetooth.device.info").ToArray();
     Assert.Equal(2, devices.Length);
     Assert.Equal("Wireless controller", devices[0].Text);
+    Assert.True(devices.All(device => device.IsSelected is not true),
+        "Remembered Bluetooth focus was exposed as a connected checkmark.");
     Assert.Equal(devices[0].Id, radio.Focus!.Down);
     Assert.Equal("network.bluetooth.radio", devices[0].Focus!.Up);
     Assert.Equal(devices[1].Id, devices[0].Focus!.Down);

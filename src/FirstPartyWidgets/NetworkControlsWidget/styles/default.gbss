@@ -289,10 +289,6 @@
   flex-shrink: 0;
 }
 
-.network-profile-row.is-selected {
-  background: var(--network-card-selected);
-}
-
 .network-profile-row.is-pending {
   background: rgba(42, 56, 71, 0.99);
 }

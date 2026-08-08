@@ -250,7 +250,7 @@ public sealed class NetworkControlsWidget : Widget
         {
             content.Add(UI.VerticalScroll("network.bluetooth.body.scroll",
                     RenderBluetoothSection(bluetooth, bluetoothMessage, bluetoothIsError,
-                        bluetoothBusy, selectedBluetoothId).ToArray())
+                        bluetoothBusy).ToArray())
                 .Classes("network-view-scroll", "network-bluetooth-view"));
         }
         else
@@ -292,7 +292,7 @@ public sealed class NetworkControlsWidget : Widget
         else
         {
                 wifiContent.AddRange(RenderNetworkRows(
-                    networks, selectedNetwork!, controlBusy, pendingId));
+                    networks, controlBusy, pendingId));
         }
 
         if (networks.Count > 0)
@@ -534,7 +534,6 @@ public sealed class NetworkControlsWidget : Widget
 
     private IReadOnlyList<WidgetElement> RenderNetworkRows(
         IReadOnlyList<WidgetAvailableWifiNetwork> networks,
-        WidgetAvailableWifiNetwork selected,
         bool controlBusy,
         string? pendingId)
     {
@@ -545,14 +544,12 @@ public sealed class NetworkControlsWidget : Widget
         {
             var network = networks[index];
             var id = ids[index];
-            var isSelected = string.Equals(network.NetworkId, selected.NetworkId, StringComparison.Ordinal);
             var isPending = string.Equals(network.NetworkId, pendingId, StringComparison.Ordinal);
             var (state, detail) = NetworkMetadata(network, isPending);
             var actionLabel = NetworkActionLabel(network);
             var button = UI.Button(network.DisplayName, "wifi.connect.item", id)
                 .Icon(network.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Wifi,
                     $"{network.DisplayName}. {state}. Signal {network.SignalPercent} percent. {actionLabel}")
-                .Selected(isSelected)
                 .Disabled(!interactive || controlBusy || network.IsConnected)
                 .Shortcut(ControllerButton.X, actionId: "wifi.connect.item")
                 .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
@@ -571,7 +568,7 @@ public sealed class NetworkControlsWidget : Widget
                             UI.Text(detail, $"{id}.detail", detail).Classes("network-profile-detail"))
                         .Classes("network-profile-meta"))
                 .Classes("network-profile-row",
-                    isSelected ? "is-selected" : "is-unselected",
+                    "is-unselected",
                     isPending ? "is-pending" : "is-ready");
         }
         return rows;
@@ -581,8 +578,7 @@ public sealed class NetworkControlsWidget : Widget
         WidgetBluetoothSnapshot? snapshot,
         string message,
         bool messageIsError,
-        bool busy,
-        string? selectedDeviceId)
+        bool busy)
     {
         var radioState = snapshot?.RadioState ?? WidgetBluetoothRadioState.Unavailable;
         var isOn = radioState == WidgetBluetoothRadioState.On;
@@ -661,18 +657,17 @@ public sealed class NetworkControlsWidget : Widget
         {
             var device = devices[index];
             var id = ids[index];
-            var selected = string.Equals(
-                device.DeviceId, selectedDeviceId, StringComparison.Ordinal);
             var state = device.IsConnected ? "CONNECTED" : device.IsPaired ? "PAIRED" : "NEARBY";
             var detail = device.IsConnected
                 ? "Connected by a supported Windows Bluetooth profile"
                 : device.IsPaired
-                    ? device.IsPresent ? "Available · connection is profile-managed" : "Not currently nearby"
-                    : "Pair or connect through Windows Settings";
+                    ? device.IsPresent
+                        ? "Available · press A to manage the connection in Windows"
+                        : "Not currently nearby"
+                    : "Press A to pair through Windows";
             var button = UI.Button(device.DisplayName, "bluetooth.device.info", id)
                 .Icon(device.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Connection,
                     $"{device.DisplayName}. {state}. {detail}")
-                .Selected(selected)
                 .FocusUp(index == 0 ? "network.bluetooth.radio" : ids[index - 1])
                 .FocusLeft(id)
                 .FocusRight(id)
@@ -689,7 +684,7 @@ public sealed class NetworkControlsWidget : Widget
                                 .Classes("network-profile-detail"))
                         .Classes("network-profile-meta"))
                 .Classes("network-profile-row", "network-bluetooth-device-row",
-                    selected ? "is-selected" : "is-unselected");
+                    "is-unselected");
         }
         foreach (var row in rows) yield return row;
     }
