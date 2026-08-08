@@ -14,10 +14,12 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | --- | --- | --- |
 | `UI.Stack(id, children)` | `stack` | Vertical semantic container. |
 | `UI.Row(id, children)` | `row` | Horizontal semantic container. |
+| `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` | `grid` | Protocol-v8 row-major container that derives bounded columns from available logical width. |
 | `UI.VerticalScroll(id, children)` | `scroll` | Host-owned vertical viewport with controller focus-follow. |
 | `UI.HorizontalScroll(id, children)` | `scroll` | Host-owned horizontal viewport with controller focus-follow. |
 | `UI.Scroll(id, axis, children)` | `scroll` | Axis-explicit form of the same bounded viewport. |
 | `UI.Text(text, id, accessibilityLabel?)` | `text` | Non-interactive text. |
+| `UI.CodeText(text, id, accessibilityLabel?)` | `text` | Bounded non-interactive diagnostics/command text with the semantic monospace class. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
 | `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |
 | `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |
@@ -42,7 +44,7 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.Divider(id)` | `spacer` | Decorative themeable separator. |
 | `UI.Alert(...)`, `UI.EmptyState(...)` | `stack`, content, optional `button` | Bounded guidance with zero or one recovery focus stop. |
 
-Stack, Row, and Scroll containers may call `.InputScope("scope-id")` to start a nested
+Stack, Row, Grid, and Scroll containers may call `.InputScope("scope-id")` to start a nested
 controller input surface. The root is always the default input scope, so a
 simple widget does not need to declare one. Those containers may also call
 `.Shortcut(button, actionId)` for a surface-level action that must work without
@@ -219,6 +221,45 @@ targets. Use wrapping for a bounded action or metadata group whose items all
 belong on one surface. Use a semantic Scroll, Picker, or nested page for an
 unbounded collection; `wrap-reverse`, column wrapping, and browser-style
 `align-content` are deliberately outside this bounded overlay contract.
+
+### Responsive Grid (protocol v8)
+
+Use `UI.ResponsiveGrid(...)` when a bounded set of peer controls should reflow
+as complete columns rather than wrap according to each child's preferred width:
+
+```csharp
+UI.ResponsiveGrid(
+    id: "settings.category-grid",
+    minimumColumnWidth: 250,
+    maximumColumns: 2,
+    appearance, accessibility, overlay, installedWidgets);
+```
+
+The minimum column width is 44–1600 logical DIPs and the optional cap is 1–32
+columns. The host derives the actual count from the Grid's final content width
+and authored row/column gap, clamps it to the number of children, and lays out
+children in stable row-major document order. Mixed-height items share the
+maximum row height. Empty grids are valid. A Grid may own an input scope and
+scope shortcut, but the Grid itself is not a focus stop; its normal focusable
+children retain their IDs and controller graph through every reflow.
+
+Grid owns its responsive wrapping. Applying `flex-wrap` to it is ignored with
+a diagnostic; use Row wrapping for a small flexible action group and Grid for
+bounded peer tiles/categories. Put an unbounded collection inside a semantic
+Scroll around the Grid. A snapshot containing Grid automatically negotiates
+protocol v8; v7 hosts reject it rather than treating it as a Stack or Row.
+
+### Semantic code and diagnostic text
+
+`UI.CodeText(text, id, accessibilityLabel?)` emits one ordinary, nonfocusable
+Text node with the stable `.gbar-code-text` class. It preserves whitespace and
+eagerly bounds content/accessibility text to 4,096 characters. It owns no
+action, selection, copy command, scope, or shortcut; add a separate explicit
+Button when copying is a required workflow. The built-in theme uses the single
+Windows-baseline `Consolas` family, `min-width: 0`, and up to eight wrapped
+lines. GBSS currently passes one resolved family to DirectWrite, so comma-
+separated browser-style fallback stacks must not be presented as native font
+fallback support.
 
 ### Intrinsic text sizing and width constraints
 
@@ -405,11 +446,11 @@ migration.
 
 The current snapshot limits include:
 
-- protocol versions 1–7. Plain Stack/Row views remain v1; Scroll or explicit
+- protocol versions 1–8. Plain Stack/Row views remain v1; Scroll or explicit
   surface hints opt into v2, Slider into v3, capability-backed dashboard
   gestures into v4, LoadingIndicator into v5, inline PNG into v6, and
-  ActionSurface into v7. These additive snapshot features do not change package
-  host API 1;
+  ActionSurface into v7, and responsive Grid into v8. These additive snapshot
+  features do not change package host API 1;
 - at most 2,048 nodes;
 - at most 32 levels of tree depth;
 - strings up to 4,096 characters; and
@@ -506,7 +547,7 @@ should keep IDs stable and publish an `InitialFocusId` for fallback, not attempt
 to serialize current focus into its own state. On a new snapshot the host tries
 the remembered focusable Button or Slider, then `InitialFocusId`, then the
 first focusable control in the active scope. A scope with no focusable controls
-may remain focusless; its Stack/Row/Scroll shortcut still resolves.
+may remain focusless; its Stack/Row/Grid/Scroll shortcut still resolves.
 
 ## Interaction state
 

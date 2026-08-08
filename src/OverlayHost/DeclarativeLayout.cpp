@@ -17,6 +17,9 @@ constexpr float kMaximumRatio = 5.0F;
 constexpr float kEpsilon = 0.0001F;
 constexpr std::size_t kMaximumNodes = 4096;
 constexpr std::size_t kMaximumDepth = 64;
+constexpr float kMinimumGridColumnWidth = 44.0F;
+constexpr float kMaximumGridColumnWidth = 1'600.0F;
+constexpr std::size_t kMaximumGridColumns = 32;
 
 struct Edges {
     float top{};
@@ -44,6 +47,15 @@ struct FlexLine {
     std::size_t end{};
     float margins{};
     float cross{};
+};
+
+struct GridMetrics {
+    std::size_t columns{};
+    float columnWidth{};
+    float contentHeight{};
+    std::vector<float> rowHeights;
+    std::vector<float> childHeights;
+    std::vector<Edges> childMargins;
 };
 
 [[nodiscard]] float ClampFinite(
@@ -196,6 +208,35 @@ private:
                 "Wrapping requires a non-scroll row container.",
                 LayoutIssueSeverity::Error);
         }
+        if (element.layoutMode == LayoutMode::ResponsiveGrid) {
+            if (!element.gridMinimumColumnWidth.has_value() ||
+                !std::isfinite(*element.gridMinimumColumnWidth) ||
+                *element.gridMinimumColumnWidth < kMinimumGridColumnWidth ||
+                *element.gridMinimumColumnWidth > kMaximumGridColumnWidth) {
+                AddIssue(element.id, "invalid_grid_minimum_column_width",
+                    "Responsive grid minimum column width must be finite and between 44 and 1600 DIPs.",
+                    LayoutIssueSeverity::Error);
+            }
+            if (element.gridMaximumColumns.has_value() &&
+                (*element.gridMaximumColumns < 1 ||
+                 *element.gridMaximumColumns > kMaximumGridColumns)) {
+                AddIssue(element.id, "invalid_grid_maximum_columns",
+                    "Responsive grid maximum columns must be between 1 and 32.",
+                    LayoutIssueSeverity::Error);
+            }
+            if (element.scrollAxis != ScrollAxis::None ||
+                element.wrap != WrapBehavior::NoWrap) {
+                AddIssue(element.id, "invalid_grid_container",
+                    "Responsive grid owns row wrapping and cannot also scroll or use flex wrapping.",
+                    LayoutIssueSeverity::Error);
+            }
+        } else if (element.layoutMode != LayoutMode::Flex ||
+                   element.gridMinimumColumnWidth.has_value() ||
+                   element.gridMaximumColumns.has_value()) {
+            AddIssue(element.id, "grid_property_not_allowed",
+                "Grid column properties require responsive-grid layout mode.",
+                LayoutIssueSeverity::Error);
+        }
         for (const auto& child : element.children) Preflight(child, depth + 1, ids, nodes);
     }
 
@@ -209,7 +250,13 @@ private:
         float width = 0.0F;
         float height = 0.0F;
 
-        if (element.children.empty()) {
+        if (element.layoutMode == LayoutMode::ResponsiveGrid) {
+            const auto metrics = MeasureGrid(
+                element, innerMaximumWidth, innerMaximumHeight);
+            width = (element.children.empty() ? 0.0F : innerMaximumWidth) +
+                Horizontal(padding);
+            height = metrics.contentHeight + Vertical(padding);
+        } else if (element.children.empty()) {
             Size intrinsic{};
             if (measureIntrinsic_) {
                 // Intrinsic height depends on the width the leaf will actually
@@ -342,6 +389,100 @@ private:
         return {{width, height}};
     }
 
+    [[nodiscard]] std::size_t ResolveGridColumnCount(
+        const LayoutElement& element,
+        const float availableWidth,
+        const float columnGap) {
+        if (element.children.empty()) return 0;
+        const auto minimumColumnWidth = ResolveOptional(
+            element.gridMinimumColumnWidth,
+            element.id,
+            "gridMinimumColumnWidth",
+            kMinimumGridColumnWidth,
+            kMaximumGridColumnWidth).value_or(kMinimumGridColumnWidth);
+        const auto denominator = minimumColumnWidth + columnGap;
+        const auto fit = denominator > kEpsilon
+            ? static_cast<std::size_t>(std::max(
+                1.0F,
+                std::floor((availableWidth + columnGap + kEpsilon) / denominator)))
+            : std::size_t{1};
+        const auto authoredMaximum = element.gridMaximumColumns.value_or(kMaximumGridColumns);
+        return std::max<std::size_t>(1, std::min({
+            fit,
+            authoredMaximum,
+            kMaximumGridColumns,
+            element.children.size(),
+        }));
+    }
+
+    [[nodiscard]] GridMetrics MeasureGrid(
+        const LayoutElement& element,
+        const float availableWidth,
+        const float availableHeight) {
+        GridMetrics metrics;
+        if (element.children.empty()) return metrics;
+
+        const auto columnGap = ResolveNumber(
+            element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
+        const auto rowGap = ResolveNumber(
+            element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
+        metrics.columns = ResolveGridColumnCount(element, availableWidth, columnGap);
+        const auto totalColumnGap = metrics.columns > 1
+            ? columnGap * static_cast<float>(metrics.columns - 1)
+            : 0.0F;
+        metrics.columnWidth = std::max(
+            0.0F, availableWidth - totalColumnGap) /
+            static_cast<float>(metrics.columns);
+        const auto rowCount =
+            (element.children.size() + metrics.columns - 1) / metrics.columns;
+        metrics.rowHeights.assign(rowCount, 0.0F);
+        metrics.childHeights.reserve(element.children.size());
+        metrics.childMargins.reserve(element.children.size());
+
+        for (std::size_t index = 0; index < element.children.size(); ++index) {
+            const auto& child = element.children[index];
+            const auto margin = ResolveSpacing(child.margin, child.id, true);
+            const auto childWidth = std::max(
+                0.0F, metrics.columnWidth - Horizontal(margin));
+            const auto measured = Measure(child, childWidth, availableHeight).size;
+            auto childHeight = measured.height;
+            if (child.aspectRatio.has_value() && !child.height.has_value()) {
+                const auto ratio = ResolveOptional(
+                    child.aspectRatio,
+                    child.id,
+                    "aspectRatio",
+                    kMinimumRatio,
+                    kMaximumRatio).value_or(1.0F);
+                childHeight = childWidth / ratio;
+            }
+            auto minimum = ResolveOptional(
+                child.minHeight, child.id, "minHeight", 0.0F, kMaximumCoordinate)
+                .value_or(0.0F);
+            auto maximum = ResolveOptional(
+                child.maxHeight, child.id, "maxHeight", 0.0F, kMaximumCoordinate)
+                .value_or(kMaximumCoordinate);
+            if (maximum < minimum) {
+                AddIssue(child.id, "inverted_constraints",
+                    "Maximum size was raised to the minimum size.",
+                    LayoutIssueSeverity::Warning);
+                maximum = minimum;
+            }
+            childHeight = std::clamp(childHeight, minimum, maximum);
+            metrics.childHeights.push_back(childHeight);
+            metrics.childMargins.push_back(margin);
+            const auto row = index / metrics.columns;
+            metrics.rowHeights[row] = std::max(
+                metrics.rowHeights[row], childHeight + Vertical(margin));
+        }
+
+        for (const auto rowHeight : metrics.rowHeights)
+            metrics.contentHeight += rowHeight;
+        if (metrics.rowHeights.size() > 1)
+            metrics.contentHeight +=
+                rowGap * static_cast<float>(metrics.rowHeights.size() - 1);
+        return metrics;
+    }
+
     [[nodiscard]] std::vector<FlexLine> BuildWrappedLines(
         const std::vector<FlexItem>& items,
         const float availableMain,
@@ -418,6 +559,9 @@ private:
         result_.boxes[element.id] = box;
         if (element.children.empty()) return assigned;
 
+        if (element.layoutMode == LayoutMode::ResponsiveGrid)
+            return LayoutGrid(element, assigned, content, ancestorClip, box);
+
         const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
         const auto row = element.direction == LayoutDirection::Row;
         const auto scrollsMainAxis =
@@ -431,10 +575,18 @@ private:
 
         for (const auto& child : element.children) {
             const auto margin = ResolveSpacing(child.margin, child.id, true);
+            // A responsive grid is viewport-relative even when nested inside
+            // a horizontal scroller. Giving it the scroller's unbounded
+            // content constraint would manufacture a million-DIP grid and a
+            // bogus scroll extent instead of reflowing its columns.
+            const auto childMaximumWidth =
+                element.scrollAxis == ScrollAxis::Horizontal &&
+                    child.layoutMode != LayoutMode::ResponsiveGrid
+                ? kMaximumCoordinate
+                : content.width;
             const auto measured = Measure(
                 child,
-                element.scrollAxis == ScrollAxis::Horizontal
-                    ? kMaximumCoordinate : content.width,
+                childMaximumWidth,
                 element.scrollAxis == ScrollAxis::Vertical
                     ? kMaximumCoordinate : content.height).size;
             const auto explicitMain = row ? child.width : child.height;
@@ -591,6 +743,80 @@ private:
                 box.overflowX = box.maximumScrollOffset > kEpsilon;
             else if (element.scrollAxis == ScrollAxis::Vertical)
                 box.overflowY = box.maximumScrollOffset > kEpsilon;
+            result_.boxes[element.id] = box;
+            return Union(assigned, descendants);
+        }
+        return assigned;
+    }
+
+    [[nodiscard]] Rect LayoutGrid(
+        const LayoutElement& element,
+        const Rect assigned,
+        const Rect content,
+        const Rect ancestorClip,
+        LayoutBox box) {
+        const auto columnGap = ResolveNumber(
+            element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
+        const auto rowGap = ResolveNumber(
+            element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
+        const auto metrics = MeasureGrid(element, content.width, content.height);
+        if (metrics.columns == 0) return assigned;
+
+        const auto childClip = element.overflow == OverflowBehavior::Clip
+            ? Intersect(ancestorClip, content)
+            : ancestorClip;
+        auto rowCursor = content.y;
+        Rect descendants{};
+        bool haveDescendants = false;
+        for (std::size_t index = 0; index < element.children.size(); ++index) {
+            const auto& child = element.children[index];
+            const auto row = index / metrics.columns;
+            const auto column = index % metrics.columns;
+            const auto& margin = metrics.childMargins[index];
+            const auto availableChildWidth = std::max(
+                0.0F, metrics.columnWidth - Horizontal(margin));
+            const auto availableChildHeight = std::max(
+                0.0F, metrics.rowHeights[row] - Vertical(margin));
+            auto childHeight = metrics.childHeights[index];
+            if (element.crossAxisAlignment == CrossAxisAlignment::Stretch &&
+                !child.height.has_value() && !child.aspectRatio.has_value()) {
+                childHeight = availableChildHeight;
+            } else {
+                childHeight = std::min(childHeight, availableChildHeight);
+            }
+            const auto remainingCross = std::max(
+                0.0F, availableChildHeight - childHeight);
+            auto crossOffset = margin.top;
+            if (element.crossAxisAlignment == CrossAxisAlignment::Center)
+                crossOffset += remainingCross * 0.5F;
+            else if (element.crossAxisAlignment == CrossAxisAlignment::End)
+                crossOffset += remainingCross;
+
+            const Rect childRect{
+                content.x +
+                    static_cast<float>(column) * (metrics.columnWidth + columnGap) +
+                    margin.left,
+                rowCursor + crossOffset,
+                availableChildWidth,
+                childHeight,
+            };
+            const auto childBounds = LayoutNode(child, childRect, childClip);
+            descendants = haveDescendants ? Union(descendants, childBounds) : childBounds;
+            haveDescendants = true;
+
+            const auto isLastColumn = column + 1 == metrics.columns;
+            const auto isLastChild = index + 1 == element.children.size();
+            if (isLastColumn || isLastChild)
+                rowCursor += metrics.rowHeights[row] + rowGap;
+        }
+
+        if (haveDescendants) {
+            box.overflowX = descendants.x < content.x - kEpsilon ||
+                descendants.x + descendants.width >
+                    content.x + content.width + kEpsilon;
+            box.overflowY = descendants.y < content.y - kEpsilon ||
+                descendants.y + descendants.height >
+                    content.y + content.height + kEpsilon;
             result_.boxes[element.id] = box;
             return Union(assigned, descendants);
         }

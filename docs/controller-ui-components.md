@@ -1,9 +1,9 @@
 # Controller UI component patterns
 
-Status: Slider v3, the Audio Mixer reference composition, SettingsRow,
-ActionSheet, Picker, Scrubber, and the modern SDK composite set are implemented;
-the inventory below distinguishes current public helpers from later semantic
-candidates.
+Status: Slider v3, protocol-v8 responsive Grid, the Audio Mixer reference
+composition, SettingsRow, ActionSheet, Picker, Scrubber, CodeText, and the
+modern SDK composite set are implemented; the inventory below distinguishes
+current public helpers from later semantic candidates.
 
 Game Bar Alternative components are semantic, controller-first contracts. A
 widget publishes intent and state; the host owns rendering, accessibility,
@@ -30,8 +30,8 @@ GBSS design constrained by controller navigation and overlay performance.
 
 | Need | Current public surface | Notes |
 | --- | --- | --- |
-| Layout | `Stack`, `Row`, `Scroll`, `Spacer` | Host layout, clipping, and focus-follow; no widget pixel scrolling. |
-| Content | `Text`, `Image`, `Icon` | Bounded semantic content and a closed glyph vocabulary. |
+| Layout | `Stack`, `Row`, `ResponsiveGrid`, `Scroll`, `Spacer` | Host layout, responsive row-major reflow, clipping, and focus-follow; no widget pixel scrolling. |
+| Content | `Text`, `CodeText`, `Image`, `Icon` | Bounded semantic content, controller-neutral monospace diagnostics/commands, and a closed glyph vocabulary. |
 | Indeterminate activity | `LoadingIndicator` | Protocol v5, nonfocusable native arc; bounded size and required accessible label. |
 | Rich full-tile action | `ActionSurface` | Protocol v7, one full-surface focus/pointer/action target with bounded presentational descendants. |
 | Media/application tile | `MediaTile`, `AppTile`, `TileArtwork` | Full-tile ActionSurface compositions with optional safe artwork, multiline copy, and visible state. |
@@ -154,6 +154,18 @@ semantic classes. They do not add worker code, polling, or a new native node:
   widget keeps it in state for its 2–30 second duration (five seconds by
   default) and removes it through lifecycle-aware invalidation; the component
   creates no timer, polling loop, shortcut, input scope, or hidden residency.
+- `UI.ResponsiveGrid(...)` is the protocol-v8 layout primitive for bounded
+  card/category collections. Authors provide a 44–1600 DIP minimum column
+  width, an optional 1–32 column cap, stable children, and optional scope/
+  shortcut metadata. The host derives row-major columns from current logical
+  width, so focusable children keep their IDs while compact/wide layouts reflow.
+- `UI.CodeText(...)` emits one presentational Text node with the stable
+  `.gbar-code-text` class. Content and accessibility text are bounded to 4,096
+  characters, whitespace is preserved, and the helper owns no action, focus,
+  scope, shortcut, timer, or implicit copy behavior. Pair it with a separate
+  explicit copy Button when copying is required. The default uses the single
+  supported-Windows `Consolas` family and wraps up to eight lines; arbitrary or
+  packaged font loading remains unavailable.
 - `UI.ControllerHint(...)` creates a restrained key-cap and label from the
   closed `ControllerButton` enum. It is display-only: authors must still bind
   the matching shortcut to the active input scope or focused control. Compose
@@ -189,6 +201,8 @@ diagnostics, but must not reuse them for another node in the same snapshot.
 | `ActionSheet(..., id, items, ...)` | `id.title`, `id.list`, and optional `id.description`; each action Button uses its author-provided `ActionSheetItem.Id`. |
 | `Picker(..., id, options, ...)` | `id.title`, `id.options`, and optional `id.description`; each choice Button uses its author-provided `PickerOption.Id`. |
 | `Scrubber(..., id, ...)` | `id.slider`, `id.times`, `id.elapsed`, and `id.duration`. `id.slider` is the only focus stop. |
+| `ResponsiveGrid(id, ...)` | None; the Grid uses `id` and supplied children retain their IDs. |
+| `CodeText(text, id, ...)` | None; the Text node itself uses `id`. |
 | `ControllerHint(button, label, id)` | `id.key` and `id.label`. |
 
 Generated IDs use the same 128-character stable-ID grammar as ordinary nodes.
@@ -333,9 +347,16 @@ tested composition helpers or native semantics before authors depend on names:
 1. **Advanced listbox semantics** — `Picker` covers bounded single selection.
    Multi-select, type-ahead/search, and asynchronous empty/loading contracts
    remain separate future designs rather than overloading its stable contract.
-2. **Layout/style primitives** — per-edge borders, responsive grid, and
-   semantic monospace for diagnostics or code-like values. These need bounded
-   native layout/style contracts rather than author-specific workarounds.
+2. **Higher-level responsive collections** — protocol-v8 `ResponsiveGrid` now
+   provides bounded row-major reflow, but virtualized grids, sectioned grids,
+   and reorderable collections need separate controller/accessibility designs
+   rather than browser-style CSS behavior.
+
+Per-edge border widths/colors and semantic `CodeText` monospace are implemented
+in the bounded GBSS/default-theme contract. CSS font fallback stacks are not:
+the native field currently accepts one resolved family, so the default uses
+the Windows-baseline `Consolas` family rather than pretending that a comma-
+separated browser stack has native fallback semantics.
 
 Optional packaged fonts are lower priority and security-sensitive: any future
 support needs immutable package assets, licensing review, strict file/count/

@@ -451,25 +451,27 @@ public sealed partial class SettingsWidget : Widget
         bool busy)
     {
         var appearance = UI.Button("Appearance", "open.appearance", "category.appearance")
-            .FocusDown("category.accessibility").Busy(busy).Classes("category-card");
+            .Busy(busy).Classes("category-card");
         var accessibility = UI.Button("Accessibility", "open.accessibility", "category.accessibility")
-            .FocusUp("category.appearance").FocusDown("category.overlay").Busy(busy).Classes("category-card");
+            .Busy(busy).Classes("category-card");
         var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
-            .FocusUp("category.accessibility").FocusDown("category.installed-widgets").Busy(busy).Classes("category-card");
+            .Busy(busy).Classes("category-card");
         var installedWidgets = UI.Button("Installed widgets", "open.installed-widgets", "category.installed-widgets")
-            .FocusUp("category.overlay").FocusDown("category.diagnostics").Busy(busy).Classes("category-card");
+            .Busy(busy).Classes("category-card");
         var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
-            .FocusUp("category.installed-widgets").FocusDown("settings.refresh").Classes("category-card");
+            .Classes("category-card");
         var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
-            .FocusUp("category.diagnostics").FocusDown("category.reset").Busy(busy).Classes("category-card");
+            .Busy(busy).Classes("category-card");
         var reset = UI.Button("Reset", "open.reset", "category.reset")
-            .FocusUp("settings.refresh").Classes("category-card", "danger-card");
+            .Classes("category-card", "danger-card");
         return View(
             header,
             UI.VerticalScroll("settings.categories",
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
                     "settings.summary", "Selected theme").Classes("settings-summary"),
-                appearance, accessibility, overlay, installedWidgets, diagnostics, refresh, reset).Classes("category-list"),
+                UI.ResponsiveGrid("settings.category-grid", 250, 2,
+                        appearance, accessibility, overlay, installedWidgets, diagnostics, refresh, reset)
+                    .Classes("category-grid")).Classes("category-list"),
             "category.appearance",
             "settings-root");
     }
@@ -610,8 +612,9 @@ public sealed partial class SettingsWidget : Widget
             UI.Text($"Theme packages: {themes.Themes.Count} total, {invalidThemes} invalid",
                 "diagnostics.themes", "Theme package status").Classes(
                     invalidThemes == 0 ? "diagnostic-ok" : "diagnostic-error"),
-            UI.Text($"Schema: {settings.SchemaVersion}; runtime snapshot {diagnostics.Revision}",
-                "diagnostics.schema", "Settings and runtime diagnostics schema").Classes("diagnostic-line"),
+            UI.CodeText($"Schema: {settings.SchemaVersion}; runtime snapshot {diagnostics.Revision}",
+                "diagnostics.schema", "Settings and runtime diagnostics schema")
+                .AddClasses("diagnostic-line"),
         };
         children.AddRange(areas.Select(area => UI.Text(
             $"{DiagnosticPrefix(area.State)} {area.Label}: {area.Summary}",
@@ -624,13 +627,13 @@ public sealed partial class SettingsWidget : Widget
                 failedWorkers == 0 ? "diagnostic-ok" : "diagnostic-error"));
         foreach (var worker in diagnostics.Workers.Where(worker => worker.LastFailureCode is not null).Take(3))
         {
-            children.Add(UI.Text(
+            children.Add(UI.CodeText(
                 $"{worker.WidgetName}: {worker.LastFailureCode}; " +
                 (worker.IsRunning
                     ? "running after the recorded failure"
                     : worker.CanRestart ? "will restart on demand" : "restart limit reached"),
                 $"diagnostics.worker.{worker.WidgetId}",
-                $"{worker.WidgetName} worker failure").Classes("diagnostic-error"));
+                $"{worker.WidgetName} worker failure").AddClasses("diagnostic-error"));
         }
         children.Add(UI.Button("Refresh diagnostics", "refresh", "diagnostics.refresh")
             .Icon(WidgetGlyph.Refresh, "Refresh diagnostics")

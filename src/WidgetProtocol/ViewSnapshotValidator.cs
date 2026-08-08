@@ -186,7 +186,8 @@ public static class ViewSnapshotValidator
                 node.ImageSource is null)
                 CheckString(node.ImageSource, $"{path}.imageSource");
 
-            var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll;
+            var isContainer = node.Kind is
+                ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid;
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
             if (node.Kind is ViewNodeKind.LoadingIndicator)
             {
@@ -228,6 +229,27 @@ public static class ViewSnapshotValidator
                 Add($"{path}.scrollAxis", "scroll_axis_not_allowed",
                     "Scroll axis applies only to scroll containers.");
             }
+            if (node.Kind is ViewNodeKind.Grid)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.ResponsiveGridVersion)
+                    Add(path, "feature_requires_version",
+                        $"Grid requires protocol version {ProtocolConstants.ResponsiveGridVersion} or later.");
+                if (node.GridMinimumColumnWidth is not { } minimumColumnWidth ||
+                    !double.IsFinite(minimumColumnWidth) ||
+                    minimumColumnWidth < ProtocolConstants.MinimumGridColumnWidth ||
+                    minimumColumnWidth > ProtocolConstants.MaximumGridColumnWidth)
+                    Add($"{path}.gridMinimumColumnWidth", "invalid_grid_minimum_column_width",
+                        $"Grid minimum column width must be finite and between {ProtocolConstants.MinimumGridColumnWidth} and {ProtocolConstants.MaximumGridColumnWidth} DIPs.");
+                if (node.GridMaximumColumns is { } maximumColumns &&
+                    maximumColumns is < 1 or > ProtocolConstants.MaximumGridColumns)
+                    Add($"{path}.gridMaximumColumns", "invalid_grid_maximum_columns",
+                        $"Grid maximum columns must be between 1 and {ProtocolConstants.MaximumGridColumns}.");
+            }
+            else if (node.GridMinimumColumnWidth is not null || node.GridMaximumColumns is not null)
+            {
+                Add(path, "grid_property_not_allowed",
+                    "Grid column properties apply only to responsive Grid nodes.");
+            }
             if (isActionSurface)
             {
                 if (snapshot.ProtocolVersion < ProtocolConstants.ActionSurfaceVersion)
@@ -249,7 +271,8 @@ public static class ViewSnapshotValidator
                     node.Step is not null || node.ValueChangedActionId is not null ||
                     node.ImageSource is not null || node.ImageFit is not null ||
                     node.Glyph is not null || node.IndicatorSize is not null ||
-                    node.InputScopeId is not null || node.ScrollAxis is not null)
+                    node.InputScopeId is not null || node.ScrollAxis is not null ||
+                    node.GridMinimumColumnWidth is not null || node.GridMaximumColumns is not null)
                     Add(path, "action_surface_property_not_allowed",
                         "Action surfaces accept interaction metadata, orientation, style classes, shortcuts, and bounded presentational children only.");
             }
@@ -263,7 +286,7 @@ public static class ViewSnapshotValidator
                 CheckIdentifier(node.InputScopeId, $"{path}.inputScopeId", "input scope ID");
                 if (!isContainer)
                     Add($"{path}.inputScopeId", "input_scope_not_allowed",
-                        "Only stack, row, and scroll containers may start an input scope.");
+                        "Only stack, row, scroll, and grid containers may start an input scope.");
             }
             var startsScope = depth == 1 || (isContainer && node.InputScopeId is not null);
             var scopeKey = startsScope ? path : inheritedScopeKey;
@@ -386,6 +409,8 @@ public static class ViewSnapshotValidator
             var children = node.Children ?? [];
             var shortcuts = node.Shortcuts ?? [];
             var styleClasses = node.StyleClasses ?? [];
+            if (node.Children is null)
+                Add($"{path}.children", "required", "Children cannot be null.");
             if (node.StyleClasses is null)
                 Add($"{path}.styleClasses", "required", "Style classes cannot be null.");
             else
@@ -415,10 +440,11 @@ public static class ViewSnapshotValidator
                         Add(classPath, "duplicate_style_class", $"The style class '{className}' is repeated.");
                 }
             }
-            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.ActionSurface) &&
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
+                ViewNodeKind.ActionSurface or ViewNodeKind.Grid) &&
                 children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
-            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or
                 ViewNodeKind.Button or ViewNodeKind.ActionSurface) && shortcuts.Count != 0)
                 Add($"{path}.shortcuts", "shortcuts_not_allowed",
                     "Only input-scope containers, buttons, and action surfaces may declare shortcuts.");

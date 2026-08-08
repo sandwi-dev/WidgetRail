@@ -20,6 +20,7 @@ using Microsoft::WRL::ComPtr;
 using declarative::BoxSpacing;
 using declarative::LayoutDirection;
 using declarative::LayoutElement;
+using declarative::LayoutMode;
 using declarative::LayoutOptions;
 using declarative::Rect;
 using declarative::Size;
@@ -328,6 +329,12 @@ struct DeclarativeRenderer::RenderPass final {
             style.opacity());
         LayoutElement element;
         element.id = narrowId;
+        if (node.kind == L"grid") {
+            element.layoutMode = LayoutMode::ResponsiveGrid;
+            if (node.gridMinimumColumnWidth)
+                element.gridMinimumColumnWidth = static_cast<float>(*node.gridMinimumColumnWidth);
+            element.gridMaximumColumns = node.gridMaximumColumns;
+        }
         const auto semanticRow = node.kind == L"row" ||
             (node.kind == L"actionSurface" &&
              node.actionSurfaceOrientation == L"horizontal");
@@ -355,11 +362,16 @@ struct DeclarativeRenderer::RenderPass final {
             style.marginPx().right,
             style.marginPx().bottom,
             style.marginPx().left);
-        element.gap = element.direction == LayoutDirection::Row
+        element.gap = node.kind == L"grid"
             ? style.gapPx().right
-            : style.gapPx().top;
+            : element.direction == LayoutDirection::Row
+                ? style.gapPx().right
+                : style.gapPx().top;
         element.crossGap = style.gapPx().top;
-        if (style.flexWrap() == NativeFlexWrap::Wrap) {
+        if (node.kind == L"grid" && style.flexWrap() == NativeFlexWrap::Wrap) {
+            Add(node.id, L"invalid_style",
+                L"Grid owns responsive wrapping; flex-wrap was ignored.");
+        } else if (style.flexWrap() == NativeFlexWrap::Wrap) {
             if (element.direction == LayoutDirection::Row && node.kind != L"scroll") {
                 element.wrap = declarative::WrapBehavior::Wrap;
             } else {
@@ -1013,13 +1025,109 @@ struct DeclarativeRenderer::RenderPass final {
         }
         if (style.backgroundBlurPx() > 0.0F)
             Add(node.id, L"background_blur_fallback", L"Background blur is unavailable on the base render target; opaque fallback is used.");
-        if (style.borderWidthPx() > 0.0F && style.borderColor()) {
-            auto brush = Brush(target, WithOpacity(*style.borderColor(), opacity));
-            if (brush) target->DrawRoundedRectangle(
-                {D2DRect(rect), radius, radius},
-                brush.Get(),
-                style.borderWidthPx());
+        const auto& edges = style.borderEdges();
+        const auto sameEdges = edges.top == edges.right &&
+            edges.top == edges.bottom && edges.top == edges.left;
+        if (sameEdges) {
+            if (edges.top.widthPx > 0.0F && edges.top.color &&
+                edges.top.color->alpha > 0.0F) {
+                auto brush = Brush(target, WithOpacity(*edges.top.color, opacity));
+                if (brush) {
+                    // D2D strokes are centered on their geometry. Inset the
+                    // path so the complete border stays inside the declared
+                    // hit/paint box instead of being clipped at viewport edges.
+                    const auto strokeRect = Inset(rect, edges.top.widthPx * 0.5F);
+                    const auto strokeRadius = RadiusFor(style, strokeRect);
+                    target->DrawRoundedRectangle(
+                        {D2DRect(strokeRect), strokeRadius, strokeRadius},
+                        brush.Get(), edges.top.widthPx);
+                }
+            }
+            return;
         }
+
+        const auto topWidth = std::clamp(edges.top.widthPx, 0.0F, rect.height);
+        const auto rightWidth = std::clamp(edges.right.widthPx, 0.0F, rect.width);
+        const auto bottomWidth = std::clamp(edges.bottom.widthPx, 0.0F, rect.height);
+        const auto leftWidth = std::clamp(edges.left.widthPx, 0.0F, rect.width);
+
+        // Mixed physical edges are painted as bounded inner strips, clipped to
+        // an outer-minus-inner rounded ring. The inner contour matters for
+        // thick/asymmetric borders: clipping only to the outer surface leaves
+        // visibly square inner corners.
+        ComPtr<ID2D1Layer> borderLayer;
+        ComPtr<ID2D1RoundedRectangleGeometry> outerBorderGeometry;
+        ComPtr<ID2D1RoundedRectangleGeometry> innerBorderGeometry;
+        ComPtr<ID2D1PathGeometry> borderRingGeometry;
+        bool roundedBorderClip = false;
+        if (owner->d2dFactory_ && radius > 0.0F &&
+            SUCCEEDED(owner->d2dFactory_->CreateRoundedRectangleGeometry(
+                {D2DRect(rect), radius, radius},
+                outerBorderGeometry.ReleaseAndGetAddressOf()))) {
+            ID2D1Geometry* borderMask = outerBorderGeometry.Get();
+            const Rect innerRect{
+                rect.x + leftWidth,
+                rect.y + topWidth,
+                std::max(0.0F, rect.width - leftWidth - rightWidth),
+                std::max(0.0F, rect.height - topWidth - bottomWidth),
+            };
+            if (innerRect.width > 0.0F && innerRect.height > 0.0F) {
+                const auto innerRadiusX = std::max(
+                    0.0F, radius - std::max(leftWidth, rightWidth));
+                const auto innerRadiusY = std::max(
+                    0.0F, radius - std::max(topWidth, bottomWidth));
+                ComPtr<ID2D1GeometrySink> sink;
+                if (SUCCEEDED(owner->d2dFactory_->CreateRoundedRectangleGeometry(
+                        {D2DRect(innerRect), innerRadiusX, innerRadiusY},
+                        innerBorderGeometry.ReleaseAndGetAddressOf())) &&
+                    SUCCEEDED(owner->d2dFactory_->CreatePathGeometry(
+                        borderRingGeometry.ReleaseAndGetAddressOf())) &&
+                    SUCCEEDED(borderRingGeometry->Open(sink.ReleaseAndGetAddressOf()))) {
+                    const auto combined = outerBorderGeometry->CombineWithGeometry(
+                        innerBorderGeometry.Get(), D2D1_COMBINE_MODE_EXCLUDE,
+                        nullptr, sink.Get());
+                    const auto closed = sink->Close();
+                    if (SUCCEEDED(combined) && SUCCEEDED(closed))
+                        borderMask = borderRingGeometry.Get();
+                }
+            }
+            if (SUCCEEDED(target->CreateLayer(
+                    nullptr, borderLayer.ReleaseAndGetAddressOf()))) {
+                D2D1_LAYER_PARAMETERS parameters{};
+                parameters.contentBounds = D2DRect(rect);
+                parameters.geometricMask = borderMask;
+                parameters.maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
+                parameters.maskTransform = D2D1::Matrix3x2F::Identity();
+                parameters.opacity = 1.0F;
+                target->PushLayer(parameters, borderLayer.Get());
+                roundedBorderClip = true;
+            }
+        }
+        if (!roundedBorderClip) {
+            target->PushAxisAlignedClip(D2DRect(rect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        }
+
+        const auto paintEdge = [&](const NativeBorderEdgeStyle& edge,
+                                   const Rect edgeRect) {
+            if (edge.widthPx <= 0.0F || !edge.color || edge.color->alpha <= 0.0F ||
+                edgeRect.width <= 0.0F || edgeRect.height <= 0.0F) return;
+            auto brush = Brush(target, WithOpacity(*edge.color, opacity));
+            if (brush) target->FillRectangle(D2DRect(edgeRect), brush.Get());
+        };
+        const auto middleTop = rect.y + topWidth;
+        const auto middleHeight = std::max(
+            0.0F, rect.height - topWidth - bottomWidth);
+        paintEdge(edges.top, {rect.x, rect.y, rect.width, topWidth});
+        paintEdge(edges.bottom, {
+            rect.x, rect.y + rect.height - bottomWidth, rect.width, bottomWidth});
+        paintEdge(edges.left, {
+            rect.x, middleTop,
+            leftWidth, middleHeight});
+        paintEdge(edges.right, {
+            rect.x + rect.width - rightWidth, middleTop, rightWidth, middleHeight});
+
+        if (roundedBorderClip) target->PopLayer();
+        else target->PopAxisAlignedClip();
     }
 
     void DrawFocus(
@@ -1416,7 +1524,8 @@ struct DeclarativeRenderer::RenderPass final {
                 result.animationActive = true;
             }
         } else if (node.kind != L"stack" && node.kind != L"row" &&
-                   node.kind != L"scroll" && node.kind != L"spacer") {
+                   node.kind != L"scroll" && node.kind != L"grid" &&
+                   node.kind != L"spacer") {
             if (node.kind != L"actionSurface")
             Add(node.id, L"unknown_kind", L"Unsupported declarative node kind: " + node.kind);
         }

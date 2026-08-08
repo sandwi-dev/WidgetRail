@@ -204,6 +204,7 @@ struct NativeRenderStyle::Data final {
     float outlineWidth{};
     float outlineOffset{};
     float borderWidth{};
+    NativeBorderStyle borderEdges{};
     float backgroundBlur{};
     float shadowBlur{};
     float shadowOffsetX{};
@@ -259,6 +260,7 @@ GBA_STYLE_GETTER(float, cornerRadiusPx, cornerRadius)
 GBA_STYLE_GETTER(float, outlineWidthPx, outlineWidth)
 GBA_STYLE_GETTER(float, outlineOffsetPx, outlineOffset)
 GBA_STYLE_GETTER(float, borderWidthPx, borderWidth)
+GBA_STYLE_GETTER(const NativeBorderStyle&, borderEdges, borderEdges)
 GBA_STYLE_GETTER(float, backgroundBlurPx, backgroundBlur)
 GBA_STYLE_GETTER(float, shadowBlurPx, shadowBlur)
 GBA_STYLE_GETTER(float, shadowOffsetXPx, shadowOffsetX)
@@ -435,11 +437,24 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         return color;
     };
 
+    std::optional<float> borderTopWidth;
+    std::optional<float> borderRightWidth;
+    std::optional<float> borderBottomWidth;
+    std::optional<float> borderLeftWidth;
+    std::optional<NativeColor> borderTopColor;
+    std::optional<NativeColor> borderRightColor;
+    std::optional<NativeColor> borderBottomColor;
+    std::optional<NativeColor> borderLeftColor;
+
     for (const auto& [property, pointer] : properties) {
         const auto& value = *pointer;
         if (property == L"background") data->background = Color(property, value);
         else if (property == L"color") data->foreground = Color(property, value);
         else if (property == L"border-color") data->borderColor = Color(property, value);
+        else if (property == L"border-top-color") borderTopColor = Color(property, value);
+        else if (property == L"border-right-color") borderRightColor = Color(property, value);
+        else if (property == L"border-bottom-color") borderBottomColor = Color(property, value);
+        else if (property == L"border-left-color") borderLeftColor = Color(property, value);
         else if (property == L"outline-color") data->outlineColor = Color(property, value);
         else if (property == L"shadow-color") data->shadowColor = Color(property, value);
         else if (property == L"image-tint") data->imageTint = Color(property, value);
@@ -462,6 +477,14 @@ NativeStyleResult NativeStyleAdapter::Adapt(
             if (const auto item = Length(property, value, LengthBasis::MinimumDimension, -64, 128)) data->outlineOffset = *item;
         } else if (property == L"border-width") {
             if (const auto item = Length(property, value, LengthBasis::MinimumDimension, 0, 64)) data->borderWidth = *item;
+        } else if (property == L"border-top-width") {
+            borderTopWidth = Length(property, value, LengthBasis::MinimumDimension, 0, 64);
+        } else if (property == L"border-right-width") {
+            borderRightWidth = Length(property, value, LengthBasis::MinimumDimension, 0, 64);
+        } else if (property == L"border-bottom-width") {
+            borderBottomWidth = Length(property, value, LengthBasis::MinimumDimension, 0, 64);
+        } else if (property == L"border-left-width") {
+            borderLeftWidth = Length(property, value, LengthBasis::MinimumDimension, 0, 64);
         } else if (property == L"background-blur") {
             if (const auto item = Length(property, value, LengthBasis::MinimumDimension, 0, 256)) data->backgroundBlur = *item;
         } else if (property == L"shadow-blur") {
@@ -552,6 +575,13 @@ NativeStyleResult NativeStyleAdapter::Adapt(
             else Add(property, L"Transition-easing keyword was invalid.");
         } else Add(property, L"Unknown computed style property was ignored.");
     }
+
+    data->borderEdges = {
+        {borderTopWidth.value_or(data->borderWidth), borderTopColor ? borderTopColor : data->borderColor},
+        {borderRightWidth.value_or(data->borderWidth), borderRightColor ? borderRightColor : data->borderColor},
+        {borderBottomWidth.value_or(data->borderWidth), borderBottomColor ? borderBottomColor : data->borderColor},
+        {borderLeftWidth.value_or(data->borderWidth), borderLeftColor ? borderLeftColor : data->borderColor},
+    };
 
     if (data->minWidth && data->maxWidth && *data->minWidth > *data->maxWidth) {
         std::swap(data->minWidth, data->maxWidth); Add(L"min-width", L"Minimum and maximum width were reordered.");

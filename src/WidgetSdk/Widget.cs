@@ -44,6 +44,8 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.InlinePngImageVersion);
             if (ContainsActionSurface(Root))
                 required = Math.Max(required, ProtocolConstants.ActionSurfaceVersion);
+            if (ContainsGrid(Root))
+                required = Math.Max(required, ProtocolConstants.ResponsiveGridVersion);
             return required;
         }
     }
@@ -55,6 +57,7 @@ public sealed record WidgetView(
         RowElement row => row.Children.Any(ContainsLoadingIndicator),
         ScrollElement scroll => scroll.Children.Any(ContainsLoadingIndicator),
         ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsLoadingIndicator),
+        GridElement grid => grid.Children.Any(ContainsLoadingIndicator),
         _ => false,
     };
 
@@ -64,6 +67,7 @@ public sealed record WidgetView(
         StackElement stack => stack.Children.Any(ContainsScroll),
         RowElement row => row.Children.Any(ContainsScroll),
         ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsScroll),
+        GridElement grid => grid.Children.Any(ContainsScroll),
         _ => false,
     };
 
@@ -75,6 +79,7 @@ public sealed record WidgetView(
         RowElement row => row.Children.Any(ContainsSlider),
         ScrollElement scroll => scroll.Children.Any(ContainsSlider),
         ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsSlider),
+        GridElement grid => grid.Children.Any(ContainsSlider),
         _ => false,
     };
 
@@ -84,6 +89,17 @@ public sealed record WidgetView(
         StackElement stack => stack.Children.Any(ContainsActionSurface),
         RowElement row => row.Children.Any(ContainsActionSurface),
         ScrollElement scroll => scroll.Children.Any(ContainsActionSurface),
+        GridElement grid => grid.Children.Any(ContainsActionSurface),
+        _ => false,
+    };
+
+    private static bool ContainsGrid(WidgetElement element) => element switch
+    {
+        GridElement => true,
+        StackElement stack => stack.Children.Any(ContainsGrid),
+        RowElement row => row.Children.Any(ContainsGrid),
+        ScrollElement scroll => scroll.Children.Any(ContainsGrid),
+        ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsGrid),
         _ => false,
     };
 
@@ -97,6 +113,7 @@ public sealed record WidgetView(
         RowElement row => row.Children.Any(ContainsInlinePng),
         ScrollElement scroll => scroll.Children.Any(ContainsInlinePng),
         ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsInlinePng),
+        GridElement grid => grid.Children.Any(ContainsInlinePng),
         _ => false,
     };
 
@@ -105,6 +122,7 @@ public sealed record WidgetView(
         StackElement stack => stack.InputScopeId ?? stack.Id,
         RowElement row => row.InputScopeId ?? row.Id,
         ScrollElement scroll => scroll.InputScopeId ?? scroll.Id,
+        GridElement grid => grid.InputScopeId ?? grid.Id,
         _ => root.Id,
     };
 }

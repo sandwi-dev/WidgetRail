@@ -49,7 +49,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-028 | P0 | Verifying | PlatformBroker consent migration / Settings permissions | The exact retired Recent Apps activation capability is tombstoned; unsupported/inactive details moved to a safe bounded read-only Review page, and packaged visual verification remains. |
 | GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
 | GBA-030 | P0 | Verifying | YT Music packaging / community isolation / local companion broker | YT Music now uses the public Community package/AppContainer/loopback/secret path without a trusted fallback; clean packaged controller and lifecycle evidence remains. |
-| GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | The shared default, responsive Row wrapping, Picker, Scrubber, Toast, and protocol-v7 ActionSurface/MediaTile/AppTile exist; Games & Apps adopts the public tile/Toast APIs, while packaged scale/accessibility evidence remains. |
+| GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | The shared default, responsive Row/Grid, Picker, Scrubber, Toast, CodeText, per-edge borders, and protocol-v7 ActionSurface/MediaTile/AppTile exist; Settings and Games & Apps provide production adoption, and the full Release gate is green while hands-on packaged scale/accessibility evidence remains. |
 | GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes now interpolate bounded opacity/scale targets with reduced-motion cancellation; packaged visual/performance evidence remains. |
 | GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation and close-after-correlated-success are implemented; broader sources, icons, classification, and packaged controller evidence remain. |
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
@@ -302,7 +302,7 @@ focus identity. Audio now renders one Slider focus target per master/session
 row, with A mute and absolute left/right volume. Independent per-session/output
 state coalesces rapid volume targets latest-wins, retains authoritative state
 through stale post-acknowledgement events, and rolls back bounded failures. The
-SDK Release suite passes 41/41 and Audio Mixer passes 25/25, including the exact
+SDK focused suite passes 70/70 and Audio Mixer passes 25/25, including the exact
 application-mute focus regression. Packaged controller evidence is still
 required before closing.
 
@@ -670,8 +670,8 @@ without concurrent pipe readers or deadlock. The broker keeps at most 16
 two-second active grants, consumes each exact tuple once, and clears dormant
 and active state on lifecycle, consent, process, or session teardown.
 Subscriptions remain ineligible and lifecycle is never promoted. Focused SDK,
-Broker, Runtime, Bridge, and Now Playing suites pass 60/60, 46/46, 33/33,
-35/35, and 16/16 respectively and cover wrong operation/capability,
+Broker, Runtime, Bridge, and Now Playing suites pass 70/70, 46/46, 33/33,
+36/36, and 16/16 respectively and cover wrong operation/capability,
 slow-first rapid-second input, custom async routing, replay, expiry, stale
 snapshot, denial, and revocation cases.
 
@@ -705,7 +705,7 @@ snapshots. Games & Apps proves separate app-library read and launch
 authority; the other built-in references exercise their safe brokered control.
 YT Music additionally proves the public CLI package flow, pairing/private-
 secret/Bearer path, dashboard transport, lifecycle enforcement, and absence of
-a trusted fallback. The suite passes 5/5; Bridge passes 35/35. The packaged
+a trusted fallback. The suite passes 5/5; Bridge passes 36/36. The packaged
 build and host catalog contain and select no dedicated worker executable for
 these references.
 
@@ -899,9 +899,9 @@ display/accessibility matrix are not recorded yet.
 6. Common product composition no longer requires private widget hacks:
    `SettingsRow`, `ActionSheet`, single-select `Picker`, controller `Scrubber`,
    lifecycle-owned `Toast`, and protocol-v7 `ActionSurface`/`MediaTile`/
-   `AppTile` have reviewed bounded contracts, and Rows can wrap responsively;
-   per-edge borders, responsive grid, and semantic monospace retain explicit
-   deferrals.
+   `AppTile` have reviewed bounded contracts, Rows can wrap responsively,
+   protocol-v8 Grid provides row-major reflow, per-edge border width/color is
+   independently bounded, and CodeText provides semantic monospace diagnostics.
 7. The default rejects web-centric stagger/ambient motion, editorial serif or
    faux-macOS chrome, and treats packaged fonts as lower-priority security-
    sensitive assets rather than a baseline dependency.
@@ -909,15 +909,24 @@ display/accessibility matrix are not recorded yet.
 **Implementation evidence:** Settings now uses the public Picker contract for
 its complete theme catalog, including selected focus restoration, disabled
 invalid entries, one host-owned Scroll, scope-owned B, and no LB/RB pagination.
-Its focused Release suite passes 41/41. Responsive Row wrapping and the public
-controller Scrubber now have source and focused regression coverage; Spotify
-uses the Scrubber instead of a private seek composition. Protocol-v7
+Its focused suite passes 41/41. Responsive Row wrapping and the public
+controller Scrubber have source and focused regression coverage; Spotify uses
+the Scrubber instead of a private seek composition. Protocol-v7
 ActionSurface supplies one clipped full-tile focus/pointer/pressed target with
 bounded presentation-only descendants. Public MediaTile/AppTile and lifecycle-
 owned Toast helpers plus stable theme hooks are implemented, and Games & Apps
-adopts AppTile and Toast. Complete Release and packaged visual evidence remain
-before ledger closure; per-edge borders, responsive grid, semantic monospace,
-and broader motion remain incomplete.
+adopts AppTile and Toast. Protocol-v8 ResponsiveGrid is implemented across
+protocol/SDK/bridge/native layout; Settings uses it for root categories and
+uses `UI.CodeText` for schema/worker diagnostics. GBSS/native style supports
+independent per-edge width/color overrides, and the default CodeText style uses
+single-family Consolas with bounded wrapping. Focused managed suites pass SDK
+70/70, WidgetStyling 21/21, PlatformSettings 15/15, Settings 41/41, and Bridge
+36/36. The authoritative full Release gate passed in 309.4 seconds, including
+all managed suites, documentation, native Release Layout 245,
+Renderer 4,494, NativeStyle coverage, and protocol-v8 bridge/render cases.
+Hidden OverlayHost and InputProbe smokes also passed. Hands-on packaged visual/
+controller/accessibility evidence remains before ledger closure; broader motion
+remains incomplete.
 
 ## GBA-032 — GBSS transition declarations do not animate
 

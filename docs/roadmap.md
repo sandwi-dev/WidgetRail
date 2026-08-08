@@ -169,8 +169,9 @@ remains off until the publisher-trust gates in Phase 4.
   focus safety, and scope-owned B. The selection-specific Picker, controller
   Scrubber, responsive Row wrapping, non-focus-stealing Toast, and protocol-v7
   ActionSurface/MediaTile/AppTile are implemented; Games & Apps adopts the
-  public tile and Toast APIs. Next add per-edge borders, responsive grid, and semantic
-  monospace for diagnostics/code-like values. Preserve
+  public tile and Toast APIs. Protocol-v8 ResponsiveGrid, independent per-edge
+  GBSS borders, and semantic `UI.CodeText` monospace are now implemented;
+  Settings uses Grid for root categories and CodeText for diagnostics. Preserve
   44-DIP targets, non-color state, stable IDs, and one inset focus cue. Optional
   packaged fonts are lower priority and security-sensitive; they require
   immutable asset brokering/licensing/bounds and must never become arbitrary
@@ -251,9 +252,12 @@ not irreversible API priority:
    public. Settings now adopts Picker, Spotify adopts the public controller
    Scrubber, responsive Row wrapping, lifecycle-owned Toast, and protocol-v7
    ActionSurface/MediaTile/AppTile contracts are public. Games & Apps adopts
-   AppTile and Toast. Next add per-edge borders, responsive grid, and semantic
-   monospace; retain full Release and packaged visual/accessibility evidence as
-   the verification gate for the implemented component set.
+   AppTile and Toast. Protocol-v8 ResponsiveGrid, per-edge borders, and semantic
+   CodeText are also implemented, with Settings as the first Grid/CodeText
+   production adopter. The current full Release gate is green; next complete
+   hands-on packaged visual/controller/accessibility testing on the relaunched
+   overlay, then design advanced/virtualized collections
+   and optional font assets without weakening controller or package safety.
 4. **Complete motion without web-style overhead.** Add bounded composited
    subtree translation and short shell/widget open, close, and replacement
    transitions with reduced-motion cancellation and hidden-idle evidence.

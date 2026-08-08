@@ -19,6 +19,7 @@ var tests = new (string Name, Action Run)[]
     ("Media-card properties compile to typed renderer values", MediaCardValues),
     ("Responsive viewport units remain bounded", ResponsiveUnits),
     ("Responsive row wrapping compiles to a closed keyword contract", ResponsiveWrapValues),
+    ("Per-edge borders validate and cascade independently", PerEdgeBorders),
     ("Media-card properties preserve the safe allowlist", MediaSafety),
     ("Default visual-system tokens compile exactly", VisualSystemTokens),
     ("Cool Slate built-in source compiles with distinct typed tokens", CoolSlateSource),
@@ -373,6 +374,58 @@ static void ResponsiveWrapValues()
 
     var invalid = CompileExpectingErrors("row { flex-wrap: wrap-reverse; }");
     Assert.Equal(1, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
+}
+
+static void PerEdgeBorders()
+{
+    var compile = Compile("""
+        button {
+          border-width: 2px;
+          border-color: #112233;
+          border-top-width: 3px;
+          border-left-color: transparent;
+        }
+        .primary { border-right-width: 4px; border-top-color: rgba(1, 2, 3, 0.5); }
+        #play { border-bottom-width: 5px; border-bottom-color: #abcdef80; }
+        """);
+    Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+    var style = compile.Theme!.Resolve(new GbssElement(
+        "button", "play", new HashSet<string>(["primary"]), null));
+    Assert.Equal("2px", style.Get("border-width")!.Text);
+    Assert.Equal("#112233", style.Get("border-color")!.Text);
+    Assert.Equal("3px", style.Get("border-top-width")!.Text);
+    Assert.Equal("4px", style.Get("border-right-width")!.Text);
+    Assert.Equal("5px", style.Get("border-bottom-width")!.Text);
+    Assert.True(style.Get("border-left-width") is null, "An absent edge must retain uniform fallback semantics.");
+    Assert.Equal("rgba(1, 2, 3, 0.5)", style.Get("border-top-color")!.Text);
+    Assert.True(style.Get("border-right-color") is null, "An absent color edge must retain uniform fallback semantics.");
+    Assert.Equal("#abcdef80", style.Get("border-bottom-color")!.Text);
+    Assert.Equal("transparent", style.Get("border-left-color")!.Text);
+
+    var layeredBase = GbssParser.Parse("#play { border-top-width: 7px; }", "base.gbss");
+    var layeredUser = GbssParser.Parse("button { border-top-width: 1px; }", "user.gbss");
+    var layered = GbssThemeCompiler.Compile([
+        new GbssThemeLayer(0, [layeredBase.Document]),
+        new GbssThemeLayer(100, [layeredUser.Document]),
+    ]);
+    Assert.Equal("1px", layered.Theme!.Resolve(new GbssElement("button", "play")).Get("border-top-width")!.Text);
+
+    var bounded = Compile("button { border-left-width: 999px; border-right-width: -2px; }");
+    Assert.Equal(2, bounded.Diagnostics.Count(item => item.Code == "value_clamped"));
+    var boundedStyle = bounded.Theme!.Resolve(Element("button"));
+    Assert.Equal("16px", boundedStyle.Get("border-left-width")!.Text);
+    Assert.Equal("0px", boundedStyle.Get("border-right-width")!.Text);
+
+    var invalid = CompileExpectingErrors("button { border-top-width: thick; border-right-color: red; }");
+    Assert.Equal(2, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
+    var unsafeColor = GbssParser.Parse("button { border-bottom-color: url(evil); }", "unsafe-edge.gbss");
+    Assert.Equal(1, unsafeColor.Diagnostics.Count(item => item.Code == "unsafe_value"));
+
+    foreach (var edge in new[] { "top", "right", "bottom", "left" })
+    {
+        Assert.True(GbssPropertyCatalog.AllowedProperties.Contains($"border-{edge}-width"), $"Missing {edge} width.");
+        Assert.True(GbssPropertyCatalog.AllowedProperties.Contains($"border-{edge}-color"), $"Missing {edge} color.");
+    }
 }
 
 static void MediaSafety()

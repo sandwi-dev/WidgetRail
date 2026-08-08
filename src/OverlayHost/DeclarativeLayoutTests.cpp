@@ -16,6 +16,7 @@ using gba::declarative::IntrinsicMeasureCallback;
 using gba::declarative::LayoutDirection;
 using gba::declarative::LayoutElement;
 using gba::declarative::LayoutIssueSeverity;
+using gba::declarative::LayoutMode;
 using gba::declarative::MainAxisAlignment;
 using gba::declarative::OverflowBehavior;
 using gba::declarative::Rect;
@@ -300,6 +301,197 @@ void ResponsiveRowsWrapAtStableItemBoundaries() {
           "column wrapping fails closed before publishing partial geometry");
 }
 
+void ResponsiveGridUsesAvailableDipWidth() {
+    auto grid = Element("responsive-grid");
+    grid.layoutMode = LayoutMode::ResponsiveGrid;
+    grid.gridMinimumColumnWidth = 100.0F;
+    grid.gridMaximumColumns = 3;
+    grid.gap = 10.0F;
+    grid.crossGap = 8.0F;
+    for (int index = 0; index < 5; ++index) {
+        auto child = Element("grid-child-" + std::to_string(index));
+        child.height = index == 1 ? 60.0F : (index == 4 ? 70.0F : 40.0F);
+        grid.children.push_back(std::move(child));
+    }
+
+    const auto tiny = ComputeLayout(grid, {0, 0, 20, 500});
+    Check(tiny.valid(), "grid gracefully falls back to one column below its minimum");
+    Near(tiny.Find("grid-child-0")->borderBox.width, 20.0F,
+         "tiny fallback uses the safe available width");
+    Near(tiny.Find("grid-child-1")->borderBox.y, 48.0F,
+         "single-column fallback preserves row order and row gap");
+
+    // Layout consumes the snapped logical viewport. Stay more than half a DIP
+    // below the boundary so default 1x pixel snapping cannot round into it.
+    const auto belowBoundary = ComputeLayout(grid, {0, 0, 209.4F, 500});
+    Near(belowBoundary.Find("grid-child-1")->borderBox.y, 48.0F,
+         "width below the exact boundary remains one column");
+
+    const auto exactBoundary = ComputeLayout(grid, {0, 0, 210, 500});
+    Near(exactBoundary.Find("grid-child-0")->borderBox.width, 100.0F,
+         "exact two-column boundary preserves the authored minimum");
+    Near(exactBoundary.Find("grid-child-1")->borderBox.x, 110.0F,
+         "column gap separates the second exact-boundary column");
+    Near(exactBoundary.Find("grid-child-2")->borderBox.x, 0.0F,
+         "third child wraps in stable row-major order");
+    Near(exactBoundary.Find("grid-child-2")->borderBox.y, 68.0F,
+         "next row follows the tallest intrinsic row and row gap");
+
+    const auto wide = ComputeLayout(grid, {0, 0, 500, 500});
+    Near(wide.Find("grid-child-0")->borderBox.width, 160.0F,
+         "wide grid distributes remaining width equally across capped columns");
+    Near(wide.Find("grid-child-1")->borderBox.x, 170.0F,
+         "wide grid retains its authored column gap");
+    Near(wide.Find("grid-child-2")->borderBox.x, 340.0F,
+         "maximum-columns cap remains deterministic");
+    Near(wide.Find("grid-child-3")->borderBox.y, 68.0F,
+         "fourth child begins the next stable row");
+}
+
+void ResponsiveGridMeasuresMixedIntrinsicRows() {
+    auto grid = Element("intrinsic-grid");
+    grid.layoutMode = LayoutMode::ResponsiveGrid;
+    grid.gridMinimumColumnWidth = 150.0F;
+    grid.gridMaximumColumns = 4;
+    grid.gap = 20.0F;
+    grid.crossGap = 12.0F;
+    grid.children = {
+        Element("intrinsic-short"),
+        Element("intrinsic-tall"),
+        Element("intrinsic-wrapped"),
+    };
+    const IntrinsicMeasureCallback measure = [](
+        const LayoutElement& element,
+        const gba::declarative::MeasureConstraints& constraints) {
+        if (element.id == "intrinsic-short") return Size{constraints.maximumWidth, 20.0F};
+        if (element.id == "intrinsic-tall") return Size{constraints.maximumWidth, 50.0F};
+        if (element.id == "intrinsic-wrapped")
+            return Size{constraints.maximumWidth, constraints.maximumWidth <= 150.01F ? 60.0F : 30.0F};
+        return Size{};
+    };
+    gba::declarative::LayoutOptions options;
+    options.fillAutoRoot = false;
+    const auto result = ComputeLayout(grid, {0, 0, 320, 500}, measure, options);
+    Check(result.valid(), "mixed intrinsic grid remains valid");
+    Near(result.Find("intrinsic-grid")->borderBox.height, 122.0F,
+         "grid intrinsic height includes tallest rows and row gap");
+    Near(result.Find("intrinsic-short")->borderBox.height, 50.0F,
+         "default stretch gives peers the tallest row height");
+    Near(result.Find("intrinsic-tall")->borderBox.height, 50.0F,
+         "tall intrinsic child establishes first-row height");
+    Near(result.Find("intrinsic-wrapped")->borderBox.y, 62.0F,
+         "wrapped child starts after the complete first row");
+    Near(result.Find("intrinsic-wrapped")->borderBox.height, 60.0F,
+         "child is remeasured against its actual grid column width");
+}
+
+void ResponsiveGridHandlesEmptyLargeAndScaledSurfaces() {
+    auto empty = Element("empty-grid");
+    empty.layoutMode = LayoutMode::ResponsiveGrid;
+    empty.gridMinimumColumnWidth = 120.0F;
+    const auto emptyResult = ComputeLayout(empty, {0, 0, 300, 100});
+    Check(emptyResult.valid() && emptyResult.boxes.size() == 1,
+          "empty responsive grid is a valid bounded container");
+
+    auto large = Element("large-grid");
+    large.layoutMode = LayoutMode::ResponsiveGrid;
+    large.gridMinimumColumnWidth = 80.0F;
+    large.gridMaximumColumns = 4;
+    large.gap = 4.0F;
+    large.crossGap = 3.0F;
+    for (int index = 0; index < 100; ++index) {
+        auto child = Element("large-grid-" + std::to_string(index));
+        child.height = 10.0F;
+        large.children.push_back(std::move(child));
+    }
+    const auto largeResult = ComputeLayout(large, {0, 0, 500, 500});
+    Check(largeResult.valid() && largeResult.boxes.size() == 101,
+          "large child set retains every stable layout box");
+    Near(largeResult.Find("large-grid-99")->borderBox.x, 378.0F,
+         "last large-set child retains row-major column order");
+    Near(largeResult.Find("large-grid-99")->borderBox.y, 312.0F,
+         "last large-set child reaches the expected final row");
+
+    auto scaled = Element("scaled-grid");
+    scaled.layoutMode = LayoutMode::ResponsiveGrid;
+    scaled.gridMinimumColumnWidth = 100.0F;
+    scaled.gap = 10.0F;
+    for (int index = 0; index < 3; ++index) {
+        auto child = Element("scaled-grid-" + std::to_string(index));
+        child.height = 44.0F;
+        scaled.children.push_back(std::move(child));
+    }
+    gba::declarative::LayoutOptions oneX;
+    oneX.pixelScale = 1.0F;
+    gba::declarative::LayoutOptions twoX;
+    twoX.pixelScale = 2.0F;
+    const auto dipOne = ComputeLayout(scaled, {0, 0, 320, 100}, {}, oneX);
+    const auto dipTwo = ComputeLayout(scaled, {0, 0, 320, 100}, {}, twoX);
+    Near(dipOne.Find("scaled-grid-1")->borderBox.x,
+         dipTwo.Find("scaled-grid-1")->borderBox.x,
+         "grid column computation remains in DIPs across pixel scales");
+    Near(dipOne.Find("scaled-grid-1")->borderBox.width,
+         dipTwo.Find("scaled-grid-1")->borderBox.width,
+         "DPI changes snapping, not responsive column semantics");
+}
+
+void ResponsiveGridInsideHorizontalScrollUsesViewportWidth() {
+    auto grid = Element("scrolled-responsive-grid");
+    grid.layoutMode = LayoutMode::ResponsiveGrid;
+    grid.gridMinimumColumnWidth = 100.0F;
+    grid.gridMaximumColumns = 3;
+    grid.gap = 10.0F;
+    for (int index = 0; index < 4; ++index) {
+        auto child = Element("scrolled-grid-child-" + std::to_string(index));
+        child.height = 44.0F;
+        grid.children.push_back(std::move(child));
+    }
+
+    auto scroll = Element("horizontal-grid-scroll", LayoutDirection::Row);
+    scroll.scrollAxis = ScrollAxis::Horizontal;
+    scroll.children = {grid};
+    const auto result = ComputeLayout(scroll, {0, 0, 320, 200});
+    Check(result.valid(), "responsive grid remains valid inside horizontal scroll");
+    Near(result.Find("scrolled-responsive-grid")->borderBox.width, 320.0F,
+         "horizontal scroll constrains responsive grid to its viewport width");
+    Near(result.Find("scrolled-grid-child-0")->borderBox.width, 100.0F,
+         "viewport-constrained grid keeps its authored minimum at three columns");
+    Near(result.Find("scrolled-grid-child-3")->borderBox.y, 44.0F,
+         "fourth grid child wraps instead of expanding the horizontal extent");
+    Check(result.Find("horizontal-grid-scroll")->maximumScrollOffset <= 0.01F,
+          "responsive grid does not manufacture a bogus horizontal scroll extent");
+}
+
+void InvalidResponsiveGridFailsClosed() {
+    auto missing = Element("missing-grid");
+    missing.layoutMode = LayoutMode::ResponsiveGrid;
+    const auto missingResult = ComputeLayout(missing, {0, 0, 300, 100});
+    Check(!missingResult.valid() && missingResult.boxes.empty(),
+          "grid without minimum column width fails closed");
+
+    auto invalidMaximum = Element("invalid-grid-maximum");
+    invalidMaximum.layoutMode = LayoutMode::ResponsiveGrid;
+    invalidMaximum.gridMinimumColumnWidth = 100.0F;
+    invalidMaximum.gridMaximumColumns = 33;
+    const auto maximumResult = ComputeLayout(invalidMaximum, {0, 0, 300, 100});
+    Check(!maximumResult.valid() && maximumResult.boxes.empty(),
+          "unbounded grid column cap fails closed");
+
+    auto flexWithGridProperties = Element("flex-grid-properties");
+    flexWithGridProperties.gridMinimumColumnWidth = 100.0F;
+    const auto flexResult = ComputeLayout(flexWithGridProperties, {0, 0, 300, 100});
+    Check(!flexResult.valid() && flexResult.boxes.empty(),
+          "grid semantics cannot leak onto flex containers");
+
+    auto scrolling = Element("scrolling-grid");
+    scrolling.layoutMode = LayoutMode::ResponsiveGrid;
+    scrolling.gridMinimumColumnWidth = 100.0F;
+    scrolling.scrollAxis = ScrollAxis::Vertical;
+    const auto scrollingResult = ComputeLayout(scrolling, {0, 0, 300, 100});
+    Check(!scrollingResult.valid() && scrollingResult.boxes.empty(),
+          "grid cannot ambiguously own scrolling and responsive rows");
+}
+
 void IntrinsicAndCompactMode() {
     auto text = Element("text");
     text.flexGrow = 1.0F;
@@ -562,6 +754,11 @@ int main() {
     ScrollOffsetsAreBoundedAndClipped();
     ResponsiveViewports();
     ResponsiveRowsWrapAtStableItemBoundaries();
+    ResponsiveGridUsesAvailableDipWidth();
+    ResponsiveGridMeasuresMixedIntrinsicRows();
+    ResponsiveGridHandlesEmptyLargeAndScaledSurfaces();
+    ResponsiveGridInsideHorizontalScrollUsesViewportWidth();
+    InvalidResponsiveGridFailsClosed();
     IntrinsicAndCompactMode();
     WrappedIntrinsicLeavesDoNotCollapseOrOverlap();
     ScrollExtentIncludesWrappedIntrinsicParagraphs();

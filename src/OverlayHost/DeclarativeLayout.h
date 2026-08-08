@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -40,6 +41,11 @@ enum class LayoutDirection {
     Column,
 };
 
+enum class LayoutMode {
+    Flex,
+    ResponsiveGrid,
+};
+
 enum class WrapBehavior {
     NoWrap,
     Wrap,
@@ -73,8 +79,15 @@ enum class CrossAxisAlignment {
 
 struct LayoutElement {
     std::string id;
+    LayoutMode layoutMode{LayoutMode::Flex};
     LayoutDirection direction{LayoutDirection::Column};
     std::vector<LayoutElement> children;
+
+    // Typed responsive-grid semantics. Values are logical DIPs. Grid derives
+    // a stable row-major column count from its actual content width; gap is
+    // the column gap and crossGap is the row gap.
+    std::optional<float> gridMinimumColumnWidth;
+    std::optional<std::size_t> gridMaximumColumns;
 
     std::optional<float> width;
     std::optional<float> height;

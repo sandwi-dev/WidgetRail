@@ -16,6 +16,10 @@ gba::WidgetStyleValue Number(std::wstring kind, double number) {
     return {std::move(kind), std::to_wstring(number), number, {}};
 }
 
+gba::WidgetStyleValue Color(std::wstring value) {
+    return {L"color", std::move(value), std::nullopt, {}};
+}
+
 void Near(float expected, float actual) {
     if (std::abs(expected - actual) >= 0.01F) {
         std::cerr << "Expected " << expected << ", got " << actual << '\n';
@@ -62,6 +66,65 @@ int main() {
     Near(2, style720.flexGrow());
     Near(0x20 / 255.0F, style720.background()->red);
     Near(0x80 / 255.0F, style720.background()->alpha);
+
+    WidgetComputedStyle uniformBorder{
+        {L"border-width", Length(2, L"px")},
+        {L"border-color", Color(L"#11223380")},
+    };
+    const auto uniformBorderStyle = NativeStyleAdapter::Adapt(
+        uniformBorder, context720).style;
+    Near(2, uniformBorderStyle.borderWidthPx());
+    for (const auto* edge : {
+             &uniformBorderStyle.borderEdges().top,
+             &uniformBorderStyle.borderEdges().right,
+             &uniformBorderStyle.borderEdges().bottom,
+             &uniformBorderStyle.borderEdges().left}) {
+        Near(2, edge->widthPx);
+        assert(edge->color == uniformBorderStyle.borderColor());
+    }
+
+    WidgetComputedStyle mixedBorder{
+        {L"border-width", Length(2, L"px")},
+        {L"border-color", Color(L"#11223380")},
+        {L"border-top-width", Length(4, L"px")},
+        {L"border-right-width", Length(0, L"px")},
+        {L"border-bottom-width", Length(999, L"px")},
+        {L"border-top-color", Color(L"transparent")},
+        {L"border-right-color", Color(L"#ff0000")},
+        {L"opacity", Number(L"number", 0.25)},
+    };
+    const auto mixedBorderStyle = NativeStyleAdapter::Adapt(
+        mixedBorder, context720).style;
+    Near(2, mixedBorderStyle.borderWidthPx());
+    Near(4, mixedBorderStyle.borderEdges().top.widthPx);
+    Near(0, mixedBorderStyle.borderEdges().right.widthPx);
+    Near(64, mixedBorderStyle.borderEdges().bottom.widthPx);
+    Near(2, mixedBorderStyle.borderEdges().left.widthPx);
+    assert(mixedBorderStyle.borderEdges().top.color.has_value());
+    Near(0, mixedBorderStyle.borderEdges().top.color->alpha);
+    assert((mixedBorderStyle.borderEdges().right.color == NativeColor{1, 0, 0, 1}));
+    assert(mixedBorderStyle.borderEdges().bottom.color == mixedBorderStyle.borderColor());
+    Near(0.25F, mixedBorderStyle.opacity());
+
+    NativeAccessibilityPolicy borderAccessibility;
+    borderAccessibility.reducedTransparency = true;
+    const auto accessibleBorderStyle = NativeStyleAdapter::Adapt(
+        mixedBorder, context720, borderAccessibility).style;
+    Near(1, accessibleBorderStyle.opacity());
+    Near(4, accessibleBorderStyle.borderEdges().top.widthPx);
+    Near(0, accessibleBorderStyle.borderEdges().top.color->alpha);
+
+    WidgetComputedStyle malformedBorder{
+        {L"border-width", Length(3, L"px")},
+        {L"border-color", Color(L"#010203")},
+        {L"border-top-width", {L"keyword", L"thick", std::nullopt, {}}},
+        {L"border-left-color", Color(L"red")},
+    };
+    const auto defensiveBorder = NativeStyleAdapter::Adapt(
+        malformedBorder, context720);
+    Near(3, defensiveBorder.style.borderEdges().top.widthPx);
+    assert(defensiveBorder.style.borderEdges().left.color == defensiveBorder.style.borderColor());
+    assert(defensiveBorder.diagnostics.size() == 2);
 
     NativeStyleContext context1080{1920, 1080, 1200, 800, 16, 16, false};
     auto style1080 = NativeStyleAdapter::Adapt(responsive, context1080).style;

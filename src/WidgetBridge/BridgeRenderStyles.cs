@@ -129,6 +129,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.Icon => "icon",
         ViewNodeKind.LoadingIndicator => "loadingIndicator",
         ViewNodeKind.ActionSurface => "actionSurface",
+        ViewNodeKind.Grid => "grid",
         _ => throw new BridgeProtocolException($"Unsupported view node kind '{kind}'."),
     };
 }

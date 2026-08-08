@@ -424,6 +424,68 @@ void ActionSurfacePlanningAndInteractionGeometry() {
           "clipped ActionSurface hit testing never escapes the viewport");
 }
 
+WidgetSnapshot ResponsiveGridSnapshot() {
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 8;
+    snapshot.instanceId = L"grid.runtime.v1";
+    snapshot.activeInputScopeId = L"grid.root";
+    snapshot.initialFocusId = L"grid.one";
+    snapshot.root = Node(L"grid.root", L"stack");
+    snapshot.root.inputScopeId = L"grid.root";
+
+    auto grid = Node(L"grid", L"grid");
+    grid.gridMinimumColumnWidth = 140.0;
+    grid.gridMaximumColumns = 3U;
+    grid.baseStyle = {
+        {L"width", Length(100, L"%")},
+        {L"gap", LengthList(L"10px 12px")},
+        {L"padding", LengthList(L"4px")},
+    };
+    for (const auto* id : {L"grid.one", L"grid.two", L"grid.three", L"grid.four"}) {
+        auto button = Node(id, L"button");
+        button.text = id;
+        button.actionId = id;
+        button.baseStyle = {
+            {L"min-height", Length(44)},
+            {L"padding", LengthList(L"8px")},
+        };
+        grid.children.push_back(std::move(button));
+    }
+    snapshot.root.children = {std::move(grid)};
+    return snapshot;
+}
+
+void ResponsiveGridFlowsThroughNativePlanning() {
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto snapshot = ResponsiveGridSnapshot();
+    const auto wide = renderer.Render(
+        nullptr, snapshot, L"grid.one", {0.0F, 0.0F, 760.0F, 260.0F});
+    Check(wide.focusRects.size() == 4 && !wide.focusRects.contains(L"grid"),
+          "Grid exposes its focusable children without becoming a focus stop");
+    const auto one = wide.elementRects.at(L"grid.one");
+    const auto two = wide.elementRects.at(L"grid.two");
+    const auto three = wide.elementRects.at(L"grid.three");
+    const auto four = wide.elementRects.at(L"grid.four");
+    Check(one.x < two.x && two.x < three.x,
+          "wide Grid uses stable row-major columns");
+    Near(one.y, two.y, "first Grid row shares a stable y coordinate");
+    Near(two.y, three.y, "maximum three Grid columns share the first row");
+    Check(four.y > one.y && four.x <= one.x + 0.01F,
+          "Grid maximum-column cap wraps the fourth child to the next row");
+    for (const auto& diagnostic : wide.diagnostics)
+        Check(diagnostic.code != L"unknown_kind", "Grid is a recognized native container");
+
+    const auto narrow = renderer.Render(
+        nullptr, snapshot, L"grid.one", {0.0F, 0.0F, 150.0F, 420.0F});
+    const auto narrowOne = narrow.elementRects.at(L"grid.one");
+    const auto narrowTwo = narrow.elementRects.at(L"grid.two");
+    Near(narrowOne.x, narrowTwo.x, "narrow Grid falls back to one column");
+    Check(narrowTwo.y > narrowOne.y,
+          "narrow Grid preserves document order down the single column");
+    Check(narrow.focusRects.contains(L"grid.four"),
+          "Grid reflow preserves the complete child focus graph");
+}
+
 void FocusMotionUsesStableSnapshotIdentity() {
     WidgetSnapshot snapshot;
     snapshot.sequence = 1;
@@ -1611,6 +1673,7 @@ int main() {
     PlanningMetadataAndKinds();
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
+    ResponsiveGridFlowsThroughNativePlanning();
     FocusMotionUsesStableSnapshotIdentity();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();

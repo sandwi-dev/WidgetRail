@@ -6,12 +6,14 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
-Responsive Row wrapping, protocol-v7 ActionSurface, MediaTile/AppTile, Toast,
-and the first production uses of the public Picker and Scrubber are implemented
-in source and focused tests. Games & Apps uses the public AppTile for its full-
-tile launch/catalog targets and lifecycle-safe Toast feedback. Complete Release
-and packaged visual evidence remain the gate for closing the tracked visual and
-accessibility verification issue.
+Responsive Row wrapping, protocol-v7 ActionSurface, protocol-v8 ResponsiveGrid,
+MediaTile/AppTile, Toast, semantic CodeText, independent per-edge borders, and
+the first production uses of the public Picker and Scrubber are implemented in
+source and focused tests. Games & Apps uses AppTile for its full-tile launch/
+catalog targets and lifecycle-safe Toast feedback. Settings uses ResponsiveGrid
+for root categories and CodeText for schema/worker diagnostics. The authoritative
+full Release verification aggregate is green; hands-on packaged visual/
+controller evidence remains pending until the relaunched overlay is exercised.
 
 ## Implemented
 
@@ -61,12 +63,13 @@ Up/Down navigation.
 ### Widget platform
 
 - `WidgetProtocol`: strict version-1 manifests and additive snapshot protocols
-  v1–v7, deterministic JSON, stable IDs, focus validation, quick actions with
+  v1–v8, deterministic JSON, stable IDs, focus validation, quick actions with
   optional typed control-operation metadata, Scroll/surface hints, absolute-
   value Sliders, images, closed semantic glyphs, explicit active controller
   scopes and snapshot correlation, and interaction state.
-- `WidgetSdk`: typed Stack, Row, Text, Button, Progress, Slider, Scroll, Spacer,
-  Image, Icon, LoadingIndicator, and protocol-v7 ActionSurface authoring;
+- `WidgetSdk`: typed Stack, Row, protocol-v8 ResponsiveGrid, Text, semantic
+  CodeText, Button, Progress, Slider, Scroll, Spacer, Image, Icon,
+  LoadingIndicator, and protocol-v7 ActionSurface authoring;
   controller-ready ToggleButton, Stepper,
   IconButton, Card, SectionHeader, StatusBadge, Divider, Alert, EmptyState,
   SegmentedTabs, Switch, ScopedDialog, SettingsRow, and bounded nested
@@ -104,14 +107,20 @@ Up/Down navigation.
   understand protocol-v7 ActionSurface orientation, computed style, bounded
   layout, full-surface focus/hit/pressed geometry, and fail-closed unknown-kind
   behavior. Reduced motion keeps LoadingIndicator accessible but static.
+- `WidgetBridge` and native layout also transport and validate protocol-v8 Grid
+  semantics. Grid derives bounded row-major columns from final logical-DIP
+  width while preserving child IDs/focus order; it never becomes a focus stop.
 - `WidgetWorkerHost`: a packaged generic worker executable that loads one
   installed package's public concrete SDK `Widget` entrypoint and contained
   dependencies inside the mandatory package AppContainer, authenticates an
   optional broker channel, attaches typed host services before creation, then
   serves the standard isolated snapshot/action/lifecycle protocol.
 - `WidgetStyling`: bounded GBSS parsing, safe package-relative imports,
-  variables, explicit trusted cascade layers, typed allowlisted values, and
-  diagnostics.
+  variables, explicit trusted cascade layers, typed allowlisted values,
+  independent top/right/bottom/left border width/color overrides, and
+  diagnostics. The built-in theme provides bounded `.gbar-code-text` wrapping
+  with one Windows-baseline `Consolas` family; CSS-style font fallback stacks
+  and packaged font loading are not claimed.
 - `PlatformSettings`: strict atomic/cross-process appearance persistence,
   version-pinned development themes, built-in default, safe theme discovery,
   layer composition, last-good snapshots, and bounded declared-
@@ -552,7 +561,7 @@ two-clock dashboard-gesture propagation. Its focused Release harness passes
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK and YT Music Release suites pass 60/60 and
+bounded cleanup. The current SDK and YT Music focused suites pass 70/70 and
 38/38 respectively, including serialization and widget recovery for host-side
 rejected-Bearer invalidation without a second widget delete. The current
 Settings Release suite passes 41/41, including
@@ -560,7 +569,7 @@ scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. Styling and platform settings/themes pass 19/19 and 14/14,
+polling. Styling and platform settings/themes pass 21/21 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
 passes 45/45, including authenticated candidate/active development readiness,
 last-good retention/restart, complete bounded source/package watching, cleanup
@@ -575,7 +584,7 @@ disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 content-tree sealing/tamper rejection plus content-bound unsigned authority.
 Bridge
-passes 35/35, including semantic catalog revisions/last-good/catch-up reload,
+passes 36/36, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
@@ -600,7 +609,8 @@ expected PID, nonce, and widget identity checks in force.
  Library/Catalog flow and exact shortcut launch revalidation.
  The retained Recent Apps and Windows activity reference suites pass 8/8 and
  10/10; Windows Media provider and Now Playing pass 11/11 and 16/16. Games &
- Apps passes 25/25, including its vertical full-row Library/Catalog focus model.
+ Apps passes 26/26, including its vertical full-tile AppTile Library/Catalog
+ focus model and lifecycle-bound Toast feedback.
  The first-party conformance suite passes 5/5 by building and installing the
  actual Audio Mixer, Network Controls, Games & Apps, Now Playing, and YT Music
  packages, launching each with the generic host in its package AppContainer, and
@@ -615,14 +625,19 @@ privacy/explicit state, optimistic command reconciliation, opaque identity,
 native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
-The full native Release aggregate passes at milestone `ed21bb9`. Focused native suites report Controller
-Navigation 73 checks, Slider Interaction 2,071, Focus Navigation 22, Widget Surface
-Focus 16, Controller Input Ownership 17, Declarative Renderer 4,452, and Native Icons 198. Display-sensitive evidence includes 200
-declarative-layout checks, 108,545 placement/render-metric/surface-geometry
-checks, and 42 foreground-target/display-refresh/reentrancy checks, alongside state-machine,
-remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer
-suites. It covers deterministic tiny/portrait/negative-coordinate/wide/4K and
-72–480-DPI math plus 150% font-size/letter-spacing adaptation. The platform
+The current milestone passed `scripts/Verify.ps1 -Configuration Release` end to
+end in 309.4 seconds, including every managed suite, documentation contract,
+native Release aggregate, hidden OverlayHost smoke, and InputProbe build/smoke.
+Focused native Release suites report Declarative Layout 245 checks, Native Icons 198,
+Declarative Motion 27, Overlay Targeting 42, Controller Navigation 73, Pressed
+Interaction 29, Slider Interaction 2,071, Focus Navigation 30, Widget Surface
+Focus 20, and Declarative Renderer 4,494; the remaining native suites also
+pass. Managed feature-negotiation regressions assert the highest feature
+version required by the complete tree—such as Grid v8—rather than incorrectly
+pinning an inline-PNG tree to its older v6 minimum. Display-sensitive evidence
+also includes 108,545 placement/render-metric/surface-geometry checks and
+deterministic tiny/portrait/negative-coordinate/wide/4K and 72–480-DPI math
+plus 150% font-size/letter-spacing adaptation. The platform
 diagnostics suite passes 8/8 and the catalog suite passes 21/21. The packaged
 hidden startup smoke remained resident for its 1.2-second observation. Physical
 mixed-monitor migration/hot-plug screenshots and the broader 150% visual matrix
@@ -787,14 +802,14 @@ and [troubleshooting](troubleshooting.md).
    Spotify authorization is a separate authenticated evidence gate.
 2. Complete the YT Music clean Community-addon install/consent/lifecycle/crash/
    update/rollback/uninstall proof without a trusted fallback.
-3. Build the next public component milestone after the completed Toast and
-   protocol-v7 ActionSurface/MediaTile/AppTile slice. `SettingsRow`, bounded
-   nested `ActionSheet`, single-select `Picker`, controller `Scrubber`, and the
-   rich-tile APIs are public; Settings, Spotify, and Games & Apps provide first
-   production uses. Follow with per-edge borders, responsive grid, semantic
-   monospace, and bounded shell transitions. None of those follow-up contracts
-   are claimed as implemented until their focused and complete Release evidence
-   is recorded.
+3. Complete hands-on packaged visual/accessibility/controller evidence for the
+   public component milestone. The full Release gate is green. `SettingsRow`,
+   bounded nested `ActionSheet`, Picker,
+   Scrubber, Toast, rich tiles, protocol-v8 ResponsiveGrid, per-edge borders,
+   and CodeText are implemented; Settings, Spotify, and Games & Apps provide
+   production uses. After that gate, design advanced/virtualized collections,
+   optional packaged-font brokering, and bounded shell transitions without
+   importing browser layout or arbitrary asset loading.
 4. Extend Games & Apps with bounded icons, AppsFolder/launcher sources,
    running-program capture, and a host-owned file picker while preserving
    opaque exact launch identities.

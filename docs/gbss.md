@@ -46,14 +46,32 @@ The canonical runtime list is `GbssPropertyCatalog.AllowedProperties`. It curren
   `flex-basis`, and row-only `flex-wrap` (`nowrap` or `wrap`).
 - Typography: `font-family`, `font-size`, `font-weight`, `letter-spacing`,
   `line-height`, `max-lines`, text alignment/overflow/transform, and `color`.
-- Surfaces: `background`, border/outline color and width, `corner-radius`,
-  `shape`, and opacity.
+- Surfaces: `background`, uniform `border-color`/`border-width`, independent
+  `border-top|right|bottom|left-color` and
+  `border-top|right|bottom|left-width`, outline color/width,
+  `corner-radius`, `shape`, and opacity.
 - Media: `aspect-ratio`, `object-fit`, `object-position`, `image-tint`, and
   `scrim-color`.
 - Effects: `scale`, `background-blur`, shadow color/blur/offset,
   `transition-duration`, and `transition-easing`.
 
 Values are typed before reaching a renderer. Dimensions, spacing, scale, opacity, blur, border widths, and transition durations are bounded. Out-of-range finite values are clamped with a source-located warning; malformed values are errors.
+
+Per-edge borders are additive overrides, not a second box model. An omitted
+edge inherits the computed uniform border color/width; an authored edge replaces
+only that side. Widths are bounded to 0–16 logical DIPs and colors use the same
+safe color grammar as the uniform border. The native renderer resolves and
+paints all four sides independently, including transparent/zero-width sides,
+without changing focus geometry or rounded clipping. Themes can therefore use
+one-sided dividers without nesting extra surfaces.
+
+`font-family` is a bounded family-name field, not browser font loading. The
+current native renderer passes one resolved family name to DirectWrite; although
+the parser accepts comma-separated names for compatibility, they do not form a
+native fallback stack today. The semantic `.gbar-code-text` default therefore
+uses the single Windows-baseline `Consolas` family. `UI.CodeText(...)` adds that
+class to bounded nonfocusable diagnostics/command text. Package paths, URLs,
+generic browser keywords, and arbitrary font bytes remain unsupported.
 
 `transition-duration` and `transition-easing` participate in parsing, cascade,
 computed styles, reduced-motion policy, and native rendering. When a stable

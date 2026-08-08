@@ -195,6 +195,14 @@ free for widget actions instead of private pagination. Opening the picker
 focuses the current selection. The selected theme persists both ID and
 canonical version.
 
+The Settings root uses the public protocol-v8 `UI.ResponsiveGrid` contract for
+its bounded category actions (250-DIP minimum columns, at most two columns)
+inside the existing vertical Scroll. Compact widths collapse to one row-major
+column without changing category IDs or focus order. Diagnostics uses public
+`UI.CodeText` for schema/revision and bounded worker-failure lines; these remain
+nonfocusable and receive the default semantic monospace class instead of a
+Settings-only font/layout escape hatch.
+
 Controller behavior follows the platform model:
 
 - D-pad and left stick move focus.

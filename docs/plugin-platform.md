@@ -212,19 +212,19 @@ Initial primitives:
 
 Every element has a stable semantic ID, role, label, state, style classes, and optional explicit directional neighbors. The host rejects duplicate IDs, impossible focus graphs, excessive depth, or oversized trees.
 
-The implemented Phase 0 protocol currently renders Stack, Row, Scroll, Text,
-Button, Progress, Slider, Spacer, Image, Icon, LoadingIndicator, and protocol-v7
-ActionSurface. ActionSurface is the single focus, pointer, pressed, and action
+The implemented Phase 0 protocol currently renders Stack, Row, protocol-v8
+responsive Grid, Scroll, Text, Button, Progress, Slider, Spacer, Image, Icon,
+LoadingIndicator, and protocol-v7 ActionSurface. ActionSurface is the single focus, pointer, pressed, and action
 target for a clipped bounded presentational subtree; invalid nested actions,
 focus, scopes, scrolling, or oversized/deep content fail closed. The public SDK composes those
 nodes into controller-safe ToggleButton, Stepper, IconButton, Card,
 SectionHeader, StatusBadge, Divider, Alert, EmptyState, SegmentedTabs, Switch,
 ScopedDialog, SettingsRow, ActionSheet, Picker, Scrubber, MediaTile, AppTile,
-and lifecycle-owned Toast helpers. These helpers publish stable focus behavior,
+lifecycle-owned Toast, and semantic CodeText helpers. These helpers publish stable focus behavior,
 accessibility labels, selected/disabled semantics, nested B handling, and
-documented `gbar-*` theme hooks; they are not privileged renderer nodes. Grid,
-Separator, List, Chart, Toolbar, and richer primitives in the target list above
-remain future contract work.
+documented `gbar-*` theme hooks; only Grid requires the protocol-v8 native
+layout contract. Separator, List, Chart, Toolbar, virtualized grids, and richer
+primitives in the target list above remain future contract work.
 
 The SDK should offer idiomatic builders so developers do not manually serialize protocol messages:
 

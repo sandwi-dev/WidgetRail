@@ -88,7 +88,7 @@ static async Task ControllerScrollSurface()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     var root = Snapshot(widget);
-    Assert.Equal(ProtocolConstants.SurfaceHintsVersion, root.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ResponsiveGridVersion, root.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
     Assert.Equal(880d, root.Surface?.PreferredWidth);
     Assert.Equal(520d, root.Surface?.PreferredHeight);
@@ -96,6 +96,12 @@ static async Task ControllerScrollSurface()
         Nodes(root.Root).Single(node => node.Id == "settings.categories").Kind);
     Assert.Equal(ScrollAxis.Vertical,
         Nodes(root.Root).Single(node => node.Id == "settings.categories").ScrollAxis);
+    var categoryGrid = Nodes(root.Root).Single(node => node.Id == "settings.category-grid");
+    Assert.Equal(ViewNodeKind.Grid, categoryGrid.Kind);
+    Assert.Equal(250d, categoryGrid.GridMinimumColumnWidth);
+    Assert.Equal(2, categoryGrid.GridMaximumColumns);
+    Assert.True(Buttons(categoryGrid).All(button => button.Focus is null),
+        "Responsive category navigation must use final host geometry rather than static edges.");
 
     await Action(widget, "open.diagnostics");
     var diagnostics = Snapshot(widget);
@@ -103,6 +109,9 @@ static async Task ControllerScrollSurface()
     Assert.Equal(ViewNodeKind.Scroll, page.Kind);
     Assert.Equal(ScrollAxis.Vertical, page.ScrollAxis);
     Assert.Equal("diagnostics.page", page.InputScopeId);
+    Assert.True(Nodes(diagnostics.Root).Single(node => node.Id == "diagnostics.schema")
+            .StyleClasses.Contains("gbar-code-text", StringComparer.Ordinal),
+        "Diagnostics schema should use semantic code text styling.");
     Assert.Valid(diagnostics);
 }
 

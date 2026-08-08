@@ -475,6 +475,23 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.inputScopeId = OptionalString(source, L"inputScopeId");
     node.scrollAxis = OptionalString(source, L"scrollAxis");
     node.actionSurfaceOrientation = OptionalString(source, L"actionSurfaceOrientation");
+    if (source.HasKey(L"gridMinimumColumnWidth")) {
+        if (source.GetNamedValue(L"gridMinimumColumnWidth").ValueType() != JsonValueType::Number)
+            throw winrt::hresult_invalid_argument();
+        const auto value = source.GetNamedNumber(L"gridMinimumColumnWidth");
+        if (!std::isfinite(value) || value < 44.0 || value > 1600.0)
+            throw winrt::hresult_invalid_argument();
+        node.gridMinimumColumnWidth = value;
+    }
+    if (source.HasKey(L"gridMaximumColumns")) {
+        if (source.GetNamedValue(L"gridMaximumColumns").ValueType() != JsonValueType::Number)
+            throw winrt::hresult_invalid_argument();
+        const auto value = source.GetNamedNumber(L"gridMaximumColumns");
+        if (!std::isfinite(value) || value < 1.0 || value > 32.0 ||
+            std::floor(value) != value)
+            throw winrt::hresult_invalid_argument();
+        node.gridMaximumColumns = static_cast<std::size_t>(value);
+    }
     if (source.HasKey(L"styleClasses")) {
         const auto classes = source.GetNamedArray(L"styleClasses");
         node.styleClasses.reserve(classes.Size());

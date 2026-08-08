@@ -17,6 +17,7 @@ public enum ViewNodeKind
     Icon,
     LoadingIndicator,
     ActionSurface,
+    Grid,
 }
 
 /// <summary>
@@ -196,12 +197,23 @@ public sealed record ViewNode
     /// host/theme concern.
     /// </summary>
     public ActionSurfaceOrientation? ActionSurfaceOrientation { get; init; }
+    /// <summary>
+    /// Smallest desired logical-DIP column width for a responsive Grid. The
+    /// host computes a stable column count from the grid's actual content
+    /// width; it never treats this value as a physical-pixel measurement.
+    /// </summary>
+    public double? GridMinimumColumnWidth { get; init; }
+    /// <summary>
+    /// Optional author cap on responsive columns. Omitting it lets the host use
+    /// any safe count allowed by the protocol and available width.
+    /// </summary>
+    public int? GridMaximumColumns { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
     public bool? IsBusy { get; init; }
     public FocusNeighbors? Focus { get; init; }
     /// <summary>
-    /// Starts a nested controller input surface. Only stack, row, and scroll containers
+    /// Starts a nested controller input surface. Only stack, row, scroll, and grid containers
     /// may declare one; the root is always the default surface.
     /// </summary>
     public string? InputScopeId { get; init; }

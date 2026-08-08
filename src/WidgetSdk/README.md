@@ -28,6 +28,22 @@ the native Slider contract and the action receives an absolute requested
 position in milliseconds. Elapsed and duration labels are formatted by the SDK
 unless localized labels are supplied.
 
+Use `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` for
+a bounded set of peer cards/categories that should reflow across compact and
+wide logical viewports. It is protocol v8: the host derives row-major columns
+from final DIP width, authored gap, a 44–1600 DIP minimum column width, and an
+optional 1–32 column cap. The Grid is not focusable; children keep their stable
+IDs and normal focus graph. Put unbounded collections in a host-owned Scroll.
+Settings uses this same public helper for its root category surface.
+
+Use `UI.CodeText(text, id, accessibilityLabel?)` for bounded diagnostics or
+commands. It emits one nonfocusable Text node with `.gbar-code-text`, preserves
+whitespace, and caps content/accessibility text at 4,096 characters. It does
+not create selection, a copy command, scope, shortcut, or background work;
+provide a separate explicit Button when copying matters. The built-in theme
+uses single-family `Consolas` with up to eight wrapped lines. Native GBSS does
+not yet implement CSS font fallback stacks or packaged font loading.
+
 For indeterminate work that lasts long enough to be visible, use
 `UI.LoadingIndicator(id, accessibilityLabel, size)`. It is a protocol-v5,
 host-rendered primitive with bounded Compact, Standard, and Large sizes. It

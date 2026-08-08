@@ -19,6 +19,11 @@
   min-height: 44px;
 }
 
+.category-grid {
+  gap: 8px 10px;
+  min-width: 0;
+}
+
 .settings-title,
 .page-heading {
   color: var(--text);
@@ -39,7 +44,12 @@
 }
 
 .settings-status.is-error,
-.diagnostic-error { color: var(--danger, #c98181); }
+.diagnostic-error {
+  color: var(--danger, #c98181);
+  border-left-width: 2px;
+  border-left-color: var(--danger, #c98181);
+  padding: 0 0 0 8px;
+}
 .settings-status.is-busy { color: var(--warning); }
 
 .category-card,

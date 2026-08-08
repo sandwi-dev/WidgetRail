@@ -124,6 +124,7 @@ sans-serif. Never package or load a font through GBSS.
 | Metadata | 14 / 20 | 400 | .1 | 2 lines |
 | Eyebrow | 12 / 16 | 700 | .8 | 1 line, uppercase |
 | Prompt label | 12 / 16 | 600 | .4 | 1 line |
+| Code/diagnostic | 13 / 18 | 400 | 0 | 8 wrapped lines |
 
 Ellipsize only after the maximum line count. Never marquee by default.
 Auto-scroll is an accessibility setting with slow/medium/fast speeds, not a
@@ -140,10 +141,16 @@ immutable, licensed, bounded host asset contract exists.
 `Scrubber`, non-focus-stealing `Toast`, and protocol-v7
 `ActionSurface`/`MediaTile`/`AppTile` now have shared public contracts. Games &
 Apps uses the public AppTile and Toast APIs rather than private geometry. Rows
-can wrap responsively without widget-specific layout hacks. Remaining shared
-gaps are per-edge borders, responsive grid, semantic monospace, and broader
-shell/subtree motion. First-party widgets must not invent private substitutes
-unavailable to Community authors.
+can wrap responsively without widget-specific layout hacks. Protocol-v8
+`ResponsiveGrid` provides bounded row-major reflow, GBSS supports independent
+per-edge border colors/widths, and `UI.CodeText` supplies controller-neutral
+monospace diagnostics; Settings uses Grid for root categories and CodeText for
+schema/worker failures. The default CodeText family is the single Windows-
+baseline `Consolas` name because the native field does not implement CSS font
+fallback stacks. Remaining shared gaps are advanced/virtualized collection
+semantics, optional packaged-font brokering, and broader shell/subtree motion.
+First-party widgets must not invent private substitutes unavailable to
+Community authors.
 
 ## Dashboard geometry
 

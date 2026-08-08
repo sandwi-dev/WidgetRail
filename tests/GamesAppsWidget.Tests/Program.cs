@@ -189,7 +189,7 @@ static async Task ResolvedIconRenders()
     Assert.True(artwork.ImageSource!.StartsWith("data:image/png;base64,", StringComparison.Ordinal));
     Assert.Equal(ImageFit.Contain, artwork.ImageFit);
     Assert.True(artwork.Glyph is null);
-    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ActionSurfaceVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
 }

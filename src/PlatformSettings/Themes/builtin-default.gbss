@@ -743,3 +743,29 @@ slider:focused {
   max-lines: 1;
   text-overflow: ellipsis;
 }
+
+/* Diagnostics and commands remain presentational and controller-neutral.
+   Consolas is the single stable monospace family in the supported Windows
+   baseline; the native font field does not currently implement CSS stacks. */
+.gbar-code-text {
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  border-color: var(--border);
+  border-width: 1px;
+  corner-radius: 8px;
+  font-family: Consolas;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  max-lines: 8;
+  text-overflow: clip;
+  text-align: start;
+}
+
+.gbar-responsive-grid {
+  min-width: 0;
+  min-height: 0;
+  gap: 8px 10px;
+}

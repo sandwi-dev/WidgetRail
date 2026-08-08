@@ -102,6 +102,14 @@ int main() {
                                 {"id":"album.artist","kind":"text","text":"Artist"}
                             ]}
                         ]
+                    },
+                    {
+                        "id":"library-grid","kind":"grid",
+                        "gridMinimumColumnWidth":180,"gridMaximumColumns":3,
+                        "children":[
+                            {"id":"grid-one","kind":"button","text":"One","actionId":"one"},
+                            {"id":"grid-two","kind":"button","text":"Two","actionId":"two"}
+                        ]
                     }
                 ]
             }
@@ -115,7 +123,7 @@ int main() {
         }
     })json", error);
     assert(styledSnapshot && error.empty());
-    assert(styledSnapshot->root.children.size() == 3);
+    assert(styledSnapshot->root.children.size() == 4);
     const auto& styledButton = styledSnapshot->root.children.front();
     (void)styledButton;
     assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
@@ -138,6 +146,28 @@ int main() {
     assert(actionSurface.children[1].kind == L"stack");
     assert(actionSurface.children[1].children.size() == 2);
     assert(actionSurface.children[1].children[0].text == L"Album title");
+    const auto& grid = styledSnapshot->root.children[3];
+    (void)grid;
+    assert(grid.kind == L"grid");
+    assert(grid.gridMinimumColumnWidth == 180.0);
+    assert(grid.gridMaximumColumns == 3U);
+    assert(grid.children.size() == 2);
+    assert(grid.children[1].id == L"grid-two");
+
+    error.clear();
+    const auto invalidGrid = gba::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "sequence": 1,
+            "widgetInstanceId": "grid.invalid",
+            "activeInputScopeId": "grid",
+            "root": {
+                "id": "grid", "kind": "grid",
+                "gridMinimumColumnWidth": "wide",
+                "children": []
+            }
+        }
+    })json", error);
+    assert(!invalidGrid && !error.empty());
 
     error.clear();
     const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(

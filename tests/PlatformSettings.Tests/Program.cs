@@ -19,6 +19,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme count is bounded", ThemeCountIsBounded),
     ("Theme layers apply platform widget and user precedence", ThemeLayerPrecedence),
     ("Invalid reload retains the last valid theme and revision", InvalidReloadRetainsLastGood),
+    ("Built-in theme gives CodeText bounded Windows monospace wrapping", CodeTextThemeTests.Run),
 };
 
 var failures = new List<string>();

@@ -414,10 +414,12 @@ Scroll for overflow after host clamping.
 | --- | --- | --- |
 | `UI.Stack(id, children)` | vertical container | Can start an input scope and own shortcuts. |
 | `UI.Row(id, children)` | horizontal container | Can start an input scope and own shortcuts. |
+| `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` | responsive row-major Grid | Protocol 8; host derives bounded columns from final logical width. |
 | `UI.VerticalScroll(id, children)` | vertical Scroll | Protocol 2; host-owned focus-follow offset. |
 | `UI.HorizontalScroll(id, children)` | horizontal Scroll | Protocol 2; host-owned focus-follow offset. |
 | `UI.Scroll(id, axis, children)` | explicit Scroll | Axis cannot be changed by a theme. |
 | `UI.Text(text, id, accessibilityLabel?)` | text | Non-interactive. |
+| `UI.CodeText(text, id, accessibilityLabel?)` | semantic monospace text | Nonfocusable, whitespace-preserving, and bounded to 4,096 characters. |
 | `UI.Button(label, action, id)` | focusable button | `A` invokes its action. |
 | `UI.ToggleButton(label, isOn, action, id)` | composed button | Emits On/Off text and selected semantics. |
 | `UI.Stepper(...)` | composed row | Stable `.label`, `.decrement`, `.value`, `.increment` children. |
@@ -456,7 +458,10 @@ Protocol limits are 2,048 nodes, depth 32, strings up to 4,096 characters, and
 three dashboard quick actions. An ActionSurface additionally permits 1–8 direct
 children, at most 32 descendants, and four relative content levels; a snapshot
 that contains one automatically selects protocol v7 and fails closed on hosts
-that do not understand it.
+that do not understand it. A snapshot containing ResponsiveGrid selects
+protocol v8; its minimum column width is 44–1600 DIPs and optional maximum is
+1–32 columns. Grid itself is not focusable and preserves child IDs/order across
+reflow.
 
 ## Interaction state and reconciliation
 

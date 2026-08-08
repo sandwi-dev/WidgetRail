@@ -48,7 +48,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
-    ("Protocol-v7 action surfaces and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
+    ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
 };
@@ -1214,6 +1214,10 @@ static Task ActionSurfaceRenderRole()
                 "library.app",
                 subtitle: "Application",
                 artwork: TileArtwork.FromGlyph(WidgetGlyph.Play, "Application icon")),
+            UI.ResponsiveGrid(
+                "library.grid", 180, 2,
+                UI.Button("One", "open.one", "library.one"),
+                UI.Button("Two", "open.two", "library.two")),
             UI.LoadingIndicator("library.loading", "Loading applications")),
         InitialFocusId: "library.app")
         .CreateSnapshot("bridge.action-surface", 1);
@@ -1222,7 +1226,9 @@ static Task ActionSurfaceRenderRole()
         "ActionSurface role was omitted from bridge styles.");
     Assert.True(styles.ContainsKey("library.loading"),
         "LoadingIndicator role was omitted from bridge styles.");
-    Assert.Equal(ProtocolConstants.ActionSurfaceVersion, snapshot.ProtocolVersion);
+    Assert.True(styles.ContainsKey("library.grid"),
+        "Grid role was omitted from bridge styles.");
+    Assert.Equal(ProtocolConstants.ResponsiveGridVersion, snapshot.ProtocolVersion);
     return Task.CompletedTask;
 }
 

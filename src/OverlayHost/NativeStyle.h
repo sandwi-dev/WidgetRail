@@ -26,6 +26,23 @@ struct NativeEdges final {
     friend bool operator==(const NativeEdges&, const NativeEdges&) = default;
 };
 
+struct NativeBorderEdgeStyle final {
+    float widthPx{};
+    std::optional<NativeColor> color;
+    friend bool operator==(const NativeBorderEdgeStyle&, const NativeBorderEdgeStyle&) = default;
+};
+
+/// Resolved physical-edge border values. Each edge falls back to the uniform
+/// border-width/border-color contract unless its corresponding edge-specific
+/// GBSS property is present.
+struct NativeBorderStyle final {
+    NativeBorderEdgeStyle top;
+    NativeBorderEdgeStyle right;
+    NativeBorderEdgeStyle bottom;
+    NativeBorderEdgeStyle left;
+    friend bool operator==(const NativeBorderStyle&, const NativeBorderStyle&) = default;
+};
+
 enum class NativeDirection { Unspecified, Row, Column };
 enum class NativeFlexWrap { NoWrap, Wrap };
 enum class NativeAlign { Unspecified, Start, Center, End, Stretch };
@@ -123,6 +140,7 @@ public:
     [[nodiscard]] float outlineWidthPx() const noexcept;
     [[nodiscard]] float outlineOffsetPx() const noexcept;
     [[nodiscard]] float borderWidthPx() const noexcept;
+    [[nodiscard]] const NativeBorderStyle& borderEdges() const noexcept;
     [[nodiscard]] float backgroundBlurPx() const noexcept;
     [[nodiscard]] float shadowBlurPx() const noexcept;
     [[nodiscard]] float shadowOffsetXPx() const noexcept;

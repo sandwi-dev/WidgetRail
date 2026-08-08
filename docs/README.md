@@ -26,13 +26,15 @@ guarantees that are available now.
   and the public controller-safe Card, IconButton, StatusBadge, Alert,
   EmptyState, SegmentedTabs, Switch, ScopedDialog, SettingsRow, ActionSheet,
   single-select Picker, Scrubber, non-focus-stealing Toast, and protocol-v7
-  ActionSurface/MediaTile/AppTile compositions. Settings uses Picker, Spotify
-  uses Scrubber, Games & Apps uses AppTile and lifecycle-safe Toast feedback,
-  and responsive Row wrapping is implemented. Packaged visual/accessibility
+  ActionSurface/MediaTile/AppTile compositions, plus protocol-v8 ResponsiveGrid
+  and semantic CodeText. Settings uses Picker, Grid, and CodeText; Spotify uses
+  Scrubber; Games & Apps uses AppTile and lifecycle-safe Toast feedback.
+  Responsive Row wrapping and per-edge GBSS borders are implemented. The full
+  Release gate is green; hands-on packaged visual/controller/accessibility
   evidence remains open.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
-  properties, imports, diagnostics, and bounded native opacity/scale
-  transitions.
+  properties, independent per-edge borders, semantic CodeText typography,
+  imports, diagnostics, and bounded native opacity/scale transitions.
 - [Settings and global themes](settings-and-themes.md) — the controller Settings
   widget, persisted appearance, live bridge/native cascade, host-owned
   accessibility overrides, and authoring requirements.

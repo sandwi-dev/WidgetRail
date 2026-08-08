@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 namespace {
 
@@ -86,6 +87,45 @@ int main() {
     result.focusRects.erase(L"modal-button");
     Check(!ResolveVisibleFocusTarget(L"play", L"modal", result),
           "fully clipped active scope reports no actionable focus");
+
+    gba::RenderResult twoColumnGrid;
+    Add(twoColumnGrid, L"grid-0", {0, 0, 100, 44});
+    Add(twoColumnGrid, L"grid-1", {110, 0, 100, 44});
+    Add(twoColumnGrid, L"grid-2", {0, 52, 100, 44});
+    Add(twoColumnGrid, L"grid-3", {110, 52, 100, 44});
+    Add(twoColumnGrid, L"grid-4", {0, 104, 100, 44});
+    Check(FindGeometricFocusTarget(
+              L"grid-0", NavigationDirection::Right, twoColumnGrid) == L"grid-1",
+          "responsive two-column grid navigates across its realized row");
+    Check(FindGeometricFocusTarget(
+              L"grid-0", NavigationDirection::Down, twoColumnGrid) == L"grid-2",
+          "responsive two-column grid navigates down its realized column");
+    Check(FindGeometricFocusTarget(
+              L"grid-3", NavigationDirection::Down, twoColumnGrid) == L"grid-4",
+          "odd final grid row remains reachable from the preceding column");
+    Check(!FindGeometricFocusTarget(
+              L"grid-4", NavigationDirection::Down, twoColumnGrid),
+          "last responsive grid control exposes the root Down boundary to the tray");
+
+    gba::RenderResult oneColumnGrid;
+    for (int index = 0; index < 5; ++index)
+        Add(oneColumnGrid, L"grid-" + std::to_wstring(index),
+            {0, static_cast<float>(index * 52), 210, 44});
+    Check(FindGeometricFocusTarget(
+              L"grid-1", NavigationDirection::Down, oneColumnGrid) == L"grid-2",
+          "narrow one-column reflow preserves document-order navigation");
+    Check(ResolveVisibleFocusTarget(L"grid-3", L"root", oneColumnGrid) == L"grid-3",
+          "responsive resize retains the same stable focus ID");
+
+    gba::RenderResult scaledGrid;
+    Add(scaledGrid, L"grid-0", {0, 0, 150, 66});
+    Add(scaledGrid, L"grid-1", {165, 0, 150, 66});
+    Add(scaledGrid, L"grid-2", {0, 78, 150, 66});
+    Check(FindGeometricFocusTarget(
+              L"grid-0", NavigationDirection::Right, scaledGrid) == L"grid-1",
+          "DPI-scaled responsive geometry preserves directional navigation");
+    Check(ResolveVisibleFocusTarget(L"grid-2", L"root", scaledGrid) == L"grid-2",
+          "DPI-scaled reflow retains the same stable focus ID");
 
     gba::RenderResult scrolled;
     Add(scrolled, L"session-0", {0, 0, 200, 44});

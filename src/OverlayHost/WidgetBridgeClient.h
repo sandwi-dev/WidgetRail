@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -122,6 +123,8 @@ struct WidgetNode final {
     std::wstring inputScopeId;
     std::wstring scrollAxis;
     std::wstring actionSurfaceOrientation;
+    std::optional<double> gridMinimumColumnWidth;
+    std::optional<std::size_t> gridMaximumColumns;
     std::vector<std::wstring> styleClasses;
     std::vector<WidgetShortcut> shortcuts;
     std::wstring focusUp;
