@@ -1,8 +1,29 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Diagnostics;
 using System.Text;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WindowsCommunityProvider;
+
+if (args is ["--private-state-write", var stateRoot, var publisher, var package])
+{
+    try
+    {
+        var childStore = new WindowsPrivateStateStore(stateRoot);
+        var result = await childStore.WriteAsync(
+            new BrokerWidgetIdentity(package, publisher, "child"),
+            new WritePrivateStateRequest(CanonicalBase64("{\"owner\":\"child\"}"), 0),
+            default);
+        Console.WriteLine(result.Revision);
+        Environment.ExitCode = 0;
+    }
+    catch (BrokerException exception) when (exception.Code == "state_conflict")
+    {
+        Console.Error.WriteLine(exception.Code);
+        Environment.ExitCode = 2;
+    }
+    return;
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -12,6 +33,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Loopback provider atomically invalidates a rejected Bearer on the lifecycle lease", UnauthorizedBearerInvalidation),
     ("Loopback provider normalizes non-JSON errors and rejects non-JSON success", JsonResponsePolicy),
     ("Loopback provider caps streaming responses and request duration", ResponseAndTimeoutBounds),
+    ("Private state isolates authorities persists tombstones and enforces CAS", PrivateStatePersistenceAndCas),
+    ("Private state serializes CAS across host processes", PrivateStateCrossProcessCas),
+    ("Private state rejects corruption reparse paths and quota violations", PrivateStateFailsClosed),
+    ("Private state write burst and cancellation are bounded", PrivateStateRateAndCancellation),
 };
 
 var failures = 0;
@@ -176,6 +201,170 @@ static async Task ResponseAndTimeoutBounds()
     }
 }
 
+static async Task PrivateStatePersistenceAndCas()
+{
+    using var temp = new TemporaryDirectory("private-state-persistence");
+    var clock = new ManualTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(10_000));
+    var first = new WindowsPrivateStateStore(temp.Path, clock);
+    var second = new WindowsPrivateStateStore(temp.Path, clock);
+    var identity = Identity();
+    var updated = identity with { InstanceId = "updated-version" };
+
+    var absent = await first.ReadAsync(identity, default);
+    Assert.True(!absent.Exists);
+    Assert.Equal(0L, absent.Revision);
+    var firstWrite = await first.WriteAsync(identity,
+        new WritePrivateStateRequest(CanonicalBase64("{\"a\":1,\"z\":2}"), 0), default);
+    Assert.Equal(1L, firstWrite.Revision);
+    var persisted = await second.ReadAsync(updated, default);
+    Assert.True(persisted.Exists);
+    Assert.Equal("{\"a\":1,\"z\":2}", Decode(persisted.CanonicalJsonBase64!));
+    Assert.Equal(1L, persisted.Revision);
+
+    Assert.Throws<BrokerException>(() => second.WriteAsync(identity,
+        new WritePrivateStateRequest(CanonicalBase64("{}"), 0), default)
+        .GetAwaiter().GetResult(), "state_conflict");
+    Assert.Equal(2L, (await second.WriteAsync(updated,
+        new WritePrivateStateRequest(CanonicalBase64("{\"next\":true}"), 1), default)).Revision);
+    Assert.Equal(3L, (await first.ClearAsync(identity,
+        new ClearPrivateStateRequest(2), default)).Revision);
+
+    var restarted = new WindowsPrivateStateStore(temp.Path, clock);
+    var tombstone = await restarted.ReadAsync(updated, default);
+    Assert.True(!tombstone.Exists);
+    Assert.Equal(3L, tombstone.Revision);
+    Assert.Equal(0L, (await restarted.ReadAsync(
+        identity with { PublisherId = "dev.other" }, default)).Revision);
+    Assert.Equal(0L, (await restarted.ReadAsync(
+        identity with { PackageId = "dev.other.package" }, default)).Revision);
+
+    var names = Directory.GetFiles(temp.Path).Select(Path.GetFileName).ToArray();
+    Assert.True(names.All(name => name is not null &&
+        !name.Contains(identity.PublisherId, StringComparison.Ordinal) &&
+        !name.Contains(identity.PackageId, StringComparison.Ordinal)));
+}
+
+static async Task PrivateStateCrossProcessCas()
+{
+    using var temp = new TemporaryDirectory("private-state-process-cas");
+    var executable = Environment.ProcessPath ??
+        throw new InvalidOperationException("Test process path was unavailable.");
+    Process Start()
+    {
+        var start = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        start.ArgumentList.Add("--private-state-write");
+        start.ArgumentList.Add(temp.Path);
+        start.ArgumentList.Add("dev.publisher");
+        start.ArgumentList.Add("dev.test.package");
+        return Process.Start(start) ?? throw new InvalidOperationException("Child process failed to start.");
+    }
+
+    using var first = Start();
+    using var second = Start();
+    await Task.WhenAll(first.WaitForExitAsync(), second.WaitForExitAsync())
+        .WaitAsync(TimeSpan.FromSeconds(10));
+    var exitCodes = new[] { first.ExitCode, second.ExitCode }.Order().ToArray();
+    Assert.Equal(0, exitCodes[0]);
+    Assert.Equal(2, exitCodes[1]);
+    var store = new WindowsPrivateStateStore(temp.Path);
+    Assert.Equal(1L, (await store.ReadAsync(Identity(), default)).Revision);
+}
+
+static async Task PrivateStateFailsClosed()
+{
+    using var quota = new TemporaryDirectory("private-state-quota");
+    var store = new WindowsPrivateStateStore(quota.Path);
+    var maximum = "{\"x\":\"" +
+        new string('x', CommunityPlatformLimits.MaximumPrivateStateUtf8Bytes - 8) + "\"}";
+    Assert.Equal(CommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
+        Encoding.UTF8.GetByteCount(maximum));
+    await store.WriteAsync(Identity(),
+        new WritePrivateStateRequest(CanonicalBase64(maximum), 0), default);
+    var tooLarge = "{\"x\":\"" +
+        new string('x', CommunityPlatformLimits.MaximumPrivateStateUtf8Bytes - 7) + "\"}";
+    Assert.Throws<BrokerException>(() => store.WriteAsync(Identity(),
+        new WritePrivateStateRequest(Convert.ToBase64String(Encoding.UTF8.GetBytes(tooLarge)), 1),
+        default).GetAwaiter().GetResult(), "invalid_payload");
+    Assert.Throws<BrokerException>(() => store.WriteAsync(Identity(),
+        new WritePrivateStateRequest(
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(" {\"a\":1}")), 1), default)
+        .GetAwaiter().GetResult(), "invalid_payload");
+
+    var dataPath = Directory.GetFiles(quota.Path, "*.json").Single();
+    await File.WriteAllTextAsync(dataPath, "{\"revision\":1,\"revision\":2}");
+    Assert.Throws<BrokerException>(() => new WindowsPrivateStateStore(quota.Path)
+        .ReadAsync(Identity(), default).GetAwaiter().GetResult(), "state_corrupt");
+
+    if (OperatingSystem.IsWindows())
+    {
+        using var unsafeRoot = new TemporaryDirectory("private-state-reparse");
+        var target = Path.Combine(unsafeRoot.Path, "target");
+        var link = Path.Combine(unsafeRoot.Path, "link");
+        Directory.CreateDirectory(target);
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+            Assert.Throws<BrokerException>(() => new WindowsPrivateStateStore(link)
+                .ReadAsync(Identity(), default).GetAwaiter().GetResult(), "unsafe_state_store");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Developer Mode may be disabled; production code is still covered
+            // by the existing-reparse check when the OS permits test creation.
+        }
+    }
+}
+
+static async Task PrivateStateRateAndCancellation()
+{
+    using var temp = new TemporaryDirectory("private-state-rate");
+    var clock = new ManualTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(20_000));
+    var store = new WindowsPrivateStateStore(temp.Path, clock);
+    for (var index = 0; index < WindowsPrivateStateStore.WriteBurstCapacity; index++)
+        await store.WriteAsync(Identity(),
+            new WritePrivateStateRequest(CanonicalBase64($"{{\"value\":{index}}}"), null),
+            default);
+    Assert.Throws<BrokerException>(() => store.WriteAsync(Identity(),
+        new WritePrivateStateRequest(CanonicalBase64("{}"), null), default)
+        .GetAwaiter().GetResult(), "state_rate_limited");
+    clock.Advance(TimeSpan.FromSeconds(1));
+    Assert.Equal(WindowsPrivateStateStore.WriteBurstCapacity + 1L,
+        (await store.WriteAsync(Identity(),
+            new WritePrivateStateRequest(CanonicalBase64("{}"), null), default)).Revision);
+
+    using var canceledRoot = new TemporaryDirectory("private-state-cancel");
+    var canceledStore = new WindowsPrivateStateStore(canceledRoot.Path);
+    using var canceled = new CancellationTokenSource();
+    canceled.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() => canceledStore.WriteAsync(
+        Identity(), new WritePrivateStateRequest(CanonicalBase64("{}"), 0), canceled.Token), "");
+    Assert.Equal(0L, (await canceledStore.ReadAsync(Identity(), default)).Revision);
+
+    // Hold the durable authority lock from this process and prove a separate
+    // store instance observes cancellation while waiting rather than writing.
+    var lockPath = Directory.GetFiles(canceledRoot.Path, "*.lock").Single();
+    await using (var held = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite,
+                     FileShare.None))
+    {
+        using var wait = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            new WindowsPrivateStateStore(canceledRoot.Path).WriteAsync(
+                Identity(), new WritePrivateStateRequest(CanonicalBase64("{}"), 0), wait.Token), "");
+    }
+    Assert.Equal(0L, (await canceledStore.ReadAsync(Identity(), default)).Revision);
+}
+
+static string CanonicalBase64(string json) =>
+    Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+
+static string Decode(string base64) => Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+
 static BrokerWidgetIdentity Identity() => new("dev.test.package", "dev.publisher", "default");
 
 static LoopbackJsonRequest Request(
@@ -211,6 +400,30 @@ file sealed class FakeSecretStore(
         cancellationToken.ThrowIfCancellationRequested();
         ReadCalls++;
         return Task.FromResult(secret);
+    }
+}
+
+file sealed class ManualTimeProvider(DateTimeOffset initial) : TimeProvider
+{
+    private DateTimeOffset _utcNow = initial;
+    public override DateTimeOffset GetUtcNow() => _utcNow;
+    public void Advance(TimeSpan duration) => _utcNow += duration;
+}
+
+file sealed class TemporaryDirectory : IDisposable
+{
+    public TemporaryDirectory(string name)
+    {
+        Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            "gba-community-provider-tests", name, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path);
+    }
+
+    public string Path { get; }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
     }
 }
 

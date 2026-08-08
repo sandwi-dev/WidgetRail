@@ -13,6 +13,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<MediaSessionSummary> _mediaSessions = [];
     private readonly Dictionary<string, (string Secret, long WrittenAt)> _privateSecrets =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string? JsonBase64, long Revision)> _privateState =
+        new(StringComparer.Ordinal);
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
@@ -349,6 +351,43 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.CompletedTask;
     }
 
+    public Task<PrivateStateSnapshotSummary> ReadPrivateStateAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(_privateState.TryGetValue(StateKey(identity), out var state)
+            ? new PrivateStateSnapshotSummary(
+                state.JsonBase64 is not null, state.JsonBase64, state.Revision)
+            : new PrivateStateSnapshotSummary(false, null, 0));
+    }
+
+    public Task<PrivateStateMutationSummary> WritePrivateStateAsync(
+        BrokerWidgetIdentity identity, WritePrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        MutatePrivateStateAsync(identity, request.ExpectedRevision,
+            request.CanonicalJsonBase64, cancellationToken);
+
+    public Task<PrivateStateMutationSummary> ClearPrivateStateAsync(
+        BrokerWidgetIdentity identity, ClearPrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        MutatePrivateStateAsync(identity, request.ExpectedRevision, null, cancellationToken);
+
+    private Task<PrivateStateMutationSummary> MutatePrivateStateAsync(
+        BrokerWidgetIdentity identity, long? expectedRevision, string? jsonBase64,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = StateKey(identity);
+        var revision = _privateState.TryGetValue(key, out var current)
+            ? current.Revision
+            : 0;
+        if (expectedRevision is { } expected && expected != revision)
+            throw new BrokerException("state_conflict", "Private state changed before this update.");
+        revision++;
+        _privateState[key] = (jsonBase64, revision);
+        return Task.FromResult(new PrivateStateMutationSummary(revision));
+    }
+
     public Task<LoopbackJsonResponse> SendLoopbackJsonAsync(
         BrokerWidgetIdentity identity, int port, bool isPost,
         LoopbackJsonRequest request, CancellationToken cancellationToken)
@@ -386,4 +425,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
 
     private static string SecretKey(BrokerWidgetIdentity identity, string slot) =>
         $"{identity.PublisherId}\0{identity.PackageId}\0{slot}";
+
+    private static string StateKey(BrokerWidgetIdentity identity) =>
+        $"{identity.PublisherId}\0{identity.PackageId}";
 }

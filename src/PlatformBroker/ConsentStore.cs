@@ -80,7 +80,7 @@ public sealed class ConsentStore
     {
         ArgumentNullException.ThrowIfNull(identity);
         identity.Validate();
-        if (!PlatformCapabilities.TryGet(capabilityId, out _))
+        if (!PlatformCapabilities.IsManifestDeclarable(capabilityId))
             throw new BrokerException("unsupported_capability", "Capability is unsupported.");
         if (!Enum.IsDefined(decision))
             throw new BrokerException("invalid_consent", "Consent decision is invalid.");
@@ -116,7 +116,7 @@ public sealed class ConsentStore
         CancellationToken cancellationToken = default)
     {
         identity.Validate();
-        if (!PlatformCapabilities.TryGet(capabilityId, out _)) return null;
+        if (!PlatformCapabilities.IsManifestDeclarable(capabilityId)) return null;
         var document = await LoadAsync(cancellationToken).ConfigureAwait(false);
         return document.Entries.FirstOrDefault(entry =>
             entry.PackageId == identity.PackageId &&
@@ -190,8 +190,9 @@ public sealed class ConsentStore
             if (entry is null)
                 throw new BrokerException("invalid_consent", "Consent entry is invalid.");
             new BrokerWidgetIdentity(entry.PackageId, entry.PublisherId, "consent").Validate();
-            var retired = RetiredCapabilities.Contains(entry.CapabilityId);
-            var supported = PlatformCapabilities.TryGet(entry.CapabilityId, out _);
+            var retired = RetiredCapabilities.Contains(entry.CapabilityId) ||
+                PlatformCapabilities.IsHostGranted(entry.CapabilityId);
+            var supported = PlatformCapabilities.IsManifestDeclarable(entry.CapabilityId);
             if ((!supported && !retired) ||
                 !Enum.IsDefined(entry.Decision) ||
                 !keys.Add(entry.PackageId + "\n" + entry.PublisherId + "\n" + entry.CapabilityId))

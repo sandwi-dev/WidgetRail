@@ -104,8 +104,9 @@ public sealed class BrokerEventSubscription : IAsyncDisposable
 }
 
 /// <summary>
-/// Identity-bound broker session. Every operation rechecks declaration,
-/// durable consent, capability shape, and lifecycle before reaching a backend.
+/// Identity-bound broker session. Every operation rechecks its host-owned
+/// authority set, capability shape, and lifecycle before reaching a backend;
+/// manifest capabilities additionally require durable consent.
 /// </summary>
 public sealed class PlatformCapabilityBroker : IAsyncDisposable
 {
@@ -115,6 +116,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     internal const int MaximumAppLibraryPageSize = 64;
     private readonly BrokerWidgetIdentity _identity;
     private readonly HashSet<string> _declaredCapabilities;
+    private readonly HashSet<string> _hostGrantedCapabilities;
     private readonly ConsentStore _consentStore;
     private readonly IPlatformBrokerBackend _backend;
     private readonly object _gate = new();
@@ -131,7 +133,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private Dictionary<string, string> _appLibraryBackendIdsByPublicId =
         new(StringComparer.Ordinal);
     private long _lastDashboardGestureSequence;
-    private BrokerLifecycleState _lifecycle = BrokerLifecycleState.Background;
+    private BrokerLifecycleState _lifecycle = BrokerLifecycleState.Created;
     private long _eventSequence;
     private bool _disposed;
 
@@ -139,15 +141,22 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         BrokerWidgetIdentity authenticatedIdentity,
         IEnumerable<string> declaredCapabilities,
         ConsentStore consentStore,
-        IPlatformBrokerBackend backend)
+        IPlatformBrokerBackend backend,
+        IEnumerable<string>? hostGrantedCapabilities = null)
     {
         _identity = authenticatedIdentity ?? throw new ArgumentNullException(nameof(authenticatedIdentity));
         _identity.Validate();
         ArgumentNullException.ThrowIfNull(declaredCapabilities);
         _declaredCapabilities = new HashSet<string>(declaredCapabilities, StringComparer.Ordinal);
-        if (_declaredCapabilities.Count == 0 ||
-            _declaredCapabilities.Any(capability => !PlatformCapabilities.TryGet(capability, out _)))
-            throw new BrokerException("invalid_declaration", "Declared capabilities are empty or unsupported.");
+        _hostGrantedCapabilities = new HashSet<string>(
+            hostGrantedCapabilities ?? [], StringComparer.Ordinal);
+        if (_declaredCapabilities.Any(capability =>
+                !PlatformCapabilities.IsManifestDeclarable(capability)) ||
+            _hostGrantedCapabilities.Any(capability =>
+                !PlatformCapabilities.IsHostGranted(capability)) ||
+            _declaredCapabilities.Count + _hostGrantedCapabilities.Count == 0)
+            throw new BrokerException(
+                "invalid_declaration", "Broker capability authorities are empty or unsupported.");
         _consentStore = consentStore ?? throw new ArgumentNullException(nameof(consentStore));
         _backend = backend ?? throw new ArgumentNullException(nameof(backend));
         _backend.EventPublished += OnBackendEvent;
@@ -381,6 +390,12 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 await SavePrivateSecretAsync(request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.PrivateSecretDelete =>
                 await DeletePrivateSecretAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.PrivateStateRead =>
+                await ReadPrivateStateAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.PrivateStateWrite =>
+                await WritePrivateStateAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.PrivateStateClear =>
+                await ClearPrivateStateAsync(request.Payload, requestToken).ConfigureAwait(false),
             _ => throw new BrokerException("unsupported_operation", "Broker operation is unsupported."),
         };
     }
@@ -403,7 +418,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             ThrowIfDisposed();
             if (_revokedCapabilities.Contains(capabilityId))
                 throw new BrokerException("capability_revoked", "Capability permission was revoked.");
-            DemandLifecycle(BrokerCapabilityKind.Read, _lifecycle);
+            DemandLifecycle(capability, BrokerCapabilityKind.Read, _lifecycle);
             var subscription = new BrokerEventSubscription(capabilityId, eventType, _lifecycle);
             _subscriptions.Add(subscription);
             return subscription;
@@ -492,7 +507,16 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             (operation is not null && !capability.Operations.Contains(operation)))
             throw new BrokerException("unsupported_capability", "Capability or operation is unsupported.");
         if (!_declaredCapabilities.Contains(capabilityId))
-            throw new BrokerException("capability_not_declared", "Capability was not declared by the widget.");
+        {
+            if (!_hostGrantedCapabilities.Contains(capabilityId) ||
+                capability.AccessPolicy != BrokerCapabilityAccessPolicy.HostGranted)
+                throw new BrokerException(
+                    "capability_not_declared", "Capability was not authorized for this widget channel.");
+            return capability;
+        }
+        if (capability.AccessPolicy != BrokerCapabilityAccessPolicy.ManifestConsent)
+            throw new BrokerException(
+                "invalid_declaration", "Host-granted services cannot be manifest-declared.");
         var decision = await _consentStore.GetDecisionAsync(
             _identity, capabilityId, cancellationToken).ConfigureAwait(false);
         if (decision != ConsentDecision.Grant)
@@ -500,9 +524,15 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return capability;
     }
 
-    private static void DemandLifecycle(BrokerCapabilityKind kind, BrokerLifecycleState lifecycle)
+    private static void DemandLifecycle(
+        BrokerCapabilityDefinition capability,
+        BrokerCapabilityKind kind,
+        BrokerLifecycleState lifecycle)
     {
-        var allowed = kind == BrokerCapabilityKind.Control
+        var allowed = capability.AllowsBackground
+            ? lifecycle is BrokerLifecycleState.Background or
+                BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive
+            : kind == BrokerCapabilityKind.Control
             ? lifecycle == BrokerLifecycleState.Interactive
             : lifecycle is BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive;
         if (!allowed)
@@ -511,7 +541,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
 
     private static bool IsLifecycleAllowed(
         RequestLease lease, BrokerLifecycleState lifecycle) =>
-        lease.Kind == BrokerCapabilityKind.Control
+        lease.AllowsBackground
+            ? lifecycle is BrokerLifecycleState.Background or
+                BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive
+            : lease.Kind == BrokerCapabilityKind.Control
             ? lifecycle == BrokerLifecycleState.Interactive ||
                 lease.DashboardGestureAuthorized && lifecycle == BrokerLifecycleState.Visible
             : lifecycle is BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive;
@@ -552,10 +585,11 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
             else
             {
-                DemandLifecycle(operationKind, _lifecycle);
+                DemandLifecycle(capability, operationKind, _lifecycle);
             }
             var lease = new RequestLease(
-                this, capability.Id, operationKind, dashboardGestureAuthorized,
+                this, capability.Id, operationKind, capability.AllowsBackground,
+                dashboardGestureAuthorized,
                 callerCancellation);
             _requestLeases.Add(lease);
             return lease;
@@ -579,12 +613,14 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             PlatformCapabilityBroker owner,
             string capabilityId,
             BrokerCapabilityKind kind,
+            bool allowsBackground,
             bool dashboardGestureAuthorized,
             CancellationToken callerCancellation)
         {
             _owner = owner;
             CapabilityId = capabilityId;
             Kind = kind;
+            AllowsBackground = allowsBackground;
             DashboardGestureAuthorized = dashboardGestureAuthorized;
             _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                 callerCancellation, _brokerCancellation.Token);
@@ -592,6 +628,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
 
         internal string CapabilityId { get; }
         internal BrokerCapabilityKind Kind { get; }
+        internal bool AllowsBackground { get; }
         internal bool DashboardGestureAuthorized { get; }
         internal CancellationToken Token => _linkedCancellation.Token;
         internal string? CancellationCode => Volatile.Read(ref _cancellationCode);
@@ -1024,6 +1061,63 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         await _backend.DeletePrivateSecretAsync(
             _identity, request.Slot, cancellationToken).ConfigureAwait(false);
         return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> ReadPrivateStateAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        DemandEmptyPayload(payload);
+        return BrokerJson.ToElement(ValidatePrivateStateSnapshot(
+            await _backend.ReadPrivateStateAsync(_identity, cancellationToken)
+                .ConfigureAwait(false)));
+    }
+
+    private async Task<JsonElement> WritePrivateStateAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<WritePrivateStateRequest>(payload);
+        ValidateExpectedRevision(request.ExpectedRevision);
+        _ = PrivateStateJsonCodec.DecodeCanonicalBase64(
+            request.CanonicalJsonBase64, "invalid_payload");
+        return BrokerJson.ToElement(ValidatePrivateStateMutation(
+            await _backend.WritePrivateStateAsync(_identity, request, cancellationToken)
+                .ConfigureAwait(false)));
+    }
+
+    private async Task<JsonElement> ClearPrivateStateAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ClearPrivateStateRequest>(payload);
+        ValidateExpectedRevision(request.ExpectedRevision);
+        return BrokerJson.ToElement(ValidatePrivateStateMutation(
+            await _backend.ClearPrivateStateAsync(_identity, request, cancellationToken)
+                .ConfigureAwait(false)));
+    }
+
+    private static PrivateStateSnapshotSummary ValidatePrivateStateSnapshot(
+        PrivateStateSnapshotSummary? snapshot)
+    {
+        if (snapshot is null || snapshot.Revision < 0 ||
+            snapshot.Exists != (snapshot.CanonicalJsonBase64 is not null))
+            throw new BrokerException("invalid_backend_data", "Private state result is invalid.");
+        if (snapshot.CanonicalJsonBase64 is not null)
+            _ = PrivateStateJsonCodec.DecodeCanonicalBase64(
+                snapshot.CanonicalJsonBase64, "invalid_backend_data");
+        return snapshot;
+    }
+
+    private static PrivateStateMutationSummary ValidatePrivateStateMutation(
+        PrivateStateMutationSummary? mutation)
+    {
+        if (mutation is null || mutation.Revision <= 0)
+            throw new BrokerException("invalid_backend_data", "Private state revision is invalid.");
+        return mutation;
+    }
+
+    private static void ValidateExpectedRevision(long? revision)
+    {
+        if (revision < 0)
+            throw new BrokerException("invalid_payload", "Expected state revision is invalid.");
     }
 
     private static void ValidateLoopbackRequest(LoopbackJsonRequest? request, bool isPost)

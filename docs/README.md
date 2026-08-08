@@ -48,6 +48,9 @@ guarantees that are available now.
 - [Local companion HTTP and private secrets](community-companion-services.md) —
   exact-port JSON GET/POST, write-only package secret slots, host-side Bearer
   injection, lifecycle/consent rules, limits, errors, and security boundaries.
+- [Private widget state](private-widget-state.md) — package-scoped readable
+  JSON persistence, revision/CAS semantics, lifecycle, identity/update scope,
+  quotas, atomic storage, retention, errors, and tests.
 - [Network Controls reference](network-controls.md) — implemented first-party
   integration, explicit available-Wi-Fi scan/current saved-open connection,
   controller UX, privacy/location

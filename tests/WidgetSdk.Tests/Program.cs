@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using GameBarAlternative.Samples.ClockWidget;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
@@ -53,6 +54,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
     ("App library host service uses opaque paged read and launch contracts", AppLibraryPlatformService),
     ("Community services expose exact loopback and write-only secret contracts", CommunityPlatformServices),
+    ("Private state canonicalizes JSON and exposes typed revision CAS helpers", PrivateStateServiceContracts),
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
 };
 
@@ -245,6 +247,69 @@ static async Task CommunityPlatformServices()
             .Where(method => method.DeclaringType == typeof(WidgetPrivateSecretService))
             .All(method => method.Name is not ("ReadAsync" or "GetSecretAsync")),
         "The public vault must not expose stored secret values.");
+}
+
+static async Task PrivateStateServiceContracts()
+{
+    var readJson = "{\"count\":2,\"message\":\"line\\nbreak\"}";
+    var services = new WidgetTestHostServicesBuilder()
+        .WithResponse(
+            WidgetPrivateStateCapabilities.Read,
+            new WidgetPrivateStateTransportSnapshot(
+                true, Convert.ToBase64String(Encoding.UTF8.GetBytes(readJson)), 3))
+        .WithHandler(
+            WidgetPrivateStateCapabilities.Write,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal<long?>(3, request.ExpectedRevision);
+                Assert.Equal("{\"a\":1,\"z\":2}", Encoding.UTF8.GetString(
+                    Convert.FromBase64String(request.CanonicalJsonBase64)));
+                return ValueTask.FromResult(new WidgetPrivateStateTransportMutation(4));
+            })
+        .WithHandler(
+            WidgetPrivateStateCapabilities.Clear,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal<long?>(4, request.ExpectedRevision);
+                return ValueTask.FromResult(new WidgetPrivateStateTransportMutation(5));
+            })
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+    var snapshot = await widget.PrivateState.ReadJsonAsync();
+    Assert.True(snapshot.Exists, "Private state snapshot unexpectedly reported no document.");
+    Assert.Equal(3L, snapshot.Revision);
+    Assert.Equal(readJson, snapshot.Json);
+    var typed = await widget.PrivateState.ReadAsync<Dictionary<string, JsonElement>>();
+    Assert.Equal(2, typed.Value!["count"].GetInt32());
+    var written = await widget.PrivateState.WriteJsonAsync(" { \"z\" : 2, \"a\" : 1 } ", 3);
+    Assert.Equal(4L, written.Revision);
+    Assert.Equal(5L, (await widget.PrivateState.ClearAsync(4)).Revision);
+
+    Assert.Throws<ArgumentException>(() => widget.PrivateState
+        .WriteJsonAsync("{\"duplicate\":1,\"duplicate\":2}").GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() => widget.PrivateState
+        .ClearAsync(-1).GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.PrivateState
+        .WriteJsonAsync(new string(' ',
+            WidgetCommunityPlatformLimits.MaximumPrivateStateInputUtf8Bytes + 1))
+        .GetAwaiter().GetResult());
+
+    var fixture = new WidgetTestPrivateState("{\"selected\":\"one\"}", 1);
+    var fixtureWidget = WidgetTestHost.Attach(new CapabilityWidget(),
+        new WidgetTestHostServicesBuilder().WithPrivateState(fixture).Build());
+    Assert.Equal(1L, (await fixtureWidget.PrivateState.ReadJsonAsync()).Revision);
+    fixture.SimulateExternalWriteJson("{\"selected\":\"two\"}");
+    try
+    {
+        await fixtureWidget.PrivateState.WriteJsonAsync("{}", expectedRevision: 1);
+        throw new InvalidOperationException("Expected deterministic CAS conflict.");
+    }
+    catch (WidgetCapabilityException exception)
+    {
+        Assert.Equal("state_conflict", exception.ErrorCode);
+    }
 }
 
 static async Task TypedPlatformServices()
@@ -2148,6 +2213,7 @@ file sealed class CapabilityWidget : Widget
     public WidgetAppLibraryService AppLibrary => HostServices.AppLibrary;
     public WidgetLoopbackHttpService Loopback => HostServices.Loopback;
     public WidgetPrivateSecretService PrivateSecrets => HostServices.PrivateSecrets;
+    public WidgetPrivateStateService PrivateState => HostServices.PrivateState;
     public ValueTask<string> CallAsync() =>
         HostServices.Capabilities.InvokeAsync(Operation, "request");
     public override WidgetView Render() => new(UI.Text("Ready", "root"));

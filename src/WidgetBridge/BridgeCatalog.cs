@@ -178,7 +178,7 @@ public sealed class BridgeCatalog
             if (source.DeclaredCapabilities is null || source.DeclaredCapabilities.Count > 32 ||
                 source.DeclaredCapabilities.Any(capability =>
                     string.IsNullOrWhiteSpace(capability) || capability.Length > 128 ||
-                    !PlatformCapabilities.TryGet(capability, out _)) ||
+                    !PlatformCapabilities.IsManifestDeclarable(capability)) ||
                 source.DeclaredCapabilities.Distinct(StringComparer.Ordinal).Count() !=
                     source.DeclaredCapabilities.Count)
                 throw new BridgeCatalogException(
@@ -299,7 +299,7 @@ public sealed class BridgeCatalog
                 .Order(StringComparer.Ordinal)
                 .ToArray();
             if (declaredCapabilities.Any(capability =>
-                    !PlatformCapabilities.TryGet(capability, out _)))
+                    !PlatformCapabilities.IsManifestDeclarable(capability)))
             {
                 warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' declares an unsupported capability and was ignored.");
                 continue;
@@ -553,7 +553,8 @@ public sealed class BridgeCatalog
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
-        if (declaredCapabilities.Any(capability => !PlatformCapabilities.TryGet(capability, out _)))
+        if (declaredCapabilities.Any(capability =>
+                !PlatformCapabilities.IsManifestDeclarable(capability)))
             throw new BridgeCatalogException(
                 $"Bundled widget '{source.Id}' declares an unsupported capability.");
         var assembly = Path.GetFullPath(

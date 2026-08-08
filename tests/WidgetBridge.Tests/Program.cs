@@ -27,6 +27,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
     ("Installed widget residency policies reach the generic supervisor", InstalledResidencyPolicyIsCarried),
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
+    ("Bridge alone synthesizes private state authority for capability-free workers", PrivateStateAuthorityIsHostSynthesized),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
@@ -89,6 +90,9 @@ static Task StrictCatalogRejectsUnknownProperties()
 {
     using var catalog = TemporaryCatalog.Create(addUnknownProperty: true);
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(catalog.Path));
+    using var forgedState = TemporaryCatalog.Create(
+        declaredCapabilities: [PlatformCapabilities.PrivateStateV1]);
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(forgedState.Path));
     return Task.CompletedTask;
 }
 
@@ -355,6 +359,12 @@ static async Task InstalledCapabilityDeclarationsAreClosed()
             "network.loopback:13091",
             PlatformCapabilities.PrivateSecretsV1,
         ]);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.forged-state",
+        enabled: true,
+        permissions: [PlatformCapabilities.PrivateStateV1]);
 
     var load = await BridgeCatalog.LoadWithInstalledAsync(
         trusted.Path, catalogRoot, Environment.ProcessPath!);
@@ -371,9 +381,31 @@ static async Task InstalledCapabilityDeclarationsAreClosed()
     Assert.SequenceEqual(
         ["network.loopback:13091", PlatformCapabilities.PrivateSecretsV1],
         load.Catalog.GetConfigured("dev.example.companion").DeclaredCapabilities);
-    Assert.Equal(1, load.Warnings.Count);
-    Assert.True(load.Warnings[0].Contains("unsupported capability", StringComparison.Ordinal),
-        "Unknown capabilities need a safe closed-vocabulary warning.");
+    Assert.Equal(2, load.Warnings.Count);
+    Assert.True(load.Warnings.All(warning =>
+            warning.Contains("unsupported capability", StringComparison.Ordinal)),
+        "Unknown and host-granted manifest capabilities need safe closed-vocabulary warnings.");
+}
+
+static async Task PrivateStateAuthorityIsHostSynthesized()
+{
+    using var temporary = new TemporaryDirectory("gba-bridge-state-authority");
+    var context = new WidgetProcessCompanionContext(
+        WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null);
+    await using var companion = new BrokerWidgetProcessCompanion(
+        "dev.example.widget", "dev.example", "default", [],
+        new ConsentStore(temporary.Path), new SimulatedPlatformBrokerBackend(), context);
+    Assert.Equal(0, companion.DeclaredCapabilities.Count);
+    Assert.SequenceEqual([PlatformCapabilities.PrivateStateV1],
+        companion.HostGrantedCapabilities);
+    Assert.True(companion.WorkerArguments.Contains("--broker-pipe", StringComparer.Ordinal),
+        "The host-granted state service did not create an authenticated broker channel.");
+
+    Assert.Throws<BrokerException>(() => _ = new BrokerWidgetProcessCompanion(
+        "dev.example.widget", "dev.example", "default",
+        [PlatformCapabilities.PrivateStateV1],
+        new ConsentStore(Path.Combine(temporary.Path, "forged")),
+        new SimulatedPlatformBrokerBackend(), context));
 }
 
 static async Task TamperedInstalledCatalogFailsSoft()

@@ -57,7 +57,8 @@ internal static class Program
             await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
             var consentStore = new ConsentStore(
                 Path.Combine(settingsPaths.RootDirectory, "consent"));
-            await using var communityBackend = new WindowsCommunityPlatformBackend();
+            await using var communityBackend = new WindowsCommunityPlatformBackend(
+                Path.Combine(settingsPaths.RootDirectory, "widget-state"));
             await using var platformBackend = new CompositePlatformBrokerBackend(
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend(),
@@ -65,6 +66,7 @@ internal static class Program
                 new WindowsBluetoothPlatformBackend(),
                 new WindowsMediaPlatformBackend(),
                 new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider(),
+                communityBackend,
                 communityBackend,
                 communityBackend);
             await using var server = new WidgetBridgeServer(

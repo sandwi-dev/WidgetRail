@@ -31,7 +31,10 @@ public sealed record BrokerEventEnvelope(
 public static class BrokerJson
 {
     public const int ProtocolVersion = 1;
-    public const int MaximumRequestBytes = 64 * 1024;
+    // A 64 KiB private-state document expands to roughly 86 KiB as base64,
+    // plus the authenticated broker envelope. The pipe itself remains capped
+    // at 256 KiB.
+    public const int MaximumRequestBytes = 128 * 1024;
     public const int MaximumEventBytes = 64 * 1024;
     public const int MaximumResponseBytes = 224 * 1024;
     public const int MaximumDepth = 16;

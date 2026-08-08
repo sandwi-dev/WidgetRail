@@ -6,6 +6,17 @@ public enum BrokerCapabilityKind
     Control,
 }
 
+public enum BrokerCapabilityAccessPolicy
+{
+    /// <summary>The widget manifest declares the capability and the user decides consent.</summary>
+    ManifestConsent,
+    /// <summary>
+    /// The trusted host may attach the capability to an authenticated channel.
+    /// It cannot be declared by a widget manifest and has no consent decision.
+    /// </summary>
+    HostGranted,
+}
+
 public sealed record BrokerCapabilityDefinition(
     string Id,
     int Version,
@@ -13,7 +24,9 @@ public sealed record BrokerCapabilityDefinition(
     IReadOnlySet<string> Operations,
     IReadOnlySet<string> Events,
     bool AllowsDashboardGesture = false,
-    IReadOnlySet<string>? ReadOperations = null)
+    IReadOnlySet<string>? ReadOperations = null,
+    BrokerCapabilityAccessPolicy AccessPolicy = BrokerCapabilityAccessPolicy.ManifestConsent,
+    bool AllowsBackground = false)
 {
     public BrokerCapabilityKind KindForOperation(string operation) =>
         ReadOperations?.Contains(operation) == true ? BrokerCapabilityKind.Read : Kind;
@@ -46,6 +59,7 @@ public static class PlatformCapabilities
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
     public const string PrivateSecretsV1 = "storage.private-secrets.v1";
+    public const string PrivateStateV1 = "storage.private-state.v1";
 
     public const string LoopbackCapabilityPrefix = "network.loopback:";
     public const int MinimumLoopbackPort = 1024;
@@ -82,6 +96,9 @@ public static class PlatformCapabilities
     public const string PrivateSecretMetadata = "private-secret.metadata";
     public const string PrivateSecretSave = "private-secret.save";
     public const string PrivateSecretDelete = "private-secret.delete";
+    public const string PrivateStateRead = "private-state.read";
+    public const string PrivateStateWrite = "private-state.write";
+    public const string PrivateStateClear = "private-state.clear";
 
     public const string AudioSessionsChanged = "audio.sessions.changed";
     public const string AudioOutputChanged = "audio.output.changed";
@@ -146,6 +163,14 @@ public static class PlatformCapabilities
                 Set(),
                 AllowsDashboardGesture: false,
                 ReadOperations: Set(PrivateSecretExists, PrivateSecretMetadata)),
+            [PrivateStateV1] = new(PrivateStateV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(PrivateStateRead, PrivateStateWrite, PrivateStateClear),
+                Set(),
+                AllowsDashboardGesture: false,
+                ReadOperations: Set(PrivateStateRead),
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
+                AllowsBackground: true),
         };
 
     public static IReadOnlyCollection<BrokerCapabilityDefinition> All { get; } =
@@ -165,6 +190,14 @@ public static class PlatformCapabilities
             ReadOperations: Set(LoopbackHttpGetJson));
         return true;
     }
+
+    public static bool IsManifestDeclarable(string id) =>
+        TryGet(id, out var definition) &&
+        definition.AccessPolicy == BrokerCapabilityAccessPolicy.ManifestConsent;
+
+    public static bool IsHostGranted(string id) =>
+        TryGet(id, out var definition) &&
+        definition.AccessPolicy == BrokerCapabilityAccessPolicy.HostGranted;
 
     public static bool TryGetLoopbackPort(string? capabilityId, out int port)
     {

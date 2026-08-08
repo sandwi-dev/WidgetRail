@@ -72,6 +72,20 @@ public sealed class WidgetTestHostServicesBuilder
         return this;
     }
 
+    /// <summary>
+    /// Adds the public package-scoped state service backed by a deterministic
+    /// in-memory fixture. The fixture can simulate another host writer between
+    /// widget calls to exercise compare-and-exchange recovery.
+    /// </summary>
+    public WidgetTestHostServicesBuilder WithPrivateState(
+        WidgetTestPrivateState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return WithHandler(WidgetPrivateStateCapabilities.Read, state.ReadAsync)
+            .WithHandler(WidgetPrivateStateCapabilities.Write, state.WriteAsync)
+            .WithHandler(WidgetPrivateStateCapabilities.Clear, state.ClearAsync);
+    }
+
     /// <summary>Creates an immutable service snapshot for one or more tests.</summary>
     public WidgetHostServices Build() => new(new TestCapabilityClient(
         new Dictionary<(string, string), ITestOperationHandler>(_operations),
@@ -222,6 +236,96 @@ public sealed class WidgetTestHostServicesBuilder
         new(
             "test_contract_mismatch",
             "The configured test capability contract does not match the requested type.");
+}
+
+/// <summary>Deterministic in-memory fixture for <see cref="WidgetPrivateStateService"/>.</summary>
+public sealed class WidgetTestPrivateState
+{
+    private readonly object _gate = new();
+    private string? _json;
+    private long _revision;
+
+    public WidgetTestPrivateState(string? initialJson = null, long initialRevision = 0)
+    {
+        if (initialRevision < 0 || initialJson is not null && initialRevision == 0)
+            throw new ArgumentOutOfRangeException(nameof(initialRevision));
+        _json = initialJson is null
+            ? null
+            : WidgetPrivateStateService.CanonicalizeForHost(initialJson);
+        _revision = initialRevision;
+    }
+
+    public long Revision { get { lock (_gate) return _revision; } }
+    public string? Json { get { lock (_gate) return _json; } }
+
+    public void SimulateExternalWriteJson(string json)
+    {
+        var canonical = WidgetPrivateStateService.CanonicalizeForHost(json);
+        lock (_gate)
+        {
+            if (_revision == long.MaxValue) throw new InvalidOperationException("Revision exhausted.");
+            _json = canonical;
+            _revision++;
+        }
+    }
+
+    public void SimulateExternalClear()
+    {
+        lock (_gate)
+        {
+            if (_revision == long.MaxValue) throw new InvalidOperationException("Revision exhausted.");
+            _json = null;
+            _revision++;
+        }
+    }
+
+    internal ValueTask<WidgetPrivateStateTransportSnapshot> ReadAsync(
+        WidgetCapabilityQuery request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+            return ValueTask.FromResult(new WidgetPrivateStateTransportSnapshot(
+                _json is not null,
+                _json is null ? null : Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(_json)),
+                _revision));
+    }
+
+    internal ValueTask<WidgetPrivateStateTransportMutation> WriteAsync(
+        WriteWidgetPrivateStateTransportRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var json = System.Text.Encoding.UTF8.GetString(
+            Convert.FromBase64String(request.CanonicalJsonBase64));
+        lock (_gate)
+        {
+            DemandRevision(request.ExpectedRevision);
+            if (_revision == long.MaxValue) throw new WidgetCapabilityException(
+                "state_revision_exhausted", "Test private state revision is exhausted.");
+            _json = json;
+            return ValueTask.FromResult(new WidgetPrivateStateTransportMutation(++_revision));
+        }
+    }
+
+    internal ValueTask<WidgetPrivateStateTransportMutation> ClearAsync(
+        ClearWidgetPrivateStateTransportRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            DemandRevision(request.ExpectedRevision);
+            if (_revision == long.MaxValue) throw new WidgetCapabilityException(
+                "state_revision_exhausted", "Test private state revision is exhausted.");
+            _json = null;
+            return ValueTask.FromResult(new WidgetPrivateStateTransportMutation(++_revision));
+        }
+    }
+
+    private void DemandRevision(long? expected)
+    {
+        if (expected is { } value && value != _revision)
+            throw new WidgetCapabilityException(
+                "state_conflict", "Test private state changed before this update.");
+    }
 }
 
 /// <summary>

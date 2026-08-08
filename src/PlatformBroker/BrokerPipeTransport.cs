@@ -209,6 +209,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private readonly string _pipeName;
     private readonly BrokerWidgetIdentity _identity;
     private readonly HashSet<string> _declaredCapabilities;
+    private readonly HashSet<string> _hostGrantedCapabilities;
     private readonly BrokerPipeTransportOptions _options;
     private readonly string? _isolatedClientAppContainerSid;
     private readonly PlatformCapabilityBroker _broker;
@@ -233,7 +234,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         IPlatformBrokerBackend backend,
         BrokerPipeTransportOptions? options = null,
         string? channelNonce = null,
-        string? isolatedClientAppContainerSid = null)
+        string? isolatedClientAppContainerSid = null,
+        IEnumerable<string>? hostGrantedCapabilities = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -243,6 +245,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         _identity.Validate();
         ArgumentNullException.ThrowIfNull(declaredCapabilities);
         _declaredCapabilities = new HashSet<string>(declaredCapabilities, StringComparer.Ordinal);
+        _hostGrantedCapabilities = new HashSet<string>(
+            hostGrantedCapabilities ?? [], StringComparer.Ordinal);
         _options = options ?? new BrokerPipeTransportOptions();
         _options.Validate();
         ChannelNonce = channelNonce ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -250,7 +254,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             !ChannelNonce.All(character => char.IsAsciiLetterOrDigit(character)))
             throw new ArgumentException("Broker channel nonce is invalid.", nameof(channelNonce));
         _broker = new PlatformCapabilityBroker(
-            _identity, _declaredCapabilities, consentStore, backend);
+            _identity, _declaredCapabilities, consentStore, backend,
+            _hostGrantedCapabilities);
         _consentMonitor = new ConsentChangeMonitor(
             consentStore, _broker.RefreshConsentAsync, _broker.RevokeSubscriptions);
     }
@@ -259,6 +264,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     public BrokerWidgetIdentity AuthenticatedIdentity => _identity;
     public IReadOnlySet<string> DeclaredCapabilities =>
         new HashSet<string>(_declaredCapabilities, StringComparer.Ordinal);
+    public IReadOnlySet<string> HostGrantedCapabilities =>
+        new HashSet<string>(_hostGrantedCapabilities, StringComparer.Ordinal);
 
     /// <summary>
     /// Binds an AppContainer broker endpoint to the worker process created by

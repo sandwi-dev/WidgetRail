@@ -21,6 +21,11 @@ public sealed record BrokerWidgetIdentity(
 
 public enum BrokerLifecycleState
 {
+    /// <summary>
+    /// The authenticated channel exists, but the host has not activated the
+    /// widget yet. No capability operation is available in this state.
+    /// </summary>
+    Created,
     Background,
     Visible,
     Interactive,
@@ -357,6 +362,21 @@ public sealed record PrivateSecretMetadataSummary(
     [property: JsonRequired] bool Exists,
     long? LastWrittenUnixMilliseconds);
 
+/// <summary>
+/// Package-scoped readable state. JSON is transported as base64 so arbitrary
+/// JSON strings remain data inside the bounded broker envelope. Providers must
+/// decode and revalidate the canonical UTF-8 document before persistence.
+/// </summary>
+public sealed record PrivateStateSnapshotSummary(
+    [property: JsonRequired] bool Exists,
+    string? CanonicalJsonBase64,
+    [property: JsonRequired] long Revision);
+public sealed record WritePrivateStateRequest(
+    [property: JsonRequired] string CanonicalJsonBase64,
+    long? ExpectedRevision);
+public sealed record ClearPrivateStateRequest(long? ExpectedRevision);
+public sealed record PrivateStateMutationSummary([property: JsonRequired] long Revision);
+
 public static class CommunityPlatformLimits
 {
     public const int MaximumLoopbackPathCharacters = 2_048;
@@ -370,6 +390,9 @@ public static class CommunityPlatformLimits
     public const int MaximumLoopbackTimeoutMilliseconds = 40_000;
     public const int MaximumPrivateSecretSlotCharacters = 64;
     public const int MaximumPrivateSecretUtf8Bytes = 2_048;
+    public const int MaximumPrivateStateUtf8Bytes = 64 * 1024;
+    public const int MaximumPrivateStateBase64Characters =
+        ((MaximumPrivateStateUtf8Bytes + 2) / 3) * 4;
 }
 
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
@@ -473,6 +496,24 @@ public interface IPrivateSecretPlatformBrokerBackend
             new BrokerException("platform_unavailable", "Private secret storage is unavailable."));
 }
 
+public interface IPrivateStatePlatformBrokerBackend
+{
+    Task<PrivateStateSnapshotSummary> ReadPrivateStateAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        Task.FromException<PrivateStateSnapshotSummary>(
+            new BrokerException("platform_unavailable", "Private state storage is unavailable."));
+    Task<PrivateStateMutationSummary> WritePrivateStateAsync(
+        BrokerWidgetIdentity identity, WritePrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<PrivateStateMutationSummary>(
+            new BrokerException("platform_unavailable", "Private state storage is unavailable."));
+    Task<PrivateStateMutationSummary> ClearPrivateStateAsync(
+        BrokerWidgetIdentity identity, ClearPrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<PrivateStateMutationSummary>(
+            new BrokerException("platform_unavailable", "Private state storage is unavailable."));
+}
+
 public interface ILoopbackHttpPlatformBrokerBackend
 {
     Task<LoopbackJsonResponse> SendLoopbackJsonAsync(
@@ -493,7 +534,7 @@ public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     INetworkPlatformBrokerBackend, IActivityPlatformBrokerBackend,
     IAppLibraryPlatformBrokerBackend, IBluetoothPlatformBrokerBackend,
     IMediaPlatformBrokerBackend, IPrivateSecretPlatformBrokerBackend,
-    ILoopbackHttpPlatformBrokerBackend
+    IPrivateStatePlatformBrokerBackend, ILoopbackHttpPlatformBrokerBackend
 {
 }
 

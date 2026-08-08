@@ -19,6 +19,7 @@ namespace GameBarAlternative.WindowsCommunityProvider;
 public sealed class WindowsCommunityPlatformBackend :
     ILoopbackHttpPlatformBrokerBackend,
     IPrivateSecretPlatformBrokerBackend,
+    IPrivateStatePlatformBrokerBackend,
     IAsyncDisposable
 {
     internal const int MaximumGlobalRequests = 8;
@@ -27,12 +28,36 @@ public sealed class WindowsCommunityPlatformBackend :
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly ConcurrentDictionary<int, HttpClient> _clients = new();
     private readonly IPrivateSecretStore _secrets;
+    private readonly IPrivateStateStore _privateState;
     private int _disposed;
 
-    public WindowsCommunityPlatformBackend() : this(new WindowsCredentialPrivateSecretStore()) { }
+    public WindowsCommunityPlatformBackend() : this(DefaultPrivateStateRoot()) { }
 
-    internal WindowsCommunityPlatformBackend(IPrivateSecretStore secrets) =>
+    public WindowsCommunityPlatformBackend(string privateStateRoot) : this(
+        new WindowsCredentialPrivateSecretStore(),
+        new WindowsPrivateStateStore(privateStateRoot)) { }
+
+    internal WindowsCommunityPlatformBackend(
+        IPrivateSecretStore secrets,
+        IPrivateStateStore? privateState = null)
+    {
         _secrets = secrets ?? throw new ArgumentNullException(nameof(secrets));
+        _privateState = privateState ?? new WindowsPrivateStateStore(DefaultPrivateStateRoot());
+    }
+
+    public Task<PrivateStateSnapshotSummary> ReadPrivateStateAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        _privateState.ReadAsync(identity, cancellationToken);
+
+    public Task<PrivateStateMutationSummary> WritePrivateStateAsync(
+        BrokerWidgetIdentity identity, WritePrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        _privateState.WriteAsync(identity, request, cancellationToken);
+
+    public Task<PrivateStateMutationSummary> ClearPrivateStateAsync(
+        BrokerWidgetIdentity identity, ClearPrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        _privateState.ClearAsync(identity, request, cancellationToken);
 
     public Task<PrivateSecretMetadataSummary> GetPrivateSecretMetadataAsync(
         BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
@@ -330,6 +355,10 @@ public sealed class WindowsCommunityPlatformBackend :
         _clients.Clear();
         return ValueTask.CompletedTask;
     }
+
+    private static string DefaultPrivateStateRoot() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "GameBarAlternative", "widget-state");
 
     private static class CommunityPlatformLimitsForProvider
     {

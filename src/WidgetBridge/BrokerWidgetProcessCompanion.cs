@@ -35,7 +35,8 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
             declaredCapabilities,
             consentStore,
             backend,
-            isolatedClientAppContainerSid: context.AppContainerSid);
+            isolatedClientAppContainerSid: context.AppContainerSid,
+            hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1]);
         WorkerArguments =
         [
             "--broker-pipe", pipeName,
@@ -47,6 +48,8 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
     }
 
     public IReadOnlyList<string> WorkerArguments { get; }
+    internal IReadOnlySet<string> DeclaredCapabilities => _server.DeclaredCapabilities;
+    internal IReadOnlySet<string> HostGrantedCapabilities => _server.HostGrantedCapabilities;
 
     public void BindWorkerProcess(int processId)
     {

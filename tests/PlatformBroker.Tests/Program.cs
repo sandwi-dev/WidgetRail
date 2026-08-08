@@ -20,6 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
     ("Exact-port loopback separates visible reads from interactive controls", LoopbackHttpContracts),
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
+    ("Private state is host-granted consentless identity-bound and active-lifecycle safe", PrivateStateHostGrantContracts),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
@@ -67,7 +68,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(21, PlatformCapabilities.All.Count);
+    Assert.Equal(22, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -108,7 +109,80 @@ static Task CapabilityVocabularyIsClosed()
         new HashSet<string>(["future.control"], StringComparer.Ordinal),
         new HashSet<string>(StringComparer.Ordinal));
     Assert.True(!defaultControl.AllowsDashboardGesture);
+    Assert.True(PlatformCapabilities.TryGet(
+        PlatformCapabilities.PrivateStateV1, out var privateState));
+    Assert.Equal(BrokerCapabilityAccessPolicy.HostGranted, privateState.AccessPolicy);
+    Assert.True(privateState.AllowsBackground);
+    Assert.True(!PlatformCapabilities.IsManifestDeclarable(
+        PlatformCapabilities.PrivateStateV1));
     return Task.CompletedTask;
+}
+
+static async Task PrivateStateHostGrantContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var consent = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    await Assert.ThrowsAsync<BrokerException>(() => consent.SetDecisionAsync(
+        identity, PlatformCapabilities.PrivateStateV1, ConsentDecision.Grant),
+        "unsupported_capability");
+    Assert.Throws<BrokerException>(() => _ = new PlatformCapabilityBroker(
+        identity, [PlatformCapabilities.PrivateStateV1], consent, backend),
+        "invalid_declaration");
+    Assert.Throws<BrokerException>(() => _ = new PlatformCapabilityBroker(
+        identity, [], consent, backend,
+        [PlatformCapabilities.AudioSessionsReadV1]), "invalid_declaration");
+
+    await using var broker = new PlatformCapabilityBroker(
+        identity, [], consent, backend, [PlatformCapabilities.PrivateStateV1]);
+    await Assert.ThrowsAsync<BrokerException>(() => broker.ExecuteAsync(new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 1, identity,
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList,
+        JsonSerializer.SerializeToElement(new { }))), "capability_not_declared");
+
+    async Task<PrivateStateSnapshotSummary> ReadAsync(long requestId)
+    {
+        var payload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+            BrokerJson.ProtocolVersion, requestId, identity,
+            PlatformCapabilities.PrivateStateV1,
+            PlatformCapabilities.PrivateStateRead,
+            JsonSerializer.SerializeToElement(new { })));
+        return payload.Deserialize<PrivateStateSnapshotSummary>(BrokerJson.StrictOptions) ??
+            throw new InvalidOperationException("State response was null.");
+    }
+
+    await Assert.ThrowsAsync<BrokerException>(() => ReadAsync(2), "lifecycle_denied");
+    var canonical = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"value\":1}"));
+    Task<JsonElement> WriteAsync(long requestId) => broker.ExecuteAsync(
+        new BrokerRequestEnvelope(
+            BrokerJson.ProtocolVersion, requestId, identity,
+            PlatformCapabilities.PrivateStateV1,
+            PlatformCapabilities.PrivateStateWrite,
+            JsonSerializer.SerializeToElement(new WritePrivateStateRequest(canonical, 0),
+                BrokerJson.StrictOptions)));
+    Task<JsonElement> ClearAsync(long requestId) => broker.ExecuteAsync(
+        new BrokerRequestEnvelope(
+            BrokerJson.ProtocolVersion, requestId, identity,
+            PlatformCapabilities.PrivateStateV1,
+            PlatformCapabilities.PrivateStateClear,
+            JsonSerializer.SerializeToElement(new ClearPrivateStateRequest(0),
+                BrokerJson.StrictOptions)));
+    await Assert.ThrowsAsync<BrokerException>(() => WriteAsync(3), "lifecycle_denied");
+    await Assert.ThrowsAsync<BrokerException>(() => ClearAsync(4), "lifecycle_denied");
+
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    Assert.Equal(0L, (await ReadAsync(5)).Revision);
+    var mutationPayload = await WriteAsync(6);
+    Assert.Equal(1L, mutationPayload.Deserialize<PrivateStateMutationSummary>(
+        BrokerJson.StrictOptions)!.Revision);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    Assert.Equal(1L, (await ReadAsync(7)).Revision);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    Assert.Equal(1L, (await ReadAsync(8)).Revision);
+    broker.SetLifecycle(BrokerLifecycleState.Destroying);
+    await Assert.ThrowsAsync<BrokerException>(() => ReadAsync(9), "lifecycle_denied");
 }
 
 static async Task LoopbackHttpContracts()
@@ -1384,7 +1458,9 @@ static async Task ConsentUpdatesAreAtomic()
 {
     using var temp = new TemporaryDirectory();
     var identity = Identity();
-    var capabilities = PlatformCapabilities.All.Select(capability => capability.Id).ToArray();
+    var capabilities = PlatformCapabilities.All
+        .Where(capability => PlatformCapabilities.IsManifestDeclarable(capability.Id))
+        .Select(capability => capability.Id).ToArray();
     await Task.WhenAll(capabilities.Select((capability, index) =>
         new ConsentStore(temp.Path).SetDecisionAsync(identity, capability,
             index % 2 == 0 ? ConsentDecision.Grant : ConsentDecision.Deny)));

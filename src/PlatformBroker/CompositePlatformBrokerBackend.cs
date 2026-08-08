@@ -11,6 +11,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     private readonly IMediaPlatformBrokerBackend _media;
     private readonly IPrivateSecretPlatformBrokerBackend _privateSecrets;
     private readonly ILoopbackHttpPlatformBrokerBackend _loopbackHttp;
+    private readonly IPrivateStatePlatformBrokerBackend _privateState;
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
@@ -21,7 +22,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         IMediaPlatformBrokerBackend? media = null,
         IAppLibraryPlatformBrokerBackend? appLibrary = null,
         IPrivateSecretPlatformBrokerBackend? privateSecrets = null,
-        ILoopbackHttpPlatformBrokerBackend? loopbackHttp = null)
+        ILoopbackHttpPlatformBrokerBackend? loopbackHttp = null,
+        IPrivateStatePlatformBrokerBackend? privateState = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _network = network ?? throw new ArgumentNullException(nameof(network));
@@ -31,6 +33,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         _media = media ?? UnavailableMediaPlatformBrokerBackend.Instance;
         _privateSecrets = privateSecrets ?? UnavailablePrivateSecretPlatformBrokerBackend.Instance;
         _loopbackHttp = loopbackHttp ?? UnavailableLoopbackHttpPlatformBrokerBackend.Instance;
+        _privateState = privateState ?? UnavailablePrivateStatePlatformBrokerBackend.Instance;
         _audio.EventPublished += ForwardAudioEvent;
         _network.EventPublished += ForwardNetworkEvent;
         _activity.EventPublished += ForwardActivityEvent;
@@ -143,6 +146,20 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     public Task DeletePrivateSecretAsync(
         BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
         _privateSecrets.DeletePrivateSecretAsync(identity, slot, cancellationToken);
+
+    public Task<PrivateStateSnapshotSummary> ReadPrivateStateAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        _privateState.ReadPrivateStateAsync(identity, cancellationToken);
+
+    public Task<PrivateStateMutationSummary> WritePrivateStateAsync(
+        BrokerWidgetIdentity identity, WritePrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        _privateState.WritePrivateStateAsync(identity, request, cancellationToken);
+
+    public Task<PrivateStateMutationSummary> ClearPrivateStateAsync(
+        BrokerWidgetIdentity identity, ClearPrivateStateRequest request,
+        CancellationToken cancellationToken) =>
+        _privateState.ClearPrivateStateAsync(identity, request, cancellationToken);
 
     public Task<LoopbackJsonResponse> SendLoopbackJsonAsync(
         BrokerWidgetIdentity identity, int port, bool isPost,
@@ -261,6 +278,20 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
             else if (_loopbackHttp is IDisposable loopback)
                 loopback.Dispose();
         }
+        if (!ReferenceEquals(_privateState, _audio) &&
+            !ReferenceEquals(_privateState, _network) &&
+            !ReferenceEquals(_privateState, _activity) &&
+            !ReferenceEquals(_privateState, _bluetooth) &&
+            !ReferenceEquals(_privateState, _media) &&
+            !ReferenceEquals(_privateState, _appLibrary) &&
+            !ReferenceEquals(_privateState, _privateSecrets) &&
+            !ReferenceEquals(_privateState, _loopbackHttp))
+        {
+            if (_privateState is IAsyncDisposable asyncPrivateState)
+                await asyncPrivateState.DisposeAsync().ConfigureAwait(false);
+            else if (_privateState is IDisposable privateState)
+                privateState.Dispose();
+        }
     }
 
     private sealed class UnavailableActivityPlatformBrokerBackend : IActivityPlatformBrokerBackend
@@ -336,5 +367,11 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         ILoopbackHttpPlatformBrokerBackend
     {
         internal static UnavailableLoopbackHttpPlatformBrokerBackend Instance { get; } = new();
+    }
+
+    private sealed class UnavailablePrivateStatePlatformBrokerBackend :
+        IPrivateStatePlatformBrokerBackend
+    {
+        internal static UnavailablePrivateStatePlatformBrokerBackend Instance { get; } = new();
     }
 }

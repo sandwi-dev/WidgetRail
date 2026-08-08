@@ -24,6 +24,10 @@ public static class WidgetCommunityPlatformLimits
     public const int MaximumLoopbackTimeoutMilliseconds = 40_000;
     public const int MaximumPrivateSecretSlotCharacters = 64;
     public const int MaximumPrivateSecretUtf8Bytes = 2_048;
+    public const int MaximumPrivateStateUtf8Bytes = 64 * 1_024;
+    public const int MaximumPrivateStateInputUtf8Bytes = 256 * 1_024;
+    internal const int MaximumPrivateStateBase64Characters =
+        ((MaximumPrivateStateUtf8Bytes + 2) / 3) * 4;
 }
 
 public sealed record WidgetLoopbackHttpHeader(
@@ -67,6 +71,27 @@ public sealed record WidgetPrivateSecretExists([property: JsonRequired] bool Exi
 public sealed record WidgetPrivateSecretMetadata(
     [property: JsonRequired] bool Exists,
     long? LastWrittenUnixMilliseconds);
+
+public sealed record WidgetPrivateStateSnapshot(
+    [property: JsonRequired] bool Exists,
+    string? Json,
+    [property: JsonRequired] long Revision);
+public sealed record WidgetPrivateStateValue<T>(
+    [property: JsonRequired] bool Exists,
+    T? Value,
+    [property: JsonRequired] long Revision);
+public sealed record WidgetPrivateStateMutation([property: JsonRequired] long Revision);
+
+internal sealed record WidgetPrivateStateTransportSnapshot(
+    [property: JsonRequired] bool Exists,
+    string? CanonicalJsonBase64,
+    [property: JsonRequired] long Revision);
+internal sealed record WriteWidgetPrivateStateTransportRequest(
+    [property: JsonRequired] string CanonicalJsonBase64,
+    long? ExpectedRevision);
+internal sealed record ClearWidgetPrivateStateTransportRequest(long? ExpectedRevision);
+internal sealed record WidgetPrivateStateTransportMutation(
+    [property: JsonRequired] long Revision);
 
 public sealed record WidgetAudioSession(
     [property: JsonRequired] string SessionId,
@@ -530,6 +555,20 @@ public static class WidgetPrivateSecretCapabilities
         Save { get; } = new(CapabilityId, "private-secret.save");
     public static WidgetCapabilityOperation<WidgetPrivateSecretSlotRequest, WidgetCapabilityAcknowledgement>
         Delete { get; } = new(CapabilityId, "private-secret.delete");
+}
+
+internal static class WidgetPrivateStateCapabilities
+{
+    internal const string CapabilityId = "storage.private-state.v1";
+    internal static WidgetCapabilityOperation<WidgetCapabilityQuery,
+        WidgetPrivateStateTransportSnapshot> Read { get; } =
+        new(CapabilityId, "private-state.read");
+    internal static WidgetCapabilityOperation<WriteWidgetPrivateStateTransportRequest,
+        WidgetPrivateStateTransportMutation> Write { get; } =
+        new(CapabilityId, "private-state.write");
+    internal static WidgetCapabilityOperation<ClearWidgetPrivateStateTransportRequest,
+        WidgetPrivateStateTransportMutation> Clear { get; } =
+        new(CapabilityId, "private-state.clear");
 }
 
 public sealed class WidgetAudioService

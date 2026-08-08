@@ -137,6 +137,7 @@ public sealed class WidgetHostServices
         Media = new WidgetMediaService(capabilityClient);
         Loopback = new WidgetLoopbackHttpService(capabilityClient);
         PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
+        PrivateState = new WidgetPrivateStateService(capabilityClient);
     }
 
     public IWidgetCapabilityClient Capabilities { get; }
@@ -147,6 +148,11 @@ public sealed class WidgetHostServices
     public WidgetMediaService Media { get; }
     public WidgetLoopbackHttpService Loopback { get; }
     public WidgetPrivateSecretService PrivateSecrets { get; }
+    /// <summary>
+    /// Host-granted, package-scoped readable JSON state. This service is not a
+    /// manifest permission and never stores authentication secrets.
+    /// </summary>
+    public WidgetPrivateStateService PrivateState { get; }
 
     internal static WidgetHostServices Unavailable { get; } =
         new(UnavailableWidgetCapabilityClient.Instance);

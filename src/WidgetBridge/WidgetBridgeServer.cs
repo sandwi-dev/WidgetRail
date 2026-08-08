@@ -388,7 +388,7 @@ public sealed class WidgetBridgeServer(
                 CompanionSessionFactory = IsTrustedSettings(configured)
                     ? context => new DiagnosticsWidgetProcessCompanion(
                         CreateDiagnosticsSnapshotAsync, context)
-                    : configured.DeclaredCapabilities.Count == 0
+                    : _consentStore is null || _platformBackend is null
                         ? null
                         : CreateCompanionFactory(configured),
             });
@@ -548,7 +548,7 @@ public sealed class WidgetBridgeServer(
     {
         if (_consentStore is null || _platformBackend is null)
             throw new BridgeProtocolException(
-                $"Widget '{configured.Id}' requires platform capabilities, but the broker is unavailable.");
+                $"Widget '{configured.Id}' requires host services, but the broker is unavailable.");
         return context => new BrokerWidgetProcessCompanion(
             configured.PackageId,
             configured.PublisherId,
