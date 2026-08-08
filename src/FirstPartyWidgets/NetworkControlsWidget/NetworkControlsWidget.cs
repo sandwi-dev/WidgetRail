@@ -59,6 +59,7 @@ public sealed class NetworkControlsWidget : Widget
     private string _bluetoothMessage = "Bluetooth loads when this widget becomes visible";
     private bool _bluetoothIsError;
     private bool _bluetoothBusy;
+    private WidgetBluetoothDevice? _bluetoothGuidanceDevice;
     private string? _selectedBluetoothDeviceId;
     private int _selectedBluetoothIndex;
     private string? _selectedNetworkId;
@@ -379,9 +380,8 @@ public sealed class NetworkControlsWidget : Widget
             case "bluetooth.radio.toggle":
                 await ToggleBluetoothRadioAsync(cancellationToken).ConfigureAwait(false);
                 break;
-            case "bluetooth.device.info":
-                SelectBluetoothFromElementId(action.SourceElementId);
-                SetFeedback("Bluetooth device connections are managed by Windows for each supported profile", false);
+            case "bluetooth.device.details":
+                ShowBluetoothDeviceGuidance(action.SourceElementId);
                 break;
             case "retry":
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
@@ -658,16 +658,14 @@ public sealed class NetworkControlsWidget : Widget
             var device = devices[index];
             var id = ids[index];
             var state = device.IsConnected ? "CONNECTED" : device.IsPaired ? "PAIRED" : "NEARBY";
-            var detail = device.IsConnected
-                ? "Connected by a supported Windows Bluetooth profile"
-                : device.IsPaired
-                    ? device.IsPresent
-                        ? "Available · press A to manage the connection in Windows"
-                        : "Not currently nearby"
-                    : "Press A to pair through Windows";
-            var button = UI.Button(device.DisplayName, "bluetooth.device.info", id)
-                .Icon(device.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Connection,
-                    $"{device.DisplayName}. {state}. {detail}")
+            var detail = BluetoothDeviceDetail(device);
+            var button = UI.Button(device.DisplayName, "bluetooth.device.details", id)
+                // Device rows are a sanitized, authoritative status view. A
+                // neutral device glyph prevents focus/activation from looking
+                // like a successful pair or connection. Only the textual state
+                // below reflects Windows' IsConnected/IsPaired properties.
+                .Icon(WidgetGlyph.Connection,
+                    $"{device.DisplayName}. {state}. {detail}. Press A for connection guidance")
                 .FocusUp(index == 0 ? "network.bluetooth.radio" : ids[index - 1])
                 .FocusLeft(id)
                 .FocusRight(id)
@@ -727,10 +725,10 @@ public sealed class NetworkControlsWidget : Widget
     {
         if (network.IsConnected) return "Connected";
         if (network.CredentialRequired)
-            return "A password is required in Windows Settings";
+            return "Use Windows Quick Settings to enter the password";
         if ((network.Security is WidgetWifiSecurityKind.Enterprise or WidgetWifiSecurityKind.Unknown) &&
             !network.HasSavedProfile)
-            return "This authentication method is not supported in the overlay";
+            return "Use Windows network settings for this authentication method";
         return "Press A or X to connect";
     }
 
@@ -873,17 +871,25 @@ public sealed class NetworkControlsWidget : Widget
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
+            var preserveGuidance = _bluetoothGuidanceDevice is { } guidance &&
+                snapshot.Devices.FirstOrDefault(device => string.Equals(
+                    device.DeviceId, guidance.DeviceId, StringComparison.Ordinal)) is { } current &&
+                current == guidance;
             _authoritativeBluetooth = snapshot;
             _bluetooth = snapshot;
             _bluetoothBusy = false;
             _bluetoothIsError = false;
-            _bluetoothMessage = snapshot.DiscoveryState switch
+            if (!preserveGuidance)
             {
-                WidgetBluetoothDiscoveryState.Enumerating => "Discovering devices…",
-                WidgetBluetoothDiscoveryState.Unavailable => "Device discovery unavailable",
-                _ when snapshot.Devices.Count == 0 => "No paired or nearby devices",
-                _ => $"{snapshot.Devices.Count} paired or nearby",
-            };
+                _bluetoothGuidanceDevice = null;
+                _bluetoothMessage = snapshot.DiscoveryState switch
+                {
+                    WidgetBluetoothDiscoveryState.Enumerating => "Discovering devices…",
+                    WidgetBluetoothDiscoveryState.Unavailable => "Device discovery unavailable",
+                    _ when snapshot.Devices.Count == 0 => "No paired or nearby devices",
+                    _ => $"{snapshot.Devices.Count} paired or nearby",
+                };
+            }
             ReconcileBluetoothSelectionLocked();
         }
         Invalidate();
@@ -900,6 +906,7 @@ public sealed class NetworkControlsWidget : Widget
                 WidgetBluetoothDiscoveryState.Unavailable, []);
             _authoritativeBluetooth = _bluetooth;
             _bluetoothBusy = false;
+            _bluetoothGuidanceDevice = null;
             _bluetoothMessage = message;
             _bluetoothIsError = error;
             _selectedBluetoothDeviceId = null;
@@ -1151,6 +1158,7 @@ public sealed class NetworkControlsWidget : Widget
                 enabled = _bluetooth.RadioState != WidgetBluetoothRadioState.On;
                 generation = _runGeneration;
                 _bluetoothBusy = true;
+                _bluetoothGuidanceDevice = null;
                 _bluetoothMessage = enabled ? "Turning Bluetooth on…" : "Turning Bluetooth off…";
                 _bluetoothIsError = false;
             }
@@ -1263,14 +1271,14 @@ public sealed class NetworkControlsWidget : Widget
                 if (selected is null || selected.IsConnected || _controlBusy || _scanBusy) return;
                 if (selected.CredentialRequired)
                 {
-                    _status = $"{selected.DisplayName} needs a password · connect in Windows Settings";
+                    _status = $"{selected.DisplayName} needs a password · use Windows Quick Settings to connect";
                     _statusIsError = false;
                     selected = null;
                 }
                 else if ((selected.Security is WidgetWifiSecurityKind.Enterprise or WidgetWifiSecurityKind.Unknown) &&
                          !selected.HasSavedProfile)
                 {
-                    _status = "This Wi-Fi authentication method is not supported in the overlay";
+                    _status = "This Wi-Fi authentication method needs Windows network settings";
                     _statusIsError = true;
                     selected = null;
                 }
@@ -1349,11 +1357,45 @@ public sealed class NetworkControlsWidget : Widget
         }
     }
 
+    private void ShowBluetoothDeviceGuidance(string elementId)
+    {
+        lock (_stateLock)
+        {
+            var devices = _bluetooth?.Devices ?? [];
+            var index = IndexOf(devices, device => string.Equals(
+                BluetoothElementId(device.DeviceId), elementId, StringComparison.Ordinal));
+            if (index < 0) return;
+
+            _selectedBluetoothIndex = index;
+            _selectedBluetoothDeviceId = devices[index].DeviceId;
+            var device = devices[index];
+            _bluetoothGuidanceDevice = device;
+            _bluetoothMessage = device.IsConnected
+                ? $"{device.DisplayName} is connected · disconnect it in Windows Quick Settings"
+                : device.IsPaired && device.IsPresent
+                    ? $"{device.DisplayName} is paired · connect it in Windows Quick Settings"
+                    : device.IsPaired
+                        ? $"{device.DisplayName} is paired but not nearby · manage it in Windows Settings"
+                        : $"Pair {device.DisplayName} in Windows Quick Settings · in-overlay pairing is not supported yet";
+            _bluetoothIsError = false;
+        }
+        Invalidate();
+    }
+
     private WidgetAvailableWifiNetwork? SelectedNetworkLocked()
     {
         var networks = _wifiSnapshot?.Networks ?? [];
         return _selectedIndex >= 0 && _selectedIndex < networks.Count ? networks[_selectedIndex] : null;
     }
+
+    private static string BluetoothDeviceDetail(WidgetBluetoothDevice device) =>
+        device.IsConnected
+            ? "Connected · disconnect in Windows Quick Settings"
+            : device.IsPaired
+                ? device.IsPresent
+                    ? "Paired · connect in Windows Quick Settings"
+                    : "Paired · not currently nearby"
+                : "Nearby · pair in Windows Quick Settings";
 
     private string NetworkNameLocked(string id) =>
         (_wifiSnapshot?.Networks ?? []).FirstOrDefault(network =>
@@ -1433,6 +1475,7 @@ public sealed class NetworkControlsWidget : Widget
         _scanBusy = _wifiSnapshot?.ScanState == WidgetWifiScanState.Scanning;
         _radioBusy = false;
         _bluetoothBusy = false;
+        _bluetoothGuidanceDevice = null;
         if (_networkStatus is not null && _wifiSnapshot is not null && _wifiRadio is not null)
         {
             ReconcileSelectionLocked();
@@ -1702,8 +1745,8 @@ public sealed class NetworkControlsWidget : Widget
 
     private static string MapConnectFailure(string errorCode) => errorCode switch
     {
-        "credential_required" => "This network needs a password · connect in Windows Settings",
-        "unsupported_authentication" => "This Wi-Fi authentication method is not supported in the overlay",
+        "credential_required" => "This network needs a password · use Windows Quick Settings to connect",
+        "unsupported_authentication" => "This Wi-Fi authentication method needs Windows network settings",
         "resource_not_found" => "That scan result expired · scan again",
         "provider_busy" => "Another network connection is already in progress",
         "permission_denied" or "capability_revoked" or "capability_not_declared" =>

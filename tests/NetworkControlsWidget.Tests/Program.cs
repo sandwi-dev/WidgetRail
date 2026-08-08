@@ -14,13 +14,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Precise-location denial has a bounded permission state", PreciseLocationState),
     ("Available network focus graph preserves host back and tray boundaries", ControllerFocusGraph),
     ("Opaque network identity preserves selection across event churn", StableOpaqueSelection),
-    ("Saved and open visible networks start typed host connections", EligibleConnections),
+    ("Saved and open visible networks start typed host connections without optimistic success", EligibleConnections),
     ("Credential and unsupported authentication never prompt in the worker", CredentialsStayOutOfWorker),
     ("Connection failures are typed sanitized and recoverable", ConnectionFailures),
     ("Capability failures render bounded recovery surfaces", CapabilityFailureStates),
     ("Lifecycle cancellation tears down both event streams", LifecycleCancellation),
     ("Wi-Fi radio toggle is controller-native and reconciles authoritative state", WifiRadioToggle),
-    ("Bluetooth device listing is sanitized event-driven and controller navigable", BluetoothDeviceListing),
+    ("Bluetooth device rows expose honest read-only status and guidance", BluetoothDeviceListing),
     ("Bluetooth radio control is optional typed and authoritatively reconciled", BluetoothRadioToggle),
     ("Bluetooth permission failure does not break Wi-Fi controls", BluetoothPermissionIsolation),
     ("Radio cancellation cannot overwrite a later widget lifecycle", RadioCancellationIsGenerationBound),
@@ -261,7 +261,12 @@ static async Task EligibleConnections()
         await WaitUntil(() => fake.ConnectCalls == 1);
         Assert.Equal(candidate.NetworkId, fake.ConnectRequests.Single().NetworkId);
         Assert.True(widget.ControlBusy, "Broker ACK was incorrectly treated as connection success.");
-        Assert.True(Button(Snapshot(widget, 2).Root, "network.wifi.scan").IsDisabled is true,
+        var acknowledged = Snapshot(widget, 2);
+        Assert.Equal(WidgetGlyph.Wifi,
+            NetworkButton(acknowledged.Root, candidate.DisplayName).Glyph);
+        Assert.Equal("CONNECTING",
+            NetworkState(acknowledged.Root, candidate.DisplayName).Text);
+        Assert.True(Button(acknowledged.Root, "network.wifi.scan").IsDisabled is true,
             "Scan remained actionable while a connection attempt owned the provider.");
 
         fake.EmitStatus(fake.Status with
@@ -300,11 +305,11 @@ static async Task CredentialsStayOutOfWorker()
     var snapshot = Snapshot(widget, 1);
     await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(snapshot.Root, "Locked").Id));
     Assert.Equal(0, fake.ConnectCalls);
-    Assert.Contains("Windows Settings", Text(Snapshot(widget, 2).Root, "network.status").Text!);
+    Assert.Contains("Windows Quick Settings", Text(Snapshot(widget, 2).Root, "network.status").Text!);
 
     await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(Snapshot(widget, 3).Root, "Enterprise").Id));
     Assert.Equal(0, fake.ConnectCalls);
-    Assert.Contains("not supported", Text(Snapshot(widget, 4).Root, "network.status").Text!);
+    Assert.Contains("Windows network settings", Text(Snapshot(widget, 4).Root, "network.status").Text!);
     Assert.True(!Nodes(Snapshot(widget, 5).Root).Any(node =>
             node.Id.Contains("password", StringComparison.OrdinalIgnoreCase) ||
             node.ActionId?.Contains("credential", StringComparison.OrdinalIgnoreCase) == true),
@@ -317,7 +322,7 @@ static async Task ConnectionFailures()
     var cases = new[]
     {
         ("credential_required", "needs a password"),
-        ("unsupported_authentication", "not supported"),
+        ("unsupported_authentication", "Windows network settings"),
         ("resource_not_found", "scan result expired"),
         ("provider_busy", "already in progress"),
     };
@@ -427,24 +432,29 @@ static async Task BluetoothDeviceListing()
         WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
         [
             new("bluetooth-a", "Wireless controller", true, true, true),
-            new("bluetooth-b", "Nearby keyboard", false, false, true),
+            new("bluetooth-b", "Paired headset", true, false, true),
+            new("bluetooth-c", "Nearby keyboard", false, false, true),
         ]);
     var widget = Create(fake);
     await ActivateInteractive(widget);
-    await WaitUntil(() => widget.Bluetooth?.Devices.Count == 2);
+    await WaitUntil(() => widget.Bluetooth?.Devices.Count == 3);
+    await WaitUntil(() => fake.BluetoothSubscriptionCount == 1);
     await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     var snapshot = Snapshot(widget, 1);
     var radio = Button(snapshot.Root, "network.bluetooth.radio");
     var devices = Buttons(snapshot.Root)
-        .Where(button => button.ActionId == "bluetooth.device.info").ToArray();
-    Assert.Equal(2, devices.Length);
+        .Where(button => button.ActionId == "bluetooth.device.details").ToArray();
+    Assert.Equal(3, devices.Length);
     Assert.Equal("Wireless controller", devices[0].Text);
     Assert.True(devices.All(device => device.IsSelected is not true),
         "Remembered Bluetooth focus was exposed as a connected checkmark.");
+    Assert.True(devices.All(device => device.Glyph == WidgetGlyph.Connection),
+        "Bluetooth focus or activation was visually confused with authoritative connection state.");
     Assert.Equal(devices[0].Id, radio.Focus!.Down);
     Assert.Equal("network.bluetooth.radio", devices[0].Focus!.Up);
     Assert.Equal(devices[1].Id, devices[0].Focus!.Down);
-    Assert.True(devices[1].Focus!.Down is null,
+    Assert.Equal(devices[2].Id, devices[1].Focus!.Down);
+    Assert.True(devices[2].Focus!.Down is null,
         "Final Bluetooth device must leave Down unclaimed for the host tray boundary.");
     Assert.True(!Nodes(snapshot.Root).Any(node =>
             node.Text?.Contains("bluetooth-a", StringComparison.Ordinal) == true),
@@ -453,13 +463,41 @@ static async Task BluetoothDeviceListing()
             button.ActionId?.Contains("connect", StringComparison.OrdinalIgnoreCase) == true &&
             button.Id.StartsWith("network.bluetooth", StringComparison.Ordinal)),
         "Widget claimed a generic Bluetooth connect operation.");
+
+    await widget.OnActionAsync(new("bluetooth.device.details", devices[0].Id));
+    Assert.Contains("disconnect it in Windows Quick Settings",
+        Text(Snapshot(widget, 2).Root, "network.bluetooth.summary").Text!);
+
+    await widget.OnActionAsync(new("bluetooth.device.details", devices[1].Id));
+    Assert.Contains("Paired headset is paired · connect it in Windows Quick Settings",
+        Text(Snapshot(widget, 3).Root, "network.bluetooth.summary").Text!);
+
+    await widget.OnActionAsync(new("bluetooth.device.details", devices[2].Id));
+    var guidance = Snapshot(widget, 4);
+    Assert.Contains("Pair Nearby keyboard in Windows Quick Settings",
+        Text(guidance.Root, "network.bluetooth.summary").Text!);
+    Assert.Equal(WidgetGlyph.Connection,
+        Buttons(guidance.Root).Single(button => button.Text == "Nearby keyboard").Glyph);
+    Assert.True(widget.Bluetooth!.Devices.Single(device =>
+        device.DisplayName == "Wireless controller").IsConnected,
+        "A read-only details action disconnected an authoritative Bluetooth device.");
+    Assert.True(widget.Bluetooth.Devices.Single(device =>
+        device.DisplayName == "Paired headset") is { IsPaired: true, IsConnected: false },
+        "A read-only details action connected an authoritative paired Bluetooth device.");
+    Assert.True(widget.Bluetooth.Devices.Single(device =>
+        device.DisplayName == "Nearby keyboard") is { IsPaired: false, IsConnected: false },
+        "A read-only details action mutated authoritative Bluetooth connection state.");
+
     fake.EmitBluetooth(fake.Bluetooth with
     {
         Devices = [new("bluetooth-a", "Wireless controller", true, false, true)],
     });
     await WaitUntil(() => widget.Bluetooth?.Devices.Count == 1 &&
                           widget.Bluetooth.Devices[0].IsConnected == false);
-    Assert.Valid(Snapshot(widget, 2));
+    var reconciled = Snapshot(widget, 5);
+    Assert.Equal("PAIRED", Text(reconciled.Root,
+        $"{Buttons(reconciled.Root).Single(button => button.Text == "Wireless controller").Id}.state").Text);
+    Assert.Valid(reconciled);
     await Background(widget);
 }
 
