@@ -83,6 +83,8 @@ that a 1×1 display is usable.
 Use the public declarative layout and GBSS primitives:
 
 - flex growth/shrink, minimums, maximums, and intrinsic measurement;
+- `flex-wrap: wrap` on bounded Rows when controls should form additional lines
+  as the logical viewport narrows;
 - bounded logical lengths, percentages, `vw`, and `vh`;
 - explicit line limits and ellipsis for bounded labels;
 - `overflow: clip` for surfaces that must not escape their viewport; and
@@ -90,6 +92,12 @@ Use the public declarative layout and GBSS primitives:
   that can exceed the clamped viewport; and
 - stable focus IDs and explicit focus neighbors where reflow makes geometry
   ambiguous.
+
+Wrapped Rows recompute line membership from the current logical width on every
+layout pass. Do not branch a widget snapshot on a guessed monitor resolution.
+With `gap: 8px 12px`, the first value separates wrapped lines and the second
+separates items within each line. Prefer Scroll over wrapping when the item
+count is unbounded or vertical traversal is the primary interaction.
 
 Do not assume 1920×1080 physical pixels, 96 DPI, 16:9, a fixed widget width,
 positive desktop coordinates, or a particular taskbar position. Widgets never

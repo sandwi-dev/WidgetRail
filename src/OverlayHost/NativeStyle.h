@@ -27,6 +27,7 @@ struct NativeEdges final {
 };
 
 enum class NativeDirection { Unspecified, Row, Column };
+enum class NativeFlexWrap { NoWrap, Wrap };
 enum class NativeAlign { Unspecified, Start, Center, End, Stretch };
 enum class NativeJustify { Unspecified, Start, Center, End, SpaceBetween, SpaceAround };
 enum class NativeOverflow { Clip, Visible };
@@ -147,6 +148,7 @@ public:
     [[nodiscard]] float flexShrink() const noexcept;
     [[nodiscard]] const std::optional<float>& flexBasisPx() const noexcept;
     [[nodiscard]] bool flexBasisAuto() const noexcept;
+    [[nodiscard]] NativeFlexWrap flexWrap() const noexcept;
     [[nodiscard]] NativeAlign align() const noexcept;
     [[nodiscard]] NativeJustify justify() const noexcept;
     [[nodiscard]] NativeDirection direction() const noexcept;

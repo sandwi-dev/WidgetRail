@@ -726,7 +726,7 @@ public sealed class SpotifyWidget : Widget
                 ? "Previous unavailable" : "Previous track")
             .Disabled(disallowed.SkippingPrevious || pending is not null)
             .Busy(pending == WidgetSpotifyPlaybackOperation.Previous)
-            .FocusRight("spotify.play-toggle").FocusDown("spotify.shuffle")
+            .FocusRight("spotify.play-toggle").FocusDown("spotify.seek.slider")
             .Classes("spotify-transport");
         var toggle = UI.Button("", "spotify.play-toggle", "spotify.play-toggle")
             .Icon(playback.IsPlaying ? WidgetGlyph.Pause : WidgetGlyph.Play,
@@ -735,41 +735,48 @@ public sealed class SpotifyWidget : Widget
             .Busy(pending is WidgetSpotifyPlaybackOperation.Play or
                 WidgetSpotifyPlaybackOperation.Pause)
             .FocusLeft("spotify.previous").FocusRight("spotify.next")
-            .FocusDown("spotify.seek").Classes("spotify-play",
+            .FocusDown("spotify.seek.slider").Classes("spotify-play",
                 playback.IsPlaying ? "is-playing" : "is-paused");
         var next = UI.Button("", "spotify.next", "spotify.next")
             .Icon(WidgetGlyph.Next, disallowed.SkippingNext ? "Next unavailable" : "Next track")
             .Disabled(disallowed.SkippingNext || pending is not null)
             .Busy(pending == WidgetSpotifyPlaybackOperation.Next)
-            .FocusLeft("spotify.play-toggle").FocusDown("spotify.repeat")
+            .FocusLeft("spotify.play-toggle").FocusDown("spotify.seek.slider")
             .Classes("spotify-transport");
         var shuffle = UI.Button("", "spotify.shuffle", "spotify.shuffle")
             .Icon(WidgetGlyph.Shuffle, playback.ShuffleState ? "Turn shuffle off" : "Turn shuffle on")
             .Selected(playback.ShuffleState)
             .Disabled(disallowed.TogglingShuffle || pending is not null)
             .Busy(pending == WidgetSpotifyPlaybackOperation.SetShuffle)
-            .FocusUp("spotify.previous").FocusRight("spotify.seek")
+            .FocusUp("spotify.seek.slider").FocusRight("spotify.repeat")
+            .FocusDown("spotify.refresh")
             .Classes("spotify-secondary-action", playback.ShuffleState ? "is-active" : "is-inactive");
-        var seek = UI.Slider(position, 0, duration, 5_000, "spotify.seek", "spotify.seek",
-                "Playback position", $"{FormatTime(position)} of {FormatTime(duration)}")
+        var seek = UI.Scrubber(
+                TimeSpan.FromMilliseconds(position),
+                TimeSpan.FromMilliseconds(duration),
+                TimeSpan.FromSeconds(5),
+                "spotify.seek",
+                "spotify.seek",
+                "Spotify playback position")
             .Disabled(disallowed.Seeking || pending is not null)
             .Busy(pending == WidgetSpotifyPlaybackOperation.Seek)
-            .FocusUp("spotify.play-toggle").FocusDown("spotify.refresh")
-            .Classes("spotify-seek");
+            .FocusUp("spotify.play-toggle").FocusDown("spotify.shuffle")
+            .AddClasses("spotify-scrubber");
         var repeat = UI.Button("", "spotify.repeat", "spotify.repeat")
             .Icon(WidgetGlyph.Repeat, $"Repeat {playback.RepeatState.ToString().ToLowerInvariant()}")
             .Selected(playback.RepeatState != WidgetSpotifyRepeatState.Off)
             .Disabled(RepeatUnavailable(playback) || pending is not null)
             .Busy(pending == WidgetSpotifyPlaybackOperation.SetRepeat)
-            .FocusUp("spotify.next").FocusLeft("spotify.seek")
+            .FocusUp("spotify.seek.slider").FocusLeft("spotify.shuffle")
+            .FocusDown("spotify.disconnect")
             .Classes("spotify-secondary-action",
                 playback.RepeatState == WidgetSpotifyRepeatState.Off ? "is-inactive" : "is-active");
         var refresh = UI.Button("Refresh", "spotify.refresh", "spotify.refresh")
             .Icon(WidgetGlyph.Refresh, "Refresh Spotify")
-            .FocusUp("spotify.seek").FocusRight("spotify.disconnect")
+            .FocusUp("spotify.shuffle").FocusRight("spotify.disconnect")
             .Classes("spotify-text-action");
         var disconnect = UI.Button("Disconnect", "spotify.disconnect", "spotify.disconnect")
-            .FocusUp("spotify.seek").FocusLeft("spotify.refresh")
+            .FocusUp("spotify.repeat").FocusLeft("spotify.refresh")
             .Classes("spotify-text-action");
 
         var root = UI.Stack("spotify.root",
@@ -784,21 +791,13 @@ public sealed class SpotifyWidget : Widget
                                     .Classes("spotify-track-subtitle"),
                                 UI.Text(item.ContextName ?? "Spotify", "spotify.context",
                                         item.ContextName ?? "Spotify")
-                                    .Classes("spotify-context"),
-                                UI.Row("spotify.timeline",
-                                        UI.Text(FormatTime(position), "spotify.position")
-                                            .Classes("spotify-time"),
-                                        UI.Progress(position, duration, "spotify.progress",
-                                                $"{FormatTime(position)} of {FormatTime(duration)}")
-                                            .Classes("spotify-progress"),
-                                        UI.Text(FormatTime(duration), "spotify.duration")
-                                            .Classes("spotify-time", "is-duration"))
-                                    .Classes("spotify-timeline"))
+                                    .Classes("spotify-context"))
                             .Classes("spotify-details"))
                     .Classes("spotify-media"),
                 UI.Row("spotify.primary-controls", previous, toggle, next)
                     .Classes("spotify-primary-controls"),
-                UI.Row("spotify.playback-options", shuffle, seek, repeat)
+                seek,
+                UI.Row("spotify.playback-options", shuffle, repeat)
                     .Classes("spotify-playback-options"),
                 UI.Row("spotify.footer",
                         UI.Text(playback.Attribution, "spotify.attribution", "Powered by Spotify")

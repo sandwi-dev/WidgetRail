@@ -6,6 +6,12 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+Responsive Row wrapping and the first production uses of the public
+single-select Picker and controller Scrubber are implemented in source and
+focused tests. Complete Release and packaged visual evidence remain the gate
+for closing their tracked verification issues. Purpose-built media/app tiles
+remain a follow-up rather than an implemented claim.
+
 ## Implemented
 
 ### Native overlay and input
@@ -62,7 +68,7 @@ Up/Down navigation.
   Image, and Icon authoring; controller-ready ToggleButton, Stepper,
   IconButton, Card, SectionHeader, StatusBadge, Divider, Alert, EmptyState,
   SegmentedTabs, Switch, ScopedDialog, SettingsRow, and bounded nested
-  ActionSheet composites with stable semantic
+  ActionSheet plus single-select Picker composites with stable semantic
   `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
@@ -601,11 +607,11 @@ privacy/explicit state, optimistic command reconciliation, opaque identity,
 native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
-The full native Release aggregate passes at milestone `9f1af0b`. Focused native suites report Controller
+The full native Release aggregate passes at milestone `ed21bb9`. Focused native suites report Controller
 Navigation 73 checks, Slider Interaction 2,071, Focus Navigation 22, Widget Surface
 Focus 16, Controller Input Ownership 17, Declarative Renderer 4,452, and Native Icons 198. Display-sensitive evidence includes 200
 declarative-layout checks, 108,545 placement/render-metric/surface-geometry
-checks, and 34 foreground-target/display-refresh/reentrancy checks, alongside state-machine,
+checks, and 42 foreground-target/display-refresh/reentrancy checks, alongside state-machine,
 remote-image, semantic-icon, native-style, focus, catalog parsing, and renderer
 suites. It covers deterministic tiny/portrait/negative-coordinate/wide/4K and
 72–480-DPI math plus 150% font-size/letter-spacing adaptation. The platform
@@ -774,10 +780,13 @@ and [troubleshooting](troubleshooting.md).
 2. Complete the YT Music clean Community-addon install/consent/lifecycle/crash/
    update/rollback/uninstall proof without a trusted fallback.
 3. Build the next public component milestone: non-focus-stealing toast,
-   controller scrubber, `MediaTile`, and `AppTile`. `SettingsRow`, bounded
-   nested `ActionSheet`, and single-select `Picker` are already public. Follow
-   with per-edge borders, responsive grid/wrap, semantic
-   monospace, and bounded shell transitions.
+   `MediaTile`, and `AppTile`. `SettingsRow`, bounded nested `ActionSheet`,
+   single-select `Picker`, and controller `Scrubber` are public; Settings and
+   Spotify provide their first production uses. Responsive Row wrapping is
+   implemented. Follow with per-edge borders, responsive grid, semantic
+   monospace, and bounded shell transitions. None of those follow-up contracts
+   are claimed as implemented until their focused and complete Release evidence
+   is recorded.
 4. Extend Games & Apps with bounded icons, AppsFolder/launcher sources,
    running-program capture, and a host-owned file picker while preserving
    opaque exact launch identities.

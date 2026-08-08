@@ -27,7 +27,7 @@ Premium eligibility, and terms remain external requirements.
 | Broker contract | Implemented capability IDs and strict DTOs for configuration, authorization, playback read/control, and playback-change events. |
 | Trusted provider | Implemented PKCE, exact loopback callback, refresh-token vault, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized errors. |
 | Native composition | `WidgetBridge` constructs the Windows Spotify provider through the same typed broker used by every widget. |
-| Community addon | Controller-first player core implemented, tested, and locally packageable through the same public SDK/AppContainer path as third-party addons. |
+| Community addon | Controller-first player core implemented, tested, and locally packageable through the same public SDK/AppContainer path as third-party addons. Its real seek control uses the public `UI.Scrubber` contract. |
 | Setup UI | Controller-native Settings editor is planned; the CLI below is the current testable path. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
 | Local Web Playback SDK audio | Isolated singleton WebView2 host and offline protocol tests implemented; provider orchestration and live device proof remain. |
@@ -181,8 +181,10 @@ guide](https://developer.spotify.com/documentation/web-api/tutorials/february-20
 
 Stage 1 is the locally testable core, not the definition of the final widget.
 Stages 2–7 land behind nested controller surfaces and incremental scopes after
-the provider/SDK contract is stable. Search result and collection tiles should
-use the future public `MediaTile`, picker/listbox, action-sheet, and scrubber
+the provider/SDK contract is stable. The Player already uses `UI.Scrubber` so
+Left/Right emits coalesced absolute millisecond targets while Up/Down remains
+ordinary navigation. Search result and collection tiles should use the future
+public `MediaTile`/`AppTile` contracts plus the existing Picker/ActionSheet
 components instead of private layout hacks.
 
 ### Playback boundary

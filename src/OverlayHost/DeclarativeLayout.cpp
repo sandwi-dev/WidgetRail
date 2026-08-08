@@ -39,6 +39,13 @@ struct FlexItem {
     float shrink{};
 };
 
+struct FlexLine {
+    std::size_t begin{};
+    std::size_t end{};
+    float margins{};
+    float cross{};
+};
+
 [[nodiscard]] float ClampFinite(
     const float value,
     const float fallback,
@@ -182,6 +189,13 @@ private:
                 "Scroll axis must match the container layout direction.",
                 LayoutIssueSeverity::Error);
         }
+        if (element.wrap == WrapBehavior::Wrap &&
+            (element.direction != LayoutDirection::Row ||
+             element.scrollAxis != ScrollAxis::None)) {
+            AddIssue(element.id, "invalid_wrap_container",
+                "Wrapping requires a non-scroll row container.",
+                LayoutIssueSeverity::Error);
+        }
         for (const auto& child : element.children) Preflight(child, depth + 1, ids, nodes);
     }
 
@@ -233,6 +247,66 @@ private:
             }
             width = intrinsic.width + Horizontal(padding);
             height = intrinsic.height + Vertical(padding);
+        } else if (element.direction == LayoutDirection::Row &&
+                   element.wrap == WrapBehavior::Wrap) {
+            const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
+            const auto crossGap = ResolveNumber(
+                element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
+            std::vector<FlexItem> items;
+            items.reserve(element.children.size());
+            for (const auto& child : element.children) {
+                const auto childMargin = ResolveSpacing(child.margin, child.id, true);
+                const auto childMeasured = Measure(child, innerMaximumWidth, innerMaximumHeight).size;
+                const auto basis = ResolveOptional(
+                    child.flexBasis, child.id, "flexBasis", 0.0F, kMaximumCoordinate);
+                const auto explicitWidth = ResolveOptional(
+                    child.width, child.id, "width", 0.0F, kMaximumCoordinate);
+                const auto preferred = basis.value_or(explicitWidth.value_or(childMeasured.width));
+                auto minimum = ResolveOptional(
+                    child.minWidth, child.id, "minWidth", 0.0F, kMaximumCoordinate).value_or(0.0F);
+                auto maximum = ResolveOptional(
+                    child.maxWidth, child.id, "maxWidth", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
+                if (maximum < minimum) {
+                    AddIssue(child.id, "inverted_constraints",
+                        "Maximum size was raised to the minimum size.",
+                        LayoutIssueSeverity::Warning);
+                    maximum = minimum;
+                }
+                items.push_back({
+                    &child,
+                    childMargin,
+                    std::clamp(preferred, minimum, maximum),
+                    minimum,
+                    maximum,
+                    ResolveNumber(child.flexGrow, child.id, "flexGrow", 0.0F, kMaximumFlex, 0.0F),
+                    ResolveNumber(child.flexShrink, child.id, "flexShrink", 0.0F, kMaximumFlex, 1.0F),
+                });
+            }
+            auto lines = BuildWrappedLines(items, innerMaximumWidth, gap);
+            float largestMain{};
+            float totalCross{};
+            for (auto& line : lines) {
+                const auto lineCount = line.end - line.begin;
+                const auto lineGaps = lineCount > 1
+                    ? gap * static_cast<float>(lineCount - 1)
+                    : 0.0F;
+                DistributeFlex(items,
+                    std::max(0.0F, innerMaximumWidth - line.margins - lineGaps),
+                    line.begin, line.end);
+                float lineMain = line.margins + lineGaps;
+                for (auto index = line.begin; index < line.end; ++index) {
+                    lineMain += items[index].main;
+                    line.cross = std::max(line.cross,
+                        ResolveRowCrossSize(items[index], innerMaximumHeight) +
+                        Vertical(items[index].margin));
+                }
+                largestMain = std::max(largestMain, lineMain);
+                totalCross += line.cross;
+            }
+            if (lines.size() > 1)
+                totalCross += crossGap * static_cast<float>(lines.size() - 1);
+            width = largestMain + Horizontal(padding);
+            height = totalCross + Vertical(padding);
         } else {
             const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
             float totalMain = 0.0F;
@@ -266,6 +340,55 @@ private:
         ApplyAspectRatio(element, width, height, explicitWidth.has_value(), explicitHeight.has_value());
         ClampDimensions(element, width, height);
         return {{width, height}};
+    }
+
+    [[nodiscard]] std::vector<FlexLine> BuildWrappedLines(
+        const std::vector<FlexItem>& items,
+        const float availableMain,
+        const float gap) const {
+        std::vector<FlexLine> lines;
+        if (items.empty()) return lines;
+
+        std::size_t lineBegin{};
+        float occupied{};
+        float margins{};
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            const auto outer = items[index].main + Horizontal(items[index].margin);
+            const auto proposed = occupied + (index > lineBegin ? gap : 0.0F) + outer;
+            if (index > lineBegin && proposed > availableMain + kEpsilon) {
+                lines.push_back({lineBegin, index, margins, 0.0F});
+                lineBegin = index;
+                occupied = outer;
+                margins = Horizontal(items[index].margin);
+            } else {
+                occupied = proposed;
+                margins += Horizontal(items[index].margin);
+            }
+        }
+        lines.push_back({lineBegin, items.size(), margins, 0.0F});
+        return lines;
+    }
+
+    [[nodiscard]] float ResolveRowCrossSize(
+        const FlexItem& item,
+        const float availableCross) {
+        const auto& child = *item.element;
+        const auto remeasured = Measure(child, item.main, availableCross).size;
+        auto cross = remeasured.height;
+        if (child.aspectRatio.has_value() && !child.height.has_value()) {
+            const auto ratio = ResolveOptional(
+                child.aspectRatio, child.id, "aspectRatio", kMinimumRatio, kMaximumRatio)
+                .value_or(1.0F);
+            cross = item.main / ratio;
+        }
+        auto minimum = ResolveOptional(
+            child.minHeight, child.id, "minHeight", 0.0F, kMaximumCoordinate).value_or(0.0F);
+        auto maximum = ResolveOptional(
+            child.maxHeight, child.id, "maxHeight", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
+        if (maximum < minimum) maximum = minimum;
+        cross = std::clamp(cross, minimum, maximum);
+        return std::min(cross,
+            std::max(minimum, availableCross - Vertical(item.margin)));
     }
 
     [[nodiscard]] Rect LayoutNode(
@@ -348,6 +471,12 @@ private:
             const auto main = std::clamp(preferred, minimum, maximum);
             items.push_back({&child, margin, main, minimum, maximum, grow, shrink});
             margins += row ? Horizontal(margin) : Vertical(margin);
+        }
+
+        if (row && element.wrap == WrapBehavior::Wrap) {
+            return LayoutWrappedRow(
+                element, assigned, content, ancestorClip, box,
+                items, gap, availableMain, availableCross);
         }
 
         const auto totalGap =
@@ -468,15 +597,139 @@ private:
         return assigned;
     }
 
+    [[nodiscard]] Rect LayoutWrappedRow(
+        const LayoutElement& element,
+        const Rect assigned,
+        const Rect content,
+        const Rect ancestorClip,
+        LayoutBox box,
+        std::vector<FlexItem>& items,
+        const float gap,
+        const float availableMain,
+        const float availableCross) {
+        const auto crossGap = ResolveNumber(
+            element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
+        auto lines = BuildWrappedLines(items, availableMain, gap);
+        for (auto& line : lines) {
+            const auto count = line.end - line.begin;
+            const auto lineGaps = count > 1
+                ? gap * static_cast<float>(count - 1)
+                : 0.0F;
+            DistributeFlex(items,
+                std::max(0.0F, availableMain - line.margins - lineGaps),
+                line.begin, line.end);
+            for (auto index = line.begin; index < line.end; ++index) {
+                line.cross = std::max(line.cross,
+                    ResolveRowCrossSize(items[index], availableCross) +
+                    Vertical(items[index].margin));
+            }
+        }
+
+        const auto childClip = element.overflow == OverflowBehavior::Clip
+            ? Intersect(ancestorClip, content)
+            : ancestorClip;
+        auto crossCursor = content.y;
+        Rect descendants{};
+        bool haveDescendants = false;
+
+        for (const auto& line : lines) {
+            const auto count = line.end - line.begin;
+            const auto baseGaps = count > 1
+                ? gap * static_cast<float>(count - 1)
+                : 0.0F;
+            float occupiedMain = line.margins + baseGaps;
+            for (auto index = line.begin; index < line.end; ++index)
+                occupiedMain += items[index].main;
+
+            const auto remainingMain = std::max(0.0F, availableMain - occupiedMain);
+            float leadingMain{};
+            float distributedGap = gap;
+            switch (element.mainAxisAlignment) {
+            case MainAxisAlignment::Center:
+                leadingMain = remainingMain * 0.5F;
+                break;
+            case MainAxisAlignment::End:
+                leadingMain = remainingMain;
+                break;
+            case MainAxisAlignment::SpaceBetween:
+                if (count > 1)
+                    distributedGap += remainingMain / static_cast<float>(count - 1);
+                break;
+            case MainAxisAlignment::SpaceAround:
+                if (count > 0) {
+                    const auto share = remainingMain / static_cast<float>(count);
+                    leadingMain = share * 0.5F;
+                    distributedGap += share;
+                }
+                break;
+            default:
+                break;
+            }
+
+            auto mainCursor = content.x + leadingMain;
+            for (auto index = line.begin; index < line.end; ++index) {
+                auto& item = items[index];
+                const auto& child = *item.element;
+                mainCursor += item.margin.left;
+                auto cross = ResolveRowCrossSize(item, availableCross);
+                const bool stretch =
+                    element.crossAxisAlignment == CrossAxisAlignment::Stretch;
+                if (stretch && !child.height.has_value() &&
+                    !child.aspectRatio.has_value()) {
+                    cross = std::max(0.0F,
+                        line.cross - item.margin.top - item.margin.bottom);
+                }
+                const auto crossRoom = std::max(0.0F,
+                    line.cross - item.margin.top - item.margin.bottom - cross);
+                auto crossOffset = item.margin.top;
+                if (element.crossAxisAlignment == CrossAxisAlignment::Center)
+                    crossOffset += crossRoom * 0.5F;
+                else if (element.crossAxisAlignment == CrossAxisAlignment::End)
+                    crossOffset += crossRoom;
+
+                const Rect childRect{
+                    mainCursor,
+                    crossCursor + crossOffset,
+                    item.main,
+                    cross,
+                };
+                const auto childBounds = LayoutNode(child, childRect, childClip);
+                descendants = haveDescendants ? Union(descendants, childBounds) : childBounds;
+                haveDescendants = true;
+                mainCursor += item.main + item.margin.right + distributedGap;
+            }
+            crossCursor += line.cross + crossGap;
+        }
+
+        if (haveDescendants) {
+            box.overflowX = descendants.x < content.x - kEpsilon ||
+                descendants.x + descendants.width > content.x + content.width + kEpsilon;
+            box.overflowY = descendants.y < content.y - kEpsilon ||
+                descendants.y + descendants.height > content.y + content.height + kEpsilon;
+            result_.boxes[element.id] = box;
+            return Union(assigned, descendants);
+        }
+        return assigned;
+    }
+
     void DistributeFlex(std::vector<FlexItem>& items, const float target) {
+        DistributeFlex(items, target, 0, items.size());
+    }
+
+    void DistributeFlex(
+        std::vector<FlexItem>& items,
+        const float target,
+        const std::size_t begin,
+        const std::size_t end) {
         for (int pass = 0; pass < 16; ++pass) {
             float used = 0.0F;
-            for (const auto& item : items) used += item.main;
+            for (auto index = begin; index < end; ++index) used += items[index].main;
             const auto free = target - used;
             if (std::abs(free) <= kEpsilon) break;
 
             float weight = 0.0F;
-            for (const auto& item : items) {
+            for (auto index = begin; index < end; ++index) {
+                const auto& item = items[index];
                 if (free > 0.0F && item.grow > 0.0F && item.main < item.maximumMain - kEpsilon)
                     weight += item.grow;
                 else if (free < 0.0F && item.shrink > 0.0F && item.main > item.minimumMain + kEpsilon)
@@ -485,7 +738,8 @@ private:
             if (weight <= kEpsilon) break;
 
             bool clampedAny = false;
-            for (auto& item : items) {
+            for (auto index = begin; index < end; ++index) {
+                auto& item = items[index];
                 const auto itemWeight = free > 0.0F
                     ? (item.main < item.maximumMain - kEpsilon ? item.grow : 0.0F)
                     : (item.main > item.minimumMain + kEpsilon

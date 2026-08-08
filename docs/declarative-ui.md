@@ -23,6 +23,7 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |
 | `UI.Progress(value, maximum, id, accessibilityLabel?)` | `progress` | Read-only bounded progress where `0 <= value <= maximum` and `maximum > 0`. |
 | `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, accessibilityLabel, accessibilityValue?, activationAction?)` | `slider` | Protocol-v3 controller value control with absolute requested values. |
+| `UI.Scrubber(position, duration, step, valueChangedAction, id, ...)` | `stack`, `slider`, `row`, `text` | Media seek composition with one Slider focus stop, absolute millisecond targets, and responsive elapsed/duration labels. |
 | `UI.Spacer(id)` | `spacer` | Layout spacing node. |
 | `UI.Image(httpsSource, id, accessibilityLabel, fit?)` | `image` | HTTPS image with required accessible alternative text. |
 | `UI.InlinePngImage(pngBase64, id, accessibilityLabel, fit?)` | `image` | Protocol-v6 bounded host-decoded PNG pixels for trusted broker artwork; never a native path. |
@@ -31,7 +32,7 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
 | `UI.SettingsRow(label, action, id, ...)` | `stack`, `row`, `text`, `button` | Responsive setting summary whose `id.action` Button is its only focus stop. |
 | `UI.ActionSheet(title, id, scopeId, backAction, items, description?)` | `stack`, `scroll`, `button` | Bounded 1–32 item nested action scope with stable item focus IDs and scope-owned B. |
-| `UI.Picker(title, id, scopeId, backAction, options, description?)` | `stack`, `scroll`, `button` | Bounded 1–64 option single-select scope with explicit selected state, stable option IDs, and scope-owned B. |
+| `UI.Picker(title, id, scopeId, backAction, options, description?)` | `stack`, `scroll`, `button` | Bounded 1–128 option single-select scope with explicit selected state, stable option IDs, and scope-owned B. |
 | `UI.Card(id, variant?, children...)` | `stack` | Nonfocusable raised/subtle/transparent grouping surface. |
 | `UI.SectionHeader(title, id, eyebrow?, description?, trailing?)` | `stack`, `row`, `text` | Stable title hierarchy with optional trailing content. |
 | `UI.StatusBadge(label, tone, id, glyph?)` | `row`, `icon`, `text` | Nonfocusable status that never relies on color alone. |
@@ -119,6 +120,38 @@ Suggested host defaults are 560×420 for Compact, 880×520 for Standard, and
 Explicit values refine the selected mode but do not bypass work-area, DPI,
 text-scale, tray/footer, or minimum-control-size constraints. Widgets must
 still reflow and use Scroll for overflow after the host clamps the surface.
+
+### Responsive row wrapping
+
+GBSS can reflow a semantic Row without publishing a different widget tree:
+
+```css
+row.quick-actions {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align: start;
+}
+
+.quick-action {
+  flex-basis: 168px;
+  min-width: 120px;
+  flex-grow: 1;
+}
+```
+
+`flex-wrap` accepts only `nowrap` (the default) or `wrap`. It applies to
+non-scroll row containers; column and Scroll layouts ignore it with a native
+diagnostic. The host forms lines from each child's bounded preferred width,
+then applies grow/shrink and `justify` independently to each line. For wrapped
+rows, a two-value `gap` is `row-gap column-gap`, so the example uses 8 DIPs
+between lines and 12 DIPs between items. Intrinsic row height includes every
+line and row gap.
+
+Wrapped children keep their stable IDs and remain normal pointer/controller
+targets. Use wrapping for a bounded action or metadata group whose items all
+belong on one surface. Use a semantic Scroll, Picker, or nested page for an
+unbounded collection; `wrap-reverse`, column wrapping, and browser-style
+`align-content` are deliberately outside this bounded overlay contract.
 
 ### Intrinsic text sizing and width constraints
 

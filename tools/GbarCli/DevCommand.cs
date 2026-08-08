@@ -417,11 +417,22 @@ internal sealed class DevSession : IAsyncDisposable
 
     internal static async Task<bool> DeleteTreeWithRetriesAsync(string path)
     {
-        for (var attempt = 0; attempt < 5 && Directory.Exists(path); attempt++)
+        // Windows can retain a process working-directory handle briefly after
+        // Kill(entireProcessTree) and WaitForExitAsync have completed. Keep
+        // cleanup bounded, but allow the handle-close notification enough time
+        // to reach the filesystem before declaring a leaked dev directory.
+        const int maximumAttempts = 10;
+        for (var attempt = 0; attempt < maximumAttempts && Directory.Exists(path); attempt++)
         {
             try { Directory.Delete(path, recursive: true); }
-            catch (IOException) when (attempt < 4) { await Task.Delay(100 * (attempt + 1)); }
-            catch (UnauthorizedAccessException) when (attempt < 4) { await Task.Delay(100 * (attempt + 1)); }
+            catch (IOException) when (attempt + 1 < maximumAttempts)
+            {
+                await Task.Delay(100 * (attempt + 1)).ConfigureAwait(false);
+            }
+            catch (UnauthorizedAccessException) when (attempt + 1 < maximumAttempts)
+            {
+                await Task.Delay(100 * (attempt + 1)).ConfigureAwait(false);
+            }
         }
         return !Directory.Exists(path);
     }

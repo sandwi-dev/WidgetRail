@@ -15,7 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings composites expose controller semantics", CompositeControls),
     ("Visual accessibility preferences persist through a nested controller scope", VisualAccessibilityPersistence),
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
-    ("Theme picker paginates valid and invalid packages", ThemePagination),
+    ("Theme picker scrolls every valid and invalid package", ThemePickerScroll),
     ("Theme selection atomically pins ID and version", ThemeSelection),
     ("Reset requires confirmation and restores defaults", ResetConfirmation),
     ("Malformed settings recover through safe defaults", InvalidSettingsRecovery),
@@ -214,7 +214,7 @@ static async Task BoundedPersistence()
     Assert.Equal(0.75D, saved.Appearance.BackdropOpacity);
 }
 
-static async Task ThemePagination()
+static async Task ThemePickerScroll()
 {
     using var temp = new TemporaryDirectory();
     for (var index = 0; index < 6; index++)
@@ -224,18 +224,25 @@ static async Task ThemePagination()
     await Activate(widget);
     await Action(widget, "open.appearance");
     await Action(widget, "open.themes");
-    var first = Snapshot(widget);
-    Assert.True(Buttons(first.Root).Count(button => button.Id.StartsWith("theme.item.", StringComparison.Ordinal)) <= 5,
-        "Theme page exceeded five items.");
-    Assert.HasShortcut(first.Root, "theme.picker", ControllerButton.RightBumper, "theme.next-page");
-    Assert.True(Buttons(first.Root).Any(button => button.IsDisabled is true), "Invalid theme was not visible and disabled.");
-    await Action(widget, "theme.next-page");
-    var second = Snapshot(widget);
-    Assert.Equal("theme.item.5", second.InitialFocusId);
-    Assert.HasShortcut(second.Root, "theme.picker", ControllerButton.LeftBumper, "theme.previous-page");
-    Assert.True(!Scope(second.Root, "theme.picker").Shortcuts.Any(item => item.Button == ControllerButton.RightBumper),
-        "Last theme page exposed a next-page shortcut.");
-    Assert.Valid(second);
+    var snapshot = Snapshot(widget);
+    var options = Buttons(snapshot.Root)
+        .Where(button => button.Id.StartsWith("theme.item.", StringComparison.Ordinal))
+        .ToArray();
+    Assert.True(options.Length >= 7,
+        "Theme picker did not expose every installed test theme in one Scroll.");
+    for (var index = 0; index < 6; index++)
+        Assert.True(options.Any(button =>
+                button.Text!.StartsWith($"Theme {index}", StringComparison.Ordinal)),
+            $"Theme {index} was omitted from the Picker.");
+    Assert.Equal(ViewNodeKind.Scroll,
+        Nodes(snapshot.Root).Single(node => node.Id == "theme.picker.options").Kind);
+    Assert.True(options.Any(button => button.IsDisabled is true),
+        "Invalid theme was not visible and disabled.");
+    Assert.True(!Scope(snapshot.Root, "theme.picker").Shortcuts.Any(item =>
+            item.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
+        "Theme selection must not consume bumpers for pagination.");
+    Assert.HasShortcut(snapshot.Root, "theme.picker", ControllerButton.B, "back");
+    Assert.Valid(snapshot);
 }
 
 static async Task ThemeSelection()

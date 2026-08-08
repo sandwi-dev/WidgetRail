@@ -162,7 +162,7 @@ public class YtMusicWidget : Widget
             : UI.Image(snapshot.ArtworkUrl, "album-artwork", $"Album artwork for {snapshot.Title}", ImageFit.Cover)
                 .Classes("artwork-image");
         return new WidgetView(
-            UI.Stack("ytmusic-root",
+            UI.VerticalScroll("ytmusic-root",
                 Header(status, connection),
                 UI.Row("media-layout",
                     UI.Stack("artwork-frame", artwork).Classes("artwork-frame"),

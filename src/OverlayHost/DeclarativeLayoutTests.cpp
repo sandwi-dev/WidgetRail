@@ -21,6 +21,7 @@ using gba::declarative::OverflowBehavior;
 using gba::declarative::Rect;
 using gba::declarative::Size;
 using gba::declarative::ScrollAxis;
+using gba::declarative::WrapBehavior;
 
 int checks = 0;
 
@@ -243,6 +244,60 @@ void ResponsiveViewports() {
     Near(ultrawideStage.Find("rail")->borderBox.x, 440.0F, "ultrawide stage origin is preserved");
     Check(ultrawideStage.Find("info")->borderBox.width > at1080.Find("info")->borderBox.width,
         "ultrawide stage allocates additional flexible detail width");
+}
+
+void ResponsiveRowsWrapAtStableItemBoundaries() {
+    auto first = Element("wrap-first");
+    first.width = 100.0F;
+    first.height = 40.0F;
+    first.flexShrink = 0.0F;
+    auto second = first;
+    second.id = "wrap-second";
+    auto third = first;
+    third.id = "wrap-third";
+
+    auto row = Element("wrap-row", LayoutDirection::Row);
+    row.wrap = WrapBehavior::Wrap;
+    row.gap = 10.0F;
+    row.crossGap = 6.0F;
+    row.crossAxisAlignment = CrossAxisAlignment::Start;
+    row.children = {first, second, third};
+
+    gba::declarative::LayoutOptions measuredOptions;
+    measuredOptions.fillAutoRoot = false;
+    const auto narrow = ComputeLayout(
+        row, {0.0F, 0.0F, 250.0F, 200.0F}, {}, measuredOptions);
+    Check(narrow.valid(), "wrapped row remains valid at a narrow width");
+    Near(narrow.Find("wrap-row")->borderBox.width, 210.0F,
+         "auto-width wrapped row reports its widest line");
+    Near(narrow.Find("wrap-row")->borderBox.height, 86.0F,
+         "auto-height includes every row line and the cross gap");
+    Near(narrow.Find("wrap-first")->borderBox.x, 0.0F,
+         "first item starts the first line");
+    Near(narrow.Find("wrap-second")->borderBox.x, 110.0F,
+         "second item retains the main-axis gap");
+    Near(narrow.Find("wrap-third")->borderBox.x, 0.0F,
+         "third item starts a new line");
+    Near(narrow.Find("wrap-third")->borderBox.y, 46.0F,
+         "wrapped line uses the bounded cross-axis gap");
+
+    const auto wide = ComputeLayout(
+        row, {0.0F, 0.0F, 340.0F, 200.0F}, {}, measuredOptions);
+    Near(wide.Find("wrap-row")->borderBox.width, 320.0F,
+         "wider surface recomputes the natural single-line width");
+    Near(wide.Find("wrap-row")->borderBox.height, 40.0F,
+         "wider surface returns to one intrinsic line");
+    Near(wide.Find("wrap-third")->borderBox.x, 220.0F,
+         "third item rejoins the first line without widget branching");
+    Near(wide.Find("wrap-third")->borderBox.y, 0.0F,
+         "single-line layout removes the cross gap");
+
+    auto invalid = Element("invalid-wrap");
+    invalid.wrap = WrapBehavior::Wrap;
+    invalid.children = {first};
+    const auto rejected = ComputeLayout(invalid, {0, 0, 200, 100});
+    Check(!rejected.valid() && rejected.boxes.empty(),
+          "column wrapping fails closed before publishing partial geometry");
 }
 
 void IntrinsicAndCompactMode() {
@@ -506,6 +561,7 @@ int main() {
     OverflowClipping();
     ScrollOffsetsAreBoundedAndClipped();
     ResponsiveViewports();
+    ResponsiveRowsWrapAtStableItemBoundaries();
     IntrinsicAndCompactMode();
     WrappedIntrinsicLeavesDoNotCollapseOrOverlap();
     ScrollExtentIncludesWrappedIntrinsicParagraphs();

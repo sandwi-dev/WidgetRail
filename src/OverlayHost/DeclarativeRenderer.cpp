@@ -355,6 +355,15 @@ struct DeclarativeRenderer::RenderPass final {
         element.gap = element.direction == LayoutDirection::Row
             ? style.gapPx().right
             : style.gapPx().top;
+        element.crossGap = style.gapPx().top;
+        if (style.flexWrap() == NativeFlexWrap::Wrap) {
+            if (element.direction == LayoutDirection::Row && node.kind != L"scroll") {
+                element.wrap = declarative::WrapBehavior::Wrap;
+            } else {
+                Add(node.id, L"invalid_style",
+                    L"flex-wrap: wrap applies only to non-scroll row containers and was ignored.");
+            }
+        }
         element.flexGrow = style.flexGrow();
         element.flexShrink = style.flexShrink();
         if (!style.flexBasisAuto()) element.flexBasis = style.flexBasisPx();

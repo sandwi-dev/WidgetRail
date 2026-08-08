@@ -40,6 +40,11 @@ enum class LayoutDirection {
     Column,
 };
 
+enum class WrapBehavior {
+    NoWrap,
+    Wrap,
+};
+
 enum class OverflowBehavior {
     Visible,
     Clip,
@@ -80,6 +85,10 @@ struct LayoutElement {
     BoxSpacing padding{};
     BoxSpacing margin{};
     float gap{};
+    // Cross-axis spacing between wrapped row lines. Ordinary single-line
+    // containers ignore this value.
+    float crossGap{};
+    WrapBehavior wrap{WrapBehavior::NoWrap};
     float flexGrow{};
     float flexShrink{1.0F};
     std::optional<float> flexBasis;

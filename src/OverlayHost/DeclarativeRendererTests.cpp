@@ -893,6 +893,51 @@ void SpotifyStateAndSetupCardsPreserveWrappedTextHeight() {
     }
 }
 
+void ResponsiveRowWrapFlowsThroughGbssAndNativePlanning() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"responsive-wrap.runtime";
+    snapshot.root = Node(L"wrap.root", L"row");
+    snapshot.root.baseStyle = {
+        {L"flex-wrap", Keyword(L"wrap")},
+        {L"gap", LengthList(L"8px 12px")},
+        {L"align", Keyword(L"start")},
+    };
+    for (int index = 0; index < 3; ++index) {
+        auto action = Node(
+            (L"wrap.action." + std::to_wstring(index)).c_str(), L"button");
+        action.text = L"Responsive action";
+        action.actionId = L"activate";
+        action.baseStyle = {
+            {L"width", Length(112)},
+            {L"height", Length(44)},
+            {L"flex-shrink", Number(0)},
+        };
+        snapshot.root.children.push_back(std::move(action));
+    }
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto narrow = renderer.Render(
+        nullptr, snapshot, L"wrap.action.0", {0.0F, 0.0F, 250.0F, 120.0F});
+    Check(narrow.elementRects.contains(L"wrap.root") &&
+              narrow.elementRects.contains(L"wrap.action.2"),
+          "GBSS wrapped row reaches native layout planning");
+    Near(narrow.elementRects.at(L"wrap.action.1").x, 124.0F,
+         "GBSS column gap reaches native row geometry");
+    Near(narrow.elementRects.at(L"wrap.action.2").x, 0.0F,
+         "third action starts the second responsive line");
+    Near(narrow.elementRects.at(L"wrap.action.2").y, 52.0F,
+         "GBSS row gap reaches native wrapped-line geometry");
+    Check(narrow.navigationRects.contains(L"wrap.action.2"),
+          "wrapped actions remain controller navigation candidates");
+
+    const auto wide = renderer.Render(
+        nullptr, snapshot, L"wrap.action.0", {0.0F, 0.0F, 380.0F, 120.0F});
+    Near(wide.elementRects.at(L"wrap.action.2").x, 248.0F,
+         "wider host surface returns all actions to one line");
+    Near(wide.elementRects.at(L"wrap.action.2").y, 0.0F,
+         "responsive row does not retain stale line placement");
+}
+
 void WrappedPermissionCopyContributesToScrollExtent() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"permission-copy.runtime";
@@ -1422,6 +1467,7 @@ int main() {
     SegmentedTabsSurviveConstrainedNetworkSurfaces();
     CenteredWrappedStatePreservesTextFlowAndControllerTarget();
     SpotifyStateAndSetupCardsPreserveWrappedTextHeight();
+    ResponsiveRowWrapFlowsThroughGbssAndNativePlanning();
     WrappedPermissionCopyContributesToScrollExtent();
     ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();

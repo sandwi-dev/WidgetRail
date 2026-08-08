@@ -229,6 +229,7 @@ struct NativeRenderStyle::Data final {
     float flexShrink{1};
     std::optional<float> flexBasis;
     bool flexBasisAuto{true};
+    NativeFlexWrap flexWrap{NativeFlexWrap::NoWrap};
     NativeAlign align{NativeAlign::Unspecified};
     NativeJustify justify{NativeJustify::Unspecified};
     NativeDirection direction{NativeDirection::Unspecified};
@@ -283,6 +284,7 @@ GBA_STYLE_GETTER(float, flexGrow, flexGrow)
 GBA_STYLE_GETTER(float, flexShrink, flexShrink)
 GBA_STYLE_GETTER(const std::optional<float>&, flexBasisPx, flexBasis)
 GBA_STYLE_GETTER(bool, flexBasisAuto, flexBasisAuto)
+GBA_STYLE_GETTER(NativeFlexWrap, flexWrap, flexWrap)
 GBA_STYLE_GETTER(NativeAlign, align, align)
 GBA_STYLE_GETTER(NativeJustify, justify, justify)
 GBA_STYLE_GETTER(NativeDirection, direction, direction)
@@ -510,6 +512,11 @@ NativeStyleResult NativeStyleAdapter::Adapt(
             } else if (const auto item = Length(property, value, LengthBasis::Width, 0, kMaximumResolvedDimension)) {
                 data->flexBasis = *item; data->flexBasisAuto = false;
             }
+        } else if (property == L"flex-wrap") {
+            if (auto item = Keyword<NativeFlexWrap>(value.text,
+                    {{L"nowrap", NativeFlexWrap::NoWrap}, {L"wrap", NativeFlexWrap::Wrap}})) {
+                data->flexWrap = *item;
+            } else Add(property, L"Flex-wrap keyword was invalid.");
         } else if (property == L"direction") {
             if (auto item = Keyword<NativeDirection>(value.text, {{L"row", NativeDirection::Row}, {L"column", NativeDirection::Column}})) data->direction = *item;
             else Add(property, L"Direction keyword was invalid.");

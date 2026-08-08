@@ -30,6 +30,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings rows and action sheets preserve responsive controller semantics", SettingsRowsAndActionSheetsAreSemantic),
     ("Action sheets route nested Back and suppress unavailable actions", ActionSheetRoutingIsScoped),
     ("Pickers preserve single-select controller and accessibility semantics", PickersAreSemantic),
+    ("Scrubbers compose stable controller seeking and responsive time semantics", ScrubbersAreSemantic),
+    ("Scrubbers route absolute millisecond targets through the native Slider contract", ScrubberInputResolves),
     ("Minimalist rows and controller hints preserve public focus and accessibility contracts", MinimalistRowsAreSemantic),
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
     ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
@@ -1753,6 +1755,114 @@ static Task PickersAreSemantic()
     return Task.CompletedTask;
 }
 
+static Task ScrubbersAreSemantic()
+{
+    var scrubber = UI.Scrubber(
+            TimeSpan.FromHours(1) + TimeSpan.FromMinutes(2) + TimeSpan.FromSeconds(3.8),
+            TimeSpan.FromHours(2) + TimeSpan.FromMinutes(3) + TimeSpan.FromSeconds(4),
+            TimeSpan.FromSeconds(5),
+            "media.seek",
+            "media.timeline",
+            accessibilityLabel: "Track position",
+            activationAction: "media.toggle-preview")
+        .FocusUp("media.previous")
+        .FocusDown("media.play")
+        .Disabled()
+        .Busy();
+    var snapshot = new WidgetView(
+        UI.Stack("media.root",
+            UI.Button("Previous", "media.previous", "media.previous"),
+            scrubber,
+            UI.Button("Play", "media.play", "media.play")),
+        scrubber.SliderId)
+        .CreateSnapshot("media.components", 20);
+
+    Assert.Equal(ProtocolConstants.SliderVersion, snapshot.ProtocolVersion);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    var root = Find(snapshot.Root, "media.timeline");
+    Assert.Equal(ViewNodeKind.Stack, root.Kind);
+    Assert.True(root.StyleClasses.Contains("gbar-scrubber"),
+        "Scrubber must publish its semantic theme hook.");
+    Assert.True(new[] { "media.timeline.slider", "media.timeline.times" }
+        .SequenceEqual(root.Children.Select(child => child.Id)),
+        "Scrubber child order or stable IDs changed.");
+
+    var slider = Find(snapshot.Root, "media.timeline.slider");
+    Assert.Equal(ViewNodeKind.Slider, slider.Kind);
+    Assert.Equal(3_723_800d, slider.Value);
+    Assert.Equal(7_384_000d, slider.Maximum);
+    Assert.Equal(5_000d, slider.Step);
+    Assert.Equal("media.seek", slider.ValueChangedActionId);
+    Assert.Equal("media.toggle-preview", slider.ActionId);
+    Assert.Equal("media.previous", slider.Focus!.Up);
+    Assert.Equal("media.play", slider.Focus.Down);
+    Assert.Equal(true, slider.IsDisabled);
+    Assert.Equal(true, slider.IsBusy);
+    Assert.Equal("Track position, Unavailable, Busy", slider.AccessibilityLabel);
+    Assert.Equal("1:02:03 of 2:03:04", slider.AccessibilityValue);
+    Assert.True(slider.StyleClasses.Contains("gbar-scrubber__slider"),
+        "Scrubber Slider must publish its semantic theme hook.");
+    Assert.Equal("1:02:03", Find(snapshot.Root, "media.timeline.elapsed").Text);
+    Assert.Equal("2:03:04", Find(snapshot.Root, "media.timeline.duration").Text);
+
+    var localized = UI.Scrubber(
+        TimeSpan.FromSeconds(8),
+        TimeSpan.FromSeconds(90),
+        TimeSpan.FromSeconds(1),
+        "localized.seek",
+        "localized.timeline",
+        elapsedLabel: "00 min 08 sec",
+        durationLabel: "01 min 30 sec");
+    var localizedNode = localized.ToProtocolNode();
+    Assert.Equal("00 min 08 sec", Find(localizedNode, "localized.timeline.elapsed").Text);
+    Assert.Equal("01 min 30 sec", Find(localizedNode, "localized.timeline.duration").Text);
+    Assert.Equal("00 min 08 sec of 01 min 30 sec",
+        Find(localizedNode, "localized.timeline.slider").AccessibilityValue);
+
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Scrubber(
+        TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(1), "seek", "zero.duration"));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Scrubber(
+        TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1),
+        "seek", "past.duration"));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Scrubber(
+        TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.Zero, "seek", "zero.step"));
+    Assert.Throws<ArgumentException>(() => UI.Scrubber(
+        TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1),
+        "seek", "empty.label", elapsedLabel: " "));
+    Assert.Throws<ArgumentException>(() => UI.Scrubber(
+        TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1),
+        "seek", new string('s', 120)));
+    return Task.CompletedTask;
+}
+
+static async Task ScrubberInputResolves()
+{
+    var widget = new ScrubberRoutingWidget();
+    _ = widget.RenderSnapshot("scrubber.instance", 6);
+    await widget.SetActiveAsync(true, CancellationToken.None);
+
+    var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.DPadRight,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        "media.seek.slider",
+        ActiveInputScopeId: "root",
+        SnapshotSequence: 6,
+        RequestedValue: 35_000));
+    Assert.True(handled, "Scrubber must route through its nested native Slider.");
+    var seek = await widget.NextActionAsync();
+    Assert.Equal("media.seek.changed", seek.ActionId);
+    Assert.Equal("media.seek.slider", seek.SourceElementId);
+    Assert.Equal(35_000d, seek.RequestedValue);
+
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "media.seek.slider", 6, "root")),
+        "Scrubber optional activation must retain Slider A-button semantics.");
+    var activation = await widget.NextActionAsync();
+    Assert.Equal("media.seek.preview", activation.ActionId);
+    Assert.Equal(null, activation.RequestedValue);
+}
+
 static Task MinimalistRowsAreSemantic()
 {
     var value = UI.ValueRow(
@@ -2751,6 +2861,33 @@ file sealed class SliderRoutingWidget : Widget
         CancellationToken cancellationToken = default)
     {
         Actions.Add(action);
+        _observed.Writer.TryWrite(action);
+        return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class ScrubberRoutingWidget : Widget
+{
+    private readonly System.Threading.Channels.Channel<WidgetActionEvent> _observed =
+        System.Threading.Channels.Channel.CreateUnbounded<WidgetActionEvent>();
+
+    public ValueTask<WidgetActionEvent> NextActionAsync() => _observed.Reader.ReadAsync();
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Scrubber(
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromMinutes(3),
+                TimeSpan.FromSeconds(5),
+                "media.seek.changed",
+                "media.seek",
+                activationAction: "media.seek.preview")),
+        "media.seek.slider");
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
         _observed.Writer.TryWrite(action);
         return ValueTask.CompletedTask;
     }

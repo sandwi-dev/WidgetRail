@@ -1268,6 +1268,8 @@ static Task PackageAssetsAreValid()
     var compiled = GbssThemeCompiler.Compile(styles);
     Assert.True(compiled.IsValid,
         string.Join(Environment.NewLine, compiled.Diagnostics.Select(item => item.Message)));
+    var mediaLayout = compiled.Theme!.Resolve(new GbssElement("row", "media-layout"));
+    Assert.Equal("wrap", mediaLayout.Get("flex-wrap")?.Text);
     return Task.CompletedTask;
 }
 
@@ -1405,7 +1407,12 @@ file sealed class ScopedRoutingProbeYtMusicWidget(
     public override WidgetView Render()
     {
         var view = base.Render();
-        var ytmusicWindow = ((StackElement)view.Root).InputScope("ytmusic-window");
+        WidgetElement ytmusicWindow = view.Root switch
+        {
+            StackElement stack => stack.InputScope("ytmusic-window"),
+            ScrollElement scroll => scroll.InputScope("ytmusic-window"),
+            _ => throw new InvalidOperationException("YT Music root must be an input-scope container."),
+        };
         return view with
         {
             Root = UI.Stack("scope-test-shell",

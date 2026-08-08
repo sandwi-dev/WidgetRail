@@ -39,14 +39,12 @@
 }
 
 .settings-status.is-error,
-.diagnostic-error,
-.theme-item.is-invalid { color: var(--danger, #c98181); }
+.diagnostic-error { color: var(--danger, #c98181); }
 .settings-status.is-busy { color: var(--warning); }
 
 .category-card,
 .setting-row,
 .setting-toggle,
-.theme-item,
 .primary-button,
 .secondary-button,
 .danger-button,
@@ -65,7 +63,6 @@
 .category-card:focused,
 .setting-row:focused,
 .setting-toggle:focused,
-.theme-item:focused,
 .primary-button:focused,
 .secondary-button:focused,
 .setting-stepper-button:focused {
@@ -76,7 +73,6 @@
 }
 
 .setting-toggle:selected,
-.theme-item.is-selected,
 .setting-row.is-enabled { color: var(--accent); }
 
 .primary-button,

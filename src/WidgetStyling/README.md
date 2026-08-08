@@ -39,10 +39,12 @@ The allowlist is available as `GbssPropertyCatalog.AllowedProperties`. It covers
 Media layouts additionally have bounded `vw`/`vh` lengths, `aspect-ratio`,
 `object-fit`, `object-position`, `shape`, image tint/scrim colors, line height,
 line limits/ellipsis, outline offset, and named transition easing. A small
-deterministic flex subset—`flex-grow`, `flex-shrink`, and `flex-basis`—lets a
-row allocate fixed artwork beside flexible metadata without renderer-specific
-widget hacks. Image source selection remains outside GBSS and must come from
-verified host content.
+deterministic flex subset—`flex-grow`, `flex-shrink`, `flex-basis`, and
+row-only `flex-wrap`—lets a row allocate fixed artwork beside flexible metadata
+or form additional lines without renderer-specific widget hacks. `flex-wrap`
+accepts only `nowrap` and `wrap`; wrapped line spacing comes from the first
+value of a two-value `gap`. Image source selection remains outside GBSS and
+must come from verified host content.
 
 ## Deliberate safety boundary
 

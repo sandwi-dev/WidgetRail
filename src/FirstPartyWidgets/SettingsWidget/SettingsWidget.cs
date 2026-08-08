@@ -31,7 +31,6 @@ public enum SettingsPage
 
 public sealed partial class SettingsWidget : Widget
 {
-    public const int ThemesPerPage = 5;
     private const double ScaleStep = 0.05;
     private const double OpacityStep = 0.05;
     private readonly PlatformSettingsStore _store;
@@ -54,7 +53,6 @@ public sealed partial class SettingsWidget : Widget
     private string? _selectedInstalledWidgetId;
     private string? _selectedBuiltInWidgetId;
     private SettingsPage _page;
-    private int _themePage;
     private int _activationLoadCount;
     private bool _settingsValid = true;
     private bool _busy;
@@ -97,7 +95,6 @@ public sealed partial class SettingsWidget : Widget
         PlatformSettingsDocument settings;
         ThemeCatalogSnapshot themes;
         SettingsPage page;
-        int themePage;
         bool busy;
         bool error;
         bool settingsValid;
@@ -108,7 +105,6 @@ public sealed partial class SettingsWidget : Widget
             settings = _settings;
             themes = _themes;
             page = _page;
-            themePage = _themePage;
             busy = _busy;
             error = _error;
             settingsValid = _settingsValid;
@@ -125,7 +121,7 @@ public sealed partial class SettingsWidget : Widget
         {
             SettingsPage.Root => RenderRoot(header, settings, busy),
             SettingsPage.Appearance => RenderAppearance(header, settings, themes, busy),
-            SettingsPage.ThemePicker => RenderThemes(header, settings, themes, themePage, busy),
+            SettingsPage.ThemePicker => RenderThemes(header, settings, themes, busy),
             SettingsPage.Accessibility => RenderAccessibility(header, settings, busy),
             SettingsPage.AccessibilityVisual => RenderVisualAccessibility(header, settings, busy),
             SettingsPage.Overlay => RenderOverlay(header, settings, busy),
@@ -179,8 +175,6 @@ public sealed partial class SettingsWidget : Widget
                 case "open.reset": Navigate(SettingsPage.Reset); break;
                 case "open.themes": Navigate(SettingsPage.ThemePicker); break;
                 case "back": Navigate(ParentPage(CurrentPage)); break;
-                case "theme.previous-page": ChangeThemePage(-1); break;
-                case "theme.next-page": ChangeThemePage(1); break;
                 case "installed.previous-page": ChangeInstalledWidgetPage(-1); break;
                 case "installed.next-page": ChangeInstalledWidgetPage(1); break;
                 case "installed.versions.open": OpenInstalledWidgetVersions(); break;
@@ -349,7 +343,6 @@ public sealed partial class SettingsWidget : Widget
                 _settingsValid = settingsValid;
                 _themes = themes;
                 _diagnostics = diagnostics;
-                _themePage = Math.Clamp(_themePage, 0, LastThemePage(themes));
                 _busy = false;
                 _error = warning is not null;
                 _status = warning ?? successStatus;
@@ -402,7 +395,6 @@ public sealed partial class SettingsWidget : Widget
                 _settings = saved;
                 _settingsValid = true;
                 _page = SettingsPage.Root;
-                _themePage = 0;
                 _busy = false;
                 _error = false;
                 _status = "Settings reset to defaults";
@@ -674,22 +666,13 @@ public sealed partial class SettingsWidget : Widget
         StackElement header,
         PlatformSettingsDocument settings,
         ThemeCatalogSnapshot themes,
-        int page,
         bool busy)
     {
-        var lastPage = LastThemePage(themes);
-        page = Math.Clamp(page, 0, lastPage);
-        var start = page * ThemesPerPage;
-        var items = themes.Themes.Skip(start).Take(ThemesPerPage).ToArray();
-        var buttons = new List<WidgetElement>
+        var options = new PickerOption[themes.Themes.Count];
+        var initialFocus = themes.Themes.Count > 0 ? "theme.item.0" : null;
+        for (var index = 0; index < themes.Themes.Count; index++)
         {
-            UI.Row("theme.pagination",
-                UI.Text($"Page {page + 1} of {lastPage + 1}", "theme.page-label", "Theme page").Classes("page-counter")),
-        };
-        for (var offset = 0; offset < items.Length; offset++)
-        {
-            var index = start + offset;
-            var entry = items[offset];
+            var entry = themes.Themes[index];
             var selected = entry.IsValid &&
                 entry.Descriptor.Id == settings.Appearance.ThemeId &&
                 entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion;
@@ -697,20 +680,28 @@ public sealed partial class SettingsWidget : Widget
             var label = entry.IsValid
                 ? $"{entry.Descriptor.Name}  {entry.Descriptor.Version}"
                 : $"Invalid · {entry.Descriptor.Name} · {diagnostic ?? "validation error"}";
-            var button = UI.Button(label, $"theme.select.{index}", $"theme.item.{index}")
-                .Selected(selected).Disabled(!entry.IsValid).Busy(busy)
-                .Classes("theme-item", entry.IsValid ? "is-valid" : "is-invalid", selected ? "is-selected" : "is-unselected");
-            if (offset > 0) button = button.FocusUp($"theme.item.{index - 1}");
-            if (offset + 1 < items.Length) button = button.FocusDown($"theme.item.{index + 1}");
-            buttons.Add(button);
+            var accessibilityLabel = entry.IsValid
+                ? $"{entry.Descriptor.Name}, version {entry.Descriptor.Version}"
+                : $"{entry.Descriptor.Name}, invalid theme, {diagnostic ?? "validation error"}";
+            options[index] = new PickerOption(
+                $"theme.item.{index}",
+                label,
+                $"theme.select.{index}",
+                IsSelected: selected,
+                AccessibilityLabel: accessibilityLabel,
+                IsDisabled: !entry.IsValid,
+                IsBusy: busy);
+            if (selected) initialFocus = $"theme.item.{index}";
         }
-        var scope = UI.Stack("theme.picker", buttons.ToArray())
-            .InputScope("theme.picker")
-            .Shortcut(ControllerButton.B, "back")
-            .Classes("theme-picker");
-        if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "theme.previous-page");
-        if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "theme.next-page");
-        return View(header, scope, $"theme.item.{start}", "theme.picker");
+        var picker = UI.Picker(
+                "Choose theme",
+                "theme.picker",
+                "theme.picker",
+                "back",
+                options,
+                "Themes change the overlay and every widget that uses shared semantic styles.")
+            .AddClasses("theme-picker");
+        return View(header, picker, initialFocus, "theme.picker");
     }
 
     private static ScrollElement PageScope(string id, params WidgetElement[] children) =>
@@ -760,23 +751,7 @@ public sealed partial class SettingsWidget : Widget
             if (page == SettingsPage.Permissions &&
                 previousPage != SettingsPage.PermissionDiagnostics)
                 _permissionDiagnosticsReturnFocus = false;
-            if (page == SettingsPage.ThemePicker)
-            {
-                var selected = _themes.Themes
-                    .Select((entry, index) => (entry, index))
-                    .FirstOrDefault(item =>
-                        item.entry.Descriptor.Id == _settings.Appearance.ThemeId &&
-                        item.entry.Descriptor.Version.ToString() == _settings.Appearance.ThemeVersion);
-                _themePage = selected.entry is null ? 0 : selected.index / ThemesPerPage;
-            }
         }
-        Invalidate();
-    }
-
-    private void ChangeThemePage(int delta)
-    {
-        lock (_stateLock)
-            _themePage = Math.Clamp(_themePage + delta, 0, LastThemePage(_themes));
         Invalidate();
     }
 
@@ -808,9 +783,6 @@ public sealed partial class SettingsWidget : Widget
     {
         lock (_stateLock) return _packageCapabilitiesReturnPage;
     }
-
-    private static int LastThemePage(ThemeCatalogSnapshot themes) =>
-        Math.Max(0, (themes.Themes.Count - 1) / ThemesPerPage);
 
     private static bool TryThemeIndex(string action, out int index)
     {

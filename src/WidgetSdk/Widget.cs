@@ -66,6 +66,7 @@ public sealed record WidgetView(
     private static bool ContainsSlider(WidgetElement element) => element switch
     {
         SliderElement => true,
+        ScrubberElement => true,
         StackElement stack => stack.Children.Any(ContainsSlider),
         RowElement row => row.Children.Any(ContainsSlider),
         ScrollElement scroll => scroll.Children.Any(ContainsSlider),

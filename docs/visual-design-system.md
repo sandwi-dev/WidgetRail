@@ -137,11 +137,12 @@ security-sensitive; the baseline remains the Windows UI family until an
 immutable, licensed, bounded host asset contract exists.
 
 The remaining component gap is functional as well as visual. `SettingsRow`,
-nested `ActionSheet`, and the single-select `Picker` now have shared public
-contracts. Future increments should cover non-focus-stealing toast, controller
-scrubber, `MediaTile`/`AppTile`, per-edge borders, responsive grid/wrap, and
-semantic monospace. First-party widgets must not invent private substitutes
-unavailable to Community authors.
+nested `ActionSheet`, single-select `Picker`, and controller `Scrubber` now have
+shared public contracts. Rows can wrap responsively without private layout
+hacks. Future increments should cover non-focus-stealing toast,
+`MediaTile`/`AppTile`, per-edge borders, responsive grid, and semantic
+monospace. First-party widgets must not invent private substitutes unavailable
+to Community authors.
 
 ## Dashboard geometry
 

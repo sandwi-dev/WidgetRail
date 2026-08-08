@@ -188,9 +188,12 @@ The implemented root categories are:
 - **Reset:** a confirmation surface that atomically restores built-in theme,
   sizing, backdrop, motion, contrast, bold-text, and transparency defaults.
 
-The theme picker shows at most five entries per page. LB/RB move between pages
-inside its nested input scope; they never change the dashboard widget. The
-selected theme persists both ID and canonical version.
+The theme picker uses the public single-select `UI.Picker` contract. Every
+installed entry appears in one bounded host-owned vertical Scroll; invalid
+themes remain focusable but unavailable, B returns one level, and LB/RB remain
+free for widget actions instead of private pagination. Opening the picker
+focuses the current selection. The selected theme persists both ID and
+canonical version.
 
 Controller behavior follows the platform model:
 

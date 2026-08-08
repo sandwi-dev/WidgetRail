@@ -31,6 +31,7 @@ public static partial class GbssPropertyCatalog
         TransitionEasing,
         BoundedNumber,
         LengthOrAuto,
+        FlexWrap,
     }
 
     private sealed record Definition(PropertyType Type, double Minimum = 0, double Maximum = 0, bool AllowNegative = false);
@@ -81,6 +82,7 @@ public static partial class GbssPropertyCatalog
             ["flex-grow"] = new(PropertyType.BoundedNumber, 0, 8),
             ["flex-shrink"] = new(PropertyType.BoundedNumber, 0, 8),
             ["flex-basis"] = new(PropertyType.LengthOrAuto, 0, 4096),
+            ["flex-wrap"] = new(PropertyType.FlexWrap),
             ["align"] = new(PropertyType.Align),
             ["justify"] = new(PropertyType.Justify),
             ["direction"] = new(PropertyType.Direction),
@@ -223,6 +225,8 @@ public static partial class GbssPropertyCatalog
                     return true;
                 }
                 return TryLength(value, definition, out computed, out clamped, out error);
+            case PropertyType.FlexWrap:
+                return TryKeyword(value, ["nowrap", "wrap"], out computed, out error);
             default:
                 throw new InvalidOperationException("Unknown GBSS property type.");
         }

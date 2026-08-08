@@ -137,6 +137,11 @@ static async Task ReadyControllerUi()
     Assert.Equal("Spotify", Find(snapshot.Root, "spotify.attribution").Text);
     Assert.Equal(WidgetGlyph.Previous, Find(snapshot.Root, "spotify.previous").Glyph);
     Assert.Equal(WidgetGlyph.Next, Find(snapshot.Root, "spotify.next").Glyph);
+    var scrubber = Find(snapshot.Root, "spotify.seek.slider");
+    Assert.Equal(ViewNodeKind.Slider, scrubber.Kind);
+    Assert.Equal("spotify.seek", scrubber.ValueChangedActionId);
+    Assert.Equal("spotify.seek.slider", Find(snapshot.Root, "spotify.play-toggle").Focus!.Down);
+    Assert.Equal("spotify.shuffle", scrubber.Focus!.Down);
     AssertShortcut(snapshot.Root, ControllerButton.LeftBumper, "spotify.previous");
     AssertShortcut(snapshot.Root, ControllerButton.X, "spotify.play-toggle");
     AssertShortcut(snapshot.Root, ControllerButton.RightBumper, "spotify.next");
@@ -156,7 +161,8 @@ static async Task ProjectedProgress()
     var calls = harness.PlaybackCalls;
     clock.Advance(TimeSpan.FromSeconds(3));
     var snapshot = widget.Render().CreateSnapshot("spotify.progress", 2);
-    Assert.Equal(33_000D, Find(snapshot.Root, "spotify.progress").Value!.Value);
+    Assert.Equal(33_000D, Find(snapshot.Root, "spotify.seek.slider").Value!.Value);
+    Assert.Equal("0:33", Find(snapshot.Root, "spotify.seek.elapsed").Text);
     Assert.Equal(calls, harness.PlaybackCalls);
     await StopAsync(widget);
 }

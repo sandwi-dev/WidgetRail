@@ -166,10 +166,11 @@ remains off until the publisher-trust gates in Phase 4.
   The minimalist warm-graphite shared default and first-party retune are now
   implemented. `SettingsRow` and the bounded nested `ActionSheet` are now also
   public, with one stable action target, scroll/focus-follow, Disabled/Busy
-  focus safety, and scope-owned B. Next component/API increments are a
-  selection-specific picker/listbox, non-focus-stealing toast, controller
-  scrubber, and purpose-built `MediaTile`/`AppTile`; then per-edge borders, responsive
-  grid/wrap, and semantic monospace for diagnostics/code-like values. Preserve
+  focus safety, and scope-owned B. The selection-specific Picker, controller
+  Scrubber, and responsive Row wrapping are implemented. Next component/API
+  increments are a non-focus-stealing toast and purpose-built
+  `MediaTile`/`AppTile`; then per-edge borders, responsive grid, and semantic
+  monospace for diagnostics/code-like values. Preserve
   44-DIP targets, non-color state, stable IDs, and one inset focus cue. Optional
   packaged fonts are lower priority and security-sensitive; they require
   immutable asset brokering/licensing/bounds and must never become arbitrary
@@ -246,10 +247,14 @@ not irreversible API priority:
    lifecycle/crash recovery, update/rollback, disable, and uninstall without a
    trusted worker or direct Credential Manager/socket workaround.
 3. **Fill the public component gaps before more one-off UI.** `SettingsRow`,
-   bounded nested `ActionSheet`, and the single-select `Picker` are complete.
-   Implement and verify a non-focus-stealing toast, controller scrubber, and
-   `MediaTile`/`AppTile` as public SDK contracts. Then add per-edge borders,
-   responsive grid/wrap, and semantic monospace.
+   bounded nested `ActionSheet`, and the single-select `Picker` contracts are
+   public. Settings now adopts Picker, Spotify adopts the public controller
+   Scrubber, and responsive Row wrapping is implemented. Implement and verify a
+   non-focus-stealing toast and `MediaTile`/`AppTile` as public SDK contracts.
+   Then add per-edge borders, responsive grid, and semantic monospace. The
+   remaining media/app composites are active work, not shipped features, until
+   source, focused tests, full Release verification, and reference
+   documentation land together.
 4. **Complete motion without web-style overhead.** Add bounded composited
    subtree translation and short shell/widget open, close, and replacement
    transitions with reduced-motion cancellation and hidden-idle evidence.

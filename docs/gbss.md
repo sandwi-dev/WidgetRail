@@ -41,7 +41,9 @@ Variables are declared in `:root`. `var(--token)` and `var(--token, fallback)` s
 
 The canonical runtime list is `GbssPropertyCatalog.AllowedProperties`. It currently includes:
 
-- Layout: `width`, `height`, min/max dimensions, `gap`, `padding`, `margin`, `align`, `justify`, `direction`, `overflow`.
+- Layout: `width`, `height`, min/max dimensions, `gap`, `padding`, `margin`,
+  `align`, `justify`, `direction`, `overflow`, `flex-grow`, `flex-shrink`,
+  `flex-basis`, and row-only `flex-wrap` (`nowrap` or `wrap`).
 - Typography: `font-family`, `font-size`, `font-weight`, `letter-spacing`,
   `line-height`, `max-lines`, text alignment/overflow/transform, and `color`.
 - Surfaces: `background`, border/outline color and width, `corner-radius`,

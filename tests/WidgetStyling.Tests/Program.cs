@@ -18,6 +18,7 @@ var tests = new (string Name, Action Run)[]
     ("Resolved property enumeration is deterministic", DeterministicResolution),
     ("Media-card properties compile to typed renderer values", MediaCardValues),
     ("Responsive viewport units remain bounded", ResponsiveUnits),
+    ("Responsive row wrapping compiles to a closed keyword contract", ResponsiveWrapValues),
     ("Media-card properties preserve the safe allowlist", MediaSafety),
     ("Default visual-system tokens compile exactly", VisualSystemTokens),
     ("Cool Slate built-in source compiles with distinct typed tokens", CoolSlateSource),
@@ -358,13 +359,29 @@ static void ResponsiveUnits()
     Assert.Equal("8", style.Get("flex-grow")!.Text);
 }
 
+static void ResponsiveWrapValues()
+{
+    var compile = Compile("row { flex-wrap: wrap; gap: 8px 12px; }");
+    Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+    var style = compile.Theme!.Resolve(Element("row"));
+    Assert.Equal(GbssValueKind.Keyword, style.Get("flex-wrap")!.Kind);
+    Assert.Equal("wrap", style.Get("flex-wrap")!.Text);
+    Assert.Equal("8px 12px", style.Get("gap")!.Text);
+
+    var noWrap = Compile("row { flex-wrap: nowrap; }");
+    Assert.Equal("nowrap", noWrap.Theme!.Resolve(Element("row")).Get("flex-wrap")!.Text);
+
+    var invalid = CompileExpectingErrors("row { flex-wrap: wrap-reverse; }");
+    Assert.Equal(1, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
+}
+
 static void MediaSafety()
 {
     foreach (var property in new[]
     {
         "aspect-ratio", "object-fit", "object-position", "shape", "line-height", "max-lines",
         "text-overflow", "text-transform", "image-tint", "scrim-color", "outline-offset", "transition-easing",
-        "flex-grow", "flex-shrink", "flex-basis",
+        "flex-grow", "flex-shrink", "flex-basis", "flex-wrap",
     })
         Assert.True(GbssPropertyCatalog.AllowedProperties.Contains(property), $"Missing property {property}.");
 

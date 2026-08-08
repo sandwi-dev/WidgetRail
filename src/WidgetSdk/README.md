@@ -22,6 +22,11 @@ and Busy actions stay focusable and are suppressed by the standard router.
 Use `UI.Picker` for bounded single selection rather than disguising choices as
 commands: it exposes one stable option ID per row, explicit selected state,
 Up/Down neighbors, focus-safe unavailable state, and the same scope-owned B.
+Use `UI.Scrubber` for media seeking instead of pairing a private Slider with
+duplicate progress text. Its only focus stop is `id.slider`; Left/Right uses
+the native Slider contract and the action receives an absolute requested
+position in milliseconds. Elapsed and duration labels are formatted by the SDK
+unless localized labels are supplied.
 
 For indeterminate work that lasts long enough to be visible, use
 `UI.LoadingIndicator(id, accessibilityLabel, size)`. It is a protocol-v5,

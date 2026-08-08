@@ -11,7 +11,6 @@
   padding: 18px 20px 16px;
   background: var(--media-surface);
   color: var(--text);
-  overflow: visible;
 }
 
 #header {
@@ -65,7 +64,8 @@
 
 #media-layout {
   min-height: 128px;
-  gap: 16px;
+  gap: 10px 16px;
+  flex-wrap: wrap;
   align: center;
 }
 

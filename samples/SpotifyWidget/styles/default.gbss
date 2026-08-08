@@ -113,20 +113,12 @@
 .spotify-transport:focused,
 .spotify-secondary-action:focused { color: var(--text); background: var(--surface-active, #262623); }
 .spotify-secondary-action:selected { color: var(--success, #57c785); }
-.spotify-playback-options { min-width: 0px; gap: 11px; align: center; }
-.spotify-seek {
-  min-width: 390px;
-  height: 38px;
-  flex-grow: 1;
-  color: var(--success, #57c785);
-  background: var(--surface-raised);
-  corner-radius: 8px;
-}
-.spotify-seek:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.spotify-scrubber { width: 100%; min-width: 0px; flex-shrink: 0; }
+.spotify-playback-options { min-width: 0px; gap: 11px; align: center; justify: center; }
 .spotify-transport:disabled,
 .spotify-secondary-action:disabled,
 .spotify-play:disabled,
-.spotify-seek:disabled { opacity: 0.42; }
+.gbar-scrubber__slider:disabled { opacity: 0.42; }
 
 .spotify-footer { align: center; justify: space-between; flex-shrink: 0; }
 .spotify-attribution { color: var(--text-muted); font-size: 10px; max-lines: 1; }

@@ -122,6 +122,53 @@ slider:focused {
   scale: 1;
 }
 
+.gbar-scrubber {
+  min-width: 0;
+  gap: 2px;
+  background: transparent;
+  border-width: 0;
+}
+.gbar-scrubber__slider {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 4px;
+  background: transparent;
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+}
+.gbar-scrubber__slider:focused {
+  background: var(--surface-subtle);
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.gbar-scrubber__times {
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+  padding: 0px 4px;
+  align: center;
+}
+.gbar-scrubber__elapsed,
+.gbar-scrubber__duration {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.2;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+.gbar-scrubber__elapsed {
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+.gbar-scrubber__duration {
+  text-align: end;
+  flex-shrink: 0;
+}
+
 .gbar-icon-button {
   width: 46px;
   height: 46px;

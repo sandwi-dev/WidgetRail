@@ -1,8 +1,9 @@
 # Controller UI component patterns
 
 Status: Slider v3, the Audio Mixer reference composition, SettingsRow,
-ActionSheet, Picker, and the modern SDK composite set are implemented; the inventory
-below distinguishes current public helpers from later semantic candidates.
+ActionSheet, Picker, Scrubber, and the modern SDK composite set are implemented;
+the inventory below distinguishes current public helpers from later semantic
+candidates.
 
 Game Bar Alternative components are semantic, controller-first contracts. A
 widget publishes intent and state; the host owns rendering, accessibility,
@@ -37,6 +38,7 @@ GBSS design constrained by controller navigation and overlay performance.
 | Read-only value | `Progress` | Not focusable and never accepts controller changes. |
 | Stepped setting | `Stepper` | Separate decrement/increment focus stops; useful when each action must be explicit. |
 | Direct value | `Slider` | Protocol v3, one focus stop, L/R adjustment, optional A action. |
+| Media position | `Scrubber` | Slider-derived absolute seeking with one focus stop and responsive elapsed/duration labels. |
 | Nested surface | container input scope + scope shortcut | Dialog/detail behavior is modeled without allowing shortcut leakage. |
 | Icon action | `IconButton` | One closed semantic glyph, required accessible name, controller target size/variant classes. |
 | Grouping | `Card`, `SectionHeader`, `Divider` | Nonfocusable visual hierarchy with stable generated child IDs. |
@@ -122,10 +124,16 @@ semantic classes. They do not add worker code, polling, or a new native node:
   root, so it dismisses one navigation level even from an unavailable item or
   when focus is temporarily absent. `Danger` is an accessible semantic tone,
   not permission to bypass confirmation for destructive work.
-- `UI.Picker(...)` accepts 1–64 stable `PickerOption` records and permits at
+- `UI.Picker(...)` accepts 1–128 stable `PickerOption` records and permits at
   most one selected option. Selected, Disabled, and Busy state remain on the
   same Button ID across rerenders. The root owns B and the host owns Scroll/
   focus-follow; authors should publish the selected option as initial focus.
+- `UI.Scrubber(...)` composes a native Slider with elapsed/duration labels.
+  Its only focus stop is `id.slider`; Left/Right produces an absolute requested
+  position in milliseconds through protocol v3, so the normal latest-wins
+  Slider coalescing applies. The SDK formats `m:ss` or `h:mm:ss` unless the
+  author supplies localized labels. Disabled, Busy, Up/Down neighbors, and an
+  optional A activation action remain on the stable Slider child.
 - `UI.ControllerHint(...)` creates a restrained key-cap and label from the
   closed `ControllerButton` enum. It is display-only: authors must still bind
   the matching shortcut to the active input scope or focused control. Compose
@@ -160,6 +168,7 @@ diagnostics, but must not reuse them for another node in the same snapshot.
 | `SettingsRow(..., id, ...)` | `id.content`, `id.copy`, `id.label`, and `id.action`; optional `id.icon`, `id.description`, `id.metadata`, `id.value`, `id.status`, `id.status.label`, and `id.status.icon`. `id.action` is the only focus stop. |
 | `ActionSheet(..., id, items, ...)` | `id.title`, `id.list`, and optional `id.description`; each action Button uses its author-provided `ActionSheetItem.Id`. |
 | `Picker(..., id, options, ...)` | `id.title`, `id.options`, and optional `id.description`; each choice Button uses its author-provided `PickerOption.Id`. |
+| `Scrubber(..., id, ...)` | `id.slider`, `id.times`, `id.elapsed`, and `id.duration`. `id.slider` is the only focus stop. |
 | `ControllerHint(button, label, id)` | `id.key` and `id.label`. |
 
 Generated IDs use the same 128-character stable-ID grammar as ordinary nodes.
@@ -292,7 +301,7 @@ return showPicker
 ```
 
 Do not keep a hidden catalog behind LB/RB cycling. If the option set is empty,
-render an `EmptyState` instead of constructing a Picker. For more than 64
+render an `EmptyState` instead of constructing a Picker. For more than 128
 options, provide search/category navigation or bounded paging where each page
 is its own stable surface; never silently truncate user choices.
 
@@ -306,11 +315,9 @@ tested composition helpers or native semantics before authors depend on names:
    remain separate future designs rather than overloading its stable contract.
 2. **Toast/notification model** — host-announced, time-bounded feedback that
    never steals focus; persistent failures remain in the owning surface.
-3. **Controller scrubber** — Slider-derived seek semantics, time/value labels,
-   buffered/unknown state, latest-wins adjustment, and stable focus.
-4. **`MediaTile` and `AppTile`** — bounded artwork/icon, multi-line metadata,
+3. **`MediaTile` and `AppTile`** — bounded artwork/icon, multi-line metadata,
    state, and one primary full-tile action without private widget geometry.
-5. **Layout/style primitives** — per-edge borders, responsive grid/wrap, and
+4. **Layout/style primitives** — per-edge borders, responsive grid, and
    semantic monospace for diagnostics or code-like values. These need bounded
    native layout/style contracts rather than author-specific workarounds.
 

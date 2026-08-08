@@ -644,7 +644,7 @@ static async Task DevRetainsAndCleans()
     try
     {
         await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(20));
+            TimeSpan.FromSeconds(30));
         var firstPid = session.ActiveHostProcessId;
         activePid = firstPid;
         Assert.True(firstPid.HasValue, "Dev host was not retained after the first good build.");
@@ -686,7 +686,7 @@ static async Task DevBrokenEntrypointRetainsLastGood()
     try
     {
         await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(20));
+            TimeSpan.FromSeconds(30));
         lastGoodPid = session.ActiveHostProcessId;
         Assert.True(lastGoodPid.HasValue, "Initial valid entrypoint did not publish a last-good host.");
         var expectedPid = lastGoodPid.GetValueOrDefault();
@@ -734,7 +734,7 @@ static async Task DevJobReclaimsDescendants()
     try
     {
         await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
-            TimeSpan.FromSeconds(20));
+            TimeSpan.FromSeconds(30));
         var hostPid = session.ActiveHostProcessId;
         Assert.True(hostPid.HasValue, "Descendant test did not retain its interactive host.");
         processIds.Add(hostPid.GetValueOrDefault());

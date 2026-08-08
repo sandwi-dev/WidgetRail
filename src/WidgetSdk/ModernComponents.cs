@@ -1,3 +1,4 @@
+using System.Globalization;
 using GameBarAlternative.WidgetProtocol;
 
 namespace GameBarAlternative.WidgetSdk;
@@ -43,6 +44,156 @@ public sealed record PickerOption(
     bool IsBusy = false);
 
 /// <summary>
+/// A controller-native media timeline composed from the public Slider and text
+/// primitives. Left and Right seek while focused; Up and Down remain available
+/// for navigation. Requested values are emitted as total milliseconds.
+/// </summary>
+public sealed record ScrubberElement : WidgetElement
+{
+    internal ScrubberElement(
+        TimeSpan position,
+        TimeSpan duration,
+        TimeSpan step,
+        string valueChangedActionId,
+        string id,
+        string accessibilityLabel,
+        string? elapsedLabel,
+        string? durationLabel,
+        string? activationActionId) : base(RequireId(id))
+    {
+        StableIdentifier.Validate(id, nameof(id));
+        _ = StableIdentifier.Child(id, "slider");
+        _ = StableIdentifier.Child(id, "times");
+        _ = StableIdentifier.Child(id, "elapsed");
+        _ = StableIdentifier.Child(id, "duration");
+        if (duration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(duration), "Duration must be positive.");
+        if (position < TimeSpan.Zero || position > duration)
+            throw new ArgumentOutOfRangeException(nameof(position), "Position must be within the media duration.");
+        if (step <= TimeSpan.Zero || step > duration)
+            throw new ArgumentOutOfRangeException(nameof(step), "Step must be positive and no greater than the media duration.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(valueChangedActionId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessibilityLabel);
+        if (elapsedLabel is not null && string.IsNullOrWhiteSpace(elapsedLabel))
+            throw new ArgumentException("An elapsed-time label cannot be empty.", nameof(elapsedLabel));
+        if (durationLabel is not null && string.IsNullOrWhiteSpace(durationLabel))
+            throw new ArgumentException("A duration label cannot be empty.", nameof(durationLabel));
+        if (activationActionId is not null)
+            ArgumentException.ThrowIfNullOrWhiteSpace(activationActionId);
+
+        Position = position;
+        Duration = duration;
+        Step = step;
+        ValueChangedActionId = valueChangedActionId;
+        AccessibilityLabel = accessibilityLabel;
+        ElapsedLabel = elapsedLabel;
+        DurationLabel = durationLabel;
+        ActivationActionId = activationActionId;
+        StyleClasses = ["gbar-scrubber"];
+    }
+
+    public TimeSpan Position { get; init; }
+    public TimeSpan Duration { get; init; }
+    public TimeSpan Step { get; init; }
+    public string ValueChangedActionId { get; init; }
+    public string AccessibilityLabel { get; init; }
+    public string? ElapsedLabel { get; init; }
+    public string? DurationLabel { get; init; }
+    public string? ActivationActionId { get; init; }
+    public bool? IsDisabled { get; init; }
+    public bool? IsBusy { get; init; }
+    public FocusNeighbors? FocusNeighbors { get; init; }
+
+    /// <summary>The stable focus ID owned by the nested Slider.</summary>
+    public string SliderId => StableIdentifier.Child(Id, "slider");
+
+    public ScrubberElement FocusUp(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Up = RequireId(id) },
+    };
+
+    public ScrubberElement FocusDown(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Down = RequireId(id) },
+    };
+
+    public ScrubberElement Disabled(bool disabled = true) => this with
+    {
+        IsDisabled = disabled ? true : null,
+    };
+
+    public ScrubberElement Busy(bool busy = true) => this with
+    {
+        IsBusy = busy ? true : null,
+    };
+
+    public ScrubberElement Activate(string actionId) => this with
+    {
+        ActivationActionId = RequireId(actionId),
+    };
+
+    internal override ViewNode ToProtocolNode()
+    {
+        var showHours = Duration >= TimeSpan.FromHours(1);
+        var elapsed = ElapsedLabel ?? FormatTime(Position, showHours);
+        var duration = DurationLabel ?? FormatTime(Duration, showHours);
+        var accessibleStates = new List<string> { AccessibilityLabel };
+        if (IsDisabled is true) accessibleStates.Add("Unavailable");
+        if (IsBusy is true) accessibleStates.Add("Busy");
+
+        var slider = new SliderElement(
+            SliderId,
+            Position.TotalMilliseconds,
+            0,
+            Duration.TotalMilliseconds,
+            Step.TotalMilliseconds,
+            ValueChangedActionId,
+            string.Join(", ", accessibleStates),
+            $"{elapsed} of {duration}",
+            ActivationActionId)
+        {
+            IsDisabled = IsDisabled,
+            IsBusy = IsBusy,
+            FocusNeighbors = FocusNeighbors,
+            StyleClasses = ["gbar-scrubber__slider"],
+        };
+
+        return new StackElement(Id,
+        [
+            slider,
+            new RowElement(StableIdentifier.Child(Id, "times"),
+            [
+                new TextElement(StableIdentifier.Child(Id, "elapsed"), elapsed, $"Elapsed {elapsed}")
+                {
+                    StyleClasses = ["gbar-scrubber__elapsed"],
+                },
+                new TextElement(StableIdentifier.Child(Id, "duration"), duration, $"Duration {duration}")
+                {
+                    StyleClasses = ["gbar-scrubber__duration"],
+                },
+            ])
+            {
+                StyleClasses = ["gbar-scrubber__times"],
+            },
+        ])
+        {
+            StyleClasses = StyleClasses,
+        }.ToProtocolNode();
+    }
+
+    private static string FormatTime(TimeSpan value, bool showHours)
+    {
+        var totalSeconds = (long)Math.Floor(value.TotalSeconds);
+        var hours = totalSeconds / 3600;
+        var minutes = (totalSeconds % 3600) / 60;
+        var seconds = totalSeconds % 60;
+        return showHours
+            ? string.Create(CultureInfo.InvariantCulture, $"{hours}:{minutes:00}:{seconds:00}")
+            : string.Create(CultureInfo.InvariantCulture, $"{minutes}:{seconds:00}");
+    }
+}
+
+/// <summary>
 /// Original controller-first composites built only from stable public protocol
 /// nodes. Their gbar-* classes are semantic theme hooks, not fixed colors.
 /// </summary>
@@ -52,7 +203,34 @@ public static partial class UI
     public const int MaximumActionSheetItems = 32;
 
     /// <summary>The maximum number of choices accepted by one picker surface.</summary>
-    public const int MaximumPickerOptions = 64;
+    public const int MaximumPickerOptions = 128;
+
+    /// <summary>
+    /// Creates a responsive controller-first media timeline. The returned
+    /// component has one focus stop at <c>{id}.slider</c>; Left and Right emit
+    /// quantized absolute millisecond targets through
+    /// <paramref name="valueChangedAction"/>, while Up and Down follow focus
+    /// links configured on the returned element.
+    /// </summary>
+    public static ScrubberElement Scrubber(
+        TimeSpan position,
+        TimeSpan duration,
+        TimeSpan step,
+        string valueChangedAction,
+        string id,
+        string accessibilityLabel = "Playback position",
+        string? elapsedLabel = null,
+        string? durationLabel = null,
+        string? activationAction = null) => new(
+            position,
+            duration,
+            step,
+            valueChangedAction,
+            id,
+            accessibilityLabel,
+            elapsedLabel,
+            durationLabel,
+            activationAction);
 
     /// <summary>
     /// Creates a responsive setting summary with exactly one controller focus

@@ -37,6 +37,7 @@ int main() {
         {L"padding", {L"lengthList", L"10px 5% 2vh 1em", std::nullopt, {}}},
         {L"background", {L"color", L"#20406080", std::nullopt, {}}},
         {L"direction", {L"keyword", L"row", std::nullopt, {}}},
+        {L"flex-wrap", {L"keyword", L"wrap", std::nullopt, {}}},
         {L"object-fit", {L"keyword", L"cover", std::nullopt, {}}},
         {L"flex-grow", Number(L"number", 2)},
     };
@@ -56,6 +57,7 @@ int main() {
     Near(14.4F, style720.paddingPx().bottom);
     Near(20, style720.paddingPx().left);
     assert(style720.direction() == NativeDirection::Row);
+    assert(style720.flexWrap() == NativeFlexWrap::Wrap);
     assert(style720.imageFit() == NativeImageFit::Cover);
     Near(2, style720.flexGrow());
     Near(0x20 / 255.0F, style720.background()->red);
