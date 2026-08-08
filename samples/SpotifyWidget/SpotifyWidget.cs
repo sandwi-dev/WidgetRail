@@ -58,6 +58,8 @@ public sealed class SpotifyWidget : Widget
     private long _activeGeneration;
     private Task? _pollTask;
     private Task? _progressTask;
+    private readonly object _authorizationGate = new();
+    private Task? _authorizationTask;
 
     public SpotifyWidget(TimeProvider? timeProvider = null) =>
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -138,6 +140,18 @@ public sealed class SpotifyWidget : Widget
             await Task.WhenAll(tasks).WaitAsync(transitionToken).ConfigureAwait(false);
     }
 
+    protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
+    {
+        Task? authorization;
+        lock (_authorizationGate) authorization = _authorizationTask;
+        if (authorization is null) return;
+        try
+        {
+            await authorization.WaitAsync(shutdownToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested) { }
+    }
+
     protected override ValueTask OnLifecycleStateChangedAsync(
         WidgetLifecycleState previous,
         WidgetLifecycleState current,
@@ -190,7 +204,7 @@ public sealed class SpotifyWidget : Widget
                     }
                     return;
                 case "spotify.connect":
-                    await ConnectAsync(cancellationToken).ConfigureAwait(false);
+                    StartAuthorization();
                     return;
                 case "spotify.disconnect":
                     await DisconnectAsync(cancellationToken).ConfigureAwait(false);
@@ -230,6 +244,19 @@ public sealed class SpotifyWidget : Widget
         finally
         {
             _actionGate.Release();
+        }
+    }
+
+    private void StartAuthorization()
+    {
+        lock (_authorizationGate)
+        {
+            if (_authorizationTask is { IsCompleted: false }) return;
+            // Browser authorization intentionally belongs to the Created-to-Destroying
+            // widget lifetime. The host acknowledges the input immediately, and taking
+            // the browser foreground may move the overlay to Background without
+            // canceling the already-authorized OAuth request.
+            _authorizationTask = ConnectAsync(WidgetLifetimeToken);
         }
     }
 
@@ -358,7 +385,16 @@ public sealed class SpotifyWidget : Widget
                     authorization.DisplayMessage ?? "Spotify connection was not completed", null);
                 return;
             }
-            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+            if (IsActive)
+            {
+                await RefreshAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                SetState(Volatile.Read(ref _activeGeneration),
+                    SpotifyWidgetViewState.Ready,
+                    "Connected · reopen the overlay for playback", null);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (WidgetCapabilityException exception)
@@ -373,6 +409,11 @@ public sealed class SpotifyWidget : Widget
         {
             SetState(Volatile.Read(ref _activeGeneration),
                 SpotifyWidgetViewState.ServiceUnavailable, "Spotify provider unavailable", null);
+        }
+        catch (Exception)
+        {
+            SetState(Volatile.Read(ref _activeGeneration),
+                SpotifyWidgetViewState.Error, "Spotify connection failed", null);
         }
     }
 
@@ -625,15 +666,17 @@ public sealed class SpotifyWidget : Widget
     private static WidgetView RenderDisconnected(StackElement header, bool reconnect) => new(
         UI.Stack("spotify.root", header,
                 StateCard(WidgetGlyph.Music, reconnect ? "Reconnect Spotify" : "Connect Spotify",
-                    "Sign in with Spotify using Authorization Code with PKCE. Your token stays in the trusted host.",
+                    "Spotify opens a browser and uses PKCE. Your credentials stay in the trusted host.",
                     UI.Row("spotify.connect-actions",
                             UI.Button(reconnect ? "Reconnect" : "Connect", "spotify.connect",
                                     "spotify.connect")
                                 .Icon(WidgetGlyph.Play, "Connect Spotify account")
-                                .FocusRight("spotify.setup.open").Classes("spotify-primary"),
+                                .FocusRight("spotify.setup.open")
+                                .Classes("spotify-primary", "spotify-responsive-action"),
                             UI.Button("Setup", "spotify.setup.open", "spotify.setup.open")
                                 .Icon(WidgetGlyph.Settings, "Open setup instructions")
-                                .FocusLeft("spotify.connect").Classes("spotify-secondary"))
+                                .FocusLeft("spotify.connect")
+                                .Classes("spotify-secondary", "spotify-responsive-action"))
                         .Classes("spotify-connect-actions")))
             .InputScope(InputScope).Classes("spotify-widget"),
         InitialFocusId: "spotify.connect", Surface: StandardSurface);
@@ -671,35 +714,40 @@ public sealed class SpotifyWidget : Widget
                     UI.Row("spotify.idle-actions",
                             UI.Button("Refresh", "spotify.refresh", "spotify.refresh")
                                 .Icon(WidgetGlyph.Refresh, "Refresh Spotify playback")
-                                .FocusRight("spotify.disconnect").Classes("spotify-primary"),
+                                .FocusRight("spotify.disconnect")
+                                .Classes("spotify-primary", "spotify-responsive-action"),
                             UI.Button("Disconnect", "spotify.disconnect", "spotify.disconnect")
-                                .FocusLeft("spotify.refresh").Classes("spotify-secondary"))
+                                .FocusLeft("spotify.refresh")
+                                .Classes("spotify-secondary", "spotify-responsive-action"))
                         .Classes("spotify-connect-actions")))
             .InputScope(InputScope).Classes("spotify-widget"),
         InitialFocusId: "spotify.refresh", Surface: StandardSurface);
 
     private static WidgetView RenderSetup(string status)
     {
-        var root = UI.Stack("spotify.setup-root",
-                Header(status, SpotifyWidgetViewState.Unconfigured),
-                UI.Stack("spotify.setup-card",
-                        UI.Text("Connect your developer app", "spotify.setup-title",
+        var instructions = UI.Stack("spotify.setup-card",
+                        UI.Text("Spotify setup", "spotify.setup-title",
                                 "Spotify developer app setup")
-                            .Classes("spotify-state-title"),
+                            .Classes("spotify-state-title", "spotify-setup-title"),
                         UI.Text("1. Create an app in the Spotify developer dashboard.",
                                 "spotify.setup-step-1").Classes("spotify-setup-step"),
-                        UI.Text($"2. Register this exact redirect URI: {WidgetSpotifyService.ExactRedirectUri}",
+                        UI.Text($"2. Add this exact redirect URI: {WidgetSpotifyService.ExactRedirectUri}",
                                 "spotify.setup-step-2").Classes("spotify-setup-step"),
-                        UI.Text("3. Configure only its public Client ID; never paste a Client Secret.",
+                        UI.Text("3. Save only the public Client ID; never enter a Client Secret.",
                                 "spotify.setup-step-3").Classes("spotify-setup-step"),
-                        UI.Text("CLI: dotnet run --project .\\tools\\GbarCli\\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples",
+                        UI.CodeText("dotnet run --project .\\tools\\GbarCli\\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples",
                                 "spotify.setup-command", "Client ID configuration command")
-                            .Classes("spotify-setup-command"),
+                            .AddClasses("spotify-setup-command"),
                         UI.Button("Done", "spotify.setup.done", "spotify.setup.done")
                             .Classes("spotify-primary"))
-                    .Classes("spotify-setup-card"))
+                    .Classes("spotify-setup-card");
+        var setupScroll = UI.VerticalScroll("spotify.setup-scroll", instructions)
             .InputScope(SetupScope)
             .Shortcut(ControllerButton.B, "spotify.setup.close")
+            .Classes("spotify-setup-scroll");
+        var root = UI.Stack("spotify.setup-root",
+                Header(status, SpotifyWidgetViewState.Unconfigured),
+                setupScroll)
             .Classes("spotify-widget", "spotify-setup");
         return new WidgetView(root, "spotify.setup.done", ActiveInputScopeId: SetupScope,
             Surface: StandardSurface);

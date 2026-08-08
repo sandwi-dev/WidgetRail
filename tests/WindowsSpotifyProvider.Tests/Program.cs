@@ -62,6 +62,7 @@ static async Task PkceContract()
     await backend.ConnectAsync(Identity(), default);
 
     Assert.Equal(WindowsSpotifyPlatformBackend.ExactRedirectUri, callback.RedirectUri);
+    Assert.Equal(WindowsSpotifyPlatformBackend.AuthorizationCallbackTimeout, callback.Timeout);
     Assert.Equal("S256", callback.ChallengeMethod);
     Assert.True(callback.State!.Length >= 32);
     Assert.Equal("refresh-one", vault.Token);
@@ -529,11 +530,13 @@ internal sealed class CoordinatedCallback : ISpotifyAuthorizationCallbackReceive
     internal string? State { get; private set; }
     internal string? Challenge { get; private set; }
     internal string? ChallengeMethod { get; private set; }
+    internal TimeSpan Timeout { get; private set; }
 
     public Task<SpotifyAuthorizationCallback> ReceiveAsync(
         Uri exactRedirectUri, TimeSpan timeout, CancellationToken cancellationToken)
     {
         RedirectUri = exactRedirectUri.AbsoluteUri;
+        Timeout = timeout;
         cancellationToken.Register(() => _completion.TrySetCanceled(cancellationToken));
         return _completion.Task;
     }

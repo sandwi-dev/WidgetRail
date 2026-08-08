@@ -150,6 +150,11 @@ public:
     [[nodiscard]] const NativeEdges& marginPx() const noexcept;
     [[nodiscard]] float opacity() const noexcept;
     [[nodiscard]] float scale() const noexcept;
+    /// Bounded presentation offsets in device-independent pixels. Percentage
+    /// values resolve against the corresponding parent axis; these values do
+    /// not alter layout dimensions.
+    [[nodiscard]] float translateXPx() const noexcept;
+    [[nodiscard]] float translateYPx() const noexcept;
     [[nodiscard]] float transitionDurationMilliseconds() const noexcept;
     [[nodiscard]] const std::optional<float>& aspectRatio() const noexcept;
     [[nodiscard]] NativeImageFit imageFit() const noexcept;

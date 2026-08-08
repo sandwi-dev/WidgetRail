@@ -10,11 +10,15 @@
 
 namespace gba {
 
-/// Paint-only visual values that are safe to change without invalidating
-/// declarative layout or controller geometry.
+/// Bounded presentation values that change without invalidating declarative
+/// layout. Translation is consumed by the renderer's presentation-geometry
+/// pass so translated paint, clipping, pointer, and controller geometry remain
+/// identical.
 struct DeclarativeMotionValue final {
     float opacity{1.0F};
     float scale{1.0F};
+    float translationX{};
+    float translationY{};
     friend bool operator==(const DeclarativeMotionValue&,
                            const DeclarativeMotionValue&) = default;
 };
@@ -31,6 +35,7 @@ class DeclarativeMotionTimeline final {
 public:
     static constexpr std::size_t MaximumTrackedNodes = 1024;
     static constexpr std::uint64_t MaximumDurationMilliseconds = 2000;
+    static constexpr float MaximumTranslationDips = 4096.0F;
 
     /// Starts a complete tree observation at the supplied monotonic time.
     void BeginFrame(std::uint64_t timestampMilliseconds) noexcept;

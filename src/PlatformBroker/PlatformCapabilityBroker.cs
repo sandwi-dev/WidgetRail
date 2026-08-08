@@ -595,7 +595,12 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
 
     private static bool IsLifecycleAllowed(
         RequestLease lease, BrokerLifecycleState lifecycle) =>
-        lease.AllowsBackground
+        lease.AllowsLifecycleContinuation && lifecycle is
+            BrokerLifecycleState.Background or
+            BrokerLifecycleState.Visible or
+            BrokerLifecycleState.Interactive
+            ? true
+            : lease.AllowsBackground
             ? lifecycle is BrokerLifecycleState.Background or
                 BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive
             : lease.Kind == BrokerCapabilityKind.Control
@@ -643,6 +648,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
             var lease = new RequestLease(
                 this, capability.Id, operationKind, capability.AllowsBackground,
+                capability.AllowsInFlightContinuationForOperation(request.Operation),
                 dashboardGestureAuthorized,
                 callerCancellation);
             _requestLeases.Add(lease);
@@ -668,6 +674,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             string capabilityId,
             BrokerCapabilityKind kind,
             bool allowsBackground,
+            bool allowsLifecycleContinuation,
             bool dashboardGestureAuthorized,
             CancellationToken callerCancellation)
         {
@@ -675,6 +682,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             CapabilityId = capabilityId;
             Kind = kind;
             AllowsBackground = allowsBackground;
+            AllowsLifecycleContinuation = allowsLifecycleContinuation;
             DashboardGestureAuthorized = dashboardGestureAuthorized;
             _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                 callerCancellation, _brokerCancellation.Token);
@@ -683,6 +691,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         internal string CapabilityId { get; }
         internal BrokerCapabilityKind Kind { get; }
         internal bool AllowsBackground { get; }
+        internal bool AllowsLifecycleContinuation { get; }
         internal bool DashboardGestureAuthorized { get; }
         internal CancellationToken Token => _linkedCancellation.Token;
         internal string? CancellationCode => Volatile.Read(ref _cancellationCode);

@@ -20,6 +20,12 @@ public sealed class WindowsSpotifyPlatformBackend :
     public const string PlaybackControlScope = "user-modify-playback-state";
     public const string StreamingScope = "streaming";
 
+    // Browser sign-in is an explicit user interaction and can legitimately
+    // outlive the overlay window. Keep the listener bounded, but do not apply
+    // the ordinary short broker request deadline to a human OAuth flow.
+    internal static readonly TimeSpan AuthorizationCallbackTimeout =
+        TimeSpan.FromMinutes(5);
+
     private const int MaximumClientIdCharacters = 128;
     private const int MaximumAutomaticRetryDelaySeconds = 30;
     private const int MaximumHttpAttempts = 3;
@@ -404,7 +410,7 @@ public sealed class WindowsSpotifyPlatformBackend :
         using var authorizationLifetime =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var callbackTask = _callback.ReceiveAsync(
-            RedirectUri, TimeSpan.FromMinutes(2), authorizationLifetime.Token);
+            RedirectUri, AuthorizationCallbackTimeout, authorizationLifetime.Token);
         try
         {
             await _browser.OpenAsync(authorizationUri, cancellationToken).ConfigureAwait(false);

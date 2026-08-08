@@ -15,7 +15,9 @@ constexpr float kTargetEpsilon = 0.0001F;
 [[nodiscard]] bool Near(
     const DeclarativeMotionValue& left,
     const DeclarativeMotionValue& right) noexcept {
-    return Near(left.opacity, right.opacity) && Near(left.scale, right.scale);
+    return Near(left.opacity, right.opacity) && Near(left.scale, right.scale) &&
+        Near(left.translationX, right.translationX) &&
+        Near(left.translationY, right.translationY);
 }
 
 [[nodiscard]] float Ease(
@@ -153,6 +155,12 @@ DeclarativeMotionValue DeclarativeMotionTimeline::Sanitize(
     value.scale = std::isfinite(value.scale)
         ? std::clamp(value.scale, 0.5F, 2.0F)
         : 1.0F;
+    value.translationX = std::isfinite(value.translationX)
+        ? std::clamp(value.translationX, -MaximumTranslationDips, MaximumTranslationDips)
+        : 0.0F;
+    value.translationY = std::isfinite(value.translationY)
+        ? std::clamp(value.translationY, -MaximumTranslationDips, MaximumTranslationDips)
+        : 0.0F;
     return value;
 }
 
@@ -174,6 +182,8 @@ DeclarativeMotionSample DeclarativeMotionTimeline::Sample(
     return {{
         Interpolate(entry.from.opacity, entry.target.opacity, progress),
         Interpolate(entry.from.scale, entry.target.scale, progress),
+        Interpolate(entry.from.translationX, entry.target.translationX, progress),
+        Interpolate(entry.from.translationY, entry.target.translationY, progress),
     }, true};
 }
 

@@ -102,6 +102,46 @@ void ImagePlacementMath() {
     Near(invalid.source.width, 0.0F, "invalid source is empty");
 }
 
+void ButtonContentPlacementCentersTheVisualGroup() {
+    const Rect content{0.0F, 0.0F, 170.0F, 60.0F};
+    const auto iconAndText = DeclarativeRenderer::ComputeButtonContentPlacement(
+        content, 28.0F, 56.0F, true, true, false);
+    Near(iconAndText.leading.x, 39.0F,
+         "icon-label group starts at its centered visual bound");
+    Near(iconAndText.text.x, 75.0F,
+         "button label follows the centered leading icon and gap");
+    Near((iconAndText.leading.x + iconAndText.text.x + iconAndText.text.width) * 0.5F,
+         85.0F,
+         "icon-label group is centered in the complete button");
+    Near(iconAndText.leading.y, 16.0F,
+         "leading icon is vertically centered in the content box");
+
+    const auto withCue = DeclarativeRenderer::ComputeButtonContentPlacement(
+        content, 28.0F, 56.0F, true, true, true);
+    Near(withCue.leading.x, 39.0F,
+         "symmetric cue reservation does not push primary content off center");
+    Near(withCue.text.x, 75.0F,
+         "state cue cannot collide with the centered button label");
+
+    const auto textOnly = DeclarativeRenderer::ComputeButtonContentPlacement(
+        content, 0.0F, 40.0F, false, true, false);
+    Near(textOnly.text.x, 65.0F, "text-only button label is centered by default");
+    Near(textOnly.text.width, 40.0F, "text-only button keeps measured label width");
+
+    const auto start = DeclarativeRenderer::ComputeButtonContentPlacement(
+        content, 28.0F, 56.0F, true, true, false, gba::NativeTextAlign::Start);
+    Near(start.leading.x, 0.0F, "explicit start aligns the complete visual group");
+    const auto end = DeclarativeRenderer::ComputeButtonContentPlacement(
+        content, 28.0F, 56.0F, true, true, false, gba::NativeTextAlign::End);
+    Near(end.text.x + end.text.width, 170.0F,
+         "explicit end aligns the complete visual group");
+
+    const auto invalid = DeclarativeRenderer::ComputeButtonContentPlacement(
+        {0.0F, 0.0F, -1.0F, 40.0F}, 28.0F, 40.0F, true, true, false);
+    Near(invalid.leading.width, 0.0F, "invalid button geometry fails closed");
+    Near(invalid.text.width, 0.0F, "invalid button text geometry fails closed");
+}
+
 void AccessibleStatePresentation() {
     gba::NativeAccessibilityPolicy normal;
     Near(gba::DeclarativeStateOpacityFactor(true, false, normal), 0.45F,
@@ -555,6 +595,180 @@ void FocusMotionUsesStableSnapshotIdentity() {
         nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(!replaced.animationActive,
           "forgotten widget runtime starts from its current authored state");
+}
+
+void SubtreeTranslationKeepsPresentationGeometryAligned() {
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"translation.widget@1";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.initialFocusId = L"translated.button";
+    snapshot.root = Node(L"root", L"stack");
+    snapshot.root.baseStyle = {
+        {L"overflow", Keyword(L"clip")},
+        {L"translate-x", Length(20.0)},
+        {L"translate-y", Length(10.0)},
+        {L"transition-duration", Duration(100.0)},
+        {L"transition-easing", Keyword(L"linear")},
+    };
+    auto button = Node(L"translated.button", L"button");
+    button.text = L"Translated";
+    button.actionId = L"translated.action";
+    button.baseStyle = {
+        {L"translate-x", Length(-30.0)},
+        {L"translate-y", Length(5.0)},
+        {L"min-height", Length(44.0)},
+    };
+    snapshot.root.children = {button};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    gba::DeclarativeRenderOptions options;
+    options.animationTimestampMilliseconds = 0;
+    const auto initial = renderer.Render(
+        nullptr, snapshot, L"translated.button",
+        {0.0F, 0.0F, 200.0F, 100.0F}, options);
+    const auto rootRect = initial.elementRects.at(L"root");
+    const auto buttonRect = initial.elementRects.at(L"translated.button");
+    Near(rootRect.x, 20.0F, "root presentation translation moves its border");
+    Near(rootRect.y, 10.0F, "root presentation translation moves its vertical border");
+    Near(buttonRect.x, -10.0F,
+         "child presentation geometry accumulates parent and local x translation");
+    Near(buttonRect.y, 15.0F,
+         "child presentation geometry accumulates parent and local y translation");
+
+    const auto visible = initial.elementVisibleRects.at(L"translated.button");
+    Near(visible.x, 20.0F,
+         "translated clipping ancestor moves the child visibility boundary");
+    Near(visible.y, 15.0F,
+         "translated child remains visible at its presented vertical position");
+    Check(initial.hitRegions.size() == 1,
+          "translated control produces one bounded pointer target");
+    Near(initial.hitRegions.front().rect.x, visible.x,
+         "pointer geometry uses the exact translated visible rectangle");
+    Near(initial.focusRects.at(L"translated.button").x, visible.x,
+         "focus geometry uses the exact translated visible rectangle");
+    Near(initial.navigationRects.at(L"translated.button").x, buttonRect.x,
+         "controller navigation uses complete translated geometry");
+    Near(initial.currentFocusRect->x, visible.x,
+         "current focus geometry follows translated clipping");
+    Check(initial.currentFocusOutlineClip.has_value(),
+          "translated clipping ancestor produces a focus-outline clip");
+    Near(initial.currentFocusOutlineClip->x, 20.0F,
+         "focus-outline clip moves with the translated ancestor subtree");
+}
+
+void TranslationRetargetsAndSnapsDeterministically() {
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"translation.motion@1";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"root", L"stack");
+    auto button = Node(L"moving.button", L"button");
+    button.text = L"Move";
+    button.actionId = L"move";
+    button.baseStyle = {
+        {L"translate-x", Length(10.0)},
+        {L"translate-y", Length(-8.0)},
+        {L"transition-duration", Duration(100.0)},
+        {L"transition-easing", Keyword(L"linear")},
+    };
+    snapshot.root.children = {button};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    gba::DeclarativeRenderOptions options;
+    options.animationTimestampMilliseconds = 0;
+    auto result = renderer.Render(
+        nullptr, snapshot, L"moving.button",
+        {0.0F, 0.0F, 240.0F, 100.0F}, options);
+    Near(result.elementRects.at(L"moving.button").x, 10.0F,
+         "first stable-ID translation observation snaps to its target");
+    Check(!result.animationActive,
+          "first translation observation does not manufacture an entrance loop");
+
+    snapshot.sequence = 2;
+    snapshot.root.children.front().baseStyle[L"translate-x"] = Length(50.0);
+    snapshot.root.children.front().baseStyle[L"translate-y"] = Length(12.0);
+    options.animationTimestampMilliseconds = 10;
+    result = renderer.Render(
+        nullptr, snapshot, L"moving.button",
+        {0.0F, 0.0F, 240.0F, 100.0F}, options);
+    Near(result.elementRects.at(L"moving.button").x, 10.0F,
+         "stable-ID target change starts at the currently presented x");
+    Check(result.animationActive,
+          "changed translation target requests a bounded follow-up frame");
+
+    options.animationTimestampMilliseconds = 60;
+    options.pixelScale = 2.0F;
+    result = renderer.Render(
+        nullptr, snapshot, L"moving.button",
+        {0.0F, 0.0F, 480.0F, 180.0F}, options);
+    Near(result.elementRects.at(L"moving.button").x, 30.0F,
+         "translation midpoint is deterministic across resize and DPI change");
+    Near(result.elementRects.at(L"moving.button").y, 2.0F,
+         "vertical translation midpoint is deterministic across resize and DPI change");
+
+    options.animationTimestampMilliseconds = 70;
+    options.accessibility.reducedMotion = true;
+    snapshot.root.children.front().baseStyle[L"translate-x"] = Length(-24.0);
+    snapshot.root.children.front().baseStyle[L"translate-y"] = Length(6.0);
+    result = renderer.Render(
+        nullptr, snapshot, L"moving.button",
+        {0.0F, 0.0F, 480.0F, 180.0F}, options);
+    Near(result.elementRects.at(L"moving.button").x, -24.0F,
+         "reduced motion cancels and snaps x translation to the new target");
+    Near(result.elementRects.at(L"moving.button").y, 6.0F,
+         "reduced motion cancels and snaps y translation to the new target");
+    Check(!result.animationActive,
+          "reduced-motion translation cannot keep the host frame loop active");
+
+    options.accessibility.reducedMotion = false;
+    options.animationTimestampMilliseconds = 80;
+    snapshot.instanceId = L"translation.motion@2";
+    snapshot.root.children.front().baseStyle[L"translate-x"] = Length(64.0);
+    result = renderer.Render(
+        nullptr, snapshot, L"moving.button",
+        {0.0F, 0.0F, 480.0F, 180.0F}, options);
+    Near(result.elementRects.at(L"moving.button").x, 64.0F,
+         "replacement widget identity snaps instead of inheriting stale motion");
+    Check(!result.animationActive,
+          "replacement identity does not retain a hidden predecessor animation");
+}
+
+void TranslatedFocusConvergesInsideScrollViewport() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"translation.scroll@1";
+    snapshot.activeInputScopeId = L"scroll";
+    snapshot.initialFocusId = L"translated.focus";
+    snapshot.root = Node(L"root", L"stack");
+    auto scroll = Node(L"scroll", L"scroll");
+    scroll.scrollAxis = L"vertical";
+    scroll.inputScopeId = L"scroll";
+    scroll.baseStyle = {{L"height", Length(80.0)}};
+    auto leading = Node(L"leading", L"spacer");
+    leading.baseStyle = {{L"height", Length(40.0)}};
+    auto focused = Node(L"translated.focus", L"button");
+    focused.text = L"Focus";
+    focused.actionId = L"focus";
+    focused.baseStyle = {
+        {L"height", Length(44.0)},
+        {L"translate-y", Length(50.0)},
+    };
+    auto trailing = Node(L"trailing", L"spacer");
+    trailing.baseStyle = {{L"height", Length(100.0)}};
+    scroll.children = {leading, focused, trailing};
+    snapshot.root.children = {scroll};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    gba::DeclarativeRenderOptions options;
+    options.animationTimestampMilliseconds = 0;
+    const auto result = renderer.Render(
+        nullptr, snapshot, L"translated.focus",
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Check(result.scrollOffsets.at(L"scroll") > 40.0F,
+          "focus follow accounts for presentation translation, not only static layout");
+    const auto visible = result.focusRects.at(L"translated.focus");
+    Check(visible.y >= -0.01F && visible.y + visible.height <= 80.01F,
+          "translated focused control converges inside its scroll viewport");
 }
 
 void ClippedControlsAreNotFocusCandidates() {
@@ -1606,6 +1820,105 @@ void RealDirect2DSmoke() {
           "rounded clip preserves widget content away from the corner");
     roundedLock.Reset();
 
+    WidgetSnapshot alignedButtons;
+    alignedButtons.instanceId = L"button-alignment.runtime";
+    alignedButtons.root = Node(L"button-alignment-root", L"stack");
+    const auto alignedButton = [](const wchar_t* id, const wchar_t* alignment) {
+        auto result = Node(id, L"button");
+        result.text = L"Go";
+        result.glyph = L"play";
+        result.baseStyle = {
+            {L"width", Length(180)},
+            {L"height", Length(60)},
+            {L"padding", LengthList(L"10px")},
+            {L"background", Color(L"#000000")},
+            {L"color", Color(L"#ffffff")},
+            {L"border-width", Length(0)},
+            {L"text-align", Keyword(alignment)},
+        };
+        return result;
+    };
+    alignedButtons.root.children = {
+        alignedButton(L"align-start", L"start"),
+        alignedButton(L"align-center", L"center"),
+        alignedButton(L"align-end", L"end"),
+    };
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    const auto alignedResult = renderer.Render(
+        target.Get(), alignedButtons, {}, {0.0F, 0.0F, 220.0F, 200.0F});
+    Check(SUCCEEDED(target->EndDraw()), "explicit button alignment frame draws");
+    Check(alignedResult.succeeded, "explicit button alignment render succeeds");
+
+    ComPtr<IWICBitmapLock> alignmentLock;
+    const WICRect alignmentLockArea{0, 0, 640, 360};
+    Check(SUCCEEDED(canvas->Lock(
+        &alignmentLockArea, WICBitmapLockRead,
+        alignmentLock.ReleaseAndGetAddressOf())),
+        "explicit button alignment bitmap locks");
+    UINT alignmentStride = 0;
+    UINT alignmentByteCount = 0;
+    BYTE* alignmentPixels = nullptr;
+    Check(SUCCEEDED(alignmentLock->GetStride(&alignmentStride)),
+        "explicit button alignment stride is available");
+    Check(SUCCEEDED(alignmentLock->GetDataPointer(
+        &alignmentByteCount, &alignmentPixels)),
+        "explicit button alignment pixels are available");
+    struct BrightBounds final {
+        int minimumX{std::numeric_limits<int>::max()};
+        int maximumX{-1};
+    };
+    const auto brightBounds = [&](const Rect rect) {
+        BrightBounds bounds;
+        const auto left = static_cast<UINT>(std::max(0.0F, std::floor(rect.x)));
+        const auto top = static_cast<UINT>(std::max(0.0F, std::floor(rect.y)));
+        const auto right = static_cast<UINT>(std::min(640.0F, std::ceil(rect.x + rect.width)));
+        const auto bottom = static_cast<UINT>(std::min(360.0F, std::ceil(rect.y + rect.height)));
+        for (auto y = top; y < bottom; ++y) {
+            for (auto x = left; x < right; ++x) {
+                const auto* pixel = alignmentPixels + y * alignmentStride + x * 4U;
+                if (std::max({pixel[0], pixel[1], pixel[2]}) <= 64U) continue;
+                bounds.minimumX = std::min(bounds.minimumX, static_cast<int>(x));
+                bounds.maximumX = std::max(bounds.maximumX, static_cast<int>(x));
+            }
+        }
+        Check(bounds.maximumX >= bounds.minimumX,
+            "explicitly aligned button paints visible icon-label content");
+        return bounds;
+    };
+    const auto startRect = alignedResult.elementRects.at(L"align-start");
+    const auto centerRect = alignedResult.elementRects.at(L"align-center");
+    const auto endRect = alignedResult.elementRects.at(L"align-end");
+    const auto startBounds = brightBounds(startRect);
+    const auto centerBounds = brightBounds(centerRect);
+    const auto endBounds = brightBounds(endRect);
+    const auto visualCenter = [](const BrightBounds bounds) {
+        return (static_cast<float>(bounds.minimumX) +
+            static_cast<float>(bounds.maximumX)) * 0.5F;
+    };
+    Check(startBounds.minimumX < centerBounds.minimumX,
+        "explicit start keeps the icon-label group at the leading edge");
+    Check(centerBounds.minimumX < endBounds.minimumX,
+        "explicit end moves the complete icon-label group to the trailing edge");
+    const auto paintedWidth = [](const BrightBounds bounds) {
+        return bounds.maximumX - bounds.minimumX + 1;
+    };
+    Check(paintedWidth(startBounds) == paintedWidth(centerBounds) &&
+            paintedWidth(centerBounds) == paintedWidth(endBounds),
+        "authored alignment translates the icon-label group without splitting it");
+    const auto leadingToCenter = centerBounds.minimumX - startBounds.minimumX;
+    const auto centerToTrailing = endBounds.minimumX - centerBounds.minimumX;
+    Check(leadingToCenter == centerToTrailing,
+        "explicit center is midway between the edge-aligned visual groups");
+    Near(visualCenter(centerBounds),
+        (visualCenter(startBounds) + visualCenter(endBounds)) * 0.5F,
+        "explicit center preserves the complete group's raster geometry");
+    Check(startBounds.maximumX < static_cast<int>(startRect.x + startRect.width * 0.5F),
+        "explicit start paints the complete group in the leading half");
+    Check(endBounds.minimumX > static_cast<int>(endRect.x + endRect.width * 0.5F),
+        "explicit end paints the complete group in the trailing half");
+    alignmentLock.Reset();
+
     slider.baseStyle = {
         {L"background", Color(L"#00ff00")},
         {L"height", Length(44)},
@@ -1668,6 +1981,7 @@ int main() {
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
     ImagePlacementMath();
+    ButtonContentPlacementCentersTheVisualGroup();
     AccessibleStatePresentation();
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();
@@ -1675,6 +1989,9 @@ int main() {
     ActionSurfacePlanningAndInteractionGeometry();
     ResponsiveGridFlowsThroughNativePlanning();
     FocusMotionUsesStableSnapshotIdentity();
+    SubtreeTranslationKeepsPresentationGeometryAligned();
+    TranslationRetargetsAndSnapsDeterministically();
+    TranslatedFocusConvergesInsideScrollViewport();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
     WholeWidgetScrollRevealsAudioMixerControls();

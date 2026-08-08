@@ -16,6 +16,7 @@ constexpr std::size_t kMaximumProperties = 64;
 constexpr std::size_t kMaximumDiagnostics = 64;
 constexpr float kMaximumResolvedDimension = 16'384.0F;
 constexpr float kMaximumResolvedSpacing = 4'096.0F;
+constexpr float kMaximumResolvedTranslation = 4'096.0F;
 
 enum class LengthBasis { Width, Height, Font, MinimumDimension };
 
@@ -214,6 +215,8 @@ struct NativeRenderStyle::Data final {
     NativeEdges margin{};
     float opacity{1};
     float scale{1};
+    float translateX{};
+    float translateY{};
     float transitionDuration{};
     std::optional<float> aspectRatio;
     NativeImageFit imageFit{NativeImageFit::Contain};
@@ -270,6 +273,8 @@ GBA_STYLE_GETTER(const NativeEdges&, paddingPx, padding)
 GBA_STYLE_GETTER(const NativeEdges&, marginPx, margin)
 GBA_STYLE_GETTER(float, opacity, opacity)
 GBA_STYLE_GETTER(float, scale, scale)
+GBA_STYLE_GETTER(float, translateXPx, translateX)
+GBA_STYLE_GETTER(float, translateYPx, translateY)
 GBA_STYLE_GETTER(float, transitionDurationMilliseconds, transitionDuration)
 GBA_STYLE_GETTER(const std::optional<float>&, aspectRatio, aspectRatio)
 GBA_STYLE_GETTER(NativeImageFit, imageFit, imageFit)
@@ -505,6 +510,14 @@ NativeStyleResult NativeStyleAdapter::Adapt(
             if (const auto item = Number(property, value, 0, 1)) data->opacity = *item;
         } else if (property == L"scale") {
             if (const auto item = Number(property, value, 0.5F, 2)) data->scale = *item;
+        } else if (property == L"translate-x") {
+            if (const auto item = Length(property, value, LengthBasis::Width,
+                    -kMaximumResolvedTranslation, kMaximumResolvedTranslation))
+                data->translateX = *item;
+        } else if (property == L"translate-y") {
+            if (const auto item = Length(property, value, LengthBasis::Height,
+                    -kMaximumResolvedTranslation, kMaximumResolvedTranslation))
+                data->translateY = *item;
         } else if (property == L"transition-duration") {
             if (const auto item = Number(property, value, 0, 2000)) data->transitionDuration = *item;
         } else if (property == L"aspect-ratio") {

@@ -74,6 +74,13 @@ struct ImagePlacement final {
     declarative::Rect source;
 };
 
+/// Button content treats an optional leading icon plus label as one visual
+/// group. The complete group follows start/center/end alignment together.
+struct ButtonContentPlacement final {
+    declarative::Rect leading;
+    declarative::Rect text;
+};
+
 struct DeclarativeRenderOptions final {
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
@@ -142,6 +149,15 @@ public:
         declarative::Rect destination,
         NativeImageFit fit,
         NativeObjectPosition position) noexcept;
+
+    [[nodiscard]] static ButtonContentPlacement ComputeButtonContentPlacement(
+        declarative::Rect content,
+        float leadingSize,
+        float measuredTextWidth,
+        bool hasLeading,
+        bool hasText,
+        bool reserveTrailingStateCue,
+        NativeTextAlign alignment = NativeTextAlign::Center) noexcept;
 
 private:
     struct PreparedNode;

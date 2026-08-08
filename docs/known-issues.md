@@ -50,7 +50,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
 | GBA-030 | P0 | Verifying | YT Music packaging / community isolation / local companion broker | YT Music now uses the public Community package/AppContainer/loopback/secret path without a trusted fallback; clean packaged controller and lifecycle evidence remains. |
 | GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | The shared default, responsive Row/Grid, Picker, Scrubber, Toast, CodeText, per-edge borders, and protocol-v7 ActionSurface/MediaTile/AppTile exist; Settings and Games & Apps provide production adoption, and the full Release gate is green while hands-on packaged scale/accessibility evidence remains. |
-| GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes now interpolate bounded opacity/scale targets with reduced-motion cancellation; packaged visual/performance evidence remains. |
+| GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes now interpolate bounded opacity/scale/translation with true subtree geometry, reduced-motion cancellation, and settled hidden-idle behavior; packaged visual/performance evidence remains. |
 | GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation and close-after-correlated-success are implemented; broader sources, icons, classification, and packaged controller evidence remain. |
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
 | GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
@@ -61,6 +61,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-040 | P0 | Verifying | Native declarative layout / Spotify / responsive text | Intrinsic leaves now measure height against their authored width/max-width before layout, with exact Spotify state/setup regressions at compact and 150% text scales; packaged visual verification remains. |
 | GBA-041 | P0 | Verifying | OverlayHost / controller input ownership | A visibility-scoped GameInput lease keeps navigation alive when foreground activation is denied and uses exclusivity when confirmed; packaged backend/game evidence remains. |
 | GBA-042 | P0 | Verifying | Spotify configuration / Settings permissions | Unsigned packages can resolve one unambiguous owning-publisher public configuration document, and Settings names all four Spotify grants; packaged authorization/revoke evidence remains. |
+| GBA-043 | P0 | Verifying | Spotify OAuth / broker lifecycle / pipe timeout | Package 0.1.4 acknowledges explicit Connect immediately and retains only that authorization task through browser-triggered Visible/Background; the listener is bounded to five minutes and the exact broker operation to seven, while live packaged authorization evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -920,10 +921,11 @@ protocol/SDK/bridge/native layout; Settings uses it for root categories and
 uses `UI.CodeText` for schema/worker diagnostics. GBSS/native style supports
 independent per-edge width/color overrides, and the default CodeText style uses
 single-family Consolas with bounded wrapping. Focused managed suites pass SDK
-70/70, WidgetStyling 21/21, PlatformSettings 15/15, Settings 41/41, and Bridge
-36/36. The authoritative full Release gate passed in 309.4 seconds, including
+70/70, WidgetStyling 22/22, PlatformSettings 15/15, Settings 41/41, and Bridge
+36/36. The authoritative full Release gate passed, including
 all managed suites, documentation, native Release Layout 245,
-Renderer 4,494, NativeStyle coverage, and protocol-v8 bridge/render cases.
+Motion 39, Renderer 4,530, NativeStyle coverage, and protocol-v8 bridge/render
+cases.
 Hidden OverlayHost and InputProbe smokes also passed. Hands-on packaged visual/
 controller/accessibility evidence remains before ledger closure; broader motion
 remains incomplete.
@@ -931,12 +933,17 @@ remains incomplete.
 ## GBA-032 — GBSS transition declarations do not animate
 
 **Evidence:** `transition-duration` and `transition-easing` now drive a bounded
-native timeline for stable declarative node opacity and scale. First
+native timeline for stable declarative node opacity, scale, and
+`translate-x`/`translate-y`. First
 observation snaps, later target changes retarget from the presented value,
 durations are capped at two seconds, at most 1,024 nodes are tracked, removed
 widgets are forgotten, settled content stops requesting frames, and reduced
-motion snaps/cancels. Other properties and shell-level transitions remain
-immediate, and packaged visual/performance evidence is still open.
+motion snaps/cancels. Translation moves true subtree presentation geometry:
+paint, clips, focus, hit targets, controller navigation, and Scroll focus-follow
+share one result while layout allocation remains static. Replacement identity
+does not inherit stale motion, and settled/hidden content does not request an
+animation loop. Other properties and shell-level transitions remain immediate,
+and packaged visual/performance evidence is still open.
 
 **Acceptance:**
 
@@ -949,10 +956,9 @@ immediate, and packaged visual/performance evidence is still open.
    coalesces visible nodes and respects performance budgets.
 5. Native tests plus packaged visual/performance evidence cover focus, selected,
    busy, rapid reversal, resize/DPI change, and widget replacement.
-6. The transient pressed-state pipeline is implemented. Follow-on scope still
-   covers true composited subtree transforms/translation and shell/widget open,
-   close, and replacement transitions; none is implied by the current paint-
-   only opacity/scale slice.
+6. The transient pressed-state pipeline and subtree translation are
+   implemented. Follow-on scope covers shell/widget open, close, and replacement
+   transitions; those are not implied by node-level motion.
 
 ## GBA-033 — Games & Apps needs durable curated launch semantics
 
@@ -1177,6 +1183,10 @@ cover the Spotify Client-ID state card and setup card at compact width and at
 150% text, in addition to the generic centered-state and permission Scroll
 coverage. The full native Release suite is green at milestone `9f1af0b`;
 refreshed packaged screenshots remain outstanding, so status remains Verifying.
+Spotify package 0.1.4 additionally places the instruction card in a controller
+VerticalScroll, uses compact responsive wrapping, and relies on shared centered
+button icon/label placement; those changes remove widget-specific spacer/
+alignment compensation but still require packaged visual evidence.
 
 **Acceptance:**
 
@@ -1252,6 +1262,47 @@ authorization confirmation remains.
    decisions for all Spotify capabilities.
 5. Packaged testing covers configure, digest update, Done refresh, connect,
    revoke, and malformed/ambiguous recovery.
+
+## GBA-043 — Browser activation canceled Spotify authorization
+
+**Original evidence:** Connect opened the system browser, which moved the
+overlay/widget out of Interactive. The broker treated that lifecycle transition
+like an ordinary inactive control and canceled the temporary loopback listener.
+Even without a transition, the pipe's ordinary three-second request deadline
+was shorter than the authorization callback window, producing
+`ERR_CONNECTION_REFUSED` when Spotify returned.
+
+**Implementation/current evidence:** Package 0.1.4 acknowledges an explicit
+Interactive Connect action immediately and runs only its authorization task on
+the widget's Created-to-Destroying lifetime. The already-created broker lease
+therefore survives browser-triggered Visible/Background. New connect/control
+requests in Background remain denied; disconnect has no continuation. The
+temporary callback listener is created only for the explicit action and waits
+at most five minutes. The exact broker operation has a seven-minute deadline,
+leaving two bounded minutes for token exchange, retry/backoff, and credential-
+vault persistence. Destroying, consent revocation, caller/pipe cancellation,
+and callback/deadline timeout still cancel and close the listener.
+PlatformBroker's focused Release suite passes 48/48 with exact-operation,
+Background denial, disconnect, Destroying, revocation, cancellation, and
+timeout-policy coverage. Widget coverage asserts immediate action completion,
+Background continuation, no implicit listener/connect, and Destroying
+cancellation. Status remains Verifying until the packaged allowlisted-account
+callback evidence in acceptance item 5 is captured.
+
+**Acceptance:**
+
+1. Connect must start from an explicit Interactive action, acknowledge that
+   action immediately, and allow only its already-created widget-lifetime task
+   to survive browser-triggered Visible/Background.
+2. New inactive connect/playback controls and disconnect remain denied.
+3. The temporary listener exists only during explicit Connect and waits at most
+   five minutes. Only the exact broker Connect receives a seven-minute deadline;
+   its remaining two minutes are bounded token exchange/retry/vault budget, not
+   a general long request timeout.
+4. Destroying, revoke/consent loss, caller/pipe cancellation, malformed state,
+   and timeout always terminate the listener and request.
+5. A packaged allowlisted-account test completes the exact callback and proves
+   there is no refusal, token leakage, or hidden retry/polling loop.
 
 ## Closed issues
 

@@ -177,13 +177,15 @@ remains off until the publisher-trust gates in Phase 4.
   immutable asset brokering/licensing/bounds and must never become arbitrary
   font loading. Verify every component at supported text/interface scales
   instead of tuning only current widgets.
-- Extend the implemented native opacity/scale transition slice. The bounded
-  host timeline, interruption/retarget, settled-idle behavior, and reduced-
-  motion cancellation are covered by deterministic native tests. The transient
-  pressed-state map is now connected to exact physical actions. Remaining
-  motion work is true composited subtree transforms/translation; shell/widget
-  open, close, and replacement
-  transitions; and packaged visual/performance evidence. Do not import web-
+- Extend the implemented native opacity/scale/translation transition slice.
+  Bounded `translate-x`/`translate-y` now move true subtree presentation
+  geometry shared by paint, clip, focus, hit testing, navigation, and Scroll
+  focus-follow without changing layout. Interruption/retarget, reduced-motion
+  cancellation, replacement isolation, and settled hidden-idle behavior have
+  deterministic native coverage. The transient pressed-state map is connected
+  to exact physical actions. Remaining motion work is short shell/widget open,
+  close, and replacement transitions plus packaged visual/performance evidence.
+  Do not import web-
   centric staggered entrances, ambient looping motion, editorial serif/faux-
   macOS defaults, or decorative animation into the controller shell.
 - Integrate the implemented host-granted `HostServices.PrivateState` service
@@ -217,8 +219,18 @@ remains off until the publisher-trust gates in Phase 4.
   `gbar config` path stores the package-scoped Client ID, and the addon is
   packageable through the public SDK path. Next prove login/playback with an
   allowlisted Development Mode account. The exact callback is
-  `http://127.0.0.1:43827/callback/`; there is no client-secret field. After the
-  core player, add nested device/queue, search, recent, library, playlist,
+  `http://127.0.0.1:43827/callback/`; there is no client-secret field. After an
+  explicit Interactive Connect starts, the input action acknowledges
+  immediately and only that in-flight authorization task continues on the
+  widget's Created-to-Destroying lifetime while browser activation moves the
+  widget through Visible/Background. No callback listener exists while idle,
+  and new inactive controls remain denied. The listener window is five minutes;
+  the exact broker Connect deadline is seven minutes, leaving two bounded
+  minutes for token exchange, retry/backoff, and credential-vault persistence.
+  Revoke, Destroying, and cancellation still terminate it. Package 0.1.4 also
+  makes setup vertically scrollable and compacts the responsive player/setup
+  layout. Beyond the core player, add nested device/queue, search, recent,
+  library, playlist,
   album, and artist surfaces from the pinned current OpenAPI subset. Add actual
   local audio by orchestrating the implemented separately trusted singleton Web
   Playback SDK/WebView2 host with incremental `streaming` scope, Premium
@@ -258,9 +270,10 @@ not irreversible API priority:
    hands-on packaged visual/controller/accessibility testing on the relaunched
    overlay, then design advanced/virtualized collections
    and optional font assets without weakening controller or package safety.
-4. **Complete motion without web-style overhead.** Add bounded composited
-   subtree translation and short shell/widget open, close, and replacement
-   transitions with reduced-motion cancellation and hidden-idle evidence.
+4. **Complete motion without web-style overhead.** Subtree translation is now
+   implemented with reduced-motion and hidden-idle evidence. Add short shell/
+   widget open, close, and replacement transitions and capture packaged visual/
+   performance evidence.
 5. **Deepen Games & Apps through safe sources.** Add bounded icons, AppsFolder/
    UWP and reviewed launcher adapters, running-program capture, and a host-owned
    file picker. Keep classification evidence-backed and launch identities

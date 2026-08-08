@@ -26,13 +26,22 @@ public sealed record BrokerCapabilityDefinition(
     bool AllowsDashboardGesture = false,
     IReadOnlySet<string>? ReadOperations = null,
     BrokerCapabilityAccessPolicy AccessPolicy = BrokerCapabilityAccessPolicy.ManifestConsent,
-    bool AllowsBackground = false)
+    bool AllowsBackground = false,
+    IReadOnlySet<string>? InFlightContinuationOperations = null)
 {
     public BrokerCapabilityKind KindForOperation(string operation) =>
         ReadOperations?.Contains(operation) == true ? BrokerCapabilityKind.Read : Kind;
 
     public bool AllowsDashboardGestureForOperation(string operation) =>
         KindForOperation(operation) == BrokerCapabilityKind.Control && AllowsDashboardGesture;
+
+    /// <summary>
+    /// Identifies exact operations whose already-authorized request lease may
+    /// finish after the widget leaves Interactive. This never authorizes a new
+    /// request that begins in Visible or Background.
+    /// </summary>
+    public bool AllowsInFlightContinuationForOperation(string operation) =>
+        InFlightContinuationOperations?.Contains(operation) == true;
 }
 
 /// <summary>Closed public capability vocabulary. Version is part of every ID.</summary>
@@ -188,7 +197,8 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Control,
                 Set(SpotifyAuthorizationGet, SpotifyAuthorizationConnect,
                     SpotifyAuthorizationDisconnect), Set(),
-                ReadOperations: Set(SpotifyAuthorizationGet)),
+                ReadOperations: Set(SpotifyAuthorizationGet),
+                InFlightContinuationOperations: Set(SpotifyAuthorizationConnect)),
             [SpotifyPlaybackReadV1] = new(SpotifyPlaybackReadV1, 1,
                 BrokerCapabilityKind.Read, Set(SpotifyPlaybackGet), Set(SpotifyPlaybackChanged)),
             [SpotifyPlaybackControlV1] = new(SpotifyPlaybackControlV1, 1,

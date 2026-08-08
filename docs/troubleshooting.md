@@ -39,6 +39,33 @@ If scaffolding outside the checkout produces a preview `PackageReference`,
 remember that the SDK package is not currently published. Replace it with a
 valid local `ProjectReference` or develop inside the repository.
 
+## Spotify Connect returns `ERR_CONNECTION_REFUSED`
+
+Register `http://127.0.0.1:43827/callback/` exactly in the Spotify Developer
+Dashboard, including the IPv4 literal, port, path, and trailing slash. Start
+Connect from the Interactive widget surface. Opening the browser may hide or
+background the overlay. The action should acknowledge immediately; its
+already-started authorization task uses the widget's Created-to-Destroying
+lifetime, so the exact Connect lease and listener remain alive for the bounded
+callback even though new inactive controls are still denied.
+
+The temporary listener is created only after an explicit Connect action and
+waits at most five minutes; there is no listener while the addon is merely open,
+Visible, or Background. The broker grants only that exact Spotify authorization
+`connect` operation a seven-minute deadline. The remaining two minutes cover
+bounded token exchange, retry/backoff, and credential-vault persistence.
+Disconnect, Destroying, consent revocation, explicit reload/disposal, caller
+cancellation, and timeout intentionally close the listener. Do not repeatedly
+press Connect or launch a second worker while one attempt is active.
+
+If refusal occurs immediately, confirm the overlay/bridge/provider and Spotify
+Community package 0.1.4 were rebuilt and installed together, then inspect
+`%LOCALAPPDATA%\GameBarAlternative\overlay.log` for lifecycle, port-collision,
+state, timeout, or provider diagnostics. Never paste authorization codes,
+verifiers, access/refresh tokens, or credential-vault contents into logs or an
+issue. A successful local Client-ID write is public configuration; it is not
+evidence that the package version or running provider was refreshed.
+
 ## Manifest validation fails
 
 - JSON property names and casing are strict; unknown members fail.
@@ -74,6 +101,13 @@ Static snapshot `selected`, `disabled`, and `busy` state participates while
 those maps are computed. If a pressed style appears stuck, capture diagnostics
 for the physical button-up, focus transition, and snapshot generation; the host
 is required to cancel or reconcile it at each boundary. See [GBSS](gbss.md).
+
+For `translate-x`/`translate-y`, remember that translation changes presentation
+geometry, not layout allocation. Unexpected sibling gaps are therefore a
+layout/spacing issue, while misaligned paint, clip, focus, hit targets, or Scroll
+focus-follow indicate a native presentation-geometry regression. Reduced motion
+snaps translation immediately, and a settled or hidden surface must not retain
+an animation loop.
 
 The first-party Settings widget, managed appearance store, immutable versioned
 themes, and bridge watcher are connected. Check these boundaries:

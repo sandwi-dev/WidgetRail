@@ -222,6 +222,34 @@ belong on one surface. Use a semantic Scroll, Picker, or nested page for an
 unbounded collection; `wrap-reverse`, column wrapping, and browser-style
 `align-content` are deliberately outside this bounded overlay contract.
 
+### Presentation translation
+
+GBSS `translate-x` and `translate-y` apply bounded presentation offsets without
+changing a node's static layout allocation:
+
+```css
+.card { translate-y: 8px; }
+.card:focused {
+  translate-x: 0.5em;
+  translate-y: 0px;
+  transition-duration: 120ms;
+}
+```
+
+Lengths accept the normal safe length units. Author values are bounded by unit
+(`px` ±4096, `em`/`rem` ±16, and `%`/`vw`/`vh` ±100), then resolved and clamped
+to ±4096 DIPs per axis. Percentages resolve against the corresponding parent
+axis. Parent and child offsets accumulate within that final bound.
+
+Translation moves the complete presented subtree. Paint, descendant clips,
+pointer targets, focus outlines, controller-navigation boxes, accessibility
+geometry, and Scroll focus-follow all use the same translated geometry. Layout
+width/height and sibling allocation remain unchanged. Stable IDs animate
+translation through the same bounded timeline as opacity/scale; rapid changes
+retarget from the presented value, reduced motion snaps and cancels, a replaced
+widget identity does not inherit stale motion, and settled or hidden content
+does not keep requesting frames.
+
 ### Responsive Grid (protocol v8)
 
 Use `UI.ResponsiveGrid(...)` when a bounded set of peer controls should reflow
@@ -275,6 +303,12 @@ explicit `height` only when a deliberately fixed/clipped box is part of the
 design. `max-lines` still caps layout and paint, while surfaces whose complete
 content can exceed the host-clamped viewport must use a semantic Scroll; extra
 spacers or margins are not a reliable overflow mechanism.
+
+Button content uses one shared native placement rule. Text-only labels and
+icon-plus-label groups are centered as a visual group; a trailing selected/
+state cue reserves equal space on both sides so it cannot shift or overlap that
+group. Widgets should use semantic `.Icon(...)`, label, and selected state
+instead of compensating with private padding or spacer nodes.
 
 Image fit is `Contain`, `Cover` (default), or `Fill`. General image sources must
 be absolute HTTPS URLs with a host and no embedded credentials. A trusted
@@ -675,7 +709,14 @@ Code that is explicitly designed to be process-lifetime work may use the widget
 token under `keep-alive`; do not assume `Background` unloads that policy.
 Conversely, ordinary refresh, animation, controller/UI polling, and broker
 subscriptions must not escape the appropriate visible or state lifetime. The
-broker grants no ordinary manifest-declared capability in Background. The
+broker grants no new ordinary manifest-declared capability request in
+Background. The narrow exception is an already-started Spotify authorization
+Connect lease created by an explicit Interactive action. That action
+acknowledges immediately, while its authorization task uses the widget's
+Created-to-Destroying lifetime as browser foreground moves it through Visible/
+Background. The temporary callback listener exists only for that attempt; it
+cannot start inactive work and is canceled by Destroying, revoke, caller/pipe
+cancellation, or its bounded timeout. The
 bounded host-granted private-state service is the explicit persistence
 exception; it does not authorize hidden provider work. Hooks must start work
 and return promptly.

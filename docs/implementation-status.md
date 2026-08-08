@@ -431,13 +431,16 @@ setting changes reapply System contrast and motion immediately.
 The built-in default and first-party styles now form one minimalist warm-
 graphite baseline with regular-weight hierarchy, fewer nested surfaces,
 smaller radii, thin borders/tracks, compact controller targets, and one inset
-neutral focus cue. Stable declarative nodes interpolate bounded opacity and
-scale targets through a host-owned timeline; first observation snaps, rapid
-changes retarget from the presented value, reduced motion cancels, removed
-widgets are forgotten, and settled content schedules no further frames. The
-transient pressed-state map is connected to exact physical actions. Other
-animated property families, true composited subtree/shell transitions, and
-packaged visual/accessibility evidence remain open. The embedded selectable
+neutral focus cue. Stable declarative nodes interpolate bounded opacity, scale,
+and `translate-x`/`translate-y` targets through a host-owned timeline; first
+observation snaps, rapid changes retarget from the presented value, reduced
+motion cancels, removed widgets are forgotten, and settled content schedules
+no further frames. Translation is true subtree presentation geometry: paint,
+clipping, focus, hit testing, controller navigation, and focus-follow scrolling
+share the translated boxes while static layout size does not change. The
+transient pressed-state map is connected to exact physical actions. Shell/
+widget open, close, and replacement transitions plus packaged visual/
+accessibility evidence remain open. The embedded selectable
 Cool Slate theme exercises the same token and renderer pipeline with a visibly
 distinct palette rather than a hard-coded widget skin.
 
@@ -520,8 +523,18 @@ visibility or work, and intentional unload does not consume crash budget.
 Legacy `backgroundPolicy: none|suspend` resolves deterministically to
 keep-alive/suspend-when-hidden; declaring both vocabularies fails validation.
 No policy suspends Windows threads. The capability broker continues to deny all
-ordinary manifest-declared operations/subscriptions while Background. The
-host-granted bounded private-state read/write/clear service remains available
+new ordinary manifest-declared operations/subscriptions while Background. One
+narrow OAuth exception allows only an already-started
+`external.spotify.authorization.v1` `connect` request to retain its lease when
+an explicit Interactive Connect action opens the browser and moves the widget
+through Visible/Background. The action acknowledges immediately; its
+authorization task uses the widget's Created-to-Destroying lifetime rather than
+the input-action or active-surface token. It does not authorize a new inactive
+request or a disconnect; Destroying, consent revocation, pipe/caller
+cancellation, and the provider's bounded timeout still terminate it. The
+callback listener exists only for that explicit attempt. The host-granted
+bounded private-state read/write/clear service
+remains available
 there for persistence and is denied during Destroying.
 Separately, trusted bridge policy now bounds each Windows worker with a Job
 Object memory ceiling and one-process limit regardless of lifecycle. Crash,
@@ -569,7 +582,7 @@ scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. Styling and platform settings/themes pass 21/21 and 15/15,
+polling. Styling and platform settings/themes pass 22/22 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
 passes 45/45, including authenticated candidate/active development readiness,
 last-good retention/restart, complete bounded source/package watching, cleanup
@@ -589,7 +602,8 @@ atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
 gesture derivation, including trusted-only publication and worker retirement
-when installed state/integrity fails. PlatformBroker focused coverage includes closed isolated-
+when installed state/integrity fails. PlatformBroker focused coverage passes
+48/48 and includes closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
 consent/lifecycle gates, revocation, and cancellation of already in-flight
@@ -626,12 +640,12 @@ native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
 The current milestone passed `scripts/Verify.ps1 -Configuration Release` end to
-end in 309.4 seconds, including every managed suite, documentation contract,
+end, including every managed suite, documentation contract,
 native Release aggregate, hidden OverlayHost smoke, and InputProbe build/smoke.
 Focused native Release suites report Declarative Layout 245 checks, Native Icons 198,
-Declarative Motion 27, Overlay Targeting 42, Controller Navigation 73, Pressed
+Declarative Motion 39, Overlay Targeting 42, Controller Navigation 73, Pressed
 Interaction 29, Slider Interaction 2,071, Focus Navigation 30, Widget Surface
-Focus 20, and Declarative Renderer 4,494; the remaining native suites also
+Focus 20, and Declarative Renderer 4,530; the remaining native suites also
 pass. Managed feature-negotiation regressions assert the highest feature
 version required by the complete tree—such as Grid v8—rather than incorrectly
 pinning an inline-PNG tree to its older v6 minimum. Display-sensitive evidence
@@ -671,11 +685,22 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. Setup now shows the
+  setup guidance without opening OAuth automatically. Community package 0.1.4
+  uses a compact responsive layout, puts the complete setup instructions in a
+  controller VerticalScroll, and uses shared centered icon/label button
+  placement rather than widget-specific offsets. Setup now shows the
   source-tree-runnable `dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config ...`
   command; **Done** performs one bounded fresh configuration and
   authorization read so a newly saved Client ID takes effect without restarting
-  the worker, while B remains navigation-only. There is no live
+  the worker, while B remains navigation-only. An Interactive Connect that has
+  already opened the system browser acknowledges the action immediately and
+  retains only that exact broker request through Visible/Background using the
+  widget's Created-to-Destroying lifetime. The listener waits at most five
+  minutes; the broker's exact Connect deadline is seven minutes so bounded
+  token exchange, retry/backoff, and credential-vault persistence have the
+  remaining two minutes. No listener exists before an explicit Connect. New
+  Background controls remain denied, while revoke, Destroying, and cancellation
+  still terminate the attempt. There is no live
   allowlisted-account evidence. Devices/queue/search/recent/library/
   playlists/albums/artists remain staged work. A separately trusted singleton
   Web Playback SDK/WebView2 host now implements a bounded, hardened process and
@@ -747,8 +772,10 @@ with C++ installed:
   `base`/`focused` maps. The bridge also publishes a transient `pressed` map;
   the native host applies it only while the exact physical controller action
   remains down and reconciles it across snapshot/focus changes. Stable node
-  opacity/scale targets animate through bounded native transitions. Other
-  animated property families and future dynamic semantic states remain open.
+  opacity/scale/translation targets animate through bounded native transitions.
+  Translation uses shared subtree paint/clip/focus/hit/navigation/Scroll
+  geometry without changing layout. Shell/widget transitions and future dynamic
+  semantic states remain open.
 - Controller Settings, strict persistence, version-pinned theme selection,
   no-poll watching, last-good revisions, and globally layered widget styles are
   implemented. Safe theme scaffold/validate/computed-preview/pack/inspect/

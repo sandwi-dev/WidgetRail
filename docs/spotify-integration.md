@@ -7,7 +7,8 @@ The intended product is a separately installable Community addon backed by a
 trusted, reusable Spotify provider. The current repository implements the
 typed v1 broker surface, a trusted Web API/PKCE provider, protected refresh-token
 storage, package configuration storage, local configuration CLI, production
-`WidgetBridge` composition, and an isolated WebView2 Web Playback SDK host. It
+`WidgetBridge` composition, Spotify Community addon package 0.1.4, and an
+isolated WebView2 Web Playback SDK host. It
 does not yet connect the playback-host protocol to the provider lifecycle,
 expose a controller-native text editor, or prove a live
 Spotify login.
@@ -27,8 +28,8 @@ Premium eligibility, and terms remain external requirements.
 | Broker contract | Implemented capability IDs and strict DTOs for configuration, authorization, playback read/control, and playback-change events. |
 | Trusted provider | Implemented PKCE, exact loopback callback, refresh-token vault, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized errors. |
 | Native composition | `WidgetBridge` constructs the Windows Spotify provider through the same typed broker used by every widget. |
-| Community addon | Controller-first player core implemented, tested, and locally packageable through the same public SDK/AppContainer path as third-party addons. Its real seek control uses the public `UI.Scrubber` contract. |
-| Setup UI | Controller-native Settings editor is planned; the CLI below is the current testable path. |
+| Community addon | Version 0.1.4 controller-first player core implemented, tested, and locally packageable through the same public SDK/AppContainer path as third-party addons. Its real seek control uses the public `UI.Scrubber` contract. |
+| Setup UI | Compact controller setup/instructions are implemented with a VerticalScroll and responsive actions; a controller-native Client-ID editor is planned, so the CLI below remains the current testable configuration path. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
 | Local Web Playback SDK audio | Isolated singleton WebView2 host and offline protocol tests implemented; provider orchestration and live device proof remain. |
 
@@ -63,6 +64,23 @@ Use Authorization Code with PKCE (`S256`) as a public native client:
 5. Never use Implicit Grant, put a token in a redirect fragment, ship a client
    secret in the addon, log the authorization code, or expose the verifier to
    widget IPC.
+
+Connect is the only authorization operation with a continuation lease. It must
+start from an explicit Interactive action. The input action acknowledges
+immediately instead of waiting for the browser flow, and the resulting
+authorization task uses the widget's Created-to-Destroying lifetime rather than
+an action or Visible/Interactive token. Opening the system browser may therefore
+move the widget through Visible and Background without canceling that
+already-started request. This does not permit a new connect or any other control
+from an inactive state.
+
+The temporary callback listener is created only by that explicit Connect action
+and waits at most five minutes; there is no idle/background listener. The exact
+broker Connect deadline is seven minutes. Its remaining two minutes cover only
+bounded authorization-code exchange, HTTP retry/backoff, and credential-vault
+persistence after the human callback window. Disconnect is not exempt.
+Destroying, consent revocation, caller/pipe cancellation, or callback/deadline
+timeout always terminates the listener and request.
 
 Spotify requires loopback redirects to use an explicit IPv4/IPv6 literal. The
 platform intentionally chooses one fixed URI so setup, validation, diagnostics,
@@ -106,13 +124,20 @@ local tests. The CLI rejects secret/password/token/credential-like keys. This
 workflow configures the provider used by the overlay. Connecting still requires
 an explicit user gesture because it opens Spotify's authorization page.
 
-The planned setup surface contains exactly:
+The current setup/instruction surface and planned native editor together contain
+exactly:
 
 - a bounded **Client ID** field;
 - the fixed read-only redirect URI
   `http://127.0.0.1:43827/callback/` and exact-registration instruction;
 - Connect/Reconnect and Disconnect actions with explicit status; and
 - no client-secret field.
+
+Package 0.1.4 places the full instruction card in a controller VerticalScroll,
+uses compact responsive spacing/wrapping, and keeps Connect/Setup/Refresh/
+Disconnect actions on the shared centered icon-and-label button geometry. These
+are layout and navigation fixes; they do not weaken the authorization boundary
+or make OAuth start automatically.
 
 PKCE does not require a client secret, and a secret embedded in a desktop app or
 Community package would not be confidential. Changing the Client ID through the

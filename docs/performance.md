@@ -49,6 +49,12 @@ unbounded caches, or unnecessary helper processes.
   pending tail for the same active lifetime, input scope, node, and action.
   Discrete actions remain ordering boundaries, and deactivation cancels the
   consumer and discards pending values.
+- Declarative opacity, scale, and `translate-x`/`translate-y` share one bounded
+  host timeline. Stable target changes retarget rather than spawn loops;
+  reduced motion cancels immediately, removed/replaced widgets discard state,
+  and a settled or hidden surface schedules no animation frames. Translation
+  is resolved once as shared subtree presentation geometry rather than by
+  separately animating paint, focus, hit testing, and Scroll behavior.
 
 Job memory containment is not a CPU or disk/profile quota. Installed/community
 workers separately have mandatory capability-free AppContainer isolation with
@@ -85,10 +91,20 @@ Residency is explicit manifest policy, never a resource heuristic:
 Intentional unload does not consume the crash-restart budget. Catalog change,
 crash recovery, user disable, and bridge shutdown remain distinct paths.
 
-The capability broker independently rejects operations/subscriptions in
-`Background`. Installed/community workers cannot bypass that denial with a
-desktop token or AppContainer network/OS capabilities; their direct authority
-is limited to explicit read/execute runtime/package grants. Trusted bundled
+The capability broker independently rejects new operations/subscriptions in
+`Background`. The only current continuation is an already-started Spotify
+authorization `connect` request created by an explicit Interactive action. The
+action acknowledges immediately, while the authorization task uses the widget's
+Created-to-Destroying lifetime as browser foreground moves it through Visible/
+Background. It is one retained lease, not permission to start inactive work:
+new Background connect/control and disconnect requests remain denied. Its
+temporary listener exists only during that action and waits at most five
+minutes. The exact broker deadline is seven minutes, leaving two bounded
+minutes for token exchange, retry/backoff, and vault persistence. Revocation,
+Destroying, cancellation, or timeout still terminates it. Installed/community workers cannot bypass
+the general denial with a desktop token or AppContainer network/OS
+capabilities; their direct authority is limited to explicit read/execute
+runtime/package grants. Trusted bundled
 Job-only workers remain a temporary exception, so their background behavior
 must still be treated as trusted platform code and measured separately.
 

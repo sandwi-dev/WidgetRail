@@ -23,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
     ("Media session artwork is canonical bounded and snapshot-limited", MediaSessionArtworkIsBounded),
     ("Spotify configuration authorization playback and events are scoped and lifecycle-gated", SpotifyContracts),
+    ("Spotify connect lease alone survives a transition to background", SpotifyConnectBackgroundContinuation),
     ("Exact-port loopback separates visible reads from interactive controls", LoopbackHttpContracts),
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
     ("Private state is host-granted consentless identity-bound and active-lifecycle safe", PrivateStateHostGrantContracts),
@@ -41,6 +42,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipe framing rejects oversized payloads before allocation", PipeFramesAreBounded),
     ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
     ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
+    ("Pipe Spotify authorization timeout is exact and callback-bounded", PipeSpotifyAuthorizationTimeoutIsExact),
     ("Pipe loopback timeout extends only the declared long operation", PipeLoopbackTimeoutIsOperationSpecific),
     ("Pipe transports a near-limit loopback JSON response", PipeLoopbackNearLimitResponse),
     ("Pipe request cancellation reaches the fixed backend", PipeCancellationIsObserved),
@@ -172,6 +174,18 @@ static Task CapabilityVocabularyIsClosed()
             capability.Id != PlatformCapabilities.MediaSessionsControlV1 &&
             capability.Id != PlatformCapabilities.SpotifyPlaybackControlV1)
         .All(capability => !capability.AllowsDashboardGesture));
+    Assert.True(PlatformCapabilities.TryGet(
+        PlatformCapabilities.SpotifyAuthorizationV1, out var spotifyAuthorization));
+    Assert.True(spotifyAuthorization.AllowsInFlightContinuationForOperation(
+        PlatformCapabilities.SpotifyAuthorizationConnect));
+    Assert.True(!spotifyAuthorization.AllowsInFlightContinuationForOperation(
+        PlatformCapabilities.SpotifyAuthorizationGet));
+    Assert.True(!spotifyAuthorization.AllowsInFlightContinuationForOperation(
+        PlatformCapabilities.SpotifyAuthorizationDisconnect));
+    Assert.True(PlatformCapabilities.All
+        .Where(capability => capability.Id != PlatformCapabilities.SpotifyAuthorizationV1)
+        .All(capability => capability.InFlightContinuationOperations is null ||
+            capability.InFlightContinuationOperations.Count == 0));
     var defaultControl = new BrokerCapabilityDefinition(
         "test.future.control.v1",
         1,
@@ -544,6 +558,40 @@ static async Task PipeLoopbackTimeoutIsOperationSpecific()
     Assert.True(response.Succeeded, response.ErrorCode);
     await client.DisposeAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static Task PipeSpotifyAuthorizationTimeoutIsExact()
+{
+    var options = new BrokerPipeTransportOptions
+    {
+        RequestTimeout = TimeSpan.FromMilliseconds(50),
+    };
+    var identity = Identity();
+    var connect = new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 1, identity,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationConnect,
+        JsonSerializer.SerializeToElement(
+            new { requestedScopes = new[] { "playbackStateRead" } }));
+    var disconnect = connect with
+    {
+        RequestId = 2,
+        Operation = PlatformCapabilities.SpotifyAuthorizationDisconnect,
+        Payload = JsonSerializer.SerializeToElement(new { }),
+    };
+    var unrelatedConnectName = connect with
+    {
+        RequestId = 3,
+        CapabilityId = PlatformCapabilities.SpotifyConfigurationV1,
+    };
+
+    Assert.Equal(TimeSpan.FromMinutes(7),
+        BrokerPipeRequestTimeoutPolicy.Resolve(options, connect));
+    Assert.Equal(options.RequestTimeout,
+        BrokerPipeRequestTimeoutPolicy.Resolve(options, disconnect));
+    Assert.Equal(options.RequestTimeout,
+        BrokerPipeRequestTimeoutPolicy.Resolve(options, unrelatedConnectName));
+    return Task.CompletedTask;
 }
 
 static async Task PipeLoopbackNearLimitResponse()
@@ -1359,6 +1407,127 @@ static async Task SpotifyContracts()
         PlatformCapabilities.SpotifyPlaybackReadV1,
         PlatformCapabilities.SpotifyPlaybackGet, new { }));
     Assert.Equal("invalid_backend_data", invalidBackend.ErrorCode);
+}
+
+static async Task SpotifyConnectBackgroundContinuation()
+{
+    static byte[] Connect(BrokerWidgetIdentity identity) => Request(
+        identity,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationConnect,
+        new { requestedScopes = new[] { "playbackStateRead" } });
+    static byte[] Disconnect(BrokerWidgetIdentity identity) => Request(
+        identity,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationDisconnect,
+        new { });
+    static async Task GrantAsync(ConsentStore store, BrokerWidgetIdentity identity)
+    {
+        await store.SetDecisionAsync(identity,
+            PlatformCapabilities.SpotifyAuthorizationV1, ConsentDecision.Grant);
+        await store.SetDecisionAsync(identity,
+            PlatformCapabilities.SpotifyPlaybackReadV1, ConsentDecision.Grant);
+    }
+
+    var identity = Identity();
+    using (var temp = new TemporaryDirectory())
+    {
+        var store = new ConsentStore(temp.Path);
+        await GrantAsync(store, identity);
+        var backend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: false);
+        await using var broker = Broker(identity, store, backend,
+            PlatformCapabilities.SpotifyAuthorizationV1,
+            PlatformCapabilities.SpotifyPlaybackReadV1);
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+
+        var pendingConnect = broker.HandleAsync(Connect(identity));
+        await backend.SpotifyConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        broker.SetLifecycle(BrokerLifecycleState.Visible);
+        await Task.Delay(50);
+        Assert.True(!pendingConnect.IsCompleted,
+            "An in-flight Spotify connect did not retain its visible lease.");
+        broker.SetLifecycle(BrokerLifecycleState.Background);
+        await Task.Delay(50);
+        Assert.True(!pendingConnect.IsCompleted,
+            "An in-flight Spotify connect did not retain its background lease.");
+        Assert.True(!backend.SpotifyConnectCancellationObserved.Task.IsCompleted,
+            "Background canceled the exact in-flight Spotify connect operation.");
+        backend.SpotifyConnectRelease.TrySetResult();
+        Assert.True((await pendingConnect.WaitAsync(TimeSpan.FromSeconds(2))).Succeeded);
+        Assert.Equal(1, backend.SpotifyConnectEffects);
+
+        var newBackgroundConnect = await broker.HandleAsync(Connect(identity));
+        Assert.Equal("lifecycle_denied", newBackgroundConnect.ErrorCode);
+        Assert.Equal(1, backend.SpotifyConnectEffects);
+
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+        var pendingDisconnect = broker.HandleAsync(Disconnect(identity));
+        await backend.SpotifyDisconnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        broker.SetLifecycle(BrokerLifecycleState.Background);
+        var canceledDisconnect = await pendingDisconnect.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("lifecycle_denied", canceledDisconnect.ErrorCode);
+        await backend.SpotifyDisconnectCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, backend.SpotifyDisconnectEffects);
+        var newBackgroundDisconnect = await broker.HandleAsync(Disconnect(identity));
+        Assert.Equal("lifecycle_denied", newBackgroundDisconnect.ErrorCode);
+    }
+
+    using (var temp = new TemporaryDirectory())
+    {
+        var store = new ConsentStore(temp.Path);
+        await GrantAsync(store, identity);
+        var backend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: false);
+        await using var broker = Broker(identity, store, backend,
+            PlatformCapabilities.SpotifyAuthorizationV1,
+            PlatformCapabilities.SpotifyPlaybackReadV1);
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+        var pending = broker.HandleAsync(Connect(identity));
+        await backend.SpotifyConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        broker.SetLifecycle(BrokerLifecycleState.Destroying);
+        var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("lifecycle_denied", response.ErrorCode);
+        await backend.SpotifyConnectCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, backend.SpotifyConnectEffects);
+    }
+
+    using (var temp = new TemporaryDirectory())
+    {
+        var store = new ConsentStore(temp.Path);
+        await GrantAsync(store, identity);
+        var backend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: false);
+        await using var broker = Broker(identity, store, backend,
+            PlatformCapabilities.SpotifyAuthorizationV1,
+            PlatformCapabilities.SpotifyPlaybackReadV1);
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+        var pending = broker.HandleAsync(Connect(identity));
+        await backend.SpotifyConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await store.SetDecisionAsync(identity,
+            PlatformCapabilities.SpotifyAuthorizationV1, ConsentDecision.Deny);
+        await broker.RefreshConsentAsync();
+        var response = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("capability_revoked", response.ErrorCode);
+        await backend.SpotifyConnectCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, backend.SpotifyConnectEffects);
+    }
+
+    using (var temp = new TemporaryDirectory())
+    {
+        var store = new ConsentStore(temp.Path);
+        await GrantAsync(store, identity);
+        var backend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: false);
+        await using var broker = Broker(identity, store, backend,
+            PlatformCapabilities.SpotifyAuthorizationV1,
+            PlatformCapabilities.SpotifyPlaybackReadV1);
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+        using var cancellation = new CancellationTokenSource();
+        var pending = broker.HandleAsync(Connect(identity), cancellation.Token);
+        await backend.SpotifyConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await pending.WaitAsync(TimeSpan.FromSeconds(2)));
+        await backend.SpotifyConnectCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, backend.SpotifyConnectEffects);
+    }
 }
 
 static async Task ConsentFailsClosed()
@@ -2682,6 +2851,8 @@ sealed class LeaseBlockingBrokerBackend : IPlatformBrokerBackend
     private readonly bool _blockRead;
     private readonly bool _blockControl;
     private int _controlEffects;
+    private int _spotifyConnectEffects;
+    private int _spotifyDisconnectEffects;
 
     public LeaseBlockingBrokerBackend(bool blockRead, bool blockControl)
     {
@@ -2698,7 +2869,21 @@ sealed class LeaseBlockingBrokerBackend : IPlatformBrokerBackend
         TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource ControlCancellationObserved { get; } = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource SpotifyConnectStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource SpotifyConnectRelease { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource SpotifyConnectCancellationObserved { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource SpotifyDisconnectStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource SpotifyDisconnectRelease { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource SpotifyDisconnectCancellationObserved { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     public int ControlEffects => Volatile.Read(ref _controlEffects);
+    public int SpotifyConnectEffects => Volatile.Read(ref _spotifyConnectEffects);
+    public int SpotifyDisconnectEffects => Volatile.Read(ref _spotifyDisconnectEffects);
 
     public async Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(
         CancellationToken cancellationToken)
@@ -2775,6 +2960,42 @@ sealed class LeaseBlockingBrokerBackend : IPlatformBrokerBackend
             BluetoothRadioState.Unavailable, false, BluetoothDiscoveryState.Unavailable, []));
     public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+
+    public async Task<SpotifyAuthorizationSummary> ConnectSpotifyAsync(
+        BrokerWidgetIdentity identity,
+        ConnectSpotifyRequest request,
+        CancellationToken cancellationToken)
+    {
+        SpotifyConnectStarted.TrySetResult();
+        try { await SpotifyConnectRelease.Task.WaitAsync(cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            SpotifyConnectCancellationObserved.TrySetResult();
+            throw;
+        }
+        Interlocked.Increment(ref _spotifyConnectEffects);
+        return new SpotifyAuthorizationSummary(
+            SpotifyAuthorizationState.Connected,
+            request.RequestedScopes,
+            request.RequestedScopes,
+            null);
+    }
+
+    public async Task<SpotifyAuthorizationSummary> DisconnectSpotifyAsync(
+        BrokerWidgetIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        SpotifyDisconnectStarted.TrySetResult();
+        try { await SpotifyDisconnectRelease.Task.WaitAsync(cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            SpotifyDisconnectCancellationObserved.TrySetResult();
+            throw;
+        }
+        Interlocked.Increment(ref _spotifyDisconnectEffects);
+        return new SpotifyAuthorizationSummary(
+            SpotifyAuthorizationState.Disconnected, [], [], null);
+    }
 
     public void Publish(BrokerPlatformEvent platformEvent) => EventPublished?.Invoke(this, platformEvent);
 }

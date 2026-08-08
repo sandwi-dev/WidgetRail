@@ -36,6 +36,13 @@ Parse diagnostics carry source, one-based line and column, severity, stable code
 
 The allowlist is available as `GbssPropertyCatalog.AllowedProperties`. It covers layout, typography, colors, borders/outlines, opacity, scale, blur/shadow geometry, and transition duration; unsupported properties are errors.
 
+Presentation transforms support bounded `translate-x` and `translate-y`
+lengths. Percentages resolve against the corresponding parent axis, viewport
+units resolve against the viewport, and the native boundary clamps each final
+offset to +/-4096 device-independent pixels. Translation changes painting and
+hit-test geometry without becoming a general layout or arbitrary transform
+escape hatch.
+
 Media layouts additionally have bounded `vw`/`vh` lengths, `aspect-ratio`,
 `object-fit`, `object-position`, `shape`, image tint/scrim colors, line height,
 line limits/ellipsis, outline offset, and named transition easing. A small

@@ -60,6 +60,28 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
     };
 }
 
+[[nodiscard]] Rect TranslateRect(
+    const Rect& value,
+    const float translationX,
+    const float translationY) noexcept {
+    return {
+        value.x + translationX,
+        value.y + translationY,
+        value.width,
+        value.height,
+    };
+}
+
+[[nodiscard]] float AddBoundedTranslation(
+    const float inherited,
+    const float local) noexcept {
+    const auto sum = static_cast<double>(inherited) + static_cast<double>(local);
+    return static_cast<float>(std::clamp(
+        sum,
+        -static_cast<double>(DeclarativeMotionTimeline::MaximumTranslationDips),
+        static_cast<double>(DeclarativeMotionTimeline::MaximumTranslationDips)));
+}
+
 [[nodiscard]] Rect Inset(const Rect& value, const float amount) noexcept {
     const auto bounded = std::max(
         -std::min(value.width, value.height) * 0.5F,
@@ -221,6 +243,14 @@ struct DeclarativeRenderer::PreparedNode final {
 };
 
 struct DeclarativeRenderer::RenderPass final {
+    struct PresentationNode final {
+        Rect borderBox;
+        Rect contentBox;
+        Rect visibleBox;
+        Rect ancestorClip;
+        DeclarativeMotionSample motion;
+    };
+
     DeclarativeRenderer* owner{};
     ID2D1RenderTarget* target{};
     const WidgetSnapshot* snapshot{};
@@ -229,6 +259,7 @@ struct DeclarativeRenderer::RenderPass final {
     Rect viewport;
     DeclarativeRenderOptions options;
     std::unordered_map<std::string, PreparedNode> prepared;
+    std::unordered_map<std::string, PresentationNode> presentation;
     declarative::LayoutResult layout;
     RenderResult result;
     std::set<std::wstring, std::less<>> diagnosticKeys;
@@ -476,6 +507,60 @@ struct DeclarativeRenderer::RenderPass final {
         return key;
     }
 
+    [[nodiscard]] static bool ClipsDescendants(
+        const WidgetNode& node,
+        const NativeRenderStyle& style) noexcept {
+        return node.kind == L"scroll" || node.kind == L"actionSurface" ||
+            style.overflow() == NativeOverflow::Clip;
+    }
+
+    void ResolvePresentation(
+        const WidgetNode& node,
+        const float inheritedTranslationX,
+        const float inheritedTranslationY,
+        const Rect ancestorClip) {
+        const auto narrowId = NarrowStableId(node.id);
+        const auto preparedNode = prepared.find(narrowId);
+        const auto* box = layout.Find(narrowId);
+        if (preparedNode == prepared.end() || !box) return;
+        const auto& style = preparedNode->second.paintStyle;
+        const auto disabledFactor = DeclarativeStateOpacityFactor(
+            node.isDisabled, node.isBusy, options.accessibility);
+        const auto motion = owner->motionTimeline_.Resolve(
+            MotionStateKey(node.id),
+            DeclarativeMotionValue{
+                style.opacity() * disabledFactor,
+                style.scale(),
+                style.translateXPx(),
+                style.translateYPx(),
+            },
+            style.transitionDurationMilliseconds(),
+            style.transitionEasing(),
+            options.accessibility.reducedMotion);
+        const auto translationX = AddBoundedTranslation(
+            inheritedTranslationX, motion.value.translationX);
+        const auto translationY = AddBoundedTranslation(
+            inheritedTranslationY, motion.value.translationY);
+        const auto borderBox = TranslateRect(box->borderBox, translationX, translationY);
+        const auto contentBox = TranslateRect(box->contentBox, translationX, translationY);
+        const auto visibleBox = Intersection(borderBox, ancestorClip);
+        presentation.insert_or_assign(narrowId, PresentationNode{
+            borderBox,
+            contentBox,
+            visibleBox,
+            ancestorClip,
+            motion,
+        });
+
+        const auto childClip = ClipsDescendants(node, preparedNode->second.baseStyle)
+            ? Intersection(ancestorClip, contentBox)
+            : ancestorClip;
+        for (const auto& child : node.children) {
+            ResolvePresentation(
+                child, translationX, translationY, childClip);
+        }
+    }
+
     void VisitScrollNodes(
         const WidgetNode& node,
         const std::function<void(const WidgetNode&)>& callback) const {
@@ -548,10 +633,13 @@ struct DeclarativeRenderer::RenderPass final {
         };
     }
 
-    [[nodiscard]] bool FollowFocusedDescendant() {
+    [[nodiscard]] bool FollowFocusedDescendant(
+        const bool usePresentationGeometry = false) {
         if (focusedId.empty()) return false;
         const auto* focusBox = layout.Find(NarrowStableId(focusedId));
         if (!focusBox) return false;
+        const auto presentedFocus = presentation.find(NarrowStableId(focusedId));
+        if (usePresentationGeometry && presentedFocus == presentation.end()) return false;
         const auto path = FocusPath();
         if (path.empty()) return false;
         bool changed = false;
@@ -563,9 +651,15 @@ struct DeclarativeRenderer::RenderPass final {
             if (scroll.kind != L"scroll") continue;
             const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
             if (!scrollBox || scrollBox->scrollAxis == declarative::ScrollAxis::None) continue;
+            const auto presentedScroll = presentation.find(NarrowStableId(scroll.id));
+            if (usePresentationGeometry && presentedScroll == presentation.end()) continue;
             auto desired = scrollBox->scrollOffset;
-            const auto& viewportBox = scrollBox->contentBox;
-            const auto& targetRect = focusBox->borderBox;
+            const auto viewportBox = usePresentationGeometry
+                ? presentedScroll->second.contentBox
+                : scrollBox->contentBox;
+            const auto targetRect = usePresentationGeometry
+                ? presentedFocus->second.borderBox
+                : focusBox->borderBox;
             const auto [atLeadingBoundary, atTrailingBoundary] =
                 FocusedBoundaryOf(scroll);
             const auto focusVisibleAt = [&](const float candidateOffset) {
@@ -660,11 +754,11 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     [[nodiscard]] bool CanRevealNode(const std::wstring_view nodeId) const {
-        const auto* targetBox = layout.Find(NarrowStableId(nodeId));
-        if (!targetBox) return false;
+        const auto presentedTarget = presentation.find(NarrowStableId(nodeId));
+        if (presentedTarget == presentation.end()) return false;
         std::vector<const WidgetNode*> path;
         if (!FindNodePath(snapshot->root, nodeId, path) || path.size() < 2) return false;
-        const auto& targetRect = targetBox->borderBox;
+        const auto& targetRect = presentedTarget->second.borderBox;
 
         const auto canSatisfyClip = [&](const Rect& clip, const std::size_t index) {
             return AxisCanReveal(path, index, declarative::ScrollAxis::Horizontal,
@@ -679,40 +773,26 @@ struct DeclarativeRenderer::RenderPass final {
         for (std::size_t index = 0; index + 1 < path.size(); ++index) {
             const auto& ancestor = *path[index];
             const auto preparedAncestor = prepared.find(NarrowStableId(ancestor.id));
-            const auto* box = layout.Find(NarrowStableId(ancestor.id));
-            if (preparedAncestor == prepared.end() || !box) return false;
-            const auto clips = ancestor.kind == L"scroll" ||
-                preparedAncestor->second.baseStyle.overflow() == NativeOverflow::Clip;
+            const auto presentedAncestor = presentation.find(NarrowStableId(ancestor.id));
+            if (preparedAncestor == prepared.end() ||
+                presentedAncestor == presentation.end()) return false;
+            const auto clips = ClipsDescendants(
+                ancestor, preparedAncestor->second.baseStyle);
             if (!clips) continue;
             hasScrollAncestor |= ancestor.kind == L"scroll";
-            if (!canSatisfyClip(box->contentBox, index)) return false;
+            if (!canSatisfyClip(presentedAncestor->second.contentBox, index)) return false;
         }
         return hasScrollAncestor;
     }
 
     [[nodiscard]] std::optional<Rect> EffectiveFocusVisibilityClip(
         const std::wstring_view nodeId) const {
-        std::vector<const WidgetNode*> path;
-        if (!FindNodePath(snapshot->root, nodeId, path))
-            return std::nullopt;
-        // The render surface is an implicit clip for every deferred outline.
-        // Unlike element backgrounds, an outline intentionally escapes normal
-        // visible-overflow ancestors; only explicit clipping ancestors further
-        // constrain it.
-        auto clip = viewport;
-        for (std::size_t index = 0; index + 1 < path.size(); ++index) {
-            const auto& ancestor = *path[index];
-            const auto preparedAncestor = prepared.find(NarrowStableId(ancestor.id));
-            if (preparedAncestor == prepared.end()) continue;
-            const bool clips = ancestor.kind == L"scroll" ||
-                preparedAncestor->second.baseStyle.overflow() == NativeOverflow::Clip;
-            if (!clips) continue;
-            const auto* box = layout.Find(NarrowStableId(ancestor.id));
-            if (!box) continue;
-            const auto localClip = Intersection(box->contentBox, box->visibleBox);
-            clip = Intersection(clip, localClip);
-        }
-        return clip;
+        const auto found = presentation.find(NarrowStableId(nodeId));
+        if (found == presentation.end()) return std::nullopt;
+        // The presentation pass has already accumulated the fixed host
+        // viewport and every translated clipping ancestor. Ordinary
+        // visible-overflow ancestors intentionally do not constrain outlines.
+        return found->second.ancestorClip;
     }
 
     void SynchronizeScrollState() {
@@ -877,7 +957,7 @@ struct DeclarativeRenderer::RenderPass final {
         return {};
     }
 
-    void BuildLayout() {
+    void BuildLayout(const bool followStaticFocus = true) {
         // First pass gives percentage/em adaptation a deterministic parent estimate.
         prepared.clear();
         layout = {};
@@ -919,23 +999,25 @@ struct DeclarativeRenderer::RenderPass final {
         // the target geometry observed by each outer viewport. The wire tree
         // depth is bounded to 32, so this loop has a matching hard ceiling and
         // performs no relayout once offsets are stable.
-        for (std::size_t pass = 0; pass < kMaximumFocusFollowPasses; ++pass) {
-            if (!FollowFocusedDescendant()) break;
-            prepared.clear();
-            auto revealedRoot = PrepareNode(
-                snapshot->root,
-                {},
-                viewport.width,
-                viewport.height,
-                options.rootFontSizePx,
-                options.surfaceBackground);
-            layout = declarative::ComputeLayout(
-                revealedRoot,
-                viewport,
-                [this](const LayoutElement& element, const declarative::MeasureConstraints& constraints) {
-                    return MeasureLeaf(element, constraints);
-                },
-                layoutOptions);
+        if (followStaticFocus) {
+            for (std::size_t pass = 0; pass < kMaximumFocusFollowPasses; ++pass) {
+                if (!FollowFocusedDescendant()) break;
+                prepared.clear();
+                auto revealedRoot = PrepareNode(
+                    snapshot->root,
+                    {},
+                    viewport.width,
+                    viewport.height,
+                    options.rootFontSizePx,
+                    options.surfaceBackground);
+                layout = declarative::ComputeLayout(
+                    revealedRoot,
+                    viewport,
+                    [this](const LayoutElement& element, const declarative::MeasureConstraints& constraints) {
+                        return MeasureLeaf(element, constraints);
+                    },
+                    layoutOptions);
+            }
         }
         SynchronizeScrollState();
         for (const auto& issue : layout.issues) {
@@ -1419,32 +1501,22 @@ struct DeclarativeRenderer::RenderPass final {
             : inheritedInputScope.empty() ? std::wstring_view(node.id) : inheritedInputScope;
         const auto narrowId = NarrowStableId(node.id);
         const auto preparedNode = prepared.find(narrowId);
-        const auto* box = layout.Find(narrowId);
-        if (preparedNode == prepared.end() || !box) return;
+        const auto presentedNode = presentation.find(narrowId);
+        if (preparedNode == prepared.end() || presentedNode == presentation.end()) return;
         const auto& style = preparedNode->second.paintStyle;
+        const auto& presented = presentedNode->second;
         const auto focused = node.id == focusedId;
-        const auto disabledFactor = DeclarativeStateOpacityFactor(
-            node.isDisabled, node.isBusy, options.accessibility);
-        const auto motion = owner->motionTimeline_.Resolve(
-            MotionStateKey(node.id),
-            DeclarativeMotionValue{
-                style.opacity() * disabledFactor,
-                style.scale(),
-            },
-            style.transitionDurationMilliseconds(),
-            style.transitionEasing(),
-            options.accessibility.reducedMotion);
-        const auto opacity = motion.value.opacity;
-        const auto paintRect = ScaleRect(box->borderBox, motion.value.scale);
+        const auto opacity = presented.motion.value.opacity;
+        const auto paintRect = ScaleRect(
+            presented.borderBox, presented.motion.value.scale);
 #ifdef GBA_DECLARATIVE_RENDERER_TESTING
-        result.elementRects[node.id] = box->borderBox;
-        result.elementVisibleRects[node.id] =
-            Intersection(box->borderBox, box->visibleBox);
+        result.elementRects[node.id] = presented.borderBox;
+        result.elementVisibleRects[node.id] = presented.visibleBox;
 #endif
 
         if (node.kind == L"button" || node.kind == L"slider" ||
             node.kind == L"actionSurface") {
-            result.navigationRects[node.id] = box->borderBox;
+            result.navigationRects[node.id] = presented.borderBox;
             // A busy slider retains its place in the focus graph while its
             // value is pending, but the host suppresses adjustment/activation.
             // Disabled and busy describe activation state, not navigability.
@@ -1455,7 +1527,7 @@ struct DeclarativeRenderer::RenderPass final {
             // Controller focus and pointer hit-testing must use the geometry a
             // user can actually see. A clipped/offscreen child remains in the
             // declarative tree but is not a navigation candidate.
-            const auto visibleRect = Intersection(box->borderBox, box->visibleBox);
+            const auto visibleRect = presented.visibleBox;
             if (visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
                 result.hitRegions.push_back(
                     {node.id, visibleRect, !node.isDisabled && !node.isBusy});
@@ -1470,7 +1542,8 @@ struct DeclarativeRenderer::RenderPass final {
             for (const auto& child : node.children) DrawNode(child, inputScope);
             return;
         }
-        target->PushAxisAlignedClip(D2DRect(box->visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        target->PushAxisAlignedClip(
+            D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         // Slider background is its track color. Painting the generic surface
         // first duplicates that color across the complete 44-DIP hit target.
         // Authors can wrap a Slider in a Card/Row when they want a filled
@@ -1479,43 +1552,52 @@ struct DeclarativeRenderer::RenderPass final {
             DrawSurface(node, style, paintRect, opacity);
 
         if (node.kind == L"text") {
-            DrawTextContent(node, style, box->contentBox, opacity);
+            DrawTextContent(node, style, presented.contentBox, opacity);
         } else if (node.kind == L"button") {
-            auto textRect = box->contentBox;
-            if (!node.imageSource.empty() || !node.glyph.empty()) {
-                const auto maximumLeadingSize = node.imageSource.empty() ? 32.0F : 44.0F;
-                const auto iconSize = std::min(
-                    maximumLeadingSize, std::max(0.0F, textRect.height));
-                const bool iconOnly = node.text.empty();
-                const Rect iconRect{
-                    iconOnly ? textRect.x + (textRect.width - iconSize) * 0.5F : textRect.x,
-                    textRect.y + (textRect.height - iconSize) * 0.5F,
-                    iconSize,
-                    iconSize,
-                };
+            auto textRect = presented.contentBox;
+            const bool hasLeading = !node.imageSource.empty() || !node.glyph.empty();
+            const bool hasText = !node.text.empty();
+            const bool reserveStateCue = hasText &&
+                (node.isBusy || node.isSelected || node.isDisabled);
+            const auto maximumLeadingSize = node.imageSource.empty() ? 32.0F : 44.0F;
+            const auto iconSize = hasLeading
+                ? std::min(maximumLeadingSize, std::max(0.0F, textRect.height))
+                : 0.0F;
+            const bool hasTextAlignment = HasComputedProperty(
+                node, L"text-align", focused, node.id == pressedId);
+            const auto alignment = hasText && hasTextAlignment
+                ? style.textAlign()
+                : NativeTextAlign::Center;
+            const auto textBudget = std::max(
+                1.0F, textRect.width - (hasLeading && hasText ? iconSize + 8.0F : 0.0F) -
+                    (reserveStateCue ? 68.0F : 0.0F));
+            const auto measured = hasText
+                ? MeasureText(node, style, {textBudget, textRect.height})
+                : Size{};
+            const auto placement = DeclarativeRenderer::ComputeButtonContentPlacement(
+                textRect, iconSize, measured.width, hasLeading, hasText,
+                reserveStateCue, alignment);
+            textRect = placement.text;
+            if (hasLeading) {
+                const Rect iconRect = placement.leading;
                 if (!node.imageSource.empty())
                     DrawImage(node, style, iconRect, opacity, focused);
                 else
                     DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
-                if (!iconOnly) {
-                    textRect.x += iconSize + 8.0F;
-                    textRect.width = std::max(0.0F, textRect.width - iconSize - 8.0F);
-                }
             }
-            if (node.isBusy || node.isSelected || node.isDisabled)
-                textRect.width = std::max(0.0F, textRect.width - 34.0F);
-            if (!node.text.empty()) DrawTextContent(node, style, textRect, opacity);
+            if (hasText) DrawTextContent(node, style, textRect, opacity);
             DrawStateCue(node, style, paintRect, opacity);
         } else if (node.kind == L"progress") {
-            DrawProgress(node, style, box->contentBox, opacity);
+            DrawProgress(node, style, presented.contentBox, opacity);
         } else if (node.kind == L"slider") {
-            DrawSlider(node, style, box->contentBox, opacity, focused);
+            DrawSlider(node, style, presented.contentBox, opacity, focused);
         } else if (node.kind == L"image") {
             DrawImage(node, style, paintRect, opacity, focused);
         } else if (node.kind == L"icon") {
-            DrawSemanticIcon(node, style, box->contentBox, opacity, node.glyph);
+            DrawSemanticIcon(node, style, presented.contentBox, opacity, node.glyph);
         } else if (node.kind == L"loadingIndicator") {
-            const auto visibleRect = Intersection(box->contentBox, box->visibleBox);
+            const auto visibleRect = Intersection(
+                presented.contentBox, presented.visibleBox);
             DrawLoadingIndicatorNode(node, style, visibleRect, opacity);
             if (!options.accessibility.reducedMotion &&
                 visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
@@ -1530,12 +1612,20 @@ struct DeclarativeRenderer::RenderPass final {
             Add(node.id, L"unknown_kind", L"Unsupported declarative node kind: " + node.kind);
         }
 
+        // This clip bounds the node's own paint. Descendants are drawn from
+        // their precomputed presentation clips so overflow-visible containers
+        // do not accidentally become clipping ancestors merely because the
+        // renderer recurses through them.
+        target->PopAxisAlignedClip();
         for (const auto& child : node.children) DrawNode(child, inputScope);
         // Draw semantic state after descendants so it remains visible over a
         // composed tile while the entire surface stays the sole input target.
-        if (node.kind == L"actionSurface")
+        if (node.kind == L"actionSurface") {
+            target->PushAxisAlignedClip(
+                D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             DrawStateCue(node, style, paintRect, opacity);
-        target->PopAxisAlignedClip();
+            target->PopAxisAlignedClip();
+        }
         // Defer the focus ring until the entire tree is out of its nested
         // overflow clips. An outline is presentation, not child content, and
         // clipping it at a row/root boundary produces broken half-rings.
@@ -1621,6 +1711,25 @@ RenderResult DeclarativeRenderer::Render(
         bitmapTarget_ = renderTarget;
     }
     pass.BuildLayout();
+    bool presentationMatchesLayout = false;
+    for (std::size_t followPass = 0;
+         followPass < kMaximumFocusFollowPasses;
+         ++followPass) {
+        pass.presentation.clear();
+        pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
+        presentationMatchesLayout = true;
+        if (!pass.FollowFocusedDescendant(true)) break;
+        // A translated focused descendant may cross a scroll boundary even
+        // when its static layout box was visible. Rebuild against the updated
+        // host-owned offset and converge with the same hard bound used by
+        // nested static focus follow.
+        presentationMatchesLayout = false;
+        pass.BuildLayout(false);
+    }
+    if (!presentationMatchesLayout) {
+        pass.presentation.clear();
+        pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
+    }
     const auto cornerRadius = std::isfinite(options.surfaceCornerRadiusPx)
         ? std::clamp(options.surfaceCornerRadiusPx, 0.0F,
                      std::min(viewport.width, viewport.height) * 0.5F)
@@ -1814,6 +1923,62 @@ ImagePlacement DeclarativeRenderer::ComputeImagePlacement(
         visible.height,
     };
     return {visible, source};
+}
+
+ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
+    const Rect content,
+    const float leadingSize,
+    const float measuredTextWidth,
+    const bool hasLeading,
+    const bool hasText,
+    const bool reserveTrailingStateCue,
+    const NativeTextAlign alignment) noexcept {
+    if (!FiniteRect(content) || content.width <= 0.0F || content.height <= 0.0F) {
+        return {{}, {}};
+    }
+
+    // A trailing semantic cue must not collide with the primary content. Use
+    // the same reservation on both sides so the icon-label group remains
+    // visually centered in the complete button rather than drifting left.
+    const auto cueInset = reserveTrailingStateCue
+        ? std::min(34.0F, content.width * 0.25F)
+        : 0.0F;
+    const Rect safe{
+        content.x + cueInset,
+        content.y,
+        std::max(0.0F, content.width - cueInset * 2.0F),
+        content.height,
+    };
+    const auto resolvedLeading = hasLeading && std::isfinite(leadingSize)
+        ? std::clamp(leadingSize, 0.0F, std::min(safe.width, safe.height))
+        : 0.0F;
+    const auto gap = hasLeading && hasText && safe.width > resolvedLeading
+        ? std::min(8.0F, safe.width - resolvedLeading)
+        : 0.0F;
+    const auto textBudget = std::max(0.0F, safe.width - resolvedLeading - gap);
+    const auto resolvedText = hasText && std::isfinite(measuredTextWidth)
+        ? std::clamp(measuredTextWidth, 0.0F, textBudget)
+        : 0.0F;
+    const auto groupWidth = resolvedLeading + gap + resolvedText;
+    const auto remaining = std::max(0.0F, safe.width - groupWidth);
+    const auto groupX = safe.x + std::clamp(
+        alignment == NativeTextAlign::Start ? 0.0F :
+        alignment == NativeTextAlign::End ? remaining : remaining * 0.5F,
+        0.0F,
+        remaining);
+    const Rect leading{
+        groupX,
+        safe.y + (safe.height - resolvedLeading) * 0.5F,
+        resolvedLeading,
+        resolvedLeading,
+    };
+    const Rect text{
+        groupX + resolvedLeading + gap,
+        safe.y,
+        resolvedText,
+        safe.height,
+    };
+    return {leading, text};
 }
 
 } // namespace gba

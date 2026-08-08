@@ -1,13 +1,18 @@
 using GameBarAlternative.Samples.SpotifyWidget;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Unconfigured state provides safe exact setup guidance", UnconfiguredSetup),
     ("Setup is a nested B-dismissible input scope", NestedSetupBack),
+    ("Setup uses a bounded controller-native scroll surface", SetupUsesVerticalScroll),
+    ("Setup code and text styles remain compact and bounded", SetupCodeAndTextAreBounded),
     ("Setup Done refreshes newly saved configuration without starting OAuth", SetupDoneRefreshesConfiguration),
+    ("Connect action acknowledges while OAuth remains pending", ConnectAcknowledgesWhilePending),
+    ("OAuth survives Background and reconciles when visible", ConnectSurvivesBackground),
     ("Explicit connect requests only playback scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Progress is projected locally without provider polling", ProjectedProgress),
@@ -110,6 +115,123 @@ static async Task SetupDoneRefreshesConfiguration()
     await StopAsync(widget);
 }
 
+static async Task SetupUsesVerticalScroll()
+{
+    var harness = new SpotifyHarness { Configured = false };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Unconfigured);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open"));
+
+    var setup = widget.RenderSnapshot("spotify.test", 6);
+    var scroll = Find(setup.Root, "spotify.setup-scroll");
+    Assert.Equal(ViewNodeKind.Scroll, scroll.Kind);
+    Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
+    Assert.Equal("spotify.setup", scroll.InputScopeId);
+    AssertShortcut(scroll, ControllerButton.B, "spotify.setup.close");
+    Assert.NotNull(Find(scroll, "spotify.setup-step-1"));
+    Assert.NotNull(Find(scroll, "spotify.setup-step-2"));
+    Assert.NotNull(Find(scroll, "spotify.setup-step-3"));
+    var command = Find(scroll, "spotify.setup-command");
+    Assert.True(command.StyleClasses.Contains("gbar-code-text"),
+        "Setup command no longer uses the semantic CodeText component.");
+    Assert.True(command.StyleClasses.Contains("spotify-setup-command"),
+        "Setup command lost its bounded widget style class.");
+    Assert.NotNull(Find(scroll, "spotify.setup.done"));
+    Assert.Equal("spotify.setup.done", setup.InitialFocusId);
+    Assert.True(setup.Surface?.MinimumHeight <= 404,
+        "Setup requires a surface taller than the compact widget viewport.");
+    await StopAsync(widget);
+}
+
+static Task SetupCodeAndTextAreBounded()
+{
+    var source = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory, "styles", "default.gbss"));
+    var parsed = GbssParser.Parse(source, "styles/default.gbss");
+    Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
+    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+
+    var step = compiled.Theme!.Resolve(new GbssElement(
+        "text", StyleClasses: new HashSet<string>(["spotify-setup-step"])))!;
+    var command = compiled.Theme.Resolve(new GbssElement(
+        "text", StyleClasses: new HashSet<string>(
+            ["gbar-code-text", "spotify-setup-command"])))!;
+    Assert.Equal("2", step.Get("max-lines")?.Text);
+    Assert.Equal("1.25", step.Get("line-height")?.Text);
+    Assert.Equal("3", command.Get("max-lines")?.Text);
+    Assert.Equal("1.25", command.Get("line-height")?.Text);
+    return Task.CompletedTask;
+}
+
+static async Task ConnectAcknowledgesWhilePending()
+{
+    var completion = NewAuthorizationCompletion();
+    var harness = new SpotifyHarness
+    {
+        Configured = true,
+        Connected = false,
+        ConnectCompletion = completion,
+    };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
+
+    var acknowledgement = widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.connect", "spotify.connect")).AsTask();
+    await acknowledgement.WaitAsync(TimeSpan.FromMilliseconds(500));
+    await WaitUntil(() => harness.ConnectCalls == 1);
+    Assert.True(!completion.Task.IsCompleted,
+        "Fake OAuth unexpectedly completed before the action acknowledgement.");
+    Assert.Equal(SpotifyWidgetViewState.Authorizing, widget.ViewState);
+
+    completion.SetResult(ConnectedAuthorization());
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await StopAsync(widget);
+}
+
+static async Task ConnectSurvivesBackground()
+{
+    var completion = NewAuthorizationCompletion();
+    var harness = new SpotifyHarness
+    {
+        Configured = true,
+        Connected = false,
+        ConnectCompletion = completion,
+    };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
+    await widget.OnActionAsync(new WidgetActionEvent("spotify.connect", "spotify.connect"));
+    await WaitUntil(() => harness.ConnectCalls == 1);
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    Assert.True(harness.ConnectCancellationToken is { IsCancellationRequested: false },
+        "Visible to Background canceled the in-flight OAuth request.");
+    completion.SetResult(ConnectedAuthorization());
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    Assert.True(widget.Status.Contains("reopen", StringComparison.OrdinalIgnoreCase),
+        "Background OAuth completion did not retain a reopen-ready state.");
+    Assert.Equal(0, harness.PlaybackCalls);
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    await WaitUntil(() => harness.PlaybackCalls > 0 &&
+        widget.ViewState == SpotifyWidgetViewState.Ready);
+    Assert.NotNull(Find(widget.RenderSnapshot("spotify.oauth", 8).Root,
+        "spotify.play-toggle"));
+    await StopAsync(widget);
+}
+
+static TaskCompletionSource<WidgetSpotifyAuthorizationSummary> NewAuthorizationCompletion() =>
+    new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+static WidgetSpotifyAuthorizationSummary ConnectedAuthorization() => new(
+    WidgetSpotifyAuthorizationState.Connected,
+    [WidgetSpotifyAuthorizationScope.PlaybackStateRead,
+     WidgetSpotifyAuthorizationScope.PlaybackStateControl],
+    [WidgetSpotifyAuthorizationScope.PlaybackStateRead,
+     WidgetSpotifyAuthorizationScope.PlaybackStateControl],
+    "Connected");
+
 static async Task ExplicitConnect()
 {
     var harness = new SpotifyHarness { Configured = true, Connected = false };
@@ -122,6 +244,7 @@ static async Task ExplicitConnect()
         WidgetSpotifyAuthorizationScope.PlaybackStateRead,
         WidgetSpotifyAuthorizationScope.PlaybackStateControl,
     }, harness.LastScopes!);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     Assert.Equal(SpotifyWidgetViewState.Ready, widget.ViewState);
     await StopAsync(widget);
 }
@@ -292,6 +415,8 @@ file sealed class SpotifyHarness
     public Exception? ConfigurationError { get; set; }
     public Exception? ControlError { get; set; }
     public Task? ControlWait { get; set; }
+    public TaskCompletionSource<WidgetSpotifyAuthorizationSummary>? ConnectCompletion { get; set; }
+    public CancellationToken? ConnectCancellationToken { get; private set; }
     public int ConnectCalls { get; private set; }
     public int ConfigurationCalls { get; private set; }
     public int PlaybackCalls { get; private set; }
@@ -353,16 +478,23 @@ file sealed class SpotifyHarness
         Playback = PlaybackSnapshot(capturedAt, progress),
     };
 
-    private ValueTask<WidgetSpotifyAuthorizationSummary> ConnectAsync(
+    private async ValueTask<WidgetSpotifyAuthorizationSummary> ConnectAsync(
         ConnectWidgetSpotifyRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ConnectCalls++;
         LastScopes = request.RequestedScopes.ToArray();
+        ConnectCancellationToken = cancellationToken;
+        if (ConnectCompletion is not null)
+        {
+            var result = await ConnectCompletion.Task.WaitAsync(cancellationToken);
+            Connected = result.State == WidgetSpotifyAuthorizationState.Connected;
+            return result;
+        }
         Connected = true;
-        return ValueTask.FromResult(new WidgetSpotifyAuthorizationSummary(
+        return new WidgetSpotifyAuthorizationSummary(
             WidgetSpotifyAuthorizationState.Connected, request.RequestedScopes,
-            request.RequestedScopes, "Connected"));
+            request.RequestedScopes, "Connected");
     }
 
     private async ValueTask<WidgetCapabilityAcknowledgement> ControlAsync(

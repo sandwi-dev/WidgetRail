@@ -100,14 +100,28 @@ tokens, playback projection/control, bounded rate-limit handling, and sanitized
 errors. Package-scoped public Client IDs can be managed locally through
 `gbar config`; they are not secrets.
 
-This is a tested provider foundation, not yet an author-ready shipping
-capability: `OverlayHost` does not compose the provider, the Community addon is
-not packaged, the controller-native setup UI is missing, and no live Spotify
-evidence exists. Authors must not infer Spotify authority from
-`network.loopback`, add arbitrary Internet access, store OAuth tokens in private
-widget state, or bind to provider-internal wire DTOs. Device, queue, search,
-recent, library, playlist, album, artist, and local Web Playback SDK contracts
-remain planned. See [Spotify Web API integration](spotify-integration.md).
+`WidgetBridge` composes this provider, and Spotify Community addon 0.1.4 is
+locally packageable through the same public SDK/AppContainer path as an
+independent addon. Its controller setup instructions and player core are
+implemented; editing the Client ID remains a local `gbar config` workflow and
+no live allowlisted-account evidence exists. Authors must not infer Spotify
+authority from `network.loopback`, add arbitrary Internet access, store OAuth
+tokens in private widget state, or bind to provider-internal wire DTOs. Device,
+queue, search, recent, library, playlist, album, artist, and local Web Playback
+SDK contracts remain planned. See [Spotify Web API
+integration](spotify-integration.md).
+
+Authorization has one exact lifecycle continuation, not background authority.
+A `connect` operation must begin with an explicit action while Interactive. The
+action acknowledges immediately, and its authorization task uses the widget's
+Created-to-Destroying lifetime. If opening the system browser moves the widget
+through Visible/Background, that already-created request lease may continue.
+The temporary callback listener exists only during this explicit attempt and
+waits at most five minutes. The exact broker Connect deadline is seven minutes,
+leaving two minutes for bounded token exchange, retry/backoff, and vault
+persistence. A new Background connect, disconnect, playback control, or other
+provider request is still denied. Destroying, consent revocation, pipe/caller
+cancellation, and provider timeout cancel the retained request.
 
 ### Host-provided private widget state
 

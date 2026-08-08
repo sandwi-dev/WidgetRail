@@ -70,6 +70,11 @@ public static partial class GbssPropertyCatalog
             ["shadow-blur"] = new(PropertyType.Length, 0, 64),
             ["shadow-offset-x"] = new(PropertyType.Length, -256, 256, true),
             ["shadow-offset-y"] = new(PropertyType.Length, -256, 256, true),
+            // Translation is a bounded presentation offset, not layout. The
+            // native adapter resolves axis-relative units and applies a final
+            // +/-4096 DIP clamp after viewport/parent conversion.
+            ["translate-x"] = new(PropertyType.Length, -4096, 4096, true),
+            ["translate-y"] = new(PropertyType.Length, -4096, 4096, true),
             ["gap"] = new(PropertyType.Spacing, 0, 256),
             ["padding"] = new(PropertyType.Spacing, 0, 256),
             ["margin"] = new(PropertyType.Spacing, -256, 256, true),

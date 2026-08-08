@@ -44,6 +44,8 @@ int main() {
         {L"flex-wrap", {L"keyword", L"wrap", std::nullopt, {}}},
         {L"object-fit", {L"keyword", L"cover", std::nullopt, {}}},
         {L"flex-grow", Number(L"number", 2)},
+        {L"translate-x", Length(10, L"vw")},
+        {L"translate-y", Length(-25, L"%")},
     };
     NativeStyleContext context720{1280, 720, 1000, 600, 20, 16, false};
     auto style720 = NativeStyleAdapter::Adapt(responsive, context720).style;
@@ -64,6 +66,8 @@ int main() {
     assert(style720.flexWrap() == NativeFlexWrap::Wrap);
     assert(style720.imageFit() == NativeImageFit::Cover);
     Near(2, style720.flexGrow());
+    Near(128, style720.translateXPx());
+    Near(-150, style720.translateYPx());
     Near(0x20 / 255.0F, style720.background()->red);
     Near(0x80 / 255.0F, style720.background()->alpha);
 
@@ -130,11 +134,24 @@ int main() {
     auto style1080 = NativeStyleAdapter::Adapt(responsive, context1080).style;
     Near(960, *style1080.widthPx());
     Near(270, *style1080.heightPx());
+    Near(192, style1080.translateXPx());
+    Near(-200, style1080.translateYPx());
 
     NativeStyleContext ultrawide{3440, 1440, 2000, 1000, 18, 16, false};
     auto styleUltra = NativeStyleAdapter::Adapt(responsive, ultrawide).style;
     Near(1720, *styleUltra.widthPx());
     Near(360, *styleUltra.heightPx());
+    Near(344, styleUltra.translateXPx());
+    Near(-250, styleUltra.translateYPx());
+
+    WidgetComputedStyle boundedTranslation{
+        {L"translate-x", Length(999, L"vw")},
+        {L"translate-y", Length(-999, L"vh")},
+    };
+    const auto boundedTranslationStyle = NativeStyleAdapter::Adapt(
+        boundedTranslation, context720).style;
+    Near(4096, boundedTranslationStyle.translateXPx());
+    Near(-4096, boundedTranslationStyle.translateYPx());
 
     WidgetComputedStyle accessible{
         {L"background", {L"color", L"rgba(20, 30, 40, 0.2)", std::nullopt, {}}},
@@ -321,6 +338,8 @@ int main() {
         {L"background", {L"color", L"url(evil)", std::nullopt, {}}},
         {L"opacity", Number(L"number", 99)},
         {L"font-family", {L"fontFamily", L"bad\nfont", std::nullopt, {}}},
+        {L"translate-x", {L"length", L"nanpx", std::numeric_limits<double>::quiet_NaN(), L"px"}},
+        {L"translate-y", {L"keyword", L"auto", std::nullopt, {}}},
         {L"future-property", {L"keyword", L"surprise", std::nullopt, {}}},
     };
     auto defensive = NativeStyleAdapter::Adapt(malformed,
@@ -329,6 +348,8 @@ int main() {
     assert(!defensive.style.background());
     Near(1, defensive.style.opacity());
     assert(defensive.style.fontFamily() == L"Segoe UI Variable Text");
+    Near(0, defensive.style.translateXPx());
+    Near(0, defensive.style.translateYPx());
     assert(defensive.diagnostics.size() >= 6);
 
     // Platform shell roles use the same immutable adapter as widget nodes.

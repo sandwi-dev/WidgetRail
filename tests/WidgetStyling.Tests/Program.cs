@@ -18,6 +18,7 @@ var tests = new (string Name, Action Run)[]
     ("Resolved property enumeration is deterministic", DeterministicResolution),
     ("Media-card properties compile to typed renderer values", MediaCardValues),
     ("Responsive viewport units remain bounded", ResponsiveUnits),
+    ("Translation lengths validate clamp and cascade by axis", TranslationValues),
     ("Responsive row wrapping compiles to a closed keyword contract", ResponsiveWrapValues),
     ("Per-edge borders validate and cascade independently", PerEdgeBorders),
     ("Media-card properties preserve the safe allowlist", MediaSafety),
@@ -358,6 +359,42 @@ static void ResponsiveUnits()
     Assert.Equal("8", style.Get("max-lines")!.Text);
     Assert.Equal("3", style.Get("line-height")!.Text);
     Assert.Equal("8", style.Get("flex-grow")!.Text);
+}
+
+static void TranslationValues()
+{
+    var compile = Compile("""
+        card {
+          translate-x: -12.5vw;
+          translate-y: 25%;
+        }
+        card:focused {
+          translate-x: 1.5em;
+        }
+        """);
+    Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+    var baseStyle = compile.Theme!.Resolve(Element("card"));
+    Assert.Equal(GbssValueKind.Length, baseStyle.Get("translate-x")!.Kind);
+    Assert.Equal("-12.5vw", baseStyle.Get("translate-x")!.Text);
+    Assert.Equal("25%", baseStyle.Get("translate-y")!.Text);
+
+    var focused = compile.Theme.Resolve(new GbssElement(
+        "card", null, null, new HashSet<GbssPseudoState> { GbssPseudoState.Focused }));
+    Assert.Equal("1.5em", focused.Get("translate-x")!.Text);
+    Assert.Equal("25%", focused.Get("translate-y")!.Text);
+
+    var bounded = Compile("card { translate-x: 5000px; translate-y: -120vh; }");
+    Assert.Equal(2, bounded.Diagnostics.Count(item => item.Code == "value_clamped"));
+    var boundedStyle = bounded.Theme!.Resolve(Element("card"));
+    Assert.Equal("4096px", boundedStyle.Get("translate-x")!.Text);
+    Assert.Equal("-100vh", boundedStyle.Get("translate-y")!.Text);
+
+    var invalid = CompileExpectingErrors("card { translate-x: auto; translate-y: 10deg; }");
+    Assert.Equal(2, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
+    Assert.True(GbssPropertyCatalog.AllowedProperties.Contains("translate-x"),
+        "translate-x is missing from the public allowlist.");
+    Assert.True(GbssPropertyCatalog.AllowedProperties.Contains("translate-y"),
+        "translate-y is missing from the public allowlist.");
 }
 
 static void ResponsiveWrapValues()
