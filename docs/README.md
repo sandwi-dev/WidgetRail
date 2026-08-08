@@ -14,12 +14,17 @@ guarantees that are available now.
 - [Platform architecture](platform-architecture.md) — process boundaries,
   data flow, and current implementation limits.
 - [Widget quickstart](widget-quickstart.md) — scaffold, build, validate,
-  render, and replay a controller widget.
+  render, replay, and run a controller widget through the isolated `gbar dev`
+  watch loop with authenticated readiness and last-good recovery.
+- [Widget lifecycle and process residency](widget-residency.md) — lifecycle
+  callbacks, versioned manifest policy, safe suspension, bounded idle unload,
+  cached views, lazy resume, and legacy migration.
 - [Declarative UI reference](declarative-ui.md) — elements, focus, actions,
   images, icons, state, invalidation, and protocol limits.
 - [Controller UI component patterns](controller-ui-components.md) — Slider v3,
   the Audio icon-Slider-percentage reference, focusable Disabled/Busy states,
-  and validation requirements for future composition helpers.
+  and the public controller-safe Card, IconButton, StatusBadge, Alert,
+  EmptyState, SegmentedTabs, Switch, and ScopedDialog compositions.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
   properties, imports, and diagnostics.
 - [Settings and global themes](settings-and-themes.md) — the controller Settings
@@ -37,7 +42,7 @@ guarantees that are available now.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
 - [Widget capabilities](capabilities.md) — typed audio/network/Bluetooth/recent-
-  activity services,
+  activity/media-session services, exact-operation dashboard gesture authority,
   manifest declarations, lifecycle/consent behavior, errors, testing, and the
   current security boundary.
 - [Network Controls reference](network-controls.md) — implemented first-party
@@ -70,7 +75,10 @@ guarantees that are available now.
   evidence, acceptance criteria, status, and closing commits.
 - [Windows provider architecture](windows-provider-architecture.md) — the
   event-driven Core Audio and WLAN/IP Helper providers, privacy boundaries, and
-  simulator/hardware evidence gates for Audio Mixer and Network Controls.
+  simulator/hardware evidence gates for Audio Mixer and Network Controls. The
+  current GSMTC Now Playing provider and its public-package path are summarized
+  in [implementation status](implementation-status.md) and [widget
+  capabilities](capabilities.md).
 
 ## Product and research
 

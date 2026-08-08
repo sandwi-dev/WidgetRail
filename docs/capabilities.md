@@ -44,6 +44,8 @@ The current closed capability set is:
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync`; software radio only | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.activity.recent.activate.v1` | `ActivateAsync` for one still-running opaque observation | Interactive only |
+| `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
+| `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
 
 The following authority domains are **planned only**. Their final capability
 IDs and typed SDK surfaces are not assigned, the manifest validator does not
@@ -94,6 +96,29 @@ The permission boundary has four independent layers:
 4. The trusted native provider and Windows apply their own API, privacy,
    hardware, and policy rules. Overlay consent cannot bypass Windows precise-
    location access, a hardware radio switch, or device policy.
+
+### Dashboard user-gesture authority
+
+Control capabilities remain Interactive by default. A widget may associate a
+dashboard quick action with one published typed capability operation, for
+example `WidgetMediaCapabilities.Control.CapabilityId` and `.OperationId`.
+When that exact prompt is pressed while the widget remains Visible, the bridge
+may create a dormant host-owned reservation for at most 10 seconds. That
+reservation is not broker authority; it only lets bounded serial widget work
+reach the capability call associated with that exact input and snapshot.
+
+This is not extra ambient permission. The bridge revalidates the cached
+snapshot, button, input sequence, snapshot sequence, closed operation, and
+manifest declaration. The SDK attaches the two sequences only while executing
+that queued dashboard action. Only when the exact typed capability operation is
+actually invoked does the runtime atomically match and remove the dormant
+reservation, then ask the identity/PID-bound companion to activate one broker
+lease for at most two seconds. The broker rechecks user consent and normal
+payload/provider rules before consuming that exact lease once. Dormant
+reservations are bounded to the controller queue capacity; dormant and active
+state are revoked on lifecycle change, consent loss, expiry, worker replacement,
+or shutdown. Direct actions, open-widget actions, subscriptions, and background
+tasks do not receive dashboard authority.
 
 The bridge watches the installed package catalog without polling. After a
 complete validated reload, an enable/disable, install, update, manifest, or
@@ -268,13 +293,15 @@ Settings discovers installed and bundled first-party manifests when the
 Settings widget enters a new Visible/Interactive lifetime; it does not poll.
 The controller flow is:
 
-1. **Permissions & capabilities** lists packages, five per page.
-2. A package page lists supported required/optional declarations, four per
-   page, with Granted/Denied/Not decided state.
+1. **Permissions & capabilities** lists packages in one bounded vertical
+   controller Scroll.
+2. A package page lists all supported required/optional declarations in its
+   own bounded Scroll, with Granted/Denied/Not decided state.
 3. A decision page requires an explicit focused confirmation before grant.
    Deny/revoke is immediate from that same scope.
 
-Each page owns B-back; LB/RB change pages only where another page exists.
+Each page owns B-back and contains no redundant Back button. Up/Down scrolls
+through the current list; LB/RB remain available to widget-owned actions.
 Decisions are atomically stored by package ID, publisher ID, and capability ID.
 The broker channel additionally binds the concrete instance ID. Unknown
 declarations and consent entries no longer declared by that package/publisher

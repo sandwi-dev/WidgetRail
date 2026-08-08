@@ -123,6 +123,11 @@ remains off until the publisher-trust gates in Phase 4.
   local acceptance coverage; placeholders remain absent until complete
 - Finish YT Music connection, pairing persistence, transition responsiveness,
   feedback, controller navigation, and failure recovery
+- Move YT Music off its trusted desktop exception: implement an exact-port,
+  loopback-only HTTP broker for declared local companions plus a private
+  per-widget secret vault for optional bearer-token persistence. Prove the
+  unchanged widget through the ordinary installed AppContainer path; never
+  grant ambient network or direct Credential Manager access to community code.
 - Finish Settings controller reachability, diagnostics/recovery, local package
   and theme workflows, and permission/version consistency
 - Complete controller-first Audio Control and Network Control through their
@@ -425,9 +430,10 @@ The current product order is:
 4. complete locally testable Audio/Network hardware, churn, privacy, and denial
    paths; then Performance, general media, recent apps/games, and capture
    feasibility;
-5. complete local developer mode: `gbar dev`, graphical/native theme preview,
-   known-local package/theme import, remove/rollback, and clean-profile
-   end-to-end samples;
+5. harden local developer mode and public references: exact-generation
+   `gbar dev` readiness, real first-party community-package conformance,
+   graphical/native theme preview, known-local package/theme import,
+   remove/rollback, and clean-profile end-to-end samples;
 6. finish controller/game/presentation/anti-cheat matrices plus CPU and
    disk/profile quotas/cleanup; and
 7. only then implement publisher signing/revocation, signed update metadata,

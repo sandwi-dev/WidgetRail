@@ -268,6 +268,28 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         _broker.SetLifecycle(lifecycle);
     }
 
+    /// <summary>
+    /// Trusted host companion path. There is intentionally no corresponding
+    /// broker-pipe message a widget worker could send.
+    /// </summary>
+    public void GrantDashboardGestureAuthority(
+        string capabilityId,
+        string operationId,
+        long inputSequence,
+        long snapshotSequence,
+        TimeSpan validFor)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _broker.GrantDashboardGestureAuthority(
+            capabilityId, operationId, inputSequence, snapshotSequence, validFor);
+    }
+
+    public void RevokeDashboardGestureAuthority(long inputSequence)
+    {
+        if (_disposed) return;
+        _broker.RevokeDashboardGestureAuthority(inputSequence);
+    }
+
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -651,13 +673,25 @@ public sealed class BrokerPipeClient : IAsyncDisposable
         string operation,
         T payload,
         CancellationToken cancellationToken = default) =>
+        RequestWithGestureAsync(
+            capabilityId, operation, payload, null, null, cancellationToken);
+
+    public Task<BrokerResponseEnvelope> RequestWithGestureAsync<T>(
+        string capabilityId,
+        string operation,
+        T payload,
+        long? gestureInputSequence,
+        long? gestureSnapshotSequence,
+        CancellationToken cancellationToken = default) =>
         SendRequestEnvelopeAsync(new BrokerRequestEnvelope(
             BrokerJson.ProtocolVersion,
             0,
             _identity,
             capabilityId,
             operation,
-            BrokerPipeJson.Element(payload)), cancellationToken);
+            BrokerPipeJson.Element(payload),
+            gestureInputSequence,
+            gestureSnapshotSequence), cancellationToken);
 
     internal async Task<BrokerResponseEnvelope> SendRequestEnvelopeAsync(
         BrokerRequestEnvelope source,

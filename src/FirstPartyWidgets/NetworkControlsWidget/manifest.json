@@ -24,7 +24,11 @@
     "system.network.bluetooth.read.v1",
     "system.network.bluetooth.radio.control.v1"
   ],
-  "backgroundPolicy": "suspend",
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "unload-after-idle",
+    "idleSeconds": 120
+  },
   "resourceRequest": {
     "memoryMb": 64,
     "updateHz": 10

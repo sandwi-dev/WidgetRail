@@ -17,12 +17,15 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
+    ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
+    ("Settings reviews the same catalog selected by the bridge", SettingsUsesSelectedCatalog),
     ("Catalog owns bounded worker memory policy", CatalogMemoryPolicyIsTrusted),
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
     ("Catalog rejects invalid GBSS with safe diagnostics", InvalidThemeIsRejected),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
+    ("Installed widget residency policies reach the generic supervisor", InstalledResidencyPolicyIsCarried),
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
@@ -34,6 +37,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
     ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
+    ("Suspend-when-hidden blocks work and serves only a cached view", SuspendWhenHiddenIsLogical),
+    ("Idle unload is cancellable cached and lazily resumable", IdleUnloadIsPolicyDriven),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
@@ -84,6 +89,41 @@ static Task StrictCatalogRejectsUnknownProperties()
     using var catalog = TemporaryCatalog.Create(addUnknownProperty: true);
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(catalog.Path));
     return Task.CompletedTask;
+}
+
+static Task DevelopmentCatalogRootIsScoped()
+{
+    using var temporary = new TemporaryDirectory("gba-bridge-dev-root");
+    var settings = Path.Combine(temporary.Path, "settings");
+    var development = Path.Combine(temporary.Path, "development-catalog");
+    Assert.Equal(Path.GetFullPath(development),
+        GameBarAlternative.WidgetBridge.Program.ResolveInstalledCatalogRoot(
+            ["--installed-catalog-root", development], settings));
+    Assert.Equal(Path.Combine(Path.GetFullPath(settings), "widgets"),
+        GameBarAlternative.WidgetBridge.Program.ResolveInstalledCatalogRoot([], settings));
+    Assert.Throws<ArgumentException>(() =>
+        GameBarAlternative.WidgetBridge.Program.ResolveInstalledCatalogRoot(
+            ["--installed-catalog-root", development, "--installed-catalog-root", development], settings));
+    return Task.CompletedTask;
+}
+
+static async Task SettingsUsesSelectedCatalog()
+{
+    using var trusted = TemporaryCatalog.Create(
+        id: "settings",
+        packageId: "org.gbar.firstparty.settings",
+        publisherId: "org.gbar.firstparty");
+    using var temporary = new TemporaryDirectory("gba-settings-selected-catalog");
+    var selected = Path.Combine(temporary.Path, "selected-widgets");
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, selected, Environment.ProcessPath!);
+    var settings = load.Catalog.GetConfigured("settings");
+    var index = settings.WorkerArguments.ToList().IndexOf("--installed-widget-catalog-root");
+    Assert.True(index >= 0 && index + 1 < settings.WorkerArguments.Count,
+        "Settings was not given the bridge-selected package catalog.");
+    Assert.Equal(Path.GetFullPath(selected), settings.WorkerArguments[index + 1]);
+    Assert.True(!settings.RequiresAppContainer,
+        "Catalog alignment must not change the exact trusted Settings worker policy.");
 }
 
 static Task CatalogMemoryPolicyIsTrusted()
@@ -244,6 +284,32 @@ static async Task InstalledWidgetsJoinCatalog()
         "Installed package root must be canonical before worker launch.");
     Assert.True(Path.IsPathFullyQualified(installed.WorkerArguments[3]),
         "Installed assembly path must be canonical before worker launch.");
+    Assert.Equal(WidgetResidencyPolicies.KeepAlive, installed.ResidencyPolicy.Mode);
+}
+
+static async Task InstalledResidencyPolicyIsCarried()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-installed-residency");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.idle-unload",
+        enabled: true,
+        residencyPolicy: new WidgetResidencyPolicy
+        {
+            Mode = WidgetResidencyPolicies.UnloadAfterIdle,
+            IdleSeconds = 300,
+        });
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    var configured = load.Catalog.GetConfigured("dev.example.idle-unload");
+    Assert.Equal(WidgetResidencyPolicies.UnloadAfterIdle, configured.ResidencyPolicy.Mode);
+    Assert.Equal(300, configured.ResidencyPolicy.IdleSeconds);
+    Assert.True(configured.RequiresAppContainer,
+        "Residency metadata must not weaken installed worker isolation.");
 }
 
 static async Task InstalledCapabilityDeclarationsAreClosed()
@@ -466,7 +532,8 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     string id,
     bool enabled,
     string styleSource = "button { color: #abcdef; }",
-    IReadOnlyList<string>? permissions = null)
+    IReadOnlyList<string>? permissions = null,
+    WidgetResidencyPolicy? residencyPolicy = null)
 {
     var packagePath = Path.Combine(packageDirectory, $"{id}.gbarwidget");
     var manifest = new WidgetManifest
@@ -480,7 +547,8 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
             "dotnet-worker", "payload/Widget.dll", "Example.EnabledWidget"),
         Permissions = permissions ?? [],
         OptionalPermissions = [],
-        BackgroundPolicy = "none",
+        BackgroundPolicy = residencyPolicy is null ? "none" : null,
+        ResidencyPolicy = residencyPolicy,
         ResourceRequest = new WidgetResourceRequest(256, 60),
         Architectures = [System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture ==
             System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64"],
@@ -595,6 +663,106 @@ static async Task LifecycleIsExplicit()
     Assert.Equal(BridgeMessageTypes.Acknowledged, deactivated.Type);
 }
 
+static async Task SuspendWhenHiddenIsLogical()
+{
+    await using var harness = await BridgeHarness.StartAsync(residencyPolicy:
+        new WidgetResidencyPolicy { Mode = WidgetResidencyPolicies.SuspendWhenHidden });
+    var cold = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Error, cold.Type);
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    var visibleResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var visible = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        visibleResponse.Payload.GetProperty("snapshot").GetRawText()));
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Background));
+
+    var hiddenAction = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest("test-widget", new WidgetActionEvent("refresh", "button")));
+    Assert.Equal(BridgeMessageTypes.Error, hiddenAction.Type);
+    var cachedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var cached = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        cachedResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(visible.Sequence, cached.Sequence);
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+}
+
+static async Task IdleUnloadIsPolicyDriven()
+{
+    var policy = new WidgetResidencyPolicy
+    {
+        Mode = WidgetResidencyPolicies.UnloadAfterIdle,
+        IdleSeconds = WidgetResidencyPolicies.MinimumIdleSeconds,
+    };
+    await using var harness = await BridgeHarness.StartAsync(residencyPolicy: policy);
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+    var firstResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var first = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        firstResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Background));
+    await Task.Delay(TimeSpan.FromMilliseconds(250));
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    await Task.Delay(TimeSpan.FromMilliseconds(250));
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Background));
+    await WaitUntilAsync(() => harness.Server.RunningWorkerCount == 0,
+        TimeSpan.FromSeconds(WidgetResidencyPolicies.MinimumIdleSeconds + 3));
+
+    var cachedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var cached = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        cachedResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(first.Sequence, cached.Sequence);
+    Assert.Equal(0, harness.Server.RunningWorkerCount);
+
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+    var resumedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var resumed = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        resumedResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(first.WidgetInstanceId, resumed.WidgetInstanceId);
+    // Leave a fresh idle timer pending. Harness disposal must cancel it,
+    // serialize with teardown, and release the resumed worker without waiting
+    // for the manifest duration.
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Background));
+}
+
+static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+{
+    var deadline = DateTime.UtcNow + timeout;
+    while (!condition())
+    {
+        if (DateTime.UtcNow >= deadline)
+            throw new TimeoutException("Condition was not reached before the timeout.");
+        await Task.Delay(50);
+    }
+}
+
 static async Task RuntimeOwnedLifecycleStatesAreRejected()
 {
     await using var harness = await BridgeHarness.StartAsync();
@@ -641,7 +809,7 @@ static async Task SnapshotAndQuickAction()
 
     var activation = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
-        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Acknowledged, activation.Type);
 
     var acknowledgement = await harness.Client.RequestAsync(
@@ -651,13 +819,38 @@ static async Task SnapshotAndQuickAction()
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 7,
-            MonotonicTimestampMicroseconds: 1000)));
+            MonotonicTimestampMicroseconds: 1000,
+            SnapshotSequence: snapshot.Sequence)));
     Assert.Equal(BridgeMessageTypes.ControllerInputResult, acknowledgement.Type);
     Assert.True(acknowledgement.Payload.GetProperty("handled").GetBoolean(),
         "Expected dashboard quick action to be handled.");
     var invalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
     Assert.Equal("test-widget", invalidation.Payload.GetProperty("widgetId").GetString());
     Assert.Equal(1L, invalidation.Payload.GetProperty("revision").GetInt64());
+
+    var replay = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 7,
+            SnapshotSequence: snapshot.Sequence)));
+    Assert.Equal(BridgeMessageTypes.Error, replay.Type);
+    var stale = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 8,
+            SnapshotSequence: snapshot.Sequence + 1)));
+    Assert.Equal(BridgeMessageTypes.Error, stale.Type);
+
+    var interactive = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, interactive.Type);
 
     var shortcut = await harness.Client.RequestAsync(
         BridgeMessageTypes.ControllerInput,
@@ -830,8 +1023,12 @@ file sealed class TemporaryCatalog : IDisposable
         int? memoryLimitMb = null,
         string name = "Test Widget",
         string instanceId = "test.instance",
+        string id = "test-widget",
+        string packageId = "dev.test.widget",
+        string publisherId = "dev.test",
         IReadOnlyList<string>? declaredCapabilities = null,
-        string? styleSource = null)
+        string? styleSource = null,
+        WidgetResidencyPolicy? residencyPolicy = null)
     {
         var directory = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(), $"gba-bridge-tests-{Guid.NewGuid():N}");
@@ -851,9 +1048,9 @@ file sealed class TemporaryCatalog : IDisposable
             {
                 new
                 {
-                    id = "test-widget",
-                    packageId = "dev.test.widget",
-                    publisherId = "dev.test",
+                    id,
+                    packageId,
+                    publisherId,
                     name,
                     instanceId,
                     icon,
@@ -862,6 +1059,7 @@ file sealed class TemporaryCatalog : IDisposable
                     workerArguments = Array.Empty<string>(),
                     declaredCapabilities = declaredCapabilities ?? Array.Empty<string>(),
                     memoryLimitMb,
+                    residencyPolicy,
                     quickActions = new[]
                     {
                         new
@@ -876,7 +1074,11 @@ file sealed class TemporaryCatalog : IDisposable
                 },
             },
             unknown = addUnknownProperty ? true : (bool?)null,
-        }, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+        }, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        });
         File.WriteAllText(path, json);
         return new TemporaryCatalog(directory, path);
     }
@@ -912,9 +1114,11 @@ file sealed class BridgeHarness : IAsyncDisposable
         _serverTask = serverTask;
     }
 
-    public static async Task<BridgeHarness> StartAsync(bool withAppearance = false)
+    public static async Task<BridgeHarness> StartAsync(
+        bool withAppearance = false,
+        WidgetResidencyPolicy? residencyPolicy = null)
     {
-        var temporary = TemporaryCatalog.Create();
+        var temporary = TemporaryCatalog.Create(residencyPolicy: residencyPolicy);
         TemporaryAppearance? appearance = null;
         try
         {

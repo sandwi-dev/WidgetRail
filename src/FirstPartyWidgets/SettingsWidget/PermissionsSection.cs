@@ -8,8 +8,6 @@ namespace GameBarAlternative.FirstPartyWidgets.Settings;
 
 public sealed partial class SettingsWidget
 {
-    public const int PermissionPackagesPerPage = 5;
-    public const int CapabilitiesPerPage = 4;
     private const int MaximumPermissionPackages = 256;
     private const int MaximumBundledDirectories = 64;
     private const int MaximumManifestBytes = 1024 * 1024;
@@ -24,8 +22,6 @@ public sealed partial class SettingsWidget
 
     private IReadOnlyList<PermissionPackage> _permissionPackages = [];
     private ConsentDocument _consent = ConsentDocument.Empty;
-    private int _permissionPackagePage;
-    private int _capabilityPage;
     private string? _selectedPackageId;
     private string? _selectedPublisherId;
     private string? _selectedCapabilityId;
@@ -129,22 +125,17 @@ public sealed partial class SettingsWidget
             _permissionDiagnostic = diagnostic.Length == 0 ? null : diagnostic;
             _unknownDeclarations = unknownDeclarations;
             _hiddenConsentEntries = hiddenConsentEntries;
-            _permissionPackagePage = Math.Clamp(
-                _permissionPackagePage, 0, LastPage(packages.Count, PermissionPackagesPerPage));
             var selected = SelectedPackageLocked();
             if (selected is null)
             {
                 _selectedPackageId = null;
                 _selectedPublisherId = null;
                 _selectedCapabilityId = null;
-                _capabilityPage = 0;
                 if (_page is SettingsPage.PackageCapabilities or SettingsPage.CapabilityDecision)
                     _page = SettingsPage.Permissions;
             }
             else
             {
-                _capabilityPage = Math.Clamp(_capabilityPage, 0,
-                    LastPage(selected.Capabilities.Count, CapabilitiesPerPage));
                 if (_selectedCapabilityId is not null &&
                     !selected.Capabilities.Any(capability => capability.Id == _selectedCapabilityId))
                 {
@@ -234,24 +225,20 @@ public sealed partial class SettingsWidget
     private WidgetView RenderPermissionPackages(StackElement header, bool busy)
     {
         IReadOnlyList<PermissionPackage> packages;
-        int page;
         bool catalogValid;
         string? diagnostic;
+        string? selectedPackageId;
         int unknown;
         int hidden;
         lock (_stateLock)
         {
             packages = _permissionPackages;
-            page = _permissionPackagePage;
             catalogValid = _permissionCatalogValid;
             diagnostic = _permissionDiagnostic;
+            selectedPackageId = _selectedPackageId;
             unknown = _unknownDeclarations;
             hidden = _hiddenConsentEntries;
         }
-        var lastPage = LastPage(packages.Count, PermissionPackagesPerPage);
-        page = Math.Clamp(page, 0, lastPage);
-        var start = page * PermissionPackagesPerPage;
-        var visible = packages.Skip(start).Take(PermissionPackagesPerPage).ToArray();
         var children = new List<WidgetElement>
         {
             UI.Text("Widget access", "permissions.heading", "Widget permissions and capabilities")
@@ -267,8 +254,6 @@ public sealed partial class SettingsWidget
                     : "Permission controls are unavailable until the package catalog is valid.",
                 "permissions.system-help", "Windows permission help")
                 .Classes(catalogValid ? "page-help" : "diagnostic-error"),
-            UI.Text($"Page {page + 1} of {lastPage + 1}", "permissions.page-label", "Package page")
-                .Classes("page-counter"),
         };
         if (unknown != 0 || hidden != 0)
         {
@@ -276,27 +261,31 @@ public sealed partial class SettingsWidget
                 $"Hidden: {unknown} unknown declarations, {hidden} undeclared or unavailable decisions",
                 "permissions.hidden", "Hidden permission diagnostics").Classes("diagnostic-line"));
         }
-        for (var offset = 0; offset < visible.Length; offset++)
+        for (var index = 0; index < packages.Count; index++)
         {
-            var index = start + offset;
-            var package = visible[offset];
+            var package = packages[index];
             var required = package.Capabilities.Count(capability => capability.IsRequired);
             var optional = package.Capabilities.Count - required;
             var label = $"{package.Name} · {required} required · {optional} optional";
             var button = UI.Button(label, $"permission.select.{index}", $"permission.item.{index}")
                 .Disabled(!catalogValid).Busy(busy).Classes("setting-row");
-            if (offset > 0) button = button.FocusUp($"permission.item.{index - 1}");
-            if (offset + 1 < visible.Length) button = button.FocusDown($"permission.item.{index + 1}");
             children.Add(button);
         }
-        children.Add(UI.Button("Back", "back", "permissions.back").Classes("secondary-button"));
-        var scope = UI.Stack("permissions.packages", children.ToArray())
+        LinkVertical(children);
+        var scope = UI.VerticalScroll("permissions.packages", children.ToArray())
             .InputScope("permissions.packages")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "permission.previous-page");
-        if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "permission.next-page");
-        var initial = visible.Length == 0 ? "permissions.back" : $"permission.item.{start}";
+        var selectedIndex = packages
+            .Select((package, index) => (package, index))
+            .FirstOrDefault(item => string.Equals(
+                item.package.Id, selectedPackageId, StringComparison.Ordinal)).index;
+        var hasSelectedPackage = selectedPackageId is not null &&
+            packages.Any(package => string.Equals(
+                package.Id, selectedPackageId, StringComparison.Ordinal));
+        var initial = packages.Count == 0
+            ? null
+            : $"permission.item.{(hasSelectedPackage ? selectedIndex : 0)}";
         return View(header, scope, initial, "permissions.packages");
     }
 
@@ -304,24 +293,20 @@ public sealed partial class SettingsWidget
     {
         PermissionPackage? package;
         ConsentDocument consent;
-        int page;
         bool consentValid;
         string? diagnostic;
+        string? selectedCapabilityId;
         lock (_stateLock)
         {
             package = SelectedPackageLocked();
             consent = _consent;
-            page = _capabilityPage;
             consentValid = _consentValid;
             diagnostic = _permissionDiagnostic;
+            selectedCapabilityId = _selectedCapabilityId;
         }
         if (package is null)
             return MissingPermissionSelection(header, "Installed package is no longer available.",
                 "capabilities.package");
-        var lastPage = LastPage(package.Capabilities.Count, CapabilitiesPerPage);
-        page = Math.Clamp(page, 0, lastPage);
-        var start = page * CapabilitiesPerPage;
-        var visible = package.Capabilities.Skip(start).Take(CapabilitiesPerPage).ToArray();
         var children = new List<WidgetElement>
         {
             UI.Text(package.Name, "capabilities.heading", "Selected package").Classes("page-heading"),
@@ -332,36 +317,43 @@ public sealed partial class SettingsWidget
                     "Optional access only enables extra functionality. Neither type is allowed automatically.",
                     "capabilities.help", "Required and optional access help")
                 .Classes("page-help"),
-            UI.Text(consentValid ? $"Page {page + 1} of {lastPage + 1}" :
-                    diagnostic ?? "Consent data is unavailable; changes are disabled.",
-                "capabilities.page-label", "Capability page")
-                .Classes(consentValid ? "page-counter" : "diagnostic-error"),
         };
-        for (var offset = 0; offset < visible.Length; offset++)
+        if (!consentValid)
         {
-            var index = start + offset;
-            var capability = visible[offset];
+            children.Add(UI.Text(
+                    diagnostic ?? "Consent data is unavailable; changes are disabled.",
+                    "capabilities.diagnostic", "Consent diagnostic")
+                .Classes("diagnostic-error"));
+        }
+        for (var index = 0; index < package.Capabilities.Count; index++)
+        {
+            var capability = package.Capabilities[index];
             var decision = FindDecision(consent, package, capability.Id);
             var label = $"{CapabilityName(capability.Id)} · " +
                         $"{(capability.IsRequired ? "Required" : "Optional")} · {DecisionLabel(decision)}";
             var button = UI.Button(label, $"capability.select.{index}", $"capability.item.{index}")
                 .Disabled(!consentValid).Busy(busy)
                 .Selected(decision == ConsentDecision.Grant).Classes("setting-row");
-            if (offset > 0) button = button.FocusUp($"capability.item.{index - 1}");
-            if (offset + 1 < visible.Length) button = button.FocusDown($"capability.item.{index + 1}");
             children.Add(button);
         }
-        if (visible.Length == 0)
+        if (package.Capabilities.Count == 0)
             children.Add(UI.Text("This package declares no supported capabilities.",
                 "capabilities.empty", "No supported capabilities").Classes("page-help"));
-        children.Add(UI.Button("Back", "back", "capabilities.back").Classes("secondary-button"));
-        var scope = UI.Stack("capabilities.package", children.ToArray())
+        LinkVertical(children);
+        var scope = UI.VerticalScroll("capabilities.package", children.ToArray())
             .InputScope("capabilities.package")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "capability.previous-page");
-        if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "capability.next-page");
-        var initial = visible.Length == 0 ? "capabilities.back" : $"capability.item.{start}";
+        var selectedIndex = package.Capabilities
+            .Select((capability, index) => (capability, index))
+            .FirstOrDefault(item => string.Equals(
+                item.capability.Id, selectedCapabilityId, StringComparison.Ordinal)).index;
+        var hasSelectedCapability = selectedCapabilityId is not null &&
+            package.Capabilities.Any(capability => string.Equals(
+                capability.Id, selectedCapabilityId, StringComparison.Ordinal));
+        var initial = package.Capabilities.Count == 0
+            ? null
+            : $"capability.item.{(hasSelectedCapability ? selectedIndex : 0)}";
         return View(header, scope, initial, "capabilities.package");
     }
 
@@ -413,9 +405,8 @@ public sealed partial class SettingsWidget
         children.Add(UI.Button(granted ? "Revoke access" : "Block access",
                 "capability.deny", "capability.deny")
             .Disabled(!consentValid).Busy(busy).Classes("danger-button"));
-        children.Add(UI.Button("Back", "back", "capability.back").Classes("secondary-button"));
         LinkVertical(children);
-        var scope = UI.Stack("capability.decision", children.ToArray())
+        var scope = UI.VerticalScroll("capability.decision", children.ToArray())
             .InputScope("capability.decision")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
@@ -427,9 +418,8 @@ public sealed partial class SettingsWidget
         StackElement header, string message, string scopeId) => View(header,
         PageScope(scopeId,
             UI.Text(message, scopeId + ".error", "Permission selection unavailable")
-                .Classes("diagnostic-error"),
-            UI.Button("Back", "back", scopeId + ".back").Classes("secondary-button")),
-        scopeId + ".back", scopeId);
+                .Classes("diagnostic-error")),
+        null, scopeId);
 
     private async Task ChangeConsentAsync(
         ConsentDecision decision, CancellationToken cancellationToken)
@@ -493,7 +483,6 @@ public sealed partial class SettingsWidget
             _selectedPackageId = package.Id;
             _selectedPublisherId = package.AuthorityPublisher;
             _selectedCapabilityId = null;
-            _capabilityPage = 0;
             _page = SettingsPage.PackageCapabilities;
         }
         Invalidate();
@@ -509,29 +498,6 @@ public sealed partial class SettingsWidget
                 return;
             _selectedCapabilityId = package.Capabilities[index].Id;
             _page = SettingsPage.CapabilityDecision;
-        }
-        Invalidate();
-    }
-
-    private void ChangePermissionPackagePage(int delta)
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.Permissions) return;
-            _permissionPackagePage = Math.Clamp(_permissionPackagePage + delta, 0,
-                LastPage(_permissionPackages.Count, PermissionPackagesPerPage));
-        }
-        Invalidate();
-    }
-
-    private void ChangeCapabilityPage(int delta)
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.PackageCapabilities) return;
-            var package = SelectedPackageLocked();
-            _capabilityPage = Math.Clamp(_capabilityPage + delta, 0,
-                LastPage(package?.Capabilities.Count ?? 0, CapabilitiesPerPage));
         }
         Invalidate();
     }
@@ -552,8 +518,6 @@ public sealed partial class SettingsWidget
 
     private static string ConsentKey(string packageId, string publisherId, string capabilityId) =>
         packageId + "\n" + publisherId + "\n" + capabilityId;
-
-    private static int LastPage(int count, int pageSize) => Math.Max(0, (count - 1) / pageSize);
 
     private static string DecisionLabel(ConsentDecision? decision) => decision switch
     {
@@ -581,6 +545,8 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.NetworkBluetoothRadioControlV1 => "Turn Bluetooth on or off",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.RecentActivityActivateV1 => "Switch to a running app",
+        PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
+        PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
         _ => "Unsupported capability",
     };
 
@@ -628,6 +594,12 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.RecentActivityActivateV1 =>
             "Switch to a still-running observed application while the widget is interactive. " +
             "It cannot launch executables, reopen closed apps, or access their process and window identifiers.",
+        PlatformCapabilities.MediaSessionsReadV1 =>
+            "See sanitized app, title, artist, playback, progress, and supported-control state from " +
+            "Windows media sessions. Widgets never receive package IDs, process IDs, paths, handles, or native objects.",
+        PlatformCapabilities.MediaSessionsControlV1 =>
+            "Use only the play, pause, previous, and next actions that Windows reports as supported " +
+            "while the widget is interactive. It cannot automate an app or access its account.",
         _ => "This capability is not supported.",
     };
 

@@ -1,6 +1,8 @@
 using System.IO.Pipes;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
@@ -13,9 +15,12 @@ public sealed class WidgetWorkerServer
     private readonly string _pipeName;
     private readonly int _maximumMessageBytes;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<bool>>
+        _dashboardGestureActivations = new();
     private LengthPrefixedJsonChannel? _channel;
     private CancellationToken _runCancellation;
     private long _sequence;
+    private long _dashboardGestureActivationId;
 
     public WidgetWorkerServer(
         Widget widget,
@@ -47,6 +52,8 @@ public sealed class WidgetWorkerServer
             ? maximumMessageBytes
             : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
         _widget.AttachHostServices(hostServices ?? throw new ArgumentNullException(nameof(hostServices)));
+        if (hostServices.Capabilities is IDashboardGestureActivatingCapabilityClient activatingClient)
+            activatingClient.SetDashboardGestureActivator(ActivateDashboardGestureAuthorityAsync);
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -71,28 +78,146 @@ public sealed class WidgetWorkerServer
         try
         {
             await _widget.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            while (!cancellationToken.IsCancellationRequested)
+            using var requestLoopCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var requests = Channel.CreateBounded<RuntimeEnvelope>(new BoundedChannelOptions(
+                Widget.ControllerActionQueueCapacity + 1)
             {
-                var request = await _channel.ReadAsync(cancellationToken).ConfigureAwait(false);
-                if (request.RequestId == 0)
-                    throw new WidgetProtocolViolationException("Host requests require a non-zero request ID.");
-
-                if (request.Type == MessageTypes.Stop)
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.Wait,
+                AllowSynchronousContinuations = false,
+            });
+            Exception? readerFailure = null;
+            var pendingRequests = 0;
+            var stopQueued = false;
+            var processor = ProcessRequestsAsync(
+                requests.Reader, requestLoopCancellation);
+            try
+            {
+                while (!requestLoopCancellation.IsCancellationRequested)
                 {
-                    await ReplyAsync(MessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
+                    var request = await _channel.ReadAsync(requestLoopCancellation.Token)
                         .ConfigureAwait(false);
-                    break;
-                }
+                    if (request.RequestId == 0 &&
+                        request.Type == MessageTypes.DashboardGestureActivationResult)
+                    {
+                        CompleteDashboardGestureActivation(request.Payload);
+                        continue;
+                    }
+                    if (request.RequestId == 0)
+                        throw new WidgetProtocolViolationException(
+                            "Host requests require a non-zero request ID.");
 
+                    if (request.Type == MessageTypes.Stop)
+                    {
+                        if (stopQueued)
+                        {
+                            await ReplyAsync(MessageTypes.Error, request.RequestId,
+                                    new ErrorPayload("worker_stopping", "Worker shutdown is already queued."),
+                                    requestLoopCancellation.Token)
+                                .ConfigureAwait(false);
+                            continue;
+                        }
+                        stopQueued = true;
+                        if (!requests.Writer.TryWrite(request))
+                            throw new WidgetProtocolViolationException(
+                                "The bounded worker request queue rejected its reserved stop slot.");
+                        continue;
+                    }
+
+                    if (stopQueued)
+                    {
+                        await ReplyAsync(MessageTypes.Error, request.RequestId,
+                                new ErrorPayload("worker_stopping", "Worker shutdown is already queued."),
+                                requestLoopCancellation.Token)
+                            .ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (Interlocked.Increment(ref pendingRequests) >
+                        Widget.ControllerActionQueueCapacity)
+                    {
+                        Interlocked.Decrement(ref pendingRequests);
+                        await ReplyAsync(MessageTypes.Error, request.RequestId,
+                                new ErrorPayload("worker_busy", "The worker request queue is full."),
+                                requestLoopCancellation.Token)
+                            .ConfigureAwait(false);
+                        continue;
+                    }
+                    if (!requests.Writer.TryWrite(request))
+                    {
+                        Interlocked.Decrement(ref pendingRequests);
+                        throw new WidgetProtocolViolationException(
+                            "The bounded worker request queue rejected an admitted request.");
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (requestLoopCancellation.IsCancellationRequested)
+            {
+                // Graceful Stop and caller cancellation both wake the sole pipe reader.
+            }
+            catch (Exception exception)
+            {
+                readerFailure = exception;
+                requestLoopCancellation.Cancel();
+            }
+            finally
+            {
+                requests.Writer.TryComplete(readerFailure);
+            }
+
+            try
+            {
+                await processor.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (readerFailure is not null)
+            {
+                // Preserve the protocol or transport failure that stopped the reader.
+            }
+            if (readerFailure is not null)
+                throw readerFailure;
+
+            async Task ProcessRequestsAsync(
+                ChannelReader<RuntimeEnvelope> reader,
+                CancellationTokenSource loopCancellation)
+            {
                 try
                 {
-                    await HandleRequestAsync(request, cancellationToken).ConfigureAwait(false);
+                    await foreach (var request in reader.ReadAllAsync(loopCancellation.Token)
+                                       .ConfigureAwait(false))
+                    {
+                        if (request.Type == MessageTypes.Stop)
+                        {
+                            await ReplyAsync(
+                                    MessageTypes.Acknowledged, request.RequestId, new { },
+                                    loopCancellation.Token)
+                                .ConfigureAwait(false);
+                            return;
+                        }
+
+                        try
+                        {
+                            await HandleRequestAsync(request, loopCancellation.Token)
+                                .ConfigureAwait(false);
+                        }
+                        catch (Exception exception) when (exception is not OperationCanceledException)
+                        {
+                            await ReplyAsync(MessageTypes.Error, request.RequestId,
+                                    new ErrorPayload(
+                                        "worker_request_failed", SafeMessage(exception)),
+                                    loopCancellation.Token)
+                                .ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            Interlocked.Decrement(ref pendingRequests);
+                        }
+                    }
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                finally
                 {
-                    await ReplyAsync(MessageTypes.Error, request.RequestId,
-                            new ErrorPayload("worker_request_failed", SafeMessage(exception)), cancellationToken)
-                        .ConfigureAwait(false);
+                    loopCancellation.Cancel();
                 }
             }
         }
@@ -110,8 +235,57 @@ public sealed class WidgetWorkerServer
             }
             _widget.Invalidated -= OnInvalidated;
             _widget.ControllerActionFailed -= OnControllerActionFailed;
+            foreach (var activation in _dashboardGestureActivations.Values)
+                activation.TrySetResult(false);
+            _dashboardGestureActivations.Clear();
             _channel = null;
         }
+    }
+
+    private async ValueTask<bool> ActivateDashboardGestureAuthorityAsync(
+        WidgetCapabilityGestureContext gesture,
+        string capabilityId,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        if (!gesture.IsActive) return false;
+        var activationId = Interlocked.Increment(ref _dashboardGestureActivationId);
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dashboardGestureActivations.TryAdd(activationId, completion))
+            throw new WidgetProtocolViolationException(
+                "Duplicate dashboard gesture activation ID.");
+        try
+        {
+            await SendAsync(new RuntimeEnvelope
+            {
+                Type = MessageTypes.DashboardGestureActivationRequested,
+                Payload = RuntimeJson.ToElement(new DashboardGestureActivationRequestPayload(
+                    activationId,
+                    capabilityId,
+                    operationId,
+                    gesture.InputSequence,
+                    gesture.SnapshotSequence)),
+            }, cancellationToken).ConfigureAwait(false);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _runCancellation);
+            timeout.CancelAfter(TimeSpan.FromSeconds(2));
+            return await completion.Task.WaitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _dashboardGestureActivations.TryRemove(activationId, out _);
+        }
+    }
+
+    private void CompleteDashboardGestureActivation(JsonElement payload)
+    {
+        var result = RuntimeJson.FromElement<DashboardGestureActivationResultPayload>(payload);
+        if (result.ActivationId <= 0)
+            throw new WidgetProtocolViolationException(
+                "Dashboard gesture activation ID must be positive.");
+        if (_dashboardGestureActivations.TryGetValue(result.ActivationId, out var completion))
+            completion.TrySetResult(result.Authorized);
     }
 
     private async Task HandleRequestAsync(RuntimeEnvelope request, CancellationToken cancellationToken)
@@ -149,10 +323,17 @@ public sealed class WidgetWorkerServer
         case MessageTypes.ControllerInput:
             var input = RuntimeJson.FromElement<ControllerInputEvent>(request.Payload);
             ValidateControllerInput(input);
+            using (input.Context == ControllerInputContext.DashboardQuickAction
+                ? WidgetCapabilityInvocationContext.Enter(
+                    new WidgetCapabilityGestureContext(
+                        input.Sequence, input.SnapshotSequence))
+                : null)
+            {
             var handled = await _widget.OnControllerInputAsync(input, cancellationToken).ConfigureAwait(false);
             await ReplyAsync(MessageTypes.ControllerInputResult, request.RequestId,
                     new ControllerInputResultPayload(handled), cancellationToken)
                 .ConfigureAwait(false);
+            }
             break;
         default:
             throw new WidgetProtocolViolationException($"Unknown request type '{request.Type}'.");
@@ -252,6 +433,9 @@ public sealed class WidgetWorkerServer
             throw new WidgetProtocolViolationException("Input sequence and timestamp cannot be negative.");
         if (input.RequestedValue is { } requested && !double.IsFinite(requested))
             throw new WidgetProtocolViolationException("Requested controller value must be finite.");
+        if (input.Context == ControllerInputContext.DashboardQuickAction && input.SnapshotSequence <= 0)
+            throw new WidgetProtocolViolationException(
+                "Dashboard input requires a positive snapshot sequence.");
         if (input.Context == ControllerInputContext.OpenWidget &&
             (input.SnapshotSequence <= 0 || string.IsNullOrWhiteSpace(input.ActiveInputScopeId) ||
              input.ActiveInputScopeId.Length > 128 ||

@@ -7,22 +7,26 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     private readonly INetworkPlatformBrokerBackend _network;
     private readonly IActivityPlatformBrokerBackend _activity;
     private readonly IBluetoothPlatformBrokerBackend _bluetooth;
+    private readonly IMediaPlatformBrokerBackend _media;
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
         IAudioPlatformBrokerBackend audio,
         INetworkPlatformBrokerBackend network,
         IActivityPlatformBrokerBackend? activity = null,
-        IBluetoothPlatformBrokerBackend? bluetooth = null)
+        IBluetoothPlatformBrokerBackend? bluetooth = null,
+        IMediaPlatformBrokerBackend? media = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _network = network ?? throw new ArgumentNullException(nameof(network));
         _activity = activity ?? UnavailableActivityPlatformBrokerBackend.Instance;
         _bluetooth = bluetooth ?? UnavailableBluetoothPlatformBrokerBackend.Instance;
+        _media = media ?? UnavailableMediaPlatformBrokerBackend.Instance;
         _audio.EventPublished += ForwardAudioEvent;
         _network.EventPublished += ForwardNetworkEvent;
         _activity.EventPublished += ForwardActivityEvent;
         _bluetooth.EventPublished += ForwardBluetoothEvent;
+        _media.EventPublished += ForwardMediaEvent;
     }
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
@@ -100,6 +104,16 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         string activityId, CancellationToken cancellationToken) =>
         _activity.ActivateRecentActivityAsync(activityId, cancellationToken);
 
+    public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
+        CancellationToken cancellationToken) =>
+        _media.GetMediaSessionsAsync(cancellationToken);
+
+    public Task ControlMediaSessionAsync(
+        string sessionId,
+        MediaSessionCommand command,
+        CancellationToken cancellationToken) =>
+        _media.ControlMediaSessionAsync(sessionId, command, cancellationToken);
+
     private void ForwardAudioEvent(object? sender, BrokerPlatformEvent platformEvent)
     {
         if (platformEvent.CapabilityId is PlatformCapabilities.AudioSessionsReadV1 or
@@ -129,6 +143,12 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
             EventPublished?.Invoke(this, platformEvent);
     }
 
+    private void ForwardMediaEvent(object? sender, BrokerPlatformEvent platformEvent)
+    {
+        if (platformEvent.CapabilityId == PlatformCapabilities.MediaSessionsReadV1)
+            EventPublished?.Invoke(this, platformEvent);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -136,6 +156,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         _network.EventPublished -= ForwardNetworkEvent;
         _activity.EventPublished -= ForwardActivityEvent;
         _bluetooth.EventPublished -= ForwardBluetoothEvent;
+        _media.EventPublished -= ForwardMediaEvent;
         if (_audio is IAsyncDisposable asyncAudio)
             await asyncAudio.DisposeAsync().ConfigureAwait(false);
         else if (_audio is IDisposable audio)
@@ -161,6 +182,14 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
                 await asyncBluetooth.DisposeAsync().ConfigureAwait(false);
             else if (_bluetooth is IDisposable bluetooth)
                 bluetooth.Dispose();
+        }
+        if (!ReferenceEquals(_media, _audio) && !ReferenceEquals(_media, _network) &&
+            !ReferenceEquals(_media, _activity) && !ReferenceEquals(_media, _bluetooth))
+        {
+            if (_media is IAsyncDisposable asyncMedia)
+                await asyncMedia.DisposeAsync().ConfigureAwait(false);
+            else if (_media is IDisposable media)
+                media.Dispose();
         }
     }
 
@@ -192,5 +221,23 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken) =>
             Task.FromException(
                 new BrokerException("platform_unavailable", "Bluetooth radio control is unavailable."));
+    }
+
+    private sealed class UnavailableMediaPlatformBrokerBackend : IMediaPlatformBrokerBackend
+    {
+        internal static UnavailableMediaPlatformBrokerBackend Instance { get; } = new();
+        public event EventHandler<BrokerPlatformEvent>? EventPublished { add { } remove { } }
+
+        public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromException<IReadOnlyList<MediaSessionSummary>>(
+                new BrokerException("platform_unavailable", "Windows media sessions are unavailable."));
+
+        public Task ControlMediaSessionAsync(
+            string sessionId,
+            MediaSessionCommand command,
+            CancellationToken cancellationToken) =>
+            Task.FromException(
+                new BrokerException("platform_unavailable", "Windows media session control is unavailable."));
     }
 }

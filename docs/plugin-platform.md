@@ -17,10 +17,20 @@ This is less visually unconstrained than giving every widget a browser or native
 
 ### Built-in modules
 
-Trusted and shipped with the host. They implement the public widget interfaces;
-bundled Settings and YT Music temporarily run out of process under the trusted
-Job-only policy because they need desktop-user resources not yet brokered.
-Privileged OS and service integrations remain behind internal providers.
+Shipped with the host, but not all receive a trusted process exception. The
+host catalog's ordered `bundledWidgets` entries point at ordinary manifest-
+backed packages and supply only shell identity, package location, icon, and
+optional presentation metadata. Audio Mixer, Network Controls, Recent Apps,
+and Now Playing derive code identity, publisher, permissions, resource request,
+residency, and styles from those manifests and use the same generic worker,
+package-specific AppContainer, broker, lifecycle, and renderer as community
+packages. A Windows conformance suite exercises that complete path for all four.
+
+Settings and YT Music are the only temporary trusted Job-only entries because
+their current desktop-user dependencies are not yet brokered. A package cannot
+request that exception. Privileged OS and service integrations remain behind
+authenticated, task-shaped providers; being bundled does not bypass manifest
+declaration or user consent.
 
 ### Community executable widgets
 
@@ -76,7 +86,10 @@ Example manifest:
   },
   "permissions": [],
   "optionalPermissions": [],
-  "backgroundPolicy": "none",
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "keep-alive"
+  },
   "resourceRequest": { "memoryMb": 48, "updateHz": 1 },
   "architectures": ["x64", "arm64"]
 }
@@ -91,6 +104,13 @@ and Bridge accepts only its closed capability vocabulary before execution.
 Publisher signature/certificate/revocation validation and a signed content
 manifest are planned, not current enforcement. Requested budgets are never
 permission to exceed host maximums.
+
+The host catalog deliberately separates `widgets` from `bundledWidgets`.
+`widgets` is the small host-owned trusted-exception list. `bundledWidgets`
+resolves a pinned package root and manifest through `WidgetWorkerHost` using the
+same isolation policy as an installed package. This keeps a first-party
+reference implementation honest: it cannot rely on an SDK or broker shortcut
+that an independent author lacks.
 
 ## Worker lifecycle
 
@@ -118,19 +138,26 @@ require an intermediate Visible transition before Interactive.
 - Disable automatic restart after a small crash-loop threshold.
 - Provide Restart, Disable, Permissions, and Resource Use surfaces through the controller.
 
-The implemented subset uses host-authoritative `Created`, `Background`,
+The runtime uses host-authoritative `Created`, `Background`,
 `Visible`, `Interactive`, and `Destroying` states independent of process
 residency. The runtime owns Created/Destroying; the native host publishes
 Visible for a selected bridge card, Interactive for the open widget, and
 Background on selection change or overlay hide. SDK lifecycle tokens and
-bounded tickers stop presentation work, but the supervisor keeps Background
-processes resident by default.
+bounded tickers stop presentation work. Process residency is a separate,
+manifest-declared host policy.
 
-The final policy vocabulary is `keep-alive` (default),
-`suspend-when-hidden`, and `unload-after-idle` (both opt-in). Current manifest
-`backgroundPolicy` validation accepts prototype `none`/`suspend` metadata, but
-does not enforce these lifecycle choices or background permissions yet. A
-schema migration is required before the final policy names become public API.
+`residencyPolicy` schema 1 supports `keep-alive` (default),
+`suspend-when-hidden`, and `unload-after-idle`. Idle unload requires an explicit
+bounded `idleSeconds`; the supervisor never infers it from CPU, memory, or an
+inactive-widget heuristic. Prototype manifest-v1 `backgroundPolicy` remains a
+strict migration alias: `none` resolves to `keep-alive`, and `suspend` resolves
+to `suspend-when-hidden`. Declaring both old and new fields is rejected.
+
+Suspension is logical lifecycle suspension, not OS thread suspension. Hidden
+suspended widgets receive `Background`, lose broker authority and presentation
+delivery, and remain responsible for canceling author work through the SDK
+lifetime tokens. Idle unload additionally sends `Destroying`, retains the last
+validated snapshot in the bridge, and recreates the worker lazily on visibility.
 
 ## IPC
 
@@ -176,6 +203,16 @@ Initial primitives:
 - Composition: reusable `Card`, `Toolbar`, `Dialog`, and `EmptyState` roles
 
 Every element has a stable semantic ID, role, label, state, style classes, and optional explicit directional neighbors. The host rejects duplicate IDs, impossible focus graphs, excessive depth, or oversized trees.
+
+The implemented Phase 0 protocol currently renders Stack, Row, Scroll, Text,
+Button, Progress, Slider, Spacer, Image, and Icon. The public SDK composes those
+nodes into controller-safe ToggleButton, Stepper, IconButton, Card,
+SectionHeader, StatusBadge, Divider, Alert, EmptyState, SegmentedTabs, Switch,
+and ScopedDialog helpers. These helpers publish stable focus behavior,
+accessibility labels, selected/disabled semantics, nested B handling, and
+documented `gbar-*` theme hooks; they are not privileged renderer nodes. Grid,
+Separator, List, Chart, Toolbar, and richer primitives in the target list above
+remain future contract work.
 
 The SDK should offer idiomatic builders so developers do not manually serialize protocol messages:
 
@@ -225,6 +262,15 @@ public sealed class ClockWidget : Widget
   widget or bubble to the root.
 - Dashboard quick actions remain a distinct bounded host surface and do not
   participate in open-widget scope lookup.
+- A quick action may optionally name one typed control capability and operation.
+  While that card remains Visible, the bridge may record a dormant host-owned
+  reservation for at most 10 seconds, bound to the exact widget/session, cached
+  snapshot, button, positive input sequence, capability, and operation. This is
+  not broker authority. Only when the exact typed operation is invoked does the
+  runtime atomically activate a one-use identity/PID-bound broker lease for at
+  most two seconds. This never promotes the widget to Interactive, authorizes a
+  subscription/background task, or bypasses manifest declaration, user consent,
+  payload validation, or provider policy; widget code cannot mint either stage.
 - A widget cannot open the controller device itself or register global input.
 - If a widget becomes unresponsive, the host retakes shell focus and offers recovery.
 
@@ -232,11 +278,25 @@ public sealed class ClockWidget : Widget
 
 Default deny. Prefer task-shaped broker operations over broad access.
 
-Candidate capabilities:
+The implemented closed set currently covers typed audio, Wi-Fi/network,
+Bluetooth, recent-activity, and system-media-session reads/controls; see
+[widget capabilities](capabilities.md) for the authoritative IDs and lifecycle
+rules. Candidate capability domains are:
 
 - `storage.own`: private bounded widget storage
-- `network.client:<declared-domain>`: brokered HTTPS to an allowlisted domain
-- `system.media.read` / `system.media.control`
+- `storage.secret.own`: host-protected per-widget secrets whose values are
+  returned only to the same authenticated package instance under explicit
+  policy; no cross-widget enumeration
+- `network.loopback.client`: brokered access to a declared local companion. The
+  manifest supplies bounded endpoint constraints such as protocol and one port
+  or port range; those are enforcement parameters, not separate user-facing
+  permission IDs. The initial design allows no subnet/LAN authority, unsafe
+  redirects, proxy inheritance, or ambient sockets.
+- `network.internet.client`: brokered HTTPS whose manifest declaration carries
+  one or more allowlisted domains as constraints rather than minting a separate
+  permission ID for each host
+- `network.local-network.client`: separately reviewed access to declared LAN
+  services; never inherited from loopback or internet authority
 - `system.audio.sessions.read` / `system.audio.sessions.control`
 - `system.performance.read`
 - `system.processes.read-summary`
@@ -301,14 +361,20 @@ Available now:
   `gbar version list|select|rollback` commands;
 - `gbar theme new|validate|preview|pack|inspect|install|list` for deterministic,
   bounded, data-only global themes;
+- `gbar dev` for an unsigned, session-only source/project/package edit loop.
+  It watches the complete bounded pack input, builds with a deadline, and uses
+  the normal generic worker/AppContainer/broker/lifecycle/renderer path. A
+  controller/hotkey-free candidate must authenticate its exact catalog, widget,
+  instance, and nonce and render a protocol-valid snapshot before the last-good
+  interactive generation is replaced. Failed generations retain or restart
+  last good, and shutdown reports unreclaimed process/directory state;
 - `WidgetWorkerBootstrap`, `WidgetTestHost`, and typed fake host services; and
-- first-party Audio Mixer and Network Controls projects as public-SDK,
-  brokered-capability reference implementations.
+- first-party Audio Mixer, Network Controls, Recent Apps, and Now Playing
+  projects as generic-AppContainer, public-SDK, brokered-capability reference
+  implementations, plus a packaged 4/4 conformance harness.
 
 Remaining tooling:
 
-- `gbar dev` for an unsigned development bundle, file watching, and restart of
-  only that worker;
 - desktop/controller simulation with visual focus-graph inspection;
 - manifest/theme schemas for editors and CI;
 - resource-budget, responsiveness, accessibility, and controller-only
@@ -317,9 +383,10 @@ Remaining tooling:
 - native graphical theme preview plus package remove/update discovery; and
 - an SDK Gallery widget covering the complete public primitive/state matrix.
 
-A future `gbar dev` mode may permit unsigned local packages only while retaining
-the same mandatory isolation, displaying a persistent warning, and disabling
-automatic background activation.
+`gbar dev` is local development tooling, not an install, signature, or publisher
+trust decision. It does not mutate the user's installed catalog, grant consent,
+or weaken AppContainer policy. A persistent shell warning and richer controller
+diagnostics remain UX work.
 
 ## Versioning and distribution
 

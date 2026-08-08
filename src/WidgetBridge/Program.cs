@@ -5,6 +5,7 @@ using GameBarAlternative.WindowsAudioProvider;
 using GameBarAlternative.WindowsNetworkProvider;
 using GameBarAlternative.WindowsActivityProvider;
 using GameBarAlternative.WindowsBluetoothProvider;
+using GameBarAlternative.WindowsMediaProvider;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -28,7 +29,7 @@ internal static class Program
             var settingsPaths = PlatformSettingsPaths.CreateDefault();
             var installationRoot = Path.GetDirectoryName(Path.GetFullPath(catalogPath))
                 ?? Environment.CurrentDirectory;
-            var installedCatalogRoot = Path.Combine(settingsPaths.RootDirectory, "widgets");
+            var installedCatalogRoot = ResolveInstalledCatalogRoot(args, settingsPaths.RootDirectory);
             var workerHostExecutable = Path.Combine(
                 installationRoot, "runtime", "WidgetWorkerHost", "WidgetWorkerHost.exe");
             var catalogLoad = await BridgeCatalog.LoadWithInstalledAsync(
@@ -59,7 +60,8 @@ internal static class Program
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend(),
                 new WindowsActivityPlatformBackend(),
-                new WindowsBluetoothPlatformBackend());
+                new WindowsBluetoothPlatformBackend(),
+                new WindowsMediaPlatformBackend());
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor);
@@ -91,5 +93,27 @@ internal static class Program
             value < minimum || value > maximum)
             throw new ArgumentException($"Invalid value for {name}.");
         return value;
+    }
+
+    private static string? OptionalValue(string[] args, string name)
+    {
+        var matches = Enumerable.Range(0, args.Length)
+            .Where(index => string.Equals(args[index], name, StringComparison.Ordinal))
+            .ToArray();
+        if (matches.Length == 0) return null;
+        if (matches.Length != 1 || matches[0] + 1 >= args.Length ||
+            string.IsNullOrWhiteSpace(args[matches[0] + 1]) ||
+            args[matches[0] + 1].StartsWith("--", StringComparison.Ordinal))
+            throw new ArgumentException($"Invalid value for {name}.");
+        return args[matches[0] + 1];
+    }
+
+    internal static string ResolveInstalledCatalogRoot(string[] args, string settingsRoot)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        ArgumentException.ThrowIfNullOrWhiteSpace(settingsRoot);
+        return OptionalValue(args, "--installed-catalog-root") is { } requestedCatalog
+            ? Path.GetFullPath(requestedCatalog)
+            : Path.Combine(Path.GetFullPath(settingsRoot), "widgets");
     }
 }

@@ -3,6 +3,18 @@ using GameBarAlternative.WidgetSdk;
 namespace GameBarAlternative.WidgetRuntime;
 
 /// <summary>
+/// Trusted host metadata for one dashboard gesture. It never crosses the
+/// widget-worker protocol and can only be installed through the companion
+/// bound to the worker process.
+/// </summary>
+public sealed record WidgetDashboardGestureAuthority(
+    string CapabilityId,
+    string OperationId,
+    long InputSequence,
+    long SnapshotSequence,
+    TimeSpan ValidFor);
+
+/// <summary>
 /// A host-owned service channel that is created afresh for each worker process.
 /// The worker receives only the bounded launch arguments; it cannot select the
 /// companion identity or implementation.
@@ -20,6 +32,14 @@ public interface IWidgetProcessCompanionSession : IAsyncDisposable
     Task SetLifecycleStateAsync(
         WidgetLifecycleState state,
         CancellationToken cancellationToken = default);
+    Task GrantDashboardGestureAuthorityAsync(
+        WidgetDashboardGestureAuthority authority,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException(new NotSupportedException(
+            "This companion does not provide a capability broker."));
+    Task RevokeDashboardGestureAuthorityAsync(
+        long inputSequence,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 /// <summary>

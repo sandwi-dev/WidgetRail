@@ -33,6 +33,8 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothRadioControlV1 = "system.network.bluetooth.radio.control.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
     public const string RecentActivityActivateV1 = "system.activity.recent.activate.v1";
+    public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
+    public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
 
     public const string AudioSessionsList = "audio.sessions.list";
     public const string AudioSessionSetVolume = "audio.session.set-volume";
@@ -56,6 +58,8 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothRadioSet = "network.bluetooth.radio.set";
     public const string RecentActivitiesList = "activity.recent.list";
     public const string RecentActivityActivate = "activity.recent.activate";
+    public const string MediaSessionsGet = "media.sessions.get";
+    public const string MediaSessionControl = "media.session.control";
 
     public const string AudioSessionsChanged = "audio.sessions.changed";
     public const string AudioOutputChanged = "audio.output.changed";
@@ -66,6 +70,7 @@ public static class PlatformCapabilities
     public const string NetworkWifiRadioChanged = "network.wifi.radio.changed";
     public const string NetworkBluetoothChanged = "network.bluetooth.changed";
     public const string RecentActivitiesChanged = "activity.recent.changed";
+    public const string MediaSessionsChanged = "media.sessions.changed";
 
     private static readonly IReadOnlyDictionary<string, BrokerCapabilityDefinition> Definitions =
         new Dictionary<string, BrokerCapabilityDefinition>(StringComparer.Ordinal)
@@ -104,6 +109,10 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Read, Set(RecentActivitiesList), Set(RecentActivitiesChanged)),
             [RecentActivityActivateV1] = new(RecentActivityActivateV1, 1,
                 BrokerCapabilityKind.Control, Set(RecentActivityActivate), Set()),
+            [MediaSessionsReadV1] = new(MediaSessionsReadV1, 1,
+                BrokerCapabilityKind.Read, Set(MediaSessionsGet), Set(MediaSessionsChanged)),
+            [MediaSessionsControlV1] = new(MediaSessionsControlV1, 1,
+                BrokerCapabilityKind.Control, Set(MediaSessionControl), Set()),
         };
 
     public static IReadOnlyCollection<BrokerCapabilityDefinition> All { get; } =

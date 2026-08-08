@@ -40,6 +40,9 @@ GBSS design constrained by controller navigation and overlay performance.
 | Icon action | `IconButton` | One closed semantic glyph, required accessible name, controller target size/variant classes. |
 | Grouping | `Card`, `SectionHeader`, `Divider` | Nonfocusable visual hierarchy with stable generated child IDs. |
 | Status | `StatusBadge`, `Alert`, `EmptyState` | Non-color state cues and at most one explicit recovery action. |
+| Tabs | `SegmentedTabs` | Stable author IDs, semantic selected state, explicit Left/Right neighbors. |
+| Switch | `Switch` | One focus stop with visible/audible On/Off state; Disabled remains focusable. |
+| Scoped dialog | `ScopedDialog` | Nested input scope and focus-independent B action; widget publishes active scope/focus. |
 
 These primitives are deliberately small. Reusable components should normally
 be SDK composition helpers that emit the same bounded tree rather than new
@@ -64,6 +67,15 @@ semantic classes. They do not add worker code, polling, or a new native node:
 - `UI.Divider(...)` is decorative spacing/separation and never enters focus.
 - `UI.Alert(...)` and `UI.EmptyState(...)` provide concise title/message content
   and zero or one `ComponentAction`. That action is their only focus stop.
+- `UI.SegmentedTabs(...)` accepts two or more stable `SegmentedTab` records,
+  links every button explicitly for cyclic Left/Right navigation, and publishes
+  selected state without owning or hiding the selected content. Boundary input
+  therefore remains in the tab group instead of escaping through geometry.
+- `UI.Switch(...)` is one stable Button focus stop with visible and accessible
+  On/Off state. Disabled suppresses activation but does not remove focus.
+- `UI.ScopedDialog(...)` creates a styled nested input scope with B bound on the
+  scope container. When shown, publish its `scopeId` as `ActiveInputScopeId` and
+  a focusable descendant as `InitialFocusId`; restore the opener when dismissed.
 
 Use `.AddClasses(...)` to add widget-specific styling while preserving and
 deduplicating required component classes. `.Classes(...)` remains the explicit
@@ -85,6 +97,9 @@ diagnostics, but must not reuse them for another node in the same snapshot.
 | `Divider(id)` | None; the Spacer itself uses `id`. |
 | `Alert(..., id, action?, glyph?)` | `id.title`, `id.message`; optional `id.icon` and `id.action`. The optional recovery Button is `id.action`. |
 | `EmptyState(..., id, action?, glyph)` | `id.icon`, `id.title`, `id.message`; optional recovery Button `id.action`. |
+| `SegmentedTabs(id, selectedTabId, tabs)` | The Row uses `id`; each Button uses its author-provided `SegmentedTab.Id`. |
+| `Switch(..., id)` | None; the Button itself uses `id`. |
+| `ScopedDialog(..., id, scopeId, ...)` | `id.title` and `id.content`; supplied children retain their IDs. |
 
 Generated IDs use the same 128-character stable-ID grammar as ordinary nodes.
 The helper validates the parent and complete generated IDs eagerly, so leave
@@ -177,13 +192,9 @@ tested composition helpers or native semantics before authors depend on names:
    metadata focusable or inventing a polling contract.
 2. **List row / media row** — leading visual, primary/secondary text, trailing
    status/action, stable child-ID suffixes, and focus-ring-safe insets.
-3. **Switch and segmented/tabs helpers** — semantic state, one-dimensional
-   controller rules, and explicit selected content.
-4. **Dialog/detail helper** — nested input scope, deterministic initial focus,
-   explicit B back action, and focus restoration to the opener.
-5. **Select/listbox helper** — opens a nested scrollable scope instead of
+3. **Select/listbox helper** — opens a nested scrollable scope instead of
    cycling hidden values with bumpers or triggers.
-6. **Toast/notification model** — host-announced, time-bounded feedback that
+4. **Toast/notification model** — host-announced, time-bounded feedback that
    never steals focus; persistent failures remain in the owning surface.
 
 Each candidate must ship with protocol/SDK validation, controller routing,

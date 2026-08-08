@@ -1,5 +1,53 @@
 namespace GameBarAlternative.WidgetSdk;
 
+internal sealed class WidgetCapabilityGestureContext(
+    long inputSequence,
+    long snapshotSequence)
+{
+    private int _active = 1;
+    internal long InputSequence { get; } = inputSequence;
+    internal long SnapshotSequence { get; } = snapshotSequence;
+    internal bool IsActive => Volatile.Read(ref _active) != 0;
+    internal void Deactivate() => Interlocked.Exchange(ref _active, 0);
+}
+
+/// <summary>
+/// Private runtime context for the currently executing dashboard action. It is
+/// deliberately absent from the widget-author API; the broker adapter reads it
+/// only to bind an invocation to the host-issued authority.
+/// </summary>
+internal static class WidgetCapabilityInvocationContext
+{
+    private static readonly AsyncLocal<WidgetCapabilityGestureContext?> CurrentValue = new();
+
+    internal static WidgetCapabilityGestureContext? Current => CurrentValue.Value;
+
+    internal static IDisposable Enter(WidgetCapabilityGestureContext? value)
+    {
+        var previous = CurrentValue.Value;
+        CurrentValue.Value = value;
+        return new Scope(previous, value);
+    }
+
+    private sealed class Scope(
+        WidgetCapabilityGestureContext? previous,
+        WidgetCapabilityGestureContext? current) : IDisposable
+    {
+        private readonly WidgetCapabilityGestureContext? _previous = previous;
+        private readonly WidgetCapabilityGestureContext? _current = current;
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _current?.Deactivate();
+                CurrentValue.Value = _previous;
+            }
+        }
+    }
+}
+
 /// <summary>
 /// A typed, transport-neutral capability operation. Platform provider packages
 /// publish reusable instances; widget authors should not construct ad-hoc IDs.
@@ -85,12 +133,14 @@ public sealed class WidgetHostServices
         Audio = new WidgetAudioService(capabilityClient);
         Network = new WidgetNetworkService(capabilityClient);
         RecentActivity = new WidgetRecentActivityService(capabilityClient);
+        Media = new WidgetMediaService(capabilityClient);
     }
 
     public IWidgetCapabilityClient Capabilities { get; }
     public WidgetAudioService Audio { get; }
     public WidgetNetworkService Network { get; }
     public WidgetRecentActivityService RecentActivity { get; }
+    public WidgetMediaService Media { get; }
 
     internal static WidgetHostServices Unavailable { get; } =
         new(UnavailableWidgetCapabilityClient.Instance);

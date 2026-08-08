@@ -26,13 +26,13 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar help
 ```
 
-The widget commands are `new`, `validate`, `render`, `replay`, `pack`,
+The widget commands are `new`, `validate`, `dev`, `render`, `replay`, `pack`,
 `install`, `list`, `enable`, `disable`, and the `version list|select|rollback`
 group. The separate `theme` group provides
 `new`, `validate`, `preview`, `pack`, `inspect`, `install`, and `list` for
 data-only global themes. Remote install accepts an absolute HTTPS URL or a
-deterministic GitHub Release shorthand. There is no `gbar dev` watcher, GitHub
-publisher, signing command, automatic updater, or marketplace client.
+deterministic GitHub Release shorthand. There is no GitHub publisher, signing
+command, automatic updater, or marketplace client.
 
 ## Create and build a widget
 
@@ -43,6 +43,55 @@ publisher, signing command, automatic updater, or marketplace client.
   --publisher dev.example
 
 dotnet build .\scratch\VolumeControl\VolumeControl.csproj
+```
+
+For the normal edit/build/overlay loop, replace the manual build with:
+
+```powershell
+& $gbar dev .\scratch\VolumeControl
+```
+
+`gbar dev` validates the manifest and entry GBSS, runs a bounded child
+`dotnet build`, creates an immutable package generation, and launches it through
+the packaged native overlay. It does not load the widget DLL in the CLI. The
+bridge treats the temporary package exactly like an installed community widget:
+the generic worker host runs it in a package-specific AppContainer and the
+normal lifecycle, consent broker, controller routing, GBSS compiler, and native
+renderer remain in effect. Settings reads the same session catalog, so declared
+capabilities can be reviewed and granted through Permissions & capabilities.
+
+Project mode watches the root manifest/project, bounded C# sources outside
+`bin`/`obj`/`.git`, nearest `Directory.Build.props/targets`, and GBSS sources.
+Package-directory mode watches the complete bounded, reparse-safe input tree
+that `gbar pack` consumes, including supporting payload files, assets, and
+initially empty/new style directories. Handles are non-recursive per directory;
+new source directories are adopted through a bounded recapture, and events are
+debounced/coalesced.
+
+A hidden candidate first connects to WidgetBridge and reconciles the exact
+widget ID plus installed instance in that unique catalog generation. It owns no
+hotkey or controller input, transitions that widget to `Visible`, launches the
+generic worker, obtains a protocol-valid snapshot for the exact instance, and
+returns it to `Background`. A widget may render a valid permission-denied state;
+failure to construct the worker or render a valid snapshot rejects the
+generation. Only then may the candidate atomically return its session nonce in
+a private readiness record. The last-good overlay is stopped only after that
+bounded handshake succeeds; the interactive replacement authenticates the same
+generation before `gbar dev` prints `Ready`. Missing or forged readiness fails
+closed, while validation/compilation/startup failure retains or restarts the
+last-good generation. Ctrl+C verifies that the overlay/bridge/worker process
+tree exited and retries temporary-catalog removal. Any unreclaimed process or
+directory is reported as a cleanup failure; the normal user widget catalog is
+never changed.
+
+If automatic host discovery is not appropriate, select a complete packaged
+build explicitly:
+
+```powershell
+& $gbar dev .\scratch\VolumeControl `
+  --host .\src\OverlayHost\out\Release\OverlayHost.exe `
+  --configuration Release `
+  --build-timeout-seconds 180
 ```
 
 The starter contains:

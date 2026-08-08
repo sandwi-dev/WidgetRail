@@ -142,7 +142,35 @@ public sealed class WidgetBridgeServer(
         case BridgeMessageTypes.GetSnapshot:
             var snapshotRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
             var snapshotRegistration = GetClient(snapshotRequest.WidgetId);
-            var snapshot = await snapshotRegistration.Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            ViewSnapshot snapshot;
+            await snapshotRegistration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var residencyMode = WidgetResidencyPolicies.Resolve(
+                    snapshotRegistration.Configured.ResidencyPolicy).Mode;
+                var hiddenAndRestricted =
+                    snapshotRegistration.HostLifecycle == WidgetLifecycleState.Background &&
+                    residencyMode is WidgetResidencyMode.SuspendWhenHidden or
+                        WidgetResidencyMode.UnloadAfterIdle;
+                if (hiddenAndRestricted)
+                {
+                    snapshot = snapshotRegistration.CachedSnapshot ??
+                        throw new BridgeProtocolException(
+                            "A hidden suspended widget has no cached snapshot. Make it Visible before rendering.");
+                }
+                else
+                {
+                    snapshotRegistration.CancelIdleUnload();
+                    snapshot = await snapshotRegistration.Client.GetSnapshotAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    snapshotRegistration.CachedSnapshot = snapshot;
+                    ScheduleIdleUnload(snapshotRegistration);
+                }
+            }
+            finally
+            {
+                snapshotRegistration.OperationGate.Release();
+            }
             var configuredForStyle = snapshotRegistration.Configured;
             var theme = _appearance is null
                 ? configuredForStyle.CompiledTheme
@@ -167,23 +195,42 @@ public sealed class WidgetBridgeServer(
         case BridgeMessageTypes.SetWidgetLifecycle:
             var lifecycleRequest = BridgeJson.FromElement<BridgeWidgetLifecycleRequest>(request.Payload);
             ValidateHostState(lifecycleRequest.State);
-            await GetClient(lifecycleRequest.WidgetId).Client
-                .SetLifecycleStateAsync(lifecycleRequest.State, cancellationToken).ConfigureAwait(false);
+            var lifecycleRegistration = GetClient(lifecycleRequest.WidgetId);
+            await lifecycleRegistration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                lifecycleRegistration.CancelIdleUnload();
+                await lifecycleRegistration.Client
+                    .SetLifecycleStateAsync(lifecycleRequest.State, cancellationToken).ConfigureAwait(false);
+                lifecycleRegistration.HostLifecycle = lifecycleRequest.State;
+                ScheduleIdleUnload(lifecycleRegistration);
+            }
+            finally
+            {
+                lifecycleRegistration.OperationGate.Release();
+            }
             await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.Action:
             var actionRequest = BridgeJson.FromElement<BridgeActionRequest>(request.Payload);
-            await GetClient(actionRequest.WidgetId).Client.SendActionAsync(actionRequest.Action, cancellationToken)
-                .ConfigureAwait(false);
+            var actionRegistration = GetClient(actionRequest.WidgetId);
+            await WithResidentClientAsync(actionRegistration, cancellationToken,
+                client => client.SendActionAsync(actionRequest.Action, cancellationToken)).ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.ControllerInput:
             var controllerRequest = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
             ValidateControllerInput(controllerRequest.Input);
-            var handled = await GetClient(controllerRequest.WidgetId).Client
-                .SendControllerInputAsync(controllerRequest.Input, cancellationToken).ConfigureAwait(false);
+            var controllerRegistration = GetClient(controllerRequest.WidgetId);
+            var handled = await WithResidentClientAsync(controllerRegistration, cancellationToken,
+                client => client.SendControllerInputAsync(
+                    controllerRequest.Input,
+                    ResolveDashboardGestureAuthority(
+                        controllerRegistration, controllerRequest.Input),
+                    cancellationToken))
+                .ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,
                     new { handled }, cancellationToken).ConfigureAwait(false);
             break;
@@ -194,18 +241,120 @@ public sealed class WidgetBridgeServer(
             var quickAction = configured.QuickActions.SingleOrDefault(
                 action => string.Equals(action.Id, quickRequest.QuickActionId, StringComparison.Ordinal))
                 ?? throw new BridgeProtocolException($"Unknown quick action '{quickRequest.QuickActionId}'.");
-            await quickRegistration.Client.SendActionAsync(new WidgetActionEvent(
-                quickAction.ActionId,
-                quickAction.SourceElementId,
-                quickAction.ControllerButton,
-                ControllerEventPhase.Pressed,
-                quickRequest.Sequence,
-                quickRequest.MonotonicTimestampMicroseconds), cancellationToken).ConfigureAwait(false);
+            await WithResidentClientAsync(quickRegistration, cancellationToken,
+                client => client.SendActionAsync(new WidgetActionEvent(
+                    quickAction.ActionId,
+                    quickAction.SourceElementId,
+                    quickAction.ControllerButton,
+                    ControllerEventPhase.Pressed,
+                    quickRequest.Sequence,
+                    quickRequest.MonotonicTimestampMicroseconds), cancellationToken)).ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
             break;
         default:
             throw new BridgeProtocolException($"Unknown bridge request type '{request.Type}'.");
+        }
+    }
+
+    private async Task WithResidentClientAsync(
+        ClientRegistration registration,
+        CancellationToken cancellationToken,
+        Func<WidgetProcessClient, Task> operation)
+    {
+        await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            DemandInteractionAllowed(registration);
+            registration.CancelIdleUnload();
+            await operation(registration.Client).ConfigureAwait(false);
+            ScheduleIdleUnload(registration);
+        }
+        finally
+        {
+            registration.OperationGate.Release();
+        }
+    }
+
+    private async Task<T> WithResidentClientAsync<T>(
+        ClientRegistration registration,
+        CancellationToken cancellationToken,
+        Func<WidgetProcessClient, Task<T>> operation)
+    {
+        await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            DemandInteractionAllowed(registration);
+            registration.CancelIdleUnload();
+            var result = await operation(registration.Client).ConfigureAwait(false);
+            ScheduleIdleUnload(registration);
+            return result;
+        }
+        finally
+        {
+            registration.OperationGate.Release();
+        }
+    }
+
+    private static void DemandInteractionAllowed(ClientRegistration registration)
+    {
+        if (registration.HostLifecycle != WidgetLifecycleState.Background) return;
+        var mode = WidgetResidencyPolicies.Resolve(registration.Configured.ResidencyPolicy).Mode;
+        if (mode is WidgetResidencyMode.SuspendWhenHidden or WidgetResidencyMode.UnloadAfterIdle)
+            throw new BridgeProtocolException(
+                "Hidden interaction is disabled by this widget's residency policy.");
+    }
+
+    private void ScheduleIdleUnload(ClientRegistration registration)
+    {
+        var policy = WidgetResidencyPolicies.Resolve(registration.Configured.ResidencyPolicy);
+        if (policy.Mode != WidgetResidencyMode.UnloadAfterIdle ||
+            registration.HostLifecycle != WidgetLifecycleState.Background ||
+            !registration.Client.IsRunning || policy.IdleDuration is not { } delay)
+            return;
+
+        var (generation, cancellation) = registration.BeginIdleUnload(_sessionCancellation);
+        _ = RunIdleUnloadAsync(registration, generation, delay, cancellation.Token);
+    }
+
+    private async Task RunIdleUnloadAsync(
+        ClientRegistration registration,
+        long generation,
+        TimeSpan delay,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (!registration.IsIdleUnloadCurrent(generation) ||
+                    !IsCurrent(registration) ||
+                    registration.HostLifecycle != WidgetLifecycleState.Background ||
+                    !registration.Client.IsRunning ||
+                    WidgetResidencyPolicies.Resolve(registration.Configured.ResidencyPolicy).Mode !=
+                        WidgetResidencyMode.UnloadAfterIdle)
+                    return;
+
+                using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                shutdown.CancelAfter(TimeSpan.FromSeconds(3));
+                await registration.Client.UnloadAsync(shutdown.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                registration.OperationGate.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Visibility, a new operation, catalog replacement, or bridge
+            // shutdown canceled the eviction. None is a worker failure.
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Unload is best effort and bounded. WidgetProcessClient terminates
+            // an uncooperative process tree; the cached snapshot remains valid.
         }
     }
 
@@ -246,7 +395,7 @@ public sealed class WidgetBridgeServer(
             var registration = new ClientRegistration(configured, client);
             client.Invalidated += (_, revision) =>
             {
-                if (IsCurrent(registration)) _ = SendEventAsync(
+                if (IsCurrent(registration) && registration.MayPublishInvalidation) _ = SendEventAsync(
                     BridgeMessageTypes.Invalidation,
                     new BridgeInvalidation(configured.Id, revision));
             };
@@ -505,16 +654,22 @@ public sealed class WidgetBridgeServer(
         foreach (var entry in _clients.ToArray())
         {
             if (_clients.TryRemove(entry.Key, out var registration))
-                await registration.Client.DisposeAsync().ConfigureAwait(false);
+                await DisposeRegistrationAsync(registration).ConfigureAwait(false);
         }
     }
 
     private static async Task DisposeRegistrationAsync(ClientRegistration registration)
     {
+        registration.CancelIdleUnload();
+        await registration.OperationGate.WaitAsync().ConfigureAwait(false);
         try { await registration.Client.DisposeAsync().ConfigureAwait(false); }
         catch (Exception exception) when (exception is IOException or InvalidOperationException or ObjectDisposedException)
         {
             // A replaced worker is already unreachable; disposal is best effort.
+        }
+        finally
+        {
+            registration.OperationGate.Release();
         }
     }
 
@@ -534,12 +689,58 @@ public sealed class WidgetBridgeServer(
             throw new BridgeProtocolException("Focused element ID is too long.");
         if (input.RequestedValue is { } requested && !double.IsFinite(requested))
             throw new BridgeProtocolException("Requested controller value must be finite.");
+        if (input.Context == ControllerInputContext.DashboardQuickAction &&
+            (input.Sequence <= 0 || input.SnapshotSequence <= 0))
+            throw new BridgeProtocolException(
+                "Dashboard input requires positive input and snapshot sequences.");
         if (input.Context == ControllerInputContext.DashboardQuickAction && input.Button is
             ControllerButton.A or ControllerButton.B or ControllerButton.Y or
             ControllerButton.DPadUp or ControllerButton.DPadDown or
             ControllerButton.DPadLeft or ControllerButton.DPadRight)
             throw new BridgeProtocolException(
                 "A, B, Y, and D-pad input are owned by the dashboard and cannot be forwarded.");
+    }
+
+    private static WidgetDashboardGestureAuthority? ResolveDashboardGestureAuthority(
+        ClientRegistration registration,
+        ControllerInputEvent input)
+    {
+        if (input.Context != ControllerInputContext.DashboardQuickAction) return null;
+        if (registration.HostLifecycle != WidgetLifecycleState.Visible)
+            throw new BridgeProtocolException(
+                "Dashboard quick actions require the widget to remain Visible.");
+        var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
+            "Dashboard quick action has no cached rendered snapshot.");
+        if (snapshot.Sequence != input.SnapshotSequence)
+            throw new BridgeProtocolException(
+                "Dashboard quick action targets a stale snapshot sequence.");
+        var quickAction = snapshot.QuickActions.SingleOrDefault(
+            action => action.Button == input.Button) ?? throw new BridgeProtocolException(
+                "Dashboard button is not exposed by the cached snapshot.");
+        if (input.Phase != ControllerEventPhase.Pressed || quickAction.Capability is null)
+        {
+            registration.AcceptDashboardInputSequence(input.Sequence);
+            return null;
+        }
+
+        var requested = quickAction.Capability;
+        if (!PlatformCapabilities.TryGet(requested.CapabilityId, out var capability) ||
+            capability.Kind != BrokerCapabilityKind.Control ||
+            !capability.Operations.Contains(requested.OperationId))
+            throw new BridgeProtocolException(
+                "Dashboard quick action names an unsupported control operation.");
+        if (!registration.Configured.DeclaredCapabilities.Contains(
+                requested.CapabilityId, StringComparer.Ordinal))
+            throw new BridgeProtocolException(
+                "Dashboard quick action capability is not declared by its package.");
+
+        registration.AcceptDashboardInputSequence(input.Sequence);
+        return new WidgetDashboardGestureAuthority(
+            requested.CapabilityId,
+            requested.OperationId,
+            input.Sequence,
+            input.SnapshotSequence,
+            PlatformCapabilityBroker.MaximumDashboardGestureLifetime);
     }
 
     private static void ValidateHostState(WidgetLifecycleState state)
@@ -568,12 +769,69 @@ public sealed class WidgetBridgeServer(
             set => Volatile.Write(ref _configured, value);
         }
         public WidgetProcessClient Client { get; } = client;
+        public SemaphoreSlim OperationGate { get; } = new(1, 1);
+        private int _hostLifecycle = (int)WidgetLifecycleState.Background;
+        public WidgetLifecycleState HostLifecycle
+        {
+            get => (WidgetLifecycleState)Volatile.Read(ref _hostLifecycle);
+            set => Volatile.Write(ref _hostLifecycle, (int)value);
+        }
+        public ViewSnapshot? CachedSnapshot { get; set; }
+        private long _lastDashboardInputSequence;
+
+        public void AcceptDashboardInputSequence(long sequence)
+        {
+            if (sequence <= _lastDashboardInputSequence)
+                throw new BridgeProtocolException(
+                    "Dashboard controller input sequence was replayed.");
+            _lastDashboardInputSequence = sequence;
+        }
+        public bool MayPublishInvalidation =>
+            HostLifecycle != WidgetLifecycleState.Background ||
+            WidgetResidencyPolicies.Resolve(Configured.ResidencyPolicy).Mode ==
+                WidgetResidencyMode.KeepAlive;
+        private readonly object _residencyGate = new();
+        private CancellationTokenSource? _idleUnloadCancellation;
+        private long _idleUnloadGeneration;
         private WorkerFailureDiagnostic? _lastFailure;
         public WorkerFailureDiagnostic? LastFailure => Volatile.Read(ref _lastFailure);
 
         public void RecordFailure(WidgetFailure failure) => Volatile.Write(
             ref _lastFailure,
             new WorkerFailureDiagnostic(failure.Reason.ToString(), failure.CanRestart));
+
+        public (long Generation, CancellationTokenSource Cancellation) BeginIdleUnload(
+            CancellationToken bridgeCancellation)
+        {
+            lock (_residencyGate)
+            {
+                CancelIdleUnloadLocked();
+                _idleUnloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    bridgeCancellation);
+                return (++_idleUnloadGeneration, _idleUnloadCancellation);
+            }
+        }
+
+        public bool IsIdleUnloadCurrent(long generation)
+        {
+            lock (_residencyGate)
+                return generation == _idleUnloadGeneration &&
+                    _idleUnloadCancellation is { IsCancellationRequested: false };
+        }
+
+        public void CancelIdleUnload()
+        {
+            lock (_residencyGate) CancelIdleUnloadLocked();
+        }
+
+        private void CancelIdleUnloadLocked()
+        {
+            _idleUnloadGeneration++;
+            if (_idleUnloadCancellation is null) return;
+            _idleUnloadCancellation.Cancel();
+            _idleUnloadCancellation.Dispose();
+            _idleUnloadCancellation = null;
+        }
 
     }
 

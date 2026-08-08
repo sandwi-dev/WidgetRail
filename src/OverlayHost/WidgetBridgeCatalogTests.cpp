@@ -57,7 +57,7 @@ int main() {
         42, true, true, true, L"a", L"repeated"));
     assert(!gba::testing::ShouldDelegateForegroundActivation(
         42, true, true, true, L"a", L"released"));
-    assert(!gba::testing::ShouldDelegateForegroundActivation(
+    assert(gba::testing::ShouldDelegateForegroundActivation(
         42, true, true, true, L"x", L"pressed"));
     std::wstring error;
     const auto valid = gba::testing::ParseWidgetDescriptors(R"json({

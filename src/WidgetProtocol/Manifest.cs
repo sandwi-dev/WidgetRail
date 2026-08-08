@@ -15,7 +15,15 @@ public sealed record WidgetManifest
     public required WidgetEntrypoint Entrypoint { get; init; }
     public IReadOnlyList<string> Permissions { get; init; } = [];
     public IReadOnlyList<string> OptionalPermissions { get; init; } = [];
-    public string BackgroundPolicy { get; init; } = "none";
+    /// <summary>
+    /// Legacy manifest-v1 spelling. <c>none</c> migrates to keep-alive and
+    /// <c>suspend</c> migrates to suspend-when-hidden. New packages should use
+    /// <see cref="ResidencyPolicy"/>; declaring both is invalid.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BackgroundPolicy { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WidgetResidencyPolicy? ResidencyPolicy { get; init; }
     public WidgetResourceRequest ResourceRequest { get; init; } = new();
     public IReadOnlyList<string> Architectures { get; init; } = ["x64"];
 }
@@ -24,6 +32,93 @@ public sealed record HostApiRange(string Minimum, int MaximumMajor);
 public sealed record WidgetEntrypoint(string Runtime, string Assembly, string Type);
 public sealed record WidgetResourceRequest(int MemoryMb = 48, int UpdateHz = 1);
 public sealed record ManifestValidationError(string Path, string Code, string Message);
+
+/// <summary>
+/// Versioned, declarative worker-process residency request. Lifecycle remains
+/// host authoritative and is independent from whether the process is resident.
+/// </summary>
+public sealed record WidgetResidencyPolicy
+{
+    public const int CurrentSchemaVersion = 1;
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
+    public string Mode { get; init; } = WidgetResidencyPolicies.KeepAlive;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? IdleSeconds { get; init; }
+}
+
+public enum WidgetResidencyMode
+{
+    KeepAlive,
+    SuspendWhenHidden,
+    UnloadAfterIdle,
+}
+
+public sealed record ResolvedWidgetResidencyPolicy(
+    WidgetResidencyMode Mode,
+    TimeSpan? IdleDuration = null)
+{
+    public static readonly ResolvedWidgetResidencyPolicy KeepAlive =
+        new(WidgetResidencyMode.KeepAlive);
+}
+
+public static class WidgetResidencyPolicies
+{
+    public const string KeepAlive = "keep-alive";
+    public const string SuspendWhenHidden = "suspend-when-hidden";
+    public const string UnloadAfterIdle = "unload-after-idle";
+    public const int MinimumIdleSeconds = 5;
+    public const int MaximumIdleSeconds = 86_400;
+
+    public static ResolvedWidgetResidencyPolicy Resolve(WidgetManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.ResidencyPolicy is { } policy) return Resolve(policy);
+        return manifest.BackgroundPolicy switch
+        {
+            null or "none" => ResolvedWidgetResidencyPolicy.KeepAlive,
+            "suspend" => new(WidgetResidencyMode.SuspendWhenHidden),
+            _ => throw new ArgumentException("The legacy background policy is invalid.", nameof(manifest)),
+        };
+    }
+
+    public static ResolvedWidgetResidencyPolicy Resolve(WidgetResidencyPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        return policy.Mode switch
+        {
+            KeepAlive => ResolvedWidgetResidencyPolicy.KeepAlive,
+            SuspendWhenHidden => new(WidgetResidencyMode.SuspendWhenHidden),
+            UnloadAfterIdle when policy.IdleSeconds is { } seconds =>
+                new(WidgetResidencyMode.UnloadAfterIdle, TimeSpan.FromSeconds(seconds)),
+            _ => throw new ArgumentException("The residency policy is invalid.", nameof(policy)),
+        };
+    }
+
+    public static void Validate(
+        WidgetResidencyPolicy? policy,
+        string path,
+        Action<string, string, string> add)
+    {
+        if (policy is null) return;
+        if (policy.SchemaVersion != WidgetResidencyPolicy.CurrentSchemaVersion)
+            add($"{path}.schemaVersion", "unsupported_version",
+                $"Expected residency policy schema {WidgetResidencyPolicy.CurrentSchemaVersion}.");
+        if (policy.Mode is not (KeepAlive or SuspendWhenHidden or UnloadAfterIdle))
+            add($"{path}.mode", "unsupported_policy",
+                $"Supported residency policies are '{KeepAlive}', '{SuspendWhenHidden}', and '{UnloadAfterIdle}'.");
+        if (policy.Mode == UnloadAfterIdle)
+        {
+            if (policy.IdleSeconds is not (>= MinimumIdleSeconds and <= MaximumIdleSeconds))
+                add($"{path}.idleSeconds", "out_of_range",
+                    $"Idle unload must be between {MinimumIdleSeconds} and {MaximumIdleSeconds} seconds.");
+        }
+        else if (policy.IdleSeconds is not null)
+        {
+            add($"{path}.idleSeconds", "not_applicable",
+                "idleSeconds is valid only for unload-after-idle.");
+        }
+    }
+}
 
 public static partial class WidgetManifestValidator
 {
@@ -65,8 +160,14 @@ public static partial class WidgetManifestValidator
                 Add("$.entrypoint.type", "invalid_type", "Entrypoint type must be namespace-qualified.");
         }
 
-        if (!SupportedBackgroundPolicies.Contains(manifest.BackgroundPolicy ?? string.Empty))
-            Add("$.backgroundPolicy", "unsupported_policy", "Supported policies are 'none' and 'suspend'.");
+        if (manifest.BackgroundPolicy is not null &&
+            !SupportedBackgroundPolicies.Contains(manifest.BackgroundPolicy))
+            Add("$.backgroundPolicy", "unsupported_policy",
+                "Legacy backgroundPolicy supports only 'none' and 'suspend'. Use residencyPolicy for new packages.");
+        if (manifest.BackgroundPolicy is not null && manifest.ResidencyPolicy is not null)
+            Add("$.residencyPolicy", "conflicting_policy",
+                "Declare residencyPolicy or legacy backgroundPolicy, not both.");
+        WidgetResidencyPolicies.Validate(manifest.ResidencyPolicy, "$.residencyPolicy", Add);
         if (manifest.ResourceRequest is null)
             Add("$.resourceRequest", "required", "Resource request is required.");
         else

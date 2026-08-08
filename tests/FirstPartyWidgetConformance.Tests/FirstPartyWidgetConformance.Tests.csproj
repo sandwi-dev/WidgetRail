@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FirstPartyWidgets\AudioMixerWidget\AudioMixerWidget.csproj" />
+    <ProjectReference Include="..\..\src\FirstPartyWidgets\MediaSessionsWidget\MediaSessionsWidget.csproj" />
+    <ProjectReference Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\NetworkControlsWidget.csproj" />
+    <ProjectReference Include="..\..\src\FirstPartyWidgets\RecentAppsWidget\RecentAppsWidget.csproj" />
+    <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
+    <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
+    <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />
+    <ProjectReference Include="..\..\src\WidgetWorkerHost\WidgetWorkerHost.csproj" />
+  </ItemGroup>
+</Project>

@@ -19,7 +19,10 @@
   "optionalPermissions": [
     "system.activity.recent.activate.v1"
   ],
-  "backgroundPolicy": "suspend",
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "suspend-when-hidden"
+  },
   "resourceRequest": {
     "memoryMb": 48,
     "updateHz": 10

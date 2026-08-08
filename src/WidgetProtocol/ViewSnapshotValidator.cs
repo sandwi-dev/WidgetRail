@@ -51,6 +51,16 @@ public static class ViewSnapshotValidator
                 Add($"$.quickActions[{index}].button", "reserved_button", "This button is reserved for dashboard navigation or host behavior.");
             if (!quickActionButtons.Add(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "duplicate_button", "A dashboard button can trigger only one quick action.");
+            if (quickAction.Capability is { } capability)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.DashboardGestureAuthorityVersion)
+                    Add($"$.quickActions[{index}].capability", "feature_requires_version",
+                        $"Dashboard capability authority requires protocol version {ProtocolConstants.DashboardGestureAuthorityVersion} or later.");
+                CheckIdentifier(capability.CapabilityId,
+                    $"$.quickActions[{index}].capability.capabilityId", "capability ID");
+                CheckIdentifier(capability.OperationId,
+                    $"$.quickActions[{index}].capability.operationId", "capability operation ID");
+            }
         }
 
         if (snapshot.InitialFocusId is { } initial)

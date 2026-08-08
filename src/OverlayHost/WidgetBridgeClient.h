@@ -197,7 +197,9 @@ public:
     WidgetBridgeClient(const WidgetBridgeClient&) = delete;
     WidgetBridgeClient& operator=(const WidgetBridgeClient&) = delete;
 
-    [[nodiscard]] bool EnsureStarted(const std::wstring& installationDirectory);
+    [[nodiscard]] bool EnsureStarted(
+        const std::wstring& installationDirectory,
+        const std::wstring& installedCatalogRoot = L"");
     void Stop() noexcept;
     /// Enumerates public widget descriptors without starting widget workers.
     [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
@@ -227,14 +229,16 @@ public:
         long long monotonicTimestampMicroseconds,
         std::wstring_view phase = L"pressed",
         std::optional<double> requestedValue = std::nullopt,
-        bool trustedForegroundActivation = false);
+        bool trustedUserActivation = false);
     [[nodiscard]] const std::wstring& lastError() const noexcept { return lastError_; }
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
     [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
 
 private:
-    [[nodiscard]] bool Launch(const std::wstring& installationDirectory);
+    [[nodiscard]] bool Launch(
+        const std::wstring& installationDirectory,
+        const std::wstring& installedCatalogRoot);
     [[nodiscard]] bool Connect();
     [[nodiscard]] bool WriteFrame(std::string_view utf8);
     [[nodiscard]] std::optional<std::string> ReadFrame();

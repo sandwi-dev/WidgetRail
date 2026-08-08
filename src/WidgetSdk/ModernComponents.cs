@@ -11,6 +11,14 @@ public enum AlertTone { Info, Success, Warning, Danger }
 /// <summary>A single optional action rendered by an alert or empty state.</summary>
 public sealed record ComponentAction(string Label, string ActionId, WidgetGlyph? Glyph = null);
 
+/// <summary>A stable, controller-addressable option in a segmented tab row.</summary>
+public sealed record SegmentedTab(
+    string Id,
+    string Label,
+    string ActionId,
+    string? AccessibilityLabel = null,
+    bool IsDisabled = false);
+
 /// <summary>
 /// Original controller-first composites built only from stable public protocol
 /// nodes. Their gbar-* classes are semantic theme hooks, not fixed colors.
@@ -196,6 +204,119 @@ public static partial class UI
             "Empty state",
             null,
             action);
+    }
+
+    /// <summary>
+    /// Creates a one-dimensional tab row. Left and Right stay inside the row,
+    /// selected state is semantic, and each item keeps the author-provided ID.
+    /// The selected tab's content remains widget-owned.
+    /// </summary>
+    public static RowElement SegmentedTabs(
+        string id,
+        string selectedTabId,
+        params SegmentedTab[] tabs)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selectedTabId);
+        ArgumentNullException.ThrowIfNull(tabs);
+        if (tabs.Length < 2)
+            throw new ArgumentException("A segmented tab row requires at least two tabs.", nameof(tabs));
+        if (tabs.Any(tab => tab is null))
+            throw new ArgumentException("Tabs cannot contain null values.", nameof(tabs));
+        if (tabs.Select(tab => tab.Id).Distinct(StringComparer.Ordinal).Count() != tabs.Length)
+            throw new ArgumentException("Tab IDs must be unique.", nameof(tabs));
+        if (!tabs.Any(tab => string.Equals(tab.Id, selectedTabId, StringComparison.Ordinal)))
+            throw new ArgumentException("The selected tab ID must identify a tab in the row.", nameof(selectedTabId));
+
+        var buttons = new ButtonElement[tabs.Length];
+        for (var index = 0; index < tabs.Length; index++)
+        {
+            var tab = tabs[index];
+            ArgumentException.ThrowIfNullOrWhiteSpace(tab.Id);
+            ArgumentException.ThrowIfNullOrWhiteSpace(tab.Label);
+            ArgumentException.ThrowIfNullOrWhiteSpace(tab.ActionId);
+            var selected = string.Equals(tab.Id, selectedTabId, StringComparison.Ordinal);
+            var state = selected ? "Selected" : "Not selected";
+            var button = new ButtonElement(tab.Id, tab.Label, tab.ActionId)
+            {
+                AccessibilityLabel = !string.IsNullOrWhiteSpace(tab.AccessibilityLabel)
+                    ? $"{tab.AccessibilityLabel}, {state}"
+                    : $"{tab.Label}, {state}",
+                IsSelected = selected ? true : null,
+                IsDisabled = tab.IsDisabled ? true : null,
+                StyleClasses =
+                [
+                    "gbar-segmented-tabs__tab",
+                    selected ? "gbar-segmented-tabs__tab--selected" : "gbar-segmented-tabs__tab--idle",
+                ],
+            };
+            button = button
+                .FocusLeft(tabs[(index - 1 + tabs.Length) % tabs.Length].Id)
+                .FocusRight(tabs[(index + 1) % tabs.Length].Id);
+            buttons[index] = button;
+        }
+
+        return new RowElement(id, buttons)
+        {
+            StyleClasses = ["gbar-segmented-tabs"],
+        };
+    }
+
+    /// <summary>
+    /// Creates a modern two-state setting with a single stable focus stop.
+    /// Disabled switches remain focusable under the platform interaction-state
+    /// contract, while activation is suppressed by the host.
+    /// </summary>
+    public static ButtonElement Switch(
+        string label,
+        bool isOn,
+        string action,
+        string id,
+        bool isDisabled = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        var state = isOn ? "On" : "Off";
+        return new ButtonElement(id, $"{label}  {state}", action)
+        {
+            AccessibilityLabel = $"{label}, {state}",
+            Glyph = isOn ? WidgetGlyph.Check : null,
+            IsSelected = isOn ? true : null,
+            IsDisabled = isDisabled ? true : null,
+            StyleClasses = ["gbar-switch", isOn ? "gbar-switch--on" : "gbar-switch--off"],
+        };
+    }
+
+    /// <summary>
+    /// Creates a nested controller surface with a focus-independent B action.
+    /// Publish the returned scope ID as WidgetView.ActiveInputScopeId and set
+    /// InitialFocusId to a focusable descendant when the dialog is shown.
+    /// </summary>
+    public static StackElement ScopedDialog(
+        string title,
+        string id,
+        string scopeId,
+        string backAction,
+        params WidgetElement[] children)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentException.ThrowIfNullOrWhiteSpace(scopeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(backAction);
+        var content = CopyChildren(children);
+        return new StackElement(id,
+        [
+            new TextElement(StableIdentifier.Child(id, "title"), title, title)
+            {
+                StyleClasses = ["gbar-dialog__title"],
+            },
+            new StackElement(StableIdentifier.Child(id, "content"), content)
+            {
+                StyleClasses = ["gbar-dialog__content"],
+            },
+        ])
+        {
+            InputScopeId = scopeId,
+            Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
+            StyleClasses = ["gbar-dialog"],
+        };
     }
 
     private static StackElement MessageSurface(

@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <climits>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -273,6 +274,7 @@ public:
         if (installationDirectory_.empty()) {
             return FailWin32(L"GetModuleFileNameW", GetLastError());
         }
+        if (!ParseDevelopmentArguments()) return false;
         const HRESULT runtimeResult = RoInitialize(RO_INIT_SINGLETHREADED);
         if (FAILED(runtimeResult) && runtimeResult != RPC_E_CHANGED_MODE) {
             return FailHresult(L"RoInitialize", runtimeResult);
@@ -390,7 +392,6 @@ public:
             return FailHresult(L"DWriteCreateFactory", dwriteResult);
         }
 
-        RegisterHotKey(window_, kDeveloperHotkey, MOD_NOREPEAT, VK_F1);
         imageCache_ = std::make_unique<gba::RemoteImageCache>(
             gba::RemoteImageLimits{},
             [this](std::wstring_view, gba::RemoteImageState) {
@@ -398,23 +399,37 @@ public:
             });
         declarativeRenderer_ = std::make_unique<gba::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
-        InitializeGameInput();
-        if (guideCompatibility_.Initialize()) {
-            SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
-            AppendDiagnostic(L"XInput Guide compatibility adapter available");
-        } else {
-            AppendDiagnostic(L"XInput Guide compatibility adapter unavailable");
+        if (!developmentProbeOnly_) {
+            RegisterHotKey(window_, kDeveloperHotkey, MOD_NOREPEAT, VK_F1);
+            InitializeGameInput();
+            if (guideCompatibility_.Initialize()) {
+                SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
+                AppendDiagnostic(L"XInput Guide compatibility adapter available");
+            } else {
+                AppendDiagnostic(L"XInput Guide compatibility adapter unavailable");
+            }
         }
 
         // Platform appearance is bridge-owned but does not cross the lazy
         // widget-worker boundary. Fetch it once at host startup, then only in
         // response to a revision event.
-        if (bridge_.EnsureStarted(installationDirectory_)) {
+        bool developmentCatalogReady = false;
+        if (bridge_.EnsureStarted(
+                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             RefreshPlatformAppearance();
-            (void)RefreshWidgetCatalog();
+            developmentCatalogReady = RefreshWidgetCatalog();
         } else {
             AppendDiagnostic(L"Platform appearance unavailable at startup: " +
                              bridge_.lastError());
+        }
+        if (developmentReadyPath_) {
+            if (!developmentCatalogReady || !ExpectedDevelopmentWidgetPresent()) {
+                initializationError_ =
+                    L"Development bridge catalog did not contain the expected package generation.";
+                return false;
+            }
+            if (!ProbeExpectedDevelopmentWidget()) return false;
+            if (developmentProbeOnly_ && !PublishDevelopmentReady()) return false;
         }
 
         (void)showCommand;
@@ -426,8 +441,17 @@ public:
                 startShown = false;
             }
         }
-        if (startShown) {
+        if (startShown && !developmentProbeOnly_) {
             Dispatch(gba::Command::ToggleOverlay);
+        }
+        if (developmentReadyPath_ && !developmentProbeOnly_) {
+            if (!startShown) {
+                initializationError_ =
+                    L"An interactive development readiness handshake requires --show.";
+                return false;
+            }
+            if (!InteractiveDevelopmentHostReady()) return false;
+            if (!PublishDevelopmentReady()) return false;
         }
         return true;
     }
@@ -442,6 +466,207 @@ public:
     }
 
 private:
+    bool ParseDevelopmentArguments() {
+        auto takeValue = [&](const int& index, std::optional<std::wstring>& target,
+                             const wchar_t* label) -> bool {
+            if (target || index + 1 >= __argc || !__wargv[index + 1] ||
+                __wargv[index + 1][0] == L'\0' ||
+                wcsncmp(__wargv[index + 1], L"--", 2) == 0) {
+                initializationError_ = std::wstring(label) + L" requires one value.";
+                return false;
+            }
+            target = __wargv[index + 1];
+            return true;
+        };
+        for (int i = 1; i < __argc; ++i) {
+            if (_wcsicmp(__wargv[i], L"--development-catalog-root") == 0) {
+                if (!takeValue(i, developmentCatalogRoot_, L"--development-catalog-root")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--development-ready-path") == 0) {
+                if (!takeValue(i, developmentReadyPath_, L"--development-ready-path")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--development-ready-nonce") == 0) {
+                if (!takeValue(i, developmentReadyNonce_, L"--development-ready-nonce")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--development-widget-id") == 0) {
+                if (!takeValue(i, developmentWidgetId_, L"--development-widget-id")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--development-widget-instance") == 0) {
+                if (!takeValue(i, developmentWidgetInstance_, L"--development-widget-instance")) return false;
+                ++i;
+            } else if (_wcsicmp(__wargv[i], L"--development-probe-only") == 0) {
+                if (developmentProbeOnly_) {
+                    initializationError_ = L"--development-probe-only was supplied more than once.";
+                    return false;
+                }
+                developmentProbeOnly_ = true;
+            }
+        }
+        try {
+            if (developmentCatalogRoot_)
+                developmentCatalogRoot_ = std::filesystem::absolute(*developmentCatalogRoot_).wstring();
+            if (developmentReadyPath_)
+                developmentReadyPath_ = std::filesystem::absolute(*developmentReadyPath_).wstring();
+        } catch (const std::filesystem::filesystem_error&) {
+            initializationError_ = L"A development path is invalid.";
+            return false;
+        }
+        const bool hasHandshake = developmentReadyPath_ || developmentReadyNonce_ ||
+                                  developmentWidgetId_ || developmentWidgetInstance_;
+        if (hasHandshake && (!developmentCatalogRoot_ || !developmentReadyPath_ ||
+                             !developmentReadyNonce_ || !developmentWidgetId_ ||
+                             !developmentWidgetInstance_)) {
+            initializationError_ = L"Development readiness arguments must be supplied together.";
+            return false;
+        }
+        if (developmentProbeOnly_ && !hasHandshake) {
+            initializationError_ = L"A development probe requires an authenticated readiness handshake.";
+            return false;
+        }
+        if (developmentReadyNonce_ &&
+            (developmentReadyNonce_->size() != 64 ||
+             !std::all_of(developmentReadyNonce_->begin(), developmentReadyNonce_->end(),
+                          [](const wchar_t value) {
+                              return (value >= L'0' && value <= L'9') ||
+                                     (value >= L'a' && value <= L'f') ||
+                                     (value >= L'A' && value <= L'F');
+                          }))) {
+            initializationError_ = L"The development readiness nonce is invalid.";
+            return false;
+        }
+        const auto validIdentity = [](const std::optional<std::wstring>& value) {
+            return value && !value->empty() && value->size() <= 128 &&
+                   std::all_of(value->begin(), value->end(), [](const wchar_t character) {
+                       return (character >= L'a' && character <= L'z') ||
+                              (character >= L'A' && character <= L'Z') ||
+                              (character >= L'0' && character <= L'9') ||
+                              character == L'-' || character == L'_' || character == L'.';
+                   });
+        };
+        if (hasHandshake &&
+            (!validIdentity(developmentWidgetId_) || !validIdentity(developmentWidgetInstance_))) {
+            initializationError_ = L"The expected development widget identity is invalid.";
+            return false;
+        }
+        return true;
+    }
+
+    bool ExpectedDevelopmentWidgetPresent() const noexcept {
+        if (!developmentWidgetId_ || !developmentWidgetInstance_) return false;
+        return std::any_of(widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                           [&](const gba::WidgetDescriptor& descriptor) {
+                               return descriptor.id == *developmentWidgetId_ &&
+                                      descriptor.instanceId == *developmentWidgetInstance_;
+                           });
+    }
+
+    bool ProbeExpectedDevelopmentWidget() {
+        if (!developmentWidgetId_ || !developmentWidgetInstance_) return false;
+        if (!bridge_.SetWidgetLifecycle(*developmentWidgetId_, L"visible")) {
+            initializationError_ = L"Development widget worker could not become visible: " +
+                                   bridge_.lastError();
+            return false;
+        }
+
+        auto snapshot = bridge_.GetSnapshot(*developmentWidgetId_);
+        const std::wstring snapshotError = bridge_.lastError();
+        const bool returnedToBackground = bridge_.SetWidgetLifecycle(
+                                                *developmentWidgetId_, L"background")
+                                                .value_or(false);
+        const std::wstring backgroundError = bridge_.lastError();
+
+        if (!snapshot) {
+            initializationError_ = L"Development widget worker did not produce a valid snapshot: " +
+                                   snapshotError;
+            return false;
+        }
+        if (snapshot->instanceId != *developmentWidgetInstance_) {
+            initializationError_ =
+                L"Development widget worker returned a snapshot for the wrong package generation.";
+            return false;
+        }
+        if (!returnedToBackground) {
+            initializationError_ = L"Development widget worker could not return to background: " +
+                                   backgroundError;
+            return false;
+        }
+        return true;
+    }
+
+    bool InteractiveDevelopmentHostReady() {
+        if (state_.surface() == gba::Surface::Hidden || !IsWindow(window_) ||
+            !IsWindow(backdropWindow_) || !IsWindowVisible(window_) ||
+            !IsWindowVisible(backdropWindow_)) {
+            initializationError_ =
+                L"Development overlay did not complete its visible window transition.";
+            return false;
+        }
+        const auto descriptors = bridge_.ListWidgets();
+        if (!descriptors) {
+            initializationError_ =
+                L"Development bridge did not remain responsive after showing the overlay: " +
+                bridge_.lastError();
+            return false;
+        }
+        if (!std::any_of(descriptors->begin(), descriptors->end(),
+                         [&](const gba::WidgetDescriptor& descriptor) {
+                             return descriptor.id == *developmentWidgetId_ &&
+                                    descriptor.instanceId == *developmentWidgetInstance_;
+                         })) {
+            initializationError_ =
+                L"Development bridge changed package generation while showing the overlay.";
+            return false;
+        }
+        return true;
+    }
+
+    bool PublishDevelopmentReady() {
+        const std::wstring widePayload =
+            L"gbar-dev-ready-v1\n" + *developmentReadyNonce_ + L"\n" +
+            *developmentCatalogRoot_ + L"\n" + *developmentWidgetId_ + L"\n" +
+            *developmentWidgetInstance_ + L"\n";
+        if (widePayload.size() > static_cast<std::size_t>(INT_MAX)) {
+            initializationError_ = L"The development readiness record is too large.";
+            return false;
+        }
+        const int utf8Length = WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, widePayload.data(),
+            static_cast<int>(widePayload.size()), nullptr, 0, nullptr, nullptr);
+        if (utf8Length <= 0) {
+            initializationError_ = L"Could not encode the development readiness record.";
+            return false;
+        }
+        std::string payload(static_cast<std::size_t>(utf8Length), '\0');
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, widePayload.data(),
+                                static_cast<int>(widePayload.size()), payload.data(), utf8Length,
+                                nullptr, nullptr) != utf8Length) {
+            initializationError_ = L"Could not encode the development readiness record.";
+            return false;
+        }
+        const std::filesystem::path destination(*developmentReadyPath_);
+        const auto temporary = destination.wstring() + L".tmp-" +
+                               std::to_wstring(GetCurrentProcessId());
+        HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                  FILE_ATTRIBUTE_TEMPORARY, nullptr);
+        if (file == INVALID_HANDLE_VALUE) {
+            initializationError_ = L"Could not create the development readiness record.";
+            return false;
+        }
+        DWORD written = 0;
+        const bool wrote = payload.size() <= MAXDWORD &&
+                           WriteFile(file, payload.data(), static_cast<DWORD>(payload.size()),
+                                     &written, nullptr) &&
+                           written == static_cast<DWORD>(payload.size()) &&
+                           FlushFileBuffers(file);
+        CloseHandle(file);
+        if (!wrote || !MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_WRITE_THROUGH)) {
+            DeleteFileW(temporary.c_str());
+            initializationError_ = L"Could not publish the development readiness record.";
+            return false;
+        }
+        return true;
+    }
+
     bool FailWin32(const std::wstring_view operation, const DWORD error) {
         initializationError_ = std::wstring(operation) + L" failed with Win32 error " +
                                std::to_wstring(error) + L".";
@@ -1030,7 +1255,8 @@ private:
     }
 
     bool RefreshWidgetCatalog() {
-        if (!bridge_.EnsureStarted(installationDirectory_)) {
+        if (!bridge_.EnsureStarted(
+                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             AppendDiagnostic(L"Widget catalog unavailable: " + bridge_.lastError());
             return false;
         }
@@ -1151,7 +1377,8 @@ private:
             lifecycleBridgeState_.reset();
         }
         if (!desired) return;
-        if (!bridge_.EnsureStarted(installationDirectory_)) {
+        if (!bridge_.EnsureStarted(
+                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             AppendDiagnostic(L"Widget lifecycle bridge unavailable: " + bridge_.lastError());
             return;
         }
@@ -1697,7 +1924,8 @@ private:
 
     void RefreshWidgetSnapshot(const std::wstring_view widgetId) {
         if (!IsBridgeWidget(widgetId)) return;
-        if (!bridge_.EnsureStarted(installationDirectory_)) {
+        if (!bridge_.EnsureStarted(
+                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
                                  L" unavailable: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -1872,15 +2100,14 @@ private:
                 focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                 InvalidateRect(window_, nullptr, FALSE);
             }
-            const auto* focusedNode = isOpen && visibleFocus
-                ? gba::input::FindNodeInInputScope(
-                    *snapshot, *visibleFocus, snapshot->activeInputScopeId)
-                : nullptr;
-            const bool trustedForegroundActivation =
-                isOpen && widget == L"recent-apps" && protocolButton == L"a" &&
-                phase == gba::input::NavigationEventPhase::Pressed && focusedNode &&
-                !focusedNode->isDisabled && !focusedNode->isBusy &&
-                focusedNode->actionId == L"recent.activate";
+            // A real pressed controller event in an Interactive widget is a
+            // generic user-activation gesture. Delegate Windows foreground
+            // eligibility only to the exact live trusted bridge process; the
+            // broker still independently enforces the widget's declared
+            // capability, consent, lifecycle, and opaque target. No widget ID
+            // or action ID receives first-party-only treatment here.
+            const bool trustedUserActivation =
+                isOpen && phase == gba::input::NavigationEventPhase::Pressed;
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
@@ -1894,7 +2121,7 @@ private:
                     ? std::wstring_view{L"repeated"}
                     : std::wstring_view{L"pressed"},
                 requestedValue,
-                trustedForegroundActivation);
+                trustedUserActivation);
             if (!handled) {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" input failed: " + bridge_.lastError();
@@ -2544,6 +2771,12 @@ private:
     inline static OverlayApp* foregroundEventApp_{};
     std::wstring initializationError_;
     std::wstring installationDirectory_;
+    std::optional<std::wstring> developmentCatalogRoot_;
+    std::optional<std::wstring> developmentReadyPath_;
+    std::optional<std::wstring> developmentReadyNonce_;
+    std::optional<std::wstring> developmentWidgetId_;
+    std::optional<std::wstring> developmentWidgetInstance_;
+    bool developmentProbeOnly_{};
     gba::OverlayState state_;
     WORD previousButtons_{};
     gba::input::StickNavigator stickNavigator_;

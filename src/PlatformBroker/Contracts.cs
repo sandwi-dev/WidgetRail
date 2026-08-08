@@ -258,6 +258,54 @@ public sealed record ActivateRecentActivityRequest(
 public sealed record RecentActivitiesChangedEvent(
     IReadOnlyList<RecentActivitySummary> Activities);
 
+public enum MediaPlaybackStatus
+{
+    Closed,
+    Opened,
+    Changing,
+    Stopped,
+    Playing,
+    Paused,
+}
+
+public enum MediaSessionCommand
+{
+    Play,
+    Pause,
+    TogglePlayPause,
+    Previous,
+    Next,
+}
+
+/// <summary>
+/// Sanitized Windows media-session state. SessionId is host-generated and no
+/// AUMID, package ID, process ID, path, handle, or native object crosses IPC.
+/// Position may be projected from CapturedAtUnixMilliseconds while Playing.
+/// </summary>
+public sealed record MediaSessionSummary(
+    string SessionId,
+    string AppName,
+    string Title,
+    string Artist,
+    MediaPlaybackStatus PlaybackStatus,
+    long PositionMilliseconds,
+    long DurationMilliseconds,
+    long CapturedAtUnixMilliseconds,
+    double PlaybackRate,
+    bool IsCurrent,
+    bool CanPlay,
+    bool CanPause,
+    bool CanTogglePlayPause,
+    bool CanPrevious,
+    bool CanNext);
+
+public sealed record ControlMediaSessionRequest(
+    [property: JsonRequired] string SessionId,
+    [property: JsonRequired] MediaSessionCommand Command);
+
+public sealed record MediaSessionsChangedEvent(
+    IReadOnlyList<MediaSessionSummary> Sessions);
+
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
 
 public interface IPlatformBrokerEventSource
@@ -305,13 +353,27 @@ public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
     Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken);
 }
 
+public interface IMediaPlatformBrokerBackend : IPlatformBrokerEventSource
+{
+    Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromException<IReadOnlyList<MediaSessionSummary>>(
+            new BrokerException("platform_unavailable", "Windows media sessions are unavailable."));
+    Task ControlMediaSessionAsync(
+        string sessionId,
+        MediaSessionCommand command,
+        CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "Windows media session control is unavailable."));
+}
+
 /// <summary>
 /// Complete host backend. Providers can implement the narrower audio or network
 /// contracts and be joined with <see cref="CompositePlatformBrokerBackend"/>.
 /// </summary>
 public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     INetworkPlatformBrokerBackend, IActivityPlatformBrokerBackend,
-    IBluetoothPlatformBrokerBackend
+    IBluetoothPlatformBrokerBackend, IMediaPlatformBrokerBackend
 {
 }
 

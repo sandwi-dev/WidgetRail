@@ -130,13 +130,23 @@ public sealed record ControllerShortcut(
     ControllerEventPhase Phase = ControllerEventPhase.Pressed);
 
 /// <summary>
+/// Names the one exact control-capability operation a dashboard quick action may
+/// invoke. This metadata is only a request for host authority: the package must
+/// still declare the capability and the user must still grant consent.
+/// </summary>
+public sealed record WidgetQuickActionCapability(
+    string CapabilityId,
+    string OperationId);
+
+/// <summary>
 /// A bounded, non-navigation action the host may offer while this widget's dashboard card is selected.
 /// The host owns dashboard navigation and decides how to present the label/button prompt.
 /// </summary>
 public sealed record WidgetQuickAction(
     ControllerButton Button,
     string ActionId,
-    string Label);
+    string Label,
+    WidgetQuickActionCapability? Capability = null);
 
 /// <summary>A renderer-neutral node. Properties that do not apply to Kind must be null.</summary>
 public sealed record ViewNode

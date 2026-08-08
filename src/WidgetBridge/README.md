@@ -1,7 +1,7 @@
 # Native host to managed widget bridge
 
 The bridge is a disposable managed sidecar. The native overlay starts it with a
-random pipe name and a trusted catalog path; the bridge creates a
+random pipe name and a host catalog path; the bridge creates a
 current-user-only named-pipe server and exits after the native connection ends.
 The native host never loads the runtime, SDK, or third-party widget assemblies.
 
@@ -47,11 +47,13 @@ be `hello` with `{ "clientName": "OverlayHost" }`; the bridge responds with
 | `controller-input` | `{ "widgetId": "clock", "input": ControllerInputEvent }` | `controller-input-result` with `handled` |
 | `stop` | `{}` | `acknowledged`, then clean sidecar exit |
 
-Quick actions are catalog-defined commands shown while a dashboard card is
-focused (the initial “hover” interaction). The native host sends only the
-public quick-action ID. The bridge substitutes the trusted action ID, source
-element ID, and controller binding before forwarding it to the lazily launched
-widget worker.
+Dashboard quick actions are widget-snapshot commands shown while a dashboard
+card is selected (the initial “hover” interaction). The normal native path is a
+`controller-input` whose dashboard context, button, positive input sequence,
+and snapshot sequence identify one action in the bridge's latest validated
+cached snapshot. The catalog `quick-action` request remains only as a bounded
+tooling/compatibility path for host-owned catalog metadata; native code must not
+know widget action IDs.
 
 `controller-input` is the normal native integration path. Its input contains
 `button`, `phase`, `context`, optional `focusedElementId`, `sequence`,
@@ -60,6 +62,19 @@ widget worker.
 from the latest rendered snapshot's `quickActions`. The host owns A activation,
 B close, Y reorder, D-pad/analog navigation, and Guide; widgets may declare X,
 bumpers, triggers, stick clicks, Menu, or View as dashboard quick actions.
+
+A snapshot quick action may optionally name one `WidgetQuickActionCapability`
+(capability ID plus operation ID). For a Pressed event while the widget remains
+Visible, the bridge revalidates the exact cached snapshot/button/sequence,
+closed control operation, package declaration, and worker session before
+recording a dormant host-owned reservation for at most 10 seconds. The
+reservation is not broker authority; it only allows bounded serial widget work
+to reach its exact call. When the exact typed operation is invoked, the runtime
+atomically matches and removes the reservation and asks the identity/PID-bound
+companion to activate one broker lease for at most two seconds. The broker
+consumes the exact operation once and still enforces consent, payload, provider,
+and revocation checks. Neither stage promotes lifecycle or authorizes
+subscriptions/background work, and neither can be minted by widget IPC.
 
 For `openWidget`, the SDK requires `activeInputScopeId` and
 `snapshotSequence` to match its latest snapshot. It checks a focused-node
@@ -83,13 +98,17 @@ widget, and `background` before hiding or switching it. Requesting Background
 for an unstarted worker remains lazy and does not launch it. Duplicate stable
 transitions are idempotent.
 
-A launched Background worker remains resident by default. Entering Background
-cancels the shared Visible/Interactive lifetime used by periodic UI updates,
-but explicitly permitted widget-lifetime background work may continue. Future
-`suspend-when-hidden` or `unload-after-idle` behavior must be an opt-in
-manifest/user policy, not a bridge heuristic. The current bridge does not
-enforce those residency policies. The current capability broker separately
-denies every audio/network capability in Background.
+A launched Background worker remains resident under the default `keep-alive`
+policy. Entering Background cancels the shared Visible/Interactive lifetime
+used by presentation work, but explicitly permitted widget-lifetime background
+work may continue. Manifest `residencyPolicy` schema 1 also supports
+`suspend-when-hidden` and an explicit 5–86,400-second `unload-after-idle`.
+Suspension is cooperative lifecycle cancellation, not Windows thread
+suspension. Idle unload serializes with operations, caches the last validated
+snapshot, sends bounded Destroying, releases the worker and companion, and
+recreates the worker lazily when it becomes visible. Intentional unload does not
+consume crash budget. The capability broker denies normal operations and every
+subscription in Background.
 
 For a widget with closed declared capabilities, the bridge creates a fresh
 `BrokerWidgetProcessCompanion` on every worker start/restart. Package,
@@ -100,8 +119,9 @@ bootstrap authenticates the nonce/full identity and attaches typed
 `WidgetHostServices` before widget creation. For installed/community workers,
 the companion pipe is additionally ACLed to the runtime's exact AppContainer
 SID, labeled for Low-integrity access, and bound to the exact started PID before
-accept. The production bridge composes the narrow real Core Audio and Windows
-network providers; deterministic tests use `SimulatedPlatformBrokerBackend`.
+accept. The production bridge composes the narrow real Core Audio, Windows
+network/Bluetooth, foreground-activity, and GSMTC media-session providers;
+deterministic tests use `SimulatedPlatformBrokerBackend`.
 See [widget capabilities](../../docs/capabilities.md).
 
 Asynchronous `widget-invalidated` and `widget-failed` events identify the widget
@@ -211,54 +231,55 @@ strings, and the negotiated length-prefixed message ceiling.
 ```json
 {
   "catalogVersion": 1,
-  "widgets": [{
-    "id": "clock",
-    "packageId": "dev.example.clock",
-    "publisherId": "dev.example",
-    "name": "Clock",
-    "instanceId": "clock.default",
-    "icon": "connection",
-    "workerExecutable": "workers/ClockWidget.Worker.exe",
-    "workerArguments": [],
-    "declaredCapabilities": [],
-    "memoryLimitMb": 64,
-    "styleFile": "workers/styles/default.gbss",
-    "quickActions": [{
-      "id": "refresh",
-      "label": "Refresh",
-      "actionId": "refresh",
-      "sourceElementId": "refresh",
-      "controllerButton": "x"
-    }]
+  "genericWorkerExecutable": "runtime/WidgetWorkerHost/WidgetWorkerHost.exe",
+  "widgets": [],
+  "bundledWidgets": [{
+    "id": "media-sessions",
+    "packageId": "org.gbar.firstparty.media-sessions",
+    "instanceId": "media-sessions.default",
+    "packageRoot": "runtime/MediaSessions",
+    "icon": "music",
+    "quickActions": []
   }]
 }
 ```
 
-`styleFile` is optional and must be a normalized package-relative `.gbss` path
-under the catalog directory. The styling package loader rejects absolute paths,
-schemes, backslashes, `.`/`..` traversal, reparse-point escapes, oversized
-sources, unsafe imports, and invalid GBSS. A configured invalid theme prevents
-bridge startup with bounded relative-file, line, column, code, and single-line
-diagnostics; absolute package paths are not disclosed. Widgets without a style
-file receive empty `base` and `focused` maps for every node.
+For a trusted `widgets` entry, `styleFile` is optional and must be a normalized
+package-relative `.gbss` path under the catalog directory. For a
+`bundledWidgets` or installed package, the bridge discovers
+`styles/default.gbss` under its immutable package root. The styling package
+loader rejects absolute paths, schemes, backslashes, `.`/`..` traversal,
+reparse-point escapes, oversized sources, unsafe imports, and invalid GBSS. A
+configured invalid style prevents that entry from publishing, with bounded
+relative-file, line, column, code, and single-line diagnostics; absolute
+package paths are not disclosed. Widgets without a style file receive empty
+`base` and `focused` maps for every node.
 
 `icon` is an optional closed `WidgetGlyph` semantic value (`music`, `settings`,
 `connection`, and the other SDK glyphs). It defaults to `connection`. Unknown
 values fail catalog loading; widgets cannot supply SVG, font, file, or drawing
 payloads through the descriptor.
 
-The JSON catalog above is trusted bundled installation state. At startup the
-bridge also discovers the current-user `WidgetCatalog` and joins enabled,
-host/architecture-compatible packages in persisted order. It assigns each a
-fixed trusted 64 MiB worker policy, mandatory host-owned AppContainer identity,
-exact read-only package root, and the packaged `WidgetWorkerHost`; no manifest
-or worker message can request the trusted Job-only policy. Listing the catalog
-remains lazy and does not launch workers. Disabled packages stay inert. A
-malformed catalog falls back to bundled widgets, while a conflicting, tampered,
-incompatible, unsupported-capability, or invalid-GBSS installed package is
-skipped with a bounded warning. Supported required and optional manifest
-declarations are combined into the fixed broker channel declaration set;
-neither kind is auto-granted.
+The host catalog has two distinct sections. `widgets` contains the small set of
+trusted Job-only exceptions with host-owned executable, arguments, and policy.
+`bundledWidgets` contains platform-shipped packages intentionally held to the
+community execution model: the catalog pins shell ID, package ID/root, instance,
+icon, and optional presentation metadata, while the package manifest supplies
+publisher, entrypoint, name, capabilities, memory request, residency, and
+styles. These entries use the packaged generic worker and mandatory host-owned
+AppContainer identity; a manifest or worker message cannot request Job-only
+execution.
+
+At startup the bridge also discovers the current-user `WidgetCatalog` and joins
+enabled, host/architecture-compatible packages in persisted order. It assigns
+each installed package a fixed host-owned 64 MiB cap, exact read-only package
+root, package-specific AppContainer identity, and the packaged
+`WidgetWorkerHost`. Listing remains lazy and does not launch workers. Disabled
+packages stay inert. An invalid installed catalog retains the last-good host
+catalog; a conflicting, tampered, incompatible, unsupported-capability, or
+invalid-GBSS installed package is skipped with a bounded warning. Supported
+required and optional manifest declarations are combined into the broker
+declaration set; neither kind is auto-granted.
 
 `WidgetWorkerHost` loads the manifest entrypoint only from the immutable package
 root, rejects path escape/reparse points, requires a public concrete SDK
@@ -278,6 +299,15 @@ Trusted bundled Settings and YT Music entries temporarily remain Job-only
 because they require desktop-user resources not yet brokered. This exception is
 bundled host policy and cannot be introduced through catalog JSON or a package
 manifest.
+
+Audio Mixer, Network Controls, Recent Apps, and Now Playing are
+`bundledWidgets`, not trusted-worker shortcuts. A Windows conformance suite
+builds and installs those same four package layouts, merges them through
+`WidgetCatalog`/`BridgeCatalog`, launches the generic worker in the package
+AppContainer, drives lifecycle, validates a snapshot, and observes a simulated
+brokered action. `gbar dev` points `--installed-catalog-root` at a unique
+session catalog, so local author builds traverse this same bridge path without
+mutating the user's installed catalog.
 
 The bridge watches current-user catalog state and package changes without
 polling, publishes complete semantic revisions, preserves compatible workers,

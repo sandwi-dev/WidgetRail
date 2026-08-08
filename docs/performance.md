@@ -68,10 +68,21 @@ The five-state lifecycle controls work ownership, not automatic eviction:
 - `Interactive` permits the open surface and scoped controller actions.
 - `Destroying` cancels widget-owned tokens and performs bounded cleanup.
 
-`keep-alive` is the current/default policy after first launch. Planned
-`suspend-when-hidden` and `unload-after-idle` choices must be explicit manifest
-and user policy; the host must not infer eviction from an idle timer. General
-residency-policy enforcement is not implemented yet.
+Residency is explicit manifest policy, never a resource heuristic:
+
+- `keep-alive` is the default. The worker stays resident after first launch,
+  but presentation work still follows lifecycle tokens.
+- `suspend-when-hidden` is cooperative: the worker receives `Background`, its
+  visible/state tokens cancel, the bridge suppresses hidden invalidations and
+  interaction, and the broker denies capabilities. Windows threads are never
+  suspended with undocumented process APIs.
+- `unload-after-idle` requires a manifest duration from 5 through 86,400
+  seconds. The bridge caches the last validated view, sends `Destroying`, and
+  tears down the process tree and companion within a bound. Visibility cancels
+  a pending unload; the next visible transition lazily creates a fresh worker.
+
+Intentional unload does not consume the crash-restart budget. Catalog change,
+crash recovery, user disable, and bridge shutdown remain distinct paths.
 
 The capability broker independently rejects operations/subscriptions in
 `Background`. Installed/community workers cannot bypass that denial with a

@@ -44,17 +44,20 @@ Up/Down navigation.
 ### Widget platform
 
 - `WidgetProtocol`: strict version-1 manifests and additive snapshot protocols
-  v1–v3, deterministic JSON, stable IDs, focus validation, quick actions,
-  Scroll/surface hints, absolute-value Sliders, images, closed semantic glyphs,
-  explicit active controller scopes and snapshot correlation, and interaction
-  state.
+  v1–v3, deterministic JSON, stable IDs, focus validation, quick actions with
+  optional typed control-operation metadata, Scroll/surface hints, absolute-
+  value Sliders, images, closed semantic glyphs, explicit active controller
+  scopes and snapshot correlation, and interaction state.
 - `WidgetSdk`: typed Stack, Row, Text, Button, Progress, Slider, Scroll, Spacer,
-  Image, and Icon authoring; controller-ready ToggleButton/Stepper composites;
-  button glyphs; focus/shortcut/state helpers; scoped shortcut routing;
-  bounded latest-wins Slider coalescing; invalidation;
+  Image, and Icon authoring; controller-ready ToggleButton, Stepper,
+  IconButton, Card, SectionHeader, StatusBadge, Divider, Alert, EmptyState,
+  SegmentedTabs, Switch, and ScopedDialog composites with stable semantic
+  `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
+  shortcut routing; bounded latest-wins Slider coalescing; invalidation;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
-  audio/network services, descriptors, DTOs, events, and errors.
+  audio/network/Bluetooth/recent-activity/media-session services, descriptors,
+  DTOs, events, and errors.
 - `WidgetRuntime`: lazy out-of-process workers over bounded framed JSON with
   explicit lifecycle transitions, per-start host-owned companion sessions,
   timeouts, failure reporting, and limited restart. Installed/community workers
@@ -66,12 +69,14 @@ Up/Down navigation.
   optional broker before constructing the widget, attaches host services before
   creation, and owns cancellation and transport disposal.
 - `WidgetBridge`: current-user-only native sidecar pipe, trusted plus installed
-  catalog discovery, no-poll last-good catalog monitoring/semantic revisions,
-  compatible-worker preservation and changed-worker retirement, worker
-  forwarding, quick actions, controller input, host-owned mandatory community
-  isolation selection, PID/identity/declaration-bound broker companions,
-  invalidation/failure events, no-poll platform-appearance revisions, globally
-  layered widget themes, bounded shell appearance, and computed GBSS styles.
+  and manifest-backed bundled catalog discovery, no-poll last-good catalog
+  monitoring/semantic revisions, compatible-worker preservation and changed-
+  worker retirement, worker forwarding, quick actions, controller input,
+  host-owned mandatory community isolation selection, PID/identity/declaration-
+  bound broker companions, single-use exact-operation dashboard gesture
+  authority, invalidation/failure events, no-poll platform-appearance revisions,
+  globally layered widget themes, bounded shell appearance, and computed GBSS
+  styles.
 - `WidgetWorkerHost`: a packaged generic worker executable that loads one
   installed package's public concrete SDK `Widget` entrypoint and contained
   dependencies inside the mandatory package AppContainer, authenticates an
@@ -87,7 +92,7 @@ Up/Down navigation.
   schema-1 state migration, fail-closed exact version pins, discovery,
   enablement, and pin-preserving order persistence. Enabled compatible packages
   join complete validated live bridge revisions and remain lazy until first use.
-- `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity
+- `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity/media
   capability foundation with a closed versioned grant vocabulary, SID/Low-
   label/PID-bound isolated endpoints plus nonce/
   identity authentication, manifest/consent/lifecycle enforcement, strict
@@ -120,15 +125,33 @@ Up/Down navigation.
   bounded display names plus per-process-lifetime opaque IDs; activation can
   switch only to a still-running observed window. It does not read UserAssist,
   launch executables, expose PID/path/HWND, or claim game classification.
+- `WindowsMediaProvider`: a lazy, event-driven Windows Global System Media
+  Transport Controls (GSMTC) backend. It publishes bounded sanitized sessions
+  with broker-issued process-lifetime IDs, retains multiple sessions from the
+  same source application, controls the exact selected session, and does not
+  expose AUMID, PID, executable path, window handle, or raw platform objects.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
   `enable`, `disable`, and `version list|select|rollback` commands. Local and
   remote updates share an exact-stream pre-publish enabled-ID guard. Remote
   acquisition requires SHA-256 pinning, reports the actual digest, and installs
-  disabled pending explicit review.
+  disabled pending explicit review. `gbar dev` provides a bounded unsigned
+  source/package watch-build-run loop through the production generic worker,
+  AppContainer, broker, lifecycle, renderer, and Settings permission path. A
+  controller/hotkey-free candidate must authenticate its exact catalog/widget/
+  instance and return a validated snapshot before replacing the last-good
+  interactive generation; failed generations retain or restore last good.
 
-The first-party Settings, Audio Mixer, Network Controls, and Recent Apps
-references and the Clock/YT Music samples exercise the public widget path.
+Audio Mixer, Network Controls, Recent Apps, and Now Playing are manifest-backed
+`bundledWidgets`: they use the same generic `WidgetWorkerHost`, package-specific
+capability-free AppContainer, authenticated capability broker, lifecycle,
+renderer, and manifest-derived authority as an independently installed
+community package. Their host catalog entries supply only platform-owned shell
+presentation identity and package location. A Windows Release conformance suite
+packages, installs, enables, resolves, launches, renders, and acts through that
+same public path for all four. Settings and YT Music are the two temporary
+trusted Job-only exceptions because their remaining desktop-user dependencies
+are not yet brokered. The Clock sample exercises the public package path.
 Audio Mixer and Network Controls are bounded integration slices for the larger
 controller-first Audio Control and Network Control roadmap items; their
 presence here does not mean those product widgets are complete or shipped.
@@ -162,9 +185,9 @@ reacts to provider events rather than polling. It offers controller session
 Broader hardware/churn coverage and end-to-end hidden/visible performance evidence
 remain open; this is not yet an end-user release claim.
 
-The current Network Controls reference slice runs as an out-of-process
-first-party SDK widget and worker with trusted catalog and Release-build
-packaging wiring. It requires coarse network and available-Wi-Fi read grants,
+The current Network Controls reference slice runs as a manifest-backed bundled
+package through the generic community worker/AppContainer path. It requires
+coarse network and available-Wi-Fi read grants,
 makes current saved/open result connection optional and Interactive-only,
 opens acknowledged status and available-Wi-Fi subscriptions before snapshots,
 and never polls. It declares no dashboard quick actions. The open widget
@@ -194,6 +217,21 @@ across full-snapshot events, and makes activation optional/Interactive-only.
 Every observed entry is currently classified conservatively as Application;
 there is no registry/Xbox history import, authoritative game detector, relaunch,
 or arbitrary process targeting.
+
+Now Playing is the public-SDK media-session reference. It uses only the typed
+`HostServices.Media` surface over the authenticated broker and the event-driven
+GSMTC provider; the worker cannot open GSMTC directly. It retains duplicate
+sessions from one application through opaque broker IDs, preserves the selected
+session across complete snapshots, renders a compact controller surface, and
+interpolates active progress locally at four Hz between authoritative events.
+X/LB/RB quick actions expose play-pause/previous/next while the card is merely
+Visible. Each quick action names the one media control operation it may invoke;
+the bridge first records a dormant host-owned reservation for at most 10 seconds
+so bounded serial widget work can reach the exact call. That reservation is not
+broker authority. Invoking the exact typed operation atomically activates one
+identity/PID/snapshot/input-sequence-bound broker lease for at most two seconds.
+It is consumed once without promoting lifecycle or enabling subscriptions.
+Normal declaration, consent, payload, and provider checks still apply.
 
 YT Music uses the YTMDesktop2 loopback API, performs a non-blocking automatic
 connection attempt, and renders media metadata, artwork, transport state, and
@@ -260,7 +298,8 @@ remove/update/rollback, asset support, and graphical preview remain open.
 
 ### Live package catalog
 
-`BridgeCatalogMonitor` watches only the packaged trusted catalog plus the
+`BridgeCatalogMonitor` watches the packaged host catalog (trusted `widgets` plus
+manifest-backed `bundledWidgets`) and the
 current-user `catalog-state.json` and packages subtree. A capacity-one channel
 coalesces file hints and debounces write bursts for 175 ms before a complete
 bounded reload. Staging, cross-process lock, and atomic temporary files are
@@ -316,11 +355,17 @@ destroying hooks. The native host publishes `Visible` for the selected bridge
 card, `Interactive` for its open surface, and `Background` when hidden or
 switched. Authors cannot request their own lifecycle transitions.
 
-Future lifecycle policy must be manifest/user controlled: `keep-alive` is the
-default, with opt-in `suspend-when-hidden` and `unload-after-idle`. The current
-host does not yet expose or enforce those residency choices or general
-manifest background policy. The current capability broker independently denies
-all operations/subscriptions while Background.
+Manifest `residencyPolicy` schema 1 is enforced generically for trusted and
+installed workers. `keep-alive` is the default; `suspend-when-hidden` keeps the
+process but suppresses hidden presentation/interaction and uses cooperative
+`Background` cancellation; `unload-after-idle` requires 5–86,400 seconds,
+caches the last validated snapshot, sends bounded `Destroying`, releases the
+process/companion, and lazily resumes on visibility. Pending unload cancels on
+visibility or work, and intentional unload does not consume crash budget.
+Legacy `backgroundPolicy: none|suspend` resolves deterministically to
+keep-alive/suspend-when-hidden; declaring both vocabularies fails validation.
+No policy suspends Windows threads. The capability broker continues to deny all
+operations/subscriptions while Background.
 Separately, trusted bridge policy now bounds each Windows worker with a Job
 Object memory ceiling and one-process limit regardless of lifecycle. Crash,
 hang, shutdown, and user-requested termination remain separate safety/
@@ -349,22 +394,27 @@ planned ETW/PresentMon release harness.
 
 The repository verification script builds and runs managed suites for the SDK,
 protocol, YT Music, first-party Settings, runtime, CLI, styling, platform
-settings/themes, catalog, bridge, the generic worker host, broker, and Windows
-providers/reference widgets. The runtime covers suspended pre-containment
+settings/themes, catalog, bridge, the generic worker host, broker, the real
+first-party-package conformance path, and Windows providers/reference widgets.
+The runtime covers suspended pre-containment
 launch, memory/process/UI limits, kill-on-close, restart cleanup, and mandatory
-community AppContainer authority. Its focused Release harness passes 25/25;
+community AppContainer authority, bounded intentional unload, and private
+two-clock dashboard-gesture propagation. Its focused Release harness passes
+33/33;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK and YT Music Release suites pass 41/41 and
-38/38 respectively. The current Settings Release suite passes 32/32, including
-paginated identity review,
+bounded cleanup. The current SDK and YT Music Release suites pass 44/44 and
+38/38 respectively. The current Settings Release suite passes 34/34, including
+scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
 polling. Styling and platform settings/themes pass 18/18 and 13/13,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 35/35, including version
+passes 43/43, including authenticated candidate/active development readiness,
+last-good retention/restart, complete bounded source/package watching, cleanup
+failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, catalog limits, immutable
@@ -374,22 +424,29 @@ linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 version unsigned authority derivation. Bridge
-passes 24/24, including semantic catalog revisions/last-good/catch-up reload,
+passes 29/29, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
-trusted built-in Job-only policy, and mandatory installed-package isolation
-metadata. PlatformBroker passes 32/32, including closed isolated-client SID/
+trusted Job-only exceptions, manifest-backed bundled packages, mandatory
+installed-package isolation metadata, lifecycle residency, and exact dashboard
+gesture derivation. PlatformBroker passes 34/34, including closed isolated-
+client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
 consent/lifecycle gates, revocation, and cancellation of already in-flight
-provider work when lifecycle or consent changes. An actual AppContainer-to-broker
+provider work when lifecycle or consent changes, plus dormant-reservation and
+exact-operation single-use broker-lease expiry/replay/revocation checks. An
+actual AppContainer-to-broker
 request integration also passes with the exact SID, Low-label global endpoint,
 expected PID, nonce, and widget identity checks in force.
  The generic worker-host suite passes 9/9, including that real typed broker
  request from an AppContainer worker. Audio provider and Audio Mixer pass 15/15
  and 24/24; Network provider and Network Controls pass 31/31 and 17/17.
  Bluetooth provider passes 11/11; Recent Apps and its Windows activity provider
- pass 8/8 and 10/10; Settings passes 34/34.
-Pre-resume native fault injection and an installed package launched through the
-published Bridge/catalog layout remain explicit release-test gaps.
+ pass 8/8 and 10/10; Windows Media provider and Now Playing pass 11/11 and 9/9.
+ The first-party conformance suite passes 4/4 by building and installing the
+ actual Audio Mixer, Network Controls, Recent Apps, and Now Playing packages,
+ launching each with the generic host in its package AppContainer, and observing
+ a safe brokered action through simulated platform providers. Pre-resume native
+ fault injection remains an explicit release-test gap.
 Network Controls and its Windows provider retain their focused 17/17 and 31/31
 coverage for controller/focus, lifecycle/no-poll subscription ordering,
 privacy/explicit state, optimistic command reconciliation, opaque identity,
@@ -425,8 +482,9 @@ with C++ installed:
 ## Honest limitations
 
 - The generic native renderer handles the current declarative node kinds and
-  renders YT Music, Settings, Audio Mixer, Network Controls, Recent Apps, and installed
-  widgets through catalog descriptors. Responsive viewport/containment math is
+  renders YT Music, Settings, Audio Mixer, Network Controls, Recent Apps, Now
+  Playing, and installed widgets through catalog descriptors. Responsive
+  viewport/containment math is
   covered broadly; physical mixed-DPI, localization, accessibility, and visual
   regression evidence is still incomplete.
 - Local and bounded remote package/catalog commands plus CLI and Settings
@@ -451,7 +509,9 @@ with C++ installed:
   tested mitigation caused CoreCLR DLL initialization failure (`0xC0000142`).
   Job Object UI restrictions remain enabled.
 - Closed audio/network/Bluetooth/recent-activity manifest permissions are
-  enforced through the broker.
+  enforced through the broker, as are the media-session read/control
+  permissions and the narrowly bounded dashboard gesture exception for one
+  exact control operation.
   Community AppContainers have zero OS capabilities/network authority and no
   general desktop token; direct resource access is limited to explicit
   read/execute runtime/package grants. OS capability APIs remain brokered.
@@ -467,10 +527,10 @@ with C++ installed:
 - Topmost/foreground reassertion is best effort. Secure desktop, elevated
   windows, exclusive render paths, and multi-monitor backdrop coverage are not
   supported contracts.
-- Background worker processes intentionally remain resident by default.
-  Visible/Interactive work is canceled, and the current broker denies every
-  capability in Background. Manifest `backgroundPolicy`, resource-policy, and
-  opt-in suspend/unload enforcement are not implemented yet.
+- Background worker processes remain resident under the default `keep-alive`
+  policy. Versioned suspend and bounded idle-unload policies are enforced by
+  the bridge; packaged resource measurements and long-duration churn testing
+  remain part of the performance matrix.
 - Recent activity observation starts lazily on the first authorized read, then
   remains event-driven until the bridge/backend is disposed. Consent revocation
   blocks delivery and activation and cancels in-flight broker requests, but
@@ -529,14 +589,15 @@ and [troubleshooting](troubleshooting.md).
    including the 150% text-scale matrix and controller focus reachability.
 2. Extend the bounded process sampler with ETW/PresentMon automation, stored
    comparable baselines, latency scenarios, and per-widget resource diagnostics.
-3. Add native graphical theme preview, package remove/update discovery, and
-   `gbar dev` (Settings and CLI exact-version rollback are implemented).
+3. Add native graphical theme preview, package remove/update discovery,
+   editor schemas, controller/focus inspection, and an SDK Gallery. Complete
+   packaged author-workflow evidence for the implemented `gbar dev` loop.
 4. Implement publisher signing/revocation, crash quarantine, CPU and disk/
    profile quotas/cleanup, and security audit UI before public community
    distribution; migrate trusted built-ins as their desktop dependencies become
    brokered.
 5. Advance the controller-first Audio Control and Network Control roadmap from
    their bounded reference slices through hardware/privacy/performance gates,
-   then continue non-auth Performance, general media, recent apps/games, and
-   capture references.
+   then continue non-auth Performance, richer media, recent games detection,
+   and capture references.
 6. Run the documented controller/game/presentation/anti-cheat matrix.

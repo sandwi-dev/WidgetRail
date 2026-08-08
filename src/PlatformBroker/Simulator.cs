@@ -9,6 +9,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<AvailableWifiNetworkSummary> _availableWifiNetworks = [];
     private readonly List<RecentActivitySummary> _recentActivities = [];
     private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
+    private readonly List<MediaSessionSummary> _mediaSessions = [];
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
@@ -32,6 +33,9 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int RecentActivityActivationCalls { get; private set; }
     public int BluetoothRadioControlCalls { get; private set; }
     public string? LastActivatedActivityId { get; private set; }
+    public int MediaControlCalls { get; private set; }
+    public string? LastControlledMediaSessionId { get; private set; }
+    public MediaSessionCommand? LastMediaCommand { get; private set; }
     public WifiRadioSummary WifiRadio { get; set; } = new(WifiRadioState.On, true);
     public BluetoothRadioState BluetoothRadioState { get; set; } = BluetoothRadioState.On;
     public bool CanControlBluetoothRadio { get; set; } = true;
@@ -74,6 +78,12 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         _bluetoothDevices.Clear();
         _bluetoothDevices.AddRange(devices);
+    }
+
+    public void SetMediaSessions(IEnumerable<MediaSessionSummary> sessions)
+    {
+        _mediaSessions.Clear();
+        _mediaSessions.AddRange(sessions);
     }
 
     public void Publish(BrokerPlatformEvent platformEvent) =>
@@ -253,6 +263,25 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         cancellationToken.ThrowIfCancellationRequested();
         RecentActivityActivationCalls++;
         LastActivatedActivityId = activityId;
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<MediaSessionSummary>>(_mediaSessions.ToArray());
+    }
+
+    public Task ControlMediaSessionAsync(
+        string sessionId,
+        MediaSessionCommand command,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        MediaControlCalls++;
+        LastControlledMediaSessionId = sessionId;
+        LastMediaCommand = command;
         return Task.CompletedTask;
     }
 }

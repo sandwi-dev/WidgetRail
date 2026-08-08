@@ -16,6 +16,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity read and activation use separate consent and lifecycle gates", RecentActivityContracts),
+    ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
+    ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
     ("Consent updates are atomic across store instances", ConsentUpdatesAreAtomic),
@@ -59,7 +61,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(17, PlatformCapabilities.All.Count);
+    Assert.Equal(19, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -187,6 +189,75 @@ static async Task RecentActivityContracts()
     Assert.Equal(PlatformCapabilities.RecentActivitiesChanged, change.EventType);
 }
 
+static async Task MediaSessionContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.MediaSessionsReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.MediaSessionsControlV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetMediaSessions([
+        new("media-1", "Player", "Safe title", "Safe artist", MediaPlaybackStatus.Playing,
+            1_000, 10_000, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
+            true, true, true, true, true),
+    ]);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var read = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsGet, new { }));
+    Assert.True(read.Succeeded && read.Payload is not null);
+    var json = read.Payload!.Value.GetRawText();
+    Assert.Contains("Safe title", json);
+    Assert.DoesNotContain("aumid", json, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("process", json, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("handle", json, StringComparison.OrdinalIgnoreCase);
+
+    var visibleControl = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }));
+    Assert.Equal("lifecycle_denied", visibleControl.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var controlled = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }));
+    Assert.True(controlled.Succeeded);
+    Assert.Equal(1, backend.MediaControlCalls);
+    Assert.Equal(MediaSessionCommand.Next, backend.LastMediaCommand);
+
+    var malformed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "private id", command = "play" }));
+    Assert.Equal("invalid_payload", malformed.ErrorCode);
+
+    var subscription = await broker.SubscribeAsync(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged);
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged,
+        new MediaSessionsChangedEvent([
+            new("media-2", "Second player", "Another title", "Another artist",
+                MediaPlaybackStatus.Paused, 2_000, 8_000,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
+                true, true, true, false, false),
+        ])));
+    var change = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal(PlatformCapabilities.MediaSessionsChanged, change.EventType);
+    Assert.Equal("media-2", change.Payload.GetProperty("sessions")[0]
+        .GetProperty("sessionId").GetString());
+    await subscription.DisposeAsync();
+}
+
 static async Task ConsentFailsClosed()
 {
     using var temp = new TemporaryDirectory();
@@ -206,6 +277,124 @@ static async Task ConsentFailsClosed()
     var denied = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AudioSessionsReadV1, PlatformCapabilities.AudioSessionsList, new { }));
     Assert.Equal("permission_denied", denied.ErrorCode);
+}
+
+static async Task DashboardGestureAuthorityIsBounded()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.MediaSessionsControlV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
+        ConsentDecision.Grant);
+    var backend = AudioBackend();
+    backend.SetMediaSessions([
+        new("media-1", "Player", "Title", "Artist", MediaPlaybackStatus.Paused,
+            0, 10_000, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
+            true, true, true, true, true),
+    ]);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.AudioSessionsControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var noGrant = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }, 1, 5));
+    Assert.Equal("lifecycle_denied", noGrant.ErrorCode);
+
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 10, 5, TimeSpan.FromSeconds(2));
+    var wrongCapability = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioSessionsControlV1,
+        PlatformCapabilities.AudioSessionSetMuted,
+        new { sessionId = "audio-1", isMuted = true }, 10, 5));
+    Assert.Equal("lifecycle_denied", wrongCapability.ErrorCode);
+    var exact = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }, 10, 5));
+    Assert.True(exact.Succeeded);
+    var replay = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "previous" }, 10, 5));
+    Assert.Equal("lifecycle_denied", replay.ErrorCode);
+    Assert.Equal(1, backend.MediaControlCalls);
+
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.AudioSessionsControlV1,
+        PlatformCapabilities.AudioSessionSetMuted, 11, 5, TimeSpan.FromSeconds(2));
+    var wrongOperation = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioSessionsControlV1,
+        PlatformCapabilities.AudioSessionSetVolume,
+        new { sessionId = "audio-1", volume = 0.5 }, 11, 5));
+    Assert.Equal("lifecycle_denied", wrongOperation.ErrorCode);
+    var exactAudio = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioSessionsControlV1,
+        PlatformCapabilities.AudioSessionSetMuted,
+        new { sessionId = "audio-1", isMuted = true }, 11, 5));
+    Assert.True(exactAudio.Succeeded);
+    Assert.Equal(1, backend.AudioControlCalls);
+
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 12, 6, TimeSpan.FromSeconds(2));
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 13, 6, TimeSpan.FromSeconds(2));
+    Assert.True((await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }, 12, 6))).Succeeded);
+    Assert.True((await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "previous" }, 13, 6))).Succeeded);
+    Assert.Equal(3, backend.MediaControlCalls);
+
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 14, 7, TimeSpan.FromMilliseconds(10));
+    await Task.Delay(40);
+    var expired = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }, 14, 7));
+    Assert.Equal("lifecycle_denied", expired.ErrorCode);
+    Assert.Throws<BrokerException>(() => broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 14, 7, TimeSpan.FromSeconds(1)),
+        "gesture_replayed");
+
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 15, 8, TimeSpan.FromSeconds(2));
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }, 15, 8))).ErrorCode);
+
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 16, 9, TimeSpan.FromSeconds(2));
+    await store.SetDecisionAsync(identity, PlatformCapabilities.MediaSessionsControlV1,
+        ConsentDecision.Deny);
+    Assert.Equal("permission_denied", (await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        new { sessionId = "media-1", command = "next" }, 16, 9))).ErrorCode);
+
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    Assert.Throws<BrokerException>(() => broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, 17, 10, TimeSpan.FromSeconds(1)),
+        "lifecycle_denied");
 }
 
 static async Task IdentityMismatchIsDenied()
@@ -1179,6 +1368,29 @@ static byte[] Request(
         capabilityId = capability,
         operation,
         payload,
+    });
+
+static byte[] GestureRequest(
+    BrokerWidgetIdentity identity,
+    string capability,
+    string operation,
+    object payload,
+    long inputSequence,
+    long snapshotSequence) => JsonSerializer.SerializeToUtf8Bytes(new
+    {
+        protocolVersion = BrokerJson.ProtocolVersion,
+        requestId = 1,
+        widget = new
+        {
+            packageId = identity.PackageId,
+            publisherId = identity.PublisherId,
+            instanceId = identity.InstanceId,
+        },
+        capabilityId = capability,
+        operation,
+        payload,
+        gestureInputSequence = inputSequence,
+        gestureSnapshotSequence = snapshotSequence,
     });
 
 sealed class TemporaryDirectory : IDisposable

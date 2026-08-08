@@ -108,6 +108,8 @@ public sealed class BrokerEventSubscription : IAsyncDisposable
 /// </summary>
 public sealed class PlatformCapabilityBroker : IAsyncDisposable
 {
+    public static readonly TimeSpan MaximumDashboardGestureLifetime = TimeSpan.FromSeconds(2);
+    public const int MaximumDashboardGestureAuthorities = 16;
     private readonly BrokerWidgetIdentity _identity;
     private readonly HashSet<string> _declaredCapabilities;
     private readonly ConsentStore _consentStore;
@@ -116,6 +118,9 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly List<BrokerEventSubscription> _subscriptions = [];
     private readonly HashSet<RequestLease> _requestLeases = [];
     private readonly HashSet<string> _revokedCapabilities = new(StringComparer.Ordinal);
+    private readonly Dictionary<DashboardGestureKey, DashboardGestureAuthority>
+        _dashboardGestureAuthorities = [];
+    private long _lastDashboardGestureSequence;
     private BrokerLifecycleState _lifecycle = BrokerLifecycleState.Background;
     private long _eventSequence;
     private bool _disposed;
@@ -150,11 +155,12 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             ThrowIfDisposed();
             if (_lifecycle == BrokerLifecycleState.Destroying)
                 throw new BrokerException("invalid_lifecycle", "Destroying broker cannot transition.");
+            if (_lifecycle != lifecycle) ClearDashboardGestureAuthoritiesLocked();
             _lifecycle = lifecycle;
             foreach (var subscription in _subscriptions) subscription.SetLifecycle(lifecycle);
             foreach (var lease in _requestLeases)
             {
-                if (!IsLifecycleAllowed(lease.Kind, lifecycle))
+                if (!IsLifecycleAllowed(lease, lifecycle))
                 {
                     lease.MarkCanceledLocked("lifecycle_denied");
                     canceled.Add(lease);
@@ -162,6 +168,67 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
         }
         foreach (var lease in canceled) lease.SignalCancellation();
+    }
+
+    /// <summary>
+    /// Installs a trusted-host-only, single-use authority for one exact control
+    /// operation while the widget remains Visible. Workers cannot reach this
+    /// method through broker IPC.
+    /// </summary>
+    public void GrantDashboardGestureAuthority(
+        string capabilityId,
+        string operationId,
+        long inputSequence,
+        long snapshotSequence,
+        TimeSpan validFor)
+    {
+        if (!PlatformCapabilities.TryGet(capabilityId, out var capability) ||
+            capability.Kind != BrokerCapabilityKind.Control ||
+            !capability.Operations.Contains(operationId))
+            throw new BrokerException(
+                "unsupported_capability", "Dashboard authority requires a supported control operation.");
+        if (!_declaredCapabilities.Contains(capabilityId))
+            throw new BrokerException(
+                "capability_not_declared", "Dashboard authority capability was not declared.");
+        if (inputSequence <= 0 || snapshotSequence <= 0)
+            throw new BrokerException("invalid_gesture", "Dashboard gesture sequences must be positive.");
+        if (validFor <= TimeSpan.Zero || validFor > MaximumDashboardGestureLifetime)
+            throw new BrokerException("invalid_gesture", "Dashboard gesture lifetime is invalid.");
+
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_lifecycle != BrokerLifecycleState.Visible)
+                throw new BrokerException(
+                    "lifecycle_denied", "Dashboard authority is available only while Visible.");
+            if (inputSequence <= _lastDashboardGestureSequence)
+                throw new BrokerException("gesture_replayed", "Dashboard gesture sequence was replayed.");
+            _lastDashboardGestureSequence = inputSequence;
+            RemoveExpiredDashboardGestureAuthoritiesLocked();
+            if (_dashboardGestureAuthorities.Count >= MaximumDashboardGestureAuthorities)
+                throw new BrokerException(
+                    "gesture_limit", "Too many dashboard gesture authorities are pending.");
+            var expiresAt = System.Diagnostics.Stopwatch.GetTimestamp() +
+                (long)Math.Ceiling(validFor.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+            var key = new DashboardGestureKey(inputSequence, snapshotSequence);
+            var authority = new DashboardGestureAuthority(
+                capabilityId, operationId, expiresAt);
+            authority.ExpiryTimer = new Timer(
+                _ => ExpireDashboardGestureAuthority(key), null,
+                validFor, Timeout.InfiniteTimeSpan);
+            _dashboardGestureAuthorities.Add(key, authority);
+        }
+    }
+
+    public void RevokeDashboardGestureAuthority(long inputSequence)
+    {
+        lock (_gate)
+        {
+            var key = _dashboardGestureAuthorities.Keys.FirstOrDefault(
+                candidate => candidate.InputSequence == inputSequence);
+            if (key.InputSequence == inputSequence)
+                RemoveDashboardGestureAuthorityLocked(key);
+        }
     }
 
     public async Task<BrokerResponseEnvelope> HandleAsync(
@@ -195,7 +262,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             throw new BrokerException("identity_mismatch", "Broker request identity does not match its channel.");
         var capability = await AuthorizeAsync(request.CapabilityId, request.Operation,
             cancellationToken).ConfigureAwait(false);
-        using var lease = CreateRequestLease(capability, cancellationToken);
+        using var lease = CreateRequestLease(capability, request, cancellationToken);
         try
         {
             lease.ThrowIfBrokerCanceled();
@@ -283,6 +350,11 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     await _backend.GetRecentActivitiesAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.RecentActivityActivate =>
                 await ActivateRecentActivityAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.MediaSessionsGet =>
+                BrokerJson.ToElement(ValidateMediaSessions(DemandEmptyPayload(request.Payload),
+                    await _backend.GetMediaSessionsAsync(requestToken).ConfigureAwait(false))),
+            PlatformCapabilities.MediaSessionControl =>
+                await ControlMediaSessionAsync(request.Payload, requestToken).ConfigureAwait(false),
             _ => throw new BrokerException("unsupported_operation", "Broker operation is unsupported."),
         };
     }
@@ -358,6 +430,11 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     canceled.Add(lease);
                 }
             }
+            foreach (var entry in _dashboardGestureAuthorities.ToArray())
+            {
+                if (_revokedCapabilities.Contains(entry.Value.CapabilityId))
+                    RemoveDashboardGestureAuthorityLocked(entry.Key);
+            }
         }
         foreach (var lease in canceled) lease.SignalCancellation();
     }
@@ -375,6 +452,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 lease.MarkCanceledLocked("capability_revoked");
                 canceled.Add(lease);
             }
+            ClearDashboardGestureAuthoritiesLocked();
         }
         foreach (var lease in canceled) lease.SignalCancellation();
     }
@@ -406,13 +484,15 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     }
 
     private static bool IsLifecycleAllowed(
-        BrokerCapabilityKind kind, BrokerLifecycleState lifecycle) =>
-        kind == BrokerCapabilityKind.Control
-            ? lifecycle == BrokerLifecycleState.Interactive
+        RequestLease lease, BrokerLifecycleState lifecycle) =>
+        lease.Kind == BrokerCapabilityKind.Control
+            ? lifecycle == BrokerLifecycleState.Interactive ||
+                lease.DashboardGestureAuthorized && lifecycle == BrokerLifecycleState.Visible
             : lifecycle is BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive;
 
     private RequestLease CreateRequestLease(
         BrokerCapabilityDefinition capability,
+        BrokerRequestEnvelope request,
         CancellationToken callerCancellation)
     {
         lock (_gate)
@@ -420,8 +500,35 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             ThrowIfDisposed();
             if (_revokedCapabilities.Contains(capability.Id))
                 throw new BrokerException("capability_revoked", "Capability permission was revoked.");
-            DemandLifecycle(capability.Kind, _lifecycle);
-            var lease = new RequestLease(this, capability.Id, capability.Kind, callerCancellation);
+            var dashboardGestureAuthorized = false;
+            if (capability.Kind == BrokerCapabilityKind.Control &&
+                _lifecycle == BrokerLifecycleState.Visible)
+            {
+                if (request.GestureInputSequence is not { } inputSequence ||
+                    request.GestureSnapshotSequence is not { } snapshotSequence)
+                    throw new BrokerException(
+                        "lifecycle_denied", "Capability is unavailable in this lifecycle.");
+                var key = new DashboardGestureKey(inputSequence, snapshotSequence);
+                if (!_dashboardGestureAuthorities.TryGetValue(key, out var authority) ||
+                    authority.IsExpired ||
+                    !string.Equals(authority.CapabilityId, capability.Id, StringComparison.Ordinal) ||
+                    !string.Equals(authority.OperationId, request.Operation, StringComparison.Ordinal))
+                {
+                    if (authority?.IsExpired == true)
+                        RemoveDashboardGestureAuthorityLocked(key);
+                    throw new BrokerException(
+                        "lifecycle_denied", "Capability is unavailable in this lifecycle.");
+                }
+                dashboardGestureAuthorized = true;
+                RemoveDashboardGestureAuthorityLocked(key);
+            }
+            else
+            {
+                DemandLifecycle(capability.Kind, _lifecycle);
+            }
+            var lease = new RequestLease(
+                this, capability.Id, capability.Kind, dashboardGestureAuthorized,
+                callerCancellation);
             _requestLeases.Add(lease);
             return lease;
         }
@@ -444,17 +551,20 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             PlatformCapabilityBroker owner,
             string capabilityId,
             BrokerCapabilityKind kind,
+            bool dashboardGestureAuthorized,
             CancellationToken callerCancellation)
         {
             _owner = owner;
             CapabilityId = capabilityId;
             Kind = kind;
+            DashboardGestureAuthorized = dashboardGestureAuthorized;
             _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                 callerCancellation, _brokerCancellation.Token);
         }
 
         internal string CapabilityId { get; }
         internal BrokerCapabilityKind Kind { get; }
+        internal bool DashboardGestureAuthorized { get; }
         internal CancellationToken Token => _linkedCancellation.Token;
         internal string? CancellationCode => Volatile.Read(ref _cancellationCode);
 
@@ -493,6 +603,53 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             _linkedCancellation.Dispose();
             _brokerCancellation.Dispose();
         }
+    }
+
+    private void ExpireDashboardGestureAuthority(DashboardGestureKey key)
+    {
+        lock (_gate)
+        {
+            RemoveDashboardGestureAuthorityLocked(key);
+        }
+    }
+
+    private void RemoveExpiredDashboardGestureAuthoritiesLocked()
+    {
+        foreach (var entry in _dashboardGestureAuthorities.ToArray())
+        {
+            if (entry.Value.IsExpired) RemoveDashboardGestureAuthorityLocked(entry.Key);
+        }
+    }
+
+    private void RemoveDashboardGestureAuthorityLocked(DashboardGestureKey key)
+    {
+        if (!_dashboardGestureAuthorities.Remove(key, out var authority)) return;
+        authority.ExpiryTimer?.Dispose();
+        authority.ExpiryTimer = null;
+    }
+
+    private void ClearDashboardGestureAuthoritiesLocked()
+    {
+        foreach (var authority in _dashboardGestureAuthorities.Values)
+            authority.ExpiryTimer?.Dispose();
+        _dashboardGestureAuthorities.Clear();
+    }
+
+    private readonly record struct DashboardGestureKey(
+        long InputSequence,
+        long SnapshotSequence);
+
+    private sealed class DashboardGestureAuthority(
+        string capabilityId,
+        string operationId,
+        long expiresAtTimestamp)
+    {
+        internal string CapabilityId { get; } = capabilityId;
+        internal string OperationId { get; } = operationId;
+        internal long ExpiresAtTimestamp { get; } = expiresAtTimestamp;
+        internal Timer? ExpiryTimer { get; set; }
+        internal bool IsExpired =>
+            System.Diagnostics.Stopwatch.GetTimestamp() >= ExpiresAtTimestamp;
     }
 
     private async Task<JsonElement> SetAudioVolumeAsync(
@@ -635,6 +792,48 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 throw new BrokerException("invalid_backend_data", "Recent activity entries are inconsistent.");
         }
         return activities.ToArray();
+    }
+
+    private async Task<JsonElement> ControlMediaSessionAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ControlMediaSessionRequest>(payload);
+        ContractValidation.OpaqueId(request.SessionId);
+        if (!Enum.IsDefined(request.Command))
+            throw new BrokerException("invalid_payload", "Media session command is invalid.");
+        await _backend.ControlMediaSessionAsync(
+            request.SessionId, request.Command, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private static IReadOnlyList<MediaSessionSummary> ValidateMediaSessions(
+        bool _, IReadOnlyList<MediaSessionSummary>? sessions) => ValidateMediaSessions(sessions);
+
+    private static IReadOnlyList<MediaSessionSummary> ValidateMediaSessions(
+        IReadOnlyList<MediaSessionSummary>? sessions)
+    {
+        if (sessions is null || sessions.Count > 32)
+            throw new BrokerException("invalid_backend_data", "Media session result is invalid.");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var currentCount = 0;
+        foreach (var session in sessions)
+        {
+            if (session is null || !Enum.IsDefined(session.PlaybackStatus) ||
+                !double.IsFinite(session.PlaybackRate) || session.PlaybackRate is < 0 or > 16 ||
+                session.PositionMilliseconds < 0 || session.DurationMilliseconds < 0 ||
+                session.PositionMilliseconds > session.DurationMilliseconds ||
+                session.DurationMilliseconds > TimeSpan.FromDays(7).TotalMilliseconds ||
+                session.CapturedAtUnixMilliseconds < 0 ||
+                session.IsCurrent && ++currentCount > 1)
+                throw new BrokerException("invalid_backend_data", "Media session entry is inconsistent.");
+            ContractValidation.OpaqueId(session.SessionId, "invalid_backend_data");
+            ContractValidation.DisplayName(session.AppName);
+            ContractValidation.DisplayName(session.Title);
+            ContractValidation.DisplayName(session.Artist);
+            if (!ids.Add(session.SessionId))
+                throw new BrokerException("invalid_backend_data", "Media session IDs are duplicated.");
+        }
+        return sessions.ToArray();
     }
 
     private static WifiRadioSummary ValidateWifiRadio(bool _, WifiRadioSummary? radio)
@@ -901,6 +1100,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     platformEvent.Payload is RecentActivitiesChangedEvent activities =>
                     BrokerJson.ToElement(new RecentActivitiesChangedEvent(
                         ValidateRecentActivities(activities.Activities))),
+                PlatformCapabilities.MediaSessionsChanged when
+                    platformEvent.Payload is MediaSessionsChangedEvent media =>
+                    BrokerJson.ToElement(new MediaSessionsChangedEvent(
+                        ValidateMediaSessions(media.Sessions))),
                 _ => throw new BrokerException("invalid_backend_data", "Broker event payload is invalid."),
             };
             var envelope = new BrokerEventEnvelope(BrokerJson.ProtocolVersion,
@@ -938,6 +1141,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             if (_disposed) return ValueTask.CompletedTask;
             _disposed = true;
             _lifecycle = BrokerLifecycleState.Destroying;
+            ClearDashboardGestureAuthoritiesLocked();
             _backend.EventPublished -= OnBackendEvent;
             foreach (var subscription in _subscriptions) subscription.Revoke();
             _subscriptions.Clear();

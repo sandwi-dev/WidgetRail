@@ -1,5 +1,6 @@
 {
   "catalogVersion": 1,
+  "genericWorkerExecutable": "runtime/WidgetWorkerHost/WidgetWorkerHost.exe",
   "widgets": [
     {
       "id": "yt-music",
@@ -11,6 +12,7 @@
       "workerExecutable": "runtime/YtMusic/YtMusicWidget.Worker.exe",
       "styleFile": "runtime/YtMusic/styles/default.gbss",
       "memoryLimitMb": 64,
+      "residencyPolicy": { "schemaVersion": 1, "mode": "suspend-when-hidden" },
       "workerArguments": [],
       "declaredCapabilities": [],
       "quickActions": []
@@ -25,87 +27,46 @@
       "workerExecutable": "runtime/Settings/SettingsWidget.Worker.exe",
       "styleFile": "runtime/Settings/styles/default.gbss",
       "memoryLimitMb": 48,
+      "residencyPolicy": { "schemaVersion": 1, "mode": "suspend-when-hidden" },
       "workerArguments": [
         "--bundled-widget-root",
         ".."
       ],
       "declaredCapabilities": [],
       "quickActions": []
+    }
+  ],
+  "bundledWidgets": [
+    {
+      "id": "media-sessions",
+      "packageId": "org.gbar.firstparty.media-sessions",
+      "instanceId": "media-sessions.default",
+      "packageRoot": "runtime/MediaSessions",
+      "icon": "music",
+      "quickActions": []
     },
     {
       "id": "recent-apps",
       "packageId": "org.gbar.firstparty.recent-apps",
-      "publisherId": "org.gbar.firstparty",
-      "name": "Recent Apps",
       "instanceId": "recent-apps.default",
+      "packageRoot": "runtime/RecentApps",
       "icon": "play",
-      "workerExecutable": "runtime/RecentApps/RecentAppsWidget.Worker.exe",
-      "styleFile": "runtime/RecentApps/styles/default.gbss",
-      "memoryLimitMb": 48,
-      "workerArguments": [],
-      "declaredCapabilities": [
-        "system.activity.recent.read.v1",
-        "system.activity.recent.activate.v1"
-      ],
       "quickActions": []
     },
     {
       "id": "audio-mixer",
       "packageId": "org.gbar.firstparty.audio-mixer",
-      "publisherId": "org.gbar.firstparty",
-      "name": "Audio Mixer",
       "instanceId": "audio-mixer.default",
+      "packageRoot": "runtime/AudioMixer",
       "icon": "volume",
-      "workerExecutable": "runtime/AudioMixer/AudioMixerWidget.Worker.exe",
-      "styleFile": "runtime/AudioMixer/styles/default.gbss",
-      "memoryLimitMb": 64,
-      "workerArguments": [],
-      "declaredCapabilities": [
-          "system.audio.sessions.read.v1",
-          "system.audio.sessions.control.v1",
-          "system.audio.output.read.v1",
-          "system.audio.output.control.v1",
-          "system.audio.devices.read.v1",
-          "system.audio.input.read.v1",
-          "system.audio.input.control.v1"
-      ],
-      "quickActions": [
-        {
-          "id": "previous-session",
-          "label": "Previous audio session",
-          "actionId": "session.previous",
-          "sourceElementId": "dashboard.audio.previous",
-          "controllerButton": "leftBumper"
-        },
-        {
-          "id": "next-session",
-          "label": "Next audio session",
-          "actionId": "session.next",
-          "sourceElementId": "dashboard.audio.next",
-          "controllerButton": "rightBumper"
-        }
-      ]
+      "quickActions": []
     },
     {
       "id": "network-controls",
       "packageId": "org.gbar.firstparty.network-controls",
-      "publisherId": "org.gbar.firstparty",
-      "name": "Network Controls",
       "instanceId": "network-controls.default",
+      "packageRoot": "runtime/NetworkControls",
       "icon": "wifi",
-      "workerExecutable": "runtime/NetworkControls/NetworkControlsWidget.Worker.exe",
-      "styleFile": "runtime/NetworkControls/styles/default.gbss",
-      "memoryLimitMb": 64,
-      "workerArguments": [],
-      "declaredCapabilities": [
-        "system.network.read.v1",
-        "system.network.wifi.read.v1",
-        "system.network.wifi.connect.v1",
-        "system.network.wifi.radio.read.v1",
-        "system.network.wifi.radio.control.v1",
-        "system.network.bluetooth.read.v1",
-        "system.network.bluetooth.radio.control.v1"
-      ],
       "quickActions": []
     }
   ]

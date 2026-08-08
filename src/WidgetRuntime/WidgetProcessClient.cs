@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
@@ -14,10 +15,20 @@ namespace GameBarAlternative.WidgetRuntime;
 /// </summary>
 public sealed class WidgetProcessClient : IAsyncDisposable
 {
+    private static readonly TimeSpan CompanionCleanupTimeout = TimeSpan.FromSeconds(1);
+    // A dormant reservation is not broker authority. It exists only long
+    // enough for bounded serial widget work to reach its exact capability call.
+    // The separate broker lease remains at most two seconds and starts only then.
+    private static readonly TimeSpan MaximumDashboardGestureReservationLifetime =
+        TimeSpan.FromSeconds(10);
     private readonly WidgetProcessOptions _options;
+    private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<RuntimeEnvelope>> _pending = new();
+    private readonly object _dashboardGestureGate = new();
+    private readonly Dictionary<DashboardGestureKey, PendingDashboardGesture>
+        _pendingDashboardGestures = [];
     private NamedPipeServerStream? _pipe;
     private LengthPrefixedJsonChannel? _channel;
     private Process? _process;
@@ -32,12 +43,19 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private int _restartAttempts;
     private int _sessionId;
     private int _failureReported;
+    private bool _residencyUnloaded;
     private bool _stopping;
     private bool _disposed;
 
     public WidgetProcessClient(WidgetProcessOptions options)
+        : this(options, TimeProvider.System)
+    {
+    }
+
+    internal WidgetProcessClient(WidgetProcessOptions options, TimeProvider timeProvider)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _options.Validate();
     }
 
@@ -90,6 +108,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidateHostState(state);
+        if (state != _hostLifecycle) ClearPendingDashboardGestures();
         if (state == WidgetLifecycleState.Background && !IsRunning)
         {
             _hostLifecycle = state;
@@ -123,20 +142,72 @@ public sealed class WidgetProcessClient : IAsyncDisposable
 
     public async Task<bool> SendControllerInputAsync(
         ControllerInputEvent input,
+        CancellationToken cancellationToken = default) =>
+        await SendControllerInputAsync(input, authority: null, cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>
+    /// Sends controller input and, when supplied by the trusted host, reserves
+    /// one exact dashboard gesture authority. The broker lifetime starts only
+    /// if that exact queued action later executes a matching capability call.
+    /// </summary>
+    public async Task<bool> SendControllerInputAsync(
+        ControllerInputEvent input,
+        WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
-        var response = await RequestAsync(MessageTypes.ControllerInput, input, cancellationToken)
-            .ConfigureAwait(false);
-        if (response.Type != MessageTypes.ControllerInputResult)
-            throw new WidgetProtocolViolationException(
-                $"Expected controller input result, received '{response.Type}'.");
-        return RuntimeJson.FromElement<ControllerInputResultPayload>(response.Payload).Handled;
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        var authorityMayRemain = false;
+        if (authority is not null) ReserveDashboardGesture(input, authority);
+        try
+        {
+            var response = await RequestConnectedAsync(
+                    MessageTypes.ControllerInput, input, cancellationToken)
+                .ConfigureAwait(false);
+            if (response.Type != MessageTypes.ControllerInputResult)
+                throw new WidgetProtocolViolationException(
+                    $"Expected controller input result, received '{response.Type}'.");
+            var handled = RuntimeJson.FromElement<ControllerInputResultPayload>(response.Payload).Handled;
+            authorityMayRemain = handled;
+            return handled;
+        }
+        finally
+        {
+            if (authority is not null && !authorityMayRemain)
+            {
+                RemovePendingDashboardGesture(
+                    authority.InputSequence, authority.SnapshotSequence);
+                await RevokeCompanionGestureAuthorityAsync(authority.InputSequence)
+                    .ConfigureAwait(false);
+            }
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
+        await StopCoreAsync(markResidencyUnload: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Cooperatively destroys a Background worker for an explicit host
+    /// residency policy while retaining this reusable process client. This is
+    /// not a crash and the next lazy launch does not consume restart budget.
+    /// </summary>
+    public async Task UnloadAsync(CancellationToken cancellationToken = default)
+    {
+        if (_hostLifecycle != WidgetLifecycleState.Background)
+            throw new InvalidOperationException("Only a Background worker may be unloaded.");
+        await StopCoreAsync(markResidencyUnload: true, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task StopCoreAsync(
+        bool markResidencyUnload,
+        CancellationToken cancellationToken)
+    {
         _stopping = true;
+        var stopAcknowledged = false;
         if (_companion is not null)
         {
             try
@@ -153,18 +224,24 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         {
             try
             {
-                await RequestAsync(MessageTypes.Stop, new { }, cancellationToken).ConfigureAwait(false);
+                var response = await RequestAsync(MessageTypes.Stop, new { }, cancellationToken)
+                    .ConfigureAwait(false);
+                if (response.Type != MessageTypes.Acknowledged)
+                    throw new WidgetProtocolViolationException(
+                        $"Expected stop acknowledgement, received '{response.Type}'.");
+                stopAcknowledged = true;
                 var process = _process;
                 if (process is not null)
                     await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is IOException or OperationCanceledException or WidgetProcessException)
+            catch (Exception exception) when (exception is not OutOfMemoryException)
             {
                 TerminateWorker();
             }
         }
-        await DisposeSessionAsync().ConfigureAwait(false);
+        await DisposeSessionAsync(cancellationToken).ConfigureAwait(false);
         _hostLifecycle = WidgetLifecycleState.Background;
+        _residencyUnloaded = markResidencyUnload && stopAcknowledged;
     }
 
     public void ResetCrashLoop() => Interlocked.Exchange(ref _restartAttempts, 0);
@@ -243,11 +320,14 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         {
             if (IsRunning) return;
             var isRestart = _starts > 0;
-            if (isRestart && _restartAttempts >= _options.MaximumRestartAttempts)
+            var isResidencyResume = _residencyUnloaded;
+            _residencyUnloaded = false;
+            if (isRestart && !isResidencyResume &&
+                _restartAttempts >= _options.MaximumRestartAttempts)
                 throw new WidgetProcessException("Widget restart limit has been reached.");
 
             TerminateWorker();
-            await DisposeSessionAsync().ConfigureAwait(false);
+            await DisposeSessionAsync(cancellationToken).ConfigureAwait(false);
             _stopping = false;
             Interlocked.Exchange(ref _failureReported, 0);
             var currentSession = Interlocked.Increment(ref _sessionId);
@@ -332,7 +412,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             }
             _process.EnableRaisingEvents = true;
             _process.Exited += (_, _) => OnProcessExited(currentSession);
-            if (isRestart) Interlocked.Increment(ref _restartAttempts);
+            if (isRestart && !isResidencyResume)
+                Interlocked.Increment(ref _restartAttempts);
             Interlocked.Increment(ref _starts);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -380,7 +461,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 ? WidgetFailureReason.ProtocolViolation
                 : WidgetFailureReason.ConnectionFailed, exception);
             TerminateWorker();
-            await DisposeSessionAsync().ConfigureAwait(false);
+            await DisposeSessionAsync(cancellationToken).ConfigureAwait(false);
             throw new WidgetProcessException(
                 exitCode is null
                     ? "Widget worker connection failed."
@@ -424,6 +505,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     continue;
                 }
 
+                if (message.Type == MessageTypes.DashboardGestureActivationRequested)
+                {
+                    if (message.RequestId != 0)
+                        throw new WidgetProtocolViolationException(
+                            "Dashboard gesture activation must be a notification.");
+                    var activation = RuntimeJson.FromElement<
+                        DashboardGestureActivationRequestPayload>(message.Payload);
+                    await ActivatePendingDashboardGestureAsync(activation, cancellationToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 if (message.RequestId == 0 || !_pending.TryRemove(message.RequestId, out var completion))
                     throw new WidgetProtocolViolationException("Response has an unknown request ID.");
                 if (message.Type == MessageTypes.Error)
@@ -458,6 +551,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         if (session != Volatile.Read(ref _sessionId) || _stopping) return;
         ReportFailure(WidgetFailureReason.ProcessExited, null);
         FailPending(new WidgetProcessException("Widget worker exited unexpectedly."));
+        ClearPendingDashboardGestures();
         _sessionCancellation?.Cancel();
     }
 
@@ -504,23 +598,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         _sessionCancellation?.Cancel();
     }
 
-    private async Task DisposeSessionAsync()
+    private async Task DisposeSessionAsync(CancellationToken cancellationToken = default)
     {
-        _sessionCancellation?.Cancel();
-        _pipe?.Dispose();
-        _process?.Dispose();
-        _windowsJob?.Dispose();
-        if (_companion is not null)
-        {
-            try { await _companion.DisposeAsync().ConfigureAwait(false); }
-            catch (Exception exception) when (exception is not OutOfMemoryException) { }
-        }
-        if (_companionTask is not null)
-        {
-            try { await _companionTask.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
-            catch (Exception exception) when (exception is not OutOfMemoryException) { }
-        }
-        _sessionCancellation?.Dispose();
+        ClearPendingDashboardGestures();
+        var sessionCancellation = _sessionCancellation;
+        var pipe = _pipe;
+        var process = _process;
+        var windowsJob = _windowsJob;
+        var companion = _companion;
+        var companionTask = _companionTask;
+
+        // Detach first so a timed-out companion cleanup cannot retain or
+        // mutate the next lazy worker session.
         _sessionCancellation = null;
         _readerTask = null;
         _pipe = null;
@@ -529,6 +618,45 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         _windowsJob = null;
         _companion = null;
         _companionTask = null;
+
+        sessionCancellation?.Cancel();
+        pipe?.Dispose();
+        process?.Dispose();
+        windowsJob?.Dispose();
+
+        Task? disposeTask = null;
+        if (companion is not null)
+        {
+            try { disposeTask = companion.DisposeAsync().AsTask(); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        }
+
+        var cleanupTasks = new[] { disposeTask, companionTask }
+            .Where(task => task is not null)
+            .Cast<Task>()
+            .Select(ObserveCompanionCleanupAsync)
+            .ToArray();
+        if (cleanupTasks.Length != 0)
+        {
+            var cleanup = Task.WhenAll(cleanupTasks);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(CompanionCleanupTimeout);
+            try { await cleanup.WaitAsync(timeout.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                // The host-owned session has already been detached and its
+                // process/pipe/Job resources released. Observe late completion
+                // without allowing faulty companion cleanup to block teardown.
+                _ = ObserveCompanionCleanupAsync(cleanup);
+            }
+        }
+        sessionCancellation?.Dispose();
+    }
+
+    private static async Task ObserveCompanionCleanupAsync(Task task)
+    {
+        try { await task.ConfigureAwait(false); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
     }
 
     private async Task SetCompanionLifecycleAsync(
@@ -549,6 +677,181 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             ReportFailure(WidgetFailureReason.TransportFailure, exception);
             TerminateWorker();
             throw new WidgetProcessException("Widget companion lifecycle update failed.", exception);
+        }
+    }
+
+    private async Task GrantCompanionGestureAuthorityAsync(
+        WidgetDashboardGestureAuthority authority,
+        CancellationToken cancellationToken)
+    {
+        var companion = _companion ?? throw new WidgetProcessException(
+            "Dashboard capability authority requires a broker companion.");
+        try
+        {
+            await companion.GrantDashboardGestureAuthorityAsync(authority, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            throw new WidgetProcessException(
+                "Widget companion rejected dashboard gesture authority.", exception);
+        }
+    }
+
+    private void ReserveDashboardGesture(
+        ControllerInputEvent input,
+        WidgetDashboardGestureAuthority authority)
+    {
+        if (input.Context != ControllerInputContext.DashboardQuickAction ||
+            input.Sequence != authority.InputSequence ||
+            input.SnapshotSequence != authority.SnapshotSequence ||
+            authority.InputSequence <= 0 || authority.SnapshotSequence <= 0 ||
+            string.IsNullOrWhiteSpace(authority.CapabilityId) ||
+            string.IsNullOrWhiteSpace(authority.OperationId) ||
+            authority.ValidFor <= TimeSpan.Zero ||
+            authority.ValidFor > PlatformCapabilityBroker.MaximumDashboardGestureLifetime)
+            throw new WidgetProcessException(
+                "Dashboard gesture authority does not match its controller input.");
+        var key = new DashboardGestureKey(
+            authority.InputSequence, authority.SnapshotSequence);
+        lock (_dashboardGestureGate)
+        {
+            var nowTimestamp = _timeProvider.GetTimestamp();
+            PurgeExpiredDashboardGesturesNoLock(nowTimestamp);
+            if (_pendingDashboardGestures.Count >= Widget.ControllerActionQueueCapacity)
+                throw new WidgetProcessException(
+                    "Dashboard gesture reservation capacity was reached.");
+            if (!_pendingDashboardGestures.TryAdd(
+                    key,
+                    new PendingDashboardGesture(
+                        authority, nowTimestamp)))
+                throw new WidgetProcessException(
+                    "Dashboard gesture authority was already reserved.");
+        }
+    }
+
+    private async Task ActivatePendingDashboardGestureAsync(
+        DashboardGestureActivationRequestPayload activation,
+        CancellationToken cancellationToken)
+    {
+        if (activation.ActivationId <= 0 || activation.InputSequence <= 0 ||
+            activation.SnapshotSequence <= 0 ||
+            string.IsNullOrWhiteSpace(activation.CapabilityId) ||
+            string.IsNullOrWhiteSpace(activation.OperationId))
+            throw new WidgetProtocolViolationException(
+                "Dashboard gesture activation payload is invalid.");
+
+        WidgetDashboardGestureAuthority? authority = null;
+        var key = new DashboardGestureKey(
+            activation.InputSequence, activation.SnapshotSequence);
+        lock (_dashboardGestureGate)
+        {
+            PurgeExpiredDashboardGesturesNoLock(_timeProvider.GetTimestamp());
+            if (_pendingDashboardGestures.TryGetValue(key, out var pending) &&
+                string.Equals(
+                    pending.Authority.CapabilityId, activation.CapabilityId, StringComparison.Ordinal) &&
+                string.Equals(
+                    pending.Authority.OperationId, activation.OperationId, StringComparison.Ordinal))
+            {
+                _pendingDashboardGestures.Remove(key);
+                authority = pending.Authority;
+            }
+        }
+
+        var authorized = false;
+        if (authority is not null)
+        {
+            try
+            {
+                await GrantCompanionGestureAuthorityAsync(authority, cancellationToken)
+                    .ConfigureAwait(false);
+                authorized = true;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException &&
+                                               !cancellationToken.IsCancellationRequested)
+            {
+                authorized = false;
+            }
+        }
+        await SendConnectedNotificationAsync(
+            MessageTypes.DashboardGestureActivationResult,
+            new DashboardGestureActivationResultPayload(
+                activation.ActivationId, authorized),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SendConnectedNotificationAsync<T>(
+        string type,
+        T payload,
+        CancellationToken cancellationToken)
+    {
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var channel = _channel ?? throw new IOException("Widget pipe disconnected.");
+            await channel.WriteAsync(new RuntimeEnvelope
+            {
+                Type = type,
+                Payload = RuntimeJson.ToElement(payload),
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    private void RemovePendingDashboardGesture(
+        long inputSequence,
+        long snapshotSequence)
+    {
+        lock (_dashboardGestureGate)
+            _pendingDashboardGestures.Remove(
+                new DashboardGestureKey(inputSequence, snapshotSequence));
+    }
+
+    private void ClearPendingDashboardGestures()
+    {
+        lock (_dashboardGestureGate) _pendingDashboardGestures.Clear();
+    }
+
+    private void PurgeExpiredDashboardGesturesNoLock(long nowTimestamp)
+    {
+        foreach (var expired in _pendingDashboardGestures
+                     .Where(item => _timeProvider.GetElapsedTime(
+                         item.Value.ReservedAtTimestamp, nowTimestamp) >=
+                         MaximumDashboardGestureReservationLifetime)
+                     .Select(item => item.Key)
+                     .ToArray())
+            _pendingDashboardGestures.Remove(expired);
+    }
+
+    private readonly record struct DashboardGestureKey(
+        long InputSequence,
+        long SnapshotSequence);
+
+    private sealed record PendingDashboardGesture(
+        WidgetDashboardGestureAuthority Authority,
+        long ReservedAtTimestamp);
+
+    private async Task RevokeCompanionGestureAuthorityAsync(long inputSequence)
+    {
+        var companion = _companion;
+        if (companion is null) return;
+        try
+        {
+            await companion.RevokeDashboardGestureAuthorityAsync(inputSequence)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Revocation is defense in depth after an unhandled/failed action;
+            // companion disposal and the broker's bounded expiry remain the
+            // fail-closed backstop if this best-effort call races teardown.
         }
     }
 

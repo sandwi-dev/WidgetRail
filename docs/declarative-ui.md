@@ -417,7 +417,8 @@ host-authoritative states are `Created`, `Background`, `Visible`,
 `Interactive`, and `Destroying`. The current native host publishes `Visible`
 while a bridge widget's dashboard card is selected, `Interactive` while its
 full surface is open, and `Background` when selection moves away or the overlay
-hides. A launched worker remains resident in `Background` by default.
+hides. A launched worker remains resident in `Background` under the default
+`keep-alive` policy; lifecycle state never implies process residency by itself.
 
 Use the protected lifecycle API for work with the matching lifetime:
 
@@ -480,12 +481,26 @@ from `Background` and cancels before the callback returning to `Background`.
 Use `StateLifetimeToken` when work must be exclusive to `Visible` or
 `Interactive`.
 
-A widget granted a legitimate background capability may intentionally run
-widget-lifetime work in `Background`; do not bind that work to the visible token
-or assume `Background` unloads the worker. Conversely, ordinary refresh,
-animation, and controller/UI polling must not escape the appropriate visible or
-state lifetime. Hooks must start work and return promptly. Permission and
-lifecycle-policy enforcement remain future host work.
+Code that is explicitly designed to be process-lifetime work may use the widget
+token under `keep-alive`; do not assume `Background` unloads that policy.
+Conversely, ordinary refresh, animation, controller/UI polling, and broker
+subscriptions must not escape the appropriate visible or state lifetime. The
+broker grants no capability in Background. Hooks must start work and return
+promptly.
+
+Manifest `residencyPolicy` schema 1 controls the process separately:
+
+- `keep-alive` (default) preserves the Background process;
+- `suspend-when-hidden` cooperatively uses Background cancellation and blocks
+  hidden renders, invalidations, interaction, and broker capabilities; and
+- `unload-after-idle` additionally requires `idleSeconds` from 5 through
+  86,400, caches the last validated snapshot, sends `Destroying`, and recreates
+  the worker lazily on its next visible transition.
+
+No policy suspends OS threads. Authors remain responsible for responding to
+lifecycle callbacks/tokens. An unloaded worker is a new object, so reconstruct
+durable state from approved storage or provider state; stable element IDs let
+the host restore focus against the fresh snapshot.
 
 `RunPeriodicUpdatesWhileActiveAsync` serializes callbacks, prevents overlap,
 and optionally invalidates after each tick. Accepted intervals are 250 ms

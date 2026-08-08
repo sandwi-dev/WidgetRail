@@ -235,6 +235,49 @@ public sealed record ActivateWidgetRecentActivityRequest(
 public sealed record WidgetRecentActivitiesChanged(
     [property: JsonRequired] IReadOnlyList<WidgetRecentActivity> Activities);
 
+public enum WidgetMediaPlaybackStatus
+{
+    Closed,
+    Opened,
+    Changing,
+    Stopped,
+    Playing,
+    Paused,
+}
+
+public enum WidgetMediaSessionCommand
+{
+    Play,
+    Pause,
+    TogglePlayPause,
+    Previous,
+    Next,
+}
+
+public sealed record WidgetMediaSession(
+    [property: JsonRequired] string SessionId,
+    [property: JsonRequired] string AppName,
+    [property: JsonRequired] string Title,
+    [property: JsonRequired] string Artist,
+    [property: JsonRequired] WidgetMediaPlaybackStatus PlaybackStatus,
+    [property: JsonRequired] long PositionMilliseconds,
+    [property: JsonRequired] long DurationMilliseconds,
+    [property: JsonRequired] long CapturedAtUnixMilliseconds,
+    [property: JsonRequired] double PlaybackRate,
+    [property: JsonRequired] bool IsCurrent,
+    [property: JsonRequired] bool CanPlay,
+    [property: JsonRequired] bool CanPause,
+    [property: JsonRequired] bool CanTogglePlayPause,
+    [property: JsonRequired] bool CanPrevious,
+    [property: JsonRequired] bool CanNext);
+
+public sealed record ControlWidgetMediaSessionRequest(
+    [property: JsonRequired] string SessionId,
+    [property: JsonRequired] WidgetMediaSessionCommand Command);
+
+public sealed record WidgetMediaSessionsChanged(
+    [property: JsonRequired] IReadOnlyList<WidgetMediaSession> Sessions);
+
 /// <summary>Reusable typed definitions for the audio provider.</summary>
 public static class WidgetAudioCapabilities
 {
@@ -348,6 +391,20 @@ public static class WidgetRecentActivityCapabilities
 
     public static WidgetCapabilityEvent<WidgetRecentActivitiesChanged> Changed { get; } =
         new("system.activity.recent.read.v1", "activity.recent.changed");
+}
+
+/// <summary>Typed, sanitized Windows system-media-session contracts.</summary>
+public static class WidgetMediaCapabilities
+{
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, IReadOnlyList<WidgetMediaSession>>
+        GetSessions { get; } = new("system.media.sessions.read.v1", "media.sessions.get");
+
+    public static WidgetCapabilityOperation<ControlWidgetMediaSessionRequest,
+        WidgetCapabilityAcknowledgement> Control { get; } =
+        new("system.media.sessions.control.v1", "media.session.control");
+
+    public static WidgetCapabilityEvent<WidgetMediaSessionsChanged> Changed { get; } =
+        new("system.media.sessions.read.v1", "media.sessions.changed");
 }
 
 public sealed class WidgetAudioService
@@ -636,4 +693,39 @@ public sealed class WidgetRecentActivityService
         OpenSubscriptionAsync(CancellationToken cancellationToken = default) =>
         _client.OpenSubscriptionAsync(
             WidgetRecentActivityCapabilities.Changed, cancellationToken);
+}
+
+public sealed class WidgetMediaService
+{
+    private readonly IWidgetCapabilityClient _client;
+    internal WidgetMediaService(IWidgetCapabilityClient client) => _client = client;
+
+    public ValueTask<IReadOnlyList<WidgetMediaSession>> GetSessionsAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(
+            WidgetMediaCapabilities.GetSessions, new WidgetCapabilityQuery(), cancellationToken);
+
+    public async ValueTask ControlAsync(
+        string sessionId,
+        WidgetMediaSessionCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        if (!Enum.IsDefined(command)) throw new ArgumentOutOfRangeException(nameof(command));
+        var response = await _client.InvokeAsync(
+            WidgetMediaCapabilities.Control,
+            new ControlWidgetMediaSessionRequest(sessionId, command),
+            cancellationToken).ConfigureAwait(false);
+        if (response is null || !response.Acknowledged)
+            throw new WidgetCapabilityException(
+                "malformed_response", "The media provider returned an invalid acknowledgement.");
+    }
+
+    public ValueTask<IWidgetCapabilitySubscription<WidgetMediaSessionsChanged>>
+        OpenSubscriptionAsync(CancellationToken cancellationToken = default) =>
+        _client.OpenSubscriptionAsync(WidgetMediaCapabilities.Changed, cancellationToken);
+
+    public IAsyncEnumerable<WidgetMediaSessionsChanged> WatchAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.SubscribeAsync(WidgetMediaCapabilities.Changed, cancellationToken);
 }

@@ -11,9 +11,13 @@ public abstract partial class Widget
     private sealed class ControllerQueueState(CancellationToken lifetime)
     {
         public CancellationToken Lifetime { get; } = lifetime;
-        public LinkedList<WidgetActionEvent> Pending { get; } = [];
+        public LinkedList<QueuedControllerAction> Pending { get; } = [];
         public SemaphoreSlim Available { get; } = new(0);
     }
+
+    private sealed record QueuedControllerAction(
+        WidgetActionEvent Action,
+        WidgetCapabilityGestureContext? GestureContext);
 
     private readonly object _controllerQueueLock = new();
     private readonly SemaphoreSlim _controllerActionGate = new(1, 1);
@@ -30,7 +34,9 @@ public abstract partial class Widget
     /// of absolute changes for the same slider is latest-wins coalesced; a
     /// button or different slider is an ordering boundary and is never crossed.
     /// </summary>
-    private bool TryQueueControllerAction(WidgetActionEvent action)
+    private bool TryQueueControllerAction(
+        WidgetActionEvent action,
+        WidgetCapabilityGestureContext? gestureContext = null)
     {
         if (!IsActive) return false;
         var lifetime = ActiveCancellationToken;
@@ -52,13 +58,13 @@ public abstract partial class Widget
             }
 
             if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
-                CanCoalesceSliderChange(tail.Value, action))
+                CanCoalesceSliderChange(tail.Value.Action, action))
             {
-                tail.Value = action;
+                tail.Value = new(action, gestureContext);
                 return true;
             }
             if (queue.Pending.Count >= ControllerActionQueueCapacity) return false;
-            queue.Pending.AddLast(action);
+            queue.Pending.AddLast(new QueuedControllerAction(action, gestureContext));
             queue.Available.Release();
             return true;
         }
@@ -79,18 +85,20 @@ public abstract partial class Widget
             while (true)
             {
                 await queue.Available.WaitAsync(queue.Lifetime).ConfigureAwait(false);
-                WidgetActionEvent? action;
+                QueuedControllerAction? queued;
                 lock (_controllerQueueLock)
                 {
                     if (queue.Pending.First is not { } first) continue;
-                    action = first.Value;
+                    queued = first.Value;
                     queue.Pending.RemoveFirst();
                 }
 
                 await _controllerActionGate.WaitAsync(queue.Lifetime).ConfigureAwait(false);
+                using var invocation = WidgetCapabilityInvocationContext.Enter(
+                    queued.GestureContext);
                 try
                 {
-                    await OnActionAsync(action, queue.Lifetime).ConfigureAwait(false);
+                    await OnActionAsync(queued.Action, queue.Lifetime).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (queue.Lifetime.IsCancellationRequested)
                 {
@@ -98,7 +106,7 @@ public abstract partial class Widget
                 }
                 catch (Exception exception)
                 {
-                    ReportControllerActionFailure(action, exception);
+                    ReportControllerActionFailure(queued.Action, exception);
                 }
                 finally
                 {

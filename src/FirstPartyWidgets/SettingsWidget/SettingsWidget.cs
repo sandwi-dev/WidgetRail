@@ -182,10 +182,6 @@ public sealed partial class SettingsWidget : Widget
                 case "installed.versions.next-page": ChangeInstalledVersionPage(1); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
                     .ConfigureAwait(false); break;
-                case "permission.previous-page": ChangePermissionPackagePage(-1); break;
-                case "permission.next-page": ChangePermissionPackagePage(1); break;
-                case "capability.previous-page": ChangeCapabilityPage(-1); break;
-                case "capability.next-page": ChangeCapabilityPage(1); break;
                 case "capability.grant": await ChangeConsentAsync(
                     ConsentDecision.Grant, cancellationToken).ConfigureAwait(false); break;
                 case "capability.deny": await ChangeConsentAsync(
@@ -717,7 +713,7 @@ public sealed partial class SettingsWidget : Widget
     private static WidgetView View(
         StackElement header,
         WidgetElement content,
-        string initialFocus,
+        string? initialFocus,
         string activeScope) => new(
             UI.Stack("settings-root", header, content).Classes("settings-widget"),
             initialFocus,

@@ -12,6 +12,7 @@ the graphical simulator exists. It has no third-party runtime dependencies.
 ```text
 gbar new widget VolumeControl --id dev.example.volume-control
 gbar validate .\\VolumeControl
+gbar dev .\\VolumeControl
 gbar render .\\VolumeControl\\bin\\Debug\\net8.0\\VolumeControl.dll --type dev.example.VolumeControl.VolumeControl --output snapshot.json
 gbar replay snapshot.json .\\VolumeControl\\replays\\smoke.json
 gbar pack .\\VolumeControl --output .\\VolumeControl-1.0.0.gbarwidget
@@ -43,6 +44,36 @@ gbar theme list
   enforces typed bounded properties, and blocks scripts, expressions, URLs,
   file paths, import escapes, and malformed rules. Safe clamping is reported as
   a warning; syntax, security, and type errors fail validation.
+- `dev` is the local unsigned edit/build/run loop. It accepts a widget source
+  directory, one `.csproj`, a prebuilt package directory, or one
+  `.gbarwidget`. Source projects are validated, built in a child `dotnet`
+  process with a 120-second default timeout, staged as a catalog-valid package,
+  installed into a session-only catalog, and opened by the packaged overlay.
+  The overlay routes the package through the same generic `WidgetWorkerHost`,
+  package-specific AppContainer, capability broker, lifecycle, and renderer
+  used by installed community widgets; `gbar` never loads the widget assembly.
+  `--host` selects a packaged `OverlayHost.exe`, `--configuration` selects the
+  project build configuration, `--build-timeout-seconds` is bounded to
+  10–600 seconds, and `--debounce-ms` is bounded to 50–2000 milliseconds.
+  Source projects use bounded non-recursive per-directory handles for the
+  manifest, project file, C# source set, `Directory.Build.props/targets`, and
+  GBSS sources; newly created source/style directories are adopted after a
+  bounded safe recapture. Prebuilt package directories watch the same bounded,
+  reparse-safe file tree consumed by `pack`, including payload dependencies,
+  assets, and initially empty directories. Events are coalesced before one
+  complete rebuild. Before replacing a last-good overlay, a hidden probe that
+  owns no controller/hotkey input must connect to WidgetBridge, reconcile the
+  exact installed widget instance in the unique catalog generation, transition
+  that widget to `Visible`, launch its generic worker, obtain a protocol-valid
+  snapshot for the same instance, and return it to `Background`. Only then may
+  it atomically publish a nonce-authenticated readiness record. A valid
+  permission-denied UI is still a successful snapshot; worker construction or
+  rendering failure is not. The interactive host performs the same bounded
+  handshake. Missing, stale, or forged records fail closed, and an active-host
+  startup failure restarts the previous generation. Ctrl+C cancels the current build, verifies termination of the
+  overlay/bridge/worker process tree, and retries temporary-catalog removal;
+  unreclaimed processes or files are reported as cleanup failure. The workflow
+  never modifies the user's installed-widget catalog.
 - `render` validates and prints a semantic snapshot tree. Given a widget DLL
   and type, it runs `Render()` in a collectible development-only load context
   and can persist the deterministic protocol snapshot.
@@ -165,7 +196,9 @@ untrusted widget safe and do not claim to prevent DNS rebinding; install only
 from publishers you trust.
 
 The DLL renderer is development tooling, not the production worker host or
-security boundary. Do not use it to inspect untrusted widget binaries.
+security boundary. Do not use it to inspect untrusted widget binaries. Prefer
+`gbar dev` for overlay integration because it retains the production community
+worker boundary.
 
 Exit code 0 means success, 1 means validation/runtime failure, and 2 means the
 command was used incorrectly.

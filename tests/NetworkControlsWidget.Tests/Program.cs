@@ -534,7 +534,9 @@ static async Task ShippedAssetsValidate()
         "system.network.wifi.radio.control.v1",
         "system.network.bluetooth.read.v1",
         "system.network.bluetooth.radio.control.v1"], manifest.OptionalPermissions);
-    Assert.Equal("suspend", manifest.BackgroundPolicy);
+    var residency = WidgetResidencyPolicies.Resolve(manifest);
+    Assert.Equal(WidgetResidencyMode.UnloadAfterIdle, residency.Mode);
+    Assert.Equal(TimeSpan.FromSeconds(120), residency.IdleDuration);
     Assert.Equal(64, manifest.ResourceRequest.MemoryMb);
     Assert.Equal(10, manifest.ResourceRequest.UpdateHz);
 
@@ -552,16 +554,17 @@ static async Task ShippedAssetsValidate()
 
     var catalogPath = Path.Combine(project, "..", "..", "OverlayHost", "widget-catalog.json");
     using var catalog = JsonDocument.Parse(await File.ReadAllBytesAsync(catalogPath));
-    var trusted = catalog.RootElement.GetProperty("widgets").EnumerateArray().Single(item =>
+    var bundled = catalog.RootElement.GetProperty("bundledWidgets").EnumerateArray().Single(item =>
         item.GetProperty("packageId").GetString() == manifest.Id);
-    var manifestCapabilities = manifest.Permissions.Concat(manifest.OptionalPermissions)
-        .Order(StringComparer.Ordinal).ToArray();
-    var trustedCapabilities = trusted.GetProperty("declaredCapabilities").EnumerateArray()
-        .Select(item => item.GetString()!).Order(StringComparer.Ordinal).ToArray();
-    Assert.SequenceEqual(manifestCapabilities, trustedCapabilities);
-    Assert.True(!trustedCapabilities.Contains("system.network.saved-profile.switch.v1"),
+    Assert.Equal("runtime/NetworkControls", bundled.GetProperty("packageRoot").GetString());
+    Assert.True(!manifest.Permissions.Concat(manifest.OptionalPermissions)
+            .Contains("system.network.saved-profile.switch.v1", StringComparer.Ordinal),
         "Installed Network Controls still grants the legacy saved-profile switch capability.");
-    Assert.Equal(0, trusted.GetProperty("quickActions").GetArrayLength());
+    Assert.Equal(0, bundled.GetProperty("quickActions").GetArrayLength());
+    Assert.True(!bundled.TryGetProperty("workerExecutable", out _) &&
+                !bundled.TryGetProperty("declaredCapabilities", out _) &&
+                !bundled.TryGetProperty("residencyPolicy", out _),
+        "Bundled runtime authority must be derived from manifest.json, not duplicated in shell metadata.");
 }
 
 static void AssertResponsiveLayoutBudget(GbssTheme theme)

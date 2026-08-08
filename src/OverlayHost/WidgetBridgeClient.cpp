@@ -26,12 +26,12 @@ namespace {
     const DWORD trustedBridgeProcessId,
     const bool trustedBridgeProcessLive,
     const bool trustedBridgeProcessIdMatches,
-    const bool trustedActivationInput,
-    const std::wstring_view button,
+    const bool trustedUserActivation,
+    const std::wstring_view,
     const std::wstring_view phase) noexcept {
     return trustedBridgeProcessLive && trustedBridgeProcessIdMatches &&
-           trustedBridgeProcessId != 0 && trustedActivationInput &&
-           button == L"a" && phase == L"pressed";
+           trustedBridgeProcessId != 0 && trustedUserActivation &&
+           phase == L"pressed";
 }
 
 using winrt::Windows::Data::Json::JsonArray;
@@ -782,15 +782,19 @@ WidgetBridgeClient::~WidgetBridgeClient() {
     Stop();
 }
 
-bool WidgetBridgeClient::EnsureStarted(const std::wstring& installationDirectory) {
+bool WidgetBridgeClient::EnsureStarted(
+    const std::wstring& installationDirectory,
+    const std::wstring& installedCatalogRoot) {
     if (pipe_ != INVALID_HANDLE_VALUE) {
         return true;
     }
     lastError_.clear();
-    return Launch(installationDirectory) && Connect();
+    return Launch(installationDirectory, installedCatalogRoot) && Connect();
 }
 
-bool WidgetBridgeClient::Launch(const std::wstring& installationDirectory) {
+bool WidgetBridgeClient::Launch(
+    const std::wstring& installationDirectory,
+    const std::wstring& installedCatalogRoot) {
     const std::filesystem::path root(installationDirectory);
     const auto executable = root / L"runtime" / L"Bridge" / L"WidgetBridge.exe";
     const auto catalog = root / L"widget-catalog.json";
@@ -803,6 +807,9 @@ bool WidgetBridgeClient::Launch(const std::wstring& installationDirectory) {
                 std::to_wstring(GetTickCount64());
     std::wstring command = Quote(executable) + L" --host-pipe " + pipeName_ +
                            L" --catalog " + Quote(catalog) + L" --accept-timeout-ms 10000";
+    if (!installedCatalogRoot.empty()) {
+        command += L" --installed-catalog-root " + Quote(installedCatalogRoot);
+    }
     STARTUPINFOW startup{sizeof(startup)};
     PROCESS_INFORMATION process{};
     if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE,
@@ -1157,7 +1164,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const long long monotonicTimestampMicroseconds,
     const std::wstring_view phase,
     const std::optional<double> requestedValue,
-    const bool trustedForegroundActivation) {
+    const bool trustedUserActivation) {
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         JsonObject input;
@@ -1190,9 +1197,11 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
         envelope.Insert(L"payload", payload);
         // Windows normally prevents a background broker process from activating
-        // another application. Delegate only for a pressed A activation, to the
-        // exact live bridge process launched by this client. Workers still need
-        // identity-bound consent and an opaque observed-window token.
+        // another application. A pressed Interactive-widget controller event is
+        // a generic user activation, so delegate only to the exact live bridge
+        // process launched by this client. The worker never receives this grant;
+        // broker identity, declaration, consent, lifecycle, and opaque-resource
+        // validation still gate any foreground-affecting platform operation.
         const bool bridgeHandlePresent =
             process_ != nullptr && process_ != INVALID_HANDLE_VALUE;
         const bool bridgeProcessLive = bridgeHandlePresent &&
@@ -1201,7 +1210,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             GetProcessId(process_) == processId_;
         if (ShouldDelegateForegroundActivation(
                 processId_, bridgeProcessLive, bridgeProcessIdMatches,
-                trustedForegroundActivation, button, phase) &&
+                trustedUserActivation, button, phase) &&
             !AllowSetForegroundWindow(processId_)) {
             lastError_ = Win32Message(
                 L"AllowSetForegroundWindow(WidgetBridge)", GetLastError());

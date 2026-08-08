@@ -15,7 +15,10 @@
   },
   "permissions": [],
   "optionalPermissions": [],
-  "backgroundPolicy": "suspend",
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "suspend-when-hidden"
+  },
   "resourceRequest": {
     "memoryMb": 32,
     "updateHz": 1

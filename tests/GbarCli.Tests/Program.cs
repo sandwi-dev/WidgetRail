@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -8,6 +10,58 @@ using GameBarAlternative.GbarCli;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+
+if (args is ["--dev-persistent-grandchild", ..])
+{
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+    return 0;
+}
+
+if (args is ["--dev-persistent-child", var descendantPath, ..])
+{
+    var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+    start.ArgumentList.Add("--dev-persistent-grandchild");
+    using var grandchild = Process.Start(start) ?? throw new InvalidOperationException("Could not start fake grandchild.");
+    await File.WriteAllLinesAsync(descendantPath, [Environment.ProcessId.ToString(), grandchild.Id.ToString()]);
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+    return 0;
+}
+
+if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
+{
+    var readyPath = DevelopmentArgument(args, "--development-ready-path");
+    var nonce = DevelopmentArgument(args, "--development-ready-nonce");
+    var catalog = Path.GetFullPath(DevelopmentArgument(args, "--development-catalog-root"));
+    var widgetId = DevelopmentArgument(args, "--development-widget-id");
+    var instance = DevelopmentArgument(args, "--development-widget-instance");
+    var installed = await new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalog).DiscoverAsync();
+    var expected = installed.Widgets.Single(widget => widget.Id == widgetId);
+    var brokenProbe = args.Contains("--development-probe-only", StringComparer.Ordinal) &&
+                      expected.ActiveVersion.Manifest.Entrypoint.Type == "Missing.Widget";
+    if (!args.Contains("--development-probe-only", StringComparer.Ordinal) &&
+        widgetId.EndsWith(".descendant-tree", StringComparison.Ordinal))
+    {
+        var generation = Directory.GetParent(Path.GetDirectoryName(readyPath)!)!.FullName;
+        var reportedDescendantsPath = Path.Combine(generation, "descendants.txt");
+        var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+        start.ArgumentList.Add("--dev-persistent-child");
+        start.ArgumentList.Add(reportedDescendantsPath);
+        _ = Process.Start(start) ?? throw new InvalidOperationException("Could not start fake child.");
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (!File.Exists(reportedDescendantsPath) && DateTime.UtcNow < deadline) await Task.Delay(10);
+        if (!File.Exists(reportedDescendantsPath)) throw new TimeoutException("Fake descendants did not report their PIDs.");
+    }
+    if (!widgetId.EndsWith(".no-ready", StringComparison.Ordinal) && !brokenProbe)
+    {
+        if (widgetId.EndsWith(".forged-ready", StringComparison.Ordinal)) nonce = new string('0', 64);
+        var payload = $"gbar-dev-ready-v1\n{nonce}\n{catalog}\n{widgetId}\n{instance}\n";
+        var temporary = readyPath + ".tmp";
+        await File.WriteAllTextAsync(temporary, payload);
+        File.Move(temporary, readyPath);
+    }
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+    return 0;
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -22,6 +76,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Validate accepts a scaffolded widget", ValidateScaffold),
     ("Validate rejects unsafe GBSS", ValidateRejectsUnsafeGbss),
     ("Validate rejects malformed manifest", ValidateRejectsManifest),
+    ("Dev discovers only bounded declared source files", DevSourceDiscoveryIsScoped),
+    ("Dev package watching matches bounded pack inputs and new directories", DevPackageWatchingIsComplete),
+    ("Dev builds a scaffold into a catalog-valid package", DevBuildsIsolatedPackage),
+    ("Dev diagnostics are bounded and single-line", DevDiagnosticsAreSanitized),
+    ("Dev rejects absent or forged readiness without replacing last good", DevReadinessFailsClosed),
+    ("Dev rejects a broken worker entrypoint without replacing last good", DevBrokenEntrypointRetainsLastGood),
+    ("Dev Job Object reclaims persistent child and grandchild processes", DevJobReclaimsDescendants),
+    ("Dev retains last good and cleans its process tree on cancellation", DevRetainsAndCleans),
     ("Render previews a valid snapshot", RenderSnapshot),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
@@ -69,7 +131,7 @@ static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "new", "validate", "render", "replay", "pack", "install", "list", "enable", "disable", "version" })
+    foreach (var command in new[] { "new", "validate", "dev", "render", "replay", "pack", "install", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
     var version = await RunCli("version", "help");
     Assert.Equal(0, version.Code);
@@ -331,6 +393,352 @@ static async Task ValidateRejectsManifest()
     var result = await RunCli("validate", path);
     Assert.Equal(1, result.Code);
     Assert.Contains("invalid_json", result.Error);
+}
+
+static Task DevSourceDiscoveryIsScoped()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "ScopedWidget");
+    Directory.CreateDirectory(Path.Combine(root, "src", "nested"));
+    Directory.CreateDirectory(Path.Combine(root, "styles"));
+    Directory.CreateDirectory(Path.Combine(root, "assets"));
+    Directory.CreateDirectory(Path.Combine(root, "build"));
+    Directory.CreateDirectory(Path.Combine(root, "native"));
+    Directory.CreateDirectory(Path.Combine(root, ".vs"));
+    Directory.CreateDirectory(Path.Combine(root, "bin", "Debug"));
+    Directory.CreateDirectory(Path.Combine(root, "obj"));
+    File.WriteAllText(Path.Combine(root, "ScopedWidget.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+    File.WriteAllBytes(Path.Combine(root, "manifest.json"), ManifestJson.Serialize(
+        BuildManifest("dev.test.scoped", "dev.test", "1.0.0")));
+    File.WriteAllText(Path.Combine(root, "src", "Widget.cs"), "class Widget { }");
+    File.WriteAllText(Path.Combine(root, "src", "nested", "State.cs"), "class State { }");
+    File.WriteAllText(Path.Combine(root, "styles", "default.gbss"), "text { color: #fff; }");
+    File.WriteAllText(Path.Combine(root, "settings.json"), "{ \"enabled\": true }");
+    File.WriteAllText(Path.Combine(root, "Labels.resx"), "<root />");
+    File.WriteAllBytes(Path.Combine(root, "assets", "icon.png"), [0x89, 0x50, 0x4e, 0x47]);
+    File.WriteAllText(Path.Combine(root, "build", "local.props"), "<Project />");
+    File.WriteAllText(Path.Combine(root, "build", "local.targets"), "<Project />");
+    File.WriteAllText(Path.Combine(root, "native", "widget.cpp"), "void render() {}");
+    File.WriteAllText(Path.Combine(root, ".vs", "hidden.json"), "{}");
+    File.WriteAllText(Path.Combine(root, "bin", "Debug", "Generated.cs"), "class Generated { }");
+    File.WriteAllText(Path.Combine(root, "obj", "AssemblyInfo.cs"), "class AssemblyInfo { }");
+
+    var source = DevWidgetSource.Discover(root);
+    var files = DevSourceWatcher.Capture(source);
+    Assert.Equal(DevWidgetSourceKind.Project, source.Kind);
+    Assert.True(files.Contains(Path.Combine(root, "src", "Widget.cs")), "Declared C# source was omitted.");
+    Assert.True(files.Contains(Path.Combine(root, "src", "nested", "State.cs")), "Nested source was omitted.");
+    Assert.True(files.Contains(Path.Combine(root, "styles", "default.gbss")), "GBSS source was omitted.");
+    foreach (var relative in new[]
+             {
+                 "settings.json", "Labels.resx", Path.Combine("assets", "icon.png"),
+                 Path.Combine("build", "local.props"), Path.Combine("build", "local.targets"),
+                 Path.Combine("native", "widget.cpp"),
+             })
+        Assert.True(files.Contains(Path.Combine(root, relative)), $"MSBuild input {relative} was omitted.");
+    Assert.True(!files.Any(path => path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar,
+        StringComparison.OrdinalIgnoreCase)), "Build output leaked into the watch set.");
+    Assert.True(!files.Any(path => path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar,
+        StringComparison.OrdinalIgnoreCase)), "Intermediate output leaked into the watch set.");
+    Assert.True(!files.Any(path => path.Contains(Path.DirectorySeparatorChar + ".vs" + Path.DirectorySeparatorChar,
+        StringComparison.OrdinalIgnoreCase)), "Visual Studio state leaked into the watch set.");
+    return Task.CompletedTask;
+}
+
+static async Task DevPackageWatchingIsComplete()
+{
+    using var temp = new TemporaryDirectory();
+    var root = CreatePackageSource(temp.Path, "dev.test.package-watch", "dev.test", "1.0.0");
+    Directory.CreateDirectory(Path.Combine(root, "assets"));
+    File.WriteAllText(Path.Combine(root, "assets", "cover.txt"), "asset");
+    File.WriteAllText(Path.Combine(root, "payload", "support.dat"), "support");
+    File.Delete(Path.Combine(root, "styles", "default.gbss"));
+    var source = DevWidgetSource.Discover(root);
+    var files = DevSourceWatcher.Capture(source);
+    Assert.True(files.Contains(Path.Combine(root, "assets", "cover.txt")),
+        "Package asset consumed by PackAsync was omitted from the watch set.");
+    Assert.True(files.Contains(Path.Combine(root, "payload", "support.dat")),
+        "Supporting payload consumed by PackAsync was omitted from the watch set.");
+
+    var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (var watcher = DevSourceWatcher.Create(source, () => changed.TrySetResult()))
+    {
+        Assert.True(watcher.WatchedDirectories.Contains(Path.Combine(root, "styles")),
+            "Initially empty styles directory was not watched.");
+        await File.WriteAllTextAsync(Path.Combine(root, "styles", "new.gbss"),
+            "text { color: #fff; }");
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+
+    var projectRoot = Path.Combine(temp.Path, "ProjectWatch");
+    Assert.Equal(0, (await RunCli("new", "widget", "ProjectWatch", "--output", projectRoot,
+        "--id", "dev.test.project-watch", "--publisher", "dev.test")).Code);
+    var existingContent = Path.Combine(projectRoot, "widget-data.json");
+    await File.WriteAllTextAsync(existingContent, "{ \"revision\": 1 }");
+    using var projectChanged = new SemaphoreSlim(0);
+    using var projectWatcher = DevSourceWatcher.Create(
+        DevWidgetSource.Discover(projectRoot), () => projectChanged.Release());
+    await File.WriteAllTextAsync(existingContent, "{ \"revision\": 2 }");
+    Assert.True(await projectChanged.WaitAsync(TimeSpan.FromSeconds(3)),
+        "An existing JSON MSBuild input did not trigger a rebuild.");
+    while (projectChanged.Wait(0)) { }
+    var newDirectory = Path.Combine(projectRoot, "new-feature");
+    Directory.CreateDirectory(newDirectory);
+    var newResource = Path.Combine(newDirectory, "Feature.resx");
+    await File.WriteAllTextAsync(newResource, "<root />");
+    Assert.True(await projectChanged.WaitAsync(TimeSpan.FromSeconds(3)),
+        "A newly created resource directory did not trigger a rebuild.");
+    projectWatcher.Refresh();
+    Assert.True(projectWatcher.WatchedDirectories.Contains(newDirectory),
+        "New project source directory was not adopted by bounded non-recursive watchers.");
+    Assert.True(projectWatcher.Files.Contains(newResource),
+        "New non-C# MSBuild input was not adopted after refresh.");
+}
+
+static async Task DevBuildsIsolatedPackage()
+{
+    using var temp = new TemporaryDirectory();
+    var sourceRoot = Path.Combine(temp.Path, "DevPanel");
+    var scaffold = await RunCli("new", "widget", "DevPanel", "--output", sourceRoot,
+        "--id", "dev.test.dev-panel", "--publisher", "dev.test");
+    Assert.Equal(0, scaffold.Code);
+    var source = DevWidgetSource.Discover(sourceRoot);
+    var generation = Path.Combine(temp.Path, "generation");
+    Directory.CreateDirectory(generation);
+    using var output = new StringWriter();
+    using var error = new StringWriter();
+    var prepared = await DevGenerationBuilder.PrepareAsync(
+        source, generation, "Release", TimeSpan.FromSeconds(90), output, error,
+        CancellationToken.None);
+    Assert.True(File.Exists(prepared.PackagePath), "Dev build did not create an immutable package.");
+    Assert.Equal("dev.test.dev-panel", prepared.Manifest.Id);
+    var inspection = await new GameBarAlternative.WidgetCatalog.WidgetCatalog(
+            Path.Combine(temp.Path, "validation"))
+        .CreateInstaller().ValidateAsync(prepared.PackagePath);
+    Assert.Equal("dev.test.dev-panel", inspection.Id);
+    Assert.True(inspection.Manifest.Entrypoint.Assembly.StartsWith("payload/", StringComparison.Ordinal),
+        "Dev entrypoint did not remain in the isolated package payload.");
+}
+
+static Task DevDiagnosticsAreSanitized()
+{
+    var message = DevSession.SafeMessage(new Exception("first\r\nsecond\0" + new string('x', 2_000)));
+    Assert.True(!message.Contains('\r') && !message.Contains('\n') && !message.Contains('\0'),
+        "Dev diagnostic retained control characters.");
+    Assert.True(message.Length <= 1_001, "Dev diagnostic exceeded its output bound.");
+    return Task.CompletedTask;
+}
+
+static async Task DevReadinessFailsClosed()
+{
+    foreach (var suffix in new[] { "no-ready", "forged-ready" })
+    {
+        using var temp = new TemporaryDirectory();
+        var sourceRoot = Path.Combine(temp.Path, "ReadinessPanel");
+        Assert.Equal(0, (await RunCli("new", "widget", "ReadinessPanel", "--output", sourceRoot,
+            "--id", $"dev.test.{suffix}", "--publisher", "dev.test")).Code);
+        var outputBuffer = new StringWriter();
+        var errorBuffer = new StringWriter();
+        await using var session = new DevSession(
+            DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+            TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
+            TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer),
+            readyTimeout: TimeSpan.FromMilliseconds(250));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var run = session.RunAsync(cancellation.Token);
+        await WaitUntilAsync(() => errorBuffer.ToString().Contains(
+                suffix == "no-ready" ? "did not authenticate" : "did not authenticate the exact",
+                StringComparison.Ordinal), TimeSpan.FromSeconds(4));
+        Assert.True(session.ActiveHostProcessId is null,
+            "Unauthenticated candidate replaced the active host.");
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => run);
+    }
+}
+
+static async Task DevRetainsAndCleans()
+{
+    using var temp = new TemporaryDirectory();
+    var sourceRoot = Path.Combine(temp.Path, "LivePanel");
+    Assert.Equal(0, (await RunCli("new", "widget", "LivePanel", "--output", sourceRoot,
+        "--id", "dev.test.live-panel", "--publisher", "dev.test")).Code);
+    var outputBuffer = new StringWriter();
+    var errorBuffer = new StringWriter();
+    var output = TextWriter.Synchronized(outputBuffer);
+    var error = TextWriter.Synchronized(errorBuffer);
+    var session = new DevSession(
+        DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+        TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75), output, error);
+    var sessionRoot = session.SessionRoot;
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    var run = session.RunAsync(cancellation.Token);
+    int? activePid = null;
+    try
+    {
+        await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(10));
+        var firstPid = session.ActiveHostProcessId;
+        activePid = firstPid;
+        Assert.True(firstPid.HasValue, "Dev host was not retained after the first good build.");
+        await File.WriteAllTextAsync(Path.Combine(sourceRoot, "styles", "default.gbss"),
+            "button { background: url(https://unsafe.example/x); }");
+        await WaitUntilAsync(() => errorBuffer.ToString().Contains("Retained the last-good", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(5));
+        Assert.Equal(firstPid, session.ActiveHostProcessId);
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => run);
+    }
+    finally
+    {
+        cancellation.Cancel();
+        try { await run; } catch (OperationCanceledException) { }
+        await session.DisposeAsync();
+    }
+    Assert.True(!Directory.Exists(sessionRoot), "Dev cancellation leaked its temporary catalog.");
+    Assert.True(activePid.HasValue, "Dev integration did not capture the child host PID.");
+    AssertProcessExited(activePid.GetValueOrDefault());
+}
+
+static async Task DevBrokenEntrypointRetainsLastGood()
+{
+    using var temp = new TemporaryDirectory();
+    var sourceRoot = Path.Combine(temp.Path, "EntrypointPanel");
+    Assert.Equal(0, (await RunCli("new", "widget", "EntrypointPanel", "--output", sourceRoot,
+        "--id", "dev.test.entrypoint-panel", "--publisher", "dev.test")).Code);
+    var outputBuffer = new StringWriter();
+    var errorBuffer = new StringWriter();
+    var session = new DevSession(
+        DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+        TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
+        TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer),
+        readyTimeout: TimeSpan.FromMilliseconds(250));
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    var run = session.RunAsync(cancellation.Token);
+    int? lastGoodPid = null;
+    try
+    {
+        await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(10));
+        lastGoodPid = session.ActiveHostProcessId;
+        Assert.True(lastGoodPid.HasValue, "Initial valid entrypoint did not publish a last-good host.");
+        var expectedPid = lastGoodPid.GetValueOrDefault();
+
+        var manifestPath = Path.Combine(sourceRoot, "manifest.json");
+        var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(manifestPath));
+        await File.WriteAllBytesAsync(manifestPath, ManifestJson.Serialize(manifest with
+        {
+            Entrypoint = manifest.Entrypoint with { Type = "Missing.Widget" },
+        }));
+
+        await WaitUntilAsync(() => errorBuffer.ToString().Contains("did not authenticate", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(8));
+        Assert.Equal(lastGoodPid, session.ActiveHostProcessId);
+        Assert.True(!Process.GetProcessById(expectedPid).HasExited,
+            "Broken entrypoint probe retired the last-good host.");
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => run);
+    }
+    finally
+    {
+        cancellation.Cancel();
+        try { await run; } catch (OperationCanceledException) { }
+        await session.DisposeAsync();
+    }
+    Assert.True(lastGoodPid.HasValue, "Entrypoint retention test did not capture the last-good PID.");
+    AssertProcessExited(lastGoodPid.GetValueOrDefault());
+}
+
+static async Task DevJobReclaimsDescendants()
+{
+    using var temp = new TemporaryDirectory();
+    var sourceRoot = Path.Combine(temp.Path, "TreePanel");
+    Assert.Equal(0, (await RunCli("new", "widget", "TreePanel", "--output", sourceRoot,
+        "--id", "dev.test.descendant-tree", "--publisher", "dev.test")).Code);
+    var outputBuffer = new StringWriter();
+    var errorBuffer = new StringWriter();
+    var session = new DevSession(
+        DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+        TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
+        TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer));
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    var run = session.RunAsync(cancellation.Token);
+    var processIds = new List<int>();
+    try
+    {
+        await WaitUntilAsync(() => outputBuffer.ToString().Contains("Ready:", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(10));
+        var hostPid = session.ActiveHostProcessId;
+        Assert.True(hostPid.HasValue, "Descendant test did not retain its interactive host.");
+        processIds.Add(hostPid.GetValueOrDefault());
+        var descendantPath = Path.Combine(session.SessionRoot, "generation-000001", "descendants.txt");
+        await WaitUntilAsync(() => File.Exists(descendantPath), TimeSpan.FromSeconds(3));
+        processIds.AddRange((await File.ReadAllLinesAsync(descendantPath)).Select(int.Parse));
+        Assert.Equal(3, processIds.Distinct().Count());
+        foreach (var processId in processIds)
+            Assert.True(!Process.GetProcessById(processId).HasExited,
+                $"Fake process PID {processId} was not alive before cleanup.");
+
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => run);
+        await session.DisposeAsync();
+        foreach (var processId in processIds) AssertProcessExited(processId);
+    }
+    finally
+    {
+        cancellation.Cancel();
+        try { await run; } catch (OperationCanceledException) { }
+        try { await session.DisposeAsync(); } catch (CliOperationException) { }
+        foreach (var processId in processIds) ForceStopProcess(processId);
+    }
+}
+
+static void AssertProcessExited(int processId)
+{
+    try
+    {
+        using var process = Process.GetProcessById(processId);
+        Assert.True(process.HasExited, $"Child host PID {processId} survived session cleanup.");
+    }
+    catch (ArgumentException)
+    {
+        // The PID no longer exists, which is the expected process-tree state.
+    }
+}
+
+static void ForceStopProcess(int processId)
+{
+    try
+    {
+        using var process = Process.GetProcessById(processId);
+        if (!process.HasExited) process.Kill(entireProcessTree: true);
+    }
+    catch (ArgumentException)
+    {
+        // Already reclaimed.
+    }
+    catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
+    {
+        // Best-effort fallback used only after the real cleanup assertion has
+        // already succeeded or failed.
+    }
+}
+
+static string DevelopmentArgument(string[] values, string name)
+{
+    var index = Array.IndexOf(values, name);
+    if (index < 0 || index + 1 >= values.Length)
+        throw new ArgumentException($"Missing fake development-host argument {name}.");
+    return values[index + 1];
+}
+
+static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
+{
+    var deadline = DateTime.UtcNow + timeout;
+    while (!predicate())
+    {
+        if (DateTime.UtcNow >= deadline) throw new TimeoutException("Timed out waiting for dev session state.");
+        await Task.Delay(25);
+    }
 }
 
 static async Task RenderSnapshot()

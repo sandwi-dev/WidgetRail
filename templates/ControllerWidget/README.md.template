@@ -39,6 +39,9 @@ non-Home control remain available to the active widget.
   and busy buttons remain visible for accessibility but cannot activate.
 - Keep `Render()` deterministic for the current state.
 - Call `Invalidate()` only after visible state changes.
+- Put visible work under `ActiveCancellationToken` and respond to lifecycle
+  callbacks. The default `keep-alive` policy keeps the process resident; it
+  does not make presentation work valid in Background.
 - Request no capability until the widget needs it.
 - Treat the manifest's resource request as a budget, not an entitlement.
 

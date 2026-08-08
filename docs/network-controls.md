@@ -544,9 +544,11 @@ reports `NoAdapter`, and an explicit retry performs one bounded recovery read.
 - A revoked grant closes the subscription promptly and prevents every new
   operation fail closed.
 
-The worker may remain resident in Background under current host policy, but
-that does not authorize background broker operations. General manifest
-residency-policy enforcement is still planned.
+The shipped Network Controls package uses `unload-after-idle` with a 120-second
+bound. Background immediately cancels its lifecycle-owned subscriptions and
+denies broker operations; after the bound the bridge sends `Destroying`, keeps
+the last validated view, and releases the worker/companion process resources.
+Returning to the widget cancels pending unload or lazily creates a fresh worker.
 
 ## Deterministic widget tests
 

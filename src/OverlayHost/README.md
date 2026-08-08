@@ -51,10 +51,11 @@ The host publishes one stable lifecycle state for the tracked bridge widget:
 - hidden overlay, selection change, or another surface: `Background`.
 
 `Created` and `Destroying` are owned by the managed runtime and are not valid
-native requests. Moving a launched worker to Background does not unload it; the
-process remains resident by default so permitted widget-lifetime background
-work is not killed. Future suspension or idle unload must be an explicit
-manifest/user policy. The host does not apply an idle eviction heuristic.
+native requests. Background does not itself unload a worker. The managed bridge
+enforces the validated manifest residency policy: keep-alive by default,
+cooperative suspend-when-hidden, or explicit bounded unload-after-idle. The
+native host never applies an idle/resource heuristic and never suspends worker
+threads; it restores focus by stable ID when a lazily recreated snapshot arrives.
 
 ## Window contract
 

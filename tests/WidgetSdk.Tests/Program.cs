@@ -16,12 +16,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Slider validation rejects unsafe ranges and focus conflicts", InvalidSlidersAreRejected),
     ("Image and icon nodes round-trip as renderer-neutral primitives", VisualNodesRoundTrip),
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
+    ("Dashboard quick action authority is typed bounded and versioned", DashboardAuthorityContract),
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),
     ("Visual nodes require accessibility and semantic data", VisualNodeRequirementsAreEnforced),
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
     ("Buttons expose closed semantic icons without action-ID inference", ButtonIconsRoundTrip),
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
+    ("Modern controller composites preserve tab switch and dialog semantics", ModernControllerComponentsAreSemantic),
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
     ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
     ("Style helpers eagerly enforce GBSS class contracts", StyleExtensionsValidateClasses),
@@ -30,6 +32,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
     ("Null protocol collections report validation errors", NullCollectionsAreRejected),
     ("Valid manifest passes", ValidManifestPasses),
+    ("Residency policy is versioned bounded and legacy compatible", ResidencyPolicyIsVersioned),
     ("Unsafe manifest values report errors", UnsafeManifestFails),
     ("Null manifest collections report validation errors", NullManifestCollectionsFail),
     ("Clock sample renders controller metadata", ClockRenders),
@@ -602,6 +605,38 @@ static Task UnsafeImageSourcesAreRejected()
     return Task.CompletedTask;
 }
 
+static Task DashboardAuthorityContract()
+{
+    var capability = new WidgetQuickActionCapability(
+        "system.media.sessions.control.v1", "media.session.control");
+    var view = new WidgetView(
+        UI.Stack("root"),
+        QuickActions:
+        [new WidgetQuickAction(ControllerButton.X, "toggle", "Play or pause", capability)]);
+    var snapshot = view.CreateSnapshot("authority.instance", 4);
+    Assert.Equal(ProtocolConstants.DashboardGestureAuthorityVersion, snapshot.ProtocolVersion);
+    var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+    Assert.Equal(capability, roundTrip.QuickActions.Single().Capability);
+
+    var legacy = snapshot with { ProtocolVersion = ProtocolConstants.SliderVersion };
+    Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+        error.Code == "feature_requires_version"),
+        "Capability authority must require its protocol version.");
+    var malformed = snapshot with
+    {
+        QuickActions =
+        [new WidgetQuickAction(
+            ControllerButton.X, "toggle", "Play or pause",
+            new WidgetQuickActionCapability("", new string('x', 129)))]
+    };
+    var errors = ViewSnapshotValidator.Validate(malformed);
+    Assert.True(errors.Any(error => error.Path.EndsWith("capabilityId", StringComparison.Ordinal) &&
+        error.Code == "required"), "Empty capability IDs must fail closed.");
+    Assert.True(errors.Any(error => error.Path.EndsWith("operationId", StringComparison.Ordinal) &&
+        error.Code == "too_long"), "Unbounded operation IDs must fail closed.");
+    return Task.CompletedTask;
+}
+
 static Task VisualNodeRequirementsAreEnforced()
 {
     var image = new WidgetView(UI.Stack("root", UI.Image("https://images.example/cover.jpg", "cover", "")));
@@ -813,6 +848,67 @@ static Task ModernComponentsAreSemantic()
         WidgetGlyph.Settings, "action", "id", ""));
     Assert.Throws<ArgumentOutOfRangeException>(() => UI.Card(
         "bad-card", (CardVariant)999));
+    return Task.CompletedTask;
+}
+
+static Task ModernControllerComponentsAreSemantic()
+{
+    var tabs = UI.SegmentedTabs(
+        "modern.tabs",
+        "modern.tabs.audio",
+        new SegmentedTab("modern.tabs.audio", "Audio", "select-audio"),
+        new SegmentedTab("modern.tabs.voice", "Voice", "select-voice", IsDisabled: true),
+        new SegmentedTab("modern.tabs.output", "Output", "select-output", "Output devices"));
+    var enabledSwitch = UI.Switch("Reduce motion", true, "toggle-motion", "modern.motion");
+    var disabledSwitch = UI.Switch("HDR", false, "toggle-hdr", "modern.hdr", isDisabled: true);
+    var dialog = UI.ScopedDialog(
+        "Confirm reset",
+        "modern.dialog",
+        "modern.dialog.scope",
+        "dismiss-dialog",
+        UI.Text("Your settings will return to defaults.", "modern.dialog.message"),
+        UI.Button("Reset", "confirm-reset", "modern.dialog.confirm"));
+    var snapshot = new WidgetView(
+        UI.Stack("modern.controller.root", tabs, enabledSwitch, disabledSwitch, dialog),
+        InitialFocusId: "modern.dialog.confirm",
+        ActiveInputScopeId: "modern.dialog.scope")
+        .CreateSnapshot("modern.controller", 2);
+
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    var audio = Find(snapshot.Root, "modern.tabs.audio");
+    var voice = Find(snapshot.Root, "modern.tabs.voice");
+    var output = Find(snapshot.Root, "modern.tabs.output");
+    Assert.Equal(true, audio.IsSelected);
+    Assert.Equal("Audio, Selected", audio.AccessibilityLabel);
+    Assert.Equal("modern.tabs.output", audio.Focus!.Left);
+    Assert.Equal("modern.tabs.voice", audio.Focus!.Right);
+    Assert.Equal(true, voice.IsDisabled);
+    Assert.Equal("modern.tabs.audio", voice.Focus!.Left);
+    Assert.Equal("modern.tabs.output", voice.Focus.Right);
+    Assert.Equal("Output devices, Not selected", output.AccessibilityLabel);
+    Assert.Equal("modern.tabs.voice", output.Focus!.Left);
+    Assert.Equal("modern.tabs.audio", output.Focus.Right);
+    Assert.Equal(true, Find(snapshot.Root, "modern.motion").IsSelected);
+    Assert.Equal(WidgetGlyph.Check, Find(snapshot.Root, "modern.motion").Glyph);
+    Assert.Equal(true, Find(snapshot.Root, "modern.hdr").IsDisabled);
+    Assert.Equal("modern.dialog.scope", Find(snapshot.Root, "modern.dialog").InputScopeId);
+    Assert.Equal("dismiss-dialog", Find(snapshot.Root, "modern.dialog").Shortcuts.Single().ActionId);
+    Assert.Equal(ControllerButton.B, Find(snapshot.Root, "modern.dialog").Shortcuts.Single().Button);
+    Assert.Equal("Confirm reset", Find(snapshot.Root, "modern.dialog.title").Text);
+    Assert.Equal("modern.dialog.confirm", Find(snapshot.Root, "modern.dialog.content").Children[1].Id);
+
+    Assert.Throws<ArgumentException>(() => UI.SegmentedTabs(
+        "tabs", "one", new SegmentedTab("one", "One", "select-one")));
+    Assert.Throws<ArgumentException>(() => UI.SegmentedTabs(
+        "tabs", "missing",
+        new SegmentedTab("one", "One", "select-one"),
+        new SegmentedTab("two", "Two", "select-two")));
+    Assert.Throws<ArgumentException>(() => UI.SegmentedTabs(
+        "tabs", "one",
+        new SegmentedTab("one", "One", "select-one"),
+        new SegmentedTab("one", "Duplicate", "select-duplicate")));
+    Assert.Throws<ArgumentException>(() => UI.ScopedDialog(
+        "Dialog", new string('d', 123), "scope", "back"));
     return Task.CompletedTask;
 }
 
@@ -1054,6 +1150,55 @@ static Task ValidManifestPasses()
     return Task.CompletedTask;
 }
 
+static Task ResidencyPolicyIsVersioned()
+{
+    var defaultPolicy = WidgetResidencyPolicies.Resolve(ValidManifest());
+    Assert.Equal(WidgetResidencyMode.KeepAlive, defaultPolicy.Mode);
+
+    var legacyKeepAlive = ValidManifest() with { BackgroundPolicy = "none" };
+    var legacySuspend = ValidManifest() with { BackgroundPolicy = "suspend" };
+    Assert.Equal(0, WidgetManifestValidator.Validate(legacyKeepAlive).Count);
+    Assert.Equal(WidgetResidencyMode.KeepAlive,
+        WidgetResidencyPolicies.Resolve(legacyKeepAlive).Mode);
+    Assert.Equal(WidgetResidencyMode.SuspendWhenHidden,
+        WidgetResidencyPolicies.Resolve(legacySuspend).Mode);
+
+    var unload = ValidManifest() with
+    {
+        ResidencyPolicy = new WidgetResidencyPolicy
+        {
+            SchemaVersion = 1,
+            Mode = WidgetResidencyPolicies.UnloadAfterIdle,
+            IdleSeconds = 120,
+        },
+    };
+    Assert.Equal(0, WidgetManifestValidator.Validate(unload).Count);
+    Assert.Equal(TimeSpan.FromSeconds(120),
+        WidgetResidencyPolicies.Resolve(unload).IdleDuration);
+    var roundTrip = ManifestJson.Deserialize(ManifestJson.Serialize(unload));
+    Assert.Equal(WidgetResidencyPolicies.UnloadAfterIdle, roundTrip.ResidencyPolicy?.Mode);
+
+    var tooShort = unload with
+    {
+        ResidencyPolicy = unload.ResidencyPolicy! with { IdleSeconds = 4 },
+    };
+    Assert.True(WidgetManifestValidator.Validate(tooShort).Any(error =>
+        error.Path == "$.residencyPolicy.idleSeconds" && error.Code == "out_of_range"),
+        "Expected short idle unload to fail closed.");
+    var conflict = unload with { BackgroundPolicy = "suspend" };
+    Assert.True(WidgetManifestValidator.Validate(conflict).Any(error =>
+        error.Code == "conflicting_policy"),
+        "Legacy and versioned policy must not be combined.");
+    var strayIdle = ValidManifest() with
+    {
+        ResidencyPolicy = new WidgetResidencyPolicy { IdleSeconds = 120 },
+    };
+    Assert.True(WidgetManifestValidator.Validate(strayIdle).Any(error =>
+        error.Code == "not_applicable"),
+        "Idle duration must apply only to unload-after-idle.");
+    return Task.CompletedTask;
+}
+
 static Task UnsafeManifestFails()
 {
     var manifest = ValidManifest() with
@@ -1118,12 +1263,17 @@ static async Task DashboardInputResolves()
         ControllerEventPhase.Pressed,
         ControllerInputContext.DashboardQuickAction,
         Sequence: 9,
-        MonotonicTimestampMicroseconds: 1234));
+        MonotonicTimestampMicroseconds: 1234,
+        SnapshotSequence: 1));
     Assert.True(handled, "Expected dashboard quick action to resolve.");
     var action = await widget.NextActionAsync();
     Assert.Equal("quick-refresh", action.ActionId);
     Assert.Equal("dashboard-card", action.SourceElementId);
     Assert.Equal(9L, action.Sequence);
+    Assert.Equal(9L, widget.LastGestureContext?.InputSequence);
+    Assert.Equal(1L, widget.LastGestureContext?.SnapshotSequence);
+    await widget.OnActionAsync(new WidgetActionEvent("direct", "test"));
+    Assert.Equal<WidgetCapabilityGestureContext?>(null, widget.LastGestureContext);
 }
 
 static async Task FocusedShortcutResolves()
@@ -1440,6 +1590,7 @@ file sealed class RoutingWidget : Widget
     private readonly System.Threading.Channels.Channel<WidgetActionEvent> _observed =
         System.Threading.Channels.Channel.CreateUnbounded<WidgetActionEvent>();
     public List<WidgetActionEvent> Actions { get; } = [];
+    public WidgetCapabilityGestureContext? LastGestureContext { get; private set; }
 
     public ValueTask<WidgetActionEvent> NextActionAsync() => _observed.Reader.ReadAsync();
 
@@ -1454,6 +1605,7 @@ file sealed class RoutingWidget : Widget
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
+        LastGestureContext = WidgetCapabilityInvocationContext.Current;
         Actions.Add(action);
         _observed.Writer.TryWrite(action);
         return ValueTask.CompletedTask;

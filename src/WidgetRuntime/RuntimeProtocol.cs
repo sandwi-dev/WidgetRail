@@ -22,6 +22,8 @@ internal static class MessageTypes
     public const string Action = "action";
     public const string ControllerInput = "controller-input";
     public const string ControllerInputResult = "controller-input-result";
+    public const string DashboardGestureActivationRequested = "dashboard-gesture-activation-requested";
+    public const string DashboardGestureActivationResult = "dashboard-gesture-activation-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidated = "invalidated";
     public const string ControllerActionFailed = "controller-action-failed";
@@ -46,6 +48,15 @@ internal sealed record ControllerActionFailurePayload(
     string Message);
 internal sealed record ErrorPayload(string Code, string Message);
 internal sealed record ControllerInputResultPayload(bool Handled);
+internal sealed record DashboardGestureActivationRequestPayload(
+    long ActivationId,
+    string CapabilityId,
+    string OperationId,
+    long InputSequence,
+    long SnapshotSequence);
+internal sealed record DashboardGestureActivationResultPayload(
+    long ActivationId,
+    bool Authorized);
 
 internal static class RuntimeJson
 {

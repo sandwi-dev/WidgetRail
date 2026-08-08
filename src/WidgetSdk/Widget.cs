@@ -29,11 +29,13 @@ public sealed record WidgetView(
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
 
-        int RequiredProtocolVersion() => ContainsSlider(Root)
-            ? ProtocolConstants.SliderVersion
-            : Surface is not null || ContainsScroll(Root)
-                ? ProtocolConstants.ScrollContainerVersion
-                : ProtocolConstants.BaselineVersion;
+        int RequiredProtocolVersion() => QuickActions?.Any(action => action.Capability is not null) == true
+            ? ProtocolConstants.DashboardGestureAuthorityVersion
+            : ContainsSlider(Root)
+                ? ProtocolConstants.SliderVersion
+                : Surface is not null || ContainsScroll(Root)
+                    ? ProtocolConstants.ScrollContainerVersion
+                    : ProtocolConstants.BaselineVersion;
     }
 
     private static bool ContainsScroll(WidgetElement element) => element switch
@@ -405,7 +407,9 @@ public abstract partial class Widget
 
         if (input.Context == ControllerInputContext.DashboardQuickAction)
         {
-            if (input.Phase != ControllerEventPhase.Pressed) return ValueTask.FromResult(false);
+            if (input.Phase != ControllerEventPhase.Pressed ||
+                input.SnapshotSequence != snapshot.Sequence)
+                return ValueTask.FromResult(false);
             var quickAction = snapshot.QuickActions.FirstOrDefault(action => action.Button == input.Button);
             if (quickAction is null) return ValueTask.FromResult(false);
             return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
@@ -414,7 +418,9 @@ public abstract partial class Widget
                 input.Button,
                 input.Phase,
                 input.Sequence,
-                input.MonotonicTimestampMicroseconds)));
+                input.MonotonicTimestampMicroseconds),
+                new WidgetCapabilityGestureContext(
+                    input.Sequence, input.SnapshotSequence)));
         }
 
         if (input.Context == ControllerInputContext.OpenWidget)

@@ -195,9 +195,11 @@ bounded error feedback. Malformed settings show safe defaults and provide a
 confirmed reset recovery path.
 
 The permission page uses three nested controller scopes: package list, package
-capabilities, and a capability decision/confirmation page. Package pages show
-five entries; capability pages show four; LB/RB paginate only within the active
-scope and B returns one level. Grant is accepted only from the active explicit
+capabilities, and a capability decision/confirmation page. Each scope is one
+bounded vertical controller Scroll rather than an internally paged list, so
+every installed package or declared capability remains reachable with normal
+Up/Down navigation and focus-follow. The pages contain no duplicate Back row;
+B returns exactly one level. Grant is accepted only from the active explicit
 confirmation page. Deny/revoke is immediate there. Decisions are atomically
 stored by package ID, publisher ID, and capability ID. Missing/malformed
 catalog or consent state disables actions and shows sanitized diagnostics;

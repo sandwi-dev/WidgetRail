@@ -24,7 +24,10 @@
     "system.audio.input.read.v1",
     "system.audio.input.control.v1"
   ],
-  "backgroundPolicy": "suspend",
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "suspend-when-hidden"
+  },
   "resourceRequest": {
     "memoryMb": 64,
     "updateHz": 10

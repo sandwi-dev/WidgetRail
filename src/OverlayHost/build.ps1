@@ -143,6 +143,67 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $SkipPackaging) {
+    function Publish-BundledWidgetPackage {
+        param(
+            [Parameter(Mandatory = $true)] [string]$WidgetProject,
+            [Parameter(Mandatory = $true)] [string]$PackageRoot,
+            [Parameter(Mandatory = $true)] [string]$AssemblyName,
+            [Parameter(Mandatory = $true)] [string]$DisplayName
+        )
+
+        $resolvedPackageRoot = [System.IO.Path]::GetFullPath($PackageRoot)
+        $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
+        if (-not $resolvedPackageRoot.StartsWith(
+            $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Bundled package output escaped the build layout: $resolvedPackageRoot"
+        }
+        if (Test-Path -LiteralPath $resolvedPackageRoot) {
+            Remove-Item -LiteralPath $resolvedPackageRoot -Recurse -Force
+        }
+        $payloadOutput = Join-Path $resolvedPackageRoot 'payload'
+        $stylesOutput = Join-Path $resolvedPackageRoot 'styles'
+        New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput | Out-Null
+        & dotnet publish (Join-Path $WidgetProject "$AssemblyName.csproj") `
+            --configuration $Configuration --no-self-contained --nologo --output $payloadOutput
+        if ($LASTEXITCODE -ne 0) {
+            throw "$DisplayName package publish failed with exit code $LASTEXITCODE."
+        }
+        # WidgetSdk/WidgetProtocol are host-ABI assemblies selected by the
+        # generic loader. Project assets copied by `dotnet publish` are pruned
+        # so four bundled packages do not duplicate or shadow host contracts.
+        foreach ($hostSharedFile in @(
+            'WidgetSdk.dll',
+            'WidgetSdk.pdb',
+            'WidgetProtocol.dll',
+            'WidgetProtocol.pdb',
+            "$AssemblyName.pdb",
+            'manifest.json'
+        )) {
+            $candidate = Join-Path $payloadOutput $hostSharedFile
+            if (Test-Path -LiteralPath $candidate) {
+                Remove-Item -LiteralPath $candidate -Force
+            }
+        }
+        $copiedStyles = Join-Path $payloadOutput 'styles'
+        if (Test-Path -LiteralPath $copiedStyles) {
+            Remove-Item -LiteralPath $copiedStyles -Recurse -Force
+        }
+        Copy-Item -LiteralPath (Join-Path $WidgetProject 'manifest.json') `
+            -Destination (Join-Path $resolvedPackageRoot 'manifest.json') -Force
+        Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.gbss') `
+            -Destination (Join-Path $stylesOutput 'default.gbss') -Force
+        foreach ($requiredFile in @(
+            'manifest.json',
+            'styles\default.gbss',
+            "payload\$AssemblyName.dll"
+        )) {
+            if (-not (Test-Path -LiteralPath (Join-Path $resolvedPackageRoot $requiredFile))) {
+                throw "$DisplayName bundled package is missing $requiredFile."
+            }
+        }
+    }
+
     $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
     $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
     $ytMusicOutput = Join-Path $outputDirectory 'runtime\YtMusic'
@@ -150,6 +211,7 @@ if (-not $SkipPackaging) {
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
     $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
     $recentAppsOutput = Join-Path $outputDirectory 'runtime\RecentApps'
+    $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
@@ -171,21 +233,6 @@ if (-not $SkipPackaging) {
     if ($LASTEXITCODE -ne 0) {
         throw "Settings worker publish failed with exit code $LASTEXITCODE."
     }
-    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget.Worker\AudioMixerWidget.Worker.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $audioMixerOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Audio Mixer worker publish failed with exit code $LASTEXITCODE."
-    }
-    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget.Worker\NetworkControlsWidget.Worker.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $networkControlsOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Network Controls worker publish failed with exit code $LASTEXITCODE."
-    }
-    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\RecentAppsWidget.Worker\RecentAppsWidget.Worker.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $recentAppsOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Recent Apps worker publish failed with exit code $LASTEXITCODE."
-    }
     $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
     $settingsStylesOutput = Join-Path $settingsOutput 'styles'
     $settingsPayloadOutput = Join-Path $settingsOutput 'payload'
@@ -206,66 +253,18 @@ if (-not $SkipPackaging) {
             throw "Settings deployment is missing $requiredSettingsFile."
         }
     }
-    $audioMixerProject = Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget'
-    $audioMixerStylesOutput = Join-Path $audioMixerOutput 'styles'
-    $audioMixerPayloadOutput = Join-Path $audioMixerOutput 'payload'
-    New-Item -ItemType Directory -Force -Path $audioMixerStylesOutput, $audioMixerPayloadOutput | Out-Null
-    Copy-Item -LiteralPath (Join-Path $audioMixerProject 'manifest.json') `
-        -Destination (Join-Path $audioMixerOutput 'manifest.json') -Force
-    Copy-Item -LiteralPath (Join-Path $audioMixerProject 'styles\default.gbss') `
-        -Destination (Join-Path $audioMixerStylesOutput 'default.gbss') -Force
-    Copy-Item -LiteralPath (Join-Path $audioMixerOutput 'AudioMixerWidget.dll') `
-        -Destination (Join-Path $audioMixerPayloadOutput 'AudioMixerWidget.dll') -Force
-    foreach ($requiredAudioMixerFile in @(
-        'AudioMixerWidget.Worker.exe',
-        'manifest.json',
-        'styles\default.gbss',
-        'payload\AudioMixerWidget.dll'
-    )) {
-        if (-not (Test-Path -LiteralPath (Join-Path $audioMixerOutput $requiredAudioMixerFile))) {
-            throw "Audio Mixer deployment is missing $requiredAudioMixerFile."
-        }
-    }
-    $networkControlsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget'
-    $networkControlsStylesOutput = Join-Path $networkControlsOutput 'styles'
-    $networkControlsPayloadOutput = Join-Path $networkControlsOutput 'payload'
-    New-Item -ItemType Directory -Force -Path $networkControlsStylesOutput, $networkControlsPayloadOutput | Out-Null
-    Copy-Item -LiteralPath (Join-Path $networkControlsProject 'manifest.json') `
-        -Destination (Join-Path $networkControlsOutput 'manifest.json') -Force
-    Copy-Item -LiteralPath (Join-Path $networkControlsProject 'styles\default.gbss') `
-        -Destination (Join-Path $networkControlsStylesOutput 'default.gbss') -Force
-    Copy-Item -LiteralPath (Join-Path $networkControlsOutput 'NetworkControlsWidget.dll') `
-        -Destination (Join-Path $networkControlsPayloadOutput 'NetworkControlsWidget.dll') -Force
-    foreach ($requiredNetworkControlsFile in @(
-        'NetworkControlsWidget.Worker.exe',
-        'manifest.json',
-        'styles\default.gbss',
-        'payload\NetworkControlsWidget.dll'
-    )) {
-        if (-not (Test-Path -LiteralPath (Join-Path $networkControlsOutput $requiredNetworkControlsFile))) {
-            throw "Network Controls deployment is missing $requiredNetworkControlsFile."
-        }
-    }
-    $recentAppsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\RecentAppsWidget'
-    $recentAppsStylesOutput = Join-Path $recentAppsOutput 'styles'
-    $recentAppsPayloadOutput = Join-Path $recentAppsOutput 'payload'
-    New-Item -ItemType Directory -Force -Path $recentAppsStylesOutput, $recentAppsPayloadOutput | Out-Null
-    Copy-Item -LiteralPath (Join-Path $recentAppsProject 'manifest.json') `
-        -Destination (Join-Path $recentAppsOutput 'manifest.json') -Force
-    Copy-Item -LiteralPath (Join-Path $recentAppsProject 'styles\default.gbss') `
-        -Destination (Join-Path $recentAppsStylesOutput 'default.gbss') -Force
-    Copy-Item -LiteralPath (Join-Path $recentAppsOutput 'RecentAppsWidget.dll') `
-        -Destination (Join-Path $recentAppsPayloadOutput 'RecentAppsWidget.dll') -Force
-    foreach ($requiredRecentAppsFile in @(
-        'RecentAppsWidget.Worker.exe',
-        'manifest.json',
-        'styles\default.gbss',
-        'payload\RecentAppsWidget.dll'
-    )) {
-        if (-not (Test-Path -LiteralPath (Join-Path $recentAppsOutput $requiredRecentAppsFile))) {
-            throw "Recent Apps deployment is missing $requiredRecentAppsFile."
-        }
-    }
+    Publish-BundledWidgetPackage `
+        (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget') `
+        $audioMixerOutput 'AudioMixerWidget' 'Audio Mixer'
+    Publish-BundledWidgetPackage `
+        (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget') `
+        $networkControlsOutput 'NetworkControlsWidget' 'Network Controls'
+    Publish-BundledWidgetPackage `
+        (Join-Path $projectDirectory '..\FirstPartyWidgets\RecentAppsWidget') `
+        $recentAppsOutput 'RecentAppsWidget' 'Recent Apps'
+    Publish-BundledWidgetPackage `
+        (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
+        $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'
     Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
         -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
 }

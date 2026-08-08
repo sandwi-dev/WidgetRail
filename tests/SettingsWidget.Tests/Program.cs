@@ -31,7 +31,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Malformed installed widget catalogs fail closed", InstalledWidgetCatalogFailure),
     ("Installed widget review reloads only on activation", InstalledWidgetActivationReload),
     ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
-    ("Permissions use nested controller scopes and bounded package pages", PermissionScopesAndPagination),
+    ("Permissions use nested controller-scroll scopes and B-only Back", PermissionScopesAreScrollable),
     ("Permission screens explain declarations consent enforcement and Windows access", PermissionModelIsClear),
     ("Bluetooth permission copy states privacy and radio-control boundaries", BluetoothPermissionCopy),
     ("Capability grant confirms and deny revokes atomically", GrantAndRevoke),
@@ -463,6 +463,10 @@ static async Task InstalledWidgetReview()
         Text(details.Root, "installed.details.required-permissions").Text!);
     Assert.Contains(PlatformCapabilities.AudioSessionsControlV1,
         Text(details.Root, "installed.details.optional-permissions").Text!);
+    Assert.Contains("Suspend when hidden",
+        Text(details.Root, "installed.details.residency").Text!);
+    Assert.Contains("no process/thread suspension",
+        Text(details.Root, "installed.details.residency").Text!);
     Assert.Contains("Enable reviewed widget", Button(details.Root, "installed.details.toggle").Text!);
     Assert.Valid(first);
     Assert.Valid(second);
@@ -686,50 +690,80 @@ static async Task IncompatibleInstalledWidget()
     Assert.Valid(details);
 }
 
-static async Task PermissionScopesAndPagination()
+static async Task PermissionScopesAreScrollable()
 {
     using var temp = new TemporaryDirectory();
     var catalogRoot = Path.Combine(temp.Path, "catalog");
-    for (var index = 0; index < 6; index++)
+    for (var index = 0; index < 5; index++)
         WriteInstalledWidget(catalogRoot, $"dev.test.widget{index}", $"dev.publisher{index}",
             $"Widget {index}", [PlatformCapabilities.AudioSessionsReadV1],
             [PlatformCapabilities.AudioSessionsControlV1]);
+    WriteInstalledWidget(catalogRoot, "dev.test.widget5", "dev.publisher5", "Widget 5",
+        [
+            PlatformCapabilities.AudioOutputReadV1,
+            PlatformCapabilities.AudioSessionsReadV1,
+            PlatformCapabilities.AudioDevicesReadV1,
+            PlatformCapabilities.AudioInputReadV1,
+        ],
+        [
+            PlatformCapabilities.AudioOutputControlV1,
+            PlatformCapabilities.AudioSessionsControlV1,
+            PlatformCapabilities.AudioInputControlV1,
+        ]);
     var widget = CreateWithPermissions(temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.permissions");
-    var first = Snapshot(widget);
-    Assert.Equal("permissions.packages", first.ActiveInputScopeId);
-    Assert.HasShortcut(first.Root, "permissions.packages", ControllerButton.B, "back");
-    Assert.HasShortcut(first.Root, "permissions.packages", ControllerButton.RightBumper,
-        "permission.next-page");
-    Assert.Equal(5, Buttons(first.Root).Count(button =>
+    var packages = Snapshot(widget);
+    Assert.Equal("permissions.packages", packages.ActiveInputScopeId);
+    Assert.Equal(ViewNodeKind.Scroll, Scope(packages.Root, "permissions.packages").Kind);
+    Assert.HasShortcut(packages.Root, "permissions.packages", ControllerButton.B, "back");
+    Assert.True(!Scope(packages.Root, "permissions.packages").Shortcuts.Any(shortcut =>
+        shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
+        "Permission package scrolling retained hidden page shortcuts.");
+    Assert.Equal(6, Buttons(packages.Root).Count(button =>
         button.Id.StartsWith("permission.item.", StringComparison.Ordinal)));
-    await Action(widget, "permission.next-page");
-    var second = Snapshot(widget);
-    Assert.Equal("permission.item.5", second.InitialFocusId);
-    Assert.HasShortcut(second.Root, "permissions.packages", ControllerButton.LeftBumper,
-        "permission.previous-page");
+    Assert.Equal("permission.item.0", packages.InitialFocusId);
+    Assert.True(!Nodes(packages.Root).Any(node => node.Id == "permissions.page-label"),
+        "Permission package paging label remained visible.");
+    Assert.True(!Buttons(packages.Root).Any(button => button.ActionId == "back"),
+        "Permission package page rendered a redundant Back button.");
 
     await Action(widget, "permission.select.5");
     var capabilities = Snapshot(widget);
     Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
     Assert.Equal("capabilities.package", capabilities.ActiveInputScopeId);
+    Assert.Equal(ViewNodeKind.Scroll, Scope(capabilities.Root, "capabilities.package").Kind);
     Assert.HasShortcut(capabilities.Root, "capabilities.package", ControllerButton.B, "back");
+    Assert.Equal(7, Buttons(capabilities.Root).Count(button =>
+        button.Id.StartsWith("capability.item.", StringComparison.Ordinal)));
+    Assert.True(!Nodes(capabilities.Root).Any(node => node.Id == "capabilities.page-label"),
+        "Capability paging label remained visible.");
+    Assert.True(!Buttons(capabilities.Root).Any(button => button.ActionId == "back"),
+        "Capability list rendered a redundant Back button.");
     Assert.Contains("Required", Button(capabilities.Root, "capability.item.0").Text!);
-    Assert.Contains("Optional", Button(capabilities.Root, "capability.item.1").Text!);
+    Assert.Contains("Optional", Button(capabilities.Root, "capability.item.4").Text!);
     Assert.Contains("Not decided", Button(capabilities.Root, "capability.item.0").Text!);
 
-    await Action(widget, "capability.select.0");
+    await Action(widget, "capability.select.6");
     var decision = Snapshot(widget);
     Assert.Equal("capability.decision", decision.ActiveInputScopeId);
+    Assert.Equal(ViewNodeKind.Scroll, Scope(decision.Root, "capability.decision").Kind);
     Assert.HasShortcut(decision.Root, "capability.decision", ControllerButton.B, "back");
     Assert.True(Buttons(decision.Root).Any(button => button.Id == "capability.grant"),
         "Grant confirmation action is missing.");
+    Assert.True(!Buttons(decision.Root).Any(button => button.ActionId == "back"),
+        "Capability decision rendered a redundant Back button.");
     await Action(widget, "back");
     Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
+    var restoredCapabilities = Snapshot(widget);
+    Assert.True(restoredCapabilities.InitialFocusId == "capability.item.6",
+        "Capability Back did not restore the previously selected capability.");
     await Action(widget, "back");
     Assert.Equal(SettingsPage.Permissions, widget.CurrentPage);
-    Assert.Valid(second);
+    var restoredPackages = Snapshot(widget);
+    Assert.True(restoredPackages.InitialFocusId == "permission.item.5",
+        "Permission Back did not restore the previously selected package.");
+    Assert.Valid(packages);
     Assert.Valid(capabilities);
     Assert.Valid(decision);
 }
@@ -927,7 +961,7 @@ static async Task MalformedPermissionStateFailsClosed()
     await Action(consentFailureWidget, "open.permissions");
     await Action(consentFailureWidget, "permission.select.0");
     var consentFailure = Snapshot(consentFailureWidget);
-    Assert.Contains("invalid_consent", Text(consentFailure.Root, "capabilities.page-label").Text!);
+    Assert.Contains("invalid_consent", Text(consentFailure.Root, "capabilities.diagnostic").Text!);
     Assert.Equal(true, Button(consentFailure.Root, "capability.item.0").IsDisabled);
 }
 

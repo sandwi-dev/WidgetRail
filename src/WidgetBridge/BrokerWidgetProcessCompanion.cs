@@ -73,5 +73,29 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
         return Task.CompletedTask;
     }
 
+    public Task GrantDashboardGestureAuthorityAsync(
+        WidgetDashboardGestureAuthority authority,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(authority);
+        cancellationToken.ThrowIfCancellationRequested();
+        _server.GrantDashboardGestureAuthority(
+            authority.CapabilityId,
+            authority.OperationId,
+            authority.InputSequence,
+            authority.SnapshotSequence,
+            authority.ValidFor);
+        return Task.CompletedTask;
+    }
+
+    public Task RevokeDashboardGestureAuthorityAsync(
+        long inputSequence,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _server.RevokeDashboardGestureAuthority(inputSequence);
+        return Task.CompletedTask;
+    }
+
     public ValueTask DisposeAsync() => _server.DisposeAsync();
 }

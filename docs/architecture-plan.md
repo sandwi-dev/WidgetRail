@@ -165,9 +165,9 @@ Each widget receives a private data directory and a bounded key/value state API.
 - Once launched, keep Background workers resident by default. Use separate
   per-state and shared Visible/Interactive lifetimes to stop presentation work
   without killing explicitly permitted widget-lifetime background work.
-- Make `keep-alive` the default lifecycle policy. Offer
-  `suspend-when-hidden` and `unload-after-idle` only as explicit manifest/user
-  choices; never infer unloading from an idle timer or resource heuristic.
+- Keep `keep-alive` as the default residency policy. Enforce
+  `suspend-when-hidden` cooperatively and `unload-after-idle` only with an
+  explicit bounded manifest duration; never infer unloading from resource use.
 - Cache the last declarative UI snapshot for resilience and explicit unload,
   not as justification for automatic termination.
 - Put worker process trees in Job Objects for accounting, cleanup, and limits.

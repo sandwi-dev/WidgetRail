@@ -18,5 +18,6 @@
     <ProjectReference Include="..\WindowsNetworkProvider\WindowsNetworkProvider.csproj" />
     <ProjectReference Include="..\WindowsActivityProvider\WindowsActivityProvider.csproj" />
     <ProjectReference Include="..\WindowsBluetoothProvider\WindowsBluetoothProvider.csproj" />
+    <ProjectReference Include="..\WindowsMediaProvider\WindowsMediaProvider.csproj" />
   </ItemGroup>
 </Project>

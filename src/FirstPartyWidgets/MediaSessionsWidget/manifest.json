@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.firstparty.media-sessions",
+  "publisher": "org.gbar.firstparty",
+  "name": "Now Playing",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/MediaSessionsWidget.dll",
+    "type": "GameBarAlternative.FirstPartyWidgets.MediaSessions.MediaSessionsWidget"
+  },
+  "permissions": [
+    "system.media.sessions.read.v1"
+  ],
+  "optionalPermissions": [
+    "system.media.sessions.control.v1"
+  ],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "suspend-when-hidden"
+  },
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64"
+  ]
+}

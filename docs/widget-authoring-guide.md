@@ -127,8 +127,8 @@ worker executable.
 ### Dashboard card (hovered, not open)
 
 The host reserves Guide/Home, D-pad and horizontal left-stick navigation, `A`
-to open, and `Y` to enter/exit reorder. A selected card may expose up to three
-quick actions on `B`, `X`, `LB`, `RB`, `LT`, `RT`, either stick click, Menu, or
+to open, `B` to close, and `Y` to enter/exit reorder. A selected card may expose up to three
+quick actions on `X`, `LB`, `RB`, `LT`, `RT`, either stick click, Menu, or
 View. The mapping comes from the widget snapshot; it is not hard-coded by the
 shell:
 
@@ -138,17 +138,30 @@ return new WidgetView(
     InitialFocusId: "player.play",
     QuickActions:
     [
-        new(ControllerButton.LeftBumper, "previous", "Previous"),
-        new(ControllerButton.X, "toggle-playback", "Play or pause"),
-        new(ControllerButton.RightBumper, "next", "Next"),
+        new(ControllerButton.LeftBumper, "previous", "Previous",
+            new(WidgetMediaCapabilities.Control.CapabilityId,
+                WidgetMediaCapabilities.Control.OperationId)),
+        new(ControllerButton.X, "toggle-playback", "Play or pause",
+            new(WidgetMediaCapabilities.Control.CapabilityId,
+                WidgetMediaCapabilities.Control.OperationId)),
+        new(ControllerButton.RightBumper, "next", "Next",
+            new(WidgetMediaCapabilities.Control.CapabilityId,
+                WidgetMediaCapabilities.Control.OperationId)),
     ]);
 ```
 
 Quick actions enter the same bounded serial action queue as open-widget
 actions. Their `SourceElementId` is `dashboard-card`. They run while lifecycle
-state is `Visible`, not `Interactive`: current audio/network **control**
-capabilities are Interactive-only, so do not advertise a dashboard capability
-action that the broker will reject with `lifecycle_denied`.
+state is `Visible`, not `Interactive`. A local action needs no capability
+metadata. A control action must name the one exact published typed operation it
+will invoke, as above. The host first records a sequence-bound dormant
+reservation for at most 10 seconds so an action waiting in the bounded serial
+queue can reach its call. That reservation is not broker authority. When the
+exact typed operation is invoked, the runtime atomically activates a one-use
+broker lease lasting at most two seconds; declaration, consent, payload, and
+provider checks still apply. The SDK propagates the gesture privately only
+inside that queued callback. Do not cache tokens, promote lifecycle, start a
+subscription, or assume a second broker call is authorized.
 
 ### Open widget
 
@@ -425,7 +438,7 @@ Lifecycle is host-authoritative and separate from process residency.
 | --- | --- |
 | `Created` | Runtime-owned. `OnCreatedAsync` runs exactly once. Start only lightweight process-lifetime work and return promptly. |
 | `Background` | Worker may remain resident, but it is not presented. Stop UI refresh, animation, controller work, and provider subscriptions. |
-| `Visible` | Dashboard card is selected. Local quick actions can run; read capabilities may be used. |
+| `Visible` | Dashboard card is selected. Local quick actions and one exact declared control operation per capability-bearing user gesture can run; read capabilities may be used. |
 | `Interactive` | Full widget is open. Scoped shortcuts and typed control capabilities may run. |
 | `Destroying` | Runtime-owned bounded cleanup after widget/state/active tokens have been canceled. |
 
@@ -463,11 +476,22 @@ hour. Ticks are serialized and non-overlapping. Normal lifecycle cancellation
 completes the task; callback failure faults it, so retain and observe every
 returned task.
 
-Manifest `backgroundPolicy` currently accepts `none` or `suspend`, but these
-are validated metadata rather than enforced final residency policies. The
-worker remains resident in Background after first use by default. The current
-broker independently denies audio/network operations in Background. Do not
-claim suspend/unload behavior or keep presentation work alive there.
+Manifest `residencyPolicy` schema 1 is enforced separately from lifecycle:
+
+- `keep-alive` is the default and retains the process in Background;
+- `suspend-when-hidden` keeps the process resident but cooperatively cancels
+  visible/state work and suppresses hidden rendering, input, invalidation, and
+  broker access; and
+- `unload-after-idle` requires a bounded `idleSeconds` from 5 through 86,400.
+  The bridge caches the last good snapshot, sends bounded `Destroying`, tears
+  down the process tree, then lazily recreates it when Visible again.
+
+The host never calls undocumented process/thread suspension APIs and never
+infers unload from CPU or memory. Your callbacks and cancellation tokens still
+own author work. An idle-unloaded widget is reconstructed, not resumed in
+memory: keep stable element IDs for host focus restoration and persist only
+approved durable state. Legacy `backgroundPolicy: none` maps to `keep-alive`;
+legacy `suspend` maps to `suspend-when-hidden`. Do not declare both fields.
 
 ## GBSS: safe widget-local styling
 
@@ -545,6 +569,8 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.bluetooth.radio.control.v1` | request Bluetooth software radio On/Off | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
 | `system.activity.recent.activate.v1` | switch to one still-running opaque observation | Interactive |
+| `system.media.sessions.read.v1` | list/watch sanitized system media sessions | Visible or Interactive |
+| `system.media.sessions.control.v1` | control one broker-issued media session | Interactive, or one exact declared dashboard gesture while Visible |
 
 Required capabilities are not auto-granted. Put core authority in
 `permissions`, degradable features in `optionalPermissions`, then render
@@ -663,7 +689,11 @@ general secret broker and network API remain planned.
   "optionalPermissions": [
     "system.audio.output.control.v1"
   ],
-  "backgroundPolicy": "suspend",
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "unload-after-idle",
+    "idleSeconds": 120
+  },
   "resourceRequest": {
     "memoryMb": 48,
     "updateHz": 4
@@ -685,7 +715,10 @@ general secret broker and network API remain planned.
 | `entrypoint.type` | Namespace-qualified public concrete `Widget` type with a public constructor whose parameters are all optional. |
 | `permissions` | Required declarations. Required still means explicit user consent. |
 | `optionalPermissions` | Degradable declarations; may not duplicate a required ID. |
-| `backgroundPolicy` | `none` or `suspend`; validated metadata, not current residency enforcement. |
+| `residencyPolicy.schemaVersion` | `1`. Unknown versions fail validation. |
+| `residencyPolicy.mode` | `keep-alive`, `suspend-when-hidden`, or `unload-after-idle`. Omit the object for keep-alive default. |
+| `residencyPolicy.idleSeconds` | Required only for `unload-after-idle`; integer 5–86,400. |
+| `backgroundPolicy` | Legacy manifest-v1 migration alias only: `none` → keep-alive, `suspend` → suspend-when-hidden. It cannot coexist with `residencyPolicy`. |
 | `resourceRequest.memoryMb` | 16–256. The host owns the effective limit. |
 | `resourceRequest.updateHz` | 1–60 metadata request. SDK periodic helpers are independently limited to at most 4 Hz. |
 | `architectures` | One or both of `x64`, `arm64`; the current machine architecture must be listed. |

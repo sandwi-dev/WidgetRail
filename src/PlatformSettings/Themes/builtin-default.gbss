@@ -114,3 +114,40 @@ slider:focused { outline-color: var(--focus); outline-width: 2px; outline-offset
 .gbar-alert__icon--success { color: var(--success); }
 .gbar-alert__icon--warning { color: var(--warning); }
 .gbar-alert__icon--danger { color: var(--danger); }
+
+.gbar-segmented-tabs {
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-subtle);
+  corner-radius: 11px;
+}
+.gbar-segmented-tabs__tab {
+  min-width: 96px;
+  min-height: 44px;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--text-muted);
+  corner-radius: 8px;
+  flex-grow: 1;
+}
+.gbar-segmented-tabs__tab--selected { background: var(--surface-raised); color: var(--text); }
+
+.gbar-switch {
+  min-height: 44px;
+  padding: 10px 14px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  corner-radius: 9px;
+}
+.gbar-switch--on { color: var(--text); }
+
+.gbar-dialog {
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border-color: var(--border);
+  border-width: 1px;
+  corner-radius: 13px;
+}
+.gbar-dialog__title { color: var(--text); font-size: 20px; font-weight: 600; max-lines: 2; }
+.gbar-dialog__content { gap: 8px; min-width: 0; min-height: 0; }

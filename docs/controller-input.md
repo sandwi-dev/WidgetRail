@@ -45,13 +45,31 @@ scope.
 ## Dashboard quick actions
 
 Quick actions are bounded, visible prompts, not hidden global hotkeys. Each
-declares `{ button, actionId, label }`. The host owns card navigation and
+declares `{ button, actionId, label, capability? }`. The optional typed
+`capability` contains one exact capability ID and operation ID; both fields are
+required together and use the same bounded safe-identifier grammar as action
+IDs. The host owns card navigation and
 decides how prompts are displayed. Validation rejects:
 
 - more than three quick actions;
 - duplicate buttons;
 - blank labels or invalid action IDs; and
 - A, B, Y, or D-pad as dashboard bindings.
+
+A capability-bearing quick action does not make the selected widget
+Interactive. The bridge matches the pressed button and both controller/snapshot
+sequences against its current cached rendered snapshot, then records a dormant
+host-owned reservation for that exact declared control operation for at most 10
+seconds. This reservation is not broker authority. The SDK carries the input
+and snapshot sequences privately while it executes the bounded serial action;
+the widget author never receives or forwards a lease token. Only when the exact
+typed operation is invoked does the runtime atomically match and remove the
+reservation and activate an identity/PID-bound broker lease. The broker expires
+that lease within two seconds and consumes an exact match once. Wrong
+capability/operation/sequence, replay, stale snapshots, lifecycle change, worker
+replacement, missing declaration, or missing consent all fail closed. No read
+access, subscription, background work, or lifecycle promotion is created by
+this gesture.
 
 The bridge rejects attempts to forward dashboard A, B, Y, or D-pad as raw widget
 input even if a malformed native client requests it.

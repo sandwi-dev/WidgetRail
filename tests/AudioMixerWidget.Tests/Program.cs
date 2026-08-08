@@ -794,7 +794,8 @@ static async Task ShippedAssetsValidate()
         "system.audio.input.read.v1",
         "system.audio.input.control.v1",
     ], manifest.OptionalPermissions);
-    Assert.Equal("suspend", manifest.BackgroundPolicy);
+    Assert.Equal(WidgetResidencyMode.SuspendWhenHidden,
+        WidgetResidencyPolicies.Resolve(manifest).Mode);
     Assert.Equal(64, manifest.ResourceRequest.MemoryMb);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     var package = GbssPackageLoader.LoadFile(
@@ -819,15 +820,14 @@ static async Task ShippedAssetsValidate()
 
     var catalogPath = Path.Combine(project, "..", "..", "OverlayHost", "widget-catalog.json");
     using var catalog = JsonDocument.Parse(await File.ReadAllBytesAsync(catalogPath));
-    var trusted = catalog.RootElement.GetProperty("widgets").EnumerateArray().Single(item =>
+    var bundled = catalog.RootElement.GetProperty("bundledWidgets").EnumerateArray().Single(item =>
         item.GetProperty("packageId").GetString() == manifest.Id);
-    Assert.Equal(manifest.Publisher, trusted.GetProperty("publisherId").GetString());
-    Assert.Equal(manifest.ResourceRequest.MemoryMb, trusted.GetProperty("memoryLimitMb").GetInt32());
-    var manifestCapabilities = manifest.Permissions.Concat(manifest.OptionalPermissions)
-        .Order(StringComparer.Ordinal).ToArray();
-    var trustedCapabilities = trusted.GetProperty("declaredCapabilities").EnumerateArray()
-        .Select(item => item.GetString()!).Order(StringComparer.Ordinal).ToArray();
-    Assert.SequenceEqual(manifestCapabilities, trustedCapabilities);
+    Assert.Equal("runtime/AudioMixer", bundled.GetProperty("packageRoot").GetString());
+    Assert.Equal(0, bundled.GetProperty("quickActions").GetArrayLength());
+    Assert.True(!bundled.TryGetProperty("workerExecutable", out _) &&
+                !bundled.TryGetProperty("declaredCapabilities", out _) &&
+                !bundled.TryGetProperty("residencyPolicy", out _),
+        "Bundled runtime authority must be derived from manifest.json, not duplicated in shell metadata.");
 }
 
 static void AssertResponsiveLayoutBudget(GbssTheme theme)

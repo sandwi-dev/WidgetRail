@@ -7,15 +7,33 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.WidgetRuntime;
 
+internal interface IDashboardGestureActivatingCapabilityClient
+{
+    void SetDashboardGestureActivator(
+        Func<WidgetCapabilityGestureContext, string, string, CancellationToken, ValueTask<bool>>
+            activator);
+}
+
 /// <summary>
 /// Keeps broker transport details behind the transport-neutral SDK contract.
 /// Widget code receives only <see cref="IWidgetCapabilityClient"/>.
 /// </summary>
-internal sealed class BrokerWidgetCapabilityClient(BrokerPipeClient client)
-    : IWidgetCapabilityClient
+internal sealed class BrokerWidgetCapabilityClient :
+    IWidgetCapabilityClient,
+    IDashboardGestureActivatingCapabilityClient
 {
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
-    private readonly BrokerPipeClient _client = client ?? throw new ArgumentNullException(nameof(client));
+    private readonly BrokerPipeClient _client;
+    private Func<WidgetCapabilityGestureContext, string, string, CancellationToken, ValueTask<bool>>?
+        _dashboardGestureActivator;
+
+    internal BrokerWidgetCapabilityClient(BrokerPipeClient client) =>
+        _client = client ?? throw new ArgumentNullException(nameof(client));
+
+    void IDashboardGestureActivatingCapabilityClient.SetDashboardGestureActivator(
+        Func<WidgetCapabilityGestureContext, string, string, CancellationToken, ValueTask<bool>>
+            activator) =>
+        _dashboardGestureActivator = activator ?? throw new ArgumentNullException(nameof(activator));
 
     public bool IsAvailable => true;
 
@@ -29,8 +47,23 @@ internal sealed class BrokerWidgetCapabilityClient(BrokerPipeClient client)
         BrokerResponseEnvelope response;
         try
         {
-            response = await _client.RequestAsync(
-                operation.CapabilityId, operation.OperationId, request, cancellationToken)
+            var gesture = WidgetCapabilityInvocationContext.Current is { IsActive: true } active
+                ? active
+                : null;
+            if (gesture is not null && _dashboardGestureActivator is not null)
+                _ = await _dashboardGestureActivator(
+                        gesture,
+                        operation.CapabilityId,
+                        operation.OperationId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            response = await _client.RequestWithGestureAsync(
+                operation.CapabilityId,
+                operation.OperationId,
+                request,
+                gesture?.InputSequence,
+                gesture?.SnapshotSequence,
+                cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (BrokerException exception)

@@ -40,6 +40,11 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-019 | P1 | Verifying | OverlayHost controller guide / layout | The guide is density-aware, contextual, bounded, and no-wrap; compact/high-scale visual evidence remains. |
 | GBA-020 | P1 | Verifying | OverlayHost panel clipping / renderer | A cached host-owned rounded viewport clip now masks opaque widget roots; packaged visual evidence remains. |
 | GBA-021 | P1 | Verifying | OverlayHost targeting / DPI | Visible DPI, topology, taskbar/work-area, and appearance changes now share one dynamic refresh policy; physical mixed-monitor/hot-plug evidence remains. |
+| GBA-022 | P1 | Verifying | Settings permissions / controller navigation | Hidden package/capability pagination and redundant Back rows were replaced with bounded controller Scroll scopes and B-only Back; packaged controller/high-scale evidence remains. |
+| GBA-023 | P1 | Verifying | Widget protocol / bridge / runtime | Versioned keep-alive, cooperative suspend, and bounded idle-unload residency are enforced with legacy migration, cached views, and lazy resume; packaged resource/churn evidence remains. |
+| GBA-024 | P1 | Verifying | Gbar CLI / OverlayHost / WidgetBridge | Authenticated candidate-worker readiness, last-good recovery, complete bounded watching, and observable cleanup are implemented; packaged author-workflow evidence remains. |
+| GBA-025 | P0 | Verifying | Controller quick actions / capability broker | A dormant non-authorizing host reservation now activates one exact-operation broker lease only at the typed call; packaged controller/media evidence remains. |
+| GBA-026 | P1 | Verifying | Reference widgets / package isolation | The four brokered references now ship through the generic AppContainer path and pass real-package conformance; packaged overlay evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -509,6 +514,154 @@ monitor/work-area/DPI placement. Hidden notifications defer all work to the
 next open. Placement passes 108,545 checks and Targeting 34 checks. Status
 remains Verifying until physical mixed-DPI migration, hot-plug, taskbar-edge,
 and accessibility/theme screenshots are retained.
+
+## GBA-022 — Permission review hides pages and duplicates Back
+
+**Evidence:** The packaged Audio Mixer permission screen displayed “Page 1 of
+2” but exposed no visible page control. The same screen rendered a full-width
+Back row even though hierarchical B already owned Back, wasting space and
+adding an unnecessary focus stop.
+
+**Acceptance:** Package and capability collections are ordinary bounded
+vertical controller Scrolls with stable item IDs, true endpoint reveal, and no
+shoulder-button pagination. Package, capability, and decision scopes expose B
+as the only Back action. Empty or invalid permission states remain focusless
+but B-recoverable, and long decision copy remains scrollable at supported text
+scales.
+
+**Implementation evidence:** All three permission scopes now use protocol-v2
+vertical Scroll nodes. Package and capability rows are linked through one
+stable focus graph, page labels/shortcuts/state and in-content Back Buttons are
+removed, and malformed-state fallbacks retain their scoped B action without a
+fake focus target. Settings passes 34/34 focused Release tests. Status remains
+Verifying pending packaged controller and increased-text-scale evidence.
+
+## GBA-023 — Background residency policy was metadata only
+
+**Evidence:** Manifest-v1 accepted `backgroundPolicy: none|suspend`, but every
+launched worker remained resident and the bridge did not distinguish the two.
+There was no explicit, bounded way for an author to trade warm state for idle
+memory without unsafe process suspension or an external kill heuristic.
+
+**Acceptance:** A versioned manifest vocabulary preserves old package meaning,
+defaults to keep-alive, offers cooperative suspend and explicit bounded idle
+unload, and applies identically to bundled and installed workers. Unload must
+serialize with operations, send Destroying, release worker/companion resources,
+retain the last validated view, cancel cleanly on visibility, restore lifecycle
+on a lazy new worker, and not consume crash-restart allowance. No policy may
+suspend OS threads or authorize Background broker work.
+
+**Implementation evidence:** `residencyPolicy` schema 1 validates
+`keep-alive`, `suspend-when-hidden`, and `unload-after-idle` with a required
+5–86,400-second bound. Legacy none/suspend map to keep-alive/cooperative
+suspend, while mixed vocabularies fail closed. The bridge uses a per-widget
+operation gate, generation-canceled timer, Volatile lifecycle state, cached
+last-good snapshot, bounded runtime unload, and lazy lifecycle restoration.
+Hidden suspended workers cannot render, publish invalidations, receive input,
+or access the broker. SDK, Runtime, Bridge, Catalog, CLI, Settings, widget, and
+documentation focused suites pass; status remains Verifying pending packaged
+idle-memory and repeated hide/show churn evidence.
+
+## GBA-024 — Developer mode can report a broken generation Ready
+
+**Evidence:** The initial `gbar dev` implementation treated a host process that
+remained alive for 750 ms as initialized. OverlayHost can remain alive while
+showing a bridge/catalog initialization error, so that probe could stop the
+actual last-good generation and label a broken one Ready. Cleanup also did not
+surface a process tree or temporary generation that resisted reclamation, and
+prebuilt package-directory watching omitted supporting payload/assets.
+
+**Acceptance:** A replacement generation must publish an authenticated,
+session-scoped readiness signal only after its exact development catalog and
+WidgetBridge are usable. The previous generation remains active until then.
+Cancellation and replacement must prove the launched process tree exited and
+report unreclaimed state. The bounded, reparse-safe watch set must cover every
+file packed from a package directory, including new supported subdirectories,
+without watching build outputs or unrelated trees.
+
+**Implementation evidence:** `gbar dev` builds each candidate into an immutable
+generation and starts a controller/hotkey-free probe. The probe authenticates
+the exact catalog, widget ID, and instance with a random nonce only after the
+candidate AppContainer worker enters `Visible`, returns a protocol-validated
+snapshot for that instance, and returns to `Background`. The interactive
+candidate publishes readiness only after the overlay/backdrop are visible and
+a fresh exact-generation bridge listing succeeds; active-start failure restarts
+the prior generation. Every host starts suspended, is assigned to a CLI-owned
+kill-on-close Job Object before its first instruction, and cleanup waits for
+zero active descendants. Missing/forged readiness, a missing widget type, and a
+persistent child/grandchild all fail closed. Bounded reparse-safe project
+watching includes general MSBuild inputs and newly created directories while
+excluding `.git`, `.vs`, `bin`, and `obj`. CLI passes 43/43 and all native
+focused suites pass; packaged author-workflow evidence remains.
+
+## GBA-025 — Tray quick actions cannot use brokered controls
+
+**Evidence:** Dashboard quick actions correctly run while their selected widget
+is `Visible`, while audio/network/activity/media control capabilities correctly
+require `Interactive`. Promoting every selected tray widget to Interactive
+would unnecessarily broaden authority; leaving the mismatch makes advertised
+LB/RB/X controls fail with `lifecycle_denied`.
+
+**Acceptance:** A pressed, declared dashboard quick action may carry an
+optional host-validated authority for one exact declared capability operation.
+The authority is bound to widget identity, worker session, current snapshot,
+controller sequence, and bounded deadlines. Queueing must not start broker
+authority: a dormant host-owned reservation may last at most 10 seconds, but
+only the exact typed operation may atomically activate a one-use broker lease
+lasting at most two seconds. Replay, mismatch, lifecycle loss, replacement, or
+shutdown revokes the relevant stage. Neither stage enables a subscription or
+promotes lifecycle. Consent and provider checks still apply.
+
+**Implementation evidence:** `WidgetQuickAction` can name one typed capability
+operation. The bridge derives a dormant reservation only from the selected
+widget's cached snapshot, positive host input sequence, declared control
+capability, and `Visible` lifecycle. A private SDK action context requests
+activation only when that exact queued or custom handler actually invokes the
+typed operation, so time spent behind an earlier action cannot consume the
+two-second broker window. The dormant reservation uses a separate host-owned
+monotonic clock and expires within 10 seconds; it is not broker authority. The
+runtime atomically removes a matching capability, operation, input, and snapshot
+reservation before its identity/PID-bound companion starts the at-most-two-
+second broker lease; widget APIs cannot mint authority. A continuous bounded worker reader permits
+custom async controller handlers to receive the activation acknowledgement
+without concurrent pipe readers or deadlock. The broker keeps at most 16
+two-second active grants, consumes each exact tuple once, and clears dormant
+and active state on lifecycle, consent, process, or session teardown.
+Subscriptions remain ineligible and lifecycle is never promoted. Focused SDK,
+Broker, Runtime, Bridge, and Now Playing suites pass 44/44, 34/34, 33/33,
+29/29, and 9/9 respectively and cover wrong operation/capability,
+slow-first rapid-second input, custom async routing, replay, expiry, stale
+snapshot, denial, and revocation cases.
+
+## GBA-026 — Reference widgets lack real community-package conformance
+
+**Evidence:** Audio Mixer, Network Controls, Recent Apps, and Now Playing have
+focused widget tests with injected fake services. Installed-catalog isolation
+tests use synthetic packages. No acceptance test currently packages each real
+reference, installs/enables it, resolves it through the generic worker host,
+launches it in the package-specific AppContainer, and renders/acts through its
+authenticated simulated broker.
+
+**Acceptance:** A bounded Windows conformance suite performs that complete
+path for every claimed public-SDK reference without real OS mutation. It must
+assert immutable package resolution, AppContainer-required launch, exact
+declared authority, valid rendered snapshots, lifecycle enforcement, and at
+least one read/action path. A widget that depends on a trusted-only facility is
+explicitly classified as such instead of passing by exception.
+
+**Implementation evidence:** The shipped catalog now separates trusted worker
+entries from ordered `bundledWidgets`. Only Settings and YT Music remain
+temporary Job-only exceptions. Audio Mixer, Network Controls, Recent Apps, and
+Now Playing derive entrypoint, publisher, permissions, memory, residency, and
+styles from their real manifests and launch through the generic worker in a
+capability-free package AppContainer. The Release conformance suite builds and
+installs the same four `.gbarwidget` packages, merges them through
+`WidgetCatalog`/`BridgeCatalog`, grants simulated consent through the production
+PID-bound broker companion, and executes both the installed and separately
+configured bundled routes. Both forms drive lifecycle, validate rendered
+snapshots, and exercise a safe brokered control for every reference. It passes
+4/4; Bridge passes 29/29. The packaged build and host catalog contain and select
+no dedicated worker executable for these four widgets.
 
 ## Closed issues
 

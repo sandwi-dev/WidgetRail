@@ -1,0 +1,157 @@
+:root {
+  --media-accent: #ff5d87;
+  --media-focus: #ff91ae;
+  --media-surface: rgba(14, 18, 26, 0.98);
+  --media-card: rgba(31, 37, 49, 0.96);
+  --media-control: rgba(48, 56, 72, 0.96);
+  --media-control-focus: rgba(68, 78, 98, 0.99);
+  --media-error: #ff7c91;
+}
+
+.media-sessions-widget {
+  width: 100vw;
+  min-width: 0px;
+  max-width: 580px;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--media-surface);
+  color: var(--text);
+  overflow: clip;
+}
+
+.media-header { gap: 2px; flex-shrink: 0; }
+.media-heading { gap: 12px; align: end; justify: space-between; }
+.media-eyebrow {
+  color: var(--media-accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  max-lines: 1;
+  text-transform: uppercase;
+}
+.media-title { color: var(--text); font-size: 23px; font-weight: 600; max-lines: 1; }
+.media-status {
+  color: var(--text-muted);
+  font-size: 11px;
+  max-lines: 1;
+  text-align: end;
+  text-overflow: ellipsis;
+}
+.media-status.is-live { color: var(--success); }
+.media-status.is-error { color: var(--media-error); }
+
+.media-session-list {
+  min-height: 45px;
+  max-height: 45px;
+  gap: 6px;
+  padding: 1px 2px;
+  overflow: clip;
+  flex-shrink: 0;
+}
+.media-session-pill {
+  min-width: 116px;
+  max-width: 176px;
+  min-height: 40px;
+  padding: 7px 11px;
+  color: var(--text-muted);
+  background: rgba(39, 46, 59, 0.88);
+  border-width: 0;
+  corner-radius: 20px;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+.media-session-pill.is-playing { color: var(--text); }
+.media-session-pill:focused {
+  background: var(--media-control-focus);
+  outline-color: var(--media-focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.media-session-pill:selected { background: rgba(96, 42, 62, 0.96); color: var(--text); }
+
+.media-now-playing {
+  gap: 7px;
+  padding: 16px 18px;
+  background: var(--media-card);
+  border-width: 0;
+  corner-radius: 12px;
+  flex-shrink: 0;
+}
+.media-track-title {
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 600;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+.media-track-artist {
+  color: var(--text-muted);
+  font-size: 14px;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+.media-timeline { gap: 9px; align: center; margin: 5px 0 0; }
+.media-time { width: 42px; color: var(--text-muted); font-size: 11px; max-lines: 1; }
+.media-time.is-duration { text-align: end; }
+.media-progress {
+  min-width: 210px;
+  height: 4px;
+  flex-grow: 1;
+  color: var(--media-accent);
+  background: rgba(103, 112, 132, 0.36);
+}
+
+.media-controls { height: 58px; gap: 12px; align: center; justify: center; flex-shrink: 0; }
+.media-transport,
+.media-play {
+  color: var(--text);
+  background: var(--media-control);
+  border-width: 0;
+  shape: circle;
+  transition-duration: 100ms;
+  transition-easing: ease-out;
+}
+.media-transport { width: 46px; height: 46px; padding: 10px; }
+.media-play { width: 58px; height: 58px; padding: 12px; background: var(--media-accent); }
+.media-transport:focused {
+  background: var(--media-control-focus);
+  outline-color: var(--media-focus);
+  outline-width: 2px;
+  outline-offset: -3px;
+}
+.media-play:focused {
+  background: var(--media-accent);
+  outline-color: #ffc0d0;
+  outline-width: 2px;
+  outline-offset: -3px;
+}
+.media-transport:disabled,
+.media-play:disabled { opacity: 0.48; }
+
+.media-state-card {
+  min-height: 220px;
+  gap: 9px;
+  padding: 24px;
+  align: center;
+  justify: center;
+  background: var(--media-card);
+  border-width: 0;
+  corner-radius: 12px;
+}
+.media-state-icon { width: 40px; height: 40px; padding: 8px; color: var(--media-accent); }
+.media-state-title { color: var(--text); font-size: 18px; font-weight: 600; max-lines: 1; }
+.media-state-help { color: var(--text-muted); font-size: 12px; max-lines: 2; text-align: center; }
+.media-retry {
+  min-height: 42px;
+  padding: 8px 14px;
+  color: var(--text);
+  background: var(--media-control);
+  border-width: 0;
+  corner-radius: 9px;
+}
+.media-retry:focused {
+  background: var(--media-control-focus);
+  outline-color: var(--media-focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}

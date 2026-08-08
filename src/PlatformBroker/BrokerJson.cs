@@ -9,7 +9,9 @@ public sealed record BrokerRequestEnvelope(
     [property: JsonRequired] BrokerWidgetIdentity Widget,
     [property: JsonRequired] string CapabilityId,
     [property: JsonRequired] string Operation,
-    [property: JsonRequired] JsonElement Payload);
+    [property: JsonRequired] JsonElement Payload,
+    long? GestureInputSequence = null,
+    long? GestureSnapshotSequence = null);
 
 public sealed record BrokerResponseEnvelope(
     int ProtocolVersion,
@@ -168,6 +170,11 @@ public static class BrokerJson
             !PlatformCapabilities.TryGet(request.CapabilityId, out var capability) ||
             !capability.Operations.Contains(request.Operation))
             throw new BrokerException("unsupported_capability", "Capability or operation is unsupported.");
+        if (request.GestureInputSequence.HasValue != request.GestureSnapshotSequence.HasValue ||
+            request.GestureInputSequence is { } inputSequence && inputSequence <= 0 ||
+            request.GestureSnapshotSequence is { } snapshotSequence && snapshotSequence <= 0)
+            throw new BrokerException(
+                "invalid_gesture", "Gesture input and snapshot sequences must be positive and supplied together.");
     }
 
     private static JsonSerializerOptions CreateOptions()

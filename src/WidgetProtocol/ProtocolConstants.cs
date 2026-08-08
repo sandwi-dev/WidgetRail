@@ -4,10 +4,11 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
+    public const int DashboardGestureAuthorityVersion = 4;
     public const double MinimumSurfaceWidth = 240;
     public const double MaximumSurfaceWidth = 1_600;
     public const double MinimumSurfaceHeight = 180;

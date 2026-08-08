@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
@@ -34,6 +35,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Actions deliver invalidation notifications", ActionsInvalidate),
     ("Raw controller input resolves only after a rendered snapshot", ControllerInputUsesLatestSnapshot),
     ("Rapid dashboard actions acknowledge quickly and execute in order", RapidDashboardActionsAreQueued),
+    ("Dashboard authority is granted through the exact worker companion and revoked when unhandled", DashboardAuthorityUsesCompanion),
+    ("Slow queued dashboard work starts each authority lifetime only when its action executes", SlowDashboardQueueActivatesJustInTime),
+    ("Dormant dashboard reservations expire on a host-owned monotonic clock", DormantDashboardReservationExpires),
+    ("Custom async dashboard handlers can activate authority without blocking the pipe reader", CustomDashboardHandlerActivatesWithoutDeadlock),
+    ("Broker adapter attaches gesture sequences only inside the queued invocation scope", BrokerAdapterBindsGestureContext),
     ("Rapid controller inputs acknowledge quickly and execute in order", RapidControllerInputsAreQueued),
     ("Runtime shortcut fallback respects explicit active input surface", RuntimeScopedShortcutRouting),
     ("Queued controller work cancels on deactivation", ControllerQueueCancelsOnDeactivation),
@@ -42,6 +48,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unexpected worker exit is reported and recoverable", CrashRecovery),
     ("Companion endpoint ownership is established before worker launch", CompanionEndpointPrecedesLaunch),
     ("Host companion sessions are recreated and lifecycle-restored after crashes", CompanionSessionsFollowWorkerRestarts),
+    ("Intentional idle unload destroys resources without consuming crash budget", IntentionalUnloadIsReusable),
+    ("A crashed nonexistent session cannot gain an intentional-resume exemption", CrashedSessionIsNotIntentionalUnload),
+    ("Non-completing companion disposal cannot hold worker teardown", CompanionDisposalIsBounded),
     ("Request timeout terminates a hung worker", HungWorkerTimesOut),
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
     ("Worker destruction is bounded when widget cleanup hangs", DestroyIsBounded),
@@ -76,6 +85,10 @@ static async Task<int> RunWorkerAsync(string[] arguments)
 
     Widget widget = arguments.Contains("--hanging-destroy", StringComparer.Ordinal)
         ? new HangingDestroyWidget()
+        : arguments.Contains("--gesture-queue-probe", StringComparer.Ordinal)
+            ? new GestureQueueWidget()
+        : arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal)
+            ? new CustomGestureWidget()
         : arguments.Contains("--isolation-probe", StringComparer.Ordinal)
             ? new IsolationProbeWidget(
                 RequiredValue(arguments, "--probe-readable-path"),
@@ -84,7 +97,13 @@ static async Task<int> RunWorkerAsync(string[] arguments)
                 int.Parse(RequiredValue(arguments, "--probe-network-port"), CultureInfo.InvariantCulture),
                 RequiredValue(arguments, "--probe-secret-name"))
             : new TestWidget();
-    await new WidgetWorkerServer(widget, instance, pipe, maximumBytes).RunAsync();
+    IWidgetCapabilityClient? capabilityClient =
+        arguments.Contains("--gesture-queue-probe", StringComparer.Ordinal) ||
+        arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal)
+            ? new GestureProbeCapabilityClient()
+            : null;
+    await new WidgetWorkerServer(
+        widget, instance, pipe, maximumBytes, capabilityClient).RunAsync();
     return 0;
 }
 
@@ -490,7 +509,9 @@ static async Task ControllerInputUsesLatestSnapshot()
     var beforeRender = await client.SendControllerInputAsync(new ControllerInputEvent(
         ControllerButton.X,
         ControllerEventPhase.Pressed,
-        ControllerInputContext.DashboardQuickAction));
+        ControllerInputContext.DashboardQuickAction,
+        Sequence: 99,
+        SnapshotSequence: 1));
     Assert.True(!beforeRender, "A worker must not invent routing before its first snapshot.");
 
     var snapshot = await client.GetSnapshotAsync();
@@ -507,7 +528,8 @@ static async Task ControllerInputUsesLatestSnapshot()
         ControllerButton.X,
         ControllerEventPhase.Pressed,
         ControllerInputContext.DashboardQuickAction,
-        Sequence: 4));
+        Sequence: 4,
+        SnapshotSequence: snapshot.Sequence));
     Assert.True(quickHandled, "Dashboard quick action should resolve from latest snapshot.");
     Assert.Equal(1L, await invalidations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
 
@@ -545,11 +567,13 @@ static async Task RapidControllerInputsAreQueued()
 static async Task RapidDashboardActionsAreQueued()
 {
     await using var client = CreateClient();
-    _ = await client.GetSnapshotAsync();
+    var rendered = await client.GetSnapshotAsync();
     Assert.True(!await client.SendControllerInputAsync(new ControllerInputEvent(
         ControllerButton.X,
         ControllerEventPhase.Pressed,
-        ControllerInputContext.DashboardQuickAction)),
+        ControllerInputContext.DashboardQuickAction,
+        Sequence: 1,
+        SnapshotSequence: rendered.Sequence)),
         "An inactive dashboard widget must not accept queued work.");
     await client.SetActiveAsync(true);
     var invalidations = System.Threading.Channels.Channel.CreateUnbounded<long>();
@@ -562,7 +586,8 @@ static async Task RapidDashboardActionsAreQueued()
             ControllerButton.X,
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
-            Sequence: sequence));
+            Sequence: sequence,
+            SnapshotSequence: rendered.Sequence));
         Assert.True(handled, $"Rapid dashboard action {sequence} was not accepted.");
     }
     stopwatch.Stop();
@@ -572,6 +597,229 @@ static async Task RapidDashboardActionsAreQueued()
     for (var expected = 1L; expected <= 3L; expected++)
         Assert.Equal(expected, await invalidations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)));
     Assert.Equal("1,2,3", Find((await client.GetSnapshotAsync()).Root, "controller-history").Text);
+}
+
+static async Task DashboardAuthorityUsesCompanion()
+{
+    var companion = new ProbeCompanionSession();
+    await using var client = CreateClient(companionFactory: _ => companion);
+    var snapshot = await client.GetSnapshotAsync();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var authority = new WidgetDashboardGestureAuthority(
+        "system.media.sessions.control.v1",
+        "media.session.control",
+        10,
+        snapshot.Sequence,
+        TimeSpan.FromSeconds(2));
+    Assert.True(await client.SendControllerInputAsync(
+        new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 10,
+            SnapshotSequence: snapshot.Sequence),
+        authority), "Expected the authorized dashboard action to be accepted.");
+    Assert.Equal(0, companion.GrantedAuthorities.Count);
+    Assert.Equal(0, companion.RevokedInputSequences.Count);
+
+    var rejected = authority with { InputSequence = 11 };
+    Assert.True(!await client.SendControllerInputAsync(
+        new ControllerInputEvent(
+            ControllerButton.LeftTrigger,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 11,
+            SnapshotSequence: snapshot.Sequence),
+        rejected), "An unhandled dashboard button must reject its authority.");
+    Assert.SequenceEqual(new long[] { 11 }, companion.RevokedInputSequences);
+}
+
+static async Task SlowDashboardQueueActivatesJustInTime()
+{
+    var companion = new ProbeCompanionSession();
+    await using var client = CreateClient(
+        extraArguments: ["--gesture-queue-probe"],
+        companionFactory: _ => companion);
+    var snapshot = await client.GetSnapshotAsync();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var enqueuedAt = DateTimeOffset.UtcNow;
+    foreach (var (button, sequence) in new[]
+             {
+                 (ControllerButton.X, 21L),
+                 (ControllerButton.RightBumper, 22L),
+             })
+    {
+        var authority = new WidgetDashboardGestureAuthority(
+            WidgetMediaCapabilities.Control.CapabilityId,
+            WidgetMediaCapabilities.Control.OperationId,
+            sequence,
+            snapshot.Sequence,
+            TimeSpan.FromSeconds(2));
+        Assert.True(await client.SendControllerInputAsync(
+            new ControllerInputEvent(
+                button,
+                ControllerEventPhase.Pressed,
+                ControllerInputContext.DashboardQuickAction,
+                Sequence: sequence,
+                SnapshotSequence: snapshot.Sequence),
+            authority), $"Dashboard input {sequence} was not queued.");
+    }
+    Assert.Equal(0, companion.GrantedAuthorities.Count);
+
+    await Task.Delay(TimeSpan.FromMilliseconds(2_800));
+    var completed = await client.GetSnapshotAsync();
+    Assert.Equal("21,22", Find(completed.Root, "gesture-history").Text);
+    Assert.SequenceEqual(new long[] { 21, 22 },
+        companion.GrantedAuthorities.Select(item => item.InputSequence));
+    Assert.True(companion.GrantTimes[1] - enqueuedAt > TimeSpan.FromSeconds(2),
+        "Second queued authority started its lifetime before its action executed.");
+}
+
+static async Task CustomDashboardHandlerActivatesWithoutDeadlock()
+{
+    var companion = new ProbeCompanionSession();
+    await using var client = CreateClient(
+        requestTimeout: TimeSpan.FromSeconds(3),
+        extraArguments: ["--gesture-custom-probe"],
+        companionFactory: _ => companion);
+    var snapshot = await client.GetSnapshotAsync();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var authority = new WidgetDashboardGestureAuthority(
+        WidgetMediaCapabilities.Control.CapabilityId,
+        WidgetMediaCapabilities.Control.OperationId,
+        31,
+        snapshot.Sequence,
+        TimeSpan.FromSeconds(2));
+
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    Assert.True(await client.SendControllerInputAsync(
+        new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 31,
+            SnapshotSequence: snapshot.Sequence),
+        authority), "The custom async dashboard handler did not complete its capability call.");
+    stopwatch.Stop();
+
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1),
+        $"The custom handler blocked waiting for the sole pipe reader ({stopwatch.Elapsed.TotalMilliseconds:0} ms).");
+    Assert.SequenceEqual(new long[] { 31 },
+        companion.GrantedAuthorities.Select(item => item.InputSequence));
+    Assert.Equal("31", Find((await client.GetSnapshotAsync()).Root, "gesture-history").Text);
+}
+
+static async Task DormantDashboardReservationExpires()
+{
+    var clock = new ManualTimeProvider();
+    var companion = new ProbeCompanionSession();
+    await using var client = CreateClient(
+        requestTimeout: TimeSpan.FromSeconds(4),
+        extraArguments: ["--gesture-queue-probe"],
+        companionFactory: _ => companion,
+        timeProvider: clock);
+    var snapshot = await client.GetSnapshotAsync();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var failures = System.Threading.Channels.Channel.CreateUnbounded<
+        WidgetControllerActionFailure>();
+    client.ControllerActionFailed += (_, failure) => failures.Writer.TryWrite(failure);
+    var authority = new WidgetDashboardGestureAuthority(
+        WidgetMediaCapabilities.Control.CapabilityId,
+        WidgetMediaCapabilities.Control.OperationId,
+        41,
+        snapshot.Sequence,
+        TimeSpan.FromSeconds(2));
+
+    Assert.True(await client.SendControllerInputAsync(
+        new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 41,
+            SnapshotSequence: snapshot.Sequence),
+        authority), "The slow dashboard action was not queued.");
+    clock.Advance(TimeSpan.FromSeconds(11));
+
+    var failure = await failures.Reader.ReadAsync().AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(4));
+    Assert.Equal("gesture.slow", failure.ActionId);
+    Assert.Equal(0, companion.GrantedAuthorities.Count);
+}
+
+static async Task BrokerAdapterBindsGestureContext()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = new BrokerWidgetIdentity("dev.runtime.media", "dev.runtime", "default");
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(
+        identity, PlatformCapabilities.MediaSessionsControlV1, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetMediaSessions([
+        new("media-1", "Player", "Title", "Artist", MediaPlaybackStatus.Paused,
+            0, 1_000, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
+            true, true, true, true, true),
+    ]);
+    var pipeName = $"gba-runtime-gesture-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity, [PlatformCapabilities.MediaSessionsControlV1], store, backend);
+    var serverTask = server.RunAsync();
+    await using var transport = new BrokerPipeClient(pipeName, identity, server.ChannelNonce);
+    await transport.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    server.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        40,
+        4,
+        TimeSpan.FromSeconds(2));
+    var adapter = new BrokerWidgetCapabilityClient(transport);
+    await Assert.ThrowsAsync<WidgetCapabilityException>(async () =>
+        await adapter.InvokeAsync(
+            WidgetMediaCapabilities.Control,
+            new ControlWidgetMediaSessionRequest("media-1", WidgetMediaSessionCommand.Next)));
+
+    using (WidgetCapabilityInvocationContext.Enter(new(40, 4)))
+    {
+        var response = await adapter.InvokeAsync(
+            WidgetMediaCapabilities.Control,
+            new ControlWidgetMediaSessionRequest("media-1", WidgetMediaSessionCommand.Next));
+        Assert.True(response.Acknowledged, "Exact gesture context was not propagated.");
+    }
+    Assert.Equal(1, backend.MediaControlCalls);
+    using (WidgetCapabilityInvocationContext.Enter(new(40, 4)))
+    {
+        await Assert.ThrowsAsync<WidgetCapabilityException>(async () =>
+            await adapter.InvokeAsync(
+                WidgetMediaCapabilities.Control,
+                new ControlWidgetMediaSessionRequest("media-1", WidgetMediaSessionCommand.Next)));
+    }
+    Assert.Equal(1, backend.MediaControlCalls);
+
+    server.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        41,
+        5,
+        TimeSpan.FromSeconds(2));
+    var releaseBackground = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    Task leakedInvocation;
+    using (WidgetCapabilityInvocationContext.Enter(new(41, 5)))
+    {
+        leakedInvocation = Task.Run(async () =>
+        {
+            await releaseBackground.Task;
+            await adapter.InvokeAsync(
+                WidgetMediaCapabilities.Control,
+                new ControlWidgetMediaSessionRequest(
+                    "media-1", WidgetMediaSessionCommand.Next));
+        });
+    }
+    releaseBackground.SetResult();
+    await Assert.ThrowsAsync<WidgetCapabilityException>(() => leakedInvocation);
+    Assert.Equal(1, backend.MediaControlCalls);
+    await transport.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
 }
 
 static async Task ControllerQueueCancelsOnDeactivation()
@@ -744,6 +992,81 @@ static async Task CompanionSessionsFollowWorkerRestarts()
     Assert.True(sessions[1].Disposed, "Client disposal left its companion session alive.");
 }
 
+static async Task IntentionalUnloadIsReusable()
+{
+    var sessions = new List<ProbeCompanionSession>();
+    await using var client = CreateClient(
+        maximumRestarts: 0,
+        companionFactory: _ =>
+        {
+            var session = new ProbeCompanionSession();
+            sessions.Add(session);
+            return session;
+        });
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var firstProcess = client.WorkerProcessId;
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.UnloadAsync();
+    Assert.True(!client.IsRunning, "Idle unload left the worker resident.");
+    Assert.True(sessions[0].Disposed, "Idle unload retained the capability companion.");
+    Assert.SequenceEqual(
+        new[]
+        {
+            WidgetLifecycleState.Visible,
+            WidgetLifecycleState.Background,
+            WidgetLifecycleState.Destroying,
+        },
+        sessions[0].LifecycleStates);
+
+    var resumed = await client.GetSnapshotAsync();
+    Assert.Equal("runtime.test", resumed.WidgetInstanceId);
+    Assert.Equal(2, client.Starts);
+    Assert.True(client.WorkerProcessId != firstProcess,
+        "Residency resume reused a destroyed process.");
+    Assert.Equal(2, sessions.Count);
+
+    await client.UnloadAsync();
+    _ = await client.GetSnapshotAsync();
+    Assert.Equal(3, client.Starts);
+    Assert.Equal(3, sessions.Count);
+}
+
+static async Task CrashedSessionIsNotIntentionalUnload()
+{
+    await using var client = CreateClient(maximumRestarts: 0);
+    _ = await client.GetSnapshotAsync();
+    await Assert.ThrowsAnyAsync(() =>
+        client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+    Assert.True(!client.IsRunning, "Crash probe worker unexpectedly remained live.");
+
+    // A residency timer can observe the crash only after its delay. Treating
+    // this no-session cleanup as an intentional unload would incorrectly let
+    // the next launch bypass the zero-restart policy.
+    await client.UnloadAsync();
+    await Assert.ThrowsAsync<WidgetProcessException>(() => client.GetSnapshotAsync());
+    Assert.Equal(1, client.Starts);
+}
+
+static async Task CompanionDisposalIsBounded()
+{
+    var companion = new NonCompletingDisposeCompanionSession();
+    await using var client = CreateClient(
+        maximumRestarts: 0,
+        companionFactory: _ => companion);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    await client.UnloadAsync();
+    stopwatch.Stop();
+    Assert.True(companion.DisposeStarted,
+        "Residency teardown did not invoke companion disposal.");
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+        $"Non-completing companion held teardown for {stopwatch.Elapsed.TotalMilliseconds:0} ms.");
+    Assert.True(!client.IsRunning,
+        "Bounded companion cleanup retained the worker process session.");
+}
+
 static async Task CompanionEndpointPrecedesLaunch()
 {
     if (!OperatingSystem.IsWindows()) return;
@@ -787,10 +1110,11 @@ static WidgetProcessClient CreateClient(
     TimeSpan? requestTimeout = null,
     IReadOnlyList<string>? extraArguments = null,
     long memoryLimitBytes = 64L * 1024 * 1024,
-    Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>? companionFactory = null)
+    Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>? companionFactory = null,
+    TimeProvider? timeProvider = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
-    return new WidgetProcessClient(new WidgetProcessOptions
+    var options = new WidgetProcessOptions
     {
         ExecutablePath = executable,
         Arguments = extraArguments ?? [],
@@ -801,7 +1125,10 @@ static WidgetProcessClient CreateClient(
         MaximumMessageBytes = 64 * 1024,
         MemoryLimitBytes = memoryLimitBytes,
         CompanionSessionFactory = companionFactory,
-    });
+    };
+    return timeProvider is null
+        ? new WidgetProcessClient(options)
+        : new WidgetProcessClient(options, timeProvider);
 }
 
 static string RequiredValue(string[] values, string name)
@@ -917,6 +1244,130 @@ file sealed class TestWidget : Widget
     {
         lock (_historyLock) return string.Join(',', _controllerHistory);
     }
+}
+
+file sealed class GestureQueueWidget : Widget
+{
+    private readonly object _historyLock = new();
+    private readonly List<long> _history = [];
+
+    public override WidgetView Render() => new(
+        UI.Stack("root", UI.Text(History(), "gesture-history")),
+        QuickActions:
+        [
+            new WidgetQuickAction(
+                ControllerButton.X,
+                "gesture.slow",
+                "Slow",
+                new WidgetQuickActionCapability(
+                    WidgetMediaCapabilities.Control.CapabilityId,
+                    WidgetMediaCapabilities.Control.OperationId)),
+            new WidgetQuickAction(
+                ControllerButton.RightBumper,
+                "gesture.fast",
+                "Fast",
+                new WidgetQuickActionCapability(
+                    WidgetMediaCapabilities.Control.CapabilityId,
+                    WidgetMediaCapabilities.Control.OperationId)),
+        ]);
+
+    public override async ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        if (action.ActionId == "gesture.slow")
+            await Task.Delay(TimeSpan.FromMilliseconds(2_300), cancellationToken);
+        if (action.ActionId is not ("gesture.slow" or "gesture.fast")) return;
+
+        await HostServices.Media.ControlAsync(
+            "media-1", WidgetMediaSessionCommand.Next, cancellationToken);
+        lock (_historyLock) _history.Add(action.Sequence);
+        Invalidate();
+    }
+
+    private string History()
+    {
+        lock (_historyLock) return string.Join(',', _history);
+    }
+}
+
+file sealed class CustomGestureWidget : Widget
+{
+    private long _handledSequence;
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Text(Interlocked.Read(ref _handledSequence).ToString(CultureInfo.InvariantCulture),
+                "gesture-history")),
+        QuickActions:
+        [
+            new WidgetQuickAction(
+                ControllerButton.X,
+                "gesture.custom",
+                "Custom",
+                new WidgetQuickActionCapability(
+                    WidgetMediaCapabilities.Control.CapabilityId,
+                    WidgetMediaCapabilities.Control.OperationId)),
+        ]);
+
+    public override async ValueTask<bool> OnControllerInputAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        if (input is not
+            {
+                Button: ControllerButton.X,
+                Phase: ControllerEventPhase.Pressed,
+                Context: ControllerInputContext.DashboardQuickAction,
+            })
+            return false;
+
+        await HostServices.Media.ControlAsync(
+            "media-1", WidgetMediaSessionCommand.Next, cancellationToken);
+        Interlocked.Exchange(ref _handledSequence, input.Sequence);
+        Invalidate();
+        return true;
+    }
+}
+
+file sealed class GestureProbeCapabilityClient :
+    IWidgetCapabilityClient,
+    IDashboardGestureActivatingCapabilityClient
+{
+    private Func<WidgetCapabilityGestureContext, string, string, CancellationToken, ValueTask<bool>>?
+        _activator;
+
+    public bool IsAvailable => true;
+
+    void IDashboardGestureActivatingCapabilityClient.SetDashboardGestureActivator(
+        Func<WidgetCapabilityGestureContext, string, string, CancellationToken, ValueTask<bool>>
+            activator) =>
+        _activator = activator;
+
+    public async ValueTask<TResponse> InvokeAsync<TRequest, TResponse>(
+        WidgetCapabilityOperation<TRequest, TResponse> operation,
+        TRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var gesture = WidgetCapabilityInvocationContext.Current;
+        if (gesture is null || !gesture.IsActive || _activator is null)
+            throw new WidgetCapabilityException(
+                "lifecycle_denied", "The test control call has no active dashboard gesture.");
+        if (!await _activator(
+                gesture,
+                operation.CapabilityId,
+                operation.OperationId,
+                cancellationToken).ConfigureAwait(false))
+            throw new WidgetCapabilityException(
+                "lifecycle_denied", "The host rejected dashboard gesture activation.");
+        return (TResponse)(object)new WidgetCapabilityAcknowledgement(true);
+    }
+
+    public ValueTask<IWidgetCapabilitySubscription<TPayload>> OpenSubscriptionAsync<TPayload>(
+        WidgetCapabilityEvent<TPayload> platformEvent,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<IWidgetCapabilitySubscription<TPayload>>(
+            new NotSupportedException("The gesture probe has no event subscriptions."));
 }
 
 file sealed class IsolationProbeWidget(
@@ -1207,6 +1658,9 @@ file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
     public bool Disposed { get; private set; }
     public int? BoundWorkerProcessId { get; private set; }
     public bool RunStartedAfterBinding { get; private set; }
+    public List<WidgetDashboardGestureAuthority> GrantedAuthorities { get; } = [];
+    public List<DateTimeOffset> GrantTimes { get; } = [];
+    public List<long> RevokedInputSequences { get; } = [];
 
     public void BindWorkerProcess(int processId) => BoundWorkerProcessId = processId;
 
@@ -1226,10 +1680,68 @@ file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
         return Task.CompletedTask;
     }
 
+    public Task GrantDashboardGestureAuthorityAsync(
+        WidgetDashboardGestureAuthority authority,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        GrantedAuthorities.Add(authority);
+        GrantTimes.Add(DateTimeOffset.UtcNow);
+        return Task.CompletedTask;
+    }
+
+    public Task RevokeDashboardGestureAuthorityAsync(
+        long inputSequence,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RevokedInputSequences.Add(inputSequence);
+        return Task.CompletedTask;
+    }
+
     public ValueTask DisposeAsync()
     {
         Disposed = true;
         return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class ManualTimeProvider : TimeProvider
+{
+    private long _timestamp;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => Interlocked.Read(ref _timestamp);
+
+    public void Advance(TimeSpan elapsed) =>
+        Interlocked.Add(ref _timestamp, elapsed.Ticks);
+}
+
+file sealed class NonCompletingDisposeCompanionSession : IWidgetProcessCompanionSession
+{
+    private readonly TaskCompletionSource _never = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public IReadOnlyList<string> WorkerArguments { get; } = [];
+    public bool DisposeStarted { get; private set; }
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    public Task SetLifecycleStateAsync(
+        WidgetLifecycleState state,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        DisposeStarted = true;
+        return new ValueTask(_never.Task);
     }
 }
 

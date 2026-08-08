@@ -15,7 +15,10 @@
   },
   "permissions": [],
   "optionalPermissions": [],
-  "backgroundPolicy": "none",
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "keep-alive"
+  },
   "resourceRequest": {
     "memoryMb": 32,
     "updateHz": 4

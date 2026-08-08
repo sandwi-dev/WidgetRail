@@ -7,7 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\WidgetRuntime\WidgetRuntime.csproj" />
-    <ProjectReference Include="..\AudioMixerWidget\AudioMixerWidget.csproj" />
+    <ProjectReference Include="..\..\src\FirstPartyWidgets\MediaSessionsWidget\MediaSessionsWidget.csproj" />
+    <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
 </Project>

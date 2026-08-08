@@ -10,9 +10,16 @@ internal static class Program
     {
         return await WidgetWorkerBootstrap.RunAsync(
             args,
-            () => new SettingsWidget(
-                diagnostics: CreateDiagnostics(args),
-                bundledWidgetRoot: OptionalPath(args, "--bundled-widget-root")))
+            () =>
+            {
+                var installedCatalogRoot = OptionalPath(args, "--installed-widget-catalog-root");
+                return new SettingsWidget(
+                    widgetCatalog: installedCatalogRoot is null
+                        ? null
+                        : new GameBarAlternative.WidgetCatalog.WidgetCatalog(installedCatalogRoot),
+                    diagnostics: CreateDiagnostics(args),
+                    bundledWidgetRoot: OptionalPath(args, "--bundled-widget-root"));
+            })
             .ConfigureAwait(false);
     }
 
