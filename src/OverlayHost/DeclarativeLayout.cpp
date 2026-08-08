@@ -311,6 +311,19 @@ private:
             }
             const auto grow = ResolveNumber(child.flexGrow, child.id, "flexGrow", 0.0F, kMaximumFlex, 0.0F);
             const auto shrink = ResolveNumber(child.flexShrink, child.id, "flexShrink", 0.0F, kMaximumFlex, 1.0F);
+            // An auto-height intrinsic leaf (text, button, icon, image, and
+            // other renderer-measured content) must not be flexed below the
+            // height it was measured to paint. Doing so assigns DirectWrite a
+            // shorter box than its wrapped line metrics and collapses
+            // controller controls below their interaction contract. Authors
+            // can still opt into compression with an explicit height,
+            // flex-basis, or min-height. Keep row widths shrinkable so text can
+            // reflow responsively instead of imposing a CSS-like min-content
+            // width on every label.
+            if (!row && child.children.empty() && !child.height.has_value() &&
+                !child.flexBasis.has_value() && !child.minHeight.has_value()) {
+                minimum = std::min(measured.height, maximum);
+            }
             const auto main = std::clamp(preferred, minimum, maximum);
             items.push_back({&child, margin, main, minimum, maximum, grow, shrink});
             margins += row ? Horizontal(margin) : Vertical(margin);

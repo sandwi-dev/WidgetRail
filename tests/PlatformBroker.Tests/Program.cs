@@ -17,6 +17,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
+    ("Durable app IDs persist and remain authority scoped", AppLibrarySavedIdsAreDurableAndScoped),
+    ("Pipe host effects publish only after requested successful app launch", AppLaunchHostEffectIsSuccessBound),
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
     ("Exact-port loopback separates visible reads from interactive controls", LoopbackHttpContracts),
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
@@ -68,7 +70,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(22, PlatformCapabilities.All.Count);
+    Assert.Equal(24, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -629,9 +631,10 @@ static async Task AppLibraryContracts()
     var identity = Identity();
     var store = new ConsentStore(temp.Path);
     var backend = new SimulatedPlatformBrokerBackend();
-    backend.SetAppLibrary(Enumerable.Range(0, 70).Select(index =>
-        new AppLibraryItemSummary(
+    backend.SetAppLibraryBackend(Enumerable.Range(0, 70).Select(index =>
+        new AppLibraryBackendItemSummary(
             $"app-{index:D3}",
+            $"private-stable-{index:D3}",
             $"Launchable {index:D3}",
             index == 0 ? AppLibraryKind.Game : AppLibraryKind.Application)));
     await using var broker = Broker(identity, store, backend,
@@ -665,7 +668,9 @@ static async Task AppLibraryContracts()
     Assert.Equal(64, firstPayload.GetProperty("nextOffset").GetInt32());
     var firstItem = firstPayload.GetProperty("items")[0];
     var publicAppId = firstItem.GetProperty("appId").GetString()!;
+    var savedAppId = firstItem.GetProperty("savedId").GetString()!;
     Assert.True(publicAppId.StartsWith("app-", StringComparison.Ordinal));
+    Assert.True(savedAppId.StartsWith("saved-", StringComparison.Ordinal));
     Assert.True(publicAppId != "app-000",
         "A provider-global ID escaped the widget-scoped broker projection.");
     Assert.Equal("Launchable 000", firstItem.GetProperty("displayName").GetString());
@@ -673,12 +678,14 @@ static async Task AppLibraryContracts()
     Assert.True(!json.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
     Assert.True(!json.Contains("C:\\\\", StringComparison.OrdinalIgnoreCase));
     Assert.True(!json.Contains("aumid", StringComparison.OrdinalIgnoreCase));
+    Assert.True(!json.Contains("private-stable", StringComparison.OrdinalIgnoreCase));
     Assert.Equal(1, backend.AppLibraryRefreshCalls);
 
     // Later pages remain bound to the first-page snapshot even if the shared
     // backend changes. A new first page is the explicit refresh boundary.
-    backend.SetAppLibrary([
-        new AppLibraryItemSummary("changed", "Changed", AppLibraryKind.Application),
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "changed", "changed-stable", "Changed", AppLibraryKind.Application),
     ]);
     var last = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
@@ -696,9 +703,11 @@ static async Task AppLibraryContracts()
         new { offset = -1, limit = 65 }));
     Assert.Equal("invalid_payload", invalidPage.ErrorCode);
 
-    backend.SetAppLibrary([
-        new AppLibraryItemSummary("duplicate", "First", AppLibraryKind.Application),
-        new AppLibraryItemSummary("duplicate", "Second", AppLibraryKind.Application),
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "duplicate", "stable-one", "First", AppLibraryKind.Application),
+        new AppLibraryBackendItemSummary(
+            "duplicate", "stable-two", "Second", AppLibraryKind.Application),
     ]);
     var invalidBackend = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
@@ -752,8 +761,9 @@ static async Task AppLibraryContracts()
     Assert.Equal(1, backend.AppLibraryLaunchCalls);
     Assert.Equal("app-000", backend.LastLaunchedAppId);
 
-    backend.SetAppLibrary([
-        new AppLibraryItemSummary("changed", "Changed", AppLibraryKind.Application),
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "changed", "changed-stable", "Changed", AppLibraryKind.Application),
     ]);
     var refreshed = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
@@ -787,6 +797,197 @@ static async Task AppLibraryContracts()
         .GetProperty("appId").GetString();
     Assert.True(firstWidgetId != secondWidgetId,
         "Opaque app IDs must not correlate two widget broker sessions.");
+}
+
+static async Task AppLaunchHostEffectIsSuccessBound()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryReadV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryLaunchV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-app", "stable-app", "Test App", AppLibraryKind.Application),
+    ]);
+    var effects = 0;
+    var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var options = new BrokerPipeTransportOptions
+    {
+        AcceptTimeout = TimeSpan.FromSeconds(2),
+        HandshakeTimeout = TimeSpan.FromSeconds(1),
+        RequestTimeout = TimeSpan.FromSeconds(2),
+    };
+    var pipeName = $"gba-broker-host-effect-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName,
+        identity,
+        [PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1],
+        store,
+        backend,
+        options,
+        new string('H', 64),
+        hostEffectSink: effect =>
+        {
+            if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
+            Interlocked.Increment(ref effects);
+            published.TrySetResult();
+        });
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce, options);
+    await client.ConnectAsync();
+
+    var page = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new AppLibraryPageRequest(0, 1));
+    Assert.True(page.Succeeded);
+    var appId = page.Payload!.Value.GetProperty("items")[0]
+        .GetProperty("appId").GetString()!;
+
+    var keepOpen = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest(appId));
+    Assert.True(keepOpen.Succeeded);
+    Assert.Equal(0, Volatile.Read(ref effects));
+
+    var close = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true });
+    Assert.True(close.Succeeded);
+    await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal(1, Volatile.Read(ref effects));
+
+    var failed = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest("missing") { CloseOverlayOnSuccess = true });
+    Assert.Equal("app_not_found", failed.ErrorCode);
+    await Task.Delay(50);
+    Assert.Equal(1, Volatile.Read(ref effects));
+
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static async Task AppLibrarySavedIdsAreDurableAndScoped()
+{
+    using var temp = new TemporaryDirectory();
+    var keyPath = Path.Combine(temp.Path, "identity", "saved-id.key");
+    var identity = Identity();
+    var updatedInstance = identity with { InstanceId = "after-update" };
+    var otherPackage = identity with { PackageId = "dev.test.other-widget" };
+    var stableProviderIdentity = "provider-private-stable-identity";
+
+    var firstIssuer = new AppLibrarySavedIdIssuer(keyPath);
+    var firstSavedId = firstIssuer.Issue(identity, stableProviderIdentity);
+    Assert.True(File.Exists(keyPath));
+    Assert.Equal(49, firstSavedId.Length);
+    Assert.Equal(firstSavedId,
+        new AppLibrarySavedIdIssuer(keyPath).Issue(updatedInstance, stableProviderIdentity));
+    Assert.True(firstSavedId !=
+        new AppLibrarySavedIdIssuer(keyPath).Issue(otherPackage, stableProviderIdentity));
+    Assert.True(firstSavedId !=
+        new AppLibrarySavedIdIssuer(keyPath).Issue(identity, "provider-other-stable-identity"));
+
+    var racingKeyPath = Path.Combine(temp.Path, "racing", "saved-id.key");
+    var racingIds = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
+        new AppLibrarySavedIdIssuer(racingKeyPath)
+            .Issue(identity, stableProviderIdentity))));
+    Assert.Equal(1, racingIds.Distinct(StringComparer.Ordinal).Count());
+    Assert.Equal(AppLibrarySavedIdIssuer.KeyBytes, new FileInfo(racingKeyPath).Length);
+
+    var corruptKeyPath = Path.Combine(temp.Path, "corrupt", "saved-id.key");
+    Directory.CreateDirectory(Path.GetDirectoryName(corruptKeyPath)!);
+    await File.WriteAllBytesAsync(corruptKeyPath, new byte[31]);
+    Assert.Throws<BrokerException>(() =>
+        new AppLibrarySavedIdIssuer(corruptKeyPath)
+            .Issue(identity, stableProviderIdentity), "platform_unavailable");
+
+    var store = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryReadV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-launch-one", stableProviderIdentity,
+            "Durable App", AppLibraryKind.Application),
+    ]);
+    await using var broker = new PlatformCapabilityBroker(
+        identity,
+        [PlatformCapabilities.AppLibraryReadV1],
+        store,
+        backend,
+        hostGrantedCapabilities: null,
+        appLibrarySavedIdIssuer: new AppLibrarySavedIdIssuer(keyPath));
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var page = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new { offset = 0, limit = 64 }));
+    Assert.True(page.Succeeded);
+    var pageItem = page.Payload!.Value.GetProperty("items")[0];
+    var savedId = pageItem.GetProperty("savedId").GetString()!;
+    var oldLaunchId = pageItem.GetProperty("appId").GetString()!;
+    Assert.Equal(firstSavedId, savedId);
+
+    // Provider launch tokens may rotate while the durable provider identity
+    // and authority-scoped SavedId remain stable.
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-launch-two", stableProviderIdentity,
+            "Durable App Renamed", AppLibraryKind.Application),
+    ]);
+    var resolved = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        new { savedIds = new[] { "saved-unknown", savedId } }));
+    Assert.True(resolved.Succeeded);
+    var resolvedItems = resolved.Payload!.Value.GetProperty("items");
+    Assert.Equal(1, resolvedItems.GetArrayLength());
+    Assert.Equal(savedId, resolvedItems[0].GetProperty("savedId").GetString());
+    Assert.Equal("Durable App Renamed",
+        resolvedItems[0].GetProperty("displayName").GetString());
+    Assert.True(oldLaunchId != resolvedItems[0].GetProperty("appId").GetString());
+    Assert.True(!resolved.Payload.Value.GetRawText().Contains(
+        stableProviderIdentity, StringComparison.Ordinal));
+    Assert.True(!resolved.Payload.Value.GetRawText().Contains(
+        "provider-launch-two", StringComparison.Ordinal));
+
+    var duplicate = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        new { savedIds = new[] { savedId, savedId } }));
+    Assert.Equal("invalid_payload", duplicate.ErrorCode);
+    var tooMany = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        new
+        {
+            savedIds = Enumerable.Range(0, 65)
+                .Select(index => $"saved-{index:D3}").ToArray(),
+        }));
+    Assert.Equal("invalid_payload", tooMany.ErrorCode);
+
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-one", "duplicate-stable", "One", AppLibraryKind.Application),
+        new AppLibraryBackendItemSummary(
+            "provider-two", "duplicate-stable", "Two", AppLibraryKind.Application),
+    ]);
+    var duplicateProviderIdentity = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        new { savedIds = new[] { "saved-any" } }));
+    Assert.Equal("invalid_backend_data", duplicateProviderIdentity.ErrorCode);
 }
 
 static async Task MediaSessionContracts()
@@ -1412,7 +1613,9 @@ static async Task BluetoothContracts()
     ]);
     await using var broker = Broker(identity, store, backend,
         PlatformCapabilities.NetworkBluetoothReadV1,
-        PlatformCapabilities.NetworkBluetoothRadioControlV1);
+        PlatformCapabilities.NetworkBluetoothRadioControlV1,
+        PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothManageV1);
     broker.SetLifecycle(BrokerLifecycleState.Visible);
 
     var malformed = await broker.HandleAsync(Request(identity,
@@ -1451,6 +1654,51 @@ static async Task BluetoothContracts()
         PlatformCapabilities.NetworkBluetoothRadioSet, new { enabled = false }));
     Assert.True(changed.Succeeded);
     Assert.Equal(1, backend.BluetoothRadioControlCalls);
+
+    var pairWithoutConsent = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothDevicePair,
+        new { deviceId = "bluetooth-2" }));
+    Assert.Equal("permission_denied", pairWithoutConsent.ErrorCode);
+    Assert.Equal(0, backend.BluetoothPairCalls);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkBluetoothPairV1,
+        ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkBluetoothManageV1,
+        ConsentDecision.Grant);
+
+    backend.BluetoothPairingResult = BluetoothPairingResultStatus.UserInteractionRequired;
+    var paired = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothDevicePair,
+        new { deviceId = "bluetooth-2" }));
+    Assert.True(paired.Succeeded && paired.Payload is not null);
+    Assert.Equal("userInteractionRequired",
+        paired.Payload!.Value.GetProperty("outcome").GetString());
+    Assert.Equal(1, backend.BluetoothPairCalls);
+    Assert.Equal("bluetooth-2", backend.LastBluetoothDeviceId);
+
+    var malformedPair = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothDevicePair,
+        new { deviceId = "bluetooth-2", nativeId = "secret" }));
+    Assert.Equal("invalid_payload", malformedPair.ErrorCode);
+    Assert.Equal(1, backend.BluetoothPairCalls);
+
+    var managed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothManageV1,
+        PlatformCapabilities.NetworkBluetoothDeviceSettingsOpen,
+        new { deviceId = "bluetooth-1" }));
+    Assert.True(managed.Succeeded);
+    Assert.Equal(1, backend.BluetoothManageCalls);
+    Assert.Equal("bluetooth-1", backend.LastBluetoothDeviceId);
+
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var backgroundManage = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothManageV1,
+        PlatformCapabilities.NetworkBluetoothDeviceSettingsOpen,
+        new { deviceId = "bluetooth-1" }));
+    Assert.Equal("lifecycle_denied", backgroundManage.ErrorCode);
+    Assert.Equal(1, backend.BluetoothManageCalls);
     await subscription.DisposeAsync();
 }
 
@@ -1975,7 +2223,11 @@ static PlatformCapabilityBroker Broker(
     BrokerWidgetIdentity identity,
     ConsentStore store,
     IPlatformBrokerBackend backend,
-    params string[] declared) => new(identity, declared, store, backend);
+    params string[] declared) => new(
+        identity, declared, store, backend, hostGrantedCapabilities: null,
+        appLibrarySavedIdIssuer: new AppLibrarySavedIdIssuer(
+            Enumerable.Range(1, AppLibrarySavedIdIssuer.KeyBytes)
+                .Select(value => (byte)value).ToArray()));
 
 static BrokerWidgetIdentity Identity() => new("dev.test.widget", "dev.test", "default");
 

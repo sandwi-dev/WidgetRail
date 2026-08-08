@@ -58,33 +58,49 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         CancellationToken cancellationToken = default) =>
         ScanAsync(force: true, cancellationToken);
 
-    public async Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+    public async Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
         CancellationToken cancellationToken)
     {
-        var apps = await GetAppsAsync(cancellationToken).ConfigureAwait(false);
-        return ProjectForBroker(apps);
+        await GetAppsAsync(cancellationToken).ConfigureAwait(false);
+        return ProjectCurrentForBroker();
     }
 
-    public async Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+    public async Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
         CancellationToken cancellationToken)
     {
-        var apps = await RefreshAsync(cancellationToken).ConfigureAwait(false);
-        return ProjectForBroker(apps);
+        await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        return ProjectCurrentForBroker();
     }
 
-    private static IReadOnlyList<AppLibraryItemSummary> ProjectForBroker(
-        IReadOnlyList<WindowsAppLibraryItem> apps) =>
-        apps.Select(app => new AppLibraryItemSummary(
-                app.AppId,
-                app.DisplayName,
-                app.Kind switch
+    private IReadOnlyList<AppLibraryBackendItemSummary> ProjectCurrentForBroker()
+    {
+        lock (_stateGate)
+        {
+            if (_snapshot is null)
+                throw new BrokerException(
+                    "invalid_backend_data", "App library snapshot is unavailable.");
+            var projected = new AppLibraryBackendItemSummary[_snapshot.Count];
+            for (var index = 0; index < _snapshot.Count; index++)
+            {
+                var app = _snapshot[index];
+                if (!_registrationsByOpaqueId.TryGetValue(app.AppId, out var registration))
+                    throw new BrokerException(
+                        "invalid_backend_data", "App library snapshot is inconsistent.");
+                projected[index] = new AppLibraryBackendItemSummary(
+                    app.AppId,
+                    registration.IdentityKey,
+                    app.DisplayName,
+                    app.Kind switch
                 {
                     WindowsAppLibraryKind.Unknown => AppLibraryKind.Unknown,
                     WindowsAppLibraryKind.Application => AppLibraryKind.Application,
                     WindowsAppLibraryKind.Game => AppLibraryKind.Game,
                     _ => AppLibraryKind.Unknown,
-                }))
-            .ToArray();
+                });
+            }
+            return Array.AsReadOnly(projected);
+        }
+    }
 
     public async Task LaunchAppLibraryItemAsync(
         string appId, CancellationToken cancellationToken)

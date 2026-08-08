@@ -288,10 +288,12 @@ Default deny. Prefer task-shaped broker operations over broad access.
 
 The implemented closed set currently covers typed audio, Wi-Fi/network,
 Bluetooth, recent activity, app-library launch, system media, exact-port local
-companion JSON, and write-only private secrets; see
+companion JSON, write-only private secrets, and host-granted durable private
+JSON state; see
 [widget capabilities](capabilities.md) for the authoritative IDs and lifecycle
 rules. The companion-specific security contract is in [local companion HTTP and
-private secrets](community-companion-services.md).
+private secrets](community-companion-services.md); the non-consent storage
+contract is in [Private widget state](private-widget-state.md).
 
 The implemented companion grants are deliberately narrower than the earlier
 generic candidates: `network.loopback:<port>` is one user-visible grant for one
@@ -300,9 +302,11 @@ nonprivileged IPv4 loopback port, JSON GET/POST only; and
 stored value to widget code. The trusted provider alone can inject a named slot
 as Bearer authorization while both grants remain valid.
 
-Remaining candidate capability domains are:
+Private widget state is not `storage.own` manifest authority. The Bridge grants
+one bounded JSON document to every authenticated widget through a host-only set;
+manifest declaration is rejected, there is no consent toggle, and secrets are
+excluded. Remaining candidate capability domains are:
 
-- `storage.own`: private bounded widget storage
 - `network.internet.client`: brokered HTTPS whose manifest declaration carries
   one or more allowlisted domains as constraints rather than minting a separate
   permission ID for each host

@@ -128,6 +128,39 @@ void AccessibleStatePresentation() {
           "high contrast uses policy-owned disabled cue foreground");
 }
 
+void PressedComputedStyleLayersOnFocusedState() {
+    auto button = Node(L"play", L"button");
+    button.baseStyle = {
+        {L"opacity", Number(0.4)},
+        {L"scale", Number(1.0)},
+    };
+    button.focusedStyle = {
+        {L"opacity", Number(0.7)},
+        {L"scale", Number(1.08)},
+    };
+    button.pressedStyle = {
+        {L"opacity", Number(1.0)},
+    };
+
+    const auto base = gba::ResolveDeclarativeComputedStyle(button, false, false);
+    Near(static_cast<float>(*base.at(L"opacity").number), 0.4F,
+         "base state is unchanged");
+
+    const auto focused = gba::ResolveDeclarativeComputedStyle(button, true, false);
+    Near(static_cast<float>(*focused.at(L"opacity").number), 0.7F,
+         "focused state overrides base");
+
+    const auto pressed = gba::ResolveDeclarativeComputedStyle(button, true, true);
+    Near(static_cast<float>(*pressed.at(L"opacity").number), 1.0F,
+         "pressed state overrides focused");
+    Near(static_cast<float>(*pressed.at(L"scale").number), 1.08F,
+         "pressed state retains focused properties");
+
+    const auto invalid = gba::ResolveDeclarativeComputedStyle(button, false, true);
+    Near(static_cast<float>(*invalid.at(L"opacity").number), 0.4F,
+         "pressed cannot style a non-focused node");
+}
+
 void PlanningMetadataAndKinds() {
     WidgetSnapshot snapshot;
     snapshot.root = Node(L"root", L"stack");
@@ -594,6 +627,107 @@ void SegmentedTabsSurviveConstrainedNetworkSurfaces() {
     }
 }
 
+void CenteredWrappedStatePreservesTextFlowAndControllerTarget() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"empty-state.runtime";
+    snapshot.activeInputScopeId = L"empty-state";
+    snapshot.root = Node(L"state-card", L"stack");
+    snapshot.root.inputScopeId = L"empty-state";
+    snapshot.root.baseStyle = {
+        {L"gap", LengthList(L"8px")},
+        {L"padding", LengthList(L"12px")},
+        {L"align", Keyword(L"center")},
+        {L"justify", Keyword(L"center")},
+        {L"overflow", Keyword(L"clip")},
+    };
+
+    auto title = Node(L"state-title", L"text");
+    title.text = L"Build your controller-first library";
+    title.baseStyle = {
+        {L"font-size", Length(18)},
+        {L"line-height", Number(1.2)},
+        {L"max-lines", Number(3)},
+        {L"text-align", Keyword(L"center")},
+    };
+    auto help = Node(L"state-help", L"text");
+    help.text = L"Choose only the games and applications you want in the overlay, including a long custom path.";
+    help.baseStyle = {
+        {L"font-size", Length(13)},
+        {L"line-height", Number(1.35)},
+        {L"max-lines", Number(6)},
+        {L"text-align", Keyword(L"center")},
+    };
+    auto action = Node(L"state-action", L"button");
+    action.text = L"Add application";
+    action.actionId = L"add";
+    action.baseStyle = {
+        {L"min-width", Length(150)},
+        {L"padding", LengthList(L"10px 14px")},
+        {L"max-lines", Number(2)},
+    };
+    snapshot.root.children = {std::move(title), std::move(help), std::move(action)};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto result = renderer.Render(
+        nullptr, snapshot, L"state-action", {0.0F, 0.0F, 220.0F, 150.0F});
+    Check(result.navigationRects.contains(L"state-action"),
+          "wrapped state retains its controller action in the navigation graph");
+    Near(result.navigationRects.at(L"state-action").height, 64.0F,
+         "auto-height padded action retains measured text and controller height");
+    Check(result.navigationRects.at(L"state-action").y >= 130.0F,
+          "action flows after complete wrapped title and help instead of overlapping them");
+}
+
+void WrappedPermissionCopyContributesToScrollExtent() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"permission-copy.runtime";
+    snapshot.activeInputScopeId = L"permission";
+    snapshot.root = Node(L"permission-scroll", L"scroll");
+    snapshot.root.inputScopeId = L"permission";
+    snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.baseStyle = {{L"gap", LengthList(L"6px")}};
+
+    auto heading = Node(L"permission-heading", L"text");
+    heading.text = L"Store private connection secrets";
+    heading.baseStyle = {
+        {L"font-size", Length(20)},
+        {L"line-height", Number(1.2)},
+        {L"max-lines", Number(2)},
+    };
+    auto description = Node(L"permission-description", L"text");
+    description.text =
+        L"Create, replace, inspect metadata for, or delete package-scoped secrets in Windows Credential Manager. "
+        L"Stored values are never returned to widget code, and exact-port requests remain host mediated.";
+    description.baseStyle = {
+        {L"font-size", Length(13)},
+        {L"line-height", Number(1.35)},
+        {L"max-lines", Number(12)},
+    };
+    auto enforcement = Node(L"permission-enforcement", L"text");
+    enforcement.text =
+        L"The host allows this only when identity, manifest, consent, and lifecycle state all permit it.";
+    enforcement.baseStyle = description.baseStyle;
+    auto revoke = FixedButton(L"permission-revoke");
+    snapshot.root.children = {
+        std::move(heading), std::move(description), std::move(enforcement), std::move(revoke)};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto trailing = renderer.Render(
+        nullptr, snapshot, L"permission-revoke", {0.0F, 0.0F, 260.0F, 150.0F});
+    Check(trailing.scrollOffsets.at(L"permission-scroll") > 80.0F,
+          "wrapped permission paragraphs contribute their full height to scroll extent");
+    Check(trailing.focusRects.contains(L"permission-revoke"),
+          "focus-follow reveals the action after long wrapped permission copy");
+    Near(trailing.focusRects.at(L"permission-revoke").height, 44.0F,
+         "permission action preserves its controller target at the trailing edge");
+
+    const auto leading = renderer.Render(
+        nullptr, snapshot, {}, {0.0F, 0.0F, 260.0F, 150.0F});
+    Near(leading.scrollOffsets.at(L"permission-scroll"),
+         trailing.scrollOffsets.at(L"permission-scroll"),
+         "stable scroll scope preserves the user position without a focus teleport");
+}
+
 void ScrollFocusReachesTrueContentBoundaries() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"bounded-scroll.runtime";
@@ -1015,6 +1149,7 @@ int main() {
     Check(SUCCEEDED(initialized), "initialize COM");
     ImagePlacementMath();
     AccessibleStatePresentation();
+    PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();
     SliderPlanningAndAccessibilityTargets();
     FocusMotionUsesStableSnapshotIdentity();
@@ -1022,6 +1157,8 @@ int main() {
     ControllerScrollFollowsFocusAndRestoresState();
     WholeWidgetScrollRevealsAudioMixerControls();
     SegmentedTabsSurviveConstrainedNetworkSurfaces();
+    CenteredWrappedStatePreservesTextFlowAndControllerTarget();
+    WrappedPermissionCopyContributesToScrollExtent();
     ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();
     IrrevealableClipsDoNotBecomeFocusTraps();

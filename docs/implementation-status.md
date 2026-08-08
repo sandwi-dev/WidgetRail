@@ -57,8 +57,9 @@ Up/Down navigation.
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network/Bluetooth/recent-activity/app-library/media-session services,
-  exact-port loopback JSON, write-only private secrets, descriptors, DTOs,
-  events, and errors.
+  exact-port loopback JSON, write-only private secrets, durable private JSON
+  state with revision/CAS, descriptors, DTOs, events, errors, and public
+  deterministic state-test fixtures.
 - `WidgetRuntime`: lazy out-of-process workers over bounded framed JSON with
   explicit lifecycle transitions, per-start host-owned companion sessions,
   timeouts, failure reporting, and limited restart. Installed/community workers
@@ -95,8 +96,9 @@ Up/Down navigation.
   enablement, and pin-preserving order persistence. Enabled compatible packages
   join complete validated live bridge revisions and remain lazy until first use.
 - `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity/app-library/media/
-  exact-loopback/private-secret
-  capability foundation with a closed versioned grant vocabulary, SID/Low-
+  exact-loopback/private-secret/private-state
+  capability foundation with a closed versioned grant vocabulary, a separate
+  Bridge-only non-consent state grant, SID/Low-
   label/PID-bound isolated endpoints plus nonce/
   identity authentication, manifest/consent/lifecycle enforcement, strict
   bounded DTOs/events, atomic consent persistence, bounded/coalesced
@@ -131,8 +133,10 @@ Up/Down navigation.
   launch executables, expose PID/path/HWND, or claim game classification.
 - `WindowsAppLibraryProvider`: a lazy bounded current-user/all-user Start Menu
   `.lnk` catalog. It publishes sanitized names, conservative kinds, and random
-  opaque IDs; launch re-enumerates and requires one exact unchanged shortcut
-  before invoking only the Shell `open` verb. Paths, targets, arguments, AUMIDs,
+  short-lived launch IDs plus broker-derived authority-scoped durable SavedIds;
+  launch re-enumerates and requires one exact unchanged shortcut before
+  invoking only the Shell `open` verb. Paths, raw stable identities, targets,
+  arguments, AUMIDs,
   package identities, PIDs, and HWNDs never enter the widget contract.
 - `WindowsMediaProvider`: a lazy, event-driven Windows Global System Media
   Transport Controls (GSMTC) backend. It publishes bounded sanitized sessions
@@ -147,7 +151,10 @@ Up/Down navigation.
   rejected scoped Bearer on HTTP 401 while its dependent lease remains valid;
   and stores hashed publisher/
   package/slot targets in Windows Credential Manager without returning values
-  to widget IPC.
+  to widget IPC. It also owns the separate private-state backend: one strict
+  canonical 64 KiB JSON document/tombstone per authenticated publisher/package,
+  cross-process serialization, atomic replacement, revision/CAS, persistent
+  mutation throttling, and corruption/reparse failure closed.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
   `enable`, `disable`, and `version list|select|rollback` commands. Local and
@@ -263,17 +270,25 @@ current surface.
 Games & Apps has replaced Recent Apps in the bundled catalog and first-party
 package conformance path. It is an ordinary public-SDK package in the generic
 AppContainer, requires `system.apps.library.read.v1`, optionally declares the
-separate `system.apps.library.launch.v1`, loads one 32-item page on entering an
-active lifetime, and renders a horizontal controller Scroll with bounded load-
-more behavior. Launch is enabled only while Interactive and targets only the
-opaque ID associated with the exact action source. Permission, lifecycle,
-healthy-empty, unavailable, stale-item, and generic failure states remain
-controller reachable and sanitized.
+separate `system.apps.library.launch.v1`, and loads bounded 32-item pages. Its
+default Library shows only entries the user adds from a nested horizontal
+Catalog; A toggles Catalog membership, X removes from Library, and one
+confirmed launch moves that exact item to the in-memory front. Curation and
+recent-first order are not yet persisted across worker restart/unload, even
+though the SDK now exposes authority-scoped durable `SavedId` values and
+`ResolveSavedAsync` reconciliation. The provider catalog is still loaded
+eagerly when the root activates. Launch is
+enabled only while Interactive and targets only the opaque ID associated with
+the exact action source. Permission, lifecycle, healthy-empty, unavailable,
+stale-item, and generic failure states remain controller reachable and
+sanitized. A successful provider result still leaves the overlay open.
 
 The trusted `WindowsAppLibraryProvider` lazily scans the current-user and all-
 user Start Menu Programs roots, skips reparse points, parses bounded `.lnk`
 registrations, deduplicates trusted descriptors, and exposes only sanitized
-names, conservative kinds, and random opaque IDs. Before launch it re-enumerates
+names, conservative kinds, short-lived random launch IDs, and broker-derived
+authority-scoped durable SavedIds. Raw stable provider identity remains
+host-only. Before launch it re-enumerates
 and requires one exact match on scope, trusted target identity, shortcut path,
 and shortcut-content fingerprint, then asks Windows Shell to open only that
 `.lnk` with no supplied arguments, elevation, working directory, or HWND.
@@ -363,6 +378,19 @@ bold text enforces minimum weight 600, and System/forced high contrast corrects
 text/focus against inherited surfaces with a geometric focus ring. Windows
 setting changes reapply System contrast and motion immediately.
 
+The built-in default and first-party styles now form one minimalist warm-
+graphite baseline with regular-weight hierarchy, fewer nested surfaces,
+smaller radii, thin borders/tracks, compact controller targets, and one inset
+neutral focus cue. Stable declarative nodes interpolate bounded opacity and
+scale targets through a host-owned timeline; first observation snaps, rapid
+changes retarget from the presented value, reduced motion cancels, removed
+widgets are forgotten, and settled content schedules no further frames. The
+transient pressed-state map is connected to exact physical actions. Other
+animated property families, true composited subtree/shell transitions, and
+packaged visual/accessibility evidence remain open. The embedded selectable
+Cool Slate theme exercises the same token and renderer pipeline with a visibly
+distinct palette rather than a hard-coded widget skin.
+
 The CLI provides `gbar theme new|validate|preview|pack|inspect|install|list`.
 Schema-version-2 `.gbartheme` packages are data-only, deterministic, bounded,
 publisher-namespaced, digest-addressable, revalidated through the production
@@ -442,7 +470,9 @@ visibility or work, and intentional unload does not consume crash budget.
 Legacy `backgroundPolicy: none|suspend` resolves deterministically to
 keep-alive/suspend-when-hidden; declaring both vocabularies fails validation.
 No policy suspends Windows threads. The capability broker continues to deny all
-operations/subscriptions while Background.
+ordinary manifest-declared operations/subscriptions while Background. The
+host-granted bounded private-state read/write/clear service remains available
+there for persistence and is denied during Destroying.
 Separately, trusted bridge policy now bounds each Windows worker with a Job
 Object memory ceiling and one-process limit regardless of lifecycle. Crash,
 hang, shutdown, and user-requested termination remain separate safety/
@@ -504,12 +534,12 @@ disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 content-tree sealing/tamper rejection plus content-bound unsigned authority.
 Bridge
-passes 30/30, including semantic catalog revisions/last-good/catch-up reload,
+passes 31/31, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
 gesture derivation, including trusted-only publication and worker retirement
-when installed state/integrity fails. PlatformBroker passes 40/40, including closed isolated-
+when installed state/integrity fails. PlatformBroker focused coverage includes closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
 consent/lifecycle gates, revocation, and cancellation of already in-flight
@@ -523,8 +553,10 @@ expected PID, nonce, and widget identity checks in force.
  request from an AppContainer worker. Audio provider and Audio Mixer pass 15/15
  and 25/25; Network provider and Network Controls pass 31/31 and 17/17.
  Bluetooth provider passes 11/11; the constrained Windows Community provider
- passes 6/6; Games & Apps and its Windows app-library
- provider pass 6/6 and 13/13, including exact shortcut launch revalidation.
+ passes 10/10, including restart/authority isolation, CAS, a real two-process
+ race, quota/corruption/reparse, rate, and cancellation. Games & Apps and its
+ Windows app-library provider retain focused suites covering the in-memory
+ Library/Catalog flow and exact shortcut launch revalidation.
  The retained Recent Apps and Windows activity reference suites pass 8/8 and
  10/10; Windows Media provider and Now Playing pass 11/11 and 9/9.
  The first-party conformance suite passes 5/5 by building and installing the
@@ -575,6 +607,12 @@ with C++ installed:
   viewport/containment math is
   covered broadly; physical mixed-DPI, localization, accessibility, and visual
   regression evidence is still incomplete.
+- The code now clears unused native client pixels to the layered color key,
+  separates Now Playing snapshot reads from live-subscription failures, loads
+  the Games catalog only after Add, and preserves measured intrinsic height for
+  wrapped text/buttons. GBA-036 through GBA-039 remain Verifying until the new
+  packaged Release is exercised visually; automated native and focused managed
+  regressions are not presented as a hands-on result.
 - Local and bounded remote package/catalog commands plus CLI and Settings
   immutable-version selection/rollback are implemented. There is no
   graphical/file-picker installer, automatic release/update discovery, signed
@@ -627,8 +665,11 @@ with C++ installed:
   in-memory history on read-consent revoke is future hardening.
 - GBSS compilation and bridge-global layering are implemented. `selected`,
   `disabled`, and `busy` snapshot state participates in the complete
-  `base`/`focused` maps. A transient `pressed` map and every future dynamic
-  semantic state are not connected end to end.
+  `base`/`focused` maps. The bridge also publishes a transient `pressed` map;
+  the native host applies it only while the exact physical controller action
+  remains down and reconciles it across snapshot/focus changes. Stable node
+  opacity/scale targets animate through bounded native transitions. Other
+  animated property families and future dynamic semantic states remain open.
 - Controller Settings, strict persistence, version-pinned theme selection,
   no-poll watching, last-good revisions, and globally layered widget styles are
   implemented. Safe theme scaffold/validate/computed-preview/pack/inspect/

@@ -83,7 +83,18 @@ struct DeclarativeRenderOptions final {
     /// The immutable widget snapshot remains authoritative after acknowledgement
     /// or timeout.
     std::map<std::wstring, double, std::less<>> sliderValueOverrides;
+    /// Exact focused/actionable node held by a physical controller press. The
+    /// host owns this transient state; widget snapshots remain immutable.
+    std::wstring pressedElementId;
 };
+
+/// Resolves the exact bridge-computed state used for a native paint. Pressed
+/// is intentionally layered on focused because controller activation always
+/// belongs to the focused actionable element.
+[[nodiscard]] WidgetComputedStyle ResolveDeclarativeComputedStyle(
+    const WidgetNode& node,
+    bool focused,
+    bool pressed);
 
 /// Accessibility-safe state presentation. High contrast and reduced
 /// transparency retain semantic state cues without fading content below the

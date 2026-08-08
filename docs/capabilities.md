@@ -3,8 +3,9 @@
 Status: typed SDK services, authenticated local transport, lifecycle/consent
 enforcement, controller Settings review, deterministic simulators, and narrow
 real Core Audio, Windows network/Bluetooth, foreground-activity, Start Menu
-app-library, media-session, exact-loopback JSON, and private-secret backends are
-implemented. The production bridge composes those trusted providers. Hardware/
+app-library, media-session, exact-loopback JSON, private-secret, and durable
+private-state backends are implemented. The production bridge composes those
+trusted providers. Hardware/
 privacy matrices plus
 broader performance evidence remain release gates; the current
 automated packaged Release suite passes.
@@ -44,7 +45,7 @@ The current closed capability set is:
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, `OpenBluetoothSubscriptionAsync`, and `WatchBluetoothAsync`; sanitized radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync`; software radio only | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
-| `system.apps.library.read.v1` | `HostServices.AppLibrary.GetPageAsync(offset, limit)` for sanitized names, conservative kinds, and opaque IDs | Visible or Interactive |
+| `system.apps.library.read.v1` | `HostServices.AppLibrary.GetPageAsync(offset, limit)` and `ResolveSavedAsync(savedIds)` for sanitized names, conservative kinds, short-lived launch IDs, and authority-scoped durable SavedIds | Visible or Interactive |
 | `system.apps.library.launch.v1` | `HostServices.AppLibrary.LaunchAsync(appId)` for one current broker-issued app ID | Interactive only; never dashboard gesture authority |
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
@@ -80,6 +81,21 @@ future device function must define a narrower profile/service capability rather
 than inherit authority from enumeration or pairing. Enterprise Wi-Fi
 provisioning is likewise outside the initial expanded network contract.
 
+### Host-provided private widget state
+
+`HostServices.PrivateState` is deliberately absent from the manifest table.
+It is a host-provided, non-consent service for one strict canonical JSON
+document per authenticated publisher/package authority. Declaring
+`storage.private-state.v1` in `permissions` or `optionalPermissions` rejects
+the manifest; worker IPC cannot add the host grant. Read, write, and clear are
+available in Background, Visible, and Interactive, but not Destroying. This is
+the bounded persistence exception to the normal Background capability rule,
+not general OS or network authority. Documents are capped at 64 KiB, mutations
+are rate limited, revisions support optional compare-and-exchange, and secrets
+must remain in the separate consent-gated write-only service. See
+[Private widget state](private-widget-state.md) for the SDK, identity/update,
+retention, storage, and test contracts.
+
 Declare a capability in `permissions` when the widget cannot provide its core
 purpose without it. Put enhancements in `optionalPermissions`:
 
@@ -102,7 +118,8 @@ are essential versus degradable; authors must still render a useful unavailable
 state. An installed package declaring an unknown capability is skipped by the
 bridge rather than receiving an open-ended permission.
 
-The permission boundary has four independent layers:
+For manifest-declared capabilities, the permission boundary has four
+independent layers:
 
 1. The author declares required or optional capability IDs in the manifest.
    A declaration requests review; it grants nothing.
@@ -142,10 +159,15 @@ tasks do not receive dashboard authority.
 The app-library read and launch capabilities are deliberately separate. A
 launcher can make `system.apps.library.read.v1` required while declaring
 `system.apps.library.launch.v1` optional, as the bundled Games & Apps reference
-does. Read pages contain only `WidgetAppLibraryItem.AppId`, `DisplayName`, and
-`Kind`; `AppId` is an opaque current-provider token, not a Windows identifier.
-The public page limit is 64 and the complete broker projection is bounded to
-512 entries.
+does. Read pages contain `WidgetAppLibraryItem.AppId`, `SavedId`, `DisplayName`,
+and `Kind`. `AppId` is an opaque current-provider launch token and must never be
+persisted. `SavedId` is a non-reversible durable token scoped to the
+authenticated publisher/package authority; retain it in private state, then
+use `ResolveSavedAsync` to obtain current launch tokens after restart. The
+resolver accepts at most 64 unique SavedIds, preserves request order, and omits
+apps that are no longer available. Neither ID is a Windows path, AUMID,
+provider identity, or launcher identifier. The public page limit is 64 and the
+complete broker projection is bounded to 512 entries.
 
 Launch requires Interactive even if the widget has already listed the item.
 The broker validates the opaque ID and the trusted Start Menu provider
@@ -399,7 +421,8 @@ Installed/community assemblies run in a mandatory package-specific
 AppContainer selected from a host-computed authority key derived from the
 verified unsigned package content tree, not its asserted publisher label.
 Changed bytes therefore receive a different profile, require fresh broker
-consent, and cannot inherit private secrets even when ID/version text is reused;
+consent, and cannot inherit private secrets or private widget state even when
+ID/version text is reused;
 rollback to the exact reviewed bytes restores only that content identity. The token
 is Low integrity and has zero capability SIDs, including no network capability;
 the process receives a stripped environment and explicit read/execute access

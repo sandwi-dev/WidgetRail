@@ -69,10 +69,11 @@ Check that:
   functions; and
 - variables resolve without a missing value or cycle.
 
-The bridge publishes typed `base` and `focused` maps today. Static snapshot
-`selected`, `disabled`, and `busy` state participates in those maps, so matching
-rules affect both ordinary and focused presentation. A separate transient
-`:pressed` runtime map is not connected yet. See [GBSS](gbss.md).
+The bridge publishes typed `base`, `focused`, and transient `pressed` maps.
+Static snapshot `selected`, `disabled`, and `busy` state participates while
+those maps are computed. If a pressed style appears stuck, capture diagnostics
+for the physical button-up, focus transition, and snapshot generation; the host
+is required to cancel or reconcile it at each boundary. See [GBSS](gbss.md).
 
 The first-party Settings widget, managed appearance store, immutable versioned
 themes, and bridge watcher are connected. Check these boundaries:

@@ -27,7 +27,7 @@ bool OverlayState::Dispatch(const Command command) noexcept {
     const auto priorActive = activeWidget_;
     const auto priorReorder = reorderMode_;
 
-    if (command == Command::ToggleOverlay) {
+    if (command == Command::ToggleOverlay || command == Command::CloseOverlay) {
         if (surface_ != Surface::Hidden) {
             if (surface_ == Surface::Dashboard && !selectedWidget().empty()) {
                 persistent_.lastWidget = std::wstring(selectedWidget());
@@ -36,6 +36,9 @@ bool OverlayState::Dispatch(const Command command) noexcept {
                                        persistent_.lastWidget.has_value();
             surface_ = Surface::Hidden;
             reorderMode_ = false;
+        } else if (command == Command::CloseOverlay) {
+            // A stale or duplicate provider-confirmed effect is a no-op. It
+            // must never behave like the Guide toggle and reopen the overlay.
         } else if (persistent_.reopenWidget && persistent_.lastWidget &&
                    Contains(*persistent_.lastWidget)) {
             activeWidget_ = *persistent_.lastWidget;
@@ -81,6 +84,7 @@ bool OverlayState::Dispatch(const Command command) noexcept {
             if (!persistent_.order.empty()) reorderMode_ = !reorderMode_;
             break;
         case Command::ToggleOverlay:
+        case Command::CloseOverlay:
             break;
         }
     } else if (focusRegion_ == FocusRegion::Tray) {
@@ -108,6 +112,7 @@ bool OverlayState::Dispatch(const Command command) noexcept {
             break;
         case Command::SampleWidgetBack:
         case Command::ToggleOverlay:
+        case Command::CloseOverlay:
             break;
         }
     } else if (command == Command::SampleWidgetBack) {

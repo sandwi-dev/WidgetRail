@@ -6,7 +6,12 @@ settings store, versioned theme catalog, explicit cascade layers, no-poll
 watcher, last-good revisions, globally layered widget styles, and safe
 `.gbartheme` tooling are covered by Release tests. The native host consumes
 live shell styles and host-owned interface scale, text scale, backdrop,
-motion, contrast, bold-text, and transparency preferences. Native graphical
+motion, contrast, bold-text, and transparency preferences. The shipped
+`builtin.default` is the shared minimalist warm-graphite baseline for shell,
+SDK semantic components, and first-party widget styles. The embedded selectable
+`org.gbar.builtin.cool-slate` theme exercises the same path with a distinct
+navy/slate palette and desaturated blue accent while preserving controller-safe
+geometry and host accessibility policy. Native graphical
 theme preview, signing/revocation, theme removal/update UI, auto-scroll, and
 the full physical accessibility/resolution matrix are not implemented.
 
@@ -38,7 +43,7 @@ Accessibility policy remains host-owned and wins after every theme layer.
 | Installed widget review/enablement | Implemented | Review read-only Built-in widgets separately from CLI-installed Community packages; only Community packages expose enablement and version management, and enablement remains separate from consent. |
 | Scaffold, validate, preview, pack, inspect, install, and list themes | Implemented | Use the `gbar theme` command group and the data-only `.gbartheme` format. |
 | Select a discovered theme | Implemented | Settings pins an exact valid ID/version after controller review. |
-| Native shell appearance | Implemented | `OverlayHost` applies live shell styles, interface scale, shell DirectWrite text scale, backdrop opacity, and motion. |
+| Native shell appearance | Implemented | `OverlayHost` applies live shell styles, interface scale, shell DirectWrite text scale, backdrop opacity, and motion. Stable declarative nodes interpolate bounded opacity/scale changes only. |
 | Declarative widget text scale | Implemented | The host applies bounded text scale after GBSS resolution and remeasures/reflows generic widget content without compounding inherited `em` sizes. |
 | Accessibility preferences UI | Implemented subset | Text scale, motion, System/Standard/High contrast, bold text, and reduced transparency are available; auto-scroll is not. |
 
@@ -143,7 +148,10 @@ The implemented root categories are:
   installed versions, host-API range, architectures, compatibility reason,
   enable/disable, and version management.
 - **Permissions & capabilities:** installed packages, their supported required/
-  optional declarations, and explicit Grant/Deny/Not decided state.
+  optional declarations, and explicit Grant/Deny/Not decided state. Current
+  packaged evidence shows long descriptions can clip instead of producing a
+  complete reflow/Scroll extent; that remains open as
+  [GBA-039](known-issues.md).
 - **Diagnostics:** settings validity, total/invalid themes, and schema version.
   Runtime diagnostics additionally arrive through the bridge-owned,
   process-bound private Settings channel: catalog/appearance last-good state,
@@ -360,11 +368,13 @@ The implementation still needs to freeze:
 - namespacing for a global rule that intentionally targets one widget ID; and
 - how default variables are inherited without exposing private widget data.
 
-Globally layered widget styles travel through the existing `base` and `focused`
-maps and generic renderer. Static `selected`/`disabled` snapshot state
-participates in those maps. A separate complete family of pressed, busy,
-selected, and disabled runtime maps is not published; pressed-state theming and
-all dynamic semantic-state transitions remain incomplete.
+Globally layered widget styles travel through the `base`, `focused`, and
+transient `pressed` maps to the generic renderer. Static
+`selected`/`disabled`/`busy` snapshot state participates while those maps are
+computed. The native renderer applies the pressed map only to the exact active
+physical action and interpolates changed `opacity` and `scale` targets for
+stable nodes. Separate runtime maps for future dynamic states and animation of
+other property families remain incomplete.
 
 ## Current persistence and accessibility settings
 

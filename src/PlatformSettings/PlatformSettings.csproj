@@ -11,5 +11,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Themes\builtin-default.gbss"
                       LogicalName="GameBarAlternative.PlatformSettings.Themes.builtin-default.gbss" />
+    <EmbeddedResource Include="Themes\builtin-cool-slate\theme.json"
+                      LogicalName="GameBarAlternative.PlatformSettings.Themes.builtin-cool-slate.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-cool-slate\theme.gbss"
+                      LogicalName="GameBarAlternative.PlatformSettings.Themes.builtin-cool-slate.theme.gbss" />
   </ItemGroup>
 </Project>

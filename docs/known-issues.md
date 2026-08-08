@@ -49,11 +49,15 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-028 | P0 | Verifying | PlatformBroker consent migration / Settings permissions | The exact retired Recent Apps activation capability is tombstoned; unsupported/inactive details moved to a safe bounded read-only Review page, and packaged visual verification remains. |
 | GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
 | GBA-030 | P0 | Verifying | YT Music packaging / community isolation / local companion broker | YT Music now uses the public Community package/AppContainer/loopback/secret path without a trusted fallback; clean packaged controller and lifecycle evidence remains. |
-| GBA-031 | P1 | Open | Widget SDK components / built-in themes / native renderer | The default component system needs a cohesive minimalist, controller-safe design pass. |
-| GBA-032 | P1 | Confirmed | GBSS / native renderer / accessibility | GBSS transition declarations are parsed and cascaded but native state changes are not interpolated at runtime. |
-| GBA-033 | P1 | Open | Games & Apps / catalog / host launch completion | Games & Apps needs a curated library model and must close the overlay only after one exact launch succeeds. |
+| GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | A shared minimalist warm-graphite default and matching first-party styles are implemented; packaged scale/accessibility screenshots remain. |
+| GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes now interpolate bounded opacity/scale targets with reduced-motion cancellation; packaged visual/performance evidence remains. |
+| GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation and close-after-correlated-success are implemented; broader sources, icons, classification, and packaged controller evidence remain. |
 | GBA-034 | P1 | Open | Network Controls / controller state model | Wi-Fi and Bluetooth rows need unambiguous focus, selection, connection, and churn semantics. |
 | GBA-035 | P0 | Open | Audio Mixer / capability degradation / focus | Failure of an optional audio provider must not break working mixer sections or move focus unexpectedly. |
+| GBA-036 | P1 | Verifying | OverlayHost / native composition / declarative surface | The native client now clears unused pixels to the layered color key; packaged visual verification must confirm the opaque canvas is gone. |
+| GBA-037 | P0 | Verifying | Now Playing / media provider / retry | Current-state reads are independent from live subscription failure and Retry creates a fresh generation; packaged provider-failure recovery remains to verify visually. |
+| GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | Activation resolves only durable saved entries and Catalog loads only on Add; intrinsic layout regressions cover the clipped empty/card copy, with packaged visual verification remaining. |
+| GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -579,7 +583,9 @@ unload, and applies identically to bundled and installed workers. Unload must
 serialize with operations, send Destroying, release worker/companion resources,
 retain the last validated view, cancel cleanly on visibility, restore lifecycle
 on a lazy new worker, and not consume crash-restart allowance. No policy may
-suspend OS threads or authorize Background broker work.
+suspend OS threads or authorize ordinary manifest-declared Background broker
+work. The bounded host-granted private-state persistence exception remains
+available in Background and is denied in Destroying.
 
 **Implementation evidence:** `residencyPolicy` schema 1 validates
 `keep-alive`, `suspend-when-hidden`, and `unload-after-idle` with a required
@@ -689,11 +695,11 @@ then merges them through
 `WidgetCatalog`/`BridgeCatalog`, grants simulated consent through the production
 PID-bound broker companion, and executes both the installed and separately
 configured bundled routes. Both forms drive lifecycle and validate rendered
-snapshots. Games & Apps proves separate opaque app-library read and launch
+snapshots. Games & Apps proves separate app-library read and launch
 authority; the other built-in references exercise their safe brokered control.
 YT Music additionally proves the public CLI package flow, pairing/private-
 secret/Bearer path, dashboard transport, lifecycle enforcement, and absence of
-a trusted fallback. The suite passes 5/5; Bridge passes 30/30. The packaged
+a trusted fallback. The suite passes 5/5; Bridge passes 31/31. The packaged
 build and host catalog contain and select no dedicated worker executable for
 these references.
 
@@ -719,13 +725,14 @@ remain removed. Recent Apps is no longer in the bundled catalog.
 Games & Apps now uses the public generic-worker/AppContainer path with required
 `system.apps.library.read.v1` and optional
 `system.apps.library.launch.v1`. The SDK returns paged sanitized names, kinds,
-and opaque IDs. The broker gates read to Visible/Interactive and launch to
+short-lived launch IDs plus authority-scoped durable SavedIds. The broker gates
+read/resolve to Visible/Interactive and launch to
 Interactive, rejects path-like payloads, and never grants launch dashboard
 gesture authority. The trusted provider re-enumerates immediately before
 launch and requires one exact scope/identity/path/shortcut-fingerprint match,
 then invokes only Shell `open` on that `.lnk` with no arguments, elevation,
-working directory, or window handle. Widget/provider focused suites pass 6/6
-and 13/13; SDK passes 48/48, PlatformBroker 40/40, Settings 40/40, and packaged
+working directory, or window handle. Widget/provider focused suites pass 15/15
+and 13/13; SDK, PlatformBroker, Settings, and packaged
 AppContainer conformance passes 5/5. The current catalog is Start
 Menu-only, iconless, and conservatively Application-only; packaged overlay
 hands-on evidence remains before closure.
@@ -839,8 +846,8 @@ actual 401 deletes the exact scoped slot while the dependent lease is valid,
 and the widget clears local state without a second delete. Restart coverage
 confirms the rejected slot is absent.
 
-The complete conformance suite passes 5/5; YT Music passes 38/38 and
-PlatformBroker passes 40/40. Clean packaged controller/lifecycle testing on the
+The complete conformance suite passes 5/5; YT Music and PlatformBroker focused
+suites cover the typed companion path. Clean packaged controller/lifecycle testing on the
 real companion remains before closure.
 
 **Acceptance:**
@@ -863,11 +870,13 @@ real companion remains before closure.
 
 ## GBA-031 — Default components need a minimalist visual system
 
-**Evidence:** The SDK components are reusable, but repeated large radii, thick
-nested cards, bold labels, generous padding, and prominent focus borders make
-Settings and system-control widgets feel heavier than the requested console
-control-center design. Per-widget overrides would fragment the platform and
-force community authors to repair the same defaults.
+**Evidence:** The built-in theme now supplies warm graphite surfaces, regular-
+weight typography, smaller radii, thin borders/tracks, compact spacing, and one
+inset neutral focus treatment across the semantic component classes. Audio
+Mixer, Network Controls, Settings, Now Playing, and Games & Apps were retuned
+against those public classes rather than private host geometry. Parser/theme
+tests cover the shared defaults, but packaged screenshots across the complete
+display/accessibility matrix are not recorded yet.
 
 **Acceptance:**
 
@@ -881,18 +890,28 @@ force community authors to repair the same defaults.
    and reduced transparency remain readable and unclipped.
 5. Packaged screenshots and controller traversal verify the complete component
    set, not only one hand-tuned widget.
+6. Common product composition no longer requires private widget hacks:
+   `SettingsRow`, picker/listbox, action sheet, toast, scrubber,
+   `MediaTile`/`AppTile`, per-edge borders, responsive grid/wrap, and semantic
+   monospace have reviewed bounded contracts or an explicit deferral.
+7. The default rejects web-centric stagger/ambient motion, editorial serif or
+   faux-macOS chrome, and treats packaged fonts as lower-priority security-
+   sensitive assets rather than a baseline dependency.
 
 ## GBA-032 — GBSS transition declarations do not animate
 
-**Evidence:** `transition-duration` and `transition-easing` are accepted, typed,
-cascaded, and removable by reduced-motion policy, but the native renderer
-currently applies focused/selected/busy style changes immediately. Authors can
-declare a transition without seeing runtime interpolation.
+**Evidence:** `transition-duration` and `transition-easing` now drive a bounded
+native timeline for stable declarative node opacity and scale. First
+observation snaps, later target changes retarget from the presented value,
+durations are capped at two seconds, at most 1,024 nodes are tracked, removed
+widgets are forgotten, settled content stops requesting frames, and reduced
+motion snaps/cancels. Other properties and shell-level transitions remain
+immediate, and packaged visual/performance evidence is still open.
 
 **Acceptance:**
 
-1. Documentation identifies transitions as non-animated until the renderer
-   implementation lands; tooling never implies otherwise.
+1. Documentation identifies the exact animated property set and does not imply
+   that unsupported properties or shell transitions animate.
 2. A host-owned bounded clock interpolates only an explicit safe property set,
    with deterministic start, interruption, retarget, and completion behavior.
 3. Reduced motion makes every transition immediate and stops outstanding work.
@@ -900,21 +919,30 @@ declare a transition without seeing runtime interpolation.
    coalesces visible nodes and respects performance budgets.
 5. Native tests plus packaged visual/performance evidence cover focus, selected,
    busy, rapid reversal, resize/DPI change, and widget replacement.
+6. The transient pressed-state pipeline is implemented. Follow-on scope still
+   covers true composited subtree transforms/translation and shell/widget open,
+   close, and replacement transitions; none is implied by the current paint-
+   only opacity/scale slice.
 
 ## GBA-033 — Games & Apps is not yet a curated launch library
 
 **Evidence:** The current slice safely pages executable-backed Start Menu
-shortcuts, but exposes a broad application list without icons, source-aware
-grouping, game classification, hide/favorite/order controls, or a host-owned
-close-after-success flow. Closing on input would also hide launch failure and
-confuse queue acknowledgement with provider success.
+shortcuts into a nested Catalog where A adds/removes entries from a separate
+Library view. The Library supports explicit removal and moves an exact item to
+the front only after launch success. The SDK/broker/provider issue an
+authority-scoped durable SavedId, resolve it to a fresh launch token, and the
+widget persists curation/recent-first order through private compare-and-swap
+state. A host-owned effect closes only after the exact provider success and is
+rejected for stale widget generations. Icons, source-aware grouping, game
+classification, and broader catalog sources remain absent.
 
 **Acceptance:**
 
 1. Catalog sources are explicit and bounded; supported AppsFolder and launcher
    adapters retain provider-owned opaque identities and exact revalidation.
 2. The default view is a curated, user-controllable library with safe fallback
-   access to other applications; game classification is evidence-backed.
+   access to other applications; curation/order use SavedId plus private state
+   to persist across worker restart, and game classification is evidence-backed.
 3. Icons/artwork cross a bounded broker/cache contract and cannot become an
    arbitrary package file or URL escape.
 4. One successful correlated launch closes the overlay and restores normal app
@@ -964,6 +992,92 @@ rebuild focus onto an unrelated master control.
    and rapid lifecycle transitions are race-tested.
 5. Packaged controller testing verifies partial grants and real provider
    failure where safely reproducible.
+
+## GBA-036 — Native client canvas is opaque outside widget surfaces
+
+**Evidence:** Current packaged screenshots show a rectangular opaque native
+client/canvas region extending beyond the intended rounded content surface.
+That region masks the dimmed application backdrop and makes content-sized
+widgets look like they are embedded in an extra black window. This is distinct
+from the intentional full-screen dimming backdrop and is not a theme color
+choice.
+
+**Acceptance:**
+
+1. Pixels outside the declared shell/widget surface remain transparent so the
+   host backdrop is visible; no extra rectangular canvas, inset, or border
+   appears during initial paint, resize, widget replacement, or animation.
+2. Rounded clips affect only the intended content surface and retain correct
+   antialiasing at supported DPI/interface scales.
+3. Clear/present/composition paths are alpha-correct and do not rely on a theme
+   painting over the defect.
+4. Native deterministic coverage plus packaged screenshots exercise compact,
+   standard, wide, reduced-transparency, and high-contrast presentations.
+
+## GBA-037 — Now Playing retry does not recover provider failure
+
+**Evidence:** A current packaged run rendered the Now Playing provider-failure
+surface. Activating **Try again** left the same failed state with no observable
+new load, recovery, or changed bounded diagnostic. A focusable Retry control
+that acknowledges input without beginning a real attempt is a functional
+failure, not merely missing polish.
+
+**Acceptance:**
+
+1. Retry starts exactly one fresh bounded read/subscription attempt while the
+   widget is active, publishes Busy feedback, and cannot overlap itself.
+2. A recovered provider replaces the failure surface with the authoritative
+   current sessions; healthy empty is distinct from provider unavailable.
+3. Continued failure clears Busy, retains focus on Retry, and shows one safe
+   actionable status without exposing native details or silently succeeding.
+4. Lifecycle cancellation, consent revocation, worker restart, provider loss/
+   recovery, and repeated controller activation have deterministic tests plus
+   packaged reproduction evidence.
+
+## GBA-038 — Games & Apps eagerly loads catalog and clips text
+
+**Evidence:** The original packaged viewport showed eager Start Menu loading
+and clipped card/status copy. The widget now resolves only saved entries at the
+root and loads the catalog after **Add applications**. The native column
+allocator now preserves measured height for auto-height intrinsic wrapped
+leaves. Focused lifecycle/layout regressions are green; refreshed packaged
+visual evidence remains outstanding.
+
+**Acceptance:**
+
+1. Opening the root restores only the durable curated Library data needed for
+   that surface; broad Catalog enumeration begins lazily when the user opens
+   Add applications (or through another explicit bounded refresh).
+2. Catalog loading, paging, cancellation, and retry do not blank or reorder the
+   existing Library and do not run while Background merely because the worker
+   is resident.
+3. Titles, type/status, counts, help, and prompts fit or reflow at compact/wide
+   surfaces and 150% text without clipping or covering focus cues.
+4. Horizontal focus-follow reaches the first/last complete card and preserves
+   separate Library/Catalog focus across nested B return.
+5. Automated lifecycle/layout tests and packaged screenshots cover empty,
+   populated, loading, failure, long-name, and maximum-page states.
+
+## GBA-039 — Permission descriptions do not reflow or scroll fully
+
+**Evidence:** Current Settings permission detail screenshots show long
+capability descriptions running beyond their row/content allocation. Text can
+be clipped before the next focus target, and the Scroll extent follows focus
+rows rather than guaranteeing the full description is readable.
+
+**Acceptance:**
+
+1. Capability name, required/optional decision, and long description use a
+   bounded responsive row/detail layout with explicit line wrapping and no
+   overlap at supported interface/text scales.
+2. Controller Scroll can reveal the complete first and last description as
+   well as every decision control; fixed footer prompts never cover content.
+3. Focus geometry remains inside the surface when a row grows, and B returns
+   one scope without a redundant Back row.
+4. Unknown/unsupported/inactive declarations use the same safe layout and
+   bounded/truncated accessible strings.
+5. Tests cover longest valid/localized copy, all decision states, compact and
+   wide viewports, 150% text, high contrast, and packaged controller traversal.
 
 ## Closed issues
 

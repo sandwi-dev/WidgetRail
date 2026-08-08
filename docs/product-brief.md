@@ -66,9 +66,16 @@ If a widget crashes, the host returns focus to that widget's dashboard card and 
   observations; no activation, history/relaunch, or authoritative game detection
 - Screenshot and capture controls
 - Notifications and quick settings
-- Discord: account linking, friends/presence, invitations, app-managed parties, and voice
+- Discord: a generally distributable launch/invite surface; conditional
+  identity and Social SDK friends/presence only after Discord eligibility review
 
-Discord is the only planned social provider initially. Its production use remains gated on Discord confirming this general-purpose overlay is an eligible Social SDK integration and approving communications capacity.
+Discord is the only planned social provider initially. Normal OAuth and bots
+cannot mirror the signed-in user's friends, DMs, current call, or mute state.
+Social SDK communications are game-oriented and review-gated; control of the
+existing Discord desktop call requires partner-only local RPC scopes. The
+ungated baseline is therefore opening Discord home, official channel/message
+links, and invite links. Anything broader remains conditional on written
+Discord eligibility and production access.
 
 Audio Mixer and Network Controls are the first two implemented system-control
 reference widgets, backed by narrow event-driven Core Audio and WLAN/IP Helper

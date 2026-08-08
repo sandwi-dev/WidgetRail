@@ -45,9 +45,10 @@ public sealed class GamesAppsWidget : Widget
     private readonly object _gate = new();
     private readonly SemaphoreSlim _commandGate = new(1, 1);
     private IReadOnlyList<WidgetAppLibraryItem> _items = [];
+    private IReadOnlyList<WidgetAppLibraryItem> _libraryItems = [];
     private IReadOnlyDictionary<string, string> _appByElementId =
         new Dictionary<string, string>(StringComparer.Ordinal);
-    private readonly List<string> _curatedAppIds = [];
+    private readonly List<string> _curatedSavedIds = [];
     private GamesAppsViewState _viewState = GamesAppsViewState.Initial;
     private GamesAppsPage _page = GamesAppsPage.Library;
     private string _status = "Your launch library loads when this widget becomes visible";
@@ -57,6 +58,12 @@ public sealed class GamesAppsWidget : Widget
     private int? _nextOffset;
     private CancellationTokenSource? _activeRun;
     private long _generation;
+    private long _stateRevision;
+
+    private sealed record PersistedLibraryState(
+        int Version,
+        IReadOnlyList<string> SavedIds,
+        string? SelectedSavedId);
 
     public GamesAppsViewState ViewState { get { lock (_gate) return _viewState; } }
     public IReadOnlyList<WidgetAppLibraryItem> Items
@@ -72,8 +79,8 @@ public sealed class GamesAppsWidget : Widget
         {
             lock (_gate)
             {
-                var byId = _items.ToDictionary(item => item.AppId, StringComparer.Ordinal);
-                return _curatedAppIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
+                var byId = _libraryItems.ToDictionary(item => item.SavedId, StringComparer.Ordinal);
+                return _curatedSavedIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
             }
         }
     }
@@ -99,7 +106,7 @@ public sealed class GamesAppsWidget : Widget
             loadingMore = _loadingMore;
             nextOffset = _nextOffset;
             page = _page;
-            curatedAppIds = _curatedAppIds.ToArray();
+            curatedAppIds = _curatedSavedIds.ToArray();
         }
 
         var header = UI.Stack("games.header",
@@ -114,7 +121,7 @@ public sealed class GamesAppsWidget : Widget
                         ? "is-error" : "is-neutral"))
             .Classes("games-header");
 
-        if (state != GamesAppsViewState.Ready || items.Count == 0)
+        if (state != GamesAppsViewState.Ready)
             return RenderState(header, state);
 
         return page == GamesAppsPage.Catalog
@@ -130,7 +137,7 @@ public sealed class GamesAppsWidget : Widget
         string? selectedAppId,
         string? launchingAppId)
     {
-        var byId = items.ToDictionary(item => item.AppId, StringComparer.Ordinal);
+        var byId = items.ToDictionary(item => item.SavedId, StringComparer.Ordinal);
         var curated = curatedAppIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
         if (curated.Length == 0)
         {
@@ -239,7 +246,7 @@ public sealed class GamesAppsWidget : Widget
             var item = items[index];
             var id = elementIds[index];
             map[id] = item.AppId;
-            var saved = curated.Contains(item.AppId);
+            var saved = curated.Contains(item.SavedId);
             var right = index + 1 < items.Count
                 ? elementIds[index + 1]
                 : nextOffset is not null ? "games.load-more" : id;
@@ -340,30 +347,26 @@ public sealed class GamesAppsWidget : Widget
                 {
                     if (_page != GamesAppsPage.Catalog) return;
                     _page = GamesAppsPage.Library;
+                    _items = _libraryItems;
                     _selectedAppId = ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
                     _status = LibraryStatusLocked();
                 }
                 Invalidate();
                 return;
             case "games.open-catalog":
-                if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                lock (_gate)
-                {
-                    _page = GamesAppsPage.Catalog;
-                    _selectedAppId = _items.FirstOrDefault()?.AppId;
-                    _status = "Choose applications to keep in your overlay library";
-                }
-                Invalidate();
+                await OpenCatalogAsync(cancellationToken).ConfigureAwait(false);
                 return;
             case "games.toggle-curation":
                 string? catalogAppId;
                 lock (_gate) _appByElementId.TryGetValue(action.SourceElementId, out catalogAppId);
-                if (catalogAppId is not null) ToggleCurated(catalogAppId);
+                if (catalogAppId is not null)
+                    await ToggleCuratedAsync(catalogAppId, cancellationToken).ConfigureAwait(false);
                 return;
             case "games.remove":
                 string? curatedAppId;
                 lock (_gate) _appByElementId.TryGetValue(action.SourceElementId, out curatedAppId);
-                if (curatedAppId is not null) RemoveCurated(curatedAppId);
+                if (curatedAppId is not null)
+                    await RemoveCuratedAsync(curatedAppId, cancellationToken).ConfigureAwait(false);
                 return;
             case "retry":
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
@@ -380,44 +383,64 @@ public sealed class GamesAppsWidget : Widget
         }
     }
 
-    private void ToggleCurated(string appId)
+    private async Task ToggleCuratedAsync(string appId, CancellationToken cancellationToken)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        IReadOnlyList<string>? savedIds = null;
+        string? selectedSavedId = null;
         lock (_gate)
         {
             var item = _items.FirstOrDefault(candidate =>
                 string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
             if (item is null) return;
             _selectedAppId = item.AppId;
-            if (_curatedAppIds.Remove(item.AppId))
+            if (_curatedSavedIds.Remove(item.SavedId))
+            {
+                _libraryItems = _libraryItems
+                    .Where(candidate => !string.Equals(
+                        candidate.SavedId, item.SavedId, StringComparison.Ordinal)).ToArray();
                 _status = $"Removed {item.DisplayName} from your library";
+            }
             else
             {
-                _curatedAppIds.Add(item.AppId);
+                _curatedSavedIds.Add(item.SavedId);
+                _libraryItems = _libraryItems.Append(item).ToArray();
                 _status = $"Added {item.DisplayName} to your library";
             }
+            savedIds = _curatedSavedIds.ToArray();
+            selectedSavedId = item.SavedId;
         }
         Invalidate();
+        await PersistLibraryAsync(savedIds, selectedSavedId, cancellationToken).ConfigureAwait(false);
     }
 
-    private void RemoveCurated(string appId)
+    private async Task RemoveCuratedAsync(string appId, CancellationToken cancellationToken)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        IReadOnlyList<string>? savedIds = null;
+        string? selectedSavedId = null;
         lock (_gate)
         {
             var item = _items.FirstOrDefault(candidate =>
                 string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
-            if (item is null || !_curatedAppIds.Remove(item.AppId)) return;
+            if (item is null || !_curatedSavedIds.Remove(item.SavedId)) return;
+            _libraryItems = _libraryItems
+                .Where(candidate => !string.Equals(
+                    candidate.SavedId, item.SavedId, StringComparison.Ordinal)).ToArray();
+            _items = _libraryItems;
             _selectedAppId = ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
             _status = $"Removed {item.DisplayName} from your library";
+            savedIds = _curatedSavedIds.ToArray();
+            selectedSavedId = ResolveCuratedItemsLocked().FirstOrDefault()?.SavedId;
         }
         Invalidate();
+        await PersistLibraryAsync(savedIds, selectedSavedId, cancellationToken).ConfigureAwait(false);
     }
 
     private IReadOnlyList<WidgetAppLibraryItem> ResolveCuratedItemsLocked()
     {
-        var byId = _items.ToDictionary(item => item.AppId, StringComparer.Ordinal);
-        return _curatedAppIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
+        var byId = _libraryItems.ToDictionary(item => item.SavedId, StringComparer.Ordinal);
+        return _curatedSavedIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
     }
 
     private string LibraryStatusLocked()
@@ -433,7 +456,12 @@ public sealed class GamesAppsWidget : Widget
         var (title, help) = state switch
         {
             GamesAppsViewState.Initial or GamesAppsViewState.Loading =>
-                ("Loading installed apps", "The host is reading your bounded Start Menu catalog."),
+                (_page == GamesAppsPage.Catalog
+                    ? "Loading applications"
+                    : "Loading your library",
+                 _page == GamesAppsPage.Catalog
+                    ? "The host is reading the bounded catalog only while you add an application."
+                    : "The host is resolving only applications you previously saved."),
             GamesAppsViewState.Empty =>
                 ("No launchable apps found", "No executable Start Menu registrations were available."),
             GamesAppsViewState.PermissionDenied =>
@@ -471,12 +499,13 @@ public sealed class GamesAppsWidget : Widget
         lock (_gate)
         {
             _viewState = GamesAppsViewState.Loading;
-            _status = "Loading your application catalog…";
+            _page = GamesAppsPage.Library;
+            _status = "Loading your saved library…";
             _launchingAppId = null;
             _loadingMore = false;
         }
         Invalidate();
-        _ = LoadFirstPageAsync(generation, lifetime.Token);
+        _ = LoadSavedLibraryAsync(generation, lifetime.Token);
     }
 
     private void StopActiveRun()
@@ -492,13 +521,34 @@ public sealed class GamesAppsWidget : Widget
         }
     }
 
-    private async Task LoadFirstPageAsync(long generation, CancellationToken cancellationToken)
+    private async Task LoadSavedLibraryAsync(long generation, CancellationToken cancellationToken)
     {
         try
         {
-            var page = await HostServices.AppLibrary.GetPageAsync(0, PageSize, cancellationToken)
-                .ConfigureAwait(false);
-            ApplyPage(page, append: false, generation, requestedOffset: 0);
+            var persisted = await HostServices.PrivateState.ReadAsync<PersistedLibraryState>(
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            var state = NormalizePersistedState(persisted.Exists ? persisted.Value : null);
+            var resolved = state.SavedIds.Count == 0
+                ? Array.Empty<WidgetAppLibraryItem>()
+                : await HostServices.AppLibrary.ResolveSavedAsync(state.SavedIds, cancellationToken)
+                    .ConfigureAwait(false);
+            var normalized = NormalizeResolved(resolved, state.SavedIds);
+            lock (_gate)
+            {
+                if (Interlocked.Read(ref _generation) != generation) return;
+                _stateRevision = persisted.Revision;
+                _curatedSavedIds.Clear();
+                _curatedSavedIds.AddRange(normalized.Select(item => item.SavedId));
+                _items = normalized;
+                _libraryItems = normalized;
+                _nextOffset = null;
+                _selectedAppId = normalized.FirstOrDefault(item =>
+                    string.Equals(item.SavedId, state.SelectedSavedId,
+                        StringComparison.Ordinal))?.AppId ?? normalized.FirstOrDefault()?.AppId;
+                _viewState = GamesAppsViewState.Ready;
+                _status = LibraryStatusLocked();
+            }
+            Invalidate();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -506,6 +556,55 @@ public sealed class GamesAppsWidget : Widget
         catch (Exception exception)
         {
             ApplyError(exception, generation);
+        }
+    }
+
+    private async Task OpenCatalogAsync(CancellationToken cancellationToken)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        var acquired = false;
+        try
+        {
+            acquired = await _commandGate.WaitAsync(0, commandLifetime.Token).ConfigureAwait(false);
+            if (!acquired) return;
+            long generation;
+            lock (_gate)
+            {
+                generation = Interlocked.Read(ref _generation);
+                _page = GamesAppsPage.Catalog;
+                _viewState = GamesAppsViewState.Loading;
+                _status = "Loading applications you can add…";
+                _loadingMore = true;
+            }
+            Invalidate();
+            var page = await HostServices.AppLibrary.GetPageAsync(0, PageSize, commandLifetime.Token)
+                .ConfigureAwait(false);
+            ApplyPage(page, append: false, generation, requestedOffset: 0);
+        }
+        catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
+        {
+            if (cancellationToken.IsCancellationRequested) throw;
+        }
+        catch (Exception exception)
+        {
+            ApplyCommandError(exception, "Applications could not be loaded");
+            lock (_gate)
+            {
+                _page = GamesAppsPage.Library;
+                _viewState = GamesAppsViewState.Ready;
+            }
+            Invalidate();
+        }
+        finally
+        {
+            if (acquired)
+            {
+                lock (_gate) _loadingMore = false;
+                _commandGate.Release();
+                Invalidate();
+            }
         }
     }
 
@@ -564,6 +663,7 @@ public sealed class GamesAppsWidget : Widget
             cancellationToken, ActiveCancellationToken);
         var acquired = false;
         WidgetAppLibraryItem? selected = null;
+        IReadOnlyList<string>? persistedOrder = null;
         try
         {
             acquired = await _commandGate.WaitAsync(0, commandLifetime.Token).ConfigureAwait(false);
@@ -578,15 +678,26 @@ public sealed class GamesAppsWidget : Widget
                 _status = $"Opening {selected.DisplayName}…";
             }
             Invalidate();
-            await HostServices.AppLibrary.LaunchAsync(appId, commandLifetime.Token)
+            await HostServices.AppLibrary.LaunchAsync(
+                    appId,
+                    WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
+                    commandLifetime.Token)
                 .ConfigureAwait(false);
             lock (_gate)
             {
-                if (_curatedAppIds.Remove(selected.AppId))
-                    _curatedAppIds.Insert(0, selected.AppId);
+                if (_curatedSavedIds.Remove(selected.SavedId))
+                    _curatedSavedIds.Insert(0, selected.SavedId);
+                var bySaved = _libraryItems.ToDictionary(
+                    item => item.SavedId, StringComparer.Ordinal);
+                _libraryItems = _curatedSavedIds.Where(bySaved.ContainsKey)
+                    .Select(savedId => bySaved[savedId]).ToArray();
+                _items = _libraryItems;
+                persistedOrder = _curatedSavedIds.ToArray();
                 _launchingAppId = null;
                 _status = $"Opened {selected.DisplayName}";
             }
+            await PersistLibraryAsync(
+                persistedOrder, selected.SavedId, commandLifetime.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
         {
@@ -618,31 +729,44 @@ public sealed class GamesAppsWidget : Widget
         lock (_gate)
         {
             if (Interlocked.Read(ref _generation) != generation) return;
-            var priorIds = _items.Select(item => item.AppId).ToHashSet(StringComparer.Ordinal);
-            var added = append
-                ? normalized.Where(item => priorIds.Add(item.AppId))
-                    .Take(Math.Max(0, MaximumItems - _items.Count)).ToArray()
-                : normalized.Take(MaximumItems).ToArray();
-            var combined = append ? _items.Concat(added).ToArray() : added;
-            var firstNew = append ? added.FirstOrDefault() : null;
-            _items = combined;
-            _nextOffset = combined.Length < MaximumItems &&
-                page?.NextOffset is int next &&
-                next > requestedOffset && next <= MaximumItems
-                    ? next
-                    : null;
-            if (firstNew is not null)
-                _selectedAppId = firstNew.AppId;
-            else if (_selectedAppId is null || !_items.Any(item => item.AppId == _selectedAppId))
-                _selectedAppId = _page == GamesAppsPage.Catalog
-                    ? _items.FirstOrDefault()?.AppId
-                    : ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
-            _viewState = _items.Count == 0 ? GamesAppsViewState.Empty : GamesAppsViewState.Ready;
-            _status = _items.Count == 0
-                ? "No launchable Start Menu apps found"
-                : _page == GamesAppsPage.Catalog
-                    ? $"{_items.Count}{(_nextOffset is null ? string.Empty : "+")} applications available"
-                    : LibraryStatusLocked();
+            var emptyCatalog = !append && _page == GamesAppsPage.Catalog && normalized.Count == 0;
+            if (emptyCatalog)
+            {
+                _page = GamesAppsPage.Library;
+                _items = _libraryItems;
+                _nextOffset = null;
+                _selectedAppId = _items.FirstOrDefault()?.AppId;
+                _viewState = GamesAppsViewState.Ready;
+                _status = "No additional launchable applications were found";
+            }
+            else
+            {
+                var priorIds = _items.Select(item => item.AppId).ToHashSet(StringComparer.Ordinal);
+                var added = append
+                    ? normalized.Where(item => priorIds.Add(item.AppId))
+                        .Take(Math.Max(0, MaximumItems - _items.Count)).ToArray()
+                    : normalized.Take(MaximumItems).ToArray();
+                var combined = append ? _items.Concat(added).ToArray() : added;
+                var firstNew = append ? added.FirstOrDefault() : null;
+                _items = combined;
+                _nextOffset = combined.Length < MaximumItems &&
+                    page?.NextOffset is int next &&
+                    next > requestedOffset && next <= MaximumItems
+                        ? next
+                        : null;
+                if (firstNew is not null)
+                    _selectedAppId = firstNew.AppId;
+                else if (_selectedAppId is null || !_items.Any(item => item.AppId == _selectedAppId))
+                    _selectedAppId = _page == GamesAppsPage.Catalog
+                        ? _items.FirstOrDefault()?.AppId
+                        : ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
+                _viewState = _items.Count == 0 ? GamesAppsViewState.Empty : GamesAppsViewState.Ready;
+                _status = _items.Count == 0
+                    ? "No launchable Start Menu apps found"
+                    : _page == GamesAppsPage.Catalog
+                        ? $"{_items.Count}{(_nextOffset is null ? string.Empty : "+")} applications available"
+                        : LibraryStatusLocked();
+            }
         }
         Invalidate();
     }
@@ -654,6 +778,7 @@ public sealed class GamesAppsWidget : Widget
         var ids = new HashSet<string>(StringComparer.Ordinal);
         return items.Where(item => item is not null &&
                 !string.IsNullOrWhiteSpace(item.AppId) &&
+                !string.IsNullOrWhiteSpace(item.SavedId) &&
                 !string.IsNullOrWhiteSpace(item.DisplayName) && ids.Add(item.AppId))
             .Take(PageSize)
             .Select(item => item with
@@ -664,6 +789,83 @@ public sealed class GamesAppsWidget : Widget
             })
             .ToArray();
     }
+
+    private static PersistedLibraryState NormalizePersistedState(PersistedLibraryState? state)
+    {
+        if (state is null || state.Version != 1 || state.SavedIds is null)
+            return new PersistedLibraryState(1, [], null);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var saved = state.SavedIds
+            .Where(id => IsOpaqueId(id) && seen.Add(id))
+            .Take(WidgetAppLibraryService.MaximumSavedItems)
+            .ToArray();
+        var selected = state.SelectedSavedId is { } candidate &&
+                       saved.Contains(candidate, StringComparer.Ordinal)
+            ? candidate
+            : saved.FirstOrDefault();
+        return new PersistedLibraryState(1, saved, selected);
+    }
+
+    private static IReadOnlyList<WidgetAppLibraryItem> NormalizeResolved(
+        IReadOnlyList<WidgetAppLibraryItem>? items,
+        IReadOnlyList<string> requestedSavedIds)
+    {
+        var requested = requestedSavedIds.ToHashSet(StringComparer.Ordinal);
+        var seenApp = new HashSet<string>(StringComparer.Ordinal);
+        var seenSaved = new HashSet<string>(StringComparer.Ordinal);
+        var bySaved = (items ?? [])
+            .Where(item => item is not null && IsOpaqueId(item.AppId) &&
+                IsOpaqueId(item.SavedId) && requested.Contains(item.SavedId) &&
+                !string.IsNullOrWhiteSpace(item.DisplayName) && seenApp.Add(item.AppId) &&
+                seenSaved.Add(item.SavedId))
+            .ToDictionary(item => item.SavedId, item => item, StringComparer.Ordinal);
+        return requestedSavedIds.Where(bySaved.ContainsKey).Select(savedId =>
+        {
+            var item = bySaved[savedId];
+            var name = item.DisplayName.Trim();
+            return item with { DisplayName = name.Length > 120 ? name[..120] : name };
+        }).ToArray();
+    }
+
+    private async Task PersistLibraryAsync(
+        IReadOnlyList<string> savedIds,
+        string? selectedSavedId,
+        CancellationToken cancellationToken)
+    {
+        var normalized = NormalizePersistedState(
+            new PersistedLibraryState(1, savedIds, selectedSavedId));
+        long revision;
+        lock (_gate) revision = _stateRevision;
+        try
+        {
+            var mutation = await HostServices.PrivateState.WriteAsync(
+                normalized, revision, cancellationToken: cancellationToken).ConfigureAwait(false);
+            lock (_gate) _stateRevision = mutation.Revision;
+        }
+        catch (WidgetCapabilityException exception) when (exception.ErrorCode == "state_conflict")
+        {
+            var latest = await HostServices.PrivateState.ReadJsonAsync(cancellationToken)
+                .ConfigureAwait(false);
+            var mutation = await HostServices.PrivateState.WriteAsync(
+                normalized, latest.Revision, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            lock (_gate) _stateRevision = mutation.Revision;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            lock (_gate) _status = "Library changed for this session · saving failed";
+            Invalidate();
+        }
+    }
+
+    private static bool IsOpaqueId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 128 &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) ||
+            character is '.' or '_' or '-');
 
     private void ApplyError(Exception exception, long generation)
     {

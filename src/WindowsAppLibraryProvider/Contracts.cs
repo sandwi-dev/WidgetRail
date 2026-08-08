@@ -12,8 +12,8 @@ public enum WindowsAppLibraryKind
 }
 
 /// <summary>
-/// Sanitized application metadata safe to forward through the future broker.
-/// AppId is a random provider-owned token; it never contains a path, AUMID,
+/// Sanitized application metadata safe to expose to trusted host callers.
+/// AppId is a short-lived random provider-owned token; it never contains a path, AUMID,
 /// command line, shortcut target, or launcher identifier.
 /// </summary>
 public sealed record WindowsAppLibraryItem(

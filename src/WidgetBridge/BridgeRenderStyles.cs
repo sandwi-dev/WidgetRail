@@ -28,6 +28,7 @@ public sealed record BridgeNodeRenderStyles
 {
     public required IReadOnlyDictionary<string, BridgeComputedStyleValue> Base { get; init; }
     public required IReadOnlyDictionary<string, BridgeComputedStyleValue> Focused { get; init; }
+    public required IReadOnlyDictionary<string, BridgeComputedStyleValue> Pressed { get; init; }
 }
 
 internal static class BridgeRenderStyleResolver
@@ -53,9 +54,14 @@ internal static class BridgeRenderStyleResolver
             {
                 GbssPseudoState.Focused,
             };
+            var pressedStates = new HashSet<GbssPseudoState>(focusedStates)
+            {
+                GbssPseudoState.Pressed,
+            };
             var baseStyle = ResolveState(node, classes, baseStates);
             var focusedStyle = ResolveState(node, classes, focusedStates);
-            totalProperties += baseStyle.Count + focusedStyle.Count;
+            var pressedStyle = ResolveState(node, classes, pressedStates);
+            totalProperties += baseStyle.Count + focusedStyle.Count + pressedStyle.Count;
             if (totalProperties > BridgeRenderStyleLimits.MaximumTotalProperties)
                 throw new BridgeProtocolException(
                     $"Computed style map exceeds {BridgeRenderStyleLimits.MaximumTotalProperties} properties.");
@@ -63,6 +69,7 @@ internal static class BridgeRenderStyleResolver
             {
                 Base = baseStyle,
                 Focused = focusedStyle,
+                Pressed = pressedStyle,
             });
             foreach (var child in node.Children) Visit(child);
         }

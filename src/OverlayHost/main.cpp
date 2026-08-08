@@ -7,6 +7,7 @@
 #include "NativeStyle.h"
 #include "OverlayPlacement.h"
 #include "OverlayTargeting.h"
+#include "PressedInteraction.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetLifecycle.h"
@@ -860,6 +861,33 @@ private:
                         renderedSnapshotSequences_.erase(invalidatedWidget);
                     }
                 }
+                for (const auto& effect : bridge_.TakeHostEffects()) {
+                    const auto descriptor = std::find_if(
+                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                        [&](const gba::WidgetDescriptor& candidate) {
+                            return candidate.id == effect.widgetId;
+                        });
+                    const bool currentInteractiveWidget =
+                        state_.surface() == gba::Surface::Widget &&
+                        state_.focusRegion() == gba::FocusRegion::Widget &&
+                        state_.activeWidget() == effect.widgetId &&
+                        descriptor != widgetDescriptors_.end() &&
+                        descriptor->runtimeGeneration == effect.runtimeGeneration;
+                    if (!currentInteractiveWidget) {
+                        AppendDiagnostic(
+                            L"Dropped stale or non-interactive widget host effect for " +
+                            effect.widgetId);
+                        continue;
+                    }
+                    if (effect.kind ==
+                        gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
+                        AppendDiagnostic(
+                            L"Closing overlay after confirmed app launch from " +
+                            effect.widgetId);
+                        Dispatch(gba::Command::CloseOverlay);
+                        break;
+                    }
+                }
             } else if (wParam == kGuideCompatibilityTimer) {
                 const auto slots = guideCompatibility_.PollRisingEdges();
                 if (slots != 0) {
@@ -1014,6 +1042,11 @@ private:
         const auto before = state_.persistent();
         if (!state_.Dispatch(command)) {
             return;
+        }
+        if (priorSurface != state_.surface() || priorActive != state_.activeWidget() ||
+            priorFocusRegion != state_.focusRegion()) {
+            if (pressedInteraction_.Clear())
+                InvalidateRect(window_, nullptr, FALSE);
         }
         if (before.order != state_.persistent().order ||
             before.lastWidget != state_.persistent().lastWidget ||
@@ -1761,7 +1794,23 @@ private:
         }
         const WORD buttons = connected ? controller.Gamepad.wButtons : 0;
         const WORD pressed = static_cast<WORD>(buttons & ~previousButtons_);
+        const WORD released = static_cast<WORD>(previousButtons_ & ~buttons);
         previousButtons_ = buttons;
+
+        const auto releaseButton = [&](const WORD mask, const std::wstring_view protocolButton) {
+            if ((released & mask) != 0 && pressedInteraction_.Release(protocolButton))
+                InvalidateRect(window_, nullptr, FALSE);
+        };
+        releaseButton(XINPUT_GAMEPAD_A, L"a");
+        releaseButton(XINPUT_GAMEPAD_B, L"b");
+        releaseButton(XINPUT_GAMEPAD_X, L"x");
+        releaseButton(XINPUT_GAMEPAD_Y, L"y");
+        releaseButton(XINPUT_GAMEPAD_LEFT_SHOULDER, L"leftBumper");
+        releaseButton(XINPUT_GAMEPAD_RIGHT_SHOULDER, L"rightBumper");
+        releaseButton(XINPUT_GAMEPAD_LEFT_THUMB, L"leftStick");
+        releaseButton(XINPUT_GAMEPAD_RIGHT_THUMB, L"rightStick");
+        releaseButton(XINPUT_GAMEPAD_BACK, L"view");
+        releaseButton(XINPUT_GAMEPAD_START, L"menu");
 
         const ULONGLONG now = GetTickCount64();
         if (sliderReconcileAt_ != 0 && now >= sliderReconcileAt_) {
@@ -1784,43 +1833,49 @@ private:
         }
 
         if (pressed & XINPUT_GAMEPAD_A) {
-            DispatchControllerAction(L"A");
+            DispatchControllerAction(L"A", true);
         }
         if (pressed & XINPUT_GAMEPAD_B) {
-            DispatchControllerAction(L"B");
+            DispatchControllerAction(L"B", true);
         }
         if (pressed & XINPUT_GAMEPAD_Y) {
-            DispatchControllerAction(L"Y");
+            DispatchControllerAction(L"Y", true);
         }
         if (pressed & XINPUT_GAMEPAD_X) {
-            DispatchControllerAction(L"X");
+            DispatchControllerAction(L"X", true);
         }
         if (pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) {
-            DispatchControllerAction(L"LB");
+            DispatchControllerAction(L"LB", true);
         }
         if (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) {
-            DispatchControllerAction(L"RB");
+            DispatchControllerAction(L"RB", true);
         }
         if (pressed & XINPUT_GAMEPAD_LEFT_THUMB) {
-            DispatchControllerAction(L"LS");
+            DispatchControllerAction(L"LS", true);
         }
         if (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) {
-            DispatchControllerAction(L"RS");
+            DispatchControllerAction(L"RS", true);
         }
         if (pressed & XINPUT_GAMEPAD_BACK) {
-            DispatchControllerAction(L"View");
+            DispatchControllerAction(L"View", true);
         }
         if (pressed & XINPUT_GAMEPAD_START) {
-            DispatchControllerAction(L"Menu");
+            DispatchControllerAction(L"Menu", true);
         }
         const bool leftTriggerPressed = connected && controller.Gamepad.bLeftTrigger >= 30;
         const bool rightTriggerPressed = connected && controller.Gamepad.bRightTrigger >= 30;
         if (leftTriggerPressed && !leftTriggerPressed_) {
-            DispatchControllerAction(L"LT");
+            DispatchControllerAction(L"LT", true);
         }
         if (rightTriggerPressed && !rightTriggerPressed_) {
-            DispatchControllerAction(L"RT");
+            DispatchControllerAction(L"RT", true);
         }
+        if (!leftTriggerPressed && leftTriggerPressed_ &&
+            pressedInteraction_.Release(L"leftTrigger"))
+            InvalidateRect(window_, nullptr, FALSE);
+        if (!rightTriggerPressed && rightTriggerPressed_ &&
+            pressedInteraction_.Release(L"rightTrigger"))
+            InvalidateRect(window_, nullptr, FALSE);
         leftTriggerPressed_ = leftTriggerPressed;
         rightTriggerPressed_ = rightTriggerPressed;
         // The visible overlay already polls controller state at 60 Hz. Reuse
@@ -1965,6 +2020,11 @@ private:
         if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
         widgetSnapshots_.insert_or_assign(std::wstring(widgetId), std::move(*snapshot));
         if (currentWidget == widgetId) RestoreFocusForActiveSurface(widgetId);
+        if (const auto* current = SnapshotFor(widgetId);
+            currentWidget == widgetId && current &&
+            pressedInteraction_.Reconcile(*current, focusedElementId_)) {
+            InvalidateRect(window_, nullptr, FALSE);
+        }
     }
 
     void MoveWidgetFocus(const std::wstring_view direction) {
@@ -1981,6 +2041,7 @@ private:
             focusedElementId_, activeScope, lastWidgetRenderResult_);
         if (!visibleFocus) return;
         if (*visibleFocus != focusedElementId_) {
+            (void)pressedInteraction_.Clear();
             focusedElementId_ = *visibleFocus;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
@@ -2002,6 +2063,7 @@ private:
         const bool explicitMoves = explicitTarget && gba::input::IsDistinctFocusMove(
             focusedElementId_, explicitTarget->id, explicitNavigable);
         if (explicitMoves) {
+            (void)pressedInteraction_.Clear();
             focusedElementId_ = explicitTarget->id;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
@@ -2017,6 +2079,7 @@ private:
         const auto fallback = gba::input::FindGeometricFocusTarget(
             focusedElementId_, navigationDirection, lastWidgetRenderResult_);
         if (fallback) {
+            (void)pressedInteraction_.Clear();
             focusedElementId_ = *fallback;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
@@ -2049,7 +2112,9 @@ private:
         return L"";
     }
 
-    void DispatchControllerAction(const std::wstring_view button) {
+    void DispatchControllerAction(
+        const std::wstring_view button,
+        const bool physicalPress = false) {
         using gba::input::ControllerActionContext;
         using gba::input::ControllerActionRoute;
         const auto context = state_.focusRegion() == gba::FocusRegion::Tray
@@ -2066,7 +2131,11 @@ private:
             Dispatch(gba::Command::ToggleOverlay);
             return;
         case ControllerActionRoute::Widget:
-            DispatchWidgetAction(button);
+            DispatchWidgetAction(
+                button,
+                gba::input::NavigationEventPhase::Pressed,
+                std::nullopt,
+                physicalPress);
             return;
         case ControllerActionRoute::HostBackToDashboard:
         case ControllerActionRoute::None:
@@ -2078,7 +2147,8 @@ private:
         const std::wstring_view button,
         const gba::input::NavigationEventPhase phase =
             gba::input::NavigationEventPhase::Pressed,
-        const std::optional<double> requestedValue = std::nullopt) {
+        const std::optional<double> requestedValue = std::nullopt,
+        const bool physicalPress = false) {
         if (state_.surface() == gba::Surface::Hidden) {
             return;
         }
@@ -2103,9 +2173,17 @@ private:
                     lastWidgetRenderResult_)
                 : std::optional<std::wstring>{};
             if (isOpen && visibleFocus && *visibleFocus != focusedElementId_) {
+                (void)pressedInteraction_.Clear();
                 focusedElementId_ = *visibleFocus;
                 focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                 InvalidateRect(window_, nullptr, FALSE);
+            }
+            if (physicalPress && isOpen && visibleFocus &&
+                phase == gba::input::NavigationEventPhase::Pressed &&
+                pressedInteraction_.Begin(
+                    *snapshot, *visibleFocus, protocolButton)) {
+                InvalidateRect(window_, nullptr, FALSE);
+                UpdateWindow(window_);
             }
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
@@ -2121,6 +2199,8 @@ private:
                     : std::wstring_view{L"pressed"},
                 requestedValue);
             if (!handled) {
+                if (pressedInteraction_.Cancel(protocolButton))
+                    InvalidateRect(window_, nullptr, FALSE);
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" input failed: " + bridge_.lastError();
             } else if (*handled) {
@@ -2407,7 +2487,13 @@ private:
             return;
         }
         renderTarget_->BeginDraw();
-        renderTarget_->Clear(D2DColor(effectiveCanvasBackground_));
+        // The HWND is a color-keyed layered window above a separately dimmed
+        // full-screen backdrop. Only the authored panel/tray surfaces belong
+        // to this window; painting the theme canvas across the client creates
+        // an opaque rectangular box around those content-shaped surfaces.
+        // Keep the canvas color for style inheritance/contrast, but clear the
+        // unused client area to the exact transparency key.
+        renderTarget_->Clear(D2DColor(kSafeCanvasFallback));
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Scale(
             metrics->interfaceScale, metrics->interfaceScale));
 
@@ -2698,6 +2784,11 @@ private:
                 if (appearanceState_.current())
                     options.accessibility = CurrentAccessibilityPolicy();
                 options.animationTimestampMilliseconds = GetTickCount64();
+                options.pressedElementId = pressedInteraction_.ActiveElementId(
+                    *snapshot,
+                    state_.focusRegion() == gba::FocusRegion::Widget
+                        ? std::wstring_view(focusedElementId_)
+                        : std::wstring_view{});
                 const auto collectSliderOverrides = [&](const auto& self,
                                                         const gba::WidgetNode& node) -> void {
                     if (node.kind == L"slider") {
@@ -2719,6 +2810,7 @@ private:
                 if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
                         focusedElementId_, snapshot->activeInputScopeId, result);
                     visibleFocus && *visibleFocus != focusedElementId_) {
+                    (void)pressedInteraction_.Clear();
                     focusedElementId_ = *visibleFocus;
                     focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                     // The completed pass used the old focus state. Schedule one
@@ -2795,6 +2887,7 @@ private:
     std::wstring focusedElementId_;
     gba::input::WidgetSurfaceFocusMemory focusMemory_;
     gba::input::SliderInteractionState sliderInteraction_;
+    gba::input::PressedInteractionState pressedInteraction_;
     std::unordered_map<std::wstring, gba::WidgetSnapshot> widgetSnapshots_;
     gba::WidgetBridgeClient bridge_;
     unsigned int catalogRetryAttempts_{};

@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GameBarAlternative.WidgetStyling;
@@ -55,27 +57,42 @@ public sealed class ThemeCatalog
     public const int MaximumThemes = 128;
     public const int MaximumManifestBytes = 64 * 1024;
     private const string ManifestFileName = "theme.json";
-    private const string BuiltInResource =
+    private const string BuiltInDefaultResource =
         "GameBarAlternative.PlatformSettings.Themes.builtin-default.gbss";
+    private const string BuiltInCoolSlateManifestResource =
+        "GameBarAlternative.PlatformSettings.Themes.builtin-cool-slate.theme.json";
+    private const string BuiltInCoolSlateSourceResource =
+        "GameBarAlternative.PlatformSettings.Themes.builtin-cool-slate.theme.gbss";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private readonly PlatformSettingsPaths _paths;
     private readonly ThemeLoadResult _builtIn;
+    private readonly IReadOnlyList<ThemeLoadResult> _builtIns;
+    private readonly IReadOnlyDictionary<string, ThemeLoadResult> _builtInsById;
 
     public ThemeCatalog(PlatformSettingsPaths paths)
     {
         _paths = paths ?? throw new ArgumentNullException(nameof(paths));
-        _builtIn = LoadBuiltIn();
+        _builtIn = LoadBuiltInDefault();
+        var coolSlate = LoadBuiltInPackage(
+            BuiltInCoolSlateManifestResource,
+            BuiltInCoolSlateSourceResource,
+            ThemeIdentity.BuiltInCoolSlate,
+            ThemeIdentity.BuiltInCoolSlateVersion,
+            "org.gbar.builtin");
+        _builtIns = Array.AsReadOnly<ThemeLoadResult>([_builtIn, coolSlate]);
+        _builtInsById = new ReadOnlyDictionary<string, ThemeLoadResult>(
+            _builtIns.ToDictionary(item => item.Descriptor.Id, StringComparer.Ordinal));
     }
 
     public ThemeLoadResult BuiltInDefault => _builtIn;
+    public IReadOnlyList<ThemeLoadResult> BuiltInThemes => _builtIns;
 
     public ThemeCatalogSnapshot Discover()
     {
-        var entries = new List<ThemeCatalogEntry>
-        {
-            new(_builtIn.Descriptor, _builtIn.IsValid, _builtIn.Diagnostics),
-        };
+        var entries = _builtIns
+            .Select(item => new ThemeCatalogEntry(item.Descriptor, item.IsValid, item.Diagnostics))
+            .ToList();
         if (!Directory.Exists(_paths.ThemesDirectory)) return new ThemeCatalogSnapshot(entries);
 
         FileSystemGuard.EnsureExistingPathHasNoReparsePoints(_paths.ThemesDirectory);
@@ -129,9 +146,9 @@ public sealed class ThemeCatalog
             return Invalid(themeId ?? string.Empty, "invalid_theme_id", "Theme ID is invalid.");
         if (!ThemeIdentity.TryParseCanonicalVersion(version, out _))
             return Invalid(themeId, "invalid_theme_version", "Theme version is invalid.");
-        if (themeId == ThemeIdentity.BuiltInDefault)
-            return version == ThemeIdentity.BuiltInDefaultVersion
-                ? _builtIn
+        if (_builtInsById.TryGetValue(themeId, out var builtIn))
+            return version == builtIn.Descriptor.Version.ToString()
+                ? builtIn
                 : Invalid(themeId, "theme_not_found", $"Theme '{themeId}' {version} is not installed.");
         if (!Directory.Exists(_paths.ThemesDirectory))
             return Invalid(themeId, "theme_not_found", $"Theme '{themeId}' {version} is not installed.");
@@ -158,7 +175,7 @@ public sealed class ThemeCatalog
             FileSystemGuard.RejectReparsePoint(directory);
             if (!FileSystemGuard.IsWithin(_paths.ThemesDirectory, directory))
                 return Invalid(fallback, "theme_path_escape", "Theme directory escapes the theme root.");
-            if (!ThemeIdentity.IsValid(directoryId) || directoryId == ThemeIdentity.BuiltInDefault)
+            if (!ThemeIdentity.IsValid(directoryId) || ThemeIdentity.IsBuiltIn(directoryId))
                 return Invalid(fallback, "invalid_theme_id", "Theme directory name is invalid or reserved.");
             if (!ThemeIdentity.TryParseCanonicalVersion(directoryVersion, out _))
                 return Invalid(fallback, "invalid_theme_version", "Theme version directory is invalid.");
@@ -221,7 +238,7 @@ public sealed class ThemeCatalog
             return ("unsupported_theme_version",
                 $"Expected theme manifest version {ThemeManifestDocument.LegacySchemaVersion} or " +
                 $"{ThemeManifestDocument.CurrentSchemaVersion}.");
-        if (!ThemeIdentity.IsValid(document.Id) || document.Id == ThemeIdentity.BuiltInDefault)
+        if (!ThemeIdentity.IsValid(document.Id) || ThemeIdentity.IsBuiltIn(document.Id))
             return ("invalid_theme_id", "Theme manifest ID is invalid or reserved.");
         if (document.SchemaVersion == ThemeManifestDocument.LegacySchemaVersion && document.Publisher is not null)
             return ("unexpected_theme_publisher", "Schema version 1 themes cannot declare a publisher.");
@@ -246,9 +263,9 @@ public sealed class ThemeCatalog
         return null;
     }
 
-    private static ThemeLoadResult LoadBuiltIn()
+    private static ThemeLoadResult LoadBuiltInDefault()
     {
-        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(BuiltInResource)
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(BuiltInDefaultResource)
             ?? throw new PlatformSettingsException(
                 "missing_builtin_theme", "The built-in default theme resource is missing.");
         using var reader = new StreamReader(stream);
@@ -272,6 +289,109 @@ public sealed class ThemeCatalog
                 Version.Parse(ThemeIdentity.BuiltInDefaultVersion),
                 IsBuiltIn: true),
             package);
+    }
+
+    private static ThemeLoadResult LoadBuiltInPackage(
+        string manifestResource,
+        string sourceResource,
+        string expectedId,
+        string expectedVersion,
+        string expectedPublisher)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var manifestBytes = ReadEmbeddedResource(assembly, manifestResource, MaximumManifestBytes);
+        ThemeManifestDocument document;
+        try
+        {
+            StrictJson.RejectDuplicateProperties(manifestBytes);
+            document = JsonSerializer.Deserialize<ThemeManifestDocument>(manifestBytes, JsonOptions)
+                ?? throw new JsonException("Theme manifest was null.");
+        }
+        catch (JsonException exception)
+        {
+            throw new PlatformSettingsException(
+                "invalid_builtin_theme",
+                $"The built-in theme manifest is invalid: {SafeMessage(exception.Message)}");
+        }
+
+        if (document.SchemaVersion != ThemeManifestDocument.CurrentSchemaVersion ||
+            !string.Equals(document.Id, expectedId, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(document.Name) || document.Name.Length > 80 ||
+            document.Name.Any(char.IsControl) ||
+            !string.Equals(document.Version, expectedVersion, StringComparison.Ordinal) ||
+            !ThemeIdentity.TryParseCanonicalVersion(document.Version, out var version) ||
+            !string.Equals(document.EntryFile, "theme.gbss", StringComparison.Ordinal) ||
+            !string.Equals(document.Publisher, expectedPublisher, StringComparison.Ordinal) ||
+            !ThemeIdentity.IsValidPublisher(document.Publisher) ||
+            !document.Id.StartsWith(document.Publisher + ".", StringComparison.Ordinal))
+        {
+            throw new PlatformSettingsException(
+                "invalid_builtin_theme",
+                $"The built-in theme '{expectedId}' manifest does not match its embedded identity.");
+        }
+
+        var sourceBytes = ReadEmbeddedResource(
+            assembly,
+            sourceResource,
+            checked((int)GbssLimits.MaximumSourceBytes));
+        var source = Encoding.UTF8.GetString(sourceBytes);
+        var package = GbssPackageLoader.Load(
+            document.EntryFile,
+            new EmbeddedThemeSourceProvider(document.EntryFile, source));
+        var compiled = GbssThemeCompiler.Compile(package);
+        if (!compiled.IsValid)
+        {
+            var diagnostic = compiled.Diagnostics.First(item =>
+                item.Severity == GbssDiagnosticSeverity.Error);
+            throw new PlatformSettingsException(
+                "invalid_builtin_theme",
+                $"The built-in theme '{expectedId}' failed GBSS validation: " +
+                $"{SafeMessage(diagnostic.Code)}: {SafeMessage(diagnostic.Message)}");
+        }
+
+        return new ThemeLoadResult(
+            new ThemeDescriptor(
+                expectedId,
+                document.Name,
+                version!,
+                IsBuiltIn: true,
+                Publisher: document.Publisher),
+            package);
+    }
+
+    private static byte[] ReadEmbeddedResource(Assembly assembly, string resourceName, int maximumBytes)
+    {
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new PlatformSettingsException(
+                "missing_builtin_theme", $"The built-in theme resource '{resourceName}' is missing.");
+        using var output = new MemoryStream(Math.Min(maximumBytes, 16 * 1024));
+        var buffer = new byte[16 * 1024];
+        var total = 0;
+        while (true)
+        {
+            var read = stream.Read(buffer, 0, buffer.Length);
+            if (read == 0) break;
+            total = checked(total + read);
+            if (total > maximumBytes)
+                throw new PlatformSettingsException(
+                    "invalid_builtin_theme", "A built-in theme resource exceeds its safety bound.");
+            output.Write(buffer, 0, read);
+        }
+        return output.ToArray();
+    }
+
+    private sealed class EmbeddedThemeSourceProvider(string path, string source) : IGbssSourceProvider
+    {
+        public bool TryRead(string packageRelativePath, out string value)
+        {
+            if (string.Equals(packageRelativePath, path, StringComparison.Ordinal))
+            {
+                value = source;
+                return true;
+            }
+            value = string.Empty;
+            return false;
+        }
     }
 
     private static ThemeLoadResult Invalid(string id, string code, string message) =>

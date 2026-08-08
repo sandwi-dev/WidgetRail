@@ -38,6 +38,13 @@ public sealed record BrokerPipeTransportOptions
     }
 }
 
+public enum BrokerHostEffectKind
+{
+    CloseOverlayAfterAppLaunch,
+}
+
+public sealed record BrokerHostEffect(BrokerHostEffectKind Kind);
+
 internal static class BrokerPipeRequestTimeoutPolicy
 {
     internal static TimeSpan Resolve(
@@ -214,6 +221,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private readonly string? _isolatedClientAppContainerSid;
     private readonly PlatformCapabilityBroker _broker;
     private readonly ConsentChangeMonitor _consentMonitor;
+    private readonly Action<BrokerHostEffect>? _hostEffectSink;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _requests = new();
@@ -235,7 +243,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         BrokerPipeTransportOptions? options = null,
         string? channelNonce = null,
         string? isolatedClientAppContainerSid = null,
-        IEnumerable<string>? hostGrantedCapabilities = null)
+        IEnumerable<string>? hostGrantedCapabilities = null,
+        Action<BrokerHostEffect>? hostEffectSink = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -247,6 +256,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         _declaredCapabilities = new HashSet<string>(declaredCapabilities, StringComparer.Ordinal);
         _hostGrantedCapabilities = new HashSet<string>(
             hostGrantedCapabilities ?? [], StringComparer.Ordinal);
+        _hostEffectSink = hostEffectSink;
         _options = options ?? new BrokerPipeTransportOptions();
         _options.Validate();
         ChannelNonce = channelNonce ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -471,6 +481,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             _ = BrokerJson.SerializeResponse(response);
             await SendAsync(BrokerPipeMessageTypes.Response, correlationId, response, _lifetime.Token)
                 .ConfigureAwait(false);
+            if (response.Succeeded) PublishConfirmedHostEffect(requestBytes);
         }
         catch (OperationCanceledException)
         {
@@ -481,6 +492,25 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         {
             _requests.TryRemove(correlationId, out _);
             requestCancellation.Dispose();
+        }
+    }
+
+    private void PublishConfirmedHostEffect(byte[] requestBytes)
+    {
+        if (_hostEffectSink is null) return;
+        var request = BrokerJson.ParseRequest(requestBytes);
+        if (request.Operation != PlatformCapabilities.AppLibraryLaunch) return;
+        var launch = BrokerJson.ParsePayload<LaunchAppLibraryItemRequest>(request.Payload);
+        if (!launch.CloseOverlayOnSuccess) return;
+        try
+        {
+            _hostEffectSink(new BrokerHostEffect(
+                BrokerHostEffectKind.CloseOverlayAfterAppLaunch));
+        }
+        catch (Exception)
+        {
+            // The privileged operation and its response already completed.
+            // A host presentation callback must never poison the broker channel.
         }
     }
 

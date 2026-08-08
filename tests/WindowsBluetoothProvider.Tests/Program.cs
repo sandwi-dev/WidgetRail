@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WindowsBluetoothProvider;
+using Windows.Devices.Enumeration;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -15,6 +16,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Canceled startup rolls back and a later call retries cleanly", StartupCancellationRetries),
     ("Partial radio mutation is typed and publishes authoritative state", PartialRadioFailure),
     ("Opaque identity retention stays bounded under device churn", OpaqueRetentionIsBounded),
+    ("Pairing resolves only opaque current devices and reconciles state", PairingReconciles),
+    ("Pairing cancellation propagates without optimistic state", PairingCancellation),
+    ("Windows pairing statuses are mapped without claiming connection", PairingStatusMapping),
+    ("Bluetooth Settings handoff is exact validated and authoritative", SettingsHandoff),
 };
 
 var failures = new List<string>();
@@ -226,6 +231,113 @@ static async Task OpaqueRetentionIsBounded()
         $"Opaque identity store retained {retained.Count} churned native IDs.");
 }
 
+static async Task PairingReconciles()
+{
+    var nativeId = "native-controller-address";
+    var adapter = ReadyAdapter(Device(nativeId, "Controller", present: true));
+    adapter.PairResult = BluetoothPairingOutcome.Paired;
+    adapter.SnapshotAfterPair = adapter.Snapshot with
+    {
+        Devices = [Device(nativeId, "Controller", paired: true, present: true)],
+    };
+    await using var backend = new WindowsBluetoothPlatformBackend(new FakeFactory(adapter));
+    var opaqueId = (await backend.GetBluetoothAsync(CancellationToken.None))
+        .Devices.Single().DeviceId;
+    BrokerPlatformEvent? published = null;
+    backend.EventPublished += (_, change) => published = change;
+
+    var outcome = await backend.PairBluetoothDeviceAsync(
+        opaqueId, CancellationToken.None);
+    Assert.Equal(BluetoothPairingResultStatus.Paired, outcome.Outcome);
+    Assert.Equal(1, adapter.PairCalls);
+    Assert.Equal(nativeId, adapter.LastPairedNativeId);
+    var effective = await backend.GetBluetoothAsync(CancellationToken.None);
+    Assert.True(effective.Devices.Single().IsPaired);
+    Assert.True(published?.Payload is BluetoothChangedEvent change &&
+                change.Snapshot.Devices.Single().IsPaired,
+        "Completed pairing did not publish the authoritative snapshot.");
+
+    await Assert.ThrowsBroker(
+        () => backend.PairBluetoothDeviceAsync(
+            "bluetooth-not-current", CancellationToken.None),
+        "unknown_device");
+    Assert.Equal(1, adapter.PairCalls);
+}
+
+static async Task PairingCancellation()
+{
+    var adapter = ReadyAdapter(Device("native-pad", "Pad", present: true));
+    adapter.HoldPairUntilCanceled = true;
+    await using var backend = new WindowsBluetoothPlatformBackend(new FakeFactory(adapter));
+    var opaqueId = (await backend.GetBluetoothAsync(CancellationToken.None))
+        .Devices.Single().DeviceId;
+    using var cancellation = new CancellationTokenSource();
+    var pending = backend.PairBluetoothDeviceAsync(opaqueId, cancellation.Token);
+    await adapter.PairStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    cancellation.Cancel();
+    await Assert.Canceled(pending);
+    Assert.Equal(1, adapter.PairCalls);
+    Assert.True(!(await backend.GetBluetoothAsync(CancellationToken.None))
+        .Devices.Single().IsPaired,
+        "Canceled pairing was presented optimistically as paired.");
+}
+
+static Task PairingStatusMapping()
+{
+    var expected = new Dictionary<DevicePairingResultStatus, BluetoothPairingOutcome>
+    {
+        [DevicePairingResultStatus.Paired] = BluetoothPairingOutcome.Paired,
+        [DevicePairingResultStatus.NotReadyToPair] = BluetoothPairingOutcome.NotReady,
+        [DevicePairingResultStatus.NotPaired] = BluetoothPairingOutcome.NotReady,
+        [DevicePairingResultStatus.AlreadyPaired] = BluetoothPairingOutcome.AlreadyPaired,
+        [DevicePairingResultStatus.ConnectionRejected] = BluetoothPairingOutcome.Rejected,
+        [DevicePairingResultStatus.TooManyConnections] = BluetoothPairingOutcome.TooManyConnections,
+        [DevicePairingResultStatus.HardwareFailure] = BluetoothPairingOutcome.HardwareFailure,
+        [DevicePairingResultStatus.AuthenticationTimeout] = BluetoothPairingOutcome.AuthenticationTimedOut,
+        [DevicePairingResultStatus.AuthenticationNotAllowed] = BluetoothPairingOutcome.AuthenticationNotAllowed,
+        [DevicePairingResultStatus.AuthenticationFailure] = BluetoothPairingOutcome.AuthenticationFailed,
+        [DevicePairingResultStatus.NoSupportedProfiles] = BluetoothPairingOutcome.NoSupportedProfiles,
+        [DevicePairingResultStatus.ProtectionLevelCouldNotBeMet] = BluetoothPairingOutcome.ProtectionLevelNotMet,
+        [DevicePairingResultStatus.AccessDenied] = BluetoothPairingOutcome.AccessDenied,
+        [DevicePairingResultStatus.InvalidCeremonyData] = BluetoothPairingOutcome.InvalidCeremonyData,
+        [DevicePairingResultStatus.PairingCanceled] = BluetoothPairingOutcome.CanceledByUser,
+        [DevicePairingResultStatus.OperationAlreadyInProgress] = BluetoothPairingOutcome.OperationInProgress,
+        [DevicePairingResultStatus.RequiredHandlerNotRegistered] = BluetoothPairingOutcome.UserInteractionRequired,
+        [DevicePairingResultStatus.RejectedByHandler] = BluetoothPairingOutcome.Rejected,
+        [DevicePairingResultStatus.RemoteDeviceHasAssociation] = BluetoothPairingOutcome.RemoteAlreadyAssociated,
+        [DevicePairingResultStatus.Failed] = BluetoothPairingOutcome.Failed,
+    };
+    foreach (var (native, outcome) in expected)
+        Assert.Equal(outcome, WindowsBluetoothNativeAdapter.MapPairingStatus(native));
+    Assert.Equal(Enum.GetValues<DevicePairingResultStatus>().Length, expected.Count);
+    return Task.CompletedTask;
+}
+
+static async Task SettingsHandoff()
+{
+    var adapter = ReadyAdapter(Device("native-headset", "Headset", paired: true));
+    var launcher = new FakeSettingsLauncher();
+    await using var backend = new WindowsBluetoothPlatformBackend(
+        new FakeFactory(adapter), launcher);
+    var opaqueId = (await backend.GetBluetoothAsync(CancellationToken.None))
+        .Devices.Single().DeviceId;
+
+    await backend.OpenBluetoothDeviceSettingsAsync(opaqueId, CancellationToken.None);
+    Assert.Equal(1, launcher.Calls);
+
+    await Assert.ThrowsBroker(
+        () => backend.OpenBluetoothDeviceSettingsAsync(
+            "native-headset", CancellationToken.None),
+        "unknown_device");
+    Assert.Equal(1, launcher.Calls);
+
+    launcher.Opened = false;
+    await Assert.ThrowsBroker(
+        () => backend.OpenBluetoothDeviceSettingsAsync(opaqueId, CancellationToken.None),
+        "settings_unavailable");
+    Assert.Equal(2, launcher.Calls);
+}
+
 static FakeAdapter ReadyAdapter(params NativeBluetoothDevice[] devices) => new()
 {
     Snapshot = new NativeBluetoothSnapshot(
@@ -259,13 +371,21 @@ file sealed class FakeAdapter : IWindowsBluetoothNativeAdapter
     public NativeBluetoothRadioSetResult SetResult { get; set; } =
         NativeBluetoothRadioSetResult.Succeeded;
     public NativeBluetoothSnapshot? SnapshotAfterSet { get; set; }
+    public NativeBluetoothSnapshot? SnapshotAfterPair { get; set; }
+    public BluetoothPairingOutcome PairResult { get; set; } =
+        BluetoothPairingOutcome.Paired;
     public bool HoldStartUntilCanceled { get; set; }
+    public bool HoldPairUntilCanceled { get; set; }
     public TaskCompletionSource Started { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource PairStarted { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     public int StartCalls { get; private set; }
     public int SetCalls { get; private set; }
+    public int PairCalls { get; private set; }
     public int DisposeCalls { get; private set; }
     public bool? LastEnabled { get; private set; }
+    public string? LastPairedNativeId { get; private set; }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -295,12 +415,38 @@ file sealed class FakeAdapter : IWindowsBluetoothNativeAdapter
         return Task.FromResult(SetResult);
     }
 
+    public async Task<BluetoothPairingOutcome> PairAsync(
+        string nativeDeviceId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        PairCalls++;
+        LastPairedNativeId = nativeDeviceId;
+        PairStarted.TrySetResult();
+        if (HoldPairUntilCanceled)
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        if (SnapshotAfterPair is not null) Snapshot = SnapshotAfterPair;
+        return PairResult;
+    }
+
     public void EmitChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
 
     public ValueTask DisposeAsync()
     {
         DisposeCalls++;
         return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class FakeSettingsLauncher : IWindowsBluetoothSettingsLauncher
+{
+    public bool Opened { get; set; } = true;
+    public int Calls { get; private set; }
+
+    public Task<bool> OpenAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Calls++;
+        return Task.FromResult(Opened);
     }
 }
 

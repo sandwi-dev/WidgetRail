@@ -8,7 +8,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<SavedNetworkProfileSummary> _networkProfiles = [];
     private readonly List<AvailableWifiNetworkSummary> _availableWifiNetworks = [];
     private readonly List<RecentActivitySummary> _recentActivities = [];
-    private readonly List<AppLibraryItemSummary> _appLibrary = [];
+    private readonly List<AppLibraryBackendItemSummary> _appLibrary = [];
     private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
     private readonly List<MediaSessionSummary> _mediaSessions = [];
     private readonly Dictionary<string, (string Secret, long WrittenAt)> _privateSecrets =
@@ -36,6 +36,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int WifiConnectCalls { get; private set; }
     public int WifiRadioControlCalls { get; private set; }
     public int BluetoothRadioControlCalls { get; private set; }
+    public int BluetoothPairCalls { get; private set; }
+    public int BluetoothManageCalls { get; private set; }
     public int MediaControlCalls { get; private set; }
     public int AppLibraryLaunchCalls { get; private set; }
     public int AppLibraryReadCalls { get; private set; }
@@ -54,6 +56,9 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public WifiRadioSummary WifiRadio { get; set; } = new(WifiRadioState.On, true);
     public BluetoothRadioState BluetoothRadioState { get; set; } = BluetoothRadioState.On;
     public bool CanControlBluetoothRadio { get; set; } = true;
+    public BluetoothPairingResultStatus BluetoothPairingResult { get; set; } =
+        BluetoothPairingResultStatus.Paired;
+    public string? LastBluetoothDeviceId { get; private set; }
     public WifiScanState WifiScanState { get; set; } = WifiScanState.NotScanned;
     public AudioOutputSummary AudioOutput { get; set; } = new(0.5, false);
     public AudioInputSummary AudioInput { get; set; } = new(0.5, false);
@@ -90,6 +95,13 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     }
 
     public void SetAppLibrary(IEnumerable<AppLibraryItemSummary> items)
+    {
+        _appLibrary.Clear();
+        _appLibrary.AddRange(items.Select(item => new AppLibraryBackendItemSummary(
+            item.AppId, item.AppId, item.DisplayName, item.Kind)));
+    }
+
+    public void SetAppLibraryBackend(IEnumerable<AppLibraryBackendItemSummary> items)
     {
         _appLibrary.Clear();
         _appLibrary.AddRange(items);
@@ -271,6 +283,24 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.CompletedTask;
     }
 
+    public Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        BluetoothPairCalls++;
+        LastBluetoothDeviceId = deviceId;
+        return Task.FromResult(new BluetoothPairingResultSummary(BluetoothPairingResult));
+    }
+
+    public Task OpenBluetoothDeviceSettingsAsync(
+        string deviceId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        BluetoothManageCalls++;
+        LastBluetoothDeviceId = deviceId;
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
         CancellationToken cancellationToken)
     {
@@ -278,20 +308,20 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.FromResult<IReadOnlyList<RecentActivitySummary>>(_recentActivities.ToArray());
     }
 
-    public Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         AppLibraryReadCalls++;
-        return Task.FromResult<IReadOnlyList<AppLibraryItemSummary>>(_appLibrary.ToArray());
+        return Task.FromResult<IReadOnlyList<AppLibraryBackendItemSummary>>(_appLibrary.ToArray());
     }
 
-    public Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         AppLibraryRefreshCalls++;
-        return Task.FromResult<IReadOnlyList<AppLibraryItemSummary>>(_appLibrary.ToArray());
+        return Task.FromResult<IReadOnlyList<AppLibraryBackendItemSummary>>(_appLibrary.ToArray());
     }
 
     public Task LaunchAppLibraryItemAsync(

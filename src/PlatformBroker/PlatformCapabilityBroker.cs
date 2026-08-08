@@ -114,11 +114,13 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     public const int MaximumDashboardGestureAuthorities = 16;
     internal const int MaximumAppLibraryItems = 512;
     internal const int MaximumAppLibraryPageSize = 64;
+    internal const int MaximumResolvedAppLibraryItems = 64;
     private readonly BrokerWidgetIdentity _identity;
     private readonly HashSet<string> _declaredCapabilities;
     private readonly HashSet<string> _hostGrantedCapabilities;
     private readonly ConsentStore _consentStore;
     private readonly IPlatformBrokerBackend _backend;
+    private readonly IAppLibrarySavedIdIssuer _appLibrarySavedIdIssuer;
     private readonly object _gate = new();
     private readonly List<BrokerEventSubscription> _subscriptions = [];
     private readonly HashSet<RequestLease> _requestLeases = [];
@@ -143,6 +145,19 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         ConsentStore consentStore,
         IPlatformBrokerBackend backend,
         IEnumerable<string>? hostGrantedCapabilities = null)
+        : this(
+            authenticatedIdentity, declaredCapabilities, consentStore, backend,
+            hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared)
+    {
+    }
+
+    internal PlatformCapabilityBroker(
+        BrokerWidgetIdentity authenticatedIdentity,
+        IEnumerable<string> declaredCapabilities,
+        ConsentStore consentStore,
+        IPlatformBrokerBackend backend,
+        IEnumerable<string>? hostGrantedCapabilities,
+        IAppLibrarySavedIdIssuer appLibrarySavedIdIssuer)
     {
         _identity = authenticatedIdentity ?? throw new ArgumentNullException(nameof(authenticatedIdentity));
         _identity.Validate();
@@ -159,6 +174,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 "invalid_declaration", "Broker capability authorities are empty or unsupported.");
         _consentStore = consentStore ?? throw new ArgumentNullException(nameof(consentStore));
         _backend = backend ?? throw new ArgumentNullException(nameof(backend));
+        _appLibrarySavedIdIssuer = appLibrarySavedIdIssuer ??
+            throw new ArgumentNullException(nameof(appLibrarySavedIdIssuer));
         _backend.EventPublished += OnBackendEvent;
     }
 
@@ -365,11 +382,20 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     await _backend.GetBluetoothAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.NetworkBluetoothRadioSet =>
                 await SetBluetoothRadioAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.NetworkBluetoothDevicePair =>
+                BrokerJson.ToElement(await PairBluetoothDeviceAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.NetworkBluetoothDeviceSettingsOpen =>
+                await OpenBluetoothDeviceSettingsAsync(
+                    request.Payload, requestToken).ConfigureAwait(false),
             PlatformCapabilities.RecentActivitiesList =>
                 BrokerJson.ToElement(ValidateRecentActivities(DemandEmptyPayload(request.Payload),
                     await _backend.GetRecentActivitiesAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.AppLibraryList =>
                 BrokerJson.ToElement(await GetAppLibraryPageAsync(
+                    request.Payload, requestToken).ConfigureAwait(false)),
+            PlatformCapabilities.AppLibraryResolveSaved =>
+                BrokerJson.ToElement(await ResolveSavedAppLibraryItemsAsync(
                     request.Payload, requestToken).ConfigureAwait(false)),
             PlatformCapabilities.AppLibraryLaunch =>
                 await LaunchAppLibraryItemAsync(request.Payload, requestToken).ConfigureAwait(false),
@@ -824,6 +850,29 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return BrokerJson.ToElement(new { acknowledged = true });
     }
 
+    private async Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<PairBluetoothDeviceRequest>(payload);
+        ContractValidation.OpaqueId(request.DeviceId);
+        var result = await _backend.PairBluetoothDeviceAsync(
+            request.DeviceId, cancellationToken).ConfigureAwait(false);
+        if (result is null || !Enum.IsDefined(result.Outcome))
+            throw new BrokerException(
+                "invalid_backend_data", "Bluetooth pairing result is invalid.");
+        return result;
+    }
+
+    private async Task<JsonElement> OpenBluetoothDeviceSettingsAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<OpenBluetoothDeviceSettingsRequest>(payload);
+        ContractValidation.OpaqueId(request.DeviceId);
+        await _backend.OpenBluetoothDeviceSettingsAsync(
+            request.DeviceId, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
     private static IReadOnlyList<RecentActivitySummary> ValidateRecentActivities(
         bool _, IReadOnlyList<RecentActivitySummary>? activities) =>
         ValidateRecentActivities(activities);
@@ -886,9 +935,9 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     }
 
     private IReadOnlyList<AppLibraryItemSummary> ProjectAppLibrarySnapshot(
-        IReadOnlyList<AppLibraryItemSummary> backendItems)
+        IReadOnlyList<AppLibraryBackendItemSummary> backendItems)
     {
-        var liveBackendIds = backendItems.Select(item => item.AppId)
+        var liveBackendIds = backendItems.Select(item => item.ProviderAppId)
             .ToHashSet(StringComparer.Ordinal);
         foreach (var stale in _appLibraryPublicIdsByBackendId.Keys
                      .Where(id => !liveBackendIds.Contains(id)).ToArray())
@@ -899,34 +948,86 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         for (var index = 0; index < backendItems.Count; index++)
         {
             var item = backendItems[index];
-            if (!_appLibraryPublicIdsByBackendId.TryGetValue(item.AppId, out var publicId))
+            if (!_appLibraryPublicIdsByBackendId.TryGetValue(
+                    item.ProviderAppId, out var publicId))
             {
                 publicId = "app-" + Guid.NewGuid().ToString("N");
-                _appLibraryPublicIdsByBackendId.Add(item.AppId, publicId);
+                _appLibraryPublicIdsByBackendId.Add(item.ProviderAppId, publicId);
             }
-            byPublicId.Add(publicId, item.AppId);
-            projected[index] = item with { AppId = publicId };
+            byPublicId.Add(publicId, item.ProviderAppId);
+            projected[index] = new AppLibraryItemSummary(
+                publicId, item.DisplayName, item.Kind)
+            {
+                SavedId = _appLibrarySavedIdIssuer.Issue(
+                    _identity, item.StableProviderIdentity),
+            };
         }
         _appLibraryBackendIdsByPublicId = byPublicId;
         return Array.AsReadOnly(projected);
     }
 
-    private static IReadOnlyList<AppLibraryItemSummary> ValidateAppLibrary(
-        IReadOnlyList<AppLibraryItemSummary>? items)
+    private static IReadOnlyList<AppLibraryBackendItemSummary> ValidateAppLibrary(
+        IReadOnlyList<AppLibraryBackendItemSummary>? items)
     {
         if (items is null || items.Count > MaximumAppLibraryItems)
             throw new BrokerException("invalid_backend_data", "App library result is invalid.");
-        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var providerIds = new HashSet<string>(StringComparer.Ordinal);
+        var stableIdentities = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in items)
         {
             if (item is null || !Enum.IsDefined(item.Kind))
                 throw new BrokerException("invalid_backend_data", "App library entry is invalid.");
-            ContractValidation.OpaqueId(item.AppId, "invalid_backend_data");
+            ContractValidation.OpaqueId(item.ProviderAppId, "invalid_backend_data");
+            AppLibrarySavedIdIssuer.ValidateStableProviderIdentity(item.StableProviderIdentity);
             ContractValidation.DisplayName(item.DisplayName);
-            if (!ids.Add(item.AppId))
-                throw new BrokerException("invalid_backend_data", "App library IDs are duplicated.");
+            if (!providerIds.Add(item.ProviderAppId) ||
+                !stableIdentities.Add(item.StableProviderIdentity))
+                throw new BrokerException(
+                    "invalid_backend_data", "App library identities are duplicated.");
         }
         return items.ToArray();
+    }
+
+    private async Task<ResolveSavedAppLibraryItemsSummary> ResolveSavedAppLibraryItemsAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ResolveSavedAppLibraryItemsRequest>(payload);
+        if (request.SavedIds is null ||
+            request.SavedIds.Count > MaximumResolvedAppLibraryItems)
+            throw new BrokerException(
+                "invalid_payload", "Saved app-library identifier bounds are invalid.");
+        var requested = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var savedId in request.SavedIds)
+        {
+            ContractValidation.OpaqueId(savedId);
+            if (!savedId.StartsWith("saved-", StringComparison.Ordinal) ||
+                !requested.Add(savedId))
+                throw new BrokerException(
+                    "invalid_payload", "Saved app-library identifiers are invalid.");
+        }
+        if (request.SavedIds.Count == 0)
+            return new ResolveSavedAppLibraryItemsSummary([]);
+
+        await _appLibraryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var backendItems = ValidateAppLibrary(
+                await _backend.RefreshAppLibraryAsync(cancellationToken)
+                    .ConfigureAwait(false));
+            cancellationToken.ThrowIfCancellationRequested();
+            _appLibrarySnapshot = ProjectAppLibrarySnapshot(backendItems);
+            var currentBySavedId = _appLibrarySnapshot.ToDictionary(
+                item => item.SavedId, StringComparer.Ordinal);
+            var resolved = request.SavedIds
+                .Where(currentBySavedId.ContainsKey)
+                .Select(savedId => currentBySavedId[savedId])
+                .ToArray();
+            return new ResolveSavedAppLibraryItemsSummary(resolved);
+        }
+        finally
+        {
+            _appLibraryGate.Release();
+        }
     }
 
     private async Task<JsonElement> LaunchAppLibraryItemAsync(

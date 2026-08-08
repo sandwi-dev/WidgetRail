@@ -53,6 +53,8 @@ public static class PlatformCapabilities
     public const string NetworkWifiRadioControlV1 = "system.network.wifi.radio.control.v1";
     public const string NetworkBluetoothReadV1 = "system.network.bluetooth.read.v1";
     public const string NetworkBluetoothRadioControlV1 = "system.network.bluetooth.radio.control.v1";
+    public const string NetworkBluetoothPairV1 = "system.network.bluetooth.pair.v1";
+    public const string NetworkBluetoothManageV1 = "system.network.bluetooth.manage.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
     public const string AppLibraryReadV1 = "system.apps.library.read.v1";
     public const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
@@ -85,8 +87,12 @@ public static class PlatformCapabilities
     public const string NetworkWifiRadioSet = "network.wifi.radio.set";
     public const string NetworkBluetoothGet = "network.bluetooth.get";
     public const string NetworkBluetoothRadioSet = "network.bluetooth.radio.set";
+    public const string NetworkBluetoothDevicePair = "network.bluetooth.device.pair";
+    public const string NetworkBluetoothDeviceSettingsOpen =
+        "network.bluetooth.device.settings.open";
     public const string RecentActivitiesList = "activity.recent.list";
     public const string AppLibraryList = "apps.library.list";
+    public const string AppLibraryResolveSaved = "apps.library.resolve-saved";
     public const string AppLibraryLaunch = "apps.library.launch";
     public const string MediaSessionsGet = "media.sessions.get";
     public const string MediaSessionControl = "media.session.control";
@@ -144,10 +150,16 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Read, Set(NetworkBluetoothGet), Set(NetworkBluetoothChanged)),
             [NetworkBluetoothRadioControlV1] = new(NetworkBluetoothRadioControlV1, 1,
                 BrokerCapabilityKind.Control, Set(NetworkBluetoothRadioSet), Set()),
+            [NetworkBluetoothPairV1] = new(NetworkBluetoothPairV1, 1,
+                BrokerCapabilityKind.Control, Set(NetworkBluetoothDevicePair), Set()),
+            [NetworkBluetoothManageV1] = new(NetworkBluetoothManageV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(NetworkBluetoothDeviceSettingsOpen), Set()),
             [RecentActivityReadV1] = new(RecentActivityReadV1, 1,
                 BrokerCapabilityKind.Read, Set(RecentActivitiesList), Set(RecentActivitiesChanged)),
             [AppLibraryReadV1] = new(AppLibraryReadV1, 1,
-                BrokerCapabilityKind.Read, Set(AppLibraryList), Set()),
+                BrokerCapabilityKind.Read,
+                Set(AppLibraryList, AppLibraryResolveSaved), Set()),
             [AppLibraryLaunchV1] = new(AppLibraryLaunchV1, 1,
                 BrokerCapabilityKind.Control, Set(AppLibraryLaunch), Set(),
                 AllowsDashboardGesture: false),

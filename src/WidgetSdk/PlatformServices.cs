@@ -298,6 +298,36 @@ public sealed record SetWidgetBluetoothRadioRequest([property: JsonRequired] boo
 public sealed record WidgetBluetoothChanged(
     [property: JsonRequired] WidgetBluetoothSnapshot Snapshot);
 
+public enum WidgetBluetoothPairingOutcome
+{
+    Paired,
+    AlreadyPaired,
+    NotReady,
+    Rejected,
+    TooManyConnections,
+    HardwareFailure,
+    AuthenticationTimedOut,
+    AuthenticationNotAllowed,
+    AuthenticationFailed,
+    NoSupportedProfiles,
+    ProtectionLevelNotMet,
+    AccessDenied,
+    InvalidCeremonyData,
+    CanceledByUser,
+    OperationInProgress,
+    UserInteractionRequired,
+    RemoteAlreadyAssociated,
+    DeviceUnavailable,
+    Failed,
+}
+
+public sealed record PairWidgetBluetoothDeviceRequest(
+    [property: JsonRequired] string DeviceId);
+public sealed record WidgetBluetoothPairingResult(
+    [property: JsonRequired] WidgetBluetoothPairingOutcome Outcome);
+public sealed record OpenWidgetBluetoothDeviceSettingsRequest(
+    [property: JsonRequired] string DeviceId);
+
 public sealed record WidgetNetworkStatusChanged(
     [property: JsonRequired] WidgetNetworkStatus Status);
 
@@ -326,14 +356,19 @@ public enum WidgetAppLibraryKind
 }
 
 /// <summary>
-/// Sanitized Start Menu app metadata. AppId is an opaque host token and is the
-/// only identifier exposed to widgets; it is not a path, command line, AUMID,
-/// package identity, or launcher-specific identifier.
+/// Sanitized launchable app metadata. AppId is a short-lived launch token.
+/// SavedId is a durable opaque token scoped to this widget authority and is the
+/// value to retain in private state. Neither is a path, command line, AUMID,
+/// package identity, provider identity, or launcher-specific identifier.
 /// </summary>
 public sealed record WidgetAppLibraryItem(
     [property: JsonRequired] string AppId,
     [property: JsonRequired] string DisplayName,
-    [property: JsonRequired] WidgetAppLibraryKind Kind);
+    [property: JsonRequired] WidgetAppLibraryKind Kind)
+{
+    [JsonRequired]
+    public string SavedId { get; init; } = string.Empty;
+}
 
 public sealed record WidgetAppLibraryPageRequest(
     [property: JsonRequired] int Offset,
@@ -343,8 +378,23 @@ public sealed record WidgetAppLibraryPage(
     [property: JsonRequired] IReadOnlyList<WidgetAppLibraryItem> Items,
     [property: JsonRequired] int? NextOffset);
 
+public sealed record ResolveSavedWidgetAppLibraryItemsRequest(
+    [property: JsonRequired] IReadOnlyList<string> SavedIds);
+
+public sealed record ResolveSavedWidgetAppLibraryItemsResponse(
+    [property: JsonRequired] IReadOnlyList<WidgetAppLibraryItem> Items);
+
 public sealed record LaunchWidgetAppLibraryItemRequest(
-    [property: JsonRequired] string AppId);
+    [property: JsonRequired] string AppId)
+{
+    public bool CloseOverlayOnSuccess { get; init; }
+}
+
+public enum WidgetAppLaunchOverlayBehavior
+{
+    KeepOpen,
+    CloseOnConfirmedSuccess,
+}
 
 public enum WidgetMediaPlaybackStatus
 {
@@ -486,6 +536,15 @@ public static class WidgetNetworkCapabilities
         WidgetCapabilityAcknowledgement> SetBluetoothRadio { get; } =
             new("system.network.bluetooth.radio.control.v1", "network.bluetooth.radio.set");
 
+    public static WidgetCapabilityOperation<PairWidgetBluetoothDeviceRequest,
+        WidgetBluetoothPairingResult> PairBluetoothDevice { get; } =
+            new("system.network.bluetooth.pair.v1", "network.bluetooth.device.pair");
+
+    public static WidgetCapabilityOperation<OpenWidgetBluetoothDeviceSettingsRequest,
+        WidgetCapabilityAcknowledgement> OpenBluetoothDeviceSettings { get; } =
+            new("system.network.bluetooth.manage.v1",
+                "network.bluetooth.device.settings.open");
+
     public static WidgetCapabilityEvent<WidgetBluetoothChanged> BluetoothChanged { get; } =
         new("system.network.bluetooth.read.v1", "network.bluetooth.changed");
 }
@@ -505,6 +564,10 @@ public static class WidgetAppLibraryCapabilities
 {
     public static WidgetCapabilityOperation<WidgetAppLibraryPageRequest, WidgetAppLibraryPage>
         GetPage { get; } = new("system.apps.library.read.v1", "apps.library.list");
+
+    public static WidgetCapabilityOperation<ResolveSavedWidgetAppLibraryItemsRequest,
+        ResolveSavedWidgetAppLibraryItemsResponse> ResolveSaved { get; } =
+        new("system.apps.library.read.v1", "apps.library.resolve-saved");
 
     public static WidgetCapabilityOperation<LaunchWidgetAppLibraryItemRequest,
         WidgetCapabilityAcknowledgement> Launch { get; } =
@@ -808,6 +871,31 @@ public sealed class WidgetNetworkService
         DemandAcknowledged(response);
     }
 
+    public async ValueTask<WidgetBluetoothPairingResult> PairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken = default)
+    {
+        ValidateOpaqueId(deviceId, nameof(deviceId));
+        var response = await _client.InvokeAsync(
+            WidgetNetworkCapabilities.PairBluetoothDevice,
+            new PairWidgetBluetoothDeviceRequest(deviceId), cancellationToken)
+            .ConfigureAwait(false);
+        if (response is null || !Enum.IsDefined(response.Outcome))
+            throw new WidgetCapabilityException(
+                "malformed_response", "The Bluetooth provider returned an invalid pairing result.");
+        return response;
+    }
+
+    public async ValueTask OpenBluetoothDeviceSettingsAsync(
+        string deviceId, CancellationToken cancellationToken = default)
+    {
+        ValidateOpaqueId(deviceId, nameof(deviceId));
+        var response = await _client.InvokeAsync(
+            WidgetNetworkCapabilities.OpenBluetoothDeviceSettings,
+            new OpenWidgetBluetoothDeviceSettingsRequest(deviceId), cancellationToken)
+            .ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
+
     public IAsyncEnumerable<WidgetBluetoothChanged> WatchBluetoothAsync(
         CancellationToken cancellationToken = default) =>
         _client.SubscribeAsync(WidgetNetworkCapabilities.BluetoothChanged, cancellationToken);
@@ -822,6 +910,15 @@ public sealed class WidgetNetworkService
         if (response is null || !response.Acknowledged)
             throw new WidgetCapabilityException(
                 "malformed_response", "The network provider returned an invalid acknowledgement.");
+    }
+
+    private static void ValidateOpaqueId(string value, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
+        if (value.Length > 128 || value.Any(character =>
+                !(char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-')))
+            throw new ArgumentException(
+                "The Bluetooth device identifier is invalid.", parameterName);
     }
 }
 
@@ -850,6 +947,8 @@ public sealed class WidgetAppLibraryService
 {
     public const int MaximumItems = 512;
     public const int MaximumPageSize = 64;
+    public const int MaximumSavedItems = 64;
+    private const int MaximumOpaqueIdLength = 128;
     private readonly IWidgetCapabilityClient _client;
 
     internal WidgetAppLibraryService(IWidgetCapabilityClient client) => _client = client;
@@ -874,18 +973,101 @@ public sealed class WidgetAppLibraryService
             cancellationToken);
     }
 
+    public ValueTask LaunchAsync(
+        string appId,
+        CancellationToken cancellationToken = default) =>
+        LaunchAsync(appId, WidgetAppLaunchOverlayBehavior.KeepOpen, cancellationToken);
+
     public async ValueTask LaunchAsync(
         string appId,
+        WidgetAppLaunchOverlayBehavior overlayBehavior,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(appId);
+        ValidateOpaqueId(appId, nameof(appId));
+        if (!Enum.IsDefined(overlayBehavior))
+            throw new ArgumentOutOfRangeException(nameof(overlayBehavior));
         var response = await _client.InvokeAsync(
             WidgetAppLibraryCapabilities.Launch,
-            new LaunchWidgetAppLibraryItemRequest(appId),
+            new LaunchWidgetAppLibraryItemRequest(appId)
+            {
+                CloseOverlayOnSuccess =
+                    overlayBehavior == WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
+            },
             cancellationToken).ConfigureAwait(false);
         if (response is null || !response.Acknowledged)
             throw new WidgetCapabilityException(
                 "malformed_response", "The app library provider returned an invalid acknowledgement.");
+    }
+
+    /// <summary>
+    /// Resolves durable SavedIds from private state to current launch tokens.
+    /// Results preserve request order; IDs for apps that are no longer
+    /// available are omitted. SavedIds are authority-scoped and cannot be used
+    /// by another widget package.
+    /// </summary>
+    public async ValueTask<IReadOnlyList<WidgetAppLibraryItem>> ResolveSavedAsync(
+        IReadOnlyList<string> savedIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(savedIds);
+        if (savedIds.Count > MaximumSavedItems)
+            throw new ArgumentOutOfRangeException(nameof(savedIds));
+        var unique = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var savedId in savedIds)
+        {
+            ValidateOpaqueId(savedId, nameof(savedIds));
+            if (!savedId.StartsWith("saved-", StringComparison.Ordinal) ||
+                !unique.Add(savedId))
+                throw new ArgumentException(
+                    "Saved app identifiers must be unique host-issued tokens.", nameof(savedIds));
+        }
+        if (savedIds.Count == 0) return [];
+        var response = await _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.ResolveSaved,
+            new ResolveSavedWidgetAppLibraryItemsRequest(savedIds.ToArray()),
+            cancellationToken).ConfigureAwait(false);
+        if (response?.Items is null || response.Items.Count > savedIds.Count)
+            throw new WidgetCapabilityException(
+                "malformed_response", "The app library provider returned an invalid resolution.");
+        var requestedPositions = savedIds
+            .Select((savedId, index) => (savedId, index))
+            .ToDictionary(entry => entry.savedId, entry => entry.index, StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var lastPosition = -1;
+        foreach (var item in response.Items)
+        {
+            if (item is null)
+                throw MalformedResolution();
+            try
+            {
+                ValidateOpaqueId(item.AppId, nameof(response));
+                ValidateOpaqueId(item.SavedId, nameof(response));
+            }
+            catch (ArgumentException)
+            {
+                throw MalformedResolution();
+            }
+            if (!requestedPositions.TryGetValue(item.SavedId, out var position) ||
+                position <= lastPosition || !seen.Add(item.SavedId) ||
+                string.IsNullOrWhiteSpace(item.DisplayName) ||
+                item.DisplayName.Length > 160 || item.DisplayName.Any(char.IsControl) ||
+                !Enum.IsDefined(item.Kind))
+                throw MalformedResolution();
+            lastPosition = position;
+        }
+        return response.Items.ToArray();
+    }
+
+    private static WidgetCapabilityException MalformedResolution() => new(
+        "malformed_response", "The app library provider returned an invalid resolution.");
+
+    private static void ValidateOpaqueId(string value, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
+        if (value.Length > MaximumOpaqueIdLength ||
+            value.Any(character => !(char.IsAsciiLetterOrDigit(character) ||
+                character is '.' or '_' or '-')))
+            throw new ArgumentException("The app identifier is invalid.", parameterName);
     }
 }
 

@@ -13,6 +13,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Session selection remains stable across reorder and metadata churn", SelectionSurvivesChurn),
     ("Removed selection falls back to Windows current session", RemovedSelectionFallsBack),
     ("Playing progress interpolates locally without capability polling", ProgressInterpolatesLocally),
+    ("A failed live subscription does not discard a valid current snapshot", SubscriptionFailurePreservesSnapshot),
+    ("A live channel failure after loading preserves the last valid snapshot", ChannelFailurePreservesSnapshot),
+    ("Try again starts a fresh read and subscription attempt", RetryStartsFreshAttempt),
     ("Capability and channel failures render recoverable states", FailureStates),
     ("Manifest permissions and GBSS package validate", PackageValidates),
 };
@@ -191,6 +194,65 @@ static async Task ProgressInterpolatesLocally()
     await Background(widget);
 }
 
+static async Task SubscriptionFailurePreservesSnapshot()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("one", current: true)],
+        SubscriptionOpenException = new WidgetCapabilityException(
+            "channel_closed", "subscription failed"),
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+    Assert.Equal(1, widget.Sessions.Count);
+    Assert.Equal(1, fake.GetCalls);
+    Assert.Equal(1, fake.SubscriptionCalls);
+    Assert.False(widget.LiveUpdatesAvailable);
+    Assert.True(widget.Status.Contains("live updates disconnected", StringComparison.Ordinal));
+    await Background(widget);
+}
+
+static async Task ChannelFailurePreservesSnapshot()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("one", current: true)],
+        SubscriptionReadException = new WidgetCapabilityException(
+            "malformed_event", "invalid event"),
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.Status.Contains("response was invalid", StringComparison.Ordinal));
+    Assert.Equal(MediaSessionsViewState.Ready, widget.ViewState);
+    Assert.Equal("one", widget.Sessions.Single().SessionId);
+    Assert.False(widget.LiveUpdatesAvailable);
+    await Background(widget);
+}
+
+static async Task RetryStartsFreshAttempt()
+{
+    var fake = new FakeMediaHost
+    {
+        ReadException = new WidgetCapabilityException("platform_unavailable", "first read failed"),
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.ServiceUnavailable);
+    Assert.Equal(1, fake.GetCalls);
+    Assert.Equal(1, fake.SubscriptionCalls);
+
+    fake.ReadException = null;
+    fake.Sessions = [Session("recovered", current: true)];
+    await widget.OnActionAsync(new("media.retry", "media.retry"));
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+    Assert.Equal(2, fake.GetCalls);
+    Assert.Equal(2, fake.SubscriptionCalls);
+    Assert.Equal("recovered", widget.Sessions.Single().SessionId);
+    Assert.True(widget.LiveUpdatesAvailable);
+    await Background(widget);
+}
+
 static async Task FailureStates()
 {
     foreach (var (error, state) in new[]
@@ -281,9 +343,12 @@ file sealed class FakeMediaHost
     internal IReadOnlyList<WidgetMediaSession> Sessions { get; set; } = [];
     internal Exception? ReadException { get; set; }
     internal Exception? ControlException { get; set; }
+    internal Exception? SubscriptionOpenException { get; set; }
+    internal Exception? SubscriptionReadException { get; set; }
     internal List<string> CallOrder { get; } = [];
     internal List<ControlWidgetMediaSessionRequest> Commands { get; } = [];
     internal int GetCalls { get; private set; }
+    internal int SubscriptionCalls { get; private set; }
     internal int CanceledSubscriptions => Volatile.Read(ref _canceledSubscriptions);
 
     internal WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
@@ -317,6 +382,8 @@ file sealed class FakeMediaHost
     private IAsyncEnumerable<WidgetMediaSessionsChanged> Subscribe(CancellationToken cancellationToken)
     {
         CallOrder.Add("subscribe");
+        SubscriptionCalls++;
+        if (SubscriptionOpenException is not null) throw SubscriptionOpenException;
         return ReadEvents(cancellationToken);
     }
 
@@ -325,6 +392,7 @@ file sealed class FakeMediaHost
     {
         try
         {
+            if (SubscriptionReadException is not null) throw SubscriptionReadException;
             await foreach (var change in _events.Reader.ReadAllAsync(cancellationToken))
                 yield return change;
         }
@@ -350,6 +418,7 @@ file static class Assert
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
             throw new InvalidOperationException($"Expected {expected}; actual {actual}.");
     }
+    internal static void False(bool value) => True(!value);
     internal static void SequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actual)
     {
         if (!expected.SequenceEqual(actual)) throw new InvalidOperationException("Sequences differ.");

@@ -10,7 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Names and catalog size are bounded and sanitized", SanitizesAndBounds),
     ("Opaque IDs are stable only while the registration remains current", OpaqueIdLifecycle),
     ("Public payload contains no trusted launch descriptors", PayloadIsOpaque),
-    ("Broker projection preserves only opaque sanitized metadata", BrokerProjectionIsOpaque),
+    ("Trusted broker projection separates launch and stable provider identities", BrokerProjectionSeparatesIdentities),
     ("Launch revalidates the exact current shortcut before invoking Shell", LaunchRevalidatesExactShortcut),
     ("Shell launch settings contain no arguments elevation or window delegation", ShellLaunchIsConstrained),
     ("Shell failures expose only sanitized broker errors", ShellFailureIsSanitized),
@@ -122,7 +122,7 @@ static async Task PayloadIsOpaque()
     Assert.True(json.Contains("Safe Game", StringComparison.Ordinal));
 }
 
-static async Task BrokerProjectionIsOpaque()
+static async Task BrokerProjectionSeparatesIdentities()
 {
     const string privatePath = @"C:\Users\private\Hidden Game.lnk";
     var provider = new WindowsAppLibraryProvider(new FakeSource(
@@ -133,14 +133,17 @@ static async Task BrokerProjectionIsOpaque()
     var item = projected.Single();
     Assert.Equal("Visible Game", item.DisplayName);
     Assert.Equal(AppLibraryKind.Application, item.Kind);
-    Assert.True(item.AppId.StartsWith("app-", StringComparison.Ordinal));
-    var json = JsonSerializer.Serialize(projected);
-    Assert.False(json.Contains("private", StringComparison.OrdinalIgnoreCase));
-    Assert.False(json.Contains("trusted-private-identity", StringComparison.Ordinal));
-    Assert.False(json.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
+    Assert.True(item.ProviderAppId.StartsWith("app-", StringComparison.Ordinal));
+    Assert.Equal("trusted-private-identity", item.StableProviderIdentity);
+    Assert.False(item.ProviderAppId.Contains("trusted-private-identity", StringComparison.Ordinal));
+    Assert.False(item.ProviderAppId.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
+    var serialized = JsonSerializer.Serialize(projected);
+    Assert.False(serialized.Contains("trusted-private-identity", StringComparison.Ordinal));
+    Assert.False(serialized.Contains(item.ProviderAppId, StringComparison.Ordinal));
 
     var refreshed = await backend.RefreshAppLibraryAsync(CancellationToken.None);
-    Assert.Equal(item.AppId, refreshed.Single().AppId);
+    Assert.Equal(item.ProviderAppId, refreshed.Single().ProviderAppId);
+    Assert.Equal(item.StableProviderIdentity, refreshed.Single().StableProviderIdentity);
 }
 
 static async Task LaunchRevalidatesExactShortcut()

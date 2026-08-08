@@ -54,6 +54,37 @@ private:
     std::unordered_set<std::wstring> known_;
 };
 
+enum class WidgetHostEffectKind {
+    CloseOverlayAfterAppLaunch,
+};
+
+/// A trusted, one-shot host effect emitted only after the platform broker has
+/// completed the corresponding privileged operation. Widget snapshots and
+/// worker action acknowledgements cannot create this value.
+struct WidgetHostEffect final {
+    long long sequence{};
+    std::wstring widgetId;
+    std::wstring runtimeGeneration;
+    WidgetHostEffectKind kind{WidgetHostEffectKind::CloseOverlayAfterAppLaunch};
+};
+
+/// Bounded replay-resistant queue for asynchronous broker-owned effects.
+class WidgetHostEffectQueue final {
+public:
+    static constexpr std::size_t MaximumEffects = 16;
+
+    /// Invalid values fail. Duplicate/stale sequences are accepted but ignored.
+    [[nodiscard]] bool Push(WidgetHostEffect effect);
+    [[nodiscard]] std::vector<WidgetHostEffect> Take() noexcept;
+    void Reset() noexcept;
+    [[nodiscard]] std::size_t size() const noexcept { return queued_.size(); }
+    [[nodiscard]] long long lastSequence() const noexcept { return lastSequence_; }
+
+private:
+    long long lastSequence_{};
+    std::vector<WidgetHostEffect> queued_;
+};
+
 struct WidgetQuickAction final {
     std::wstring button;
     std::wstring actionId;
@@ -97,6 +128,7 @@ struct WidgetNode final {
     std::wstring focusRight;
     WidgetComputedStyle baseStyle;
     WidgetComputedStyle focusedStyle;
+    WidgetComputedStyle pressedStyle;
     double value{};
     double minimum{};
     double maximum{};
@@ -233,6 +265,7 @@ public:
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
     [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
+    [[nodiscard]] std::vector<WidgetHostEffect> TakeHostEffects() noexcept;
 
 private:
     [[nodiscard]] bool Launch(
@@ -250,6 +283,7 @@ private:
     std::wstring lastError_;
     long long nextRequestId_{};
     WidgetInvalidationQueue invalidations_;
+    WidgetHostEffectQueue hostEffects_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
 };
@@ -263,6 +297,12 @@ namespace gba::testing {
     std::wstring& error);
 [[nodiscard]] std::optional<PlatformAppearance> ParsePlatformAppearance(
     std::string_view payloadUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
+    std::string_view payloadUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<WidgetHostEffect> ParseWidgetHostEffectEvent(
+    std::string_view eventUtf8,
     std::wstring& error);
 }
 #endif

@@ -264,6 +264,93 @@ void IntrinsicAndCompactMode() {
     Near(result.Find("text")->borderBox.height, 500.0F, "default cross-axis stretch remains deterministic");
 }
 
+void WrappedIntrinsicLeavesDoNotCollapseOrOverlap() {
+    auto title = Element("state-title");
+    auto help = Element("state-help");
+    auto action = Element("state-action");
+
+    auto state = Element("state-card");
+    state.mainAxisAlignment = MainAxisAlignment::Center;
+    state.gap = 8.0F;
+    state.children = {title, help, action};
+
+    const IntrinsicMeasureCallback measure = [](
+        const LayoutElement& element,
+        const gba::declarative::MeasureConstraints& constraints) {
+        if (element.id == "state-title")
+            return Size{std::min(160.0F, constraints.maximumWidth), 40.0F};
+        if (element.id == "state-help")
+            return Size{std::min(190.0F, constraints.maximumWidth), 60.0F};
+        if (element.id == "state-action")
+            return Size{std::min(150.0F, constraints.maximumWidth), 44.0F};
+        return Size{};
+    };
+
+    // This is intentionally shorter than the wrapped content. Intrinsic leaf
+    // boxes must retain their paint/control height and flow in order; clipping
+    // belongs to the viewport/card, not to each individual line box.
+    const auto result = ComputeLayout(
+        state, {0.0F, 0.0F, 220.0F, 140.0F}, measure);
+    Check(result.valid(), "constrained centered state remains valid");
+    Near(result.Find("state-title")->borderBox.height, 40.0F,
+         "wrapped title retains intrinsic line height");
+    Near(result.Find("state-help")->borderBox.height, 60.0F,
+         "wrapped help retains intrinsic paragraph height");
+    Near(result.Find("state-action")->borderBox.height, 44.0F,
+         "intrinsic action retains controller target height");
+    Check(result.Find("state-help")->borderBox.y >=
+              result.Find("state-title")->borderBox.y +
+                  result.Find("state-title")->borderBox.height + 7.99F,
+          "wrapped help follows title without overlap");
+    Check(result.Find("state-action")->borderBox.y >=
+              result.Find("state-help")->borderBox.y +
+                  result.Find("state-help")->borderBox.height + 7.99F,
+          "action follows wrapped help without overlap");
+    Check(result.Find("state-card")->overflowY,
+          "constrained state reports honest overflow instead of crushing content");
+}
+
+void ScrollExtentIncludesWrappedIntrinsicParagraphs() {
+    auto first = Element("paragraph-one");
+    auto second = Element("paragraph-two");
+    auto action = Element("scroll-action");
+
+    auto scroll = Element("permission-scroll");
+    scroll.scrollAxis = ScrollAxis::Vertical;
+    scroll.gap = 6.0F;
+    scroll.children = {first, second, action};
+
+    const IntrinsicMeasureCallback measure = [](
+        const LayoutElement& element,
+        const gba::declarative::MeasureConstraints& constraints) {
+        if (element.id == "paragraph-one")
+            return Size{constraints.maximumWidth, 72.0F};
+        if (element.id == "paragraph-two")
+            return Size{constraints.maximumWidth, 96.0F};
+        if (element.id == "scroll-action")
+            return Size{std::min(150.0F, constraints.maximumWidth), 44.0F};
+        return Size{};
+    };
+
+    const auto leading = ComputeLayout(
+        scroll, {0.0F, 0.0F, 180.0F, 110.0F}, measure);
+    Check(leading.valid(), "wrapped permission scroll remains valid");
+    Near(leading.Find("permission-scroll")->maximumScrollOffset, 114.0F,
+         "scroll extent includes every wrapped intrinsic line and gap");
+    Check(leading.Find("scroll-action")->borderBox.y >= 180.0F,
+          "action is placed after both complete paragraphs");
+
+    scroll.scrollOffset = 999.0F;
+    const auto trailing = ComputeLayout(
+        scroll, {0.0F, 0.0F, 180.0F, 110.0F}, measure);
+    Near(trailing.Find("permission-scroll")->scrollOffset, 114.0F,
+         "wrapped permission scroll reaches its true trailing edge");
+    Near(trailing.Find("scroll-action")->borderBox.y, 66.0F,
+         "trailing action is fully revealed after wrapped content");
+    Near(trailing.Find("scroll-action")->visibleBox.height, 44.0F,
+         "trailing controller action remains wholly visible");
+}
+
 void TinyAndPortraitWidgetContainment() {
     auto title = Element("title");
     title.flexBasis = 40.0F;
@@ -413,6 +500,8 @@ int main() {
     ScrollOffsetsAreBoundedAndClipped();
     ResponsiveViewports();
     IntrinsicAndCompactMode();
+    WrappedIntrinsicLeavesDoNotCollapseOrOverlap();
+    ScrollExtentIncludesWrappedIntrinsicParagraphs();
     TinyAndPortraitWidgetContainment();
     AxisAlignment();
     PixelSnapAndSafeMath();

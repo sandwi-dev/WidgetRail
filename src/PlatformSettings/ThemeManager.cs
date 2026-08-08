@@ -105,7 +105,12 @@ public sealed class ThemeManager : IDisposable
                 settings.Appearance.ThemeId,
                 settings.Appearance.ThemeVersion);
             var platform = _catalog.BuiltInDefault.Package;
-            var user = selected.Descriptor.IsBuiltIn ? EmptyPackage() : selected.Package;
+            var user = string.Equals(
+                selected.Descriptor.Id,
+                ThemeIdentity.BuiltInDefault,
+                StringComparison.Ordinal)
+                ? EmptyPackage()
+                : selected.Package;
             var compiled = ThemeLayerCompiler.Compile(platform, EmptyPackage(), user);
             if (!compiled.IsValid)
                 return Retain(compiled.Diagnostics);

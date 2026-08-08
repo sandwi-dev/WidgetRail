@@ -134,8 +134,26 @@ static async Task AppLibraryPlatformService()
                 Assert.Equal(12, request.Limit);
                 return ValueTask.FromResult(new WidgetAppLibraryPage(
                     [new WidgetAppLibraryItem(
-                        "app-opaque", "Launchable App", WidgetAppLibraryKind.Application)],
+                        "app-opaque", "Launchable App", WidgetAppLibraryKind.Application)
+                    {
+                        SavedId = "saved-durable",
+                    }],
                     null));
+            })
+        .WithHandler(
+            WidgetAppLibraryCapabilities.ResolveSaved,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal(2, request.SavedIds.Count);
+                Assert.Equal("saved-missing", request.SavedIds[0]);
+                Assert.Equal("saved-durable", request.SavedIds[1]);
+                return ValueTask.FromResult(new ResolveSavedWidgetAppLibraryItemsResponse(
+                    [new WidgetAppLibraryItem(
+                        "app-current", "Launchable App", WidgetAppLibraryKind.Application)
+                    {
+                        SavedId = "saved-durable",
+                    }]));
             })
         .WithResponse(
             WidgetAppLibraryCapabilities.Launch,
@@ -146,9 +164,16 @@ static async Task AppLibraryPlatformService()
     var page = await widget.AppLibrary.GetPageAsync(64, 12);
     Assert.Equal(1, page.Items.Count);
     Assert.Equal("app-opaque", page.Items[0].AppId);
+    Assert.Equal("saved-durable", page.Items[0].SavedId);
     Assert.Equal("Launchable App", page.Items[0].DisplayName);
     Assert.Equal(WidgetAppLibraryKind.Application, page.Items[0].Kind);
     Assert.Equal<int?>(null, page.NextOffset);
+    Assert.Equal(0, (await widget.AppLibrary.ResolveSavedAsync([])).Count);
+    var resolved = await widget.AppLibrary.ResolveSavedAsync(
+        ["saved-missing", "saved-durable"]);
+    Assert.Equal(1, resolved.Count);
+    Assert.Equal("app-current", resolved[0].AppId);
+    Assert.Equal("saved-durable", resolved[0].SavedId);
     await widget.AppLibrary.LaunchAsync("app-opaque");
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());
@@ -159,6 +184,30 @@ static async Task AppLibraryPlatformService()
             .GetAwaiter().GetResult());
     Assert.Throws<ArgumentOutOfRangeException>(() =>
         widget.AppLibrary.GetPageAsync(0, WidgetAppLibraryService.MaximumPageSize + 1)
+            .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.ResolveSavedAsync(["saved-same", "saved-same"])
+            .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        widget.AppLibrary.ResolveSavedAsync(
+                Enumerable.Range(0, WidgetAppLibraryService.MaximumSavedItems + 1)
+                    .Select(index => $"saved-{index}").ToArray())
+            .GetAwaiter().GetResult());
+
+    var malformed = WidgetTestHost.Attach(
+        new CapabilityWidget(),
+        new WidgetTestHostServicesBuilder()
+            .WithResponse(
+                WidgetAppLibraryCapabilities.ResolveSaved,
+                new ResolveSavedWidgetAppLibraryItemsResponse(
+                    [new WidgetAppLibraryItem(
+                        "app-current", "Wrong app", WidgetAppLibraryKind.Application)
+                    {
+                        SavedId = "saved-not-requested",
+                    }]))
+            .Build());
+    Assert.Throws<WidgetCapabilityException>(() =>
+        malformed.AppLibrary.ResolveSavedAsync(["saved-requested"])
             .GetAwaiter().GetResult());
 }
 
@@ -372,6 +421,13 @@ static async Task TypedPlatformServices()
         .WithResponse(
             WidgetNetworkCapabilities.SetBluetoothRadio,
             new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetNetworkCapabilities.PairBluetoothDevice,
+            new WidgetBluetoothPairingResult(
+                WidgetBluetoothPairingOutcome.UserInteractionRequired))
+        .WithResponse(
+            WidgetNetworkCapabilities.OpenBluetoothDeviceSettings,
+            new WidgetCapabilityAcknowledgement(true))
         .WithEvents(
             WidgetAudioCapabilities.SessionsChanged,
             [new WidgetAudioSessionsChanged(
@@ -408,6 +464,14 @@ static async Task TypedPlatformServices()
     Assert.Equal(WidgetBluetoothRadioState.On, bluetooth.RadioState);
     Assert.Equal("bluetooth-1", bluetooth.Devices.Single().DeviceId);
     await widget.Network.SetBluetoothRadioAsync(false);
+    var pairing = await widget.Network.PairBluetoothDeviceAsync("bluetooth-1");
+    Assert.Equal(
+        WidgetBluetoothPairingOutcome.UserInteractionRequired, pairing.Outcome);
+    await widget.Network.OpenBluetoothDeviceSettingsAsync("bluetooth-1");
+    Assert.Throws<ArgumentException>(() => widget.Network
+        .PairBluetoothDeviceAsync("native device/id").AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Network
+        .OpenBluetoothDeviceSettingsAsync("").AsTask().GetAwaiter().GetResult());
 
     await using var events = widget.Audio.WatchSessionsAsync().GetAsyncEnumerator();
     Assert.True(await events.MoveNextAsync(), "Typed audio event was not forwarded.");

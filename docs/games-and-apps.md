@@ -1,7 +1,7 @@
 # Games & Apps reference
 
-Status: implemented local first-party slice; packaged hands-on verification and
-broader catalog sources remain
+Status: durable authority-scoped curation and trusted close-on-confirmed-launch
+implemented. Packaged hands-on verification and broader sources remain.
 
 Games & Apps replaces Recent Apps in the bundled overlay catalog. It is a
 manifest-backed first-party package that uses the public SDK, generic
@@ -16,18 +16,32 @@ than applications the user happened to foreground.
 
 ## Current user experience
 
-- Entering Visible or Interactive starts one bounded first-page load.
-- Applications render in a horizontal controller Scroll with stable hashed UI
-  IDs; widget snapshots contain only display names, conservative kinds, and
-  broker-issued opaque app IDs.
-- Left/Right selects a card. A launches that exact card only while the widget
-  is Interactive.
-- A successful launch currently leaves the overlay open. The planned product
-  behavior is to close only after the trusted provider reports success for that
-  exact request; enqueueing, timeout, denial, or failure must leave the overlay
+- Entering Visible or Interactive reads package-private state and resolves only
+  the SavedIds the user already added. It does not enumerate the broad catalog.
+  The bounded first catalog page loads only after **Add applications**.
+- The default Library contains only entries the user has added. **Add
+  applications** opens a nested Catalog backed by a horizontal controller
+  Scroll; A toggles the focused entry in/out of the Library and B returns.
+  Library X removes the focused entry.
+- Both surfaces use stable hashed UI IDs; widget snapshots contain only display
+  names, conservative kinds, broker-issued short-lived AppIds, and
+  authority-scoped SavedIds. Provider launch tokens stay inside the host and
+  last only for the current provider snapshot.
+- Library Left/Right selects a card. A launches that exact card only while the
+  widget is Interactive. After confirmed provider success, that item moves to
+  the front and the new order is persisted; failure preserves order and
+  actionable focus.
+- Curation, recent-first order, and selected SavedId are stored through
+  `HostServices.PrivateState` with compare-and-swap conflict handling. On a new
+  worker or host run, the widget resolves the authority-scoped SavedIds to fresh
+  short-lived AppIds and silently drops registrations that no longer exist.
+- A successful launch requests `CloseOnConfirmedSuccess`. The broker emits the
+  host effect only after the exact trusted provider call succeeds, and the
+  native host accepts it only for the current widget and runtime generation.
+  Enqueueing, timeout, stale generation, denial, or failure leaves the overlay
   visible with focus and an actionable status.
-- `Load more` requests another bounded page and moves selection to the first
-  newly appended item. The widget retains at most 512 items.
+- Catalog `Load more` requests another bounded page and moves selection to the
+  first newly appended item. The widget retains at most 512 items.
 - Permission denied, lifecycle denied, provider unavailable, healthy empty,
   and generic failure states remain controller reachable and provide an
   explicit retry action.
@@ -55,15 +69,33 @@ var page = await HostServices.AppLibrary.GetPageAsync(
     limit: 32,
     cancellationToken);
 
+// Save SavedId—not AppId—in package-private state.
+var savedIds = page.Items.Select(item => item.SavedId).Take(64).ToArray();
+
+// On the next worker/host run, reconcile durable IDs to current launch tokens.
+var currentItems = await HostServices.AppLibrary.ResolveSavedAsync(
+    savedIds,
+    cancellationToken);
+
 await HostServices.AppLibrary.LaunchAsync(
-    page.Items[0].AppId,
+    currentItems[0].AppId,
+    WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
     cancellationToken);
 ```
 
 `GetPageAsync` accepts offsets from 0 through the bounded library and a page
 size of 1–64. It returns `WidgetAppLibraryPage`, containing sanitized
-`WidgetAppLibraryItem` records and an optional next offset. `LaunchAsync`
-accepts only the opaque `AppId` returned by a current page. Widgets never
+`WidgetAppLibraryItem` records and an optional next offset. Each item has a
+short-lived `AppId` for launch and a durable `SavedId` for private state.
+`ResolveSavedAsync` accepts at most 64 unique SavedIds, refreshes the provider,
+preserves request order, and omits apps that are no longer available. A
+SavedId is scoped by a persisted host key plus the authenticated publisher and
+package IDs; it remains stable across worker/host restarts and package updates,
+but it cannot be correlated or reused by another widget package. The widget
+instance ID is intentionally not part of this durable authority.
+
+`LaunchAsync` accepts only the short-lived opaque `AppId` returned by a current
+page or resolution. Widgets must never persist AppId. Widgets never
 receive a path, `.lnk` filename, target executable, command line, AUMID,
 package identity, launcher identity, PID, or window handle.
 
@@ -84,8 +116,10 @@ Programs folders. It:
   publishes at most 512 entries;
 - assigns random opaque IDs that stay stable only while that registration
   remains in the current provider snapshot; and
-- keeps shortcut paths, target identities, arguments, and file fingerprints
-  inside the trusted provider.
+- exposes a separate stable private provider fingerprint only to the host
+  broker, which derives non-reversible authority-scoped SavedIds with HMAC; and
+- keeps shortcut paths, raw provider identities, arguments, host key, and file
+  fingerprints out of widget IPC.
 
 Launch does not trust a stale opaque-ID lookup by itself. Immediately before
 calling the Windows Shell, the provider re-enumerates and requires exactly one
@@ -100,24 +134,31 @@ Shell failures are sanitized before returning to widget code.
 
 - Discovery is Start Menu `.lnk`-only. AppsFolder/UWP registrations, Steam,
   Xbox, Epic, GOG, and other launcher libraries are not integrated.
-- A curated combined Games & Apps library—deduplication across launchers,
-  authoritative game classification, favorites/order, and close-after-
-  correlated-success—is tracked as [GBA-033](known-issues.md).
+- Curation is durable for the package, but deduplication across launchers,
+  authoritative game classification, source-aware grouping, and broader source
+  reconciliation remain tracked as [GBA-033](known-issues.md).
 - The provider does not extract or publish application artwork or icons. The
   current card uses a host semantic Play glyph.
 - The public kind enum supports Unknown, Application, and Game, but the real
   Start Menu provider deliberately reports every current entry as Application.
   Filename/path guessing is not authoritative game classification.
-- There is no search, favorites, grouping, install/uninstall, game history,
-  foreground switching, or arbitrary executable/path launch.
+- There is no search, grouping, install/uninstall,
+  game history, foreground switching, running-program capture, file picker, or
+  arbitrary executable/path launch.
 - Catalog refresh is currently lazy/cached for the provider lifetime; broader
   source-change observation and packaged performance evidence remain open.
+- Responsive intrinsic-height and Catalog-only loading regressions are green;
+  the refreshed packaged visual/controller pass remains tracked as
+  [GBA-038](known-issues.md).
 
 ## Executable evidence
 
-Focused tests cover first-page lifecycle loading, horizontal controller focus,
-opaque selected launch, bounded paging, sanitized failure states, and manifest/
-GBSS validation. Provider tests cover lazy refresh, sanitization and bounds,
+Focused tests cover empty curated Library, Catalog-on-demand and empty-Catalog
+recovery, nested Catalog add/remove, B return, horizontal controller focus,
+confirmed recent-first ordering, failed-launch order retention, durable
+SavedIds across fresh worker instances, opaque selected launch, bounded paging,
+sanitized failure states, and manifest/GBSS validation. Provider tests cover lazy refresh,
+sanitization and bounds,
 opaque-ID lifetime, payload privacy, exact shortcut revalidation, constrained
 Shell invocation, sanitized errors, cancellation, and a non-mutating real Start
 Menu scan. Broker, SDK, bridge, Settings, and first-party conformance suites

@@ -164,6 +164,106 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         return NativeBluetoothRadioSetResult.Succeeded;
     }
 
+    public async Task<BluetoothPairingOutcome> PairAsync(
+        string nativeDeviceId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nativeDeviceId);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_devices.TryGetValue(nativeDeviceId, out var known) || !known.IsPresent)
+                return BluetoothPairingOutcome.DeviceUnavailable;
+            if (known.IsPaired) return BluetoothPairingOutcome.AlreadyPaired;
+        }
+
+        DeviceInformation information;
+        try
+        {
+            information = await DeviceInformation.CreateFromIdAsync(nativeDeviceId)
+                .AsTask(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (UnauthorizedAccessException) { return BluetoothPairingOutcome.AccessDenied; }
+        catch (Exception) { return BluetoothPairingOutcome.DeviceUnavailable; }
+
+        if (information.Pairing.IsPaired)
+        {
+            MarkPaired(nativeDeviceId);
+            return BluetoothPairingOutcome.AlreadyPaired;
+        }
+        if (!information.Pairing.CanPair) return BluetoothPairingOutcome.NotReady;
+
+        DevicePairingResult result;
+        try
+        {
+            // Basic PairAsync delegates supported consent/authentication UI to
+            // Windows. Ceremonies that require an app-owned handler are
+            // reported as UserInteractionRequired; this headless provider must
+            // never invent a PIN UI or silently accept a confirmation value.
+            result = await information.Pairing.PairAsync()
+                .AsTask(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (UnauthorizedAccessException) { return BluetoothPairingOutcome.AccessDenied; }
+        catch (Exception) { return BluetoothPairingOutcome.Failed; }
+
+        var outcome = MapPairingStatus(result.Status);
+        if (outcome is BluetoothPairingOutcome.Paired or
+            BluetoothPairingOutcome.AlreadyPaired)
+            MarkPaired(nativeDeviceId);
+        return outcome;
+    }
+
+    internal static BluetoothPairingOutcome MapPairingStatus(
+        DevicePairingResultStatus status) => status switch
+    {
+        DevicePairingResultStatus.Paired => BluetoothPairingOutcome.Paired,
+        DevicePairingResultStatus.AlreadyPaired => BluetoothPairingOutcome.AlreadyPaired,
+        DevicePairingResultStatus.NotReadyToPair or DevicePairingResultStatus.NotPaired =>
+            BluetoothPairingOutcome.NotReady,
+        DevicePairingResultStatus.ConnectionRejected or
+            DevicePairingResultStatus.RejectedByHandler => BluetoothPairingOutcome.Rejected,
+        DevicePairingResultStatus.TooManyConnections =>
+            BluetoothPairingOutcome.TooManyConnections,
+        DevicePairingResultStatus.HardwareFailure => BluetoothPairingOutcome.HardwareFailure,
+        DevicePairingResultStatus.AuthenticationTimeout =>
+            BluetoothPairingOutcome.AuthenticationTimedOut,
+        DevicePairingResultStatus.AuthenticationNotAllowed =>
+            BluetoothPairingOutcome.AuthenticationNotAllowed,
+        DevicePairingResultStatus.AuthenticationFailure =>
+            BluetoothPairingOutcome.AuthenticationFailed,
+        DevicePairingResultStatus.NoSupportedProfiles =>
+            BluetoothPairingOutcome.NoSupportedProfiles,
+        DevicePairingResultStatus.ProtectionLevelCouldNotBeMet =>
+            BluetoothPairingOutcome.ProtectionLevelNotMet,
+        DevicePairingResultStatus.AccessDenied => BluetoothPairingOutcome.AccessDenied,
+        DevicePairingResultStatus.InvalidCeremonyData =>
+            BluetoothPairingOutcome.InvalidCeremonyData,
+        DevicePairingResultStatus.PairingCanceled => BluetoothPairingOutcome.CanceledByUser,
+        DevicePairingResultStatus.OperationAlreadyInProgress =>
+            BluetoothPairingOutcome.OperationInProgress,
+        DevicePairingResultStatus.RequiredHandlerNotRegistered =>
+            BluetoothPairingOutcome.UserInteractionRequired,
+        DevicePairingResultStatus.RemoteDeviceHasAssociation =>
+            BluetoothPairingOutcome.RemoteAlreadyAssociated,
+        _ => BluetoothPairingOutcome.Failed,
+    };
+
+    private void MarkPaired(string nativeDeviceId)
+    {
+        var changed = false;
+        lock (_gate)
+        {
+            if (_disposed || !_devices.TryGetValue(nativeDeviceId, out var prior)) return;
+            if (!prior.IsPaired)
+            {
+                _devices[nativeDeviceId] = prior with { IsPaired = true };
+                changed = true;
+            }
+        }
+        if (changed) RaiseChanged();
+    }
+
     private static async Task<bool> CompensateAsync(
         IReadOnlyList<Radio> changed,
         IReadOnlyDictionary<Radio, RadioState> priorStates)

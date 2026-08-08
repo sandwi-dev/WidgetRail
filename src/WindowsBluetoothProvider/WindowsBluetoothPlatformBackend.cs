@@ -14,6 +14,7 @@ public sealed class WindowsBluetoothPlatformBackend : IBluetoothPlatformBrokerBa
     private static readonly IReadOnlySet<string> EmptyNativeIds =
         new HashSet<string>(StringComparer.Ordinal);
     private readonly IWindowsBluetoothNativeAdapterFactory _factory;
+    private readonly IWindowsBluetoothSettingsLauncher _settingsLauncher;
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly object _stateGate = new();
     private readonly Dictionary<string, string> _opaqueIds = new(StringComparer.Ordinal);
@@ -24,8 +25,13 @@ public sealed class WindowsBluetoothPlatformBackend : IBluetoothPlatformBrokerBa
     private bool _started;
     private bool _disposed;
 
-    public WindowsBluetoothPlatformBackend(IWindowsBluetoothNativeAdapterFactory? factory = null) =>
+    public WindowsBluetoothPlatformBackend(
+        IWindowsBluetoothNativeAdapterFactory? factory = null,
+        IWindowsBluetoothSettingsLauncher? settingsLauncher = null)
+    {
         _factory = factory ?? new WindowsBluetoothNativeAdapterFactory();
+        _settingsLauncher = settingsLauncher ?? new WindowsBluetoothSettingsLauncher();
+    }
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
@@ -80,6 +86,75 @@ public sealed class WindowsBluetoothPlatformBackend : IBluetoothPlatformBrokerBa
                 throw new BrokerException(
                     "platform_unavailable", "Windows Bluetooth radio control is unavailable.");
         }
+    }
+
+    /// <summary>
+    /// Attempts Windows Association Endpoint pairing for one currently listed
+    /// opaque device. Cancellation is propagated and every completed Windows
+    /// outcome is returned without claiming profile connectivity.
+    /// </summary>
+    public async Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken)
+    {
+        await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        IWindowsBluetoothNativeAdapter adapter;
+        string nativeDeviceId;
+        lock (_stateGate)
+        {
+            ThrowIfDisposed();
+            adapter = _adapter ?? throw new BrokerException(
+                "platform_unavailable", "Windows Bluetooth is unavailable.");
+            nativeDeviceId = NativeIdForOpaqueLocked(deviceId);
+        }
+
+        try
+        {
+            var outcome = await adapter.PairAsync(nativeDeviceId, cancellationToken)
+                .ConfigureAwait(false);
+            return new BluetoothPairingResultSummary(
+                Enum.Parse<BluetoothPairingResultStatus>(
+                    outcome.ToString(), ignoreCase: false));
+        }
+        finally
+        {
+            // PairAsync can complete, fail, or be canceled after Windows has
+            // changed association state. Reconcile the effective snapshot in
+            // every case instead of trusting optimistic UI state.
+            RefreshAndPublish(adapter);
+        }
+    }
+
+    /// <summary>
+    /// Opens the exact Windows Bluetooth Settings page for management that is
+    /// profile-specific or unsupported by the generic pairing API. The native
+    /// identifier remains private and is never embedded in the launch URI.
+    /// </summary>
+    public async Task OpenBluetoothDeviceSettingsAsync(
+        string deviceId, CancellationToken cancellationToken)
+    {
+        await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        lock (_stateGate)
+        {
+            ThrowIfDisposed();
+            _ = NativeIdForOpaqueLocked(deviceId);
+        }
+
+        bool opened;
+        try
+        {
+            opened = await _settingsLauncher.OpenAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception exception)
+        {
+            throw new BrokerException(
+                "settings_unavailable",
+                "Windows Bluetooth Settings could not be opened.", exception);
+        }
+        if (!opened)
+            throw new BrokerException(
+                "settings_unavailable", "Windows Bluetooth Settings could not be opened.");
     }
 
     private async Task EnsureStartedAsync(CancellationToken cancellationToken)
@@ -236,6 +311,17 @@ public sealed class WindowsBluetoothPlatformBackend : IBluetoothPlatformBrokerBa
             _opaqueIds.Add(nativeId, opaque);
             return opaque;
         }
+    }
+
+    private string NativeIdForOpaqueLocked(string opaqueId)
+    {
+        if (string.IsNullOrWhiteSpace(opaqueId) || opaqueId.Length > 64 ||
+            !opaqueId.StartsWith("bluetooth-", StringComparison.Ordinal))
+            throw new BrokerException("unknown_device", "The Bluetooth device is unavailable.");
+        foreach (var (nativeId, retainedOpaqueId) in _opaqueIds)
+            if (string.Equals(retainedOpaqueId, opaqueId, StringComparison.Ordinal))
+                return nativeId;
+        throw new BrokerException("unknown_device", "The Bluetooth device is unavailable.");
     }
 
     private void PruneOpaqueIds(IReadOnlySet<string> retainedNativeIds)

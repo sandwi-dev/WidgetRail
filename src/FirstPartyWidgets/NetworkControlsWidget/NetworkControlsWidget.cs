@@ -60,6 +60,7 @@ public sealed class NetworkControlsWidget : Widget
     private bool _bluetoothIsError;
     private bool _bluetoothBusy;
     private WidgetBluetoothDevice? _bluetoothGuidanceDevice;
+    private string? _pendingBluetoothDeviceId;
     private string? _selectedBluetoothDeviceId;
     private int _selectedBluetoothIndex;
     private string? _selectedNetworkId;
@@ -80,6 +81,8 @@ public sealed class NetworkControlsWidget : Widget
     private int _radioControlCount;
     private int _bluetoothFetchCount;
     private int _bluetoothRadioControlCount;
+    private int _bluetoothPairCount;
+    private int _bluetoothManageCount;
     private NetworkControlsTab _activeTab;
 
     public NetworkControlsViewState ViewState
@@ -140,6 +143,8 @@ public sealed class NetworkControlsWidget : Widget
     public int RadioControlCount => Volatile.Read(ref _radioControlCount);
     public int BluetoothFetchCount => Volatile.Read(ref _bluetoothFetchCount);
     public int BluetoothRadioControlCount => Volatile.Read(ref _bluetoothRadioControlCount);
+    public int BluetoothPairCount => Volatile.Read(ref _bluetoothPairCount);
+    public int BluetoothManageCount => Volatile.Read(ref _bluetoothManageCount);
     public NetworkControlsTab ActiveTab
     {
         get { lock (_stateLock) return _activeTab; }
@@ -170,6 +175,7 @@ public sealed class NetworkControlsWidget : Widget
         string bluetoothMessage;
         bool bluetoothIsError;
         bool bluetoothBusy;
+        string? pendingBluetoothId;
         string? selectedBluetoothId;
         string? pendingId;
         string? selectedId;
@@ -189,6 +195,7 @@ public sealed class NetworkControlsWidget : Widget
             bluetoothMessage = _bluetoothMessage;
             bluetoothIsError = _bluetoothIsError;
             bluetoothBusy = _bluetoothBusy;
+            pendingBluetoothId = _pendingBluetoothDeviceId;
             selectedBluetoothId = _selectedBluetoothDeviceId;
             pendingId = _pendingNetworkId;
             selectedId = _selectedNetworkId;
@@ -251,7 +258,7 @@ public sealed class NetworkControlsWidget : Widget
         {
             content.Add(UI.VerticalScroll("network.bluetooth.body.scroll",
                     RenderBluetoothSection(bluetooth, bluetoothMessage, bluetoothIsError,
-                        bluetoothBusy).ToArray())
+                        bluetoothBusy, pendingBluetoothId).ToArray())
                 .Classes("network-view-scroll", "network-bluetooth-view"));
         }
         else
@@ -382,6 +389,14 @@ public sealed class NetworkControlsWidget : Widget
                 break;
             case "bluetooth.device.details":
                 ShowBluetoothDeviceGuidance(action.SourceElementId);
+                break;
+            case "bluetooth.device.pair":
+                await PairBluetoothDeviceAsync(action.SourceElementId, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case "bluetooth.device.manage":
+                await OpenBluetoothDeviceSettingsAsync(
+                    action.SourceElementId, cancellationToken).ConfigureAwait(false);
                 break;
             case "retry":
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
@@ -578,7 +593,8 @@ public sealed class NetworkControlsWidget : Widget
         WidgetBluetoothSnapshot? snapshot,
         string message,
         bool messageIsError,
-        bool busy)
+        bool busy,
+        string? pendingDeviceId)
     {
         var radioState = snapshot?.RadioState ?? WidgetBluetoothRadioState.Unavailable;
         var isOn = radioState == WidgetBluetoothRadioState.On;
@@ -659,18 +675,29 @@ public sealed class NetworkControlsWidget : Widget
             var id = ids[index];
             var state = device.IsConnected ? "CONNECTED" : device.IsPaired ? "PAIRED" : "NEARBY";
             var detail = BluetoothDeviceDetail(device);
-            var button = UI.Button(device.DisplayName, "bluetooth.device.details", id)
+            var isPending = string.Equals(
+                device.DeviceId, pendingDeviceId, StringComparison.Ordinal);
+            var actionId = device.IsPaired
+                ? "bluetooth.device.manage"
+                : "bluetooth.device.pair";
+            var actionLabel = device.IsPaired
+                ? "Press A to manage in Windows Bluetooth Settings"
+                : "Press A to pair. Press X if Windows interaction is required";
+            var button = UI.Button(device.DisplayName, actionId, id)
                 // Device rows are a sanitized, authoritative status view. A
                 // neutral device glyph prevents focus/activation from looking
                 // like a successful pair or connection. Only the textual state
                 // below reflects Windows' IsConnected/IsPaired properties.
                 .Icon(WidgetGlyph.Connection,
-                    $"{device.DisplayName}. {state}. {detail}. Press A for connection guidance")
+                    $"{device.DisplayName}. {state}. {detail}. {actionLabel}")
+                .Shortcut(ControllerButton.X, actionId: "bluetooth.device.manage")
+                .Busy(isPending)
                 .FocusUp(index == 0 ? "network.bluetooth.radio" : ids[index - 1])
                 .FocusLeft(id)
                 .FocusRight(id)
                 .Classes("network-profile-button", "network-bluetooth-device",
-                    device.IsConnected ? "is-connected" : "is-available");
+                    device.IsConnected ? "is-connected" : "is-available",
+                    isPending ? "is-pending" : "is-ready");
             if (index < devices.Count - 1) button = button.FocusDown(ids[index + 1]);
             rows[index] = UI.Stack($"{id}.row",
                     button,
@@ -682,7 +709,7 @@ public sealed class NetworkControlsWidget : Widget
                                 .Classes("network-profile-detail"))
                         .Classes("network-profile-meta"))
                 .Classes("network-profile-row", "network-bluetooth-device-row",
-                    "is-unselected");
+                    "is-unselected", isPending ? "is-pending" : "is-ready");
         }
         foreach (var row in rows) yield return row;
     }
@@ -875,11 +902,12 @@ public sealed class NetworkControlsWidget : Widget
                 snapshot.Devices.FirstOrDefault(device => string.Equals(
                     device.DeviceId, guidance.DeviceId, StringComparison.Ordinal)) is { } current &&
                 current == guidance;
+            var preserveOperationMessage = _pendingBluetoothDeviceId is not null;
             _authoritativeBluetooth = snapshot;
             _bluetooth = snapshot;
-            _bluetoothBusy = false;
+            if (_pendingBluetoothDeviceId is null) _bluetoothBusy = false;
             _bluetoothIsError = false;
-            if (!preserveGuidance)
+            if (!preserveGuidance && !preserveOperationMessage)
             {
                 _bluetoothGuidanceDevice = null;
                 _bluetoothMessage = snapshot.DiscoveryState switch
@@ -906,6 +934,7 @@ public sealed class NetworkControlsWidget : Widget
                 WidgetBluetoothDiscoveryState.Unavailable, []);
             _authoritativeBluetooth = _bluetooth;
             _bluetoothBusy = false;
+            _pendingBluetoothDeviceId = null;
             _bluetoothGuidanceDevice = null;
             _bluetoothMessage = message;
             _bluetoothIsError = error;
@@ -1158,6 +1187,7 @@ public sealed class NetworkControlsWidget : Widget
                 enabled = _bluetooth.RadioState != WidgetBluetoothRadioState.On;
                 generation = _runGeneration;
                 _bluetoothBusy = true;
+                _pendingBluetoothDeviceId = null;
                 _bluetoothGuidanceDevice = null;
                 _bluetoothMessage = enabled ? "Turning Bluetooth on…" : "Turning Bluetooth off…";
                 _bluetoothIsError = false;
@@ -1198,6 +1228,199 @@ public sealed class NetworkControlsWidget : Widget
         finally { _commandGate.Release(); }
     }
 
+    private async ValueTask PairBluetoothDeviceAsync(
+        string sourceElementId, CancellationToken cancellationToken)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive)
+        {
+            SetBluetoothTransientMessage(
+                "Open Network Controls before pairing a Bluetooth device", true);
+            return;
+        }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        await _commandGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            WidgetBluetoothDevice? device;
+            long generation;
+            lock (_stateLock)
+            {
+                device = BluetoothDeviceFromElementIdLocked(sourceElementId);
+                if (device is null || device.IsPaired || _bluetoothBusy) return;
+                generation = _runGeneration;
+                _selectedBluetoothDeviceId = device.DeviceId;
+                _selectedBluetoothIndex = IndexOf(
+                    _bluetooth?.Devices ?? [], candidate => string.Equals(
+                        candidate.DeviceId, device.DeviceId, StringComparison.Ordinal));
+                _pendingBluetoothDeviceId = device.DeviceId;
+                _bluetoothBusy = true;
+                _bluetoothGuidanceDevice = null;
+                _bluetoothMessage = $"Pairing {device.DisplayName}…";
+                _bluetoothIsError = false;
+            }
+            Invalidate();
+            try
+            {
+                Interlocked.Increment(ref _bluetoothPairCount);
+                var result = await HostServices.Network.PairBluetoothDeviceAsync(
+                    device.DeviceId, linked.Token).ConfigureAwait(false);
+                var authoritative = await HostServices.Network.GetBluetoothAsync(linked.Token)
+                    .ConfigureAwait(false);
+                ApplyBluetooth(authoritative, generation);
+                CompleteBluetoothPairing(device, result.Outcome, generation);
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
+            {
+                RestoreBluetoothAfterCancellation(generation);
+                throw;
+            }
+            catch (WidgetCapabilityException exception)
+            {
+                SetBluetoothFailure(exception.ErrorCode switch
+                {
+                    "permission_denied" or "capability_not_declared" =>
+                        "Allow Bluetooth pairing in Settings → Permissions",
+                    "unknown_device" =>
+                        "That Bluetooth device is no longer available",
+                    "lifecycle_denied" =>
+                        "Bluetooth pairing stopped when this widget left the foreground",
+                    _ => "Windows could not start Bluetooth pairing",
+                }, generation);
+            }
+            catch (Exception)
+            {
+                SetBluetoothFailure("Windows could not start Bluetooth pairing", generation);
+            }
+        }
+        finally { _commandGate.Release(); }
+    }
+
+    private async ValueTask OpenBluetoothDeviceSettingsAsync(
+        string sourceElementId, CancellationToken cancellationToken)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive)
+        {
+            SetBluetoothTransientMessage(
+                "Open Network Controls before managing a Bluetooth device", true);
+            return;
+        }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        await _commandGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            WidgetBluetoothDevice? device;
+            long generation;
+            lock (_stateLock)
+            {
+                device = BluetoothDeviceFromElementIdLocked(sourceElementId);
+                if (device is null || _bluetoothBusy) return;
+                generation = _runGeneration;
+                _selectedBluetoothDeviceId = device.DeviceId;
+                _selectedBluetoothIndex = IndexOf(
+                    _bluetooth?.Devices ?? [], candidate => string.Equals(
+                        candidate.DeviceId, device.DeviceId, StringComparison.Ordinal));
+                _pendingBluetoothDeviceId = device.DeviceId;
+                _bluetoothBusy = true;
+                _bluetoothGuidanceDevice = null;
+                _bluetoothMessage = $"Opening Windows controls for {device.DisplayName}…";
+                _bluetoothIsError = false;
+            }
+            Invalidate();
+            try
+            {
+                Interlocked.Increment(ref _bluetoothManageCount);
+                await HostServices.Network.OpenBluetoothDeviceSettingsAsync(
+                    device.DeviceId, linked.Token).ConfigureAwait(false);
+                var authoritative = await HostServices.Network.GetBluetoothAsync(linked.Token)
+                    .ConfigureAwait(false);
+                ApplyBluetooth(authoritative, generation);
+                lock (_stateLock)
+                {
+                    if (_runGeneration != generation) return;
+                    _pendingBluetoothDeviceId = null;
+                    _bluetoothBusy = false;
+                    _bluetoothGuidanceDevice = CurrentBluetoothDeviceLocked(device.DeviceId);
+                    _bluetoothMessage = $"Windows Bluetooth Settings opened for {device.DisplayName}";
+                    _bluetoothIsError = false;
+                }
+                Invalidate();
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
+            {
+                RestoreBluetoothAfterCancellation(generation);
+                throw;
+            }
+            catch (WidgetCapabilityException exception)
+            {
+                SetBluetoothFailure(exception.ErrorCode switch
+                {
+                    "permission_denied" or "capability_not_declared" =>
+                        "Allow Bluetooth device management in Settings → Permissions",
+                    "unknown_device" =>
+                        "That Bluetooth device is no longer available",
+                    "lifecycle_denied" =>
+                        "Bluetooth management is available only while this widget is open",
+                    _ => "Windows Bluetooth Settings could not be opened",
+                }, generation);
+            }
+            catch (Exception)
+            {
+                SetBluetoothFailure(
+                    "Windows Bluetooth Settings could not be opened", generation);
+            }
+        }
+        finally { _commandGate.Release(); }
+    }
+
+    private void CompleteBluetoothPairing(
+        WidgetBluetoothDevice requested,
+        WidgetBluetoothPairingOutcome outcome,
+        long generation)
+    {
+        var (message, error) = outcome switch
+        {
+            WidgetBluetoothPairingOutcome.Paired =>
+                ($"{requested.DisplayName} paired · waiting for Windows connection state", false),
+            WidgetBluetoothPairingOutcome.AlreadyPaired or
+                WidgetBluetoothPairingOutcome.RemoteAlreadyAssociated =>
+                ($"{requested.DisplayName} is already paired", false),
+            WidgetBluetoothPairingOutcome.UserInteractionRequired =>
+                ($"{requested.DisplayName} needs Windows confirmation · press X to open Bluetooth Settings", false),
+            WidgetBluetoothPairingOutcome.CanceledByUser =>
+                ($"Pairing {requested.DisplayName} was canceled", false),
+            WidgetBluetoothPairingOutcome.OperationInProgress =>
+                ($"Windows is already pairing {requested.DisplayName}", false),
+            WidgetBluetoothPairingOutcome.NotReady =>
+                ($"{requested.DisplayName} is not ready to pair", true),
+            WidgetBluetoothPairingOutcome.AccessDenied or
+                WidgetBluetoothPairingOutcome.AuthenticationNotAllowed =>
+                ("Windows denied this Bluetooth pairing request", true),
+            WidgetBluetoothPairingOutcome.AuthenticationTimedOut =>
+                ($"Pairing {requested.DisplayName} timed out", true),
+            WidgetBluetoothPairingOutcome.AuthenticationFailed or
+                WidgetBluetoothPairingOutcome.InvalidCeremonyData =>
+                ($"{requested.DisplayName} could not be authenticated", true),
+            WidgetBluetoothPairingOutcome.NoSupportedProfiles or
+                WidgetBluetoothPairingOutcome.ProtectionLevelNotMet =>
+                ($"{requested.DisplayName} needs Windows Bluetooth Settings to finish setup", true),
+            WidgetBluetoothPairingOutcome.DeviceUnavailable =>
+                ($"{requested.DisplayName} is no longer available", true),
+            _ => ($"Windows could not pair {requested.DisplayName}", true),
+        };
+        lock (_stateLock)
+        {
+            if (_runGeneration != generation) return;
+            _pendingBluetoothDeviceId = null;
+            _bluetoothBusy = false;
+            _bluetoothGuidanceDevice = CurrentBluetoothDeviceLocked(requested.DeviceId);
+            _bluetoothMessage = message;
+            _bluetoothIsError = error;
+        }
+        Invalidate();
+    }
+
     private void RestoreWifiRadioAfterCancellation(long generation)
     {
         lock (_stateLock)
@@ -1234,6 +1457,8 @@ public sealed class NetworkControlsWidget : Widget
             if (_runGeneration != generation) return;
             _bluetooth = _authoritativeBluetooth;
             _bluetoothBusy = false;
+            _pendingBluetoothDeviceId = null;
+            _bluetoothGuidanceDevice = null;
             _bluetoothIsError = false;
         }
         Invalidate();
@@ -1245,6 +1470,7 @@ public sealed class NetworkControlsWidget : Widget
         {
             if (_runGeneration != generation) return;
             _bluetoothBusy = false;
+            _pendingBluetoothDeviceId = null;
             _bluetooth = _authoritativeBluetooth;
             _bluetoothMessage = message;
             _bluetoothIsError = true;
@@ -1357,6 +1583,27 @@ public sealed class NetworkControlsWidget : Widget
         }
     }
 
+    private WidgetBluetoothDevice? BluetoothDeviceFromElementIdLocked(string elementId)
+    {
+        var devices = _bluetooth?.Devices ?? [];
+        return devices.FirstOrDefault(device => string.Equals(
+            BluetoothElementId(device.DeviceId), elementId, StringComparison.Ordinal));
+    }
+
+    private WidgetBluetoothDevice? CurrentBluetoothDeviceLocked(string deviceId) =>
+        (_bluetooth?.Devices ?? []).FirstOrDefault(device => string.Equals(
+            device.DeviceId, deviceId, StringComparison.Ordinal));
+
+    private void SetBluetoothTransientMessage(string message, bool error)
+    {
+        lock (_stateLock)
+        {
+            _bluetoothMessage = message;
+            _bluetoothIsError = error;
+        }
+        Invalidate();
+    }
+
     private void ShowBluetoothDeviceGuidance(string elementId)
     {
         lock (_stateLock)
@@ -1371,12 +1618,12 @@ public sealed class NetworkControlsWidget : Widget
             var device = devices[index];
             _bluetoothGuidanceDevice = device;
             _bluetoothMessage = device.IsConnected
-                ? $"{device.DisplayName} is connected · disconnect it in Windows Quick Settings"
+                ? $"{device.DisplayName} is connected · press A to manage it in Windows Settings"
                 : device.IsPaired && device.IsPresent
-                    ? $"{device.DisplayName} is paired · connect it in Windows Quick Settings"
+                    ? $"{device.DisplayName} is paired · press A to manage it in Windows Settings"
                     : device.IsPaired
                         ? $"{device.DisplayName} is paired but not nearby · manage it in Windows Settings"
-                        : $"Pair {device.DisplayName} in Windows Quick Settings · in-overlay pairing is not supported yet";
+                        : $"{device.DisplayName} is nearby · press A to pair";
             _bluetoothIsError = false;
         }
         Invalidate();
@@ -1390,12 +1637,12 @@ public sealed class NetworkControlsWidget : Widget
 
     private static string BluetoothDeviceDetail(WidgetBluetoothDevice device) =>
         device.IsConnected
-            ? "Connected · disconnect in Windows Quick Settings"
+            ? "Connected · press A to manage in Windows Settings"
             : device.IsPaired
                 ? device.IsPresent
-                    ? "Paired · connect in Windows Quick Settings"
-                    : "Paired · not currently nearby"
-                : "Nearby · pair in Windows Quick Settings";
+                    ? "Paired · press A to manage in Windows Settings"
+                    : "Paired · not currently nearby · press A to manage"
+                : "Nearby · press A to pair";
 
     private string NetworkNameLocked(string id) =>
         (_wifiSnapshot?.Networks ?? []).FirstOrDefault(network =>
@@ -1475,6 +1722,7 @@ public sealed class NetworkControlsWidget : Widget
         _scanBusy = _wifiSnapshot?.ScanState == WidgetWifiScanState.Scanning;
         _radioBusy = false;
         _bluetoothBusy = false;
+        _pendingBluetoothDeviceId = null;
         _bluetoothGuidanceDevice = null;
         if (_networkStatus is not null && _wifiSnapshot is not null && _wifiRadio is not null)
         {

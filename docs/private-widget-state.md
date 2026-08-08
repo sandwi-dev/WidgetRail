@@ -165,8 +165,19 @@ bearer token, password, refresh token, cookie, private key, or recovery code in
 
 ## Tests
 
-Use `WidgetTestHostServicesBuilder` with the internal typed state operations for
-SDK unit tests. Product/provider coverage must also prove authority isolation,
-instance-independent restart persistence, CAS conflict, clear tombstones,
-canonical 64 KiB quota, corruption/reparse failure, burst/refill behavior,
-cancellation, and two real host processes racing expected revision `0`.
+Use the public deterministic fixture in SDK unit tests:
+
+```csharp
+var state = new WidgetTestPrivateState(
+    initialJson: "{\"selectedTab\":\"library\"}", initialRevision: 1);
+var services = new WidgetTestHostServicesBuilder()
+    .WithPrivateState(state)
+    .Build();
+```
+
+The fixture supports external write/clear simulation and expected-revision
+conflicts without touching the real profile. Product/provider coverage must
+also prove authority isolation, instance-independent restart persistence, CAS
+conflict, clear tombstones, canonical 64 KiB quota, corruption/reparse failure,
+burst/refill behavior, cancellation, and two real host processes racing
+expected revision `0`.

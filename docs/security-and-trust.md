@@ -34,7 +34,7 @@ planned. A structurally valid package is not necessarily trustworthy.
   normalized content tree and the authority ID derives from that verified
   digest rather than manifest publisher text. Different bytes—even with the
   same asserted package ID and version—receive a different profile and cannot
-  inherit broker consent or private secrets. The launch
+  inherit broker consent, private secrets, or private widget state. The launch
   passes a small allowlisted environment, grants
   read/execute only to the generic runtime and exact immutable package roots,
   verifies the resulting token's SID/integrity/zero-capability shape before
@@ -42,10 +42,12 @@ planned. A structurally valid package is not necessarily trustworthy.
   isolation component prevents the worker from running.
 - The managed capability broker has a closed versioned vocabulary for audio,
   network/Bluetooth, activity, app-library, media, exact-port loopback JSON,
-  and write-only private secrets. It binds a session to package, publisher, and instance
-  identity and rechecks the manifest declaration, durable consent decision,
-  and lifecycle on every operation. Requests/results/events are strict and
-  bounded; public DTOs contain sanitized labels and opaque IDs.
+  write-only private secrets, and host-granted private widget state. Ordinary
+  OS/provider authority rechecks the manifest declaration, durable consent,
+  authenticated package/publisher/instance, and lifecycle on every operation.
+  Private state is a separate non-consent host grant that manifests are
+  forbidden to declare and worker IPC cannot add. Requests/results/events are
+  strict and bounded; public DTOs contain sanitized labels and opaque IDs.
 - The bridge creates a fresh broker companion for every worker start/restart.
   Its nonce handshake binds the worker to bridge-selected identity,
   declarations, consent store, and backend. Widget code receives typed
@@ -72,6 +74,14 @@ planned. A structurally valid package is not necessarily trustworthy.
   request option can atomically delete that exact scoped slot on HTTP 401 before
   returning, without granting a Visible worker general delete authority. See [local
   companion HTTP and private secrets](community-companion-services.md).
+- Private widget state stores exactly one canonical JSON document/tombstone per
+  authenticated publisher/package authority. Its SHA-256-derived filename
+  contains no package path, the Windows store rejects reparse/corrupt state,
+  serializes across processes, rate-limits mutations, and atomically replaces
+  one revisioned envelope. Unsigned changed package bytes receive a different
+  content-bound authority and cannot inherit state. Uninstall currently retains
+  it; per-widget clear-local-data UI remains unimplemented. See [Private widget
+  state](private-widget-state.md).
 - Package extraction rejects absolute/traversing/ambiguous Windows paths,
   links, reparse points, collisions, excessive entries, and zip expansion
   beyond configured limits.
@@ -160,8 +170,11 @@ production bridge composes narrow Windows providers, including Core Audio,
 network/Bluetooth, media, app library, exact loopback, and private secrets. The
 capability-free worker token cannot use those OS APIs directly;
 the trusted broker performs only declared, consented, lifecycle-valid closed
-operations. This is still not publisher trust, a security audit, CPU/disk quota
-coverage, profile cleanup, or proof across the hardware/privacy matrix.
+operations. The same authenticated channel may carry only the Bridge-attached
+private-state host grant; that exception has no Settings consent and grants no
+OS/provider authority. This is still not publisher trust, a security audit,
+CPU/disk quota coverage, profile cleanup, or proof across the hardware/privacy
+matrix.
 
 Trusted bundled workers are a temporary exception to the community policy.
 Settings currently uses the host-trusted Job-only launch for desktop-user
@@ -220,6 +233,13 @@ broker enforces declaration, stored decision, and lifecycle.
 Settings stores decisions by package, publisher, and capability; the channel
 also binds the concrete instance. Missing decisions fail closed, including for
 required capabilities, and no package is auto-granted.
+
+`HostServices.PrivateState` is the one current host-provided exception: it is
+not a permission, has no consent toggle, and a manifest that declares its
+internal `storage.private-state.v1` ID is rejected. The Bridge attaches it
+through a separate host-only grant set after authenticating the worker; no
+worker message can add that or any other grant. Its Background availability is
+only for bounded persistence and does not relax ordinary lifecycle checks.
 
 For installed/community workers, the capability-free AppContainer constrains
 direct desktop authority while this permission system controls the separate

@@ -53,11 +53,17 @@ The canonical runtime list is `GbssPropertyCatalog.AllowedProperties`. It curren
 
 Values are typed before reaching a renderer. Dimensions, spacing, scale, opacity, blur, border widths, and transition durations are bounded. Out-of-range finite values are clamped with a source-located warning; malformed values are errors.
 
-`transition-duration` and `transition-easing` currently participate in parsing,
-cascade, computed styles, and reduced-motion policy, but the native renderer
-does not yet interpolate state changes. They are forward-compatible style
-declarations, not a current animation guarantee. Track implementation and
-evidence under [GBA-032](known-issues.md#gba-032--gbss-transition-declarations-do-not-animate).
+`transition-duration` and `transition-easing` participate in parsing, cascade,
+computed styles, reduced-motion policy, and native rendering. When a stable
+declarative node's computed target changes, the host can interpolate its
+paint-only `opacity` and `scale` values. The first observation snaps to the
+authored target; later changes retarget from the currently presented value.
+Durations are capped at 2 seconds, at most 1,024 nodes are tracked, and settled
+content schedules no animation work. Reduced motion snaps immediately and
+cancels outstanding transitions. Layout, colors, borders, shadows, blur,
+progress width, shell placement, and widget replacement are not interpolated
+by this version. See [GBA-032](known-issues.md#gba-032--gbss-transition-declarations-do-not-animate)
+for the remaining packaged visual/performance evidence.
 
 Untrusted input is bounded before publication: source bytes/characters, statements, imports and import depth, selectors per rule, declarations per rule, raw values, and expanded variable values all have hard limits exposed through `GbssLimits`.
 
@@ -91,9 +97,10 @@ new|validate|preview|pack|inspect|install|list` and read [theme packaging and
 distribution](theme-packaging.md); do not hand-author installed directories or
 substitute browser CSS tooling.
 
-The current bridge response publishes complete computed `base` and `focused`
-maps for every node. Snapshot `selected`, `disabled`, and `busy` state
-participates while computing both maps, so those rules can affect the current
-render. The language also parses `:pressed`, but there is no transient pressed
-state-map pipeline. Do not depend on pressed theming yet; the other semantic
-states remain available to styling, accessibility, and controller routing.
+The current bridge response publishes complete computed `base`, `focused`, and
+`pressed` maps for every node. Snapshot `selected`, `disabled`, and `busy`
+state participates while computing them. The native host activates `:pressed`
+only for the exact physically held controller action, cancels it on focus or
+surface changes, and reconciles it when a new snapshot arrives. The other
+semantic states remain available to styling, accessibility, and controller
+routing.

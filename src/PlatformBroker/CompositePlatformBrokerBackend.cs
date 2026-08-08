@@ -108,15 +108,23 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken) =>
         _bluetooth.SetBluetoothRadioAsync(enabled, cancellationToken);
 
+    public Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken) =>
+        _bluetooth.PairBluetoothDeviceAsync(deviceId, cancellationToken);
+
+    public Task OpenBluetoothDeviceSettingsAsync(
+        string deviceId, CancellationToken cancellationToken) =>
+        _bluetooth.OpenBluetoothDeviceSettingsAsync(deviceId, cancellationToken);
+
     public Task<IReadOnlyList<RecentActivitySummary>> GetRecentActivitiesAsync(
         CancellationToken cancellationToken) =>
         _activity.GetRecentActivitiesAsync(cancellationToken);
 
-    public Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
         CancellationToken cancellationToken) =>
         _appLibrary.GetAppLibraryAsync(cancellationToken);
 
-    public Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
         CancellationToken cancellationToken) =>
         _appLibrary.RefreshAppLibraryAsync(cancellationToken);
 
@@ -318,18 +326,29 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         public Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken) =>
             Task.FromException(
                 new BrokerException("platform_unavailable", "Bluetooth radio control is unavailable."));
+
+        public Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(
+            string deviceId, CancellationToken cancellationToken) =>
+            Task.FromException<BluetoothPairingResultSummary>(
+                new BrokerException("platform_unavailable", "Bluetooth pairing is unavailable."));
+
+        public Task OpenBluetoothDeviceSettingsAsync(
+            string deviceId, CancellationToken cancellationToken) =>
+            Task.FromException(
+                new BrokerException(
+                    "platform_unavailable", "Bluetooth device management is unavailable."));
     }
 
     private sealed class UnavailableAppLibraryPlatformBrokerBackend : IAppLibraryPlatformBrokerBackend
     {
         internal static UnavailableAppLibraryPlatformBrokerBackend Instance { get; } = new();
 
-        public Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+        public Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
             CancellationToken cancellationToken) =>
-            Task.FromException<IReadOnlyList<AppLibraryItemSummary>>(
+            Task.FromException<IReadOnlyList<AppLibraryBackendItemSummary>>(
                 new BrokerException("platform_unavailable", "App library is unavailable."));
 
-        public Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+        public Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
             CancellationToken cancellationToken) =>
             GetAppLibraryAsync(cancellationToken);
 

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "id": "org.gbar.builtin.cool-slate",
+  "publisher": "org.gbar.builtin",
+  "name": "Cool Slate",
+  "version": "1.0.0",
+  "entryFile": "theme.gbss"
+}

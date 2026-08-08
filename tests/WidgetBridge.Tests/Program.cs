@@ -923,6 +923,11 @@ static async Task SnapshotAndQuickAction()
     Assert.Equal("number", focusedScale.GetProperty("kind").GetString());
     Assert.Equal(1.1D, focusedScale.GetProperty("number").GetDouble());
     Assert.Equal(JsonValueKind.Null, focusedScale.GetProperty("unit").ValueKind);
+    var pressedOpacity = buttonStyles.GetProperty("pressed").GetProperty("opacity");
+    Assert.Equal("number", pressedOpacity.GetProperty("kind").GetString());
+    Assert.Equal(0.62D, pressedOpacity.GetProperty("number").GetDouble());
+    Assert.Equal(1.1D,
+        buttonStyles.GetProperty("pressed").GetProperty("scale").GetProperty("number").GetDouble());
     Assert.Equal("3px", buttonStyles.GetProperty("base").GetProperty("border-width").GetProperty("text").GetString());
     Assert.Equal("3px", buttonStyles.GetProperty("focused").GetProperty("border-width").GetProperty("text").GetString());
     var disabledStyles = renderStyles.GetProperty("disabled-button");
@@ -1164,7 +1169,7 @@ file sealed class TemporaryCatalog : IDisposable
         Directory.CreateDirectory(stylesDirectory);
         File.WriteAllText(System.IO.Path.Combine(stylesDirectory, "default.gbss"), invalidStyle
             ? "button { background: url(https://example.test/evil.png); }"
-            : styleSource ?? "stack { gap: 12px; } button { color: #ffffff; font-size: 18px; } #button { opacity: 0.8; } .primary:selected { border-width: 3px; } .primary:focused { outline-color: #8b7cff; scale: 1.1; } .disabled:disabled { opacity: 0.4; } .busy:busy { opacity: 0.7; }");
+            : styleSource ?? "stack { gap: 12px; } button { color: #ffffff; font-size: 18px; } #button { opacity: 0.8; } #button:pressed { opacity: 0.62; } .primary:selected { border-width: 3px; } .primary:focused { outline-color: #8b7cff; scale: 1.1; } .disabled:disabled { opacity: 0.4; } .busy:busy { opacity: 0.7; }");
         var executable = Environment.ProcessPath
             ?? throw new InvalidOperationException("Test process path is unavailable.");
         var json = JsonSerializer.Serialize(new

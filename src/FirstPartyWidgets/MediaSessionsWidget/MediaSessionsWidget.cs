@@ -49,6 +49,7 @@ public sealed class MediaSessionsWidget : Widget
     private Task? _progressLoop;
     private long _runGeneration;
     private long _snapshotRevision;
+    private bool _liveUpdatesAvailable;
 
     public MediaSessionsWidget(TimeProvider? timeProvider = null) =>
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -57,6 +58,7 @@ public sealed class MediaSessionsWidget : Widget
     public string? SelectedSessionId { get { lock (_gate) return _selectedSessionId; } }
     public IReadOnlyList<WidgetMediaSession> Sessions { get { lock (_gate) return _sessions.ToArray(); } }
     public string Status { get { lock (_gate) return _status; } }
+    public bool LiveUpdatesAvailable { get { lock (_gate) return _liveUpdatesAvailable; } }
 
     public override WidgetView Render()
     {
@@ -379,6 +381,7 @@ public sealed class MediaSessionsWidget : Widget
         {
             _viewState = MediaSessionsViewState.Loading;
             _status = "Loading Windows media sessions…";
+            _liveUpdatesAvailable = false;
         }
         Invalidate();
         _ = ObserveAsync(generation, lifetime.Token);
@@ -393,41 +396,70 @@ public sealed class MediaSessionsWidget : Widget
 
     private async Task ObserveAsync(long generation, CancellationToken cancellationToken)
     {
+        IWidgetCapabilitySubscription<WidgetMediaSessionsChanged>? subscription = null;
         try
         {
-            await using var subscription = await HostServices.Media
+            subscription = await HostServices.Media
                 .OpenSubscriptionAsync(cancellationToken).ConfigureAwait(false);
-            Apply(await HostServices.Media.GetSessionsAsync(cancellationToken).ConfigureAwait(false), generation);
-            await foreach (var change in subscription.ReadAllAsync(cancellationToken)
-                               .WithCancellation(cancellationToken).ConfigureAwait(false))
-                Apply(change.Sessions, generation);
-            SetError(MediaSessionsViewState.ChannelClosed, "Media service disconnected", generation);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (WidgetCapabilityUnavailableException)
+        catch (Exception subscriptionError)
         {
-            SetError(MediaSessionsViewState.ServiceUnavailable, "Media service unavailable", generation);
+            // A current-state read and the live event channel are independent
+            // transports. A transient subscription failure must not suppress a
+            // valid Windows snapshot that is already available to the widget.
+            await LoadSnapshotWithoutLiveUpdatesAsync(
+                    generation, subscriptionError, cancellationToken)
+                .ConfigureAwait(false);
+            return;
         }
-        catch (WidgetCapabilityException exception)
+
+        if (subscription is null) return;
+        await using (subscription.ConfigureAwait(false))
         {
-            var state = exception.ErrorCode switch
+            var hasCurrentSnapshot = false;
+            try
             {
-                "permission_denied" or "capability_not_declared" or "capability_revoked" =>
-                    MediaSessionsViewState.PermissionDenied,
-                "lifecycle_denied" => MediaSessionsViewState.LifecycleDenied,
-                "channel_closed" => MediaSessionsViewState.ChannelClosed,
-                "platform_unavailable" => MediaSessionsViewState.ServiceUnavailable,
-                _ => MediaSessionsViewState.Error,
-            };
-            SetError(state, "Media sessions could not be loaded", generation);
-        }
-        catch (Exception)
-        {
-            SetError(MediaSessionsViewState.Error, "Media sessions could not be loaded", generation);
+                Apply(await HostServices.Media.GetSessionsAsync(cancellationToken)
+                    .ConfigureAwait(false), generation, liveUpdatesAvailable: true);
+                hasCurrentSnapshot = true;
+                await foreach (var change in subscription.ReadAllAsync(cancellationToken)
+                                   .WithCancellation(cancellationToken).ConfigureAwait(false))
+                    Apply(change.Sessions, generation, liveUpdatesAvailable: true);
+                SetLiveUpdateFailure(
+                    new WidgetCapabilityException("channel_closed", "Media service disconnected."),
+                    generation);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (Exception exception)
+            {
+                if (hasCurrentSnapshot)
+                    SetLiveUpdateFailure(exception, generation);
+                else
+                    SetLoadFailure(exception, generation);
+            }
         }
     }
 
-    private void Apply(IReadOnlyList<WidgetMediaSession>? incoming, long generation)
+    private async Task LoadSnapshotWithoutLiveUpdatesAsync(
+        long generation,
+        Exception subscriptionError,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            Apply(await HostServices.Media.GetSessionsAsync(cancellationToken).ConfigureAwait(false),
+                generation, liveUpdatesAvailable: false);
+            SetLiveUpdateFailure(subscriptionError, generation);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception readError) { SetLoadFailure(readError, generation); }
+    }
+
+    private void Apply(
+        IReadOnlyList<WidgetMediaSession>? incoming,
+        long generation,
+        bool liveUpdatesAvailable = true)
     {
         var normalized = Normalize(incoming);
         lock (_gate)
@@ -435,6 +467,7 @@ public sealed class MediaSessionsWidget : Widget
             if (_runGeneration != generation) return;
             _sessions = normalized;
             _snapshotRevision++;
+            _liveUpdatesAvailable = liveUpdatesAvailable;
             if (_selectedSessionId is null || !normalized.Any(item => item.SessionId == _selectedSessionId))
                 _selectedSessionId = normalized.FirstOrDefault(item => item.IsCurrent)?.SessionId ??
                     normalized.FirstOrDefault(item =>
@@ -572,8 +605,64 @@ public sealed class MediaSessionsWidget : Widget
             _status = status;
             _sessions = [];
             _pendingCommand = null;
+            _liveUpdatesAvailable = false;
         }
         Invalidate();
+    }
+
+    private void SetLoadFailure(Exception exception, long generation)
+    {
+        var (state, status) = ClassifyFailure(exception, liveUpdatesOnly: false);
+        SetError(state, status, generation);
+    }
+
+    private void SetLiveUpdateFailure(Exception exception, long generation)
+    {
+        var (_, status) = ClassifyFailure(exception, liveUpdatesOnly: true);
+        lock (_gate)
+        {
+            if (_runGeneration != generation) return;
+            _liveUpdatesAvailable = false;
+            _status = status;
+        }
+        Invalidate();
+    }
+
+    private static (MediaSessionsViewState State, string Status) ClassifyFailure(
+        Exception exception,
+        bool liveUpdatesOnly)
+    {
+        if (exception is WidgetCapabilityUnavailableException)
+            return (MediaSessionsViewState.ServiceUnavailable,
+                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
+                    "Media service unavailable");
+        if (exception is not WidgetCapabilityException capability)
+            return (MediaSessionsViewState.Error,
+                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
+                    "Media sessions could not be loaded");
+        return capability.ErrorCode switch
+        {
+            "permission_denied" or "capability_not_declared" or "capability_revoked" =>
+                (MediaSessionsViewState.PermissionDenied,
+                    liveUpdatesOnly ? "Current media shown · live update access is off" :
+                        "Media access is off"),
+            "lifecycle_denied" => (MediaSessionsViewState.LifecycleDenied,
+                liveUpdatesOnly ? "Current media shown · live updates are paused" :
+                    "Media access is paused"),
+            "channel_closed" => (MediaSessionsViewState.ChannelClosed,
+                liveUpdatesOnly ? "Current media shown · live updates disconnected" :
+                    "Media service disconnected"),
+            "platform_unavailable" => (MediaSessionsViewState.ServiceUnavailable,
+                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
+                    "Windows media controls unavailable"),
+            "malformed_event" or "malformed_response" or "unsupported_protocol" =>
+                (MediaSessionsViewState.Error,
+                    liveUpdatesOnly ? "Current media shown · live update response was invalid" :
+                        "Media response was invalid"),
+            _ => (MediaSessionsViewState.Error,
+                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
+                    "Media sessions could not be loaded"),
+        };
     }
 
     private void SetCommandError(long generation, string status)

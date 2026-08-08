@@ -54,7 +54,7 @@ eventual widgets:
 | `system.network.bluetooth.read.v1` | Read/watch sanitized Bluetooth radio/discovery/device state; no native IDs. |
 | `system.network.bluetooth.radio.control.v1` | Request Bluetooth software radio On/Off while Interactive. |
 | `system.activity.recent.read.v1` | Read/watch bounded eligible running foreground observations as opaque IDs. |
-| `system.apps.library.read.v1` | Page through sanitized Start Menu application names, conservative kinds, and opaque IDs while Visible or Interactive. |
+| `system.apps.library.read.v1` | Page sanitized Start Menu names/kinds and resolve authority-scoped durable SavedIds to current short-lived launch IDs while Visible or Interactive. |
 | `system.apps.library.launch.v1` | Launch one current exact provider-revalidated opaque app ID while Interactive. |
 
 Endpoint master-volume/mute, sanitized device visibility, and default-capture
@@ -369,9 +369,16 @@ Start Menu Programs folders. Enumeration is bounded by candidate count,
 directory depth, shortcut size, catalog size, and sanitized display-name
 length; it never follows reparse points. It accepts `.lnk` registrations whose
 resolved target is an `.exe` or `.com`, deduplicates an internal target/
-arguments identity, and returns random opaque IDs. Paths, targets, arguments,
-shortcut fingerprints, AUMIDs, package identities, PIDs, and HWNDs stay inside
-the provider.
+arguments identity, and returns random short-lived provider launch IDs plus one
+host-only stable identity. The broker uses the latter with a persisted host key
+and authenticated publisher/package IDs to derive a non-reversible durable
+SavedId. Raw stable identities, paths, targets, arguments, shortcut
+fingerprints, AUMIDs, package identities, PIDs, and HWNDs stay inside the host.
+
+Widgets persist only SavedIds in private state. The read capability's bounded
+resolver accepts at most 64 unique SavedIds, refreshes the provider, preserves
+request order, omits unavailable registrations, and returns fresh launch IDs.
+Another widget authority cannot correlate or resolve those SavedIds.
 
 Launch is a separate Interactive-only capability. The provider resolves a
 current opaque ID, re-enumerates, and requires exactly one unchanged match for

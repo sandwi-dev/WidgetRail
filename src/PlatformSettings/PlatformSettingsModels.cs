@@ -100,7 +100,12 @@ public static partial class ThemeIdentity
 {
     public const string BuiltInDefault = "builtin.default";
     public const string BuiltInDefaultVersion = "1.0.0";
+    public const string BuiltInCoolSlate = "org.gbar.builtin.cool-slate";
+    public const string BuiltInCoolSlateVersion = "1.0.0";
     public const int MaximumLength = 128;
+
+    public static bool IsBuiltIn(string? value) =>
+        value is BuiltInDefault or BuiltInCoolSlate;
 
     public static bool IsValid(string? value) =>
         value is { Length: > 0 and <= MaximumLength } &&

@@ -12,7 +12,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings ranges and enums are enforced", SettingsRangesAreEnforced),
     ("Failed mutations preserve the prior atomic document", FailedMutationPreservesState),
     ("Independent stores serialize concurrent mutations", ConcurrentMutationsPersist),
-    ("Theme catalog discovers the embedded default and valid user themes", ThemeDiscovery),
+    ("Theme catalog discovers both embedded themes and valid user themes", ThemeDiscovery),
+    ("Built-in Cool Slate selection publishes distinct controller-safe tokens", BuiltInCoolSlateSelection),
     ("Theme manifests enforce identity paths bounds and strict JSON", ThemeManifestSafety),
     ("Theme sources reject traversal and reparse points", ThemeSourceSafety),
     ("Theme count is bounded", ThemeCountIsBounded),
@@ -208,9 +209,14 @@ static Task ThemeDiscovery()
     var catalog = Catalog(temp.Path);
     var snapshot = catalog.Discover();
     Assert.SequenceEqual(
-        [ThemeIdentity.BuiltInDefault, "dev.example.slate"],
+        [ThemeIdentity.BuiltInDefault, ThemeIdentity.BuiltInCoolSlate, "dev.example.slate"],
         snapshot.Themes.Select(theme => theme.Descriptor.Id));
     Assert.True(snapshot.Themes.All(theme => theme.IsValid), Describe(snapshot.Themes.SelectMany(item => item.Diagnostics)));
+    Assert.SequenceEqual(
+        [ThemeIdentity.BuiltInDefault, ThemeIdentity.BuiltInCoolSlate],
+        catalog.BuiltInThemes.Select(theme => theme.Descriptor.Id));
+    Assert.True(catalog.BuiltInThemes.All(theme => theme.Descriptor.IsBuiltIn && theme.IsValid),
+        Describe(catalog.BuiltInThemes.SelectMany(item => item.Diagnostics)));
     var builtIn = catalog.BuiltInDefault;
     var compiled = GbssThemeCompiler.Compile(builtIn.Package);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
@@ -284,6 +290,66 @@ static Task ThemeDiscovery()
     return Task.CompletedTask;
 }
 
+static async Task BuiltInCoolSlateSelection()
+{
+    using var temp = new TemporaryDirectory();
+    var store = Store(temp.Path);
+    await store.UpdateAsync(current => current with
+    {
+        Appearance = current.Appearance with
+        {
+            ThemeId = ThemeIdentity.BuiltInCoolSlate,
+            ThemeVersion = ThemeIdentity.BuiltInCoolSlateVersion,
+        },
+    });
+
+    var catalog = Catalog(temp.Path);
+    var slatePackage = catalog.Load(
+        ThemeIdentity.BuiltInCoolSlate,
+        ThemeIdentity.BuiltInCoolSlateVersion);
+    Assert.True(slatePackage.IsValid, Describe(slatePackage.Diagnostics));
+    Assert.Equal("Cool Slate", slatePackage.Descriptor.Name);
+    Assert.Equal(true, slatePackage.Descriptor.IsBuiltIn);
+    Assert.Equal("org.gbar.builtin", slatePackage.Descriptor.Publisher);
+    Assert.Equal(new Version(1, 0, 0), slatePackage.Descriptor.Version);
+
+    using var manager = new ThemeManager(store, catalog);
+    var reload = await manager.ReloadAsync();
+    Assert.True(reload.Published, Describe(reload.Diagnostics));
+    Assert.Equal(ThemeIdentity.BuiltInCoolSlate, reload.Current.ActiveTheme.Id);
+    Assert.Equal(ThemeIdentity.BuiltInCoolSlateVersion, reload.Current.ActiveTheme.Version.ToString());
+
+    var canvas = reload.Current.Theme.Resolve(new GbssElement("canvas"));
+    Assert.Equal("#080d14", canvas.Get("background")!.Text);
+    Assert.Equal("#edf2f7", canvas.Get("color")!.Text);
+    var button = reload.Current.Theme.Resolve(new GbssElement("button"));
+    Assert.Equal("rgba(22, 32, 45, 0.98)", button.Get("background")!.Text);
+    Assert.Equal("44px", button.Get("min-height")!.Text);
+    Assert.Equal("10px", button.Get("corner-radius")!.Text);
+    Assert.Equal("0.99", button.Get("scale")!.Text);
+    Assert.Equal("90ms", button.Get("transition-duration")!.Text);
+    Assert.Equal("ease-out", button.Get("transition-easing")!.Text);
+    var focused = reload.Current.Theme.Resolve(new GbssElement(
+        "button",
+        null,
+        new HashSet<string>(),
+        new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
+    Assert.Equal("#f1f4f7", focused.Get("outline-color")!.Text);
+    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("1", focused.Get("scale")!.Text);
+
+    var defaultCanvas = GbssThemeCompiler.Compile(catalog.BuiltInDefault.Package)
+        .Theme!.Resolve(new GbssElement("canvas"));
+    Assert.True(defaultCanvas.Get("background")!.Text != canvas.Get("background")!.Text,
+        "Cool Slate must be visibly distinct from the warm graphite default.");
+
+    var layeredWidget = reload.Current.CompileForWidget(Package(
+        "widget.gbss",
+        "button { min-height: 44px; color: var(--text); }"));
+    Assert.True(layeredWidget.IsValid, Describe(layeredWidget.Diagnostics));
+    Assert.Equal("#edf2f7", layeredWidget.Theme!.Resolve(new GbssElement("button")).Get("color")!.Text);
+}
+
 static async Task ThemeManifestSafety()
 {
     using var temp = new TemporaryDirectory();
@@ -305,6 +371,16 @@ static async Task ThemeManifestSafety()
         manifest,
         Enumerable.Repeat((byte)' ', ThemeCatalog.MaximumManifestBytes + 1).ToArray());
     Assert.HasCode(catalog.Load("dev.example.bad", "1.0.0").Diagnostics, "theme_manifest_too_large");
+
+    WriteTheme(
+        temp.Path,
+        ThemeIdentity.BuiltInCoolSlate,
+        "Shadowed Slate",
+        ThemeIdentity.BuiltInCoolSlateVersion,
+        "button { color: #ffffff; }");
+    var reservedCollision = catalog.Discover().Themes.Single(item =>
+        item.Descriptor.Id == ThemeIdentity.BuiltInCoolSlate && !item.IsValid);
+    Assert.HasCode(reservedCollision.Diagnostics, "invalid_theme_id");
 }
 
 static Task ThemeSourceSafety()

@@ -5,13 +5,15 @@ using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Visible lifecycle loads one bounded opaque catalog page", LoadsFirstPage),
+    ("Visible lifecycle resolves only saved apps and catalog loads on demand", LoadsFirstPage),
+    ("Empty add catalog returns to the library without a dead end", EmptyCatalogReturnsToLibrary),
     ("Library starts curated and catalog is a bounded controller picker", RendersControllerStrip),
     ("Catalog add remove and B navigation retain a user-owned library", CuratesLibrary),
     ("Interactive A launches only the selected opaque app", LaunchesSelectedApp),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
     ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
+    ("Curated SavedIds survive a fresh widget worker instance", CurationSurvivesNewInstance),
     ("Load more appends a bounded page and restores focus forward", LoadsMore),
     ("Rapid repeated load more is one busy controller command", LoadMoreIsSingleFlight),
     ("Pagination stops exactly at the bounded catalog maximum", PaginationStopsAtMaximum),
@@ -48,9 +50,34 @@ static async Task LoadsFirstPage()
     var widget = Create(fake);
     await Visible(widget);
     await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    Assert.Equal(0, fake.PageRequests.Count);
+    Assert.Equal(0, widget.Items.Count);
+    await Interactive(widget);
+    await OpenCatalog(widget);
     Assert.Equal(1, fake.PageRequests.Count);
     Assert.Equal((0, GamesAppsWidget.PageSize), fake.PageRequests[0]);
     Assert.Equal("one", widget.Items.Single().AppId);
+    await Background(widget);
+}
+
+static async Task EmptyCatalogReturnsToLibrary()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Library &&
+        widget.ViewState == GamesAppsViewState.Ready && fake.PageRequests.Count == 1);
+
+    var snapshot = Snapshot(widget, 2);
+    Assert.True(Buttons(snapshot.Root).Any(button => button.ActionId == "games.open-catalog"));
+    Assert.False(Nodes(snapshot.Root).Any(node => node.Id == "games.catalog"));
+    Assert.Contains("No additional", Text(snapshot.Root, "games.status").Text!);
+    Assert.Valid(snapshot);
     await Background(widget);
 }
 
@@ -228,6 +255,36 @@ static async Task CurationSurvivesReactivation()
     await Background(widget);
 }
 
+static async Task CurationSurvivesNewInstance()
+{
+    var sharedState = new WidgetTestPrivateState();
+    var firstHost = new FakeAppLibraryHost
+    {
+        PrivateState = sharedState,
+        Pages = { [0] = Page([App("opaque-a", "Alpha")], null) },
+    };
+    var first = Create(firstHost);
+    await Interactive(first);
+    await AddFromCatalog(first, "Alpha");
+    await Background(first);
+    Assert.True(sharedState.Json is not null);
+
+    var restartedHost = new FakeAppLibraryHost
+    {
+        PrivateState = sharedState,
+        Pages = { [0] = Page([App("fresh-a", "Alpha") with
+            { SavedId = "saved-opaque-a" }], null) },
+    };
+    var restarted = Create(restartedHost);
+    await Interactive(restarted);
+    await WaitUntil(() => restarted.ViewState == GamesAppsViewState.Ready);
+    Assert.Equal(0, restartedHost.PageRequests.Count);
+    Assert.SequenceEqual(["fresh-a"], restarted.CuratedItems.Select(item => item.AppId));
+    Assert.True(Buttons(Snapshot(restarted, 50).Root).Any(button =>
+        button.ActionId == "games.launch" && button.Text == "Alpha"));
+    await Background(restarted);
+}
+
 static async Task LoadsMore()
 {
     var fake = new FakeAppLibraryHost
@@ -240,7 +297,6 @@ static async Task LoadsMore()
     };
     var widget = Create(fake);
     await Interactive(widget);
-    await WaitUntil(() => widget.Items.Count == 2);
     await OpenCatalog(widget);
     Assert.True(Buttons(Snapshot(widget, 6).Root).Any(button => button.Id == "games.load-more"));
     await widget.OnActionAsync(new("games.load-more", "games.load-more"));
@@ -270,7 +326,6 @@ static async Task LoadMoreIsSingleFlight()
     };
     var widget = Create(fake);
     await Interactive(widget);
-    await WaitUntil(() => widget.Items.Count == 1);
     await OpenCatalog(widget);
 
     var first = widget.OnActionAsync(new("games.load-more", "games.load-more")).AsTask();
@@ -304,7 +359,6 @@ static async Task PaginationStopsAtMaximum()
     };
     var widget = Create(fake);
     await Interactive(widget);
-    await WaitUntil(() => widget.Items.Count == GamesAppsWidget.PageSize);
     await OpenCatalog(widget);
     while (widget.NextOffset is not null)
         await widget.OnActionAsync(new("games.load-more", "games.load-more"));
@@ -328,7 +382,6 @@ static async Task LaunchIsSingleFlight()
     };
     var widget = Create(fake);
     await Interactive(widget);
-    await WaitUntil(() => widget.Items.Count == 2);
     await OpenCatalog(widget);
     await AddFromOpenCatalog(widget, "Alpha");
     await AddFromOpenCatalog(widget, "Beta");
@@ -366,7 +419,6 @@ static async Task BackgroundCancelsPageWork()
     };
     var widget = Create(fake);
     await Interactive(widget);
-    await WaitUntil(() => widget.Items.Count == 1);
     await OpenCatalog(widget);
 
     var command = widget.OnActionAsync(new("games.load-more", "games.load-more")).AsTask();
@@ -386,7 +438,6 @@ static async Task LaunchDenialKeepsLibrary()
     };
     var widget = Create(fake);
     await Interactive(widget);
-    await WaitUntil(() => widget.Items.Count == 1);
     await AddFromCatalog(widget, "Alpha");
     await BackToLibrary(widget);
     var alpha = Buttons(Snapshot(widget, 13).Root).Single(button => button.Text == "Alpha");
@@ -404,22 +455,28 @@ static async Task LaunchDenialKeepsLibrary()
 
 static async Task FailureStates()
 {
-    foreach (var (exception, state) in new (Exception, GamesAppsViewState)[]
+    foreach (var (exception, expectedStatus) in new (Exception, string)[]
     {
         (new WidgetCapabilityException("permission_denied", "denied"),
-            GamesAppsViewState.PermissionDenied),
+            "Allow Games & Apps access in Settings"),
         (new WidgetCapabilityException("lifecycle_denied", "paused"),
-            GamesAppsViewState.LifecycleDenied),
+            "App library is paused"),
         (new WidgetCapabilityException("platform_unavailable", "private path"),
-            GamesAppsViewState.ServiceUnavailable),
+            "App library unavailable"),
     })
     {
         var fake = new FakeAppLibraryHost { ReadException = exception };
         var widget = Create(fake);
-        await Visible(widget);
-        await WaitUntil(() => widget.ViewState == state);
+        await Interactive(widget);
+        await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+        Assert.Equal(0, fake.PageRequests.Count);
+        await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+        Assert.Equal(GamesAppsPage.Library, widget.Page);
+        Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
         var snapshot = Snapshot(widget, 8);
-        Assert.True(Buttons(snapshot.Root).Any(button => button.ActionId == "retry"));
+        Assert.Contains(expectedStatus, Text(snapshot.Root, "games.status").Text!);
+        Assert.True(Buttons(snapshot.Root).Any(button =>
+            button.ActionId == "games.open-catalog"));
         Assert.False(System.Text.Json.JsonSerializer.Serialize(snapshot)
             .Contains("private path", StringComparison.Ordinal));
         Assert.Valid(snapshot);
@@ -443,7 +500,8 @@ static Task PackageValidates()
 static WidgetAppLibraryItem App(
     string id,
     string name,
-    WidgetAppLibraryKind kind = WidgetAppLibraryKind.Application) => new(id, name, kind);
+    WidgetAppLibraryKind kind = WidgetAppLibraryKind.Application) =>
+    new(id, name, kind) { SavedId = "saved-" + id };
 
 static WidgetAppLibraryPage Page(IReadOnlyList<WidgetAppLibraryItem> items, int? next) =>
     new(items, next);
@@ -454,6 +512,8 @@ static GamesAppsWidget Create(FakeAppLibraryHost fake) =>
 static async Task OpenCatalog(GamesAppsWidget widget)
 {
     await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Catalog &&
+        widget.ViewState is GamesAppsViewState.Ready or GamesAppsViewState.Empty);
     Assert.Equal(GamesAppsPage.Catalog, widget.Page);
 }
 
@@ -565,11 +625,26 @@ file sealed class FakeAppLibraryHost
         ValueTask<WidgetAppLibraryPage>>? ReadHandler { get; set; }
     public Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
         ValueTask<WidgetCapabilityAcknowledgement>>? LaunchHandler { get; set; }
+    public WidgetTestPrivateState PrivateState { get; init; } = new();
 
     public WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetAppLibraryCapabilities.GetPage, GetPage)
+        .WithHandler(WidgetAppLibraryCapabilities.ResolveSaved, ResolveSaved)
         .WithHandler(WidgetAppLibraryCapabilities.Launch, Launch)
+        .WithPrivateState(PrivateState)
         .Build();
+
+    private ValueTask<ResolveSavedWidgetAppLibraryItemsResponse> ResolveSaved(
+        ResolveSavedWidgetAppLibraryItemsRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var bySaved = Pages.Values.SelectMany(page => page.Items)
+            .GroupBy(item => item.SavedId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        return ValueTask.FromResult(new ResolveSavedWidgetAppLibraryItemsResponse(
+            request.SavedIds.Where(bySaved.ContainsKey).Select(id => bySaved[id]).ToArray()));
+    }
 
     private ValueTask<WidgetAppLibraryPage> GetPage(
         WidgetAppLibraryPageRequest request,

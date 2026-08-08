@@ -20,7 +20,8 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
         IReadOnlyList<string> declaredCapabilities,
         ConsentStore consentStore,
         IPlatformBrokerBackend backend,
-        WidgetProcessCompanionContext context)
+        WidgetProcessCompanionContext context,
+        Action<BrokerHostEffect>? hostEffectSink = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         var identity = new BrokerWidgetIdentity(packageId, publisherId, instanceId);
@@ -36,7 +37,8 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
             consentStore,
             backend,
             isolatedClientAppContainerSid: context.AppContainerSid,
-            hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1]);
+            hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1],
+            hostEffectSink: hostEffectSink);
         WorkerArguments =
         [
             "--broker-pipe", pipeName,

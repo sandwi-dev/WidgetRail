@@ -23,6 +23,9 @@ enum class FocusRegion {
 
 enum class Command {
     ToggleOverlay,
+    /// Idempotently hides a visible overlay. Unlike ToggleOverlay, this can
+    /// never reopen a surface when a delayed trusted host effect arrives.
+    CloseOverlay,
     NavigateLeft,
     NavigateRight,
     Activate,

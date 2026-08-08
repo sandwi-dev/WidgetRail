@@ -170,17 +170,6 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
     }
 }
 
-[[nodiscard]] WidgetComputedStyle MergeComputedStyles(
-    const WidgetNode& node,
-    const bool focused) {
-    auto result = node.baseStyle;
-    if (focused) {
-        for (const auto& [property, value] : node.focusedStyle)
-            result[property] = value;
-    }
-    return result;
-}
-
 [[nodiscard]] ComPtr<ID2D1SolidColorBrush> Brush(
     ID2D1RenderTarget* target,
     const NativeColor color) {
@@ -200,8 +189,10 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
 [[nodiscard]] bool HasComputedProperty(
     const WidgetNode& node,
     const std::wstring_view property,
-    const bool focused) {
-    return (focused && node.focusedStyle.contains(std::wstring{property})) ||
+    const bool focused,
+    const bool pressed) {
+    return (pressed && node.pressedStyle.contains(std::wstring{property})) ||
+        (focused && node.focusedStyle.contains(std::wstring{property})) ||
         node.baseStyle.contains(std::wstring{property});
 }
 
@@ -233,6 +224,7 @@ struct DeclarativeRenderer::RenderPass final {
     ID2D1RenderTarget* target{};
     const WidgetSnapshot* snapshot{};
     std::wstring focusedId;
+    std::wstring pressedId;
     Rect viewport;
     DeclarativeRenderOptions options;
     std::unordered_map<std::string, PreparedNode> prepared;
@@ -268,12 +260,13 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] NativeStyleResult Adapt(
         const WidgetNode& node,
         const bool focused,
+        const bool pressed,
         const float parentWidth,
         const float parentHeight,
         const float parentFontSize,
         const std::optional<NativeColor>& inheritedBackground) {
         auto adapted = NativeStyleAdapter::Adapt(
-            MergeComputedStyles(node, focused),
+            ResolveDeclarativeComputedStyle(node, focused, pressed),
             NativeStyleContext{
                 viewport.width,
                 viewport.height,
@@ -311,10 +304,11 @@ struct DeclarativeRenderer::RenderPass final {
             }
         }
         const auto focused = node.id == focusedId;
+        const auto pressed = focused && node.id == pressedId;
         auto base = Adapt(
-            node, false, parentWidth, parentHeight, parentFontSize, inheritedBackground);
-        auto paint = focused
-            ? Adapt(node, true, parentWidth, parentHeight, parentFontSize, inheritedBackground)
+            node, false, false, parentWidth, parentHeight, parentFontSize, inheritedBackground);
+        auto paint = focused || pressed
+            ? Adapt(node, focused, pressed, parentWidth, parentHeight, parentFontSize, inheritedBackground)
             : base;
         const auto narrowId = NarrowStableId(node.id);
         if (narrowId.empty()) {
@@ -1036,7 +1030,7 @@ struct DeclarativeRenderer::RenderPass final {
             return;
         }
         auto fit = style.imageFit();
-        if (!HasComputedProperty(node, L"object-fit", focused)) {
+        if (!HasComputedProperty(node, L"object-fit", focused, node.id == pressedId)) {
             if (const auto explicitFit = ExplicitImageFit(node)) fit = *explicitFit;
         }
         const auto imageSize = bitmap->GetSize();
@@ -1372,6 +1366,22 @@ DeclarativeRenderer::DeclarativeRenderer(
       writeFactory_(writeFactory),
       imageCache_(imageCache) {}
 
+WidgetComputedStyle ResolveDeclarativeComputedStyle(
+    const WidgetNode& node,
+    const bool focused,
+    const bool pressed) {
+    auto result = node.baseStyle;
+    if (focused) {
+        for (const auto& [property, value] : node.focusedStyle)
+            result[property] = value;
+    }
+    if (focused && pressed) {
+        for (const auto& [property, value] : node.pressedStyle)
+            result[property] = value;
+    }
+    return result;
+}
+
 RenderResult DeclarativeRenderer::Render(
     ID2D1RenderTarget* renderTarget,
     const WidgetSnapshot& snapshot,
@@ -1383,6 +1393,7 @@ RenderResult DeclarativeRenderer::Render(
     pass.target = renderTarget;
     pass.snapshot = &snapshot;
     pass.focusedId = focusedElementId;
+    pass.pressedId = options.pressedElementId;
     pass.viewport = viewport;
     pass.options = options;
     if (!FiniteRect(viewport) || viewport.width < 0.0F || viewport.height < 0.0F) {

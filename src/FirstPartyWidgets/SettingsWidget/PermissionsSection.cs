@@ -801,6 +801,8 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.NetworkWifiRadioControlV1 => "Turn Wi-Fi on or off",
         PlatformCapabilities.NetworkBluetoothReadV1 => "See Bluetooth devices",
         PlatformCapabilities.NetworkBluetoothRadioControlV1 => "Turn Bluetooth on or off",
+        PlatformCapabilities.NetworkBluetoothPairV1 => "Pair Bluetooth devices",
+        PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.AppLibraryReadV1 => "See installed apps",
         PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
@@ -856,6 +858,12 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.NetworkBluetoothRadioControlV1 =>
             "Turn the Bluetooth software radio on or off while Network Controls is interactive. " +
             "Windows permission, hardware switches, and device policy can block a change.",
+        PlatformCapabilities.NetworkBluetoothPairV1 =>
+            "Pair one currently visible device by its opaque ID while Network Controls is interactive. " +
+            "Windows owns the pairing ceremony; the widget never receives an address or native device ID and cannot claim the device is connected.",
+        PlatformCapabilities.NetworkBluetoothManageV1 =>
+            "Open the Windows Bluetooth device settings page after an explicit controller action. " +
+            "No device identifier is placed in the settings URI and Windows remains responsible for connect, disconnect, removal, and profile-specific setup.",
         PlatformCapabilities.RecentActivityReadV1 =>
             "See a bounded list of privacy-filtered running applications observed after you allow access. " +
             "Widgets receive only display names, app kinds, state, and opaque IDs—never process IDs, paths, command lines, or window handles.",

@@ -441,7 +441,7 @@ Lifecycle is host-authoritative and separate from process residency.
 | State | Author contract |
 | --- | --- |
 | `Created` | Runtime-owned. `OnCreatedAsync` runs exactly once. Start only lightweight process-lifetime work and return promptly. |
-| `Background` | Worker may remain resident, but it is not presented. Stop UI refresh, animation, controller work, and provider subscriptions. |
+| `Background` | Worker may remain resident, but it is not presented. Stop UI refresh, animation, controller work, and provider subscriptions. Only the bounded private-state service remains available for persistence. |
 | `Visible` | Dashboard card is selected. Local quick actions and one exact declared control operation per capability-bearing user gesture can run; read capabilities may be used. |
 | `Interactive` | Full widget is open. Scoped shortcuts and typed control capabilities may run. |
 | `Destroying` | Runtime-owned bounded cleanup after widget/state/active tokens have been canceled. |
@@ -497,6 +497,16 @@ memory: keep stable element IDs for host focus restoration and persist only
 approved durable state. Legacy `backgroundPolicy: none` maps to `keep-alive`;
 legacy `suspend` maps to `suspend-when-hidden`. Do not declare both fields.
 
+For small readable preferences or UI state, use
+`HostServices.PrivateState`; do not declare it in the manifest. Restore once in
+the first `OnActivatedAsync`, keep the value in memory for that worker, and
+write meaningful changes with the last observed revision when conflict
+detection matters. Do not read storage from `OnCreatedAsync`, save per render/
+animation tick, or begin a final save in `OnDestroyingAsync`. Tokens,
+passwords, and cookies belong in the separate private-secret service. The full
+64 KiB JSON, rate, CAS, identity/update, uninstall-retention, and public test
+fixture contract is in [Private widget state](private-widget-state.md).
+
 ## GBSS: safe widget-local styling
 
 Attach semantic classes in C# and ship `styles/default.gbss`:
@@ -532,13 +542,12 @@ scroll.session-list {
 
 GBSS is not browser CSS. It supports one semantic compound selector (role,
 stable ID, classes, and `:focused`, `:pressed`, `:selected`, `:disabled`,
-`:busy`),
-variables, safe package-relative `.gbss` imports, and an allowlist of typed,
-bounded properties. Unknown properties, scripts, URLs, filesystem paths,
-`calc`, expressions, and arbitrary functions are rejected. Snapshot `:busy`
-state is resolved into the published base/focused maps and is an author
-guarantee. `:pressed` parses, but a transient pressed renderer-state map is not
-yet connected and must not be relied upon.
+`:busy`), variables, safe package-relative `.gbss` imports, and an allowlist of
+typed, bounded properties. Unknown properties, scripts, URLs, filesystem
+paths, `calc`, expressions, and arbitrary functions are rejected. Snapshot
+`:busy` state is resolved into the published maps. `:pressed` is activated only
+for the exact physically held controller action and is canceled on focus,
+surface, or snapshot changes.
 
 Use percentages, `vw`, `vh`, flex growth/shrink, min/max dimensions, line
 limits, and `overflow: clip` for responsive layout. The host applies global
@@ -572,7 +581,7 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.bluetooth.read.v1` | get/watch sanitized Bluetooth radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | request Bluetooth software radio On/Off | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
-| `system.apps.library.read.v1` | page through sanitized installed-app names, conservative kinds, and opaque IDs | Visible or Interactive |
+| `system.apps.library.read.v1` | page installed-app names/kinds and resolve authority-scoped durable SavedIds to current launch IDs | Visible or Interactive |
 | `system.apps.library.launch.v1` | launch one current broker-issued opaque app ID | Interactive only |
 | `system.media.sessions.read.v1` | list/watch sanitized system media sessions | Visible or Interactive |
 | `system.media.sessions.control.v1` | control one broker-issued media session | Interactive, or one exact declared dashboard gesture while Visible |
@@ -671,16 +680,25 @@ var page = await HostServices.AppLibrary.GetPageAsync(
     limit: 32,
     cancellationToken);
 
-if (LifecycleState == WidgetLifecycleState.Interactive)
+var savedIds = page.Items.Select(item => item.SavedId).ToArray();
+// Persist SavedIds—not AppIds—in HostServices.PrivateState.
+var restored = await HostServices.AppLibrary.ResolveSavedAsync(
+    savedIds,
+    cancellationToken);
+
+if (LifecycleState == WidgetLifecycleState.Interactive && restored.Count != 0)
     await HostServices.AppLibrary.LaunchAsync(
-        page.Items[0].AppId,
+        restored[0].AppId,
         cancellationToken);
 ```
 
-`GetPageAsync` permits 1–64 items per request. Read is allowed only in Visible
-or Interactive; launch is separately declared/consented and Interactive-only.
-Treat `AppId` as an opaque, provider-lifetime token and discard it when the
-provider reports `app_not_found`. The current Windows provider exposes only
+`GetPageAsync` permits 1–64 items per request. `ResolveSavedAsync` accepts at
+most 64 unique host-issued SavedIds, preserves request order, and omits apps
+that are no longer available. Read is allowed only in Visible or Interactive;
+launch is separately declared/consented and Interactive-only. Treat `AppId` as
+an opaque provider-lifetime token and never persist it. `SavedId` is the
+non-reversible publisher/package-scoped value for private state. The current
+Windows provider exposes only
 Start Menu `.lnk` registrations and conservatively reports them as
 Application. It provides no icon/artwork, AppsFolder/UWP, Steam/Xbox/other
 launcher aggregation, or authoritative game detection. See the [Games & Apps

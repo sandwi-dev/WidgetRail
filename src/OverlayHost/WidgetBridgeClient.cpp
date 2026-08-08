@@ -550,6 +550,9 @@ void ApplyComputedStyles(WidgetNode& node, const JsonObject& styles) {
         if (states.HasKey(L"focused")) {
             node.focusedStyle = ParseComputedStyle(states.GetNamedObject(L"focused"));
         }
+        if (states.HasKey(L"pressed")) {
+            node.pressedStyle = ParseComputedStyle(states.GetNamedObject(L"pressed"));
+        }
     }
     for (auto& child : node.children) ApplyComputedStyles(child, styles);
 }
@@ -594,6 +597,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
 bool HandleAsyncEvent(
     const JsonObject& event,
     WidgetInvalidationQueue& invalidations,
+    WidgetHostEffectQueue& hostEffects,
     PlatformAppearanceRevisionTracker& appearanceChanges,
     WidgetCatalogRevisionTracker& catalogChanges,
     std::wstring& status) {
@@ -662,6 +666,34 @@ bool HandleAsyncEvent(
         status.clear();
         return true;
     }
+    if (type == L"widget-host-effect") {
+        if (!HasOnlyProperties(
+                payload,
+                {L"widgetId", L"runtimeGeneration", L"effect", L"sequence"}) ||
+            payload.GetNamedValue(L"runtimeGeneration").ValueType() != JsonValueType::String ||
+            payload.GetNamedValue(L"effect").ValueType() != JsonValueType::String ||
+            payload.GetNamedValue(L"sequence").ValueType() != JsonValueType::Number) {
+            status = L"WidgetBridge host effect has an invalid payload.";
+            return false;
+        }
+        const auto runtimeGeneration = OptionalString(payload, L"runtimeGeneration");
+        const auto effect = OptionalString(payload, L"effect");
+        const double sequence = payload.GetNamedNumber(L"sequence");
+        if (!IsIdentifier(runtimeGeneration) ||
+            effect != L"closeOverlayAfterAppLaunch" ||
+            !std::isfinite(sequence) || sequence <= 0 ||
+            sequence > 9'007'199'254'740'991.0 || std::floor(sequence) != sequence ||
+            !hostEffects.Push({
+                static_cast<long long>(sequence),
+                widgetId,
+                runtimeGeneration,
+                WidgetHostEffectKind::CloseOverlayAfterAppLaunch})) {
+            status = L"WidgetBridge host effect is invalid.";
+            return false;
+        }
+        status.clear();
+        return true;
+    }
     if (type == L"widget-failed") {
         status = L"Widget '" + widgetId +
                  L"' worker failed and will be restarted on demand.";
@@ -683,6 +715,28 @@ bool WidgetInvalidationQueue::Push(std::wstring widgetId) {
     known_.emplace(widgetId);
     queued_.push_back(std::move(widgetId));
     return true;
+}
+
+bool WidgetHostEffectQueue::Push(WidgetHostEffect effect) {
+    if (effect.sequence <= 0 || !IsIdentifier(effect.widgetId) ||
+        !IsIdentifier(effect.runtimeGeneration) ||
+        effect.kind != WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
+        return false;
+    }
+    if (effect.sequence <= lastSequence_) return true;
+    lastSequence_ = effect.sequence;
+    if (queued_.size() == MaximumEffects) queued_.erase(queued_.begin());
+    queued_.push_back(std::move(effect));
+    return true;
+}
+
+std::vector<WidgetHostEffect> WidgetHostEffectQueue::Take() noexcept {
+    return std::exchange(queued_, {});
+}
+
+void WidgetHostEffectQueue::Reset() noexcept {
+    lastSequence_ = 0;
+    queued_.clear();
 }
 
 std::vector<std::wstring> ChangedWidgetRuntimeIds(
@@ -865,6 +919,7 @@ void WidgetBridgeClient::Stop() noexcept {
     processId_ = 0;
     nextRequestId_ = 0;
     (void)invalidations_.Take();
+    hostEffects_.Reset();
     (void)appearanceChanges_.Take();
     catalogChanges_.Reset();
 }
@@ -905,7 +960,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -993,7 +1048,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1063,7 +1118,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
             const auto type = response.GetNamedString(L"type");
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1107,7 +1162,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1189,7 +1244,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1280,7 +1335,7 @@ bool WidgetBridgeClient::PumpEvents() {
                 return consumed;
             }
             std::wstring status;
-            if (!HandleAsyncEvent(message, invalidations_, appearanceChanges_, catalogChanges_, status)) {
+            if (!HandleAsyncEvent(message, invalidations_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
                 Fail(std::move(status));
                 return consumed;
             }
@@ -1295,6 +1350,10 @@ bool WidgetBridgeClient::PumpEvents() {
 
 std::vector<std::wstring> WidgetBridgeClient::TakeInvalidatedWidgetIds() noexcept {
     return invalidations_.Take();
+}
+
+std::vector<WidgetHostEffect> WidgetBridgeClient::TakeHostEffects() noexcept {
+    return hostEffects_.Take();
 }
 
 std::optional<long long>
@@ -1344,6 +1403,51 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         return gba::ParsePlatformAppearance(payload, error);
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid platform appearance JSON: " +
+                std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
+    const std::string_view payloadUtf8,
+    std::wstring& error) {
+    try {
+        const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
+        auto snapshot = ParseSnapshot(payload.GetNamedObject(L"snapshot"));
+        if (payload.HasKey(L"renderStyles")) {
+            ApplyComputedStyles(snapshot.root, payload.GetNamedObject(L"renderStyles"));
+        }
+        error.clear();
+        return snapshot;
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid widget snapshot JSON: " + std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetHostEffect> ParseWidgetHostEffectEvent(
+    const std::string_view eventUtf8,
+    std::wstring& error) {
+    try {
+        const auto event = JsonObject::Parse(winrt::to_hstring(eventUtf8));
+        WidgetInvalidationQueue invalidations;
+        WidgetHostEffectQueue effects;
+        PlatformAppearanceRevisionTracker appearance;
+        WidgetCatalogRevisionTracker catalog;
+        std::wstring status;
+        if (!HandleAsyncEvent(event, invalidations, effects, appearance, catalog, status)) {
+            error = std::move(status);
+            return std::nullopt;
+        }
+        auto queued = effects.Take();
+        if (queued.size() != 1) {
+            error = L"JSON is not a widget host-effect event.";
+            return std::nullopt;
+        }
+        error.clear();
+        return std::move(queued.front());
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid widget host-effect JSON: " +
                 std::wstring(exception.message());
         return std::nullopt;
     }

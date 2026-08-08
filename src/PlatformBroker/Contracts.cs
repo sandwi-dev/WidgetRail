@@ -239,6 +239,36 @@ public sealed record BluetoothSummary(
 public sealed record SetBluetoothRadioStateRequest([property: JsonRequired] bool Enabled);
 public sealed record BluetoothChangedEvent(BluetoothSummary Snapshot);
 
+public enum BluetoothPairingResultStatus
+{
+    Paired,
+    AlreadyPaired,
+    NotReady,
+    Rejected,
+    TooManyConnections,
+    HardwareFailure,
+    AuthenticationTimedOut,
+    AuthenticationNotAllowed,
+    AuthenticationFailed,
+    NoSupportedProfiles,
+    ProtectionLevelNotMet,
+    AccessDenied,
+    InvalidCeremonyData,
+    CanceledByUser,
+    OperationInProgress,
+    UserInteractionRequired,
+    RemoteAlreadyAssociated,
+    DeviceUnavailable,
+    Failed,
+}
+
+public sealed record PairBluetoothDeviceRequest(
+    [property: JsonRequired] string DeviceId);
+public sealed record BluetoothPairingResultSummary(
+    [property: JsonRequired] BluetoothPairingResultStatus Outcome);
+public sealed record OpenBluetoothDeviceSettingsRequest(
+    [property: JsonRequired] string DeviceId);
+
 public enum RecentActivityKind
 {
     Unknown,
@@ -268,12 +298,29 @@ public enum AppLibraryKind
 }
 
 /// <summary>
-/// One launchable Start Menu registration. AppId is a provider-owned opaque
-/// token and never contains a path, command line, AUMID, package identity, or
+/// One launchable application projected for an authenticated widget. AppId is
+/// a short-lived launch token. SavedId is a durable, authority-scoped opaque
+/// token suitable for the widget's private state. Neither identifier contains
+/// a path, command line, AUMID, package identity, provider identity, or
 /// launcher-specific identifier.
 /// </summary>
 public sealed record AppLibraryItemSummary(
     string AppId,
+    string DisplayName,
+    AppLibraryKind Kind)
+{
+    [JsonRequired]
+    public string SavedId { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Trusted backend-only application identity. ProviderAppId is a short-lived
+/// launch token. StableProviderIdentity is private host material used only to
+/// derive an authority-scoped SavedId; this record must never cross widget IPC.
+/// </summary>
+public sealed record AppLibraryBackendItemSummary(
+    [property: JsonIgnore] string ProviderAppId,
+    [property: JsonIgnore] string StableProviderIdentity,
     string DisplayName,
     AppLibraryKind Kind);
 
@@ -285,8 +332,17 @@ public sealed record AppLibraryPageSummary(
     [property: JsonRequired] IReadOnlyList<AppLibraryItemSummary> Items,
     [property: JsonRequired] int? NextOffset);
 
+public sealed record ResolveSavedAppLibraryItemsRequest(
+    [property: JsonRequired] IReadOnlyList<string> SavedIds);
+
+public sealed record ResolveSavedAppLibraryItemsSummary(
+    [property: JsonRequired] IReadOnlyList<AppLibraryItemSummary> Items);
+
 public sealed record LaunchAppLibraryItemRequest(
-    [property: JsonRequired] string AppId);
+    [property: JsonRequired] string AppId)
+{
+    public bool CloseOverlayOnSuccess { get; init; }
+}
 
 public enum MediaPlaybackStatus
 {
@@ -437,9 +493,9 @@ public interface IActivityPlatformBrokerBackend : IPlatformBrokerEventSource
 
 public interface IAppLibraryPlatformBrokerBackend
 {
-    Task<IReadOnlyList<AppLibraryItemSummary>> GetAppLibraryAsync(
+    Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
         CancellationToken cancellationToken) =>
-        Task.FromException<IReadOnlyList<AppLibraryItemSummary>>(
+        Task.FromException<IReadOnlyList<AppLibraryBackendItemSummary>>(
             new BrokerException("platform_unavailable", "App library is unavailable."));
 
     /// <summary>
@@ -448,7 +504,7 @@ public interface IAppLibraryPlatformBrokerBackend
     /// snapshot for later pages, so refresh cannot make an in-flight page walk
     /// skip or duplicate entries.
     /// </summary>
-    Task<IReadOnlyList<AppLibraryItemSummary>> RefreshAppLibraryAsync(
+    Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
         CancellationToken cancellationToken) =>
         GetAppLibraryAsync(cancellationToken);
 
@@ -463,6 +519,15 @@ public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
 {
     Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken);
     Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken);
+    Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken) =>
+        Task.FromException<BluetoothPairingResultSummary>(
+            new BrokerException("platform_unavailable", "Bluetooth pairing is unavailable."));
+    Task OpenBluetoothDeviceSettingsAsync(
+        string deviceId, CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException(
+                "platform_unavailable", "Bluetooth device management is unavailable."));
 }
 
 public interface IMediaPlatformBrokerBackend : IPlatformBrokerEventSource

@@ -1,6 +1,7 @@
 # Control Center visual design system
 
-Status: implementation specification, 2026-08-07
+Status: minimalist default foundation implemented; broader product composition
+and physical visual matrix remain, 2026-08-07
 
 This system combines two reference directions without reproducing either
 product's trade dress:
@@ -14,10 +15,14 @@ product's trade dress:
   cards or a content-sized flyout above a quiet icon rail, and mark selection
   with a thin light outline rather than loud permanent chrome.
 
-Our visual signature is a cooler graphite surface, violet system accent, softer
-superellipse-like rounding, and an asymmetric card rhythm. Service widgets may
-use a scoped brand accent—YT Music uses coral-pink—but focus remains the
-host-owned neutral white. The goal is familiar interaction, not visual cloning.
+The shipped default uses warm graphite surfaces, warm off-white text, restrained
+stone accent, small regular-weight type, 10–12 DIP rounding, thin separators,
+and compact controller-safe rhythm. Service widgets may use a scoped brand
+accent—YT Music uses coral-pink—but focus remains a host-owned neutral warm
+white. The goal is familiar interaction, not visual cloning. This shared
+default is implemented in the built-in platform theme and first-party GBSS;
+the composition blueprints below still include product targets that need
+packaged physical evidence.
 
 ## Coordinate system and responsive stage
 
@@ -84,19 +89,20 @@ All colors are sRGB. Alpha is applied after color interpolation.
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--canvas-veil` | `rgba(3, 5, 10, .18)` | Full viewport dim |
-| `--surface` | `rgba(16, 18, 24, .94)` | Flyout/widget body |
-| `--surface-raised` | `rgba(31, 34, 43, .96)` | Selected row, buttons |
-| `--surface-muted` | `rgba(45, 48, 59, .82)` | Prompt pills, inactive controls |
-| `--text` | `#f7f8fc` | Primary copy |
-| `--text-muted` | `#b9bdc8` | Secondary copy |
-| `--text-subdued` | `#858c9a` | Timestamps and quiet metadata |
-| `--accent` | `#8b7cff` | Host selection/accent |
+| `--canvas-veil` | `rgba(0, 0, 0, .70)` | Full viewport dim |
+| `--surface` | `rgba(21, 21, 20, .98)` | Flyout/widget body |
+| `--surface-raised` | `rgba(29, 29, 27, .98)` | Rows and buttons |
+| `--surface-subtle` | `rgba(39, 39, 36, .92)` | Secondary groups and tracks |
+| `--surface-active` | `rgba(48, 47, 43, .98)` | Focused or selected surface |
+| `--text` | `#f2efe8` | Primary copy |
+| `--text-muted` | `#aaa69d` | Secondary copy |
+| `--text-subdued` | `#7d7a72` | Timestamps and quiet metadata |
+| `--accent` | `#b8ae92` | Restrained host accent |
 | `--brand-media` | `#ff3b67` | YT Music-scoped progress/play |
-| `--focus` | `#ffffff` | Mandatory focus ring |
-| `--success` | `#45d49a` | Connected/available |
-| `--warning` | `#ffc857` | Degraded state |
-| `--error` | `#ff6179` | Failure/destructive warning |
+| `--focus` | `#f4f0e8` | Mandatory focus ring |
+| `--success` | `#8eb49a` | Connected/available |
+| `--warning` | `#c8a66a` | Degraded state |
+| `--error` | `#c98181` | Failure/destructive warning |
 | `--scrim` | `rgba(0, 0, 0, .42)` | Text over imagery |
 
 Large image cards must add a bottom scrim before placing text. Brand color
@@ -122,6 +128,19 @@ sans-serif. Never package or load a font through GBSS.
 Ellipsize only after the maximum line count. Never marquee by default.
 Auto-scroll is an accessibility setting with slow/medium/fast speeds, not a
 theme animation.
+
+The default is a controller utility surface, not a web landing page or desktop
+skin. Do not use staggered list entrances, ambient looping/pulsing, decorative
+parallax, editorial-serif hierarchy, faux-macOS traffic-light/chrome motifs, or
+oversized hero whitespace. Optional packaged fonts are lower priority and
+security-sensitive; the baseline remains the Windows UI family until an
+immutable, licensed, bounded host asset contract exists.
+
+The current component gap is functional as well as visual. A future shared
+contract should cover `SettingsRow`, nested picker/listbox, action sheet,
+non-focus-stealing toast, controller scrubber, `MediaTile`/`AppTile`, per-edge
+borders, responsive grid/wrap, and semantic monospace. First-party widgets must
+not invent private substitutes unavailable to Community authors.
 
 ## Dashboard geometry
 
@@ -234,8 +253,15 @@ semantic label.
 
 ## Motion
 
-Animations operate on compositor transforms and opacity only. Layout settles
-before animation begins.
+The implemented declarative renderer animates paint-only `opacity` and `scale`
+for stable nodes from GBSS transition declarations. It retargets without a
+visible jump, caps duration/node count, reuses the visible controller frame
+cadence, and stops invalidating after every transition settles. Reduced motion
+snaps and cancels. Layout, color, progress width, shell open/close, flyout
+translation, reorder, pressed state, and artwork crossfade in the table below
+remain product targets unless separately documented as implemented.
+
+Target motion language:
 
 | Event | Duration | Easing | Motion |
 | --- | ---: | --- | --- |

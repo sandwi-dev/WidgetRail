@@ -134,6 +134,11 @@ remains off until the publisher-trust gates in Phase 4.
   recovery, update/rollback, and uninstall evidence before closing GBA-030.
 - Finish Settings controller reachability, diagnostics/recovery, local package
   and theme workflows, and permission/version consistency
+- Resolve current packaged regressions before calling the local slice polished:
+  transparent native client pixels outside content surfaces (GBA-036), a real
+  Now Playing provider Retry path (GBA-037), lazy Games Catalog loading plus
+  unclipped responsive copy (GBA-038), and fully reflowing/scrollable long
+  permission descriptions (GBA-039).
 - Complete controller-first Audio Control and Network Control through their
   locally testable hardware, privacy, denial, churn, and recovery gates
 - Run an explicit reversible Audio Control hardware gate on this machine:
@@ -151,30 +156,47 @@ remains off until the publisher-trust gates in Phase 4.
   states, switches, tabs, and scoped dialogs. Components must keep stable IDs,
   minimum controller target sizes, readable non-color state, nested Back
   behavior, themeable semantic classes, and supported-DPI focus containment.
-  Rework its default theme as a restrained minimalist system: lighter type
-  hierarchy, fewer nested surfaces, smaller radii, thin dividers/tracks,
-  compact controller-safe spacing, and one consistent focus treatment. Verify
-  every component at supported text/interface scales instead of tuning only
-  the current widgets.
-- Complete native GBSS transition interpolation. `transition-duration` and
-  `transition-easing` are parsed, typed, cascaded, and accessibility-gated, but
-  the renderer currently applies state changes immediately. Add a bounded
-  host-owned clock, interruption/retarget rules, reduced-motion behavior, and
-  deterministic renderer/performance evidence before describing transitions
-  as animated.
+  The minimalist warm-graphite shared default and first-party retune are now
+  implemented. Next component/API increments are `SettingsRow`, a nested
+  picker/listbox, action sheet, non-focus-stealing toast, controller scrubber,
+  and purpose-built `MediaTile`/`AppTile`; then per-edge borders, responsive
+  grid/wrap, and semantic monospace for diagnostics/code-like values. Preserve
+  44-DIP targets, non-color state, stable IDs, and one inset focus cue. Optional
+  packaged fonts are lower priority and security-sensitive; they require
+  immutable asset brokering/licensing/bounds and must never become arbitrary
+  font loading. Verify every component at supported text/interface scales
+  instead of tuning only current widgets.
+- Extend the implemented native opacity/scale transition slice. The bounded
+  host timeline, interruption/retarget, settled-idle behavior, and reduced-
+  motion cancellation are covered by deterministic native tests. The transient
+  pressed-state map is now connected to exact physical actions. Remaining
+  motion work is true composited subtree transforms/translation; shell/widget
+  open, close, and replacement
+  transitions; and packaged visual/performance evidence. Do not import web-
+  centric staggered entrances, ambient looping motion, editorial serif/faux-
+  macOS defaults, or decorative animation into the controller shell.
+- Integrate the implemented host-granted `HostServices.PrivateState` service
+  into widgets that need durable preferences. The broker/provider foundation
+  already supplies strict 64 KiB canonical JSON, revision/CAS, rate limits,
+  cross-process atomicity, restart continuity, and unsigned content-bound
+  identity. Remaining product work includes per-widget clear-local-data UI,
+  uninstall/retention policy review, storage/profile cleanup, and migrating
+  Games & Apps curation onto its implemented authority-scoped SavedId resolver.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance
   suite exist
-- Media controls
+- Harden the implemented Now Playing reference: repair provider-failure Retry,
+  finish packaged lifecycle/controller evidence, then consider broader media
+  features without bypassing the typed GSMTC broker.
 - Games & Apps replaces bundled Recent Apps with a locally testable Start Menu
-  catalog and exact opaque-ID launch. AppsFolder/launcher sources,
-  authoritative game classification, icons, history, search/favorites, and
-  grouping remain roadmap work. Its destination is a curated launch library,
-  not a dump of every Start Menu shortcut: add source attribution, user hide/
-  favorite/order controls, evidence-backed game classification, and a safe
-  fallback application view. Close the overlay only after the selected exact
-  registration launches successfully; failure keeps it open with feedback.
+  catalog and exact opaque-ID launch. Its in-memory Library/Catalog slice now
+  lets users explicitly add/remove entries and orders confirmed launches at
+  the front. Durable curation/order, deferred Catalog-only loading, AppsFolder/
+  launcher sources, authoritative game classification, icons, history, search,
+  source grouping, running-program capture, and file-picker additions remain
+  roadmap work. Close the overlay only after the selected exact registration
+  launches successfully; failure keeps it open with feedback.
 - Capture proof and widget if Windows API tests pass
 - Discord proof after eligibility and production communications access are confirmed
 
@@ -264,9 +286,11 @@ section needs its own loading/empty/denied/error state, focus-preserving
 reconciliation, and provider-churn tests.
 
 **Games & Apps roadmap** has replaced Recent Apps in the bundled product
-catalog. The current public-SDK package pages through a bounded Start Menu
-library, renders a horizontal controller strip, and launches one selected
-broker-issued opaque ID only while Interactive. Read and launch have separate
+catalog. The current public-SDK package presents a durable curated Library
+and a nested horizontally paged Start Menu Catalog, then launches one selected
+broker-issued opaque ID only while Interactive. A toggles Catalog membership,
+X removes from the Library, and confirmed launches move to the persisted front.
+Read and launch have separate
 manifest declarations and consent. The trusted provider keeps paths, shortcut
 targets, arguments, AUMIDs, package identities, PIDs, and HWNDs private; every
 launch re-enumerates and requires one exact unchanged shortcut before invoking
@@ -275,16 +299,21 @@ the Windows Shell without arguments or elevation.
 This first slice intentionally scans only executable `.lnk` registrations in
 the current-user and all-user Start Menu Programs folders. It exposes no
 application icons/artwork and deliberately reports every real entry as
-Application rather than guessing games from filenames or paths. Next increments
-should add supported AppsFolder/UWP and launcher-specific catalog adapters,
+Application rather than guessing games from filenames or paths. The host now
+issues an authority-scoped SavedId, stores curation/recent-first order through
+package-private compare-and-swap state, and resolves it to a fresh provider-
+lifetime launch token. The full Catalog now loads only when requested. Next
+increments should add supported AppsFolder/UWP and launcher-specific adapters,
 then an icon/artwork broker and evidence-backed game classification. Search,
-favorites, grouping, history, source attribution, and refresh observation must
-remain bounded and privacy reviewed. None may become arbitrary path/process
-launch authority. Recent Apps remains a separate read-only activity API/test
-reference, not a bundled dashboard widget.
+grouping, history, source attribution, running-
+program capture, file-picker additions, and refresh observation must remain
+bounded and privacy reviewed. None may become arbitrary path/process launch
+authority. Recent Apps remains a separate read-only activity API/test reference,
+not a bundled dashboard widget.
 
-On a successful launch result, the shell should close the overlay through a
-host-owned, correlation-safe completion signal. The widget must not receive
+On a successful launch result, the shell closes the overlay through the
+implemented host-owned, correlation-safe completion signal. The widget does
+not receive
 generic window-management authority, synthesize Guide, or confuse enqueueing
 with provider success. Failure, stale ID, or cancellation keeps Games & Apps
 visible and focused with a bounded retry state.

@@ -33,6 +33,7 @@ public sealed class WidgetBridgeServer(
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private long _catalogRevision;
     private long _diagnosticsRevision;
+    private long _hostEffectSequence;
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
     private bool _disposed;
@@ -556,7 +557,33 @@ public sealed class WidgetBridgeServer(
             configured.DeclaredCapabilities,
             _consentStore,
             _platformBackend,
-            context);
+            context,
+            effect => PublishHostEffect(configured.Id, configured.WorkerFingerprint, effect));
+    }
+
+    private void PublishHostEffect(
+        string widgetId,
+        string expectedWorkerFingerprint,
+        BrokerHostEffect effect)
+    {
+        if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
+        ClientRegistration? registration;
+        lock (_catalogGate)
+        {
+            if (!_clients.TryGetValue(widgetId, out registration) ||
+                !string.Equals(registration.Configured.WorkerFingerprint,
+                    expectedWorkerFingerprint, StringComparison.Ordinal) ||
+                registration.HostLifecycle != WidgetLifecycleState.Interactive)
+                return;
+        }
+        var descriptor = registration.Configured.PublicDescriptor();
+        _ = SendEventAsync(
+            BridgeMessageTypes.HostEffect,
+            new BridgeHostEffect(
+                widgetId,
+                descriptor.RuntimeGeneration,
+                "closeOverlayAfterAppLaunch",
+                Interlocked.Increment(ref _hostEffectSequence)));
     }
 
     private async Task SendEventAsync<T>(string type, T payload)

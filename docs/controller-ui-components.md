@@ -52,11 +52,14 @@ be SDK composition helpers that emit the same bounded tree rather than new
 protocol kinds. A new protocol kind is justified only when the host must own
 unique input, accessibility, or rendering behavior—as with Slider.
 
-The current helpers are a functional contract, not the final visual language.
-The restrained minimalist default hierarchy, density, typography, radii,
-focus treatment, and state motion are tracked together as
-[GBA-031](known-issues.md#gba-031--default-components-need-a-minimalist-visual-system)
-so Community authors do not need per-widget repairs.
+The helpers now ship with a restrained warm-graphite default: regular-weight
+type, fewer nested surfaces, 10–12 DIP radii, thin dividers/tracks, compact
+controller-safe spacing, and one inset neutral focus treatment. First-party
+widget styles consume the same semantic `gbar-*` contract available to
+Community authors. Physical packaged screenshots across the supported display,
+text-scale, high-contrast, and reduced-transparency matrix remain the evidence
+gate tracked by
+[GBA-031](known-issues.md#gba-031--default-components-need-a-minimalist-visual-system).
 
 ### Modern composite helpers
 
@@ -230,15 +233,27 @@ work in flight; track pending state at the narrowest owning feature.
 The following are design candidates, not current `UI.*` APIs. Implement them as
 tested composition helpers or native semantics before authors depend on names:
 
-1. **Status line and loading state** — bounded live state without making
-   metadata focusable or inventing a polling contract.
-2. **Rich media row** — artwork, multi-line metadata, and a full-row action
-   require a future host semantic or composition contract beyond the flat
-   `ValueRow` and single-label `ChoiceRow` primitives.
-3. **Select/listbox helper** — opens a nested scrollable scope instead of
-   cycling hidden values with bumpers or triggers.
-4. **Toast/notification model** — host-announced, time-bounded feedback that
+1. **`SettingsRow`** — compact label, optional description/value/status, and
+   one controller action without recreating a thick nested card.
+2. **Picker/listbox and action sheet** — nested scrollable scopes for bounded
+   choice or contextual actions instead of cycling hidden values or crowding
+   the root.
+3. **Toast/notification model** — host-announced, time-bounded feedback that
    never steals focus; persistent failures remain in the owning surface.
+4. **Controller scrubber** — Slider-derived seek semantics, time/value labels,
+   buffered/unknown state, latest-wins adjustment, and stable focus.
+5. **`MediaTile` and `AppTile`** — bounded artwork/icon, multi-line metadata,
+   state, and one primary full-tile action without private widget geometry.
+6. **Layout/style primitives** — per-edge borders, responsive grid/wrap, and
+   semantic monospace for diagnostics or code-like values. These need bounded
+   native layout/style contracts rather than author-specific workarounds.
+
+Optional packaged fonts are lower priority and security-sensitive: any future
+support needs immutable package assets, licensing review, strict file/count/
+size bounds, containment/reparse checks, and a host font broker. It must not
+become arbitrary font loading. The default should also reject web-centric
+staggered entrances, ambient loops, editorial-serif or faux-macOS styling, and
+decorative density that conflicts with fast controller scanning.
 
 Each candidate must ship with protocol/SDK validation, controller routing,
 screen-reader semantics, GBSS roles/classes, compact and wide layouts, 720p and

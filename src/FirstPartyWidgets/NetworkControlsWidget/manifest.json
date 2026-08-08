@@ -23,7 +23,9 @@
     "system.network.wifi.connect.v1",
     "system.network.wifi.radio.control.v1",
     "system.network.bluetooth.read.v1",
-    "system.network.bluetooth.radio.control.v1"
+    "system.network.bluetooth.radio.control.v1",
+    "system.network.bluetooth.pair.v1",
+    "system.network.bluetooth.manage.v1"
   ],
   "residencyPolicy": {
     "schemaVersion": 1,

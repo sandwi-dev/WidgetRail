@@ -80,6 +80,34 @@ int main() {
     assert(!(*valid)[0].quickActions[1].controllerButton);
 
     error.clear();
+    const auto styledSnapshot = gba::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "sequence": 9,
+            "widgetInstanceId": "music.runtime.v1",
+            "activeInputScopeId": "root",
+            "initialFocusId": "play",
+            "root": {
+                "id": "root",
+                "kind": "stack",
+                "children": [{"id":"play","kind":"button","text":"Play","actionId":"play"}]
+            }
+        },
+        "renderStyles": {
+            "play": {
+                "base": {"opacity":{"kind":"number","text":"0.5","number":0.5,"unit":null}},
+                "focused": {"scale":{"kind":"number","text":"1.05","number":1.05,"unit":null}},
+                "pressed": {"scale":{"kind":"number","text":"0.97","number":0.97,"unit":null}}
+            }
+        }
+    })json", error);
+    assert(styledSnapshot && error.empty());
+    assert(styledSnapshot->root.children.size() == 1);
+    const auto& styledButton = styledSnapshot->root.children.front();
+    assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
+    assert(styledButton.focusedStyle.at(L"scale").number == 1.05);
+    assert(styledButton.pressedStyle.at(L"scale").number == 0.97);
+
+    error.clear();
     const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"fallback","name":"Fallback","instanceId":"fallback","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error);
@@ -154,6 +182,37 @@ int main() {
     assert(pending.front() == L"widget-1");
     assert(pending.back() == L"widget-256");
     assert(invalidations.size() == 0);
+
+    error.clear();
+    const auto hostEffect = gba::testing::ParseWidgetHostEffectEvent(R"json({
+        "protocolVersion":1,
+        "type":"widget-host-effect",
+        "requestId":0,
+        "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7}
+    })json", error);
+    assert(hostEffect && error.empty());
+    assert(hostEffect->sequence == 7);
+    assert(hostEffect->widgetId == L"games-apps");
+    assert(hostEffect->runtimeGeneration == L"runtime-1");
+    assert(hostEffect->kind == gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch);
+
+    gba::WidgetHostEffectQueue hostEffects;
+    assert(hostEffects.Push(*hostEffect));
+    assert(hostEffects.Push(*hostEffect)); // replay is accepted and ignored
+    assert(hostEffects.size() == 1);
+    assert(hostEffects.lastSequence() == 7);
+    assert(!hostEffects.Push({8, L"bad/widget", L"runtime-1",
+        gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch}));
+    const auto pendingEffects = hostEffects.Take();
+    assert(pendingEffects.size() == 1);
+    assert(hostEffects.size() == 0);
+
+    error.clear();
+    assert(!gba::testing::ParseWidgetHostEffectEvent(R"json({
+        "protocolVersion":1,"type":"widget-host-effect","requestId":0,
+        "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7,"extra":true}
+    })json", error));
+    assert(!error.empty());
 
     error.clear();
     const auto appearance = gba::testing::ParsePlatformAppearance(ValidAppearance, error);

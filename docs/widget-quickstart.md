@@ -124,8 +124,9 @@ operation IDs. The [Network Controls reference](network-controls.md) is the
 complete example for event-driven status/available-Wi-Fi subscriptions,
 explicit Interactive scanning, current saved/open result connection, Windows
 privacy degradation, and transport-free tests.
-The [Games & Apps reference](games-and-apps.md) shows paged installed-app reads
-and Interactive-only launch using broker-issued opaque IDs. The retained
+The [Games & Apps reference](games-and-apps.md) shows paged installed-app reads,
+authority-scoped durable SavedIds reconciled to short-lived launch IDs, and
+Interactive-only exact launch. The retained
 [Recent Apps reference](recent-apps.md) shows a read-only event stream with
 opaque OS identity and no foreground/process authority.
 

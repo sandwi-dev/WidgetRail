@@ -69,6 +69,9 @@ int main() {
           "tray cycling automatically replaces the visible widget without entering it");
     Send(firstRun, Command::ToggleOverlay);
     Check(firstRun.surface() == Surface::Hidden, "tray Back route can close through ToggleOverlay");
+    Send(firstRun, Command::CloseOverlay);
+    Check(firstRun.surface() == Surface::Hidden,
+          "provider-confirmed close is idempotent and cannot reopen the overlay");
     Send(firstRun, Command::ToggleOverlay);
     Check(firstRun.surface() == Surface::Widget &&
           firstRun.focusRegion() == FocusRegion::Tray,
@@ -89,6 +92,16 @@ int main() {
     Check(resumeWidget.surface() == Surface::Widget && resumeWidget.activeWidget() == L"yt-music" &&
           resumeWidget.focusRegion() == FocusRegion::Widget,
           "Guide restores an open widget");
+    Send(resumeWidget, Command::CloseOverlay);
+    Check(resumeWidget.surface() == Surface::Hidden,
+          "provider-confirmed close hides an open widget");
+    Send(resumeWidget, Command::CloseOverlay);
+    Check(resumeWidget.surface() == Surface::Hidden,
+          "duplicate provider-confirmed close remains hidden");
+    Send(resumeWidget, Command::ToggleOverlay);
+    Check(resumeWidget.surface() == Surface::Widget &&
+          resumeWidget.activeWidget() == L"yt-music",
+          "confirmed close retains the last-used widget for the next Guide open");
 
     OverlayState reorder;
     Send(reorder, Command::ToggleOverlay);

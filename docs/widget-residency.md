@@ -16,8 +16,11 @@ The host alone moves a widget through `Created`, `Background`, `Visible`,
 and `ActiveCancellationToken`.
 
 Every policy enters `Background` when the overlay hides or another widget is
-selected. Background denies broker capabilities. Widgets cannot promote their
-own lifecycle or override host residency over IPC.
+selected. Background denies ordinary manifest-declared broker capabilities.
+The bounded host-granted `HostServices.PrivateState` service is the explicit
+persistence exception; it does not authorize provider polling, UI refresh, or
+lifecycle promotion. Widgets cannot promote their own lifecycle or override
+host residency over IPC.
 
 ## Manifest schema
 
@@ -73,11 +76,12 @@ disable, and bridge shutdown keep their existing independent failure paths.
 - Use `ActiveCancellationToken` for work shared by Visible and Interactive.
 - Use `StateLifetimeToken` for state-exclusive work.
 - Use the widget token only for intentionally process-lifetime work that is
-  valid under keep-alive; broker capabilities are still unavailable in
-  Background.
+  valid under keep-alive; ordinary manifest-declared broker capabilities are
+  still unavailable in Background.
 - Treat `OnDestroyingAsync` as bounded cleanup, not a final save opportunity.
-- Persist required durable state as it changes through an approved facility;
-  an unloaded widget is reconstructed as a new object.
+- Persist small durable preferences as meaningful changes occur through
+  `HostServices.PrivateState`; restore once on first `OnActivatedAsync`, not
+  `OnCreatedAsync`. An unloaded widget is reconstructed as a new object.
 - Keep all semantic IDs stable so focus and scroll restoration remain useful.
 - Test lifecycle callbacks with `WidgetTestHost`; test a packaged worker when
   process teardown/recreation behavior matters.

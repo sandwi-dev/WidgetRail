@@ -20,6 +20,7 @@ var tests = new (string Name, Action Run)[]
     ("Responsive viewport units remain bounded", ResponsiveUnits),
     ("Media-card properties preserve the safe allowlist", MediaSafety),
     ("Default visual-system tokens compile exactly", VisualSystemTokens),
+    ("Cool Slate built-in source compiles with distinct typed tokens", CoolSlateSource),
 };
 
 var failures = new List<string>();
@@ -383,6 +384,38 @@ static void VisualSystemTokens()
     Assert.Equal("#7f8796", style.Get("color")!.Text);
     Assert.Equal("#8f80ff", style.Get("border-color")!.Text);
     Assert.Equal("rgba(0, 0, 0, 0.64)", style.Get("scrim-color")!.Text);
+}
+
+static void CoolSlateSource()
+{
+    var source = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory,
+        "Themes",
+        "builtin-cool-slate.gbss"));
+    var palette = GbssParser.Parse(source, "builtin-cool-slate/theme.gbss");
+    Assert.EmptyErrors(palette.Diagnostics);
+    var probe = GbssParser.Parse("""
+        canvas { background: var(--canvas); color: var(--text); }
+        button {
+          min-height: 44px;
+          background: var(--surface-raised);
+          color: var(--text);
+          outline-color: var(--focus);
+          border-color: var(--border);
+        }
+        """, "cool-slate-probe.gbss");
+    Assert.EmptyErrors(probe.Diagnostics);
+    var compiled = GbssThemeCompiler.Compile([palette.Document, probe.Document]);
+    Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
+    var canvas = compiled.Theme!.Resolve(Element("canvas"));
+    Assert.Equal("#080d14", canvas.Get("background")!.Text);
+    Assert.Equal("#edf2f7", canvas.Get("color")!.Text);
+    var button = compiled.Theme.Resolve(Element("button"));
+    Assert.Equal("44px", button.Get("min-height")!.Text);
+    Assert.Equal("rgba(22, 32, 45, 0.98)", button.Get("background")!.Text);
+    Assert.Equal("#f1f4f7", button.Get("outline-color")!.Text);
+    Assert.Equal("rgba(219, 230, 240, 0.12)", button.Get("border-color")!.Text);
+    Assert.True(button.Get("shadow-blur") is null, "Cool Slate must not introduce a component shadow.");
 }
 
 static GbssCompileResult Compile(string source)

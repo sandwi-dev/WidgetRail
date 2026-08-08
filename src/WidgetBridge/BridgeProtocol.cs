@@ -30,6 +30,7 @@ internal static class BridgeMessageTypes
     public const string ControllerInputResult = "controller-input-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidation = "widget-invalidated";
+    public const string HostEffect = "widget-host-effect";
     public const string Failure = "widget-failed";
     public const string Error = "error";
     public const string Stop = "stop";
@@ -52,6 +53,11 @@ internal sealed record BridgeActionRequest(string WidgetId, GameBarAlternative.W
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(string WidgetId, GameBarAlternative.WidgetSdk.ControllerInputEvent Input);
 internal sealed record BridgeInvalidation(string WidgetId, long Revision);
+internal sealed record BridgeHostEffect(
+    string WidgetId,
+    string RuntimeGeneration,
+    string Effect,
+    long Sequence);
 internal sealed record BridgeAppearanceChanged(long Revision);
 internal sealed record BridgeCatalogChangedEvent(long Revision);
 internal sealed record BridgeError(string Code, string Message);

@@ -120,6 +120,21 @@ if(GBA_BUILD_TESTS)
     target_compile_options(ControllerNavigationTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME ControllerNavigationTests COMMAND ControllerNavigationTests)
 
+    add_executable(PressedInteractionTests PressedInteractionTests.cpp)
+    target_compile_features(PressedInteractionTests PRIVATE cxx_std_20)
+    target_compile_options(PressedInteractionTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(PressedInteractionTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME PressedInteractionTests COMMAND PressedInteractionTests)
+
+    add_executable(WidgetBridgeCatalogTests
+        WidgetBridgeCatalogTests.cpp WidgetBridgeClient.cpp)
+    target_compile_features(WidgetBridgeCatalogTests PRIVATE cxx_std_20)
+    target_compile_options(WidgetBridgeCatalogTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(WidgetBridgeCatalogTests PRIVATE
+        GBA_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(WidgetBridgeCatalogTests PRIVATE windowsapp user32)
+    add_test(NAME WidgetBridgeCatalogTests COMMAND WidgetBridgeCatalogTests)
+
     add_executable(SliderInteractionTests SliderInteractionTests.cpp SliderInteraction.cpp)
     target_compile_features(SliderInteractionTests PRIVATE cxx_std_20)
     target_compile_options(SliderInteractionTests PRIVATE /W4 /permissive- /EHsc)

@@ -485,22 +485,27 @@ Code that is explicitly designed to be process-lifetime work may use the widget
 token under `keep-alive`; do not assume `Background` unloads that policy.
 Conversely, ordinary refresh, animation, controller/UI polling, and broker
 subscriptions must not escape the appropriate visible or state lifetime. The
-broker grants no capability in Background. Hooks must start work and return
-promptly.
+broker grants no ordinary manifest-declared capability in Background. The
+bounded host-granted private-state service is the explicit persistence
+exception; it does not authorize hidden provider work. Hooks must start work
+and return promptly.
 
 Manifest `residencyPolicy` schema 1 controls the process separately:
 
 - `keep-alive` (default) preserves the Background process;
 - `suspend-when-hidden` cooperatively uses Background cancellation and blocks
-  hidden renders, invalidations, interaction, and broker capabilities; and
+  hidden renders, invalidations, interaction, and ordinary declared broker
+  capabilities; and
 - `unload-after-idle` additionally requires `idleSeconds` from 5 through
   86,400, caches the last validated snapshot, sends `Destroying`, and recreates
   the worker lazily on its next visible transition.
 
 No policy suspends OS threads. Authors remain responsible for responding to
 lifecycle callbacks/tokens. An unloaded worker is a new object, so reconstruct
-durable state from approved storage or provider state; stable element IDs let
-the host restore focus against the fresh snapshot.
+durable state from `HostServices.PrivateState` or provider state; restore it on
+first activation rather than creation. Stable element IDs let the host restore
+focus against the fresh snapshot. See [Private widget
+state](private-widget-state.md).
 
 `RunPeriodicUpdatesWhileActiveAsync` serializes callbacks, prevents overlap,
 and optionally invalidates after each tick. Accepted intervals are 250 ms

@@ -9,5 +9,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\src\PlatformSettings\Themes\builtin-cool-slate\theme.gbss"
+             Link="Themes\builtin-cool-slate.gbss"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
-

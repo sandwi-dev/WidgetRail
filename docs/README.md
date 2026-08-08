@@ -26,7 +26,8 @@ guarantees that are available now.
   and the public controller-safe Card, IconButton, StatusBadge, Alert,
   EmptyState, SegmentedTabs, Switch, and ScopedDialog compositions.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
-  properties, imports, and diagnostics.
+  properties, imports, diagnostics, and bounded native opacity/scale
+  transitions.
 - [Settings and global themes](settings-and-themes.md) — the controller Settings
   widget, persisted appearance, live bridge/native cascade, host-owned
   accessibility overrides, and authoring requirements.
@@ -55,9 +56,10 @@ guarantees that are available now.
   integration, explicit available-Wi-Fi scan/current saved-open connection,
   controller UX, privacy/location
   gates, event-driven authoring, tests, and remaining release evidence.
-- [Games & Apps reference](games-and-apps.md) — implemented Start Menu library,
-  opaque paged SDK, separately consented exact launch, controller UX, provider
-  security boundary, tests, and current catalog/icon/classification limits.
+- [Games & Apps reference](games-and-apps.md) — implemented durable curated
+  Library/Catalog slice, opaque paged SDK, separately consented exact launch,
+  controller UX, provider security boundary, and current persistence/close/
+  catalog/icon/classification limits.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.
