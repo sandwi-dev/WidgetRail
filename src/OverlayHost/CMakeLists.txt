@@ -10,6 +10,11 @@ endif()
 
 option(GBA_BUILD_TESTS "Build the dependency-free state-machine tests" ON)
 
+# Widget labels and controller guides intentionally contain non-ASCII source
+# text. Apply UTF-8 to every native target so CMake and the canonical build.ps1
+# path compile identical literals (including test executables).
+add_compile_options(/utf-8)
+
 add_executable(OverlayHost WIN32
     main.cpp
     OverlayState.cpp
@@ -18,6 +23,7 @@ add_executable(OverlayHost WIN32
     DeclarativeLayout.cpp
     NativeIcons.cpp
     NativeStyle.cpp
+    DeclarativeMotion.cpp
     OverlayPlacement.cpp
     OverlayTargeting.cpp
     DeclarativeRenderer.cpp
@@ -30,7 +36,6 @@ add_executable(OverlayHost WIN32
 )
 
 target_compile_features(OverlayHost PRIVATE cxx_std_20)
-target_compile_options(OverlayHost PRIVATE /utf-8)
 target_compile_definitions(OverlayHost PRIVATE USING_GAMEINPUT)
 target_include_directories(OverlayHost PRIVATE "${GAMEINPUT_ROOT}/native/include")
 target_link_directories(OverlayHost PRIVATE "${GAMEINPUT_ROOT}/native/lib/x64")
@@ -84,6 +89,13 @@ if(GBA_BUILD_TESTS)
     target_compile_definitions(NativeStyleTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME NativeStyleTests COMMAND NativeStyleTests)
 
+    add_executable(DeclarativeMotionTests
+        DeclarativeMotionTests.cpp DeclarativeMotion.cpp)
+    target_compile_features(DeclarativeMotionTests PRIVATE cxx_std_20)
+    target_compile_options(DeclarativeMotionTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(DeclarativeMotionTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME DeclarativeMotionTests COMMAND DeclarativeMotionTests)
+
     add_executable(OverlayPlacementTests OverlayPlacementTests.cpp OverlayPlacement.cpp)
     target_compile_features(OverlayPlacementTests PRIVATE cxx_std_20)
     target_compile_options(OverlayPlacementTests PRIVATE /W4 /permissive- /EHsc)
@@ -129,7 +141,7 @@ if(GBA_BUILD_TESTS)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
-        NativeStyle.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeStyle.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
     target_compile_features(DeclarativeRendererTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(DeclarativeRendererTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)

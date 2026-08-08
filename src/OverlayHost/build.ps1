@@ -77,6 +77,7 @@ $imageTestObjectDirectory = Join-Path $outputDirectory 'obj\image-tests'
 $layoutTestObjectDirectory = Join-Path $outputDirectory 'obj\layout-tests'
 $iconTestObjectDirectory = Join-Path $outputDirectory 'obj\icon-tests'
 $styleTestObjectDirectory = Join-Path $outputDirectory 'obj\style-tests'
+$motionTestObjectDirectory = Join-Path $outputDirectory 'obj\motion-tests'
 $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
 $targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
 $guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
@@ -87,7 +88,7 @@ $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $guideTestObjectDirectory, $navigationTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -116,6 +117,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
     (Join-Path $projectDirectory 'NativeIcons.cpp'),
     (Join-Path $projectDirectory 'NativeStyle.cpp'),
+    (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
     (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
     (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
@@ -387,6 +389,22 @@ if (-not $SkipTests) {
         throw "NativeStyleTests failed with exit code $LASTEXITCODE."
     }
 
+    $motionTestArguments = $common + @(
+        (Join-Path $projectDirectory 'DeclarativeMotionTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        "/Fo:$motionTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeMotionTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $motionTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeMotionTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeMotionTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeMotionTests failed with exit code $LASTEXITCODE."
+    }
+
     $bridgeCatalogTestArguments = $common + @(
         '/DGBA_WIDGET_BRIDGE_CLIENT_TESTING',
         (Join-Path $projectDirectory 'WidgetBridgeCatalogTests.cpp'),
@@ -537,6 +555,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
         "/Fo:$rendererTestObjectDirectory\",

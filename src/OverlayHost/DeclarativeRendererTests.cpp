@@ -55,6 +55,15 @@ gba::WidgetStyleValue Number(const double number) {
     return {L"number", std::to_wstring(number), number, {}};
 }
 
+gba::WidgetStyleValue Duration(const double milliseconds) {
+    return {L"duration", std::to_wstring(milliseconds) + L"ms",
+            milliseconds, L"ms"};
+}
+
+gba::WidgetStyleValue Keyword(const wchar_t* value) {
+    return {L"keyword", value, std::nullopt, {}};
+}
+
 gba::WidgetStyleValue Color(const wchar_t* value) {
     return {L"color", value, std::nullopt, {}};
 }
@@ -221,6 +230,77 @@ void SliderPlanningAndAccessibilityTargets() {
         nullptr, snapshot, L"volume", {0.0F, 0.0F, 320.0F, 0.25F}, options);
     Check(!clipped.focusRects.contains(L"volume"),
           "fully clipped Slider is excluded even though disabled/busy states remain navigable");
+}
+
+void FocusMotionUsesStableSnapshotIdentity() {
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"motion.widget@1";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"root", L"stack");
+    auto button = Node(L"play", L"button");
+    button.text = L"Play";
+    button.actionId = L"play";
+    button.baseStyle = {
+        {L"opacity", Number(0.5)},
+        {L"scale", Number(1.0)},
+        {L"transition-duration", Duration(100.0)},
+        {L"transition-easing", Keyword(L"linear")},
+    };
+    button.focusedStyle = {
+        {L"opacity", Number(1.0)},
+        {L"scale", Number(1.1)},
+    };
+    snapshot.root.children = {button};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    gba::DeclarativeRenderOptions options;
+    options.animationTimestampMilliseconds = 0;
+    const auto initial = renderer.Render(
+        nullptr, snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    Check(!initial.animationActive,
+          "first declarative observation snaps without an entrance animation");
+
+    options.animationTimestampMilliseconds = 10;
+    const auto focused = renderer.Render(
+        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    Check(focused.animationActive,
+          "focused opacity and scale state starts its GBSS transition");
+
+    // Snapshot sequence changes do not reset motion. Runtime instance + exact
+    // node ID are the stable identity across worker publication revisions.
+    snapshot.sequence = 2;
+    options.animationTimestampMilliseconds = 60;
+    const auto revised = renderer.Render(
+        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    Check(revised.animationActive,
+          "same node continues motion across snapshot sequence changes");
+
+    options.animationTimestampMilliseconds = 110;
+    const auto settled = renderer.Render(
+        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    Check(!settled.animationActive,
+          "settled focus motion does not request another host frame");
+
+    options.animationTimestampMilliseconds = 120;
+    const auto reversing = renderer.Render(
+        nullptr, snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    Check(reversing.animationActive,
+          "focus departure retargets toward the base opacity and scale");
+    options.animationTimestampMilliseconds = 130;
+    options.accessibility.reducedMotion = true;
+    const auto reduced = renderer.Render(
+        nullptr, snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    Check(!reduced.animationActive,
+          "reduced motion cancels an in-flight declarative transition");
+
+    renderer.ForgetWidgetState(snapshot.instanceId);
+    options.accessibility.reducedMotion = false;
+    options.animationTimestampMilliseconds = 140;
+    const auto replaced = renderer.Render(
+        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    Check(!replaced.animationActive,
+          "forgotten widget runtime starts from its current authored state");
 }
 
 void ClippedControlsAreNotFocusCandidates() {
@@ -937,6 +1017,7 @@ int main() {
     AccessibleStatePresentation();
     PlanningMetadataAndKinds();
     SliderPlanningAndAccessibilityTargets();
+    FocusMotionUsesStableSnapshotIdentity();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
     WholeWidgetScrollRevealsAudioMixerControls();

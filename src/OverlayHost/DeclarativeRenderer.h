@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DeclarativeLayout.h"
+#include "DeclarativeMotion.h"
 #include "NativeStyle.h"
 #include "WidgetBridgeClient.h"
 
@@ -41,6 +42,9 @@ struct RenderHitRegion final {
 
 struct RenderResult final {
     bool succeeded{};
+    /// True only while at least one paint-only node transition requires a
+    /// future frame. The renderer never owns a timer or animation thread.
+    bool animationActive{};
     std::vector<RenderDiagnostic> diagnostics;
     std::vector<RenderHitRegion> hitRegions;
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
@@ -72,6 +76,9 @@ struct DeclarativeRenderOptions final {
     /// corners or paint into detached host chrome.
     float surfaceCornerRadiusPx{};
     NativeAccessibilityPolicy accessibility;
+    /// Optional deterministic monotonic clock seam. Production supplies the
+    /// host tick; native tests can advance exact transition positions.
+    std::optional<std::uint64_t> animationTimestampMilliseconds;
     /// Exact node-ID optimistic values owned by the controller slider state.
     /// The immutable widget snapshot remains authoritative after acknowledgement
     /// or timeout.
@@ -147,6 +154,7 @@ private:
     std::unordered_map<std::wstring, Microsoft::WRL::ComPtr<ID2D1Bitmap>> bitmaps_;
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
     std::uint64_t scrollStateAccessClock_{};
+    DeclarativeMotionTimeline motionTimeline_;
 };
 
 } // namespace gba

@@ -6,6 +6,7 @@
 #include <dwrite_1.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cwctype>
 #include <limits>
@@ -424,6 +425,13 @@ struct DeclarativeRenderer::RenderPass final {
         std::wstring key(snapshot->instanceId);
         key.push_back(L'\x1f');
         key.append(snapshot->activeInputScopeId);
+        key.push_back(L'\x1f');
+        key.append(nodeId);
+        return key;
+    }
+
+    [[nodiscard]] std::wstring MotionStateKey(const std::wstring_view nodeId) const {
+        std::wstring key(snapshot->instanceId);
         key.push_back(L'\x1f');
         key.append(nodeId);
         return key;
@@ -1247,8 +1255,17 @@ struct DeclarativeRenderer::RenderPass final {
         const auto focused = node.id == focusedId;
         const auto disabledFactor = DeclarativeStateOpacityFactor(
             node.isDisabled, node.isBusy, options.accessibility);
-        const auto opacity = style.opacity() * disabledFactor;
-        const auto paintRect = ScaleRect(box->borderBox, style.scale());
+        const auto motion = owner->motionTimeline_.Resolve(
+            MotionStateKey(node.id),
+            DeclarativeMotionValue{
+                style.opacity() * disabledFactor,
+                style.scale(),
+            },
+            style.transitionDurationMilliseconds(),
+            style.transitionEasing(),
+            options.accessibility.reducedMotion);
+        const auto opacity = motion.value.opacity;
+        const auto paintRect = ScaleRect(box->borderBox, motion.value.scale);
 
         if (node.kind == L"button" || node.kind == L"slider") {
             result.navigationRects[node.id] = box->borderBox;
@@ -1379,6 +1396,11 @@ RenderResult DeclarativeRenderer::Render(
     if (!writeFactory_)
         pass.Add({}, L"missing_write_factory", L"Intrinsic text uses fallback metrics without DirectWrite.");
 
+    const auto animationTimestamp = options.animationTimestampMilliseconds.value_or(
+        static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count()));
+    motionTimeline_.BeginFrame(animationTimestamp);
+
     if (bitmapTarget_ != renderTarget) {
         bitmaps_.clear();
         bitmapTarget_ = renderTarget;
@@ -1406,6 +1428,7 @@ RenderResult DeclarativeRenderer::Render(
     }
     pass.DrawNode(snapshot.root);
     pass.DrawDeferredFocus();
+    pass.result.animationActive = motionTimeline_.EndFrame();
     if (roundedClip) renderTarget->PopLayer();
     else if (cornerRadius > 0.0F && renderTarget) renderTarget->PopAxisAlignedClip();
     const auto hasErrors = std::any_of(
@@ -1471,6 +1494,7 @@ void DeclarativeRenderer::ForgetWidgetState(
     std::erase_if(scrollOffsets_, [&](const auto& entry) {
         return entry.first.starts_with(prefix);
     });
+    motionTimeline_.ForgetPrefix(prefix);
 }
 
 ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(

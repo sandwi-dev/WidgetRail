@@ -1514,6 +1514,7 @@ private:
 
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
+        declarativeMotionActive_ = false;
         KillTimer(window_, kCatalogRetryTimer);
         bridge_.AbandonWidgetCatalogChangedRevision();
         catalogRetryAttempts_ = 0;
@@ -1822,6 +1823,12 @@ private:
         }
         leftTriggerPressed_ = leftTriggerPressed;
         rightTriggerPressed_ = rightTriggerPressed;
+        // The visible overlay already polls controller state at 60 Hz. Reuse
+        // that bounded wakeup rather than owning an animation timer; settled
+        // declarative content performs no paint invalidations, and this timer
+        // is stopped altogether while the overlay is hidden.
+        if (declarativeMotionActive_)
+            InvalidateRect(window_, nullptr, FALSE);
     }
 
     const gba::WidgetSnapshot* SnapshotFor(const std::wstring_view widgetId) const noexcept {
@@ -2377,6 +2384,7 @@ private:
         PAINTSTRUCT paint{};
         BeginPaint(window_, &paint);
         if (state_.surface() == gba::Surface::Hidden || !EnsureGraphicsResources()) {
+            declarativeMotionActive_ = false;
             EndPaint(window_, &paint);
             return;
         }
@@ -2407,6 +2415,7 @@ private:
             DrawWidget(metrics->viewportWidthDip, metrics->viewportHeightDip,
                        metrics->physicalPixelsPerDip);
         } else {
+            declarativeMotionActive_ = false;
             DrawDashboard(metrics->viewportWidthDip, metrics->viewportHeightDip);
         }
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -2651,6 +2660,7 @@ private:
         const float width,
         const float height,
         const float physicalPixelsPerDip) {
+        declarativeMotionActive_ = false;
         const std::wstring_view widget = state_.activeWidget();
         const bool bridgeWidget = IsBridgeWidget(widget);
         const auto widgetSurface = DesiredWidgetSurfaceTarget();
@@ -2687,6 +2697,7 @@ private:
                     0.0F, panelCornerRadius_ - panelContentInset);
                 if (appearanceState_.current())
                     options.accessibility = CurrentAccessibilityPolicy();
+                options.animationTimestampMilliseconds = GetTickCount64();
                 const auto collectSliderOverrides = [&](const auto& self,
                                                         const gba::WidgetNode& node) -> void {
                     if (node.kind == L"slider") {
@@ -2704,6 +2715,7 @@ private:
                         ? std::wstring_view(focusedElementId_)
                         : std::wstring_view{},
                     viewport, options);
+                declarativeMotionActive_ = result.animationActive;
                 if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
                         focusedElementId_, snapshot->activeInputScopeId, result);
                     visibleFocus && *visibleFocus != focusedElementId_) {
@@ -2816,6 +2828,7 @@ private:
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
+    bool declarativeMotionActive_{};
 
     ComPtr<IGameInput> gameInput_;
     gba::input::XInputGuideCompatibility guideCompatibility_;
