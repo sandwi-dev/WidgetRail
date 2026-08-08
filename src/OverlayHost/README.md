@@ -27,9 +27,10 @@ Visible controls:
 The widget order and last activated widget are atomically persisted under
 `%LOCALAPPDATA%\GameBarAlternative`. B returning from the placeholder widget is
 the widget's own sample action, not a host-reserved binding. Normal controller
-buttons use foreground-exclusive GameInput while the overlay is visible and
-the host has confirmed Win32 foreground ownership. If GameInput is unavailable,
-the diagnosed compatibility path uses non-exclusive XInput. Stick
+buttons use a visibility-scoped GameInput read lease while the overlay is open.
+Confirmed foreground ownership adds GameInput exclusivity; denied activation
+keeps navigation working through diagnosed background-shared GameInput. If
+GameInput is unavailable, the compatibility path uses non-exclusive XInput. Stick
 navigation uses engage/release hysteresis and repeat timing; explicit focus
 neighbors fall back to deterministic geometry when no usable target is
 declared.
@@ -70,8 +71,8 @@ monitor that contained the previously foreground app:
 - the controller panel above it.
 
 Both are tool windows and are promoted to topmost while visible. The backdrop
-does not activate. The panel asks Windows for foreground/focus and verifies
-that activation before reading ordinary controller input. Alt+Tab or another
+does not activate. The panel asks Windows for foreground/focus once when shown;
+the visible GameInput lease does not depend on activation succeeding. Alt+Tab or another
 valid external foreground activation closes the overlay instead of following
 the new app. On hide, both are removed from the topmost band and the host
 attempts to restore the prior foreground window.

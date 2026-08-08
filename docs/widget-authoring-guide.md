@@ -429,7 +429,11 @@ Scroll for overflow after host clamping.
 
 All nodes can use `.Classes("name", ...)`. Buttons additionally provide
 `.FocusUp/Down/Left/Right(id)`, `.Disabled(...)`, `.Selected(...)`,
-`.Busy(...)`, `.Icon(...)`, and `.Shortcut(...)`. Sliders provide
+`.Busy(...)`, `.Icon(...)`, `.LeadingInlinePng(...)`, and `.Shortcut(...)`.
+`LeadingInlinePng` keeps trusted broker-projected artwork inside the complete
+Button focus target; it accepts only the same bounded canonical PNG contract as
+`UI.InlinePngImage` and replaces, rather than combines with, a semantic glyph.
+Sliders provide
 `.FocusUp/Down(id)`, `.Disabled(...)`, `.Busy(...)`, and `.Activate(...)`;
 horizontal focus links are invalid because the control owns Left/Right.
 

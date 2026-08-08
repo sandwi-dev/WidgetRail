@@ -301,8 +301,8 @@ static async Task ConfigurationAdapterScope()
     var root = Path.Combine(Path.GetTempPath(), "gbar-spotify-config-" + Guid.NewGuid().ToString("N"));
     try
     {
-        var adapter = new WidgetConfigurationSpotifyClientStore(
-            new WidgetConfigurationStore(new PlatformSettingsPaths(root)));
+        var store = new WidgetConfigurationStore(new PlatformSettingsPaths(root));
+        var adapter = new WidgetConfigurationSpotifyClientStore(store);
         var first = Identity();
         var second = first with { PackageId = "dev.spotify.other" };
         await adapter.WriteAsync(first, new SpotifyClientConfiguration("Client123456789"), default);
@@ -312,6 +312,15 @@ static async Task ConfigurationAdapterScope()
             first.PackageId, first.PublisherId, default);
         Assert.Equal("Client123456789",
             raw.Values[WidgetConfigurationSpotifyClientStore.ClientIdKey]);
+
+        var communityPackage = "org.gbar.samples.spotify";
+        var manifestPublisher = "org.gbar.samples";
+        await store.SetAsync(communityPackage, manifestPublisher,
+            WidgetConfigurationSpotifyClientStore.ClientIdKey, "PublicClient987654321");
+        var unsignedRuntime = new SpotifyIntegrationIdentity(
+            "unsigned." + new string('a', 64), communityPackage);
+        Assert.Equal("PublicClient987654321",
+            (await adapter.ReadAsync(unsignedRuntime, default))!.ClientId);
     }
     finally
     {

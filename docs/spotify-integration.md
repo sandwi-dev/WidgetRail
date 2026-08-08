@@ -80,7 +80,12 @@ guide](https://developer.spotify.com/documentation/web-api/tutorials/migration-i
 The Spotify Client ID is public configuration entered by the user for this
 widget/integration; it is never compiled into the addon. The implemented
 `PlatformSettings.WidgetConfigurationStore` validates and stores it under the
-authenticated publisher/package authority using the key `client-id`. Documents
+declared publisher/package configuration identity using the key `client-id`.
+An unsigned content-digest runtime may resolve exactly one configuration whose
+publisher namespace owns that package ID; ambiguous matches fail closed. This
+exception is limited to explicitly non-secret configuration: consent, private
+state, OAuth tokens, and credentials remain bound to the exact authenticated
+runtime authority. Documents
 are bounded, strict, atomic, cross-process locked, and reparse-safe. They are
 readable public configuration, so secrets, passwords, credentials, and tokens
 do not belong there. OAuth tokens remain in the provider's Windows credential
@@ -89,10 +94,10 @@ vault.
 Until the controller-native Settings editor lands, the local workflow is:
 
 ```powershell
-gbar config set org.gbar.samples.spotify client-id <spotify-client-id> --publisher org.gbar.samples
-gbar config get org.gbar.samples.spotify client-id --publisher org.gbar.samples
-gbar config list org.gbar.samples.spotify --publisher org.gbar.samples
-gbar config remove org.gbar.samples.spotify client-id --publisher org.gbar.samples
+dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set org.gbar.samples.spotify client-id <spotify-client-id> --publisher org.gbar.samples
+dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config get org.gbar.samples.spotify client-id --publisher org.gbar.samples
+dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config list org.gbar.samples.spotify --publisher org.gbar.samples
+dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config remove org.gbar.samples.spotify client-id --publisher org.gbar.samples
 ```
 
 `gbar config clear` removes every public configuration value for the selected

@@ -58,6 +58,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-037 | P0 | Verifying | Now Playing / media provider / retry | Current-state reads are independent from live subscription failure and Retry creates a fresh generation; packaged provider-failure recovery remains to verify visually. |
 | GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | Activation resolves only durable saved entries and Catalog loads only on Add; intrinsic layout regressions cover the clipped empty/card copy, with packaged visual verification remaining. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
+| GBA-040 | P0 | Verifying | Native declarative layout / Spotify / responsive text | Intrinsic leaves now measure height against their authored width/max-width before layout, with exact Spotify state/setup regressions at compact and 150% text scales; packaged visual verification remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -1056,7 +1057,10 @@ failure, not merely missing polish.
 read are separate failure domains. A failed subscription can still publish a
 valid current snapshot, a later live-read failure preserves the last valid
 snapshot, and Retry cancels the old attempt and creates one fresh bounded
-generation. Focused media tests cover those paths. The post-`8e8c90a` packaged
+generation. Pending transport feedback is target-specific: invoking Play/Pause
+no longer disables or flashes Previous/Next, while the widget-level single-
+flight gate still prevents overlapping commands and clears target Busy state
+after both success and failure. Focused media tests cover those paths. The post-`8e8c90a` packaged
 capture shows a live GSMTC session, proving the normal provider path on this
 machine, but it does not reproduce failure followed by recovery; status remains
 Verifying.
@@ -1077,10 +1081,12 @@ Verifying.
 
 **Evidence:** The original packaged viewport showed eager Start Menu loading
 and clipped card/status copy. The widget now resolves only saved entries at the
-root and loads the catalog after **Add applications**. The native column
-allocator now preserves measured height for auto-height intrinsic wrapped
-leaves. Focused lifecycle/layout regressions are green; refreshed packaged
-visual evidence remains outstanding.
+root and loads the catalog after **Add applications**. Library and Catalog use
+vertical full-width rows: the icon and two-line application name share one
+Button focus target instead of outlining an inner label. The native column
+allocator preserves measured height for auto-height intrinsic wrapped leaves.
+Focused lifecycle/layout regressions are green; refreshed packaged visual
+evidence remains outstanding.
 
 **Acceptance:**
 
@@ -1092,7 +1098,7 @@ visual evidence remains outstanding.
    is resident.
 3. Titles, type/status, counts, help, and prompts fit or reflow at compact/wide
    surfaces and 150% text without clipping or covering focus cues.
-4. Horizontal focus-follow reaches the first/last complete card and preserves
+4. Vertical focus-follow reaches the first/last complete row and preserves
    separate Library/Catalog focus across nested B return.
 5. Automated lifecycle/layout tests and packaged screenshots cover empty,
    populated, loading, failure, long-name, and maximum-page states.
@@ -1124,6 +1130,99 @@ matrix has not yet been captured, so status remains Verifying.
    bounded/truncated accessible strings.
 5. Tests cover longest valid/localized copy, all decision states, compact and
    wide viewports, 150% text, high contrast, and packaged controller traversal.
+
+## GBA-040 — Authored text width was applied after intrinsic height measurement
+
+**Original evidence:** Spotify's centered Client-ID state and setup view showed
+titles, details, and setup steps vertically clipped inside otherwise spacious
+cards. Similar failures repeatedly appeared when a text node declared a
+`max-width`: the host measured its height against the wider parent, then
+clamped only the resulting width. DirectWrite therefore painted wrapped lines
+into a box whose height still described the pre-clamp single-line layout.
+
+**Implementation/current evidence:** The native layout engine now applies an
+intrinsic leaf's explicit/max outer width, minus padding, to the measurement
+constraint before asking the renderer for line metrics. The auto-height leaf
+retains that reflowed height through flex allocation. Exact native regressions
+cover the Spotify Client-ID state card and setup card at compact width and at
+150% text, in addition to the generic centered-state and permission Scroll
+coverage. The full native Debug suite is green; refreshed packaged screenshots
+remain outstanding, so status remains Verifying.
+
+**Acceptance:**
+
+1. Text and labeled controls with authored `width` or `max-width` measure their
+   intrinsic height at the effective content width, including padding.
+2. Centered state-card title/detail/action flow does not overlap or clip at
+   compact and standard surfaces through 150% text scale.
+3. Spotify setup title, instructions, exact redirect URI, command, and Done
+   action remain fully readable/reachable without widget-specific spacer or
+   margin compensation.
+4. Width constraints, flex shrink, explicit fixed height, max-lines, Scroll,
+   and focus visibility retain deterministic native regression coverage.
+5. Packaged Release screenshots confirm Client-ID, setup, long/localized copy,
+   and supported DPI/interface/text scale combinations.
+
+## GBA-041 — Foreground-only controller polling could suspend a visible overlay
+
+**Original evidence:** The packaged overlay intermittently stopped responding
+to controller navigation while still visible and did not reliably take priority
+over the application behind it. Diagnostics showed foreground-acquisition
+failures followed by deliberate polling suspension. A no-activate desktop
+overlay cannot treat transient Win32 foreground ownership as its sole
+navigation lease.
+
+**Implementation/current evidence:** Showing the overlay now creates one
+explicit visible-controller lease. GameInput combines background input for
+reliable navigation with foreground-exclusive arbitration whenever Windows
+confirms foreground ownership. Show performs at most one bounded activation
+attempt; polling no longer retries focus stealing or suspends merely because
+activation was denied. Hiding ends the lease, and external foreground activation
+still closes the overlay. Native ownership tests are green. Desktop APIs still
+cannot universally suppress separate XInput, Raw Input, HID, Steam Input, or
+virtual-controller delivery, so packaged game-by-game evidence remains open.
+
+**Acceptance:**
+
+1. Navigation remains responsive for the complete visible lifetime, including
+   when Windows denies activation or briefly reports another owner.
+2. Confirmed foreground uses GameInput exclusive arbitration; denied activation
+   uses the documented background-shared path without focus-steal loops.
+3. Alt+Tab/external activation closes the overlay and ends controller reads.
+4. Diagnostics distinguish foreground-exclusive, background-shared, hidden,
+   and unavailable paths without logging controller data.
+5. Packaged trials document any input backend needing a future opt-in
+   interception layer.
+
+## GBA-042 — Spotify public configuration and permission metadata diverged
+
+**Original evidence:** `gbar config set` stored the Spotify Client ID under the
+manifest publisher, while the unsigned installed worker ran under its sealed
+content-digest authority. Reloading therefore remained on **Client ID
+required**. Settings also rendered all four supported Spotify grants as
+**Unsupported capability** because their display metadata was missing.
+
+**Implementation/current evidence:** Non-secret configuration resolves an
+exact runtime-authority document first, then permits an unsigned authority to
+read one unambiguous declared-publisher document whose namespace owns the
+package ID. Ambiguous matches fail closed. Consent, private state, OAuth tokens,
+and credentials retain exact digest authority. Spotify Setup **Done** performs
+a serialized bounded fresh configuration read without starting OAuth, and
+Settings has names/descriptions for all four Spotify capabilities. Focused
+configuration, provider, widget, and Settings tests are green; packaged live
+authorization confirmation remains.
+
+**Acceptance:**
+
+1. The source-tree CLI command runs without a PATH install, and a successful
+   write becomes visible after **Done** without restarting the bridge.
+2. Only one owning declared-publisher document can resolve; ambiguous or
+   unrelated documents do not cross package boundaries.
+3. Client secrets and OAuth tokens remain outside public configuration.
+4. Settings shows accurate names, descriptions, required/optional state, and
+   decisions for all Spotify capabilities.
+5. Packaged testing covers configure, digest update, Done refresh, connect,
+   revoke, and malformed/ambiguous recovery.
 
 ## Closed issues
 

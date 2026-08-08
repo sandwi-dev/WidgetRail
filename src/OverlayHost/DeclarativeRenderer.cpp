@@ -824,9 +824,11 @@ struct DeclarativeRenderer::RenderPass final {
             return MeasureText(node, style, constraints);
         if (node.kind == L"button") {
             const auto text = MeasureText(node, style, constraints);
-            const auto glyphWidth = node.glyph.empty() ? 0.0F : 28.0F;
+            const auto leadingWidth = !node.imageSource.empty()
+                ? 52.0F
+                : node.glyph.empty() ? 0.0F : 28.0F;
             return {
-                std::min(constraints.maximumWidth, text.width + glyphWidth + 24.0F),
+                std::min(constraints.maximumWidth, text.width + leadingWidth + 24.0F),
                 std::max(kMinimumControlSize, text.height + 16.0F),
             };
         }
@@ -1348,8 +1350,10 @@ struct DeclarativeRenderer::RenderPass final {
             DrawTextContent(node, style, box->contentBox, opacity);
         } else if (node.kind == L"button") {
             auto textRect = box->contentBox;
-            if (!node.glyph.empty()) {
-                const auto iconSize = std::min(32.0F, std::max(0.0F, textRect.height));
+            if (!node.imageSource.empty() || !node.glyph.empty()) {
+                const auto maximumLeadingSize = node.imageSource.empty() ? 32.0F : 44.0F;
+                const auto iconSize = std::min(
+                    maximumLeadingSize, std::max(0.0F, textRect.height));
                 const bool iconOnly = node.text.empty();
                 const Rect iconRect{
                     iconOnly ? textRect.x + (textRect.width - iconSize) * 0.5F : textRect.x,
@@ -1357,7 +1361,10 @@ struct DeclarativeRenderer::RenderPass final {
                     iconSize,
                     iconSize,
                 };
-                DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
+                if (!node.imageSource.empty())
+                    DrawImage(node, style, iconRect, opacity, focused);
+                else
+                    DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
                 if (!iconOnly) {
                     textRect.x += iconSize + 8.0F;
                     textRect.width = std::max(0.0F, textRect.width - iconSize - 8.0F);
@@ -1576,8 +1583,9 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         pass.Add(node.id, L"missing_image", L"Image has no HTTPS source or image cache.");
         return {};
     }
-    if (!RemoteImageCache::IsAllowedHttpsUrl(node.imageSource)) {
-        pass.Add(node.id, L"invalid_image_url", L"Only bounded HTTPS image sources are accepted.");
+    if (!RemoteImageCache::IsAllowedImageSource(node.imageSource)) {
+        pass.Add(node.id, L"invalid_image_url",
+            L"Only bounded HTTPS or canonical inline PNG image sources are accepted.");
         return {};
     }
     if (const auto existing = bitmaps_.find(node.imageSource); existing != bitmaps_.end())

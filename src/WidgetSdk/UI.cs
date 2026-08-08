@@ -145,7 +145,13 @@ public static partial class UI
         string accessibilityLabel,
         ImageFit fit = ImageFit.Contain)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(pngBase64);
+        var source = CanonicalInlinePngSource(pngBase64, nameof(pngBase64));
+        return new ImageElement(id, source, accessibilityLabel, fit);
+    }
+
+    internal static string CanonicalInlinePngSource(string pngBase64, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pngBase64, parameterName);
         byte[] bytes;
         try
         {
@@ -154,14 +160,13 @@ public static partial class UI
         catch (FormatException exception)
         {
             throw new ArgumentException("Inline PNG data must be canonical base64.",
-                nameof(pngBase64), exception);
+                parameterName, exception);
         }
         if (bytes.Length > ProtocolConstants.MaximumInlinePngBytes ||
             !pngBase64.Equals(Convert.ToBase64String(bytes), StringComparison.Ordinal))
             throw new ArgumentException("Inline PNG data exceeds its bound or is not canonical.",
-                nameof(pngBase64));
-        return new ImageElement(
-            id, "data:image/png;base64," + pngBase64, accessibilityLabel, fit);
+                parameterName);
+        return "data:image/png;base64," + pngBase64;
     }
 
     public static IconElement Icon(WidgetGlyph glyph, string id, string accessibilityLabel) =>

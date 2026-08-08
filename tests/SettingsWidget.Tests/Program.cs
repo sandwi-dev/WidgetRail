@@ -36,6 +36,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Permission screens explain declarations consent enforcement and Windows access", PermissionModelIsClear),
     ("App-library copy separates opaque catalog read from exact launch", AppLibraryPermissionCopy),
     ("Community service permissions explain exact loopback and write-only secrets", CommunityServicePermissionCopy),
+    ("Spotify permissions use supported human-readable capability metadata", SpotifyPermissionCopy),
     ("Bluetooth permission copy states privacy and radio-control boundaries", BluetoothPermissionCopy),
     ("Capability grant confirms and deny revokes atomically", GrantAndRevoke),
     ("Consent decisions isolate package publisher identities", PublisherIsolation),
@@ -900,6 +901,50 @@ static async Task PermissionModelIsClear()
     Assert.Valid(capabilities);
     Assert.Valid(decision);
     Assert.Valid(optional);
+}
+
+static async Task SpotifyPermissionCopy()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(
+        catalogRoot,
+        "org.gbar.samples.spotify",
+        "org.gbar.samples",
+        "Spotify",
+        [
+            PlatformCapabilities.SpotifyConfigurationV1,
+            PlatformCapabilities.SpotifyAuthorizationV1,
+            PlatformCapabilities.SpotifyPlaybackReadV1,
+        ],
+        [PlatformCapabilities.SpotifyPlaybackControlV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+
+    var capabilities = Snapshot(widget);
+    var labels = Buttons(capabilities.Root)
+        .Where(button => button.Id.StartsWith("capability.item.", StringComparison.Ordinal))
+        .Select(button => button.Text ?? string.Empty).ToArray();
+    Assert.Equal(4, labels.Length);
+    Assert.True(labels.Any(label => label.Contains(
+        "Use Spotify developer configuration", StringComparison.Ordinal)),
+        "Spotify configuration capability name was not rendered.");
+    Assert.True(labels.Any(label => label.Contains(
+        "Connect a Spotify account", StringComparison.Ordinal)),
+        "Spotify authorization capability name was not rendered.");
+    Assert.True(labels.Any(label => label.Contains(
+        "Read Spotify playback", StringComparison.Ordinal)),
+        "Spotify playback-read capability name was not rendered.");
+    Assert.True(labels.Any(label => label.Contains(
+        "Control Spotify playback", StringComparison.Ordinal)),
+        "Spotify playback-control capability name was not rendered.");
+    Assert.True(labels.All(label => !label.Contains(
+        "Unsupported capability", StringComparison.Ordinal)),
+        "A declared Spotify capability fell back to unsupported copy.");
+    Assert.Valid(capabilities);
 }
 
 static async Task AppLibraryPermissionCopy()

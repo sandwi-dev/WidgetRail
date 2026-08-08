@@ -20,7 +20,7 @@ than applications the user happened to foreground.
   the SavedIds the user already added. It does not enumerate the broad catalog.
   The bounded first catalog page loads only after **Add applications**.
 - The default Library contains only entries the user has added. **Add
-  applications** opens a nested Catalog backed by a horizontal controller
+  applications** opens a nested Catalog backed by a vertical controller
   Scroll; A toggles the focused entry in/out of the Library and B returns.
   Library X removes the focused entry.
 - Both surfaces use stable hashed UI IDs; widget snapshots contain only display
@@ -29,7 +29,9 @@ than applications the user happened to foreground.
   bounded 48 by 48 PNG icon rasterized by the trusted provider; Catalog
   discovery remains text-only. Provider launch tokens stay inside the host and
   last only for the current provider snapshot.
-- Library Left/Right selects a card. A launches that exact card only while the
+- Library Up/Down selects one full-width application row. The icon and complete
+  two-line name are rendered inside the same focus target, so its outline never
+  lands on an inner text fragment. A launches that exact row only while the
   widget is Interactive. After confirmed provider success, that item moves to
   the front and the new order is persisted; failure preserves order and
   actionable focus.
@@ -165,7 +167,7 @@ Shell failures are sanitized before returning to widget code.
 ## Executable evidence
 
 Focused tests cover empty curated Library, Catalog-on-demand and empty-Catalog
-recovery, nested Catalog add/remove, B return, horizontal controller focus,
+recovery, nested Catalog add/remove, B return, vertical controller focus,
 confirmed recent-first ordering, failed-launch order retention, durable
 SavedIds across fresh worker instances, opaque selected launch, bounded paging,
 sanitized failure states, and manifest/GBSS validation. Provider tests cover lazy refresh,

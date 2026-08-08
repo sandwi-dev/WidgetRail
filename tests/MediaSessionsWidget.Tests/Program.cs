@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Visible lifecycle subscribes before fetching the initial snapshot", SubscriptionBeforeSnapshot),
     ("Compact UI exposes honest focusable transport capability states", HonestTransportStates),
     ("X and bumpers route through the selected session from any focused control", ControllerShortcutsRoute),
+    ("An in-flight play command does not flash or disable sibling transports", PendingToggleKeepsSiblingControlsStable),
     ("Quick actions expose exact media control authority while visible", DashboardQuickActions),
     ("Session selection remains stable across reorder and metadata churn", SelectionSurvivesChurn),
     ("Removed selection falls back to Windows current session", RemovedSelectionFallsBack),
@@ -102,6 +103,77 @@ static async Task ControllerShortcutsRoute()
         WidgetMediaSessionCommand.Next,
     }, fake.Commands.Select(item => item.Command));
     Assert.True(fake.Commands.All(item => item.SessionId == "one"));
+    await Background(widget);
+}
+
+static async Task PendingToggleKeepsSiblingControlsStable()
+{
+    var pending = new TaskCompletionSource<WidgetCapabilityAcknowledgement>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("one", current: true)],
+        PendingControl = pending,
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+
+    var baseline = widget.RenderSnapshot("media.test", 90);
+    var baselinePrevious = Nodes(baseline.Root).Single(node => node.Id == "media.previous");
+    var baselineNext = Nodes(baseline.Root).Single(node => node.Id == "media.next");
+    var playTask = widget.OnActionAsync(new("media.toggle", "media.play-toggle")).AsTask();
+    await WaitUntil(() => fake.Commands.Count == 1);
+
+    var inFlight = widget.RenderSnapshot("media.test", 91);
+    var inFlightPrevious = Nodes(inFlight.Root).Single(node => node.Id == "media.previous");
+    var inFlightToggle = Nodes(inFlight.Root).Single(node => node.Id == "media.play-toggle");
+    var inFlightNext = Nodes(inFlight.Root).Single(node => node.Id == "media.next");
+    Assert.Equal(baselinePrevious.IsDisabled, inFlightPrevious.IsDisabled);
+    Assert.Equal(baselinePrevious.IsBusy, inFlightPrevious.IsBusy);
+    Assert.Equal(baselinePrevious.Glyph, inFlightPrevious.Glyph);
+    Assert.Equal(baselineNext.IsDisabled, inFlightNext.IsDisabled);
+    Assert.Equal(baselineNext.IsBusy, inFlightNext.IsBusy);
+    Assert.Equal(baselineNext.Glyph, inFlightNext.Glyph);
+    Assert.True(inFlightToggle.IsDisabled is true && inFlightToggle.IsBusy is true);
+
+    // The sibling remains visually enabled, but the widget-level single-flight
+    // gate consumes the attempted action without issuing another command.
+    await widget.OnActionAsync(new("media.previous", "media.previous"));
+    Assert.Equal(1, fake.Commands.Count);
+    var afterRejectedSibling = widget.RenderSnapshot("media.test", 92);
+    Assert.Equal(inFlightPrevious.IsDisabled, Nodes(afterRejectedSibling.Root)
+        .Single(node => node.Id == "media.previous").IsDisabled);
+
+    pending.SetResult(new WidgetCapabilityAcknowledgement(true));
+    await playTask;
+    var succeeded = widget.RenderSnapshot("media.test", 93);
+    Assert.True(Nodes(succeeded.Root).Single(node => node.Id == "media.play-toggle").IsBusy is not true);
+    Assert.Equal(baselinePrevious.IsDisabled, Nodes(succeeded.Root)
+        .Single(node => node.Id == "media.previous").IsDisabled);
+    Assert.Equal(baselineNext.IsDisabled, Nodes(succeeded.Root)
+        .Single(node => node.Id == "media.next").IsDisabled);
+
+    var failing = new TaskCompletionSource<WidgetCapabilityAcknowledgement>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    fake.PendingControl = failing;
+    var failureTask = widget.OnActionAsync(new("media.toggle", "media.play-toggle")).AsTask();
+    await WaitUntil(() => fake.Commands.Count == 2);
+    var failingSnapshot = widget.RenderSnapshot("media.test", 94);
+    Assert.True(Nodes(failingSnapshot.Root).Single(node => node.Id == "media.play-toggle").IsBusy is true);
+    Assert.Equal(baselinePrevious.IsDisabled, Nodes(failingSnapshot.Root)
+        .Single(node => node.Id == "media.previous").IsDisabled);
+    Assert.Equal(baselineNext.IsDisabled, Nodes(failingSnapshot.Root)
+        .Single(node => node.Id == "media.next").IsDisabled);
+    failing.SetException(new WidgetCapabilityException("not_supported", "rejected"));
+    await failureTask;
+    var recovered = widget.RenderSnapshot("media.test", 95);
+    var recoveredToggle = Nodes(recovered.Root).Single(node => node.Id == "media.play-toggle");
+    Assert.True(recoveredToggle.IsBusy is not true && recoveredToggle.IsDisabled is not true);
+    Assert.Equal(baselinePrevious.IsDisabled, Nodes(recovered.Root)
+        .Single(node => node.Id == "media.previous").IsDisabled);
+    Assert.Equal(baselineNext.IsDisabled, Nodes(recovered.Root)
+        .Single(node => node.Id == "media.next").IsDisabled);
     await Background(widget);
 }
 
@@ -429,6 +501,7 @@ file sealed class FakeMediaHost
     internal Exception? SubscriptionOpenException { get; set; }
     internal Exception? SubscriptionReadException { get; set; }
     internal TaskCompletionSource<IReadOnlyList<WidgetMediaSession>>? PendingRead { get; set; }
+    internal TaskCompletionSource<WidgetCapabilityAcknowledgement>? PendingControl { get; set; }
     internal List<string> CallOrder { get; } = [];
     internal List<ControlWidgetMediaSessionRequest> Commands { get; } = [];
     internal int GetCalls { get; private set; }
@@ -461,6 +534,9 @@ file sealed class FakeMediaHost
         ControlWidgetMediaSessionRequest request, CancellationToken cancellationToken)
     {
         Commands.Add(request);
+        if (PendingControl is not null)
+            return new ValueTask<WidgetCapabilityAcknowledgement>(
+                PendingControl.Task.WaitAsync(cancellationToken));
         if (ControlException is not null)
             return ValueTask.FromException<WidgetCapabilityAcknowledgement>(ControlException);
         return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));

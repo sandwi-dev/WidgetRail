@@ -10,36 +10,35 @@ namespace gba::input {
 // separate delivery paths outside GameInput's process arbitration.
 enum class ControllerReadPath {
     None,
-    GameInputForegroundExclusive,
+    GameInputVisibleLease,
     XInputCompatibility,
 };
 
 struct ControllerInputOwnershipDecision final {
     ControllerReadPath readPath{ControllerReadPath::None};
-    bool ordinaryInputExclusive{};
-    bool shouldAcquireForeground{};
+    bool foregroundExclusive{};
 
     [[nodiscard]] friend constexpr bool operator==(
         const ControllerInputOwnershipDecision&,
         const ControllerInputOwnershipDecision&) noexcept = default;
 };
 
-// Ordinary controller input is only read while this process actually owns the
-// foreground. When GameInput exists, losing foreground fails closed instead of
-// silently falling back to XInput and double-delivering a press to the game.
+// A visible overlay owns a local read lease from show until hide. GameInput's
+// background-input focus policy keeps that lease reliable if Windows declines
+// activation; foreground exclusivity is an additional best-effort property,
+// not a prerequisite for navigation. The host attempts activation once during
+// ShowOverlay and never runs a foreground-steal loop from this decision.
 [[nodiscard]] constexpr ControllerInputOwnershipDecision
 DecideControllerInputOwnership(
     const bool overlayVisible,
+    const bool visibleReadLease,
     const bool foregroundConfirmed,
     const bool gameInputAvailable) noexcept {
-    if (!overlayVisible) return {};
-    if (!foregroundConfirmed) {
-        return {ControllerReadPath::None, false, true};
-    }
+    if (!overlayVisible || !visibleReadLease) return {};
     if (gameInputAvailable) {
-        return {ControllerReadPath::GameInputForegroundExclusive, true, false};
+        return {ControllerReadPath::GameInputVisibleLease, foregroundConfirmed};
     }
-    return {ControllerReadPath::XInputCompatibility, false, false};
+    return {ControllerReadPath::XInputCompatibility, false};
 }
 
 struct ForegroundAcquisitionPlan final {

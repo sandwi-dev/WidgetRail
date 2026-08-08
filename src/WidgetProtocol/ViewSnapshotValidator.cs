@@ -182,7 +182,8 @@ public static class ViewSnapshotValidator
             CheckString(node.AccessibilityValue, $"{path}.accessibilityValue");
             CheckString(node.ActionId, $"{path}.actionId");
             CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId");
-            if (node.Kind is not ViewNodeKind.Image)
+            if (node.Kind is not (ViewNodeKind.Image or ViewNodeKind.Button) ||
+                node.ImageSource is null)
                 CheckString(node.ImageSource, $"{path}.imageSource");
 
             var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll;
@@ -300,12 +301,14 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider) && node.ActionId is not null)
                 Add($"{path}.actionId", "action_not_allowed", "Action IDs apply only to buttons and sliders.");
-            if (node.Kind is ViewNodeKind.Image)
+            var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button;
+            if (node.Kind is ViewNodeKind.Image ||
+                (node.Kind is ViewNodeKind.Button && node.ImageSource is not null))
             {
                 var imageSource = ValidateImageSource(node.ImageSource);
                 if (imageSource == ImageSourceKind.Invalid)
                     Add($"{path}.imageSource", "invalid_image_source",
-                        "An image requires an absolute HTTPS URL without credentials or a bounded canonical PNG data source.");
+                        "Artwork requires an absolute HTTPS URL without credentials or a bounded canonical PNG data source.");
                 else if (imageSource == ImageSourceKind.InlinePng &&
                     snapshot.ProtocolVersion < ProtocolConstants.InlinePngImageVersion)
                     Add($"{path}.imageSource", "feature_requires_version",
@@ -314,9 +317,25 @@ public static class ViewSnapshotValidator
                     Add($"{path}.imageFit", "required", "An image requires a fit mode.");
                 else if (!Enum.IsDefined(node.ImageFit.Value))
                     Add($"{path}.imageFit", "invalid_image_fit", "The image fit mode is not supported.");
-                if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
+                if (node.Kind is ViewNodeKind.Image &&
+                    string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                     Add($"{path}.accessibilityLabel", "required", "An image requires an accessibility label.");
             }
+            else if (!supportsImageSource &&
+                (node.ImageSource is not null || node.ImageFit is not null))
+            {
+                Add(path, "image_property_not_allowed",
+                    "Image source and fit apply only to images and buttons with leading artwork.");
+            }
+            else if (node.Kind is ViewNodeKind.Button && node.ImageFit is not null)
+            {
+                Add($"{path}.imageFit", "image_fit_without_source",
+                    "A button image fit requires a leading image source.");
+            }
+            if (node.Kind is ViewNodeKind.Button &&
+                node.ImageSource is not null && node.Glyph is not null)
+                Add(path, "multiple_leading_visuals",
+                    "A button may use either one semantic glyph or one leading image, not both.");
             if (node.Glyph is not null && node.Kind is not (ViewNodeKind.Icon or ViewNodeKind.Button))
                 Add($"{path}.glyph", "glyph_not_allowed", "Semantic glyphs apply only to icon and button nodes.");
             if (node.Kind is ViewNodeKind.Icon)

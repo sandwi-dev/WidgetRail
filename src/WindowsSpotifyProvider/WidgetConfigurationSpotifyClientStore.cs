@@ -13,7 +13,7 @@ public sealed class WidgetConfigurationSpotifyClientStore(WidgetConfigurationSto
     public async Task<SpotifyClientConfiguration?> ReadAsync(
         SpotifyIntegrationIdentity identity, CancellationToken cancellationToken)
     {
-        var snapshot = await _store.ReadAsync(
+        var snapshot = await _store.ReadForRuntimeAuthorityAsync(
             identity.PackageId, identity.PublisherId, cancellationToken).ConfigureAwait(false);
         return snapshot.Values.TryGetValue(ClientIdKey, out var clientId)
             ? new SpotifyClientConfiguration(clientId) : null;

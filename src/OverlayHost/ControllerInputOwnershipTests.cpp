@@ -20,23 +20,27 @@ void Check(const bool condition, const char* message) {
 int main() {
     using namespace gba::input;
 
-    Check(DecideControllerInputOwnership(false, false, true) ==
+    Check(DecideControllerInputOwnership(false, false, false, true) ==
               ControllerInputOwnershipDecision{},
           "hidden overlay never polls ordinary controller input");
 
-    const auto exclusive = DecideControllerInputOwnership(true, true, true);
-    Check(exclusive.readPath == ControllerReadPath::GameInputForegroundExclusive &&
-              exclusive.ordinaryInputExclusive && !exclusive.shouldAcquireForeground,
+    Check(DecideControllerInputOwnership(true, false, true, true) ==
+              ControllerInputOwnershipDecision{},
+          "visible window without an active read lease remains dormant");
+
+    const auto exclusive = DecideControllerInputOwnership(true, true, true, true);
+    Check(exclusive.readPath == ControllerReadPath::GameInputVisibleLease &&
+              exclusive.foregroundExclusive,
           "focused visible overlay uses foreground-exclusive GameInput");
 
-    const auto lostFocus = DecideControllerInputOwnership(true, false, true);
-    Check(lostFocus.readPath == ControllerReadPath::None &&
-              !lostFocus.ordinaryInputExclusive && lostFocus.shouldAcquireForeground,
-          "GameInput path fails closed until foreground ownership is confirmed");
+    const auto lostFocus = DecideControllerInputOwnership(true, true, false, true);
+    Check(lostFocus.readPath == ControllerReadPath::GameInputVisibleLease &&
+              !lostFocus.foregroundExclusive,
+          "visible GameInput lease remains readable when activation is denied");
 
-    const auto compatibility = DecideControllerInputOwnership(true, true, false);
+    const auto compatibility = DecideControllerInputOwnership(true, true, false, false);
     Check(compatibility.readPath == ControllerReadPath::XInputCompatibility &&
-              !compatibility.ordinaryInputExclusive,
+              !compatibility.foregroundExclusive,
           "XInput fallback is explicitly non-exclusive");
 
     Check(PlanForegroundAcquisition(true, 10, 20) == ForegroundAcquisitionPlan{},

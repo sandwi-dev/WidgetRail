@@ -126,9 +126,11 @@ public sealed class MediaSessionsWidget : Widget
         var toggleLabel = selected.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
             ? "Pause" : "Play";
         var selectedPill = SessionElementId(selected.SessionId);
+        var togglePending = pending is WidgetMediaSessionCommand.TogglePlayPause or
+            WidgetMediaSessionCommand.Play or WidgetMediaSessionCommand.Pause;
         var previous = UI.Button("", "media.previous", "media.previous")
             .Icon(WidgetGlyph.Previous, selected.CanPrevious ? "Previous track" : "Previous unavailable")
-            .Disabled(!selected.CanPrevious || pending is not null)
+            .Disabled(!selected.CanPrevious || pending == WidgetMediaSessionCommand.Previous)
             .Busy(pending == WidgetMediaSessionCommand.Previous)
             .FocusUp(selectedPill).FocusRight("media.play-toggle")
             .Classes("media-transport", "media-previous");
@@ -136,15 +138,14 @@ public sealed class MediaSessionsWidget : Widget
             .Icon(selected.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
                 ? WidgetGlyph.Pause : WidgetGlyph.Play,
                 toggleEnabled ? toggleLabel : "Play or pause unavailable")
-            .Disabled(!toggleEnabled || pending is not null)
-            .Busy(pending is WidgetMediaSessionCommand.TogglePlayPause or
-                WidgetMediaSessionCommand.Play or WidgetMediaSessionCommand.Pause)
+            .Disabled(!toggleEnabled || togglePending)
+            .Busy(togglePending)
             .FocusUp(selectedPill).FocusLeft("media.previous").FocusRight("media.next")
             .Classes("media-play", selected.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
                 ? "is-playing" : "is-paused");
         var next = UI.Button("", "media.next", "media.next")
             .Icon(WidgetGlyph.Next, selected.CanNext ? "Next track" : "Next unavailable")
-            .Disabled(!selected.CanNext || pending is not null)
+            .Disabled(!selected.CanNext || pending == WidgetMediaSessionCommand.Next)
             .Busy(pending == WidgetMediaSessionCommand.Next)
             .FocusUp(selectedPill).FocusLeft("media.play-toggle")
             .Classes("media-transport", "media-next");
@@ -293,12 +294,17 @@ public sealed class MediaSessionsWidget : Widget
         long generation;
         long snapshotRevision;
         var unavailable = false;
+        var commandAlreadyPending = false;
         lock (_gate)
         {
             session = SelectedLocked();
             generation = _runGeneration;
             snapshotRevision = _snapshotRevision;
-            if (session is null || _pendingCommand is not null || !Supports(session, command))
+            if (_pendingCommand is not null)
+            {
+                commandAlreadyPending = true;
+            }
+            else if (session is null || !Supports(session, command))
             {
                 _status = "That action is not available for this media session";
                 unavailable = true;
@@ -315,6 +321,7 @@ public sealed class MediaSessionsWidget : Widget
                 };
             }
         }
+        if (commandAlreadyPending) return;
         Invalidate();
         if (unavailable || session is null) return;
         try

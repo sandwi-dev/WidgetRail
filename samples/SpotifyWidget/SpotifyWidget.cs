@@ -26,6 +26,7 @@ public sealed class SpotifyWidget : Widget
     private const string SetupScope = "spotify.setup";
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan SetupRefreshTimeout = TimeSpan.FromSeconds(5);
     private static readonly WidgetSurfaceHints StandardSurface = new()
     {
         Mode = WidgetSurfaceMode.Standard,
@@ -45,6 +46,7 @@ public sealed class SpotifyWidget : Widget
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _actionGate = new(1, 1);
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly TimeProvider _timeProvider;
     private SpotifyWidgetViewState _viewState = SpotifyWidgetViewState.Initial;
     private WidgetSpotifyAuthorizationState _authorizationState =
@@ -165,6 +167,28 @@ public sealed class SpotifyWidget : Widget
                     lock (_gate) _showSetup = false;
                     Invalidate();
                     return;
+                case "spotify.setup.done":
+                    lock (_gate) _showSetup = false;
+                    Invalidate();
+                    if (!IsActive) return;
+                    using (var refreshLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                               cancellationToken, ActiveCancellationToken))
+                    {
+                        refreshLifetime.CancelAfter(SetupRefreshTimeout);
+                        try
+                        {
+                            await RefreshAsync(refreshLifetime.Token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (
+                            refreshLifetime.IsCancellationRequested) { }
+                        if (refreshLifetime.IsCancellationRequested &&
+                            !cancellationToken.IsCancellationRequested &&
+                            !ActiveCancellationToken.IsCancellationRequested)
+                            SetState(Volatile.Read(ref _activeGeneration),
+                                SpotifyWidgetViewState.ServiceUnavailable,
+                                "Spotify configuration refresh timed out", null);
+                    }
+                    return;
                 case "spotify.connect":
                     await ConnectAsync(cancellationToken).ConfigureAwait(false);
                     return;
@@ -222,6 +246,24 @@ public sealed class SpotifyWidget : Widget
     }
 
     private async Task RefreshCoreAsync(
+        long generation,
+        CancellationToken cancellationToken,
+        bool loading)
+    {
+        await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (generation != Volatile.Read(ref _activeGeneration)) return;
+            await RefreshCoreSingleAsync(generation, cancellationToken, loading)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
+    private async Task RefreshCoreSingleAsync(
         long generation,
         CancellationToken cancellationToken,
         bool loading)
@@ -650,16 +692,16 @@ public sealed class SpotifyWidget : Widget
                                 "spotify.setup-step-2").Classes("spotify-setup-step"),
                         UI.Text("3. Configure only its public Client ID; never paste a Client Secret.",
                                 "spotify.setup-step-3").Classes("spotify-setup-step"),
-                        UI.Text("CLI: gbar config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples",
+                        UI.Text("CLI: dotnet run --project .\\tools\\GbarCli\\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples",
                                 "spotify.setup-command", "Client ID configuration command")
                             .Classes("spotify-setup-command"),
-                        UI.Button("Done", "spotify.setup.close", "spotify.setup.close")
+                        UI.Button("Done", "spotify.setup.done", "spotify.setup.done")
                             .Classes("spotify-primary"))
                     .Classes("spotify-setup-card"))
             .InputScope(SetupScope)
             .Shortcut(ControllerButton.B, "spotify.setup.close")
             .Classes("spotify-widget", "spotify-setup");
-        return new WidgetView(root, "spotify.setup.close", ActiveInputScopeId: SetupScope,
+        return new WidgetView(root, "spotify.setup.done", ActiveInputScopeId: SetupScope,
             Surface: StandardSurface);
     }
 

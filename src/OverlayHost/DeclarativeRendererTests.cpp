@@ -172,7 +172,14 @@ void PlanningMetadataAndKinds() {
     auto disabled = Node(L"locked", L"button");
     disabled.text = L"Locked";
     disabled.isDisabled = true;
-    row.children = {enabled, disabled};
+    auto illustrated = Node(L"illustrated", L"button");
+    illustrated.text = L"Application with a complete long name";
+    illustrated.actionId = L"launch";
+    illustrated.imageSource =
+        L"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    illustrated.imageFit = L"contain";
+    row.children = {enabled, disabled, illustrated};
 
     auto label = Node(L"label", L"text");
     label.text = L"Generic declarative renderer";
@@ -190,8 +197,8 @@ void PlanningMetadataAndKinds() {
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
     const auto first = renderer.Render(nullptr, snapshot, L"play", {0.0F, 0.0F, 960.0F, 540.0F});
     Check(!first.succeeded, "null target is reported as unsuccessful");
-    Check(first.hitRegions.size() == 2, "buttons produce hit regions");
-    Check(first.focusRects.size() == 2, "buttons produce focus rectangles");
+    Check(first.hitRegions.size() == 3, "buttons produce hit regions");
+    Check(first.focusRects.size() == 3, "buttons produce focus rectangles");
     Check(first.currentFocusRect.has_value(), "focused button produces current focus rect");
     Check(first.hitRegions[0].enabled, "normal button is enabled");
     Check(!first.hitRegions[1].enabled, "disabled button is not actionable");
@@ -199,6 +206,8 @@ void PlanningMetadataAndKinds() {
           "disabled button remains controller navigable");
     Check(first.focusRects.contains(L"play"), "focus metadata uses stable widget ID");
     Check(first.focusRects.at(L"play").width > 0.0F, "planned button has positive width");
+    Check(first.focusRects.at(L"illustrated").width >= 44.0F,
+          "leading artwork and long label share one complete button focus target");
 
     for (const auto& diagnostic : first.diagnostics)
         Check(diagnostic.code != L"unknown_kind", "all public node kinds are recognized");
@@ -747,10 +756,140 @@ void CenteredWrappedStatePreservesTextFlowAndControllerTarget() {
         const auto& titleRect = result.elementRects.at(L"state-title");
         const auto& helpRect = result.elementRects.at(L"state-help");
         const auto& actionRect = result.elementRects.at(L"state-action");
+        Check(titleRect.height > 30.0F * scenario.textScale,
+              "authored max-width reflows the state title before intrinsic height is fixed");
+        Check(helpRect.height > 30.0F * scenario.textScale,
+              "authored max-width reflows the state detail before intrinsic height is fixed");
         Check(helpRect.y >= titleRect.y + titleRect.height + 7.99F,
               "wrapped detail follows the complete title without overlap");
         Check(actionRect.y >= helpRect.y + helpRect.height + 7.99F,
               "action follows the complete wrapped detail without overlap");
+    }
+}
+
+void SpotifyStateAndSetupCardsPreserveWrappedTextHeight() {
+    const gba::WidgetComputedStyle rootStyle{
+        {L"gap", LengthList(L"10px")},
+        {L"padding", LengthList(L"18px 20px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+    const gba::WidgetComputedStyle cardStyle{
+        {L"min-height", Length(300)},
+        {L"gap", LengthList(L"9px")},
+        {L"padding", LengthList(L"28px")},
+        {L"align", Keyword(L"center")},
+        {L"justify", Keyword(L"center")},
+    };
+
+    WidgetSnapshot stateSnapshot;
+    stateSnapshot.instanceId = L"spotify-state.runtime";
+    stateSnapshot.root = Node(L"spotify.root", L"stack");
+    stateSnapshot.root.baseStyle = rootStyle;
+    auto stateCard = Node(L"spotify.state-card", L"stack");
+    stateCard.baseStyle = cardStyle;
+    auto stateIcon = Node(L"spotify.state-icon", L"icon");
+    stateIcon.glyph = L"settings";
+    stateIcon.baseStyle = {
+        {L"width", Length(34)}, {L"height", Length(34)},
+        {L"padding", LengthList(L"5px")},
+    };
+    auto stateTitle = Node(L"spotify.state-title", L"text");
+    stateTitle.text = L"Client ID required";
+    stateTitle.baseStyle = {
+        {L"font-size", Length(20)}, {L"font-weight", Number(500)},
+        {L"max-lines", Number(2)},
+        {L"text-align", Keyword(L"center")},
+    };
+    auto stateDetail = Node(L"spotify.state-detail", L"text");
+    stateDetail.text =
+        L"Add your own Spotify developer Client ID. No client secret belongs in this widget.";
+    stateDetail.baseStyle = {
+        {L"max-width", Length(520)}, {L"font-size", Length(12)},
+        {L"max-lines", Number(3)}, {L"text-align", Keyword(L"center")},
+    };
+    auto setupAction = FixedButton(L"spotify.setup.open");
+    setupAction.text = L"Setup instructions";
+    stateCard.children = {
+        std::move(stateIcon), std::move(stateTitle),
+        std::move(stateDetail), std::move(setupAction)};
+    stateSnapshot.root.children = {std::move(stateCard)};
+
+    WidgetSnapshot setupSnapshot;
+    setupSnapshot.instanceId = L"spotify-setup.runtime";
+    setupSnapshot.root = Node(L"spotify.setup-root", L"stack");
+    setupSnapshot.root.baseStyle = rootStyle;
+    auto setupCard = Node(L"spotify.setup-card", L"stack");
+    setupCard.baseStyle = cardStyle;
+    setupCard.baseStyle[L"align"] = Keyword(L"start");
+    auto setupTitle = Node(L"spotify.setup-title", L"text");
+    setupTitle.text = L"Connect your developer app";
+    setupTitle.baseStyle = {
+        {L"font-size", Length(20)}, {L"font-weight", Number(500)},
+        {L"max-lines", Number(2)},
+    };
+    auto setupStep = Node(L"spotify.setup-step-2", L"text");
+    setupStep.text =
+        L"2. Register this exact redirect URI: http://127.0.0.1:43821/callback";
+    setupStep.baseStyle = {
+        {L"font-size", Length(13)}, {L"max-lines", Number(2)},
+    };
+    auto setupCommand = Node(L"spotify.setup-command", L"text");
+    setupCommand.text =
+        L"CLI: gbar config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples";
+    setupCommand.baseStyle = {
+        {L"width", Length(100, L"%")}, {L"padding", LengthList(L"11px 13px")},
+        {L"font-size", Length(11)}, {L"max-lines", Number(2)},
+    };
+    auto done = FixedButton(L"spotify.setup.close");
+    done.text = L"Done";
+    setupCard.children = {
+        std::move(setupTitle), std::move(setupStep),
+        std::move(setupCommand), std::move(done)};
+    setupSnapshot.root.children = {std::move(setupCard)};
+
+    struct Scenario final {
+        float width;
+        float height;
+        float textScale;
+    };
+    for (const auto scenario : {
+             Scenario{420.0F, 430.0F, 1.0F},
+             Scenario{760.0F, 540.0F, 1.5F},
+         }) {
+        gba::DeclarativeRenderOptions options;
+        options.accessibility.textScale = scenario.textScale;
+        DeclarativeRenderer stateRenderer{nullptr, nullptr, nullptr};
+        const auto stateResult = stateRenderer.Render(
+            nullptr, stateSnapshot, L"spotify.setup.open",
+            {0.0F, 0.0F, scenario.width, scenario.height}, options);
+        Check(stateResult.elementRects.at(L"spotify.state-title").height >=
+                  20.0F * scenario.textScale,
+              "Spotify client-ID title retains its complete intrinsic line height");
+        Check(stateResult.elementRects.at(L"spotify.state-detail").height >=
+                  20.0F * scenario.textScale,
+              "Spotify client-ID detail retains its wrapped intrinsic height");
+
+        DeclarativeRenderer setupRenderer{nullptr, nullptr, nullptr};
+        const auto setupResult = setupRenderer.Render(
+            nullptr, setupSnapshot, L"spotify.setup.close",
+            {0.0F, 0.0F, scenario.width, scenario.height}, options);
+        for (const auto* id : {
+                 L"spotify.setup-title", L"spotify.setup-step-2",
+                 L"spotify.setup-command"}) {
+            const auto& rect = setupResult.elementRects.at(id);
+            const auto& visible = setupResult.elementVisibleRects.at(id);
+            Near(visible.height, rect.height,
+                 "Spotify setup text keeps its complete visible box");
+        }
+        Check(setupResult.elementRects.at(L"spotify.setup-title").height >=
+                  20.0F * scenario.textScale,
+              "Spotify setup title retains its complete intrinsic line height");
+        Check(setupResult.elementRects.at(L"spotify.setup-step-2").height >
+                  20.0F * scenario.textScale,
+              "Spotify setup step retains its wrapped intrinsic height");
+        Check(setupResult.elementRects.at(L"spotify.setup-command").height >
+                  28.0F * scenario.textScale,
+              "Spotify setup command retains wrapped text plus padding");
     }
 }
 
@@ -1282,6 +1421,7 @@ int main() {
     WholeWidgetScrollRevealsAudioMixerControls();
     SegmentedTabsSurviveConstrainedNetworkSurfaces();
     CenteredWrappedStatePreservesTextFlowAndControllerTarget();
+    SpotifyStateAndSetupCardsPreserveWrappedTextHeight();
     WrappedPermissionCopyContributesToScrollExtent();
     ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();

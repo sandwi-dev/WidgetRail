@@ -19,15 +19,17 @@ and per-monitor placement.
 
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
-overlay. Both windows are topmost only while visible. Foreground ownership is
-verified before ordinary controller polling; Alt+Tab/external foreground loss
-closes rather than retargets the visible overlay. DPI, display
+overlay. Both windows are topmost only while visible. Ordinary controller reads
+use a visibility-scoped GameInput lease; confirmed foreground adds exclusivity,
+while denied activation remains readable and diagnosed as background-shared.
+Alt+Tab/external foreground loss closes rather than retargets the visible overlay. DPI, display
 topology, work-area, and client-size messages recompute placement/resources;
 reentrant DPI placement is coalesced. This is normal DWM windowing, not game
 injection.
 
-Ordinary visible controller state is read through foreground-exclusive
-GameInput. This suppresses other GameInput clients only; XInput, Raw Input,
+Ordinary visible controller state is read through GameInput background delivery
+plus best-effort foreground exclusivity. Exclusivity suppresses other GameInput
+clients only; XInput, Raw Input,
 direct HID, Steam Input, and remapped virtual controllers remain outside a
 normal desktop overlay's containment boundary. Arrow keys, Enter, and Escape
 provide unadvertised navigation/select/back fallbacks. Mouse hit testing uses
@@ -98,8 +100,9 @@ Up/Down navigation.
   diagnostics.
 - `PlatformSettings`: strict atomic/cross-process appearance persistence,
   version-pinned development themes, built-in default, safe theme discovery,
-  layer composition, last-good snapshots, and bounded package/publisher-scoped
-  public widget configuration under `widget-config`.
+  layer composition, last-good snapshots, and bounded declared-
+  publisher/package-scoped public widget configuration under `widget-config`,
+  with unambiguous owning-namespace resolution for unsigned runtime authorities.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, host-sealed content-
   tree integrity, immutable versions, schema-1 state migration, fail-closed
   exact version pins, discovery,
@@ -288,8 +291,10 @@ Games & Apps has replaced Recent Apps in the bundled catalog and first-party
 package conformance path. It is an ordinary public-SDK package in the generic
 AppContainer, requires `system.apps.library.read.v1`, optionally declares the
 separate `system.apps.library.launch.v1`, and loads bounded 32-item pages. Its
-default Library shows only entries the user adds from a nested horizontal
-Catalog; A toggles Catalog membership, X removes from Library, and one
+default Library shows only entries the user adds from a nested vertical
+Catalog. Library and Catalog entries are full-width single-focus rows; curated
+rows can place the bounded trusted PNG inside that same Button target. A
+toggles Catalog membership, X removes from Library, and one
 confirmed launch moves that exact item to the front. Curation, selected item,
 and recent-first order persist across worker restart/unload as authority-scoped
 durable `SavedId` values in `HostServices.PrivateState`; activation resolves
@@ -636,7 +641,11 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. There is no live
+  setup guidance without opening OAuth automatically. Setup now shows the
+  source-tree-runnable `dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config ...`
+  command; **Done** performs one bounded fresh configuration and
+  authorization read so a newly saved Client ID takes effect without restarting
+  the worker, while B remains navigation-only. There is no live
   allowlisted-account evidence. Devices/queue/search/recent/library/
   playlists/albums/artists remain staged work. A separately trusted singleton
   Web Playback SDK/WebView2 host now implements a bounded, hardened process and

@@ -94,6 +94,8 @@ static Task InlinePngImagesAreBounded()
         UI.Stack("root",
             UI.LoadingIndicator("loading", "Loading icon"),
             UI.InlinePngImage(png, "icon", "Application icon"),
+            UI.Button("Application with a long name", "launch", "app-row")
+                .LeadingInlinePng(png, accessibilityLabel: "Launch application"),
             UI.Slider(1, 0, 10, 1, "change", "slider", "Value")));
     var snapshot = view.CreateSnapshot("inline-image-test", 1);
     Assert.Equal(ProtocolConstants.InlinePngImageVersion, snapshot.ProtocolVersion);
@@ -102,6 +104,25 @@ static Task InlinePngImagesAreBounded()
         "data:image/png;base64,", StringComparison.Ordinal),
         "Inline image source did not use the local PNG data scheme.");
     Assert.True(image.ActionId is null, "Inline images must remain non-interactive.");
+    var appRow = snapshot.Root.Children.Single(node => node.Id == "app-row");
+    Assert.Equal(ViewNodeKind.Button, appRow.Kind);
+    Assert.True(appRow.ImageSource!.StartsWith(
+        "data:image/png;base64,", StringComparison.Ordinal),
+        "Leading button image did not use the local PNG data scheme.");
+    Assert.Equal(ImageFit.Contain, appRow.ImageFit);
+    Assert.True(appRow.Glyph is null, "A leading image must replace the semantic glyph.");
+    var mixedLeadingVisuals = snapshot with
+    {
+        Root = snapshot.Root with
+        {
+            Children = snapshot.Root.Children.Select(node => node.Id == "app-row"
+                ? node with { Glyph = WidgetGlyph.Play }
+                : node).ToArray(),
+        },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(mixedLeadingVisuals).Any(error =>
+            error.Code == "multiple_leading_visuals"),
+        "Buttons must reject simultaneous semantic glyph and leading artwork.");
 
     Assert.Throws<ProtocolValidationException>(() =>
         new WidgetView(UI.Stack("bad-root",

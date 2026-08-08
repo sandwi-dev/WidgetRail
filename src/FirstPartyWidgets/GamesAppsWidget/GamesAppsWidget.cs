@@ -39,15 +39,15 @@ public sealed class GamesAppsWidget : Widget
     {
         Mode = WidgetSurfaceMode.Standard,
         PreferredWidth = 820,
-        PreferredHeight = 270,
+        PreferredHeight = 430,
         MinimumWidth = 420,
-        MinimumHeight = 240,
+        MinimumHeight = 300,
     };
 
     private static readonly WidgetSurfaceHints CatalogSurface = LibrarySurface with
     {
-        PreferredHeight = 294,
-        MinimumHeight = 260,
+        PreferredHeight = 450,
+        MinimumHeight = 320,
     };
 
     private static readonly WidgetSurfaceHints StateSurface = LibrarySurface with
@@ -178,62 +178,42 @@ public sealed class GamesAppsWidget : Widget
 
         var elementIds = curated.Select(item => ElementId(item.AppId)).ToArray();
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        var cards = new List<WidgetElement>(curated.Length + 1);
+        var rows = new List<WidgetElement>(curated.Length + 1);
         for (var index = 0; index < curated.Length; index++)
         {
             var item = curated[index];
             var id = elementIds[index];
             map[id] = item.AppId;
-            var right = index + 1 < curated.Length
-                ? elementIds[index + 1]
-                : "games.open-catalog";
             var button = UI.Button(item.DisplayName, "games.launch", id)
                 .Shortcut(ControllerButton.X, actionId: "games.remove")
                 .Busy(string.Equals(launchingAppId, item.AppId, StringComparison.Ordinal))
                 .Disabled(launchingAppId is not null ||
                     LifecycleState != WidgetLifecycleState.Interactive)
                 .Selected(string.Equals(selectedAppId, item.AppId, StringComparison.Ordinal))
-                .FocusLeft(index == 0 ? id : elementIds[index - 1])
-                .FocusRight(right)
-                .FocusUp(id)
-                .Classes("games-card-action");
-            WidgetElement icon = item.IconPngBase64 is { Length: > 0 } png
-                ? UI.InlinePngImage(
-                        png, id + ".art", $"{item.DisplayName} application icon")
-                    .Classes("games-card-art")
-                : UI.Icon(WidgetGlyph.Play, id + ".icon",
-                        $"Application icon placeholder for {item.DisplayName}")
-                    .Classes("games-card-icon");
-            var cardChildren = new List<WidgetElement>
-            {
-                UI.Row(id + ".body",
-                            icon,
-                            button)
-                        .Classes("games-card-body"),
-            };
-            if (item.Kind == WidgetAppLibraryKind.Game)
-                cardChildren.Add(UI.Text("GAME", id + ".kind", "Game")
-                    .Classes("games-card-kind", "is-game"));
-            cards.Add(UI.Stack(id + ".card", cardChildren.ToArray()).Classes("games-card"));
+                .FocusUp(index == 0 ? id : elementIds[index - 1])
+                .FocusDown(index + 1 < curated.Length
+                    ? elementIds[index + 1]
+                    : "games.open-catalog")
+                .FocusLeft(id)
+                .FocusRight(id)
+                .Classes("games-card-action", "games-app-row",
+                    item.Kind == WidgetAppLibraryKind.Game ? "is-game" : "is-application");
+            button = item.IconPngBase64 is { Length: > 0 } png
+                ? button.LeadingInlinePng(
+                    png, ImageFit.Contain, $"Launch {item.DisplayName}")
+                : button.Icon(WidgetGlyph.Play, $"Launch {item.DisplayName}");
+            rows.Add(button);
         }
 
-        cards.Add(UI.Stack("games.open-catalog.card",
-                UI.Row("games.open-catalog.body",
-                        UI.Icon(WidgetGlyph.Play, "games.open-catalog.icon",
-                                "Add applications")
-                            .Classes("games-card-icon", "is-add"),
-                        UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
-                            .Disabled(launchingAppId is not null ||
-                                LifecycleState != WidgetLifecycleState.Interactive)
-                            .FocusLeft(elementIds[^1])
-                            .FocusRight("games.open-catalog")
-                            .FocusUp("games.open-catalog")
-                            .Classes("games-card-action", "games-load-more"))
-                    .Classes("games-card-body"),
-                UI.Text($"{items.Count} available", "games.open-catalog.count",
-                        $"{items.Count} applications available")
-                    .Classes("games-card-kind"))
-            .Classes("games-card", "is-load-more"));
+        rows.Add(UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
+            .Icon(WidgetGlyph.Play, $"Browse {items.Count} available applications")
+            .Disabled(launchingAppId is not null ||
+                LifecycleState != WidgetLifecycleState.Interactive)
+            .FocusUp(elementIds[^1])
+            .FocusDown("games.open-catalog")
+            .FocusLeft("games.open-catalog")
+            .FocusRight("games.open-catalog")
+            .Classes("games-card-action", "games-app-row", "games-load-more"));
         lock (_gate) _appByElementId = map;
 
         var selected = curated.FirstOrDefault(item =>
@@ -247,7 +227,7 @@ public sealed class GamesAppsWidget : Widget
                                 "games.section.count", $"{curated.Length} saved applications")
                             .Classes("games-section-count"))
                     .Classes("games-section-heading"),
-                UI.HorizontalScroll("games.library.scroll", cards.ToArray())
+                UI.VerticalScroll("games.library.scroll", rows.ToArray())
                     .Classes("games-library-scroll"))
             .InputScope("games-apps")
             .Shortcut(ControllerButton.Y, RetryActionId)
@@ -267,56 +247,42 @@ public sealed class GamesAppsWidget : Widget
         var curated = curatedAppIds.ToHashSet(StringComparer.Ordinal);
         var elementIds = items.Select(item => CatalogElementId(item.AppId)).ToArray();
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        var cards = new List<WidgetElement>(items.Count + (nextOffset is null ? 0 : 1));
+        var rows = new List<WidgetElement>(items.Count + (nextOffset is null ? 0 : 1));
         for (var index = 0; index < items.Count; index++)
         {
             var item = items[index];
             var id = elementIds[index];
             map[id] = item.AppId;
             var saved = curated.Contains(item.SavedId);
-            var right = index + 1 < items.Count
+            var down = index + 1 < items.Count
                 ? elementIds[index + 1]
                 : nextOffset is not null ? "games.load-more" : id;
-            cards.Add(UI.Stack(id + ".card",
-                    UI.Row(id + ".body",
-                            UI.Icon(saved ? WidgetGlyph.Check : WidgetGlyph.Play, id + ".icon",
-                                    saved ? $"{item.DisplayName} is saved" :
-                                        $"Application icon placeholder for {item.DisplayName}")
-                                .Classes("games-card-icon", saved ? "is-saved" : "is-available"),
-                            UI.Button(item.DisplayName, "games.toggle-curation", id)
-                                .Selected(saved)
-                                .Disabled(launchingAppId is not null || loadingMore ||
-                                    LifecycleState != WidgetLifecycleState.Interactive)
-                                .FocusLeft(index == 0 ? id : elementIds[index - 1])
-                                .FocusRight(right)
-                                .FocusUp(id)
-                                .Classes("games-card-action"))
-                        .Classes("games-card-body"),
-                    UI.Text(saved ? "Saved · A removes" : "A adds to library",
-                            id + ".hint", saved ? "Saved in your library" : "Add to your library")
-                        .Classes("games-card-kind"))
-                .Classes("games-card", saved ? "is-saved" : "is-available"));
+            rows.Add(UI.Button(item.DisplayName, "games.toggle-curation", id)
+                .Icon(saved ? WidgetGlyph.Check : WidgetGlyph.Play,
+                    saved ? $"{item.DisplayName}, saved, A removes" :
+                        $"{item.DisplayName}, A adds to library")
+                .Selected(saved)
+                .Disabled(launchingAppId is not null || loadingMore ||
+                    LifecycleState != WidgetLifecycleState.Interactive)
+                .FocusUp(index == 0 ? id : elementIds[index - 1])
+                .FocusDown(down)
+                .FocusLeft(id)
+                .FocusRight(id)
+                .Classes("games-card-action", "games-app-row",
+                    saved ? "is-saved" : "is-available"));
         }
         if (nextOffset is not null)
         {
-            cards.Add(UI.Stack("games.load-more.card",
-                    UI.Row("games.load-more.body",
-                            UI.Icon(WidgetGlyph.Refresh, "games.load-more.icon",
-                                    "Load more available applications")
-                                .Classes("games-card-icon", "is-add"),
-                            UI.Button("Load more", "games.load-more", "games.load-more")
-                                .Busy(loadingMore)
-                                .Disabled(launchingAppId is not null || loadingMore ||
-                                    LifecycleState != WidgetLifecycleState.Interactive)
-                                .FocusLeft(elementIds[^1])
-                                .FocusRight("games.load-more")
-                                .FocusUp("games.load-more")
-                                .Classes("games-card-action", "games-load-more"))
-                        .Classes("games-card-body"),
-                    UI.Text($"{items.Count} loaded", "games.load-more.count",
-                            $"{items.Count} applications loaded")
-                        .Classes("games-card-kind"))
-                .Classes("games-card", "is-load-more"));
+            rows.Add(UI.Button("Load more", "games.load-more", "games.load-more")
+                .Icon(WidgetGlyph.Refresh, $"Load more than {items.Count} applications")
+                .Busy(loadingMore)
+                .Disabled(launchingAppId is not null || loadingMore ||
+                    LifecycleState != WidgetLifecycleState.Interactive)
+                .FocusUp(elementIds[^1])
+                .FocusDown("games.load-more")
+                .FocusLeft("games.load-more")
+                .FocusRight("games.load-more")
+                .Classes("games-card-action", "games-app-row", "games-load-more"));
         }
         lock (_gate) _appByElementId = map;
 
@@ -330,7 +296,7 @@ public sealed class GamesAppsWidget : Widget
                                 "games.section.count", $"{items.Count} applications available")
                             .Classes("games-section-count"))
                     .Classes("games-section-heading"),
-                UI.HorizontalScroll("games.library.scroll", cards.ToArray())
+                UI.VerticalScroll("games.library.scroll", rows.ToArray())
                     .Classes("games-library-scroll"))
             .InputScope("games.catalog")
             .Shortcut(ControllerButton.B, "back")

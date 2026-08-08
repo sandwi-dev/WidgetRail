@@ -18,7 +18,7 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.HorizontalScroll(id, children)` | `scroll` | Host-owned horizontal viewport with controller focus-follow. |
 | `UI.Scroll(id, axis, children)` | `scroll` | Axis-explicit form of the same bounded viewport. |
 | `UI.Text(text, id, accessibilityLabel?)` | `text` | Non-interactive text. |
-| `UI.Button(label, action, id)` | `button` | Focusable action control; may include a semantic glyph. |
+| `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
 | `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |
 | `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |
 | `UI.Progress(value, maximum, id, accessibilityLabel?)` | `progress` | Read-only bounded progress where `0 <= value <= maximum` and `maximum > 0`. |
@@ -119,6 +119,21 @@ Explicit values refine the selected mode but do not bypass work-area, DPI,
 text-scale, tray/footer, or minimum-control-size constraints. Widgets must
 still reflow and use Scroll for overflow after the host clamps the surface.
 
+### Intrinsic text sizing and width constraints
+
+Auto-height Text and Button leaves are measured at the content width they will
+actually receive. An authored `width` or `max-width` is applied before the host
+calculates wrapping and intrinsic height; node padding is excluded from that
+content width and then added back to the border box. This makes a bounded
+centered title, detail paragraph, or labeled action grow to its wrapped line
+count instead of being measured as one wide line and clipped after layout.
+
+`min-height` remains a lower bound, not a single-line height override. Use an
+explicit `height` only when a deliberately fixed/clipped box is part of the
+design. `max-lines` still caps layout and paint, while surfaces whose complete
+content can exceed the host-clamped viewport must use a semantic Scroll; extra
+spacers or margins are not a reliable overflow mechanism.
+
 Image fit is `Contain`, `Cover` (default), or `Fill`. General image sources must
 be absolute HTTPS URLs with a host and no embedded credentials. A trusted
 platform service may instead return PNG pixels for `UI.InlinePngImage`; protocol
@@ -126,6 +141,19 @@ v6 accepts only canonical RGBA8 PNG data up to 12 KiB and 64 by 64 pixels. The
 host decodes those pixels in memory and never sends them through WinHTTP.
 Redirect, download-size, decode-size, MIME, and cache policy are enforced by the
 host image service; widgets never receive native image handles or filesystem paths.
+
+For an application/media list action, attach those same trusted pixels to the
+Button itself so icon, label, state cue, pointer hit area, and controller outline
+remain one semantic target:
+
+```csharp
+UI.Button(app.DisplayName, "launch", app.Id)
+    .LeadingInlinePng(app.IconPngBase64, ImageFit.Contain,
+        $"Launch {app.DisplayName}");
+```
+
+`LeadingInlinePng` replaces `.Icon(...)`; the validator rejects two competing
+leading visuals. Use a semantic `.Icon(...)` fallback when pixels are absent.
 
 The closed `WidgetGlyph` set is `Music`, `Play`, `Pause`, `Previous`, `Next`,
 `Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `Settings`, `Warning`,

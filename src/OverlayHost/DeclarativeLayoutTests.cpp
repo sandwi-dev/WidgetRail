@@ -266,7 +266,9 @@ void IntrinsicAndCompactMode() {
 
 void WrappedIntrinsicLeavesDoNotCollapseOrOverlap() {
     auto title = Element("state-title");
+    title.maxWidth = 160.0F;
     auto help = Element("state-help");
+    help.maxWidth = 190.0F;
     auto action = Element("state-action");
     // A widget author commonly supplies 44 DIPs as the controller minimum.
     // That lower bound must not replace a taller intrinsic wrapped label.
@@ -281,9 +283,11 @@ void WrappedIntrinsicLeavesDoNotCollapseOrOverlap() {
         const LayoutElement& element,
         const gba::declarative::MeasureConstraints& constraints) {
         if (element.id == "state-title")
-            return Size{std::min(160.0F, constraints.maximumWidth), 40.0F};
+            return Size{constraints.maximumWidth,
+                constraints.maximumWidth <= 160.01F ? 40.0F : 20.0F};
         if (element.id == "state-help")
-            return Size{std::min(190.0F, constraints.maximumWidth), 60.0F};
+            return Size{constraints.maximumWidth,
+                constraints.maximumWidth <= 190.01F ? 60.0F : 20.0F};
         if (element.id == "state-action")
             return Size{std::min(150.0F, constraints.maximumWidth), 64.0F};
         return Size{};

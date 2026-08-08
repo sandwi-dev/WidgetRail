@@ -14,6 +14,7 @@ int main() {
     constexpr auto inlinePng =
         L"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
         L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    (void)inlinePng;
     assert(RemoteImageCache::IsAllowedImageSource(inlinePng));
     assert(RemoteImageCache::IsAllowedImageSource(L"https://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedImageSource(L"data:image/png;base64,not-base64"));

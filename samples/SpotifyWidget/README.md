@@ -5,7 +5,7 @@ This controller-first sample consumes only `WidgetHostServices.Spotify`. It neve
 Configure the public Client ID for this package, register the exact redirect URI `http://127.0.0.1:43827/callback/` in Spotify's developer dashboard, then choose **Connect** in the widget. Authorization is always explicit; merely opening the widget never launches a browser.
 
 ```powershell
-gbar config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples
+dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples
 ```
 
 The core surface supports locally projected progress, play/pause, previous/next, seeking, shuffle, repeat, refresh, disconnect, lifecycle-bounded polling, and partial host consent. Playback-control permission is optional.

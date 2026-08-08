@@ -7,6 +7,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Unconfigured state provides safe exact setup guidance", UnconfiguredSetup),
     ("Setup is a nested B-dismissible input scope", NestedSetupBack),
+    ("Setup Done refreshes newly saved configuration without starting OAuth", SetupDoneRefreshesConfiguration),
     ("Explicit connect requests only playback scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Progress is projected locally without provider polling", ProjectedProgress),
@@ -67,9 +68,13 @@ static async Task NestedSetupBack()
     Assert.True(Find(setup.Root, "spotify.setup-step-2").Text!.Contains(
         WidgetSpotifyService.ExactRedirectUri, StringComparison.Ordinal),
         "Exact redirect URI was not rendered.");
+    Assert.True(Find(setup.Root, "spotify.setup-command").Text!.Contains(
+        @"dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set",
+        StringComparison.Ordinal),
+        "Setup assumed that gbar was already installed on PATH.");
     var captured = await widget.OnControllerInputAsync(new ControllerInputEvent(
         ControllerButton.B, ControllerEventPhase.Pressed, ControllerInputContext.OpenWidget,
-        "spotify.setup.close", ActiveInputScopeId: setup.ActiveInputScopeId,
+        "spotify.setup.done", ActiveInputScopeId: setup.ActiveInputScopeId,
         SnapshotSequence: setup.Sequence));
     Assert.True(captured, "Nested setup did not capture B.");
     await WaitUntil(() => widget.Render().InitialFocusId == "spotify.setup.open");
@@ -79,6 +84,29 @@ static async Task NestedSetupBack()
         ControllerButton.B, ControllerEventPhase.Pressed, ControllerInputContext.OpenWidget,
         "spotify.setup.open", ActiveInputScopeId: root.ActiveInputScopeId,
         SnapshotSequence: root.Sequence)), "Root captured host-owned B.");
+    await StopAsync(widget);
+}
+
+static async Task SetupDoneRefreshesConfiguration()
+{
+    var harness = new SpotifyHarness { Configured = false, Connected = false };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Unconfigured);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open"));
+    var setup = widget.RenderSnapshot("spotify.test", 5);
+    Assert.Equal("spotify.setup.done", setup.InitialFocusId);
+    var readsBeforeDone = harness.ConfigurationCalls;
+
+    // Simulates `config set` completing while the setup page remains open.
+    harness.Configured = true;
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.done", "spotify.setup.done"));
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
+    Assert.True(harness.ConfigurationCalls > readsBeforeDone,
+        "Done did not perform a fresh configuration read.");
+    Assert.Equal(0, harness.ConnectCalls);
+    Assert.Equal("spotify.connect", widget.Render().InitialFocusId);
     await StopAsync(widget);
 }
 
@@ -259,6 +287,7 @@ file sealed class SpotifyHarness
     public Exception? ControlError { get; set; }
     public Task? ControlWait { get; set; }
     public int ConnectCalls { get; private set; }
+    public int ConfigurationCalls { get; private set; }
     public int PlaybackCalls { get; private set; }
     public IReadOnlyList<WidgetSpotifyAuthorizationScope>? LastScopes { get; private set; }
     public List<WidgetSpotifyPlaybackCommand> Commands { get; } = [];
@@ -272,6 +301,7 @@ file sealed class SpotifyHarness
                 (request, cancellationToken) =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    ConfigurationCalls++;
                     if (ConfigurationError is not null)
                         return ValueTask.FromException<WidgetSpotifyConfigurationSummary>(
                             ConfigurationError);

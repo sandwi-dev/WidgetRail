@@ -209,19 +209,22 @@ making compatibility claims.
 
 ## Foreground ownership and containment limitation
 
-While visible, the host requests `GameInputExclusiveForegroundInput` together
-with the existing background-Guide and foreground-exclusive-Guide policy. It
-also reads ordinary gamepad state through GameInput instead of polling XInput.
-On every show/placement transition the Win32 host verifies that one of its
-windows actually belongs to the foreground process. A Guide callback does not
-itself prove that activation succeeded. If the first foreground request is
-declined, the host makes one bounded `AttachThreadInput` activation attempt and
-detaches immediately. Until foreground ownership is confirmed, ordinary
-controller polling fails closed so a press is not deliberately routed by both
-the overlay and the window behind it.
+While visible, the host requests `GameInputEnableBackgroundInput` and
+`GameInputExclusiveForegroundInput` together with the existing background-Guide
+and foreground-exclusive-Guide policy. A visibility-scoped host lease starts
+ordinary GameInput reads on show and ends them on hide, so navigation remains
+reliable even when Windows declines activation. The Win32 host makes one direct
+and at most one bounded `AttachThreadInput` activation attempt only when first
+shown, detaching immediately; polling never runs a foreground-steal loop.
+Foreground confirmation upgrades the same read path to GameInput exclusivity.
+Without it, diagnostics explicitly report the visible lease as background-
+shared. Alt+Tab or another valid external foreground transition still closes
+the overlay.
 
 If GameInput cannot initialize, the visible host retains a documented XInput
-compatibility path, clearly diagnosed as non-exclusive. GameInput exclusivity
+compatibility path, clearly diagnosed as non-exclusive. Background GameInput
+delivery improves overlay reliability but does not consume the event.
+GameInput exclusivity
 only prevents *other GameInput clients* from seeing ordinary input received by
 the focused overlay. It cannot consume delivery through XInput, Raw Input,
 direct HID, Steam Input, or another remapping/virtual-controller layer. A

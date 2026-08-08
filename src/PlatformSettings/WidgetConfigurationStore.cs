@@ -17,6 +17,7 @@ public sealed partial class WidgetConfigurationStore
     public const int MaximumKeyCharacters = 64;
     public const int MaximumValueCharacters = 4096;
     public const int MaximumDocumentBytes = 32 * 1024;
+    public const int MaximumStoredDocuments = 256;
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LockRetry = TimeSpan.FromMilliseconds(40);
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
@@ -61,6 +62,68 @@ public sealed partial class WidgetConfigurationStore
                 "Widget configuration JSON is invalid.",
                 exception);
         }
+    }
+
+    /// <summary>
+    /// Reads non-secret configuration for an authenticated runtime authority.
+    /// Signed/trusted publishers use their exact authority. An unsigned
+    /// content-digest authority may fall back to one unambiguous manifest-
+    /// publisher document whose namespace owns the package ID. This keeps
+    /// public user configuration across unsigned package rebuilds without
+    /// weakening consent, private state, tokens, or credential isolation.
+    /// </summary>
+    public async Task<WidgetConfigurationSnapshot> ReadForRuntimeAuthorityAsync(
+        string packageId,
+        string runtimePublisherId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateIdentity(packageId, runtimePublisherId);
+        var exactPath = PathFor(packageId, runtimePublisherId);
+        if (File.Exists(exactPath) ||
+            !runtimePublisherId.StartsWith("unsigned.", StringComparison.Ordinal) ||
+            !Directory.Exists(_root))
+            return await ReadAsync(packageId, runtimePublisherId, cancellationToken)
+                .ConfigureAwait(false);
+
+        FileSystemGuard.EnsureExistingPathHasNoReparsePoints(_root);
+        var files = Directory.EnumerateFiles(_root, "*.json", SearchOption.TopDirectoryOnly)
+            .Take(MaximumStoredDocuments + 1).ToArray();
+        if (files.Length > MaximumStoredDocuments)
+            throw new PlatformSettingsException(
+                "too_many_widget_configurations",
+                $"At most {MaximumStoredDocuments} widget configuration documents are supported.");
+
+        WidgetConfigurationSnapshot? match = null;
+        foreach (var path in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            FileSystemGuard.RejectReparsePoint(path);
+            var bytes = await ReadBoundedAsync(path, cancellationToken).ConfigureAwait(false);
+            WidgetConfigurationDocument? document;
+            try
+            {
+                StrictJson.RejectDuplicateProperties(bytes);
+                document = JsonSerializer.Deserialize<WidgetConfigurationDocument>(bytes, JsonOptions);
+                if (document is null) continue;
+                ValidateIdentity(document.PackageId, document.PublisherId);
+                ValidateDocument(document, document.PackageId, document.PublisherId);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            if (!string.Equals(document.PackageId, packageId, StringComparison.Ordinal) ||
+                !packageId.StartsWith(document.PublisherId + ".", StringComparison.Ordinal))
+                continue;
+            if (match is not null)
+                return WidgetConfigurationSnapshot.Empty(packageId, runtimePublisherId);
+            match = new WidgetConfigurationSnapshot(
+                document.PackageId,
+                document.PublisherId,
+                new Dictionary<string, string>(document.Values, StringComparer.Ordinal));
+        }
+        return match ?? WidgetConfigurationSnapshot.Empty(packageId, runtimePublisherId);
     }
 
     public Task<WidgetConfigurationSnapshot> SetAsync(

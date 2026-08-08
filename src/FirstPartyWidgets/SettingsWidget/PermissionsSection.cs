@@ -841,6 +841,10 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
+        PlatformCapabilities.SpotifyConfigurationV1 => "Use Spotify developer configuration",
+        PlatformCapabilities.SpotifyAuthorizationV1 => "Connect a Spotify account",
+        PlatformCapabilities.SpotifyPlaybackReadV1 => "Read Spotify playback",
+        PlatformCapabilities.SpotifyPlaybackControlV1 => "Control Spotify playback",
         PlatformCapabilities.PrivateSecretsV1 => "Store private connection secrets",
         _ => "Unsupported capability",
         };
@@ -913,6 +917,18 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.MediaSessionsControlV1 =>
             "Use only the play, pause, previous, and next actions that Windows reports as supported " +
             "while the widget is interactive. It cannot automate an app or access its account.",
+        PlatformCapabilities.SpotifyConfigurationV1 =>
+            "Use the public Spotify Client ID you configured for this package. Client secrets, " +
+            "passwords, and OAuth tokens are never exposed to widget code.",
+        PlatformCapabilities.SpotifyAuthorizationV1 =>
+            "Start Spotify Authorization Code with PKCE in your browser and receive only a sanitized " +
+            "connection state. The trusted host stores renewable credentials in Windows Credential Manager.",
+        PlatformCapabilities.SpotifyPlaybackReadV1 =>
+            "See the current Spotify device, item metadata, artwork URL, progress, playback state, " +
+            "library state, shuffle, and repeat through the trusted Spotify provider.",
+        PlatformCapabilities.SpotifyPlaybackControlV1 =>
+            "Control the authenticated Spotify account while the widget is interactive, including " +
+            "transport, seek, shuffle, repeat, library, device transfer, and bounded browsing actions.",
         PlatformCapabilities.PrivateSecretsV1 =>
             "Create, replace, inspect metadata for, or delete package-scoped secrets in Windows " +
             "Credential Manager. Stored values are never returned to widget code; an exact-port " +

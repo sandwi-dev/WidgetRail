@@ -198,8 +198,27 @@ private:
         if (element.children.empty()) {
             Size intrinsic{};
             if (measureIntrinsic_) {
+                // Intrinsic height depends on the width the leaf will actually
+                // receive. In particular, text measured against the parent
+                // width and only afterwards clamped by its own max-width is
+                // measured as one line but painted into a narrower, wrapped
+                // box. Preserve the parent's available constraint while
+                // applying authored outer width constraints before asking the
+                // renderer for line metrics. Padding is outside that intrinsic
+                // content width.
+                auto intrinsicOuterWidth = maximumWidth;
+                if (const auto explicitWidth = ResolveOptional(
+                        element.width, element.id, "width", 0.0F, kMaximumCoordinate)) {
+                    intrinsicOuterWidth = std::min(intrinsicOuterWidth, *explicitWidth);
+                }
+                if (const auto maximumElementWidth = ResolveOptional(
+                        element.maxWidth, element.id, "maxWidth", 0.0F, kMaximumCoordinate)) {
+                    intrinsicOuterWidth = std::min(intrinsicOuterWidth, *maximumElementWidth);
+                }
+                const auto intrinsicMaximumWidth = std::max(
+                    0.0F, intrinsicOuterWidth - Horizontal(padding));
                 intrinsic = measureIntrinsic_(element, {
-                    innerMaximumWidth,
+                    intrinsicMaximumWidth,
                     innerMaximumHeight,
                     result_.compactMode,
                 });

@@ -7,10 +7,10 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Visible lifecycle resolves only saved apps and catalog loads on demand", LoadsFirstPage),
     ("Empty add catalog returns to the library without a dead end", EmptyCatalogReturnsToLibrary),
-    ("Library starts curated and catalog is a bounded controller picker", RendersControllerStrip),
-    ("One saved app uses a compact icon-led launcher tile", OneAppUsesCompactTile),
+    ("Library starts curated and catalog is a bounded vertical controller picker", RendersControllerStrip),
+    ("One saved app uses one full-width icon-led focus target", OneAppUsesCompactTile),
     ("Resolved application pixels replace the semantic fallback icon", ResolvedIconRenders),
-    ("Many saved apps retain a compact horizontal focus rail", ManyAppsUseCompactRail),
+    ("Many saved apps retain a compact vertical focus list", ManyAppsUseCompactRail),
     ("Catalog add remove and B navigation retain a user-owned library", CuratesLibrary),
     ("Interactive A launches only the selected opaque app", LaunchesSelectedApp),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
@@ -118,21 +118,21 @@ static async Task RendersControllerStrip()
 
     await OpenCatalog(widget);
     snapshot = Snapshot(widget, 4);
-    Assert.Equal(294d, snapshot.Surface!.PreferredHeight);
-    Assert.Equal(260d, snapshot.Surface.MinimumHeight);
+    Assert.Equal(450d, snapshot.Surface!.PreferredHeight);
+    Assert.Equal(320d, snapshot.Surface.MinimumHeight);
     Assert.Equal("games.catalog", snapshot.ActiveInputScopeId);
     var catalogScope = Nodes(snapshot.Root).Single(node => node.Id == "games.catalog");
     Assert.True(catalogScope.Shortcuts.Any(shortcut =>
         shortcut.Button == ControllerButton.B && shortcut.ActionId == "back"));
     var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
     Assert.Equal(ViewNodeKind.Scroll, scroll.Kind);
-    Assert.Equal(ScrollAxis.Horizontal, scroll.ScrollAxis);
+    Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
     var buttons = Buttons(scroll).Where(button => button.ActionId == "games.toggle-curation").ToArray();
     Assert.Equal(3, buttons.Length);
     Assert.Equal(buttons[0].Id, buttons[0].Focus!.Left);
-    Assert.Equal(buttons[1].Id, buttons[0].Focus!.Right);
+    Assert.Equal(buttons[0].Id, buttons[0].Focus!.Right);
+    Assert.Equal(buttons[1].Id, buttons[0].Focus!.Down);
     Assert.Equal(buttons[0].Id, snapshot.InitialFocusId);
-    Assert.True(buttons.All(button => button.Focus!.Down is null));
     var json = System.Text.Json.JsonSerializer.Serialize(snapshot);
     Assert.False(json.Contains("private-one", StringComparison.Ordinal));
     Assert.False(json.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
@@ -152,15 +152,14 @@ static async Task OneAppUsesCompactTile()
     await BackToLibrary(widget);
 
     var snapshot = Snapshot(widget, 62);
-    Assert.Equal(270d, snapshot.Surface!.PreferredHeight);
-    Assert.Equal(240d, snapshot.Surface.MinimumHeight);
+    Assert.Equal(430d, snapshot.Surface!.PreferredHeight);
+    Assert.Equal(300d, snapshot.Surface.MinimumHeight);
     var launch = Buttons(snapshot.Root).Single(button => button.ActionId == "games.launch");
-    var card = Nodes(snapshot.Root).Single(node => node.Id == launch.Id + ".card");
-    Assert.True(Nodes(card).Any(node =>
-        node.Id == launch.Id + ".icon" && node.Kind == ViewNodeKind.Icon));
-    Assert.False(Nodes(card).Any(node => node.Id == launch.Id + ".hint"));
-    Assert.False(Nodes(card).Any(node => node.Id == launch.Id + ".kind"));
-    Assert.Equal("games.open-catalog", launch.Focus!.Right);
+    Assert.Equal(WidgetGlyph.Play, launch.Glyph);
+    Assert.True(launch.ImageSource is null);
+    Assert.Equal(launch.Id, launch.Focus!.Left);
+    Assert.Equal(launch.Id, launch.Focus.Right);
+    Assert.Equal("games.open-catalog", launch.Focus.Down);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -181,11 +180,10 @@ static async Task ResolvedIconRenders()
 
     var snapshot = Snapshot(widget, 64);
     var launch = Buttons(snapshot.Root).Single(button => button.ActionId == "games.launch");
-    var card = Nodes(snapshot.Root).Single(node => node.Id == launch.Id + ".card");
-    var art = Nodes(card).Single(node => node.Id == launch.Id + ".art");
-    Assert.Equal(ViewNodeKind.Image, art.Kind);
-    Assert.True(art.ImageSource!.StartsWith("data:image/png;base64,", StringComparison.Ordinal));
-    Assert.False(Nodes(card).Any(node => node.Id == launch.Id + ".icon"));
+    Assert.Equal(ViewNodeKind.Button, launch.Kind);
+    Assert.True(launch.ImageSource!.StartsWith("data:image/png;base64,", StringComparison.Ordinal));
+    Assert.Equal(ImageFit.Contain, launch.ImageFit);
+    Assert.True(launch.Glyph is null);
     Assert.Equal(ProtocolConstants.InlinePngImageVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
@@ -205,16 +203,16 @@ static async Task ManyAppsUseCompactRail()
     await BackToLibrary(widget);
 
     var snapshot = Snapshot(widget, 63);
-    Assert.Equal(270d, snapshot.Surface!.PreferredHeight);
-    Assert.Equal(240d, snapshot.Surface.MinimumHeight);
+    Assert.Equal(430d, snapshot.Surface!.PreferredHeight);
+    Assert.Equal(300d, snapshot.Surface.MinimumHeight);
     var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
     var launches = Buttons(scroll).Where(button => button.ActionId == "games.launch").ToArray();
     Assert.Equal(8, launches.Length);
-    Assert.True(launches.All(launch => Nodes(scroll).Any(node =>
-        node.Kind == ViewNodeKind.Icon && node.Id == launch.Id + ".icon")));
+    Assert.True(launches.All(launch => launch.Glyph == WidgetGlyph.Play));
     for (var index = 1; index < launches.Length; index++)
-        Assert.Equal(launches[index - 1].Id, launches[index].Focus!.Left);
-    Assert.Equal("games.open-catalog", launches[^1].Focus!.Right);
+        Assert.Equal(launches[index - 1].Id, launches[index].Focus!.Up);
+    Assert.Equal("games.open-catalog", launches[^1].Focus!.Down);
+    Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -713,7 +711,7 @@ static Task PackageValidates()
     Assert.SequenceEqual(["system.apps.library.launch.v1"], manifest.OptionalPermissions);
     var package = GbssPackageLoader.Load("styles/default.gbss", new GbssFileSourceProvider(root));
     var compiled = GbssThemeCompiler.Compile(package);
-    Assert.True(compiled.IsValid);
+    Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     return Task.CompletedTask;
 }
 
@@ -920,6 +918,11 @@ file static class Assert
     public static void True(bool value)
     {
         if (!value) throw new InvalidOperationException("Expected true.");
+    }
+
+    public static void True(bool value, string message)
+    {
+        if (!value) throw new InvalidOperationException(message);
     }
 
     public static void False(bool value) => True(!value);

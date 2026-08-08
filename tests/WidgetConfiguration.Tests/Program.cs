@@ -4,6 +4,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Configuration is isolated by package and publisher", IdentityIsolation),
     ("Configuration updates and removals are durable", DurableMutation),
+    ("Unsigned runtime authority resolves one owning public configuration", UnsignedRuntimeResolution),
     ("Unsafe identities keys and values are rejected", Validation),
     ("Malformed and oversized documents fail closed", InvalidDocuments),
 };
@@ -59,6 +60,32 @@ static async Task DurableMutation()
     Assert.True(!removed.Values.ContainsKey("region"), "Removed value was retained.");
     var cleared = await store.ClearAsync("org.gbar.samples.spotify", "org.gbar.samples");
     Assert.Equal(0, cleared.Values.Count);
+}
+
+static async Task UnsignedRuntimeResolution()
+{
+    using var temp = new TemporaryDirectory();
+    var store = new WidgetConfigurationStore(new PlatformSettingsPaths(temp.Path));
+    await store.SetAsync(
+        "org.gbar.samples.spotify", "org.gbar.samples", "client-id", "public-client");
+
+    var resolved = await store.ReadForRuntimeAuthorityAsync(
+        "org.gbar.samples.spotify", "unsigned." + new string('a', 64));
+    Assert.Equal("public-client", resolved.Values["client-id"]);
+    Assert.Equal("org.gbar.samples", resolved.PublisherId);
+
+    await store.SetAsync(
+        "org.gbar.samples.spotify", "org.gbar", "client-id", "ambiguous-client");
+    var ambiguous = await store.ReadForRuntimeAuthorityAsync(
+        "org.gbar.samples.spotify", "unsigned." + new string('b', 64));
+    Assert.Equal(0, ambiguous.Values.Count);
+
+    await store.SetAsync(
+        "org.gbar.samples.spotify", "unsigned." + new string('c', 64),
+        "client-id", "exact-client");
+    var exact = await store.ReadForRuntimeAuthorityAsync(
+        "org.gbar.samples.spotify", "unsigned." + new string('c', 64));
+    Assert.Equal("exact-client", exact.Values["client-id"]);
 }
 
 static async Task Validation()

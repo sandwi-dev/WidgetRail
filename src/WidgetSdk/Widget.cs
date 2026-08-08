@@ -76,6 +76,8 @@ public sealed record WidgetView(
     {
         ImageElement image when image.Source.StartsWith(
             "data:image/png;base64,", StringComparison.Ordinal) => true,
+        ButtonElement button when button.LeadingImageSource?.StartsWith(
+            "data:image/png;base64,", StringComparison.Ordinal) == true => true,
         StackElement stack => stack.Children.Any(ContainsInlinePng),
         RowElement row => row.Children.Any(ContainsInlinePng),
         ScrollElement scroll => scroll.Children.Any(ContainsInlinePng),

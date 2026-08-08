@@ -998,6 +998,7 @@ private:
         }
         gameInput_->SetFocusPolicy(static_cast<GameInputFocusPolicy>(
             GameInputExclusiveForegroundInput |
+            GameInputEnableBackgroundInput |
             GameInputEnableBackgroundGuideButton |
             GameInputExclusiveForegroundGuideButton));
         const HRESULT result = gameInput_->RegisterSystemButtonCallback(
@@ -1011,12 +1012,12 @@ private:
                              std::to_wstring(static_cast<unsigned long>(result)));
             guideCallback_ = 0;
             AppendDiagnostic(
-                L"GameInput remains available for foreground-exclusive ordinary controls; "
+                L"GameInput remains available for the visible ordinary-input lease; "
                 L"Guide requires the compatibility path");
         } else {
             AppendDiagnostic(
-                L"GameInput configured for background Guide and foreground-exclusive "
-                L"Guide plus ordinary controls");
+                L"GameInput configured for a visible background-read lease plus "
+                L"foreground-exclusive Guide and ordinary controls");
         }
         AppendDiagnostic(
             L"Controller exclusivity covers other GameInput clients only; XInput, Raw Input, "
@@ -1580,8 +1581,12 @@ private:
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
         }
-        (void)AcquireOverlayForegroundInput();
+        visibleControllerReadLease_ = true;
         if (!wasVisible) {
+            // Activation is one best-effort show-time request. Controller
+            // reliability comes from the visible GameInput lease, not a
+            // repeated foreground-steal loop.
+            (void)AcquireOverlayForegroundInput();
             SetTimer(window_, kControllerTimer, 16, nullptr);
             PrimeControllerState();
         }
@@ -1589,9 +1594,10 @@ private:
 
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
+        visibleControllerReadLease_ = false;
         lastControllerReadPath_ = gba::input::ControllerReadPath::None;
+        lastControllerForegroundExclusive_.reset();
         lastForegroundOwnership_.reset();
-        lastForegroundAcquisitionAt_ = 0;
         declarativeMotionActive_ = false;
         KillTimer(window_, kCatalogRetryTimer);
         KillTimer(window_, kForegroundLossTimer);
@@ -1935,8 +1941,8 @@ private:
                           L"controller input is non-exclusive XInput compatibility");
             } else {
                 AppendDiagnostic(
-                    L"Overlay foreground acquisition was not confirmed; ordinary controller "
-                    L"polling is suspended to avoid double-routing input");
+                    L"Overlay foreground acquisition was not confirmed; the visible "
+                    L"GameInput read lease remains active without exclusivity");
             }
         }
         return confirmed;
@@ -1978,38 +1984,36 @@ private:
     [[nodiscard]] bool TryReadControllerState(XINPUT_STATE& controller) {
         const bool overlayVisible = state_.surface() != gba::Surface::Hidden &&
                                     window_ && IsWindowVisible(window_);
-        bool foregroundConfirmed = IsOverlayProcessForeground();
-        auto decision = gba::input::DecideControllerInputOwnership(
-            overlayVisible, foregroundConfirmed, gameInput_.Get() != nullptr);
-        const ULONGLONG now = GetTickCount64();
-        if (decision.shouldAcquireForeground &&
-            (lastForegroundAcquisitionAt_ == 0 ||
-             now - lastForegroundAcquisitionAt_ >= 250)) {
-            lastForegroundAcquisitionAt_ = now;
-            foregroundConfirmed = AcquireOverlayForegroundInput();
-            decision = gba::input::DecideControllerInputOwnership(
-                overlayVisible, foregroundConfirmed, gameInput_.Get() != nullptr);
-        }
+        const bool foregroundConfirmed = IsOverlayProcessForeground();
+        const auto decision = gba::input::DecideControllerInputOwnership(
+            overlayVisible, visibleControllerReadLease_, foregroundConfirmed,
+            gameInput_.Get() != nullptr);
 
-        if (!lastControllerReadPath_ || *lastControllerReadPath_ != decision.readPath) {
+        if (!lastControllerReadPath_ || *lastControllerReadPath_ != decision.readPath ||
+            !lastControllerForegroundExclusive_ ||
+            *lastControllerForegroundExclusive_ != decision.foregroundExclusive) {
             lastControllerReadPath_ = decision.readPath;
+            lastControllerForegroundExclusive_ = decision.foregroundExclusive;
             switch (decision.readPath) {
-            case gba::input::ControllerReadPath::GameInputForegroundExclusive:
-                AppendDiagnostic(L"Controller read path: GameInput foreground-exclusive");
+            case gba::input::ControllerReadPath::GameInputVisibleLease:
+                AppendDiagnostic(
+                    decision.foregroundExclusive
+                        ? L"Controller read path: visible GameInput lease, foreground-exclusive"
+                        : L"Controller read path: visible GameInput lease, background-shared");
                 break;
             case gba::input::ControllerReadPath::XInputCompatibility:
                 AppendDiagnostic(
                     L"Controller read path: XInput compatibility (not exclusive)");
                 break;
             case gba::input::ControllerReadPath::None:
-                AppendDiagnostic(L"Controller read path suspended: overlay lacks foreground");
+                AppendDiagnostic(L"Controller read path dormant: visible lease is inactive");
                 break;
             }
         }
 
         controller = {};
         if (decision.readPath ==
-            gba::input::ControllerReadPath::GameInputForegroundExclusive) {
+            gba::input::ControllerReadPath::GameInputVisibleLease) {
             ComPtr<IGameInputReading> reading;
             const HRESULT result = gameInput_->GetCurrentReading(
                 GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf());
@@ -3220,9 +3224,10 @@ private:
     bool leftTriggerPressed_{};
     bool rightTriggerPressed_{};
     bool reloadChordHeld_{};
+    bool visibleControllerReadLease_{};
     std::optional<gba::input::ControllerReadPath> lastControllerReadPath_;
+    std::optional<bool> lastControllerForegroundExclusive_;
     std::optional<bool> lastForegroundOwnership_;
-    ULONGLONG lastForegroundAcquisitionAt_{};
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
     ULONGLONG lastActionExpiresAt_{};

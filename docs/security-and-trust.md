@@ -85,10 +85,13 @@ planned. A structurally valid package is not necessarily trustworthy.
   content-bound authority and cannot inherit state. Uninstall currently retains
   it; per-widget clear-local-data UI remains unimplemented. See [Private widget
   state](private-widget-state.md).
-- Public widget configuration is a separate bounded settings store, also keyed
-  by publisher/package authority. It is intentionally readable JSON for values
-  such as an OAuth Client ID and is managed locally through `gbar config` until
-  a controller-native editor exists. It is not private state or a credential
+- Public widget configuration is a separate bounded settings store keyed by
+  declared publisher/package identity. It is intentionally readable JSON for
+  values such as an OAuth Client ID and is managed locally through `gbar config`
+  until a controller-native editor exists. An unsigned digest authority can
+  resolve only one unambiguous document whose publisher namespace owns its
+  package ID; this convenience never applies to consent, private state, OAuth
+  tokens, or credentials. It is not private state or a credential
   vault: secret/password/token/credential-like CLI keys are rejected, and OAuth
   tokens remain in provider-owned Windows protected storage.
 - Package extraction rejects absolute/traversing/ambiguous Windows paths,

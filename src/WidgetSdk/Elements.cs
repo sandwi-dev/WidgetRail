@@ -139,6 +139,8 @@ public sealed record ButtonElement : WidgetElement
     public string ActionId { get; init; }
     public string? AccessibilityLabel { get; init; }
     public WidgetGlyph? Glyph { get; init; }
+    public string? LeadingImageSource { get; init; }
+    public ImageFit? LeadingImageFit { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
     public bool? IsBusy { get; init; }
@@ -159,8 +161,25 @@ public sealed record ButtonElement : WidgetElement
     public ButtonElement Icon(WidgetGlyph glyph, string? accessibilityLabel = null) => this with
     {
         Glyph = glyph,
+        LeadingImageSource = null,
+        LeadingImageFit = null,
         AccessibilityLabel = accessibilityLabel ?? AccessibilityLabel,
     };
+
+    /// <summary>
+    /// Uses a bounded trusted PNG as leading artwork inside this complete
+    /// focus target. Paths and arbitrary image formats remain unavailable.
+    /// </summary>
+    public ButtonElement LeadingInlinePng(
+        string pngBase64,
+        ImageFit fit = ImageFit.Contain,
+        string? accessibilityLabel = null) => this with
+        {
+            Glyph = null,
+            LeadingImageSource = UI.CanonicalInlinePngSource(pngBase64, nameof(pngBase64)),
+            LeadingImageFit = fit,
+            AccessibilityLabel = accessibilityLabel ?? AccessibilityLabel,
+        };
 
     public ButtonElement Shortcut(
         ControllerButton button,
@@ -177,6 +196,8 @@ public sealed record ButtonElement : WidgetElement
         Text = Label,
         AccessibilityLabel = AccessibilityLabel,
         Glyph = Glyph,
+        ImageSource = LeadingImageSource,
+        ImageFit = LeadingImageFit,
         ActionId = ActionId,
         IsDisabled = IsDisabled,
         IsSelected = IsSelected,

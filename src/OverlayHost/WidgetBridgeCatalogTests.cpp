@@ -106,10 +106,12 @@ int main() {
     assert(styledSnapshot && error.empty());
     assert(styledSnapshot->root.children.size() == 2);
     const auto& styledButton = styledSnapshot->root.children.front();
+    (void)styledButton;
     assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
     assert(styledButton.focusedStyle.at(L"scale").number == 1.05);
     assert(styledButton.pressedStyle.at(L"scale").number == 0.97);
     const auto& loadingIndicator = styledSnapshot->root.children[1];
+    (void)loadingIndicator;
     assert(loadingIndicator.kind == L"loadingIndicator");
     assert(loadingIndicator.accessibilityLabel == L"Loading music");
     assert(loadingIndicator.indicatorSize == L"compact");
