@@ -155,6 +155,9 @@ gbar version list dev.example.volume-control
 gbar version select dev.example.volume-control 0.2.0
 # Prefer reviewing/enabling the result in Settings. CLI equivalent:
 gbar enable dev.example.volume-control
+# Removal is also an explicit disabled-only operation:
+gbar disable dev.example.volume-control
+gbar uninstall dev.example.volume-control
 ```
 
 The complete update review sequence is therefore:
@@ -185,6 +188,16 @@ If installation used `--catalog`, pass that same value to both commands.
 The packaged bridge and Settings widget read the default current-user catalog;
 an override is an alternate test/script catalog and is managed with matching
 CLI commands rather than appearing in the packaged overlay.
+
+`gbar uninstall <widget-id>` removes every installed immutable version and the
+ID's catalog-state entry only after the widget is disabled. Package discovery
+is retired with an atomic directory move before bounded deletion, so no
+partially deleted version becomes executable. A file lock after that commit
+point is reported as pending cleanup; the next install or uninstall retries a
+bounded staging sweep. Provider-owned private secrets
+are a separate authority and are not enumerable by the catalog; widgets that
+offer private-data removal must clear their known slots through the declared
+host service before uninstall.
 
 ## Install from a local package
 

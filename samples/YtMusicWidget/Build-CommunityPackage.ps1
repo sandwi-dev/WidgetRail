@@ -4,6 +4,7 @@ param(
     [string]$Configuration = 'Release',
     [string]$OutputDirectory,
     [string]$Catalog,
+    [string]$Version,
     [switch]$Install
 )
 
@@ -22,6 +23,14 @@ $stagingRoot = Join-Path $artifactsRoot 'package-root'
 $payloadRoot = Join-Path $stagingRoot 'payload'
 $manifestPath = Join-Path $sampleRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    $parsedVersion = $null
+    if (-not [System.Version]::TryParse($Version, [ref]$parsedVersion) -or
+        $parsedVersion.ToString() -cne $Version) {
+        throw "Version must use canonical dotted numeric notation: $Version"
+    }
+    $manifest.version = $Version
+}
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
 $cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
 $widgetProject = Join-Path $sampleRoot 'YtMusicWidget.csproj'
@@ -90,8 +99,16 @@ if ($LASTEXITCODE -ne 0) {
 
 Copy-Item -LiteralPath (Join-Path $publishRoot 'YtMusicWidget.dll') `
     -Destination (Join-Path $payloadRoot 'YtMusicWidget.dll') -Force
-Copy-Item -LiteralPath $manifestPath `
-    -Destination (Join-Path $stagingRoot 'manifest.json') -Force
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    Copy-Item -LiteralPath $manifestPath `
+        -Destination (Join-Path $stagingRoot 'manifest.json') -Force
+} else {
+    $generatedManifest = $manifest | ConvertTo-Json -Depth 16
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stagingRoot 'manifest.json'),
+        $generatedManifest,
+        [System.Text.UTF8Encoding]::new($false))
+}
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
     -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
 

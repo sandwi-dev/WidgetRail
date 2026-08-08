@@ -90,6 +90,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
     ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
+    ("Uninstall is explicit disabled-only and cleans every package version", UninstallWorkflow),
     ("Pack rejects invalid identity without publishing an archive", PackRejectsInvalidManifest),
     ("Pack rejects source reparse points", PackRejectsReparsePoints),
     ("Install rejects traversal archives through the CLI", InstallRejectsTraversal),
@@ -133,7 +134,7 @@ static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "new", "validate", "dev", "render", "replay", "pack", "install", "list", "enable", "disable", "version" })
+    foreach (var command in new[] { "new", "validate", "dev", "render", "replay", "pack", "install", "uninstall", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
     var version = await RunCli("version", "help");
     Assert.Equal(0, version.Code);
@@ -909,6 +910,35 @@ static async Task PackRejectsInvalidManifest()
     Assert.Equal(1, result.Code);
     Assert.Contains("identity_mismatch", result.Error);
     Assert.True(!File.Exists(package), "Invalid packages must not be published.");
+}
+
+static async Task UninstallWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = Path.Combine(temp.Path, "catalog");
+    foreach (var version in new[] { "1.0.0", "2.0.0" })
+    {
+        var package = await CreatePackedPackageAsync(temp.Path, "dev.test.uninstall", version);
+        Assert.Equal(0, (await RunCli("install", package, "--catalog", catalog)).Code);
+    }
+    Assert.Equal(0, (await RunCli("enable", "dev.test.uninstall", "--catalog", catalog)).Code);
+    var blocked = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
+    Assert.Equal(1, blocked.Code);
+    Assert.Contains("Disable it before uninstalling", blocked.Error);
+
+    Assert.Equal(0, (await RunCli("disable", "dev.test.uninstall", "--catalog", catalog)).Code);
+    var removed = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
+    Assert.Equal(0, removed.Code);
+    Assert.Contains("Uninstalled dev.test.uninstall (2 versions: 2.0.0, 1.0.0)", removed.Output);
+    Assert.Contains("No widgets installed", (await RunCli("list", "--catalog", catalog)).Output);
+    Assert.True(!Directory.Exists(Path.Combine(catalog, "packages", "dev.test.uninstall")),
+        "CLI uninstall retained package files.");
+    Assert.True(!Directory.EnumerateDirectories(Path.Combine(catalog, "staging"), ".uninstall-*").Any(),
+        "CLI uninstall retained retired package files.");
+
+    var missing = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
+    Assert.Equal(1, missing.Code);
+    Assert.Contains("is not installed", missing.Error);
 }
 
 static async Task PackRejectsReparsePoints()

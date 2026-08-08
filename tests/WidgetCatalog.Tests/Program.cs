@@ -11,6 +11,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Update preparation latches the reviewed version before publication", UpdatePreparationPinsReviewedVersion),
     ("Concurrent first installs serialize before enablement", ConcurrentFirstInstallsAreSafe),
     ("Concurrent rollbacks are linearizable", ConcurrentRollbacksAreLinearizable),
+    ("Uninstall is disabled-only and removes every immutable version", UninstallRemovesAllVersions),
     ("Missing pinned versions fail closed", MissingPinnedVersionFailsClosed),
     ("Independent catalog clients serialize state mutations", ConcurrentStatePersists),
     ("Lock-free discovery coexists with atomic state replacement", ConcurrentDiscoveryAndMutation),
@@ -223,6 +224,42 @@ static async Task MissingPinnedVersionFailsClosed()
     var totalRepaired = (await totalCatalog.DiscoverAsync()).Widgets.Single();
     Assert.Equal("1.0.0", totalRepaired.ActiveVersion.Version.ToString());
     Assert.True(!totalRepaired.Enabled, "Total-loss pin repair did not remain disabled.");
+}
+
+static async Task UninstallRemovesAllVersions()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var catalog = new WidgetCatalog(root);
+    foreach (var version in new[] { "1.0.0", "2.0.0" })
+        await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.remove", "dev.test", version));
+    await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.keep", "dev.test", "1.0.0"));
+    await catalog.SetOrderAsync(["dev.test.remove", "dev.test.keep"]);
+    await catalog.SetEnabledAsync("dev.test.remove", true);
+
+    var enabled = await Assert.ThrowsAsync<WidgetPackageException>(
+        () => catalog.UninstallAsync("dev.test.remove"));
+    Assert.Equal("widget_enabled", enabled.Code);
+    Assert.True(Directory.Exists(Path.Combine(root, "packages", "dev.test.remove")),
+        "Rejected uninstall mutated the package tree.");
+
+    await catalog.SetEnabledAsync("dev.test.remove", false);
+    var removed = await catalog.UninstallAsync("dev.test.remove");
+    Assert.Equal("dev.test.remove", removed.Id);
+    Assert.True(!removed.CleanupPending, "Unlocked package cleanup unexpectedly remained pending.");
+    Assert.SequenceEqual(["2.0.0", "1.0.0"],
+        removed.RemovedVersions.Select(version => version.ToString()));
+    Assert.True(!Directory.Exists(Path.Combine(root, "packages", "dev.test.remove")),
+        "Uninstall retained immutable package versions.");
+    Assert.True(!Directory.EnumerateDirectories(Path.Combine(root, "staging"), ".uninstall-*").Any(),
+        "Uninstall retained a retired package tree.");
+    var remaining = (await new WidgetCatalog(root).DiscoverAsync()).Widgets.Single();
+    Assert.Equal("dev.test.keep", remaining.Id);
+    Assert.Equal(0, remaining.Order);
+    var state = await File.ReadAllTextAsync(Path.Combine(root, "catalog-state.json"));
+    Assert.True(!state.Contains("dev.test.remove", StringComparison.Ordinal),
+        "Uninstall retained catalog state for the removed widget.");
+    await Assert.ThrowsAsync<KeyNotFoundException>(() => catalog.UninstallAsync("dev.test.remove"));
 }
 
 static async Task ConcurrentStatePersists()

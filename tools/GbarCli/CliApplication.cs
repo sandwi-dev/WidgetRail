@@ -35,6 +35,7 @@ public static class CliApplication
                 "replay" => await ReplayCommand.RunAsync(args[1..], output),
                 "pack" => await PackCommand.RunAsync(args[1..], output),
                 "install" => await InstallCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
+                "uninstall" => await UninstallCommand.RunAsync(args[1..], output, cancellationToken),
                 "list" => await ListCommand.RunAsync(args[1..], output),
                 "enable" => await EnabledCommand.RunAsync(args[1..], output, enabled: true),
                 "disable" => await EnabledCommand.RunAsync(args[1..], output, enabled: false),
@@ -93,6 +94,7 @@ public static class CliApplication
           gbar replay <snapshot.json> <input-replay.json>
           gbar pack <widget-directory> [--output <file.gbarwidget>]
           gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> [--sha256 <64-hex>] [--catalog <root>]
+          gbar uninstall <widget-id> [--catalog <root>]
           gbar list [--catalog <root>]
           gbar enable <widget-id> [--catalog <root>]
           gbar disable <widget-id> [--catalog <root>]

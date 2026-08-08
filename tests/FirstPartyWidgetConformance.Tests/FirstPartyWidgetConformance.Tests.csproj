@@ -19,5 +19,6 @@
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
     <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />
     <ProjectReference Include="..\..\src\WidgetWorkerHost\WidgetWorkerHost.csproj" />
+    <ProjectReference Include="..\..\tools\GbarCli\GbarCli.csproj" />
   </ItemGroup>
 </Project>

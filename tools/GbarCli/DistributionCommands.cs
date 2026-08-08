@@ -119,6 +119,38 @@ internal static class ListCommand
     }
 }
 
+internal static class UninstallCommand
+{
+    public static async Task<int> RunAsync(
+        string[] args,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        var parsed = new CommandArguments(args, "--catalog");
+        if (parsed.Positionals.Count != 1)
+            throw new CliUsageException("Usage: gbar uninstall <widget-id> [--catalog <root>]");
+
+        var catalog = new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog")));
+        try
+        {
+            var removed = await catalog.UninstallAsync(parsed.Positionals[0], cancellationToken);
+            var versions = string.Join(", ", removed.RemovedVersions.Select(version => version.ToString()));
+            await output.WriteLineAsync(
+                $"Uninstalled {removed.Id} ({removed.RemovedVersions.Count} version" +
+                $"{(removed.RemovedVersions.Count == 1 ? string.Empty : "s")}: {versions}).");
+            if (removed.CleanupPending)
+                await output.WriteLineAsync(
+                    "Package retirement is complete; locked staging files will be retried " +
+                    "during the next install or uninstall.");
+            return 0;
+        }
+        catch (KeyNotFoundException exception)
+        {
+            throw new CliOperationException(exception.Message, exception);
+        }
+    }
+}
+
 internal static class EnabledCommand
 {
     public static async Task<int> RunAsync(string[] args, TextWriter output, bool enabled)

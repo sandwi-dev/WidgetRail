@@ -99,6 +99,13 @@ gbar theme list
   `--catalog <root>` overrides the default
   `%LOCALAPPDATA%\\GameBarAlternative\\widgets` location for every catalog
   command.
+- `uninstall <widget-id>` requires the widget to be disabled, atomically
+  retires the package ID from discovery, removes all of its immutable versions,
+  and removes/reindexes its catalog-state entry. If a retiring worker still
+  locks files, the command reports cleanup pending and a later install or
+  uninstall retries the bounded staging cleanup. It does not enumerate or
+  purge provider-owned secrets; a widget must clear known secret slots through
+  its public host service before uninstall when that behavior is desired.
 - `version list <widget-id>` lists every immutable installed version and marks
   the active one. `version select <widget-id> <version>` pins any installed
   canonical dotted numeric version. `version rollback <widget-id>` selects the

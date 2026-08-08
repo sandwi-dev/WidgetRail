@@ -8,6 +8,7 @@ using GameBarAlternative.FirstPartyWidgets.NetworkControls;
 using GameBarAlternative.FirstPartyWidgets.Settings;
 using GameBarAlternative.Samples.SpotifyWidget;
 using GameBarAlternative.Samples.YtMusicWidget;
+using GameBarAlternative.GbarCli;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetCatalog;
@@ -33,13 +34,26 @@ if (evidenceOutputIndex >= 0)
     return 0;
 }
 
+if (args.Contains("--ytmusic-community-acceptance", StringComparer.Ordinal))
+{
+    var outputIndex = Array.IndexOf(args, "--acceptance-output");
+    var output = outputIndex < 0
+        ? null
+        : outputIndex + 1 < args.Length && !string.IsNullOrWhiteSpace(args[outputIndex + 1])
+            ? Path.GetFullPath(args[outputIndex + 1])
+            : throw new ArgumentException("--acceptance-output requires a file path.");
+    await YtMusicCommunityPackageRunsIsolated(output);
+    Console.WriteLine("PASS YT Music isolated Community-addon acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
     ("Bundled catalog rejects unsafe and ambiguous package sources", BundledCatalogRejectsUnsafeSources),
     ("Real first-party packages merge through the community catalog path", InstalledPackagesMerge),
     ("All first-party packages run through generic AppContainer worker and broker", PackagesRunIsolated),
-    ("YT Music community package uses generic AppContainer loopback secret and dashboard paths", YtMusicCommunityPackageRunsIsolated),
+    ("YT Music community package completes isolated install lifecycle recovery and removal", () => YtMusicCommunityPackageRunsIsolated()),
 };
 var failures = new List<string>();
 foreach (var test in tests)
@@ -221,13 +235,32 @@ static async Task PackagesRunIsolated()
         "bundled");
 }
 
-static async Task YtMusicCommunityPackageRunsIsolated()
+static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput = null)
 {
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    using var deployment = await Deployment.CreateAsync(
+        installAsCommunity: true,
+        ytMusicOnly: true);
+    var phases = new List<string>();
     var package = deployment.YtMusicPackage ??
         throw new InvalidOperationException("YT Music community package was not produced.");
     Assert.True(File.Exists(package.PackagePath),
         "The public gbar pack workflow did not publish a .gbarwidget archive.");
+    var packageInspection = await new WidgetCatalog(
+            Path.Combine(deployment.RootPath, "validation-only"))
+        .CreateInstaller().ValidateAsync(package.PackagePath);
+    Assert.Equal(package.Manifest.Id, packageInspection.Id);
+    Assert.Equal(package.Manifest.Version, packageInspection.Version.ToString());
+    Assert.SequenceEqual(
+        ["manifest.json", "payload/YtMusicWidget.dll", "styles/default.gbss"],
+        ReadPackagePaths(package.PackagePath));
+    phases.Add("clean-public-validate-pack-install");
+
+    var catalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
+    var initialCatalog = await catalog.DiscoverAsync();
+    Assert.Equal(1, initialCatalog.Widgets.Count);
+    Assert.Equal(package.Manifest.Id, initialCatalog.Widgets[0].Id);
+    Assert.True(initialCatalog.Widgets[0].Enabled,
+        "The isolated package helper did not explicitly enable the reviewed addon.");
     var installed = await BridgeCatalog.LoadWithInstalledAsync(
         deployment.EmptyTrustedCatalogPath,
         deployment.InstalledCatalogRoot,
@@ -240,17 +273,35 @@ static async Task YtMusicCommunityPackageRunsIsolated()
         new[] { "network.loopback:13091", "storage.private-secrets.v1" },
         configured.DeclaredCapabilities);
     Assert.Equal(WidgetGlyph.Music, configured.Icon);
+    phases.Add("generic-appcontainer-catalog-route");
 
-    var trackState = """
-        {"id":"conformance-track","playing":true,"liked":false,"disliked":false,
-         "shuffle":false,"repeat":"off","uiProgress":12.5,"duration":180}
-        """;
-    var track = """
-        {"video":{"title":"Conformance Song","author":"Conformance Artist","videoId":"conformance-track"},
-         "music":{"album":"Conformance Album"},
-         "meta":{"thumbnail":"https://img.example/conformance.jpg","duration":180}}
-        """;
+    var trackGeneration = 0;
+    string TrackId() => $"conformance-track-{Volatile.Read(ref trackGeneration)}";
+    string TrackState() => JsonSerializer.Serialize(new
+    {
+        id = TrackId(),
+        playing = true,
+        liked = false,
+        disliked = false,
+        shuffle = false,
+        repeat = "off",
+        uiProgress = 12.5,
+        duration = 180,
+    });
+    string Track() => JsonSerializer.Serialize(new
+    {
+        video = new
+        {
+            title = $"Conformance Song {Volatile.Read(ref trackGeneration)}",
+            author = "Conformance Artist",
+            videoId = TrackId(),
+        },
+        music = new { album = "Conformance Album" },
+        meta = new { thumbnail = "https://img.example/conformance.jpg", duration = 180 },
+    });
     var nextCalls = 0;
+    var previousCalls = 0;
+    var toggleCalls = 0;
     var loopbackPaths = new List<string>();
     var backend = CreateBackend();
     backend.LoopbackHandler = (_, port, isPost, request, cancellationToken) =>
@@ -261,13 +312,15 @@ static async Task YtMusicCommunityPackageRunsIsolated()
         var response = (isPost, request.Path) switch
         {
             (false, "/") => new LoopbackJsonResponse(200, "{\"authRequired\":true}", []),
-            (false, "/track") => new LoopbackJsonResponse(200, track, []),
-            (false, "/track/state") => new LoopbackJsonResponse(200, trackState, []),
+            (false, "/track") => new LoopbackJsonResponse(200, Track(), []),
+            (false, "/track/state") => new LoopbackJsonResponse(200, TrackState(), []),
             (true, "/auth/requestcode") =>
                 new LoopbackJsonResponse(200, "{\"code\":\"739204\"}", []),
             (true, "/auth/request") =>
                 new LoopbackJsonResponse(200, "{\"token\":\"conformance-secret\"}", []),
             (true, "/track/next") => NextResponse(),
+            (true, "/track/prev") => PreviousResponse(),
+            (true, "/track/toggle-play-state") => CountResponse(ref toggleCalls),
             _ when isPost && request.Path.StartsWith("/track/", StringComparison.Ordinal) =>
                 new LoopbackJsonResponse(200, "{}", []),
             _ => throw new InvalidOperationException(
@@ -278,6 +331,20 @@ static async Task YtMusicCommunityPackageRunsIsolated()
         LoopbackJsonResponse NextResponse()
         {
             Interlocked.Increment(ref nextCalls);
+            Interlocked.Increment(ref trackGeneration);
+            return new LoopbackJsonResponse(200, "{}", []);
+        }
+
+        LoopbackJsonResponse PreviousResponse()
+        {
+            Interlocked.Increment(ref previousCalls);
+            Interlocked.Increment(ref trackGeneration);
+            return new LoopbackJsonResponse(200, "{}", []);
+        }
+
+        static LoopbackJsonResponse CountResponse(ref int calls)
+        {
+            Interlocked.Increment(ref calls);
             return new LoopbackJsonResponse(200, "{}", []);
         }
     };
@@ -289,30 +356,42 @@ static async Task YtMusicCommunityPackageRunsIsolated()
         configured.PublisherId,
         configured.InstanceId);
     foreach (var capability in configured.DeclaredCapabilities)
+        Assert.Equal<ConsentDecision?>(null,
+            await consent.GetDecisionAsync(identity, capability));
+    foreach (var capability in configured.DeclaredCapabilities)
         await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    Assert.SequenceEqual(configured.DeclaredCapabilities,
+        (await consent.LoadAsync()).Entries
+            .Where(entry => entry.PackageId == configured.PackageId &&
+                            entry.PublisherId == configured.PublisherId)
+            .Select(entry => entry.CapabilityId)
+            .Order(StringComparer.Ordinal));
+    phases.Add("explicit-required-and-optional-consent");
 
-    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    WidgetProcessClient CreateClient(ConfiguredWidget source, int maximumRestarts = 2) =>
+        new(new WidgetProcessOptions
     {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
+        ExecutablePath = source.WorkerExecutable,
+        Arguments = source.WorkerArguments,
+        WidgetInstanceId = source.InstanceId,
         ConnectTimeout = TimeSpan.FromSeconds(10),
         RequestTimeout = TimeSpan.FromSeconds(45),
-        MaximumRestartAttempts = 0,
-        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
+        MaximumRestartAttempts = maximumRestarts,
+        MemoryLimitBytes = source.MemoryLimitMb * 1024L * 1024L,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
+        IsolationKey = source.IsolationKey,
+        ReadOnlyPaths = source.ReadOnlyPaths,
         CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
+            source.PackageId,
+            source.PublisherId,
+            source.InstanceId,
+            source.DeclaredCapabilities,
             consent,
             backend,
             context),
     });
 
+    var client = CreateClient(configured);
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
     var pairing = await WaitForSnapshotAsync(client, "Pair device");
     Assert.True(Nodes(pairing.Root).Any(node => node.ActionId == "pair"),
@@ -336,6 +415,7 @@ static async Task YtMusicCommunityPackageRunsIsolated()
     Assert.True(backend.LastLoopbackRequest?.BearerSecretSlot ==
         YtmDesktopApiClient.BearerSecretSlot,
         "Authenticated companion calls did not use the host-side secret slot.");
+    phases.Add("simulated-companion-pairing-and-secret-write");
 
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
     connected = await client.GetSnapshotAsync();
@@ -361,9 +441,151 @@ static async Task YtMusicCommunityPackageRunsIsolated()
             TimeSpan.FromSeconds(2)));
     Assert.True(handled, "Dashboard RB quick action was not accepted by the addon.");
     await WaitUntilAsync(() => Volatile.Read(ref nextCalls) == 1);
+    connected = await WaitForSnapshotAsync(client, "Conformance Song 1");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+
+    var openHandled = await client.SendControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.LeftBumper,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        FocusedElementId: "play-pause",
+        Sequence: 72,
+        ActiveInputScopeId: connected.ActiveInputScopeId,
+        SnapshotSequence: connected.Sequence));
+    Assert.True(openHandled,
+        "Open-widget LB was not routed from the play control through the active input scope.");
+    await WaitUntilAsync(() => Volatile.Read(ref previousCalls) == 1);
+    phases.Add("dashboard-and-open-widget-controller-routing");
+
+    var startsBeforeSuspend = client.Starts;
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.UnloadAsync();
+    Assert.True(!client.IsRunning, "Suspend-when-hidden retained a worker process.");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+    Assert.Equal(startsBeforeSuspend + 1, client.Starts);
+    phases.Add("background-suspend-and-visible-resume");
+
+    var failure = new TaskCompletionSource<WidgetFailure>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.Failed += (_, value) => failure.TrySetResult(value);
+    var crashedProcessId = client.WorkerProcessId ??
+        throw new InvalidOperationException("The YT Music worker process was unavailable.");
+    using (var process = Process.GetProcessById(crashedProcessId))
+    {
+        process.Kill(entireProcessTree: true);
+        await process.WaitForExitAsync();
+    }
+    var observedFailure = await failure.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    Assert.True(observedFailure.CanRestart, "A clean crash consumed all restart authority.");
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+    Assert.True(client.WorkerProcessId != crashedProcessId,
+        "Crash recovery reused the terminated worker process.");
+    phases.Add("worker-crash-and-bounded-restart");
+
+    await client.DisposeAsync();
+    client = CreateClient(configured);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+    Assert.Equal(1, client.Starts);
+    phases.Add("host-force-reload-fresh-worker");
 
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-    await client.StopAsync();
+    await client.DisposeAsync();
+
+    await catalog.SetEnabledAsync(package.Manifest.Id, false);
+    const string updateVersion = "0.2.3";
+    var updatePackage = await deployment.BuildYtMusicVersionAsync(updateVersion);
+    var updateInspection = await catalog.CreateInstaller().ValidateAsync(updatePackage);
+    Assert.Equal(updateVersion, updateInspection.Version.ToString());
+    var updateInstall = await RunCliAsync(
+        "install", updatePackage, "--catalog", deployment.InstalledCatalogRoot);
+    Assert.Equal(0, updateInstall.Code);
+    var preselection = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.Equal(package.Manifest.Version, preselection.ActiveVersion.Version.ToString());
+    Assert.Equal(2, preselection.Versions.Count);
+    Assert.Equal(0, (await RunCliAsync(
+        "version", "select", package.Manifest.Id, updateVersion,
+        "--catalog", deployment.InstalledCatalogRoot)).Code);
+    Assert.Equal(0, (await RunCliAsync(
+        "enable", package.Manifest.Id,
+        "--catalog", deployment.InstalledCatalogRoot)).Code);
+
+    var updatedLoad = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    var updatedConfigured = updatedLoad.Catalog.GetConfigured(package.Manifest.Id);
+    Assert.True(!string.Equals(configured.PublisherId, updatedConfigured.PublisherId,
+            StringComparison.Ordinal),
+        "Changed package bytes inherited the prior unsigned runtime authority.");
+    var updatedIdentity = new BrokerWidgetIdentity(
+        updatedConfigured.PackageId,
+        updatedConfigured.PublisherId,
+        updatedConfigured.InstanceId);
+    foreach (var capability in updatedConfigured.DeclaredCapabilities)
+    {
+        Assert.Equal<ConsentDecision?>(null,
+            await consent.GetDecisionAsync(updatedIdentity, capability));
+        await consent.SetDecisionAsync(updatedIdentity, capability, ConsentDecision.Grant);
+    }
+    client = CreateClient(updatedConfigured);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    _ = await WaitForSnapshotAsync(client, "Pair device");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    await client.SendActionAsync(new WidgetActionEvent("pair", "pair"));
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.DisposeAsync();
+    phases.Add("disabled-update-review-new-authority-and-repair");
+
+    Assert.Equal(0, (await RunCliAsync(
+        "disable", package.Manifest.Id,
+        "--catalog", deployment.InstalledCatalogRoot)).Code);
+    var rollback = await RunCliAsync(
+        "version", "rollback", package.Manifest.Id,
+        "--catalog", deployment.InstalledCatalogRoot);
+    Assert.Equal(0, rollback.Code);
+    Assert.Equal(0, (await RunCliAsync(
+        "enable", package.Manifest.Id,
+        "--catalog", deployment.InstalledCatalogRoot)).Code);
+    var rolledBackLoad = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    var rolledBackConfigured = rolledBackLoad.Catalog.GetConfigured(package.Manifest.Id);
+    Assert.Equal(configured.PublisherId, rolledBackConfigured.PublisherId);
+    foreach (var capability in rolledBackConfigured.DeclaredCapabilities)
+        Assert.Equal<ConsentDecision?>(ConsentDecision.Grant,
+            await consent.GetDecisionAsync(identity, capability));
+    var secretSavesBeforeRollback = backend.PrivateSecretSaveCalls;
+    client = CreateClient(rolledBackConfigured);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+    Assert.Equal(secretSavesBeforeRollback, backend.PrivateSecretSaveCalls);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.DisposeAsync();
+    phases.Add("disabled-exact-version-rollback-restores-reviewed-authority");
+
+    Assert.Equal(0, (await RunCliAsync(
+        "disable", package.Manifest.Id,
+        "--catalog", deployment.InstalledCatalogRoot)).Code);
+    var uninstall = await RunCliAsync(
+        "uninstall", package.Manifest.Id,
+        "--catalog", deployment.InstalledCatalogRoot);
+    Assert.Equal(0, uninstall.Code);
+    Assert.Equal(0, (await catalog.DiscoverAsync()).Widgets.Count);
+    Assert.True(!Directory.Exists(Path.Combine(
+            deployment.InstalledCatalogRoot, "packages", package.Manifest.Id)),
+        "YT Music package versions remained after uninstall.");
+    var staging = Path.Combine(deployment.InstalledCatalogRoot, "staging");
+    Assert.True(!Directory.Exists(staging) ||
+                !Directory.EnumerateDirectories(staging, ".uninstall-*").Any(),
+        "YT Music uninstall retained a retired package tree.");
+    consentRoot.Dispose();
+    Assert.True(!Directory.Exists(consentRoot.Path),
+        "The isolated acceptance consent root was not cleaned up.");
+    phases.Add("disable-uninstall-catalog-and-isolated-consent-cleanup");
 
     var repo = FindRepositoryRootForTest();
     using var productionCatalog = JsonDocument.Parse(File.ReadAllBytes(
@@ -376,6 +598,53 @@ static async Task YtMusicCommunityPackageRunsIsolated()
     var buildScript = File.ReadAllText(Path.Combine(repo, "src", "OverlayHost", "build.ps1"));
     Assert.True(!buildScript.Contains("YtMusicWidget.Worker", StringComparison.Ordinal),
         "OverlayHost still publishes the retired trusted YT Music worker.");
+    phases.Add("no-trusted-fallback");
+
+    if (acceptanceOutput is not null)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(acceptanceOutput)!);
+        await File.WriteAllTextAsync(acceptanceOutput, JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            generatedUtc = DateTimeOffset.UtcNow,
+            package = new
+            {
+                id = package.Manifest.Id,
+                version = package.Manifest.Version,
+                sha256 = Convert.ToHexString(SHA256.HashData(
+                    File.ReadAllBytes(package.PackagePath))).ToLowerInvariant(),
+                files = ReadPackagePaths(package.PackagePath),
+            },
+            isolation = new
+            {
+                catalog = "unique temporary root supplied explicitly to every catalog command",
+                worker = "generic WidgetWorkerHost AppContainer",
+                companion = "deterministic simulated broker backend; no live YTMDesktop2 service",
+                secrets = "in-memory simulated host secret service; no Credential Manager access",
+            },
+            phases,
+            manualGaps = new[]
+            {
+                "Real YTMDesktop2 pairing approval and API-version compatibility require the companion application.",
+                "Physical controller input, OverlayHost shell composition, and visible transition fidelity require a packaged manual playtest.",
+                "Production Credential Manager secret enumeration/purge is not claimed by this auth-free workflow.",
+            },
+        }, CreateEvidenceJsonOptions()));
+    }
+}
+
+static string[] ReadPackagePaths(string packagePath)
+{
+    using var archive = ZipFile.OpenRead(packagePath);
+    return archive.Entries.Select(entry => entry.FullName).Order(StringComparer.Ordinal).ToArray();
+}
+
+static async Task<(int Code, string Output, string Error)> RunCliAsync(params string[] arguments)
+{
+    using var output = new StringWriter();
+    using var error = new StringWriter();
+    var code = await CliApplication.RunAsync(arguments, output, error);
+    return (code, output.ToString(), error.ToString());
 }
 
 static string FindRepositoryRootForTest()
@@ -942,6 +1211,7 @@ file sealed class Deployment : IDisposable
     private Deployment(TemporaryDirectory root) => _root = root;
 
     public required string WorkerHostPath { get; init; }
+    public string RootPath => _root.Path;
     public required string BundledWorkerHostPath { get; init; }
     public required string EmptyTrustedCatalogPath { get; init; }
     public required string BundledCatalogPath { get; init; }
@@ -951,7 +1221,8 @@ file sealed class Deployment : IDisposable
 
     public static async Task<Deployment> CreateAsync(
         bool installAsCommunity,
-        bool includeEvidencePackages = false)
+        bool includeEvidencePackages = false,
+        bool ytMusicOnly = false)
     {
         var temporary = new TemporaryDirectory("gba-firstparty-conformance");
         try
@@ -1040,10 +1311,13 @@ file sealed class Deployment : IDisposable
             if (installAsCommunity)
             {
                 var catalog = new WidgetCatalog(installedRoot);
-                foreach (var fixture in fixtures)
-                    await catalog.InstallAsync(fixture.PackagePath);
-                foreach (var fixture in fixtures)
-                    await catalog.SetEnabledAsync(fixture.Manifest.Id, true);
+                if (!ytMusicOnly)
+                {
+                    foreach (var fixture in fixtures)
+                        await catalog.InstallAsync(fixture.PackagePath);
+                    foreach (var fixture in fixtures)
+                        await catalog.SetEnabledAsync(fixture.Manifest.Id, true);
+                }
 
                 var ytProjectRoot = Path.Combine(repo, "samples", "YtMusicWidget");
                 var ytManifest = ManifestJson.Deserialize(
@@ -1052,7 +1326,9 @@ file sealed class Deployment : IDisposable
                 await RunCommunityPackageScriptAsync(
                     Path.Combine(ytProjectRoot, "Build-CommunityPackage.ps1"),
                     ytOutput,
-                    installedRoot);
+                    installedRoot,
+                    version: null,
+                    install: true);
                 var installedYt = (await catalog.DiscoverAsync()).Widgets
                     .Single(widget => widget.Id == ytManifest.Id)
                     .ActiveVersion;
@@ -1085,6 +1361,23 @@ file sealed class Deployment : IDisposable
     }
 
     public void Dispose() => _root.Dispose();
+
+    public async Task<string> BuildYtMusicVersionAsync(string version)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        var repo = FindRepositoryRoot();
+        var projectRoot = Path.Combine(repo, "samples", "YtMusicWidget");
+        var output = Path.Combine(_root.Path, $"ytmusic-community-{version}");
+        await RunCommunityPackageScriptAsync(
+            Path.Combine(projectRoot, "Build-CommunityPackage.ps1"),
+            output,
+            catalogRoot: null,
+            version,
+            install: false);
+        var manifest = ManifestJson.Deserialize(
+            await File.ReadAllBytesAsync(Path.Combine(output, "package-root", "manifest.json")));
+        return Path.Combine(output, $"{manifest.Id}-{manifest.Version}.gbarwidget");
+    }
 
     private static void CopyWorkerHostDeployment(
         string sourceDirectory,
@@ -1147,7 +1440,9 @@ file sealed class Deployment : IDisposable
     private static async Task RunCommunityPackageScriptAsync(
         string script,
         string outputDirectory,
-        string catalogRoot)
+        string? catalogRoot,
+        string? version,
+        bool install)
     {
         var start = new ProcessStartInfo("powershell.exe")
         {
@@ -1156,15 +1451,25 @@ file sealed class Deployment : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var argument in new[]
+        var arguments = new List<string>
         {
             "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
             "-File", script,
             "-Configuration", "Release",
             "-OutputDirectory", outputDirectory,
-            "-Catalog", catalogRoot,
-            "-Install",
-        }) start.ArgumentList.Add(argument);
+        };
+        if (catalogRoot is not null)
+        {
+            arguments.Add("-Catalog");
+            arguments.Add(catalogRoot);
+        }
+        if (version is not null)
+        {
+            arguments.Add("-Version");
+            arguments.Add(version);
+        }
+        if (install) arguments.Add("-Install");
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         using var process = Process.Start(start) ??
             throw new InvalidOperationException("YT Music package script did not start.");

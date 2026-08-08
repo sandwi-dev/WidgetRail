@@ -155,6 +155,17 @@ Installed versions are immutable. Bump `manifest.json` before installing a
 replacement version. Pass `-Catalog <directory>` to exercise the complete
 pack/install/enable workflow against an isolated catalog.
 
+For automated update/rollback tests, `-Version <canonical-version>` overrides
+only the generated staging manifest; it never edits the source manifest. The
+helper writes strict BOM-free UTF-8 and still passes the staged tree through
+the public validator and packer:
+
+```powershell
+.\samples\YtMusicWidget\Build-CommunityPackage.ps1 `
+  -Configuration Release -Version 0.2.3 `
+  -OutputDirectory .\artifacts\community-addons\ytmusic-update
+```
+
 To review or test version behavior with the public CLI:
 
 ```powershell
@@ -164,12 +175,30 @@ To review or test version behavior with the public CLI:
 & $gbar enable org.gbar.samples.ytmusic
 ```
 
-The current CLI has no version-removal command. Unsigned authority is derived
-from the host-verified package content tree, so changed package bytes use a new
-secret namespace and require pairing again; rollback to the exact verified
-bytes regains the prior namespace. Publisher signing and uninstall secret
-cleanup are not implemented, so do not promise authenticated-update retention
-or uninstall cleanup yet.
+`gbar uninstall org.gbar.samples.ytmusic --catalog <directory>` is
+disabled-only and removes every immutable YT Music package version plus its
+catalog state. Unsigned authority is derived from the host-verified package
+content tree, so changed package bytes use a new secret namespace and require
+pairing again; rollback to the exact verified bytes regains the prior
+namespace. Publisher signing and production Credential Manager secret
+enumeration/purge are not implemented, so the addon should delete its known
+Bearer slot before uninstall when a user requests private-data cleanup.
+
+Run the full auth-free Community-addon acceptance workflow with:
+
+```powershell
+.\scripts\Test-YtMusicCommunityAddon.ps1 -Configuration Release
+```
+
+The script snapshots the real catalog's state hash and installed ID/version
+names read-only, then runs every command against a unique temporary catalog.
+It proves strict package contents, validate/pack/install, separate consent,
+generic AppContainer launch, simulated pairing, dashboard and open-window
+controller routing, suspend/resume, deliberate worker crash recovery, fresh
+force reload, content-bound update consent, rollback, disable, uninstall, and
+temporary consent cleanup. Its evidence JSON explicitly does not claim a real
+YTMDesktop2 pairing, physical controller playtest, shell pixels, or production
+Credential Manager purge.
 
 The rich media surface prefers 760 x 440 logical DIPs, but its compact budget
 is 480 x 340. Artwork, metadata, progress, and controller targets use flexible

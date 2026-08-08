@@ -31,6 +31,7 @@ public sealed class WidgetCatalog
         CancellationToken cancellationToken = default)
     {
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        TryCleanupRetiredTrees();
         return await CreateInstaller().InstallAsync(
             packagePath,
             (inspection, token) => PreparePackageInstallUnderLockAsync(inspection, token),
@@ -42,6 +43,7 @@ public sealed class WidgetCatalog
         CancellationToken cancellationToken = default)
     {
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        TryCleanupRetiredTrees();
         return await CreateInstaller().InstallAsync(
             packageStream,
             (inspection, token) => PreparePackageInstallUnderLockAsync(inspection, token),
@@ -170,6 +172,147 @@ public sealed class WidgetCatalog
 
         await SetActiveVersionUnderLockAsync(widgetId, target, cancellationToken);
         return new WidgetVersionChange(widgetId, widget.ActiveVersion.Version, target);
+    }
+
+    /// <summary>
+    /// Removes every immutable version of one disabled widget. The package
+    /// tree is first retired from discovery with an atomic directory move;
+    /// cancellation is not observed after that commit point. Locked retired
+    /// files are reported as pending and retried by a later package mutation.
+    /// </summary>
+    public async Task<WidgetUninstallResult> UninstallAsync(
+        string widgetId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        var snapshot = await DiscoverAsync(cancellationToken);
+        var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
+            ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
+        if (widget.Enabled)
+            throw new WidgetPackageException(
+                "widget_enabled", $"Widget '{widgetId}' is enabled. Disable it before uninstalling it.");
+
+        var packageDirectory = Path.Combine(_packagesRoot, widget.Id);
+        if (!Directory.Exists(packageDirectory))
+            throw new WidgetPackageException(
+                "package_not_found", $"Widget '{widgetId}' has no installed package directory.");
+        FileSystemSafety.EnsureTreeContainsNoReparsePoints(_root, packageDirectory);
+        if (widget.Versions.Any(version =>
+                !FileSystemSafety.IsWithin(packageDirectory, version.InstallPath)))
+            throw new WidgetPackageException(
+                "path_escape", $"Widget '{widgetId}' contains an install path outside its package directory.");
+
+        var stagingRoot = Path.Combine(_root, "staging");
+        Directory.CreateDirectory(stagingRoot);
+        FileSystemSafety.EnsureNoReparsePoints(_root, stagingRoot);
+        TryCleanupRetiredTrees();
+        var retiredDirectory = Path.Combine(stagingRoot, $".uninstall-{Guid.NewGuid():N}");
+        var priorState = await _stateStore.LoadAsync(cancellationToken);
+        var stateMutated = false;
+        try
+        {
+            await _stateStore.MutateAsync(
+                state => RemoveStateEntry(state, widgetId), cancellationToken)
+                .ConfigureAwait(false);
+            stateMutated = true;
+            Directory.Move(packageDirectory, retiredDirectory);
+        }
+        catch
+        {
+            if (stateMutated)
+            {
+                await _stateStore.MutateAsync(
+                    _ => priorState, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            throw;
+        }
+
+        // The widget is no longer discoverable after the move. Finish bounded
+        // physical cleanup without accepting cancellation at this commit point.
+        var cleanupPending = !await TryDeleteRetiredTreeAsync(retiredDirectory)
+            .ConfigureAwait(false);
+        try
+        {
+            var packageParent = Path.GetDirectoryName(packageDirectory)!;
+            if (Directory.Exists(packageParent) &&
+                !Directory.EnumerateFileSystemEntries(packageParent).Any())
+                Directory.Delete(packageParent);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            cleanupPending = true;
+        }
+
+        return new WidgetUninstallResult(
+            widgetId,
+            widget.Versions.Select(version => version.Version).OrderDescending().ToArray(),
+            cleanupPending);
+    }
+
+    private static CatalogState RemoveStateEntry(CatalogState state, string widgetId)
+    {
+        var entries = state.Widgets.Where(entry => entry.Id != widgetId)
+            .OrderBy(entry => entry.Order)
+            .Select((entry, order) => entry with { Order = order })
+            .ToArray();
+        return state with { Version = 2, Widgets = entries };
+    }
+
+    private static async Task<bool> TryDeleteRetiredTreeAsync(string retiredDirectory)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (true)
+        {
+            try
+            {
+                Directory.Delete(retiredDirectory, recursive: true);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException &&
+                DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(25).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _ = exception;
+                return false;
+            }
+        }
+    }
+
+    private void TryCleanupRetiredTrees()
+    {
+        var stagingRoot = Path.Combine(_root, "staging");
+        if (!Directory.Exists(stagingRoot)) return;
+        try
+        {
+            FileSystemSafety.EnsureNoReparsePoints(_root, stagingRoot);
+            foreach (var retired in Directory.EnumerateDirectories(
+                         stagingRoot, ".uninstall-*", SearchOption.TopDirectoryOnly).Take(16))
+            {
+                if (!FileSystemSafety.IsWithin(stagingRoot, retired)) continue;
+                try
+                {
+                    FileSystemSafety.EnsureTreeContainsNoReparsePoints(stagingRoot, retired);
+                    Directory.Delete(retired, recursive: true);
+                }
+                catch (Exception exception) when (exception is IOException or
+                    UnauthorizedAccessException or WidgetPackageException)
+                {
+                    // A disabled worker may still hold a package briefly. The
+                    // next install/uninstall operation will retry this bounded sweep.
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or
+            UnauthorizedAccessException or WidgetPackageException)
+        {
+            // Staging cleanup is maintenance; it must not block a safe package mutation.
+        }
     }
 
     private async Task SetActiveVersionUnderLockAsync(
