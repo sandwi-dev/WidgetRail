@@ -29,24 +29,27 @@ planned. A structurally valid package is not necessarily trustworthy.
   exception behavior, and the complete basic UI-restriction set. Timeout,
   restart, failure, and disposal paths release the job and its process.
 - Every installed/community worker must start in a stable host-derived,
-  exact-version-specific, capability-free AppContainer at Low integrity. For
-  unsigned packages, the authority ID hashes the asserted publisher, package
-  ID, and immutable version, so another version receives a new profile and no
-  inherited broker consent. The launch
+  exact-content-specific, capability-free AppContainer at Low integrity. For
+  unsigned packages, installation seals a SHA-256 digest of the complete
+  normalized content tree and the authority ID derives from that verified
+  digest rather than manifest publisher text. Different bytes—even with the
+  same asserted package ID and version—receive a different profile and cannot
+  inherit broker consent or private secrets. The launch
   passes a small allowlisted environment, grants
   read/execute only to the generic runtime and exact immutable package roots,
   verifies the resulting token's SID/integrity/zero-capability shape before
   resume, and has no desktop-token fallback. Failure to create or verify any
   isolation component prevents the worker from running.
-- The managed capability broker has four closed versioned
-  audio/network grants. It binds a session to package, publisher, and instance
+- The managed capability broker has a closed versioned vocabulary for audio,
+  network/Bluetooth, activity, app-library, media, exact-port loopback JSON,
+  and write-only private secrets. It binds a session to package, publisher, and instance
   identity and rechecks the manifest declaration, durable consent decision,
   and lifecycle on every operation. Requests/results/events are strict and
   bounded; public DTOs contain sanitized labels and opaque IDs.
 - The bridge creates a fresh broker companion for every worker start/restart.
   Its nonce handshake binds the worker to bridge-selected identity,
   declarations, consent store, and backend. Widget code receives typed
-  `HostServices` audio/network APIs; it cannot select a broker identity,
+  `HostServices` APIs; it cannot select a broker identity,
   declaration, or provider through widget protocol messages. The isolated main
   and broker pipes additionally verify the connecting process ID before the
   existing nonce/package/publisher/instance authentication proceeds.
@@ -60,10 +63,22 @@ planned. A structurally valid package is not necessarily trustworthy.
   requires an explicit confirmation scope for grants, permits immediate
   deny/revoke, never auto-grants first-party packages, and fails closed on
   malformed catalog/consent state.
+- Exact-loopback authority fixes the destination to one manifest-declared
+  nonprivileged IPv4 port on `127.0.0.1`, allows bounded strict-JSON GET/POST
+  only, and disables DNS, proxy, redirects, cookies, decompression, and socket
+  exposure. A separate private-secret grant offers exists/metadata/save/delete
+  but never returns stored values; the trusted provider can inject one slot as
+  Bearer only while both consent/lifecycle leases remain valid. An explicit
+  request option can atomically delete that exact scoped slot on HTTP 401 before
+  returning, without granting a Visible worker general delete authority. See [local
+  companion HTTP and private secrets](community-companion-services.md).
 - Package extraction rejects absolute/traversing/ambiguous Windows paths,
   links, reparse points, collisions, excessive entries, and zip expansion
   beyond configured limits.
-- Installed versions are immutable and staged before atomic move.
+- Installed versions are immutable and staged before atomic move. The installer
+  writes host-owned integrity metadata after extraction; packages cannot
+  provide that reserved path. Catalog discovery recomputes the bounded content-
+  tree digest and rejects missing, malformed, or mismatched metadata.
 - Remote acquisition accepts only credential-free, fragment-free HTTPS URLs on
   port 443, revalidates up to five HTTPS redirects, rejects obvious localhost
   and private/loopback/link-local address literals, and applies connection,
@@ -83,9 +98,12 @@ planned. A structurally valid package is not necessarily trustworthy.
 - Only enabled, host-compatible installed packages using the closed capability
   vocabulary are joined. The bridge watches the trusted catalog file plus the
   installed catalog state/package tree, coalesces notifications, and publishes
-  only a complete validated semantic revision. Invalid reloads retain the
-  complete last-good catalog; conflicts, unsupported capability declarations,
-  malformed/tampered catalog entries, and invalid per-package GBSS fail soft.
+  only a complete validated semantic revision. Invalid trusted shell JSON
+  retains the complete last-good catalog. Invalid installed state or package
+  integrity instead publishes a trusted-only revision, synchronously removes
+  Community registrations, retires their workers, and prevents relaunch by the
+  old ID. Conflicts, unsupported capability declarations, and invalid per-
+  package GBSS omit the affected package with bounded diagnostics.
   Reload/list does not launch a worker.
 - The generic worker host rejects entrypoint/dependency path escape and reparse
   points, requires a public concrete SDK `Widget` type with a usable public
@@ -108,7 +126,8 @@ The following are **not implemented as a complete public security boundary**:
   enabled but that stronger mitigation is not;
 - production hardening/hardware/privacy evidence for the narrow Core Audio and
   Windows network providers, and a security audit/history UI;
-- secure token brokering for third-party integrations;
+- a general OAuth/account broker, readable credential API, or internet/LAN
+  authority beyond the narrow implemented local-companion services;
 - automatic update discovery/review, version removal, or crash-quarantine UI;
 - a graphical/file-picker installer and safe automatic updates;
 - universal anti-cheat or controller-containment compatibility.
@@ -125,26 +144,32 @@ the broader software-supply-chain sense.
 The bridge discovers enabled packages from the current-user catalog, watches
 bounded catalog inputs without polling, and launches workers lazily through the
 generic worker host. File-system events are only hints: each publication comes
-from a complete validation and semantic comparison, while a malformed reload
-retains the last-good revision. Declaration/identity/process-policy changes
+from a complete validation and semantic comparison. A malformed trusted shell
+catalog retains last-good; invalid installed state/integrity publishes trusted-
+only and retires Community registrations instead of retaining their authority.
+Declaration/identity/process-policy changes
 retire the old client before a new authenticated session can start lazily;
 stale worker events are ignored.
 
 This is an execution path and safe reload boundary, not a complete trust
-boundary. Catalog enablement has no signature or publisher proof. In-place
-package tampering is not made trustworthy by a watcher or semantic revision.
+boundary. Catalog enablement has no signature or publisher proof. Host-sealed
+content-tree verification rejects in-place package tampering; a watcher and
+digest still do not prove who authored the originally installed bytes.
 Closed declared capabilities receive an authenticated broker channel, and the
-production bridge composes the narrow real Core Audio and Windows network
-backends. The capability-free worker token cannot use those OS APIs directly;
+production bridge composes narrow Windows providers, including Core Audio,
+network/Bluetooth, media, app library, exact loopback, and private secrets. The
+capability-free worker token cannot use those OS APIs directly;
 the trusted broker performs only declared, consented, lifecycle-valid closed
 operations. This is still not publisher trust, a security audit, CPU/disk quota
 coverage, profile cleanup, or proof across the hardware/privacy matrix.
 
 Trusted bundled workers are a temporary exception to the community policy.
-Settings and YT Music currently use the host-trusted Job-only launch because
-they need desktop-user resources not yet exposed through narrow brokers. That
-exception is selected by bundled host policy, never by a package manifest or
-worker argument. An installed/community package cannot opt out of AppContainer
+Settings currently uses the host-trusted Job-only launch for desktop-user
+resources not yet exposed through narrow brokers. YT Music no longer uses that
+exception: its local companion and secret needs are public broker services and
+the addon runs through the normal package AppContainer. The remaining Settings
+exception is selected by host policy, never by a package manifest or worker
+argument. An installed/community package cannot opt out of AppContainer
 isolation.
 
 The managed theme catalog has strict manifests, version-pinned directories,
@@ -187,10 +212,11 @@ protection. Use only public origins you intended to contact.
 
 ## Permissions
 
-Manifests model required and optional permission strings, background policy,
-architecture, and resource requests. The bridge accepts only the four closed
-audio/network IDs, fixes the combined declared set for one authenticated worker
-session, and the broker enforces declaration, stored decision, and lifecycle.
+Manifests model required and optional permission strings, residency policy,
+architecture, and resource requests. The bridge accepts only the closed
+versioned capability vocabulary (including validated exact-port loopback IDs),
+fixes the combined declared set for one authenticated worker session, and the
+broker enforces declaration, stored decision, and lifecycle.
 Settings stores decisions by package, publisher, and capability; the channel
 also binds the concrete instance. Missing decisions fail closed, including for
 required capabilities, and no package is auto-granted.

@@ -13,6 +13,7 @@
     "assembly": "payload/AudioMixerWidget.dll",
     "type": "GameBarAlternative.FirstPartyWidgets.AudioMixer.AudioMixerWidget"
   },
+  "presentation": { "icon": "volume" },
   "permissions": [
     "system.audio.sessions.read.v1",
     "system.audio.output.read.v1"

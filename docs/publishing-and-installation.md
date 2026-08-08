@@ -233,8 +233,10 @@ There is no file-picker/graphical installer, automatic updater, signature
 verification, or marketplace client. The bridge watches the default
 current-user catalog without polling, validates a complete replacement, and
 publishes semantic changes live. Listing/reload never launches a worker.
-Invalid trusted or installed catalog state retains the last-good catalog;
-unsupported or invalid individual packages fail soft with bounded diagnostics.
+Invalid trusted shell state retains the last-good catalog. Invalid installed
+state or package integrity publishes a trusted-only revision, removes Community
+registrations, and retires their workers; unsupported styles/capabilities on an
+individual package fail soft with bounded diagnostics.
 
 After CLI installation, open Settings → Installed widgets. The paginated
 controller surface shows package ID, publisher, active/installed versions,
@@ -352,13 +354,15 @@ The intended flow is explicitly **planned**:
    AppContainer, Job Object restrictions, and PID/nonce/identity-authenticated
    main and broker pipes with no desktop-token fallback.
 
-Until publisher signing exists, the host gives every exact immutable unsigned
-version a derived authority identity. A newly selected update receives a new
-AppContainer profile and no inherited capability decisions, so Settings must
-review its grants separately. Rolling back restores only the identity and
-decisions previously associated with that exact installed version. This blocks
-silent unsigned-update authority inheritance but does not prove who published
-either version.
+Until publisher signing exists, the host seals every installed unsigned content
+tree and derives authority from its verified SHA-256 digest rather than its
+self-asserted publisher label. Changed bytes receive a new AppContainer profile,
+capability-consent identity, and private-secret namespace—even if package ID and
+version text are unchanged—so Settings must review grants separately and an
+integration may require re-pairing. Rolling back to the exact previously
+verified bytes restores only that content identity and its prior decisions.
+This blocks silent unsigned-update authority inheritance but does not prove who
+published either byte tree.
 
 Update checks, version removal/garbage collection, signature chains,
 revocation, CPU quotas, disk/profile quotas and cleanup, and an audit UI are

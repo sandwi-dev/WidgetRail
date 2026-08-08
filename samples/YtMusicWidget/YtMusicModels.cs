@@ -98,18 +98,7 @@ public interface IYtMusicClient
         bool? toggleState = null);
     Task<YtMusicPairingCode> RequestPairingCodeAsync(CancellationToken cancellationToken = default);
     Task CompletePairingAsync(string code, CancellationToken cancellationToken = default);
-    void ClearCredential();
-}
-
-/// <summary>
-/// Durable token storage owned by the trusted desktop worker. Implementations
-/// must not expose the token through widget view state, logs, or exceptions.
-/// </summary>
-public interface IYtMusicCredentialStore
-{
-    string? LoadToken();
-    void SaveToken(string token);
-    void ClearToken();
+    Task ClearCredentialAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Raised when YTMDesktop2 rejects the current bearer credential.</summary>

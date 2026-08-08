@@ -45,6 +45,9 @@ guarantees that are available now.
   activity/app-library/media-session services, exact-operation dashboard gesture authority,
   manifest declarations, lifecycle/consent behavior, errors, testing, and the
   current security boundary.
+- [Local companion HTTP and private secrets](community-companion-services.md) —
+  exact-port JSON GET/POST, write-only package secret slots, host-side Bearer
+  injection, lifecycle/consent rules, limits, errors, and security boundaries.
 - [Network Controls reference](network-controls.md) — implemented first-party
   integration, explicit available-Wi-Fi scan/current saved-open connection,
   controller UX, privacy/location
@@ -52,6 +55,9 @@ guarantees that are available now.
 - [Games & Apps reference](games-and-apps.md) — implemented Start Menu library,
   opaque paged SDK, separately consented exact launch, controller UX, provider
   security boundary, tests, and current catalog/icon/classification limits.
+- [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
+  first real public-package/AppContainer local-companion integration, including
+  pairing, optimistic media UX, dashboard actions, and local pack/install.
 - [Recent Apps reference](recent-apps.md) — retained reference for the read-only
   foreground-activity API; it is no longer in the bundled dashboard catalog.
 

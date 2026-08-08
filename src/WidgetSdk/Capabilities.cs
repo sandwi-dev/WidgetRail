@@ -135,6 +135,8 @@ public sealed class WidgetHostServices
         RecentActivity = new WidgetRecentActivityService(capabilityClient);
         AppLibrary = new WidgetAppLibraryService(capabilityClient);
         Media = new WidgetMediaService(capabilityClient);
+        Loopback = new WidgetLoopbackHttpService(capabilityClient);
+        PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
     }
 
     public IWidgetCapabilityClient Capabilities { get; }
@@ -143,6 +145,8 @@ public sealed class WidgetHostServices
     public WidgetRecentActivityService RecentActivity { get; }
     public WidgetAppLibraryService AppLibrary { get; }
     public WidgetMediaService Media { get; }
+    public WidgetLoopbackHttpService Loopback { get; }
+    public WidgetPrivateSecretService PrivateSecrets { get; }
 
     internal static WidgetHostServices Unavailable { get; } =
         new(UnavailableWidgetCapabilityClient.Instance);

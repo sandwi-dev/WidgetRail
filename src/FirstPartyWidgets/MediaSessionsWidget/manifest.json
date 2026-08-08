@@ -13,6 +13,7 @@
     "assembly": "payload/MediaSessionsWidget.dll",
     "type": "GameBarAlternative.FirstPartyWidgets.MediaSessions.MediaSessionsWidget"
   },
+  "presentation": { "icon": "music" },
   "permissions": [
     "system.media.sessions.read.v1"
   ],

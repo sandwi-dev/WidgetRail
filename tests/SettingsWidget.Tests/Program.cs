@@ -35,6 +35,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Permissions use nested controller-scroll scopes and B-only Back", PermissionScopesAreScrollable),
     ("Permission screens explain declarations consent enforcement and Windows access", PermissionModelIsClear),
     ("App-library copy separates opaque catalog read from exact launch", AppLibraryPermissionCopy),
+    ("Community service permissions explain exact loopback and write-only secrets", CommunityServicePermissionCopy),
     ("Bluetooth permission copy states privacy and radio-control boundaries", BluetoothPermissionCopy),
     ("Capability grant confirms and deny revokes atomically", GrantAndRevoke),
     ("Consent decisions isolate package publisher identities", PublisherIsolation),
@@ -924,6 +925,38 @@ static async Task AppLibraryPermissionCopy()
     Assert.Valid(launchDecision);
 }
 
+static async Task CommunityServicePermissionCopy()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(catalogRoot, "dev.test.companion", "dev.publisher.companion", "Companion",
+        ["network.loopback:13091"], [PlatformCapabilities.PrivateSecretsV1]);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    var capabilities = Snapshot(widget);
+    Assert.Contains("Access local app on port 13091",
+        Button(capabilities.Root, "capability.item.0").Text!);
+    await Action(widget, "capability.select.0");
+    var loopback = Snapshot(widget);
+    var loopbackDescription = Text(loopback.Root, "capability.description").Text!;
+    Assert.Contains("only 127.0.0.1:13091", loopbackDescription);
+    Assert.Contains("cannot choose another host or port", loopbackDescription);
+    Assert.Contains("host-issued dashboard gesture", loopbackDescription);
+    await Action(widget, "back");
+    await Action(widget, "capability.select.1");
+    var secrets = Snapshot(widget);
+    var secretsDescription = Text(secrets.Root, "capability.description").Text!;
+    Assert.Contains("never returned to widget code", secretsDescription);
+    Assert.Contains("Windows Credential Manager", secretsDescription);
+    Assert.Contains("same package publisher", secretsDescription);
+    Assert.Valid(capabilities);
+    Assert.Valid(loopback);
+    Assert.Valid(secrets);
+}
+
 static async Task BluetoothPermissionCopy()
 {
     using var temp = new TemporaryDirectory();
@@ -1308,10 +1341,12 @@ static string InstalledAuthority(
     string packageId,
     string version = "1.0.0")
 {
-    var manifestPath = Path.Combine(
-        catalogRoot, "packages", packageId, version, "manifest.json");
-    return InstalledWidgetAuthority.PublisherId(
-        ManifestJson.Deserialize(File.ReadAllBytes(manifestPath)));
+    var installed = new WidgetCatalog(catalogRoot).DiscoverAsync()
+        .GetAwaiter().GetResult().Widgets
+        .Single(widget => widget.Id == packageId).Versions
+        .Single(item => string.Equals(
+            item.Version.ToString(), version, StringComparison.Ordinal));
+    return InstalledWidgetAuthority.PublisherId(installed);
 }
 
 static async Task BundledPermissionsAreDiscovered()
@@ -1465,6 +1500,8 @@ static void WriteInstalledWidget(
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
     File.WriteAllBytes(Path.Combine(directory, "manifest.json"), ManifestJson.Serialize(manifest));
     File.WriteAllBytes(Path.Combine(payload, "Widget.dll"), [0x47, 0x42, 0x41]);
+    InstalledPackageIntegrity.Seal(
+        catalogRoot, directory, new WidgetCatalogOptions());
 }
 
 static void WriteBundledWidget(

@@ -124,15 +124,14 @@ remains off until the publisher-trust gates in Phase 4.
 - Finish YT Music connection, pairing persistence, transition responsiveness,
   feedback, controller navigation, and failure recovery. YT Music is the first
   Community addon integration reference, not a permanent Built-in widget.
-- Migrate YT Music off the bundled catalog and trusted desktop exception:
-  package it with the public SDK/CLI, install it through the ordinary Community
-  catalog, and run it in the mandatory package AppContainer. Implement an
-  exact-port, loopback-only HTTP broker for declared local companions plus a
-  private per-widget secret vault for optional bearer-token persistence. Prove
-  install, review, consent, update/rollback, controller behavior, lifecycle,
-  crash recovery, and uninstall through the same paths available to an
-  independent developer; never grant ambient network, direct Credential
-  Manager access, or a first-party-only runtime escape to the addon.
+- YT Music migration implementation is present: it is absent from the bundled/
+  trusted catalog and runtime copy, packages through public SDK/CLI commands,
+  and runs through the generic Community AppContainer. Reusable exact-port
+  loopback JSON plus write-only private secrets replace raw sockets and direct
+  Credential Manager access. Package conformance proves install, consent,
+  pairing, host-side Bearer injection, dashboard input, and no trusted fallback.
+  Complete the remaining clean packaged playtest, controller/lifecycle/crash
+  recovery, update/rollback, and uninstall evidence before closing GBA-030.
 - Finish Settings controller reachability, diagnostics/recovery, local package
   and theme workflows, and permission/version consistency
 - Complete controller-first Audio Control and Network Control through their
@@ -152,6 +151,17 @@ remains off until the publisher-trust gates in Phase 4.
   states, switches, tabs, and scoped dialogs. Components must keep stable IDs,
   minimum controller target sizes, readable non-color state, nested Back
   behavior, themeable semantic classes, and supported-DPI focus containment.
+  Rework its default theme as a restrained minimalist system: lighter type
+  hierarchy, fewer nested surfaces, smaller radii, thin dividers/tracks,
+  compact controller-safe spacing, and one consistent focus treatment. Verify
+  every component at supported text/interface scales instead of tuning only
+  the current widgets.
+- Complete native GBSS transition interpolation. `transition-duration` and
+  `transition-easing` are parsed, typed, cascaded, and accessibility-gated, but
+  the renderer currently applies state changes immediately. Add a bounded
+  host-owned clock, interruption/retarget rules, reduced-motion behavior, and
+  deterministic renderer/performance evidence before describing transitions
+  as animated.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance
@@ -160,7 +170,11 @@ remains off until the publisher-trust gates in Phase 4.
 - Games & Apps replaces bundled Recent Apps with a locally testable Start Menu
   catalog and exact opaque-ID launch. AppsFolder/launcher sources,
   authoritative game classification, icons, history, search/favorites, and
-  grouping remain roadmap work.
+  grouping remain roadmap work. Its destination is a curated launch library,
+  not a dump of every Start Menu shortcut: add source attribution, user hide/
+  favorite/order controls, evidence-backed game classification, and a safe
+  fallback application view. Close the overlay only after the selected exact
+  registration launches successfully; failure keeps it open with feedback.
 - Capture proof and widget if Windows API tests pass
 - Discord proof after eligibility and production communications access are confirmed
 
@@ -243,6 +257,12 @@ does not provide a system-default setter. Do not ship an undocumented
 supported API passes the spike, default-device switching leaves the initial
 scope.
 
+Audio Control must treat optional providers independently. A missing, denied,
+revoked, or temporarily unavailable microphone/device-name capability cannot
+blank or trap the working master-output and application-session mixer. Each
+section needs its own loading/empty/denied/error state, focus-preserving
+reconciliation, and provider-churn tests.
+
 **Games & Apps roadmap** has replaced Recent Apps in the bundled product
 catalog. The current public-SDK package pages through a bounded Start Menu
 library, renders a horizontal controller strip, and launches one selected
@@ -262,6 +282,12 @@ favorites, grouping, history, source attribution, and refresh observation must
 remain bounded and privacy reviewed. None may become arbitrary path/process
 launch authority. Recent Apps remains a separate read-only activity API/test
 reference, not a bundled dashboard widget.
+
+On a successful launch result, the shell should close the overlay through a
+host-owned, correlation-safe completion signal. The widget must not receive
+generic window-management authority, synthesize Guide, or confuse enqueueing
+with provider success. Failure, stale ID, or cancellation keeps Games & Apps
+visible and focused with a bounded retry state.
 
 **Network Control roadmap** follows the Audio Control foundation. Its first
 slice uses Windows WLAN/network change notifications rather than continuously
@@ -337,6 +363,14 @@ device Connect/Disconnect command is
 promised: public Windows communication APIs are profile-specific (for example
 GATT services/characteristics and RFCOMM sockets), so each future functional
 connection needs its own reviewed profile contract and capability.
+
+The Wi-Fi/Bluetooth tabs also need explicit selection semantics. A focused Wi-
+Fi row is only a candidate; it must not look Connected until authoritative WLAN
+state confirms it. A focused Bluetooth row is informational unless a separate
+pair/unpair or profile operation exists. Focus, presence, paired state, and
+connected state need distinct non-color cues. Tab switches must preserve each
+tab's last focus/scroll position, and refresh churn must select a stable nearest
+survivor without jumping to another action.
 
 Later Network Control phases add:
 

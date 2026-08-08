@@ -37,9 +37,6 @@ try {
     Invoke-Checked -Description 'Build and test YT Music widget' -Command {
         dotnet run --project 'tests\YtMusicWidget.Tests\YtMusicWidget.Tests.csproj' --configuration $Configuration
     }
-    Invoke-Checked -Description 'Build YT Music isolated worker' -Command {
-        dotnet build 'samples\YtMusicWidget.Worker\YtMusicWidget.Worker.csproj' --configuration $Configuration --nologo
-    }
     Invoke-Checked -Description 'Build and test isolated widget runtime' -Command {
         dotnet run --project 'tests\WidgetRuntime.Tests\WidgetRuntime.Tests.csproj' --configuration $Configuration
     }
@@ -72,6 +69,9 @@ try {
     }
     Invoke-Checked -Description 'Build and test Windows app-library provider' -Command {
         dotnet run --project 'tests\WindowsAppLibraryProvider.Tests\WindowsAppLibraryProvider.Tests.csproj' --configuration $Configuration
+    }
+    Invoke-Checked -Description 'Build and test constrained loopback and private-secret provider' -Command {
+        dotnet run --project 'tests\WindowsCommunityProvider.Tests\WindowsCommunityProvider.Tests.csproj' --configuration $Configuration
     }
     Invoke-Checked -Description 'Build and test Windows media-session provider' -Command {
         dotnet run --project 'tests\WindowsMediaProvider.Tests\WindowsMediaProvider.Tests.csproj' --configuration $Configuration

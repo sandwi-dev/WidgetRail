@@ -9,6 +9,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     private readonly IAppLibraryPlatformBrokerBackend _appLibrary;
     private readonly IBluetoothPlatformBrokerBackend _bluetooth;
     private readonly IMediaPlatformBrokerBackend _media;
+    private readonly IPrivateSecretPlatformBrokerBackend _privateSecrets;
+    private readonly ILoopbackHttpPlatformBrokerBackend _loopbackHttp;
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
@@ -17,7 +19,9 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         IActivityPlatformBrokerBackend? activity = null,
         IBluetoothPlatformBrokerBackend? bluetooth = null,
         IMediaPlatformBrokerBackend? media = null,
-        IAppLibraryPlatformBrokerBackend? appLibrary = null)
+        IAppLibraryPlatformBrokerBackend? appLibrary = null,
+        IPrivateSecretPlatformBrokerBackend? privateSecrets = null,
+        ILoopbackHttpPlatformBrokerBackend? loopbackHttp = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _network = network ?? throw new ArgumentNullException(nameof(network));
@@ -25,6 +29,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         _appLibrary = appLibrary ?? UnavailableAppLibraryPlatformBrokerBackend.Instance;
         _bluetooth = bluetooth ?? UnavailableBluetoothPlatformBrokerBackend.Instance;
         _media = media ?? UnavailableMediaPlatformBrokerBackend.Instance;
+        _privateSecrets = privateSecrets ?? UnavailablePrivateSecretPlatformBrokerBackend.Instance;
+        _loopbackHttp = loopbackHttp ?? UnavailableLoopbackHttpPlatformBrokerBackend.Instance;
         _audio.EventPublished += ForwardAudioEvent;
         _network.EventPublished += ForwardNetworkEvent;
         _activity.EventPublished += ForwardActivityEvent;
@@ -125,6 +131,25 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         CancellationToken cancellationToken) =>
         _media.ControlMediaSessionAsync(sessionId, command, cancellationToken);
 
+    public Task<PrivateSecretMetadataSummary> GetPrivateSecretMetadataAsync(
+        BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
+        _privateSecrets.GetPrivateSecretMetadataAsync(identity, slot, cancellationToken);
+
+    public Task SavePrivateSecretAsync(
+        BrokerWidgetIdentity identity, string slot, string secret,
+        CancellationToken cancellationToken) =>
+        _privateSecrets.SavePrivateSecretAsync(identity, slot, secret, cancellationToken);
+
+    public Task DeletePrivateSecretAsync(
+        BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
+        _privateSecrets.DeletePrivateSecretAsync(identity, slot, cancellationToken);
+
+    public Task<LoopbackJsonResponse> SendLoopbackJsonAsync(
+        BrokerWidgetIdentity identity, int port, bool isPost,
+        LoopbackJsonRequest request, CancellationToken cancellationToken) =>
+        _loopbackHttp.SendLoopbackJsonAsync(
+            identity, port, isPost, request, cancellationToken);
+
     private void ForwardAudioEvent(object? sender, BrokerPlatformEvent platformEvent)
     {
         if (platformEvent.CapabilityId is PlatformCapabilities.AudioSessionsReadV1 or
@@ -211,6 +236,31 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
             else if (_appLibrary is IDisposable appLibrary)
                 appLibrary.Dispose();
         }
+        if (!ReferenceEquals(_privateSecrets, _audio) &&
+            !ReferenceEquals(_privateSecrets, _network) &&
+            !ReferenceEquals(_privateSecrets, _activity) &&
+            !ReferenceEquals(_privateSecrets, _bluetooth) &&
+            !ReferenceEquals(_privateSecrets, _media) &&
+            !ReferenceEquals(_privateSecrets, _appLibrary))
+        {
+            if (_privateSecrets is IAsyncDisposable asyncPrivateSecrets)
+                await asyncPrivateSecrets.DisposeAsync().ConfigureAwait(false);
+            else if (_privateSecrets is IDisposable privateSecrets)
+                privateSecrets.Dispose();
+        }
+        if (!ReferenceEquals(_loopbackHttp, _audio) &&
+            !ReferenceEquals(_loopbackHttp, _network) &&
+            !ReferenceEquals(_loopbackHttp, _activity) &&
+            !ReferenceEquals(_loopbackHttp, _bluetooth) &&
+            !ReferenceEquals(_loopbackHttp, _media) &&
+            !ReferenceEquals(_loopbackHttp, _appLibrary) &&
+            !ReferenceEquals(_loopbackHttp, _privateSecrets))
+        {
+            if (_loopbackHttp is IAsyncDisposable asyncLoopback)
+                await asyncLoopback.DisposeAsync().ConfigureAwait(false);
+            else if (_loopbackHttp is IDisposable loopback)
+                loopback.Dispose();
+        }
     }
 
     private sealed class UnavailableActivityPlatformBrokerBackend : IActivityPlatformBrokerBackend
@@ -274,5 +324,17 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
             CancellationToken cancellationToken) =>
             Task.FromException(
                 new BrokerException("platform_unavailable", "Windows media session control is unavailable."));
+    }
+
+    private sealed class UnavailablePrivateSecretPlatformBrokerBackend :
+        IPrivateSecretPlatformBrokerBackend
+    {
+        internal static UnavailablePrivateSecretPlatformBrokerBackend Instance { get; } = new();
+    }
+
+    private sealed class UnavailableLoopbackHttpPlatformBrokerBackend :
+        ILoopbackHttpPlatformBrokerBackend
+    {
+        internal static UnavailableLoopbackHttpPlatformBrokerBackend Instance { get; } = new();
     }
 }

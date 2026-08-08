@@ -276,7 +276,8 @@ public sealed class BridgeCatalog
                 break;
             }
             var manifest = widget.ActiveVersion.Manifest;
-            var authorityPublisherId = InstalledWidgetAuthority.PublisherId(manifest);
+            var authorityPublisherId = InstalledWidgetAuthority.PublisherId(
+                widget.ActiveVersion);
             if (!IsBridgeIdentifier(manifest.Id) || !IsBridgeLabel(manifest.Name))
             {
                 warnings.Add("An enabled installed widget had an ID or name outside bridge bounds and was ignored.");
@@ -342,7 +343,7 @@ public sealed class BridgeCatalog
                 PublisherId = authorityPublisherId,
                 Name = manifest.Name,
                 InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
-                Icon = WidgetGlyph.Connection,
+                Icon = manifest.Presentation.Icon,
                 WorkerExecutable = workerHost,
                 WorkerArguments =
                 [
@@ -587,7 +588,7 @@ public sealed class BridgeCatalog
             PublisherId = manifest.Publisher,
             Name = manifest.Name,
             InstanceId = source.InstanceId,
-            Icon = source.Icon,
+            Icon = manifest.Presentation.Icon,
             WorkerExecutable = workerHost,
             WorkerArguments =
             [

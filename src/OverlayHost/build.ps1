@@ -143,6 +143,42 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $SkipPackaging) {
+    function Assert-NoReparsePointInPath {
+        param([Parameter(Mandatory = $true)] [string]$Path)
+
+        $resolved = [System.IO.Path]::GetFullPath($Path)
+        $root = [System.IO.Path]::GetPathRoot($resolved)
+        $current = $root
+        foreach ($segment in $resolved.Substring($root.Length).Split(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.StringSplitOptions]::RemoveEmptyEntries)) {
+            $current = Join-Path $current $segment
+            if (Test-Path -LiteralPath $current) {
+                $attributes = [System.IO.File]::GetAttributes($current)
+                if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    throw "Build output paths cannot traverse a reparse point: $current"
+                }
+            }
+        }
+    }
+
+    function Remove-GeneratedDirectory {
+        param([Parameter(Mandatory = $true)] [string]$Path)
+
+        $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
+        $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+        if (-not $resolvedPath.StartsWith(
+            $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Generated output escaped the build layout: $resolvedPath"
+        }
+        Assert-NoReparsePointInPath -Path $resolvedOutputRoot
+        Assert-NoReparsePointInPath -Path $resolvedPath
+        if (Test-Path -LiteralPath $resolvedPath) {
+            Remove-Item -LiteralPath $resolvedPath -Recurse -Force
+        }
+    }
+
     function Publish-BundledWidgetPackage {
         param(
             [Parameter(Mandatory = $true)] [string]$WidgetProject,
@@ -206,12 +242,14 @@ if (-not $SkipPackaging) {
 
     $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
     $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
-    $ytMusicOutput = Join-Path $outputDirectory 'runtime\YtMusic'
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
     $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
     $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
     $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
+    # YT Music is a community addon now. Remove an incremental build's retired
+    # trusted worker so it cannot remain as an accidental fallback.
+    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\YtMusic')
     & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
@@ -222,11 +260,6 @@ if (-not $SkipPackaging) {
     if ($LASTEXITCODE -ne 0 -or
         -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
         throw "Generic widget worker host publish failed with exit code $LASTEXITCODE."
-    }
-    & dotnet publish (Join-Path $projectDirectory '..\..\samples\YtMusicWidget.Worker\YtMusicWidget.Worker.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $ytMusicOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "YT Music worker publish failed with exit code $LASTEXITCODE."
     }
     & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $settingsOutput

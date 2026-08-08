@@ -3,7 +3,7 @@
 Status: typed SDK services, authenticated local transport, lifecycle/consent
 enforcement, controller Settings review, deterministic simulators, and narrow
 real Core Audio, Windows network/Bluetooth, foreground-activity, Start Menu
-app-library, and media-session backends are
+app-library, media-session, exact-loopback JSON, and private-secret backends are
 implemented. The production bridge composes those trusted providers. Hardware/
 privacy matrices plus
 broader performance evidence remain release gates; the current
@@ -48,6 +48,21 @@ The current closed capability set is:
 | `system.apps.library.launch.v1` | `HostServices.AppLibrary.LaunchAsync(appId)` for one current broker-issued app ID | Interactive only; never dashboard gesture authority |
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
+| `network.loopback:<port>` | `HostServices.Loopback.GetJsonAsync` and `PostJsonAsync` for that exact nonprivileged IPv4 loopback port | GET Visible/Interactive; POST Interactive or one exact dashboard gesture while Visible |
+| `storage.private-secrets.v1` | `HostServices.PrivateSecrets.ExistsAsync`, `GetMetadataAsync`, `SaveAsync`, and `DeleteAsync`; values are never returned | exists/metadata Visible/Interactive; save/delete Interactive only |
+
+Loopback ports are dynamic declarations from 1024 through 65535, but each exact
+port is a separate closed consent item. The widget supplies only an origin-form
+path, bounded JSON, safe headers, and timeout; it never supplies a host, URI
+authority, DNS name, proxy, redirect policy, or socket. Private secrets are a
+separate grant and are write-only to widget code. A loopback request may name a
+slot so the trusted provider injects it as Bearer authorization while holding
+both lifecycle/consent leases. It may also opt into
+`InvalidateBearerSecretOnUnauthorized`; on an actual 401 the host deletes that
+exact scoped slot before returning without granting general Visible delete
+authority. See [local companion HTTP and private
+secrets](community-companion-services.md) for APIs, limits, errors, identity
+scope, and testing.
 
 The following authority domains are **planned only**. Their final capability
 IDs and typed SDK surfaces are not assigned, the manifest validator does not
@@ -147,8 +162,10 @@ package/publisher/instance, process, declared capabilities, arguments, or
 memory policy changed is retired; a later use starts a fresh authenticated
 session with the new declaration set. Presentation-only changes preserve a
 compatible running worker while atomically replacing its validated style and
-quick-action metadata. Invalid catalog state retains the complete last-good
-revision. Consent decisions remain stored independently and take effect without
+quick-action metadata. Invalid trusted shell state retains the complete last-
+good revision. Invalid installed state/integrity publishes a trusted-only
+revision and retires Community workers, so stale capability authority is not
+retained. Consent decisions remain stored independently and take effect without
 a catalog or worker restart.
 
 ## Use typed host services
@@ -379,10 +396,11 @@ The SDK API deliberately exposes only typed DTOs and services—not pipe/nonce,
 raw JSON, OS handles, raw OS identifiers, process IDs, paths, or credentials.
 Session/profile targets are broker-issued bounded opaque IDs.
 Installed/community assemblies run in a mandatory package-specific
-AppContainer selected from a host-computed authority key bound to the asserted
-publisher, package ID, and exact immutable unsigned version. Updates therefore
-receive a different profile and require fresh broker consent; selecting the
-same reviewed version during rollback restores only that version's identity. The token
+AppContainer selected from a host-computed authority key derived from the
+verified unsigned package content tree, not its asserted publisher label.
+Changed bytes therefore receive a different profile, require fresh broker
+consent, and cannot inherit private secrets even when ID/version text is reused;
+rollback to the exact reviewed bytes restores only that content identity. The token
 is Low integrity and has zero capability SIDs, including no network capability;
 the process receives a stripped environment and explicit read/execute access
 only to its generic runtime and exact package roots. Job Object policy adds
@@ -395,15 +413,16 @@ single-client pipes. Their ACLs name only the desktop host and exact
 AppContainer SID and carry a Low mandatory label; the host also verifies the
 worker PID. Runtime hello validation and broker nonce plus package, publisher,
 instance, declaration, consent, and lifecycle checks remain mandatory after
-the OS boundary. The broker—not the AppContainer worker—owns Core Audio and
-Windows network access.
+the OS boundary. The broker—not the AppContainer worker—owns Core Audio,
+Windows network access, loopback sockets, and host-only secret reads.
 
 This materially constrains hostile widget authority, but community
 distribution still requires publisher signing/revocation, CPU-rate controls,
 disk/profile quotas and cleanup, a security audit/history UI, and broader real-
-provider evidence. Trusted bundled Settings and YT Music workers temporarily
-remain Job-only because their desktop-user resource dependencies have not yet
-been brokered; installed/community packages cannot select that exception.
+provider evidence. Trusted bundled Settings temporarily remains Job-only for
+desktop-user dependencies. YT Music now runs as a Community AppContainer addon
+using the public loopback/secret broker; installed packages cannot select the
+remaining Settings exception.
 Win32k system-call disable is also not active: the tested mitigation prevented
 CoreCLR DLL initialization with `0xC0000142`, so compatibility currently relies
 on the AppContainer token plus Job Object UI restrictions instead.

@@ -44,11 +44,16 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-023 | P1 | Verifying | Widget protocol / bridge / runtime | Versioned keep-alive, cooperative suspend, and bounded idle-unload residency are enforced with legacy migration, cached views, and lazy resume; packaged resource/churn evidence remains. |
 | GBA-024 | P1 | Verifying | Gbar CLI / OverlayHost / WidgetBridge | Authenticated candidate-worker readiness, last-good recovery, complete bounded watching, and observable cleanup are implemented; packaged author-workflow evidence remains. |
 | GBA-025 | P0 | Verifying | Controller quick actions / capability broker | A dormant non-authorizing host reservation now activates one exact-operation broker lease only at the typed call; packaged controller/media evidence remains. |
-| GBA-026 | P1 | Verifying | Reference widgets / package isolation | The four brokered references now ship through the generic AppContainer path and pass real-package conformance; packaged overlay evidence remains. |
+| GBA-026 | P1 | Verifying | Reference widgets / package isolation | Four built-in brokered references plus the YT Music Community addon pass real-package generic-AppContainer conformance; packaged overlay evidence remains. |
 | GBA-027 | P0 | Verifying | Games & Apps / app-library broker / provider | Games & Apps replaced bundled Recent Apps with Start Menu catalog reads and exact revalidated opaque-ID launch; packaged controller/visual verification remains. |
 | GBA-028 | P0 | Verifying | PlatformBroker consent migration / Settings permissions | The exact retired Recent Apps activation capability is tombstoned; unsupported/inactive details moved to a safe bounded read-only Review page, and packaged visual verification remains. |
 | GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
-| GBA-030 | P0 | Open | YT Music packaging / community isolation / local companion broker | YT Music must move from the bundled trusted catalog to become the first independently installable Community addon without losing its current controller/media behavior. |
+| GBA-030 | P0 | Verifying | YT Music packaging / community isolation / local companion broker | YT Music now uses the public Community package/AppContainer/loopback/secret path without a trusted fallback; clean packaged controller and lifecycle evidence remains. |
+| GBA-031 | P1 | Open | Widget SDK components / built-in themes / native renderer | The default component system needs a cohesive minimalist, controller-safe design pass. |
+| GBA-032 | P1 | Confirmed | GBSS / native renderer / accessibility | GBSS transition declarations are parsed and cascaded but native state changes are not interpolated at runtime. |
+| GBA-033 | P1 | Open | Games & Apps / catalog / host launch completion | Games & Apps needs a curated library model and must close the overlay only after one exact launch succeeds. |
+| GBA-034 | P1 | Open | Network Controls / controller state model | Wi-Fi and Bluetooth rows need unambiguous focus, selection, connection, and churn semantics. |
+| GBA-035 | P0 | Open | Audio Mixer / capability degradation / focus | Failure of an optional audio provider must not break working mixer sections or move focus unexpectedly. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -558,7 +563,7 @@ scales.
 vertical Scroll nodes. Package and capability rows are linked through one
 stable focus graph, page labels/shortcuts/state and in-content Back Buttons are
 removed, and malformed-state fallbacks retain their scoped B action without a
-fake focus target. Settings passes 34/34 focused Release tests. Status remains
+fake focus target. Settings passes 40/40 focused Release tests. Status remains
 Verifying pending packaged controller and increased-text-scale evidence.
 
 ## GBA-023 — Background residency policy was metadata only
@@ -653,19 +658,18 @@ without concurrent pipe readers or deadlock. The broker keeps at most 16
 two-second active grants, consumes each exact tuple once, and clears dormant
 and active state on lifecycle, consent, process, or session teardown.
 Subscriptions remain ineligible and lifecycle is never promoted. Focused SDK,
-Broker, Runtime, Bridge, and Now Playing suites pass 46/46, 36/36, 33/33,
-29/29, and 9/9 respectively and cover wrong operation/capability,
+Broker, Runtime, Bridge, and Now Playing suites pass 48/48, 40/40, 33/33,
+30/30, and 9/9 respectively and cover wrong operation/capability,
 slow-first rapid-second input, custom async routing, replay, expiry, stale
 snapshot, denial, and revocation cases.
 
 ## GBA-026 — Reference widgets lack real community-package conformance
 
-**Evidence:** Audio Mixer, Network Controls, Games & Apps, and Now Playing have
-focused widget tests with injected fake services. Installed-catalog isolation
-tests use synthetic packages. No acceptance test currently packages each real
-reference, installs/enables it, resolves it through the generic worker host,
-launches it in the package-specific AppContainer, and renders/acts through its
-authenticated simulated broker.
+**Original evidence:** The references had focused widget tests with injected
+fake services while installed-catalog isolation tests used synthetic packages.
+No acceptance test packaged each real reference, installed/enabled it, resolved
+it through the generic worker host, launched it in the package-specific
+AppContainer, and rendered/acted through its authenticated simulated broker.
 
 **Acceptance:** A bounded Windows conformance suite performs that complete
 path for every claimed public-SDK reference without real OS mutation. It must
@@ -675,19 +679,23 @@ least one read/action path. A widget that depends on a trusted-only facility is
 explicitly classified as such instead of passing by exception.
 
 **Implementation evidence:** The shipped catalog now separates trusted worker
-entries from ordered `bundledWidgets`. Only Settings and YT Music remain
-temporary Job-only exceptions. Audio Mixer, Network Controls, Games & Apps, and
-Now Playing derive entrypoint, publisher, permissions, memory, residency, and
+entries from ordered `bundledWidgets`. Settings is the only temporary Job-only
+exception. Audio Mixer, Network Controls, Games & Apps, and Now Playing derive
+entrypoint, publisher, permissions, memory, residency, and
 styles from their real manifests and launch through the generic worker in a
 capability-free package AppContainer. The Release conformance suite builds and
-installs the same four `.gbarwidget` packages, merges them through
+installs those four `.gbarwidget` packages plus the YT Music Community package,
+then merges them through
 `WidgetCatalog`/`BridgeCatalog`, grants simulated consent through the production
 PID-bound broker companion, and executes both the installed and separately
 configured bundled routes. Both forms drive lifecycle and validate rendered
 snapshots. Games & Apps proves separate opaque app-library read and launch
-authority; the other three references exercise their safe brokered control.
-It passes 4/4; Bridge passes 29/29. The packaged build and host catalog
-contain and select no dedicated worker executable for these four widgets.
+authority; the other built-in references exercise their safe brokered control.
+YT Music additionally proves the public CLI package flow, pairing/private-
+secret/Bearer path, dashboard transport, lifecycle enforcement, and absence of
+a trusted fallback. The suite passes 5/5; Bridge passes 30/30. The packaged
+build and host catalog contain and select no dedicated worker executable for
+these references.
 
 ## GBA-027 — Recent Apps switching replaced by a scoped app launcher
 
@@ -717,8 +725,8 @@ gesture authority. The trusted provider re-enumerates immediately before
 launch and requires one exact scope/identity/path/shortcut-fingerprint match,
 then invokes only Shell `open` on that `.lnk` with no arguments, elevation,
 working directory, or window handle. Widget/provider focused suites pass 6/6
-and 13/13; SDK passes 46/46, PlatformBroker 36/36, Settings 39/39, and packaged
-first-party AppContainer conformance remains 4/4. The current catalog is Start
+and 13/13; SDK passes 48/48, PlatformBroker 40/40, Settings 40/40, and packaged
+AppContainer conformance passes 5/5. The current catalog is Start
 Menu-only, iconless, and conservatively Application-only; packaged overlay
 hands-on evidence remains before closure.
 
@@ -800,12 +808,11 @@ actions, and valid controller snapshots.
 
 ## GBA-030 — YT Music is bundled instead of proving the Community addon path
 
-**Evidence:** YT Music currently ships in the host-owned bundled catalog and
-uses a temporary Job-only desktop-token exception so it can call the
-YTMDesktop2 loopback API and retain an optional bearer token. That makes it a
-useful UI/SDK reference, but it does not prove that an independent developer can
-package, install, authorize, run, update, recover, and remove the same addon
-through the public Community workflow.
+**Original evidence:** YT Music shipped in the host-owned trusted catalog and
+used a custom Job-only desktop worker with direct loopback/Credential Manager
+access. That could not prove that an independent developer could package,
+install, authorize, run, update, recover, and remove the same addon through the
+public Community workflow.
 
 **Required direction:** YT Music is the first Community addon integration
 reference, not a permanent Built-in widget. Its local companion access must be
@@ -813,6 +820,28 @@ provided by reusable exact-port loopback HTTP broker operations, and optional
 token persistence by a private per-widget secret service. The addon must not
 receive ambient network authority, direct Credential Manager access, a trusted
 desktop token, or another first-party-only escape.
+
+**Implementation evidence:** The host catalog and build no longer publish YT
+Music or its retired custom worker, and incremental builds remove the old
+runtime directory. The addon declares `network.loopback:13091` plus optional
+`storage.private-secrets.v1`, creates its production client only after public
+`HostServices` attachment, and never opens a socket, reads a persisted value,
+or calls Credential Manager. Its build helper stages the real payload and runs
+public validate/pack/install/enable commands. Community conformance builds that
+`.gbarwidget`, installs it into the current catalog model, launches the generic
+worker in the mandatory AppContainer, grants declarations through the consent
+store, pairs through host-side secret persistence, and invokes RB through one
+exact dashboard POST lease. It also asserts no trusted catalog/build fallback.
+Focused/provider tests cover bounded loopback, response sanitization, vault
+round trips, broker lifecycle/revocation, SDK validation, and YT behavior.
+Authenticated requests opt into host-side rejected-Bearer invalidation; an
+actual 401 deletes the exact scoped slot while the dependent lease is valid,
+and the widget clears local state without a second delete. Restart coverage
+confirms the rejected slot is absent.
+
+The complete conformance suite passes 5/5; YT Music passes 38/38 and
+PlatformBroker passes 40/40. Clean packaged controller/lifecycle testing on the
+real companion remains before closure.
 
 **Acceptance:**
 
@@ -823,12 +852,118 @@ desktop token, or another first-party-only escape.
    the same surfaces available to another developer.
 3. The generic package AppContainer launches it without a trusted-token
    fallback, while authenticated broker operations provide only its declared
-   exact-port loopback requests and private secret values.
+   exact-port loopback requests and host-side private-secret use; values are
+   never returned to the worker.
 4. Auto-connect, progress interpolation, artwork, transport/like/shuffle/repeat
    feedback, dashboard quick actions, nested controller navigation, lifecycle,
    crash recovery, update/rollback, and uninstall retain executable tests.
 5. A clean-machine local install and packaged Release playtest prove the full
-   author workflow before the temporary bundled/trusted exception is deleted.
+   author workflow, controller behavior, lifecycle recovery, and removal with
+   the trusted exception absent.
+
+## GBA-031 — Default components need a minimalist visual system
+
+**Evidence:** The SDK components are reusable, but repeated large radii, thick
+nested cards, bold labels, generous padding, and prominent focus borders make
+Settings and system-control widgets feel heavier than the requested console
+control-center design. Per-widget overrides would fragment the platform and
+force community authors to repair the same defaults.
+
+**Acceptance:**
+
+1. The component/theme layer defines one restrained hierarchy for panel,
+   section, row, divider, value, status, slider, and focus surfaces.
+2. Minimum controller targets and non-color state remain intact while redundant
+   backgrounds, radius, border weight, and typographic emphasis are reduced.
+3. First-party widgets consume shared defaults without private geometry or
+   focus hacks unavailable to an independent SDK author.
+4. Compact through 8K logical viewports, long labels, 150% text, high contrast,
+   and reduced transparency remain readable and unclipped.
+5. Packaged screenshots and controller traversal verify the complete component
+   set, not only one hand-tuned widget.
+
+## GBA-032 — GBSS transition declarations do not animate
+
+**Evidence:** `transition-duration` and `transition-easing` are accepted, typed,
+cascaded, and removable by reduced-motion policy, but the native renderer
+currently applies focused/selected/busy style changes immediately. Authors can
+declare a transition without seeing runtime interpolation.
+
+**Acceptance:**
+
+1. Documentation identifies transitions as non-animated until the renderer
+   implementation lands; tooling never implies otherwise.
+2. A host-owned bounded clock interpolates only an explicit safe property set,
+   with deterministic start, interruption, retarget, and completion behavior.
+3. Reduced motion makes every transition immediate and stops outstanding work.
+4. Hidden/background widgets produce no animation wakeups; frame scheduling
+   coalesces visible nodes and respects performance budgets.
+5. Native tests plus packaged visual/performance evidence cover focus, selected,
+   busy, rapid reversal, resize/DPI change, and widget replacement.
+
+## GBA-033 — Games & Apps is not yet a curated launch library
+
+**Evidence:** The current slice safely pages executable-backed Start Menu
+shortcuts, but exposes a broad application list without icons, source-aware
+grouping, game classification, hide/favorite/order controls, or a host-owned
+close-after-success flow. Closing on input would also hide launch failure and
+confuse queue acknowledgement with provider success.
+
+**Acceptance:**
+
+1. Catalog sources are explicit and bounded; supported AppsFolder and launcher
+   adapters retain provider-owned opaque identities and exact revalidation.
+2. The default view is a curated, user-controllable library with safe fallback
+   access to other applications; game classification is evidence-backed.
+3. Icons/artwork cross a bounded broker/cache contract and cannot become an
+   arbitrary package file or URL escape.
+4. One successful correlated launch closes the overlay and restores normal app
+   focus. Stale ID, provider failure, cancellation, or denial keeps the panel
+   open with focus and bounded feedback.
+5. Update/churn, duplicates, favorites/order, empty sources, and packaged
+   controller/resolution behavior have deterministic coverage.
+
+## GBA-034 — Network rows conflate focus and connection state
+
+**Evidence:** Wi-Fi and Bluetooth share controller row/card patterns, but focus,
+candidate selection, radio state, saved/paired state, and authoritative
+connection state are different concepts. A focused row can look connected, a
+Bluetooth row can imply an unsafe generic Connect action, and refresh churn can
+jump focus.
+
+**Acceptance:**
+
+1. Wi-Fi focus, saved/open/password-required state, connecting, connected, and
+   failure have distinct text/glyph/state cues; only supported `A` actions run.
+2. Bluetooth focus, present, paired, connected, and actionable profile/pairing
+   operations remain distinct; informational rows do not imply generic Connect.
+3. Wi-Fi and Bluetooth tabs preserve independent last focus and scroll position
+   across LB/RB switches and widget reopen.
+4. Scan/device/radio churn retains the exact stable item when possible, then a
+   deterministic nearest survivor, without moving to a destructive action.
+5. Empty, denied, radio-off, hardware-off, stale-ID, and packaged controller/
+   accessibility cases pass.
+
+## GBA-035 — Optional audio-provider failure can break the mixer
+
+**Evidence:** Audio Mixer composes master output, sessions, default-device
+names, and microphone controls from separate capabilities/providers. A denied,
+revoked, or unavailable optional slice must not blank healthy sections or
+rebuild focus onto an unrelated master control.
+
+**Acceptance:**
+
+1. Each audio section owns independent loading, healthy-empty, denied, revoked,
+   unavailable, and retry state.
+2. Master and application controls remain usable when microphone or device-name
+   services fail; optional loss never becomes a whole-widget error.
+3. Focus stays on the same semantic control when its section survives, moves to
+   a deterministic nearest control when it disappears, and never jumps to an
+   unrelated `+` action after a mute/slider command.
+4. Revocation, endpoint generation changes, session churn, partial recovery,
+   and rapid lifecycle transitions are race-tested.
+5. Packaged controller testing verifies partial grants and real provider
+   failure where safely reproducible.
 
 ## Closed issues
 

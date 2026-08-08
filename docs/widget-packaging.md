@@ -33,6 +33,11 @@ their textual form must already be canonical.
 The package filename is informational. Installation identity always comes from
 the validated manifest.
 
+`presentation.icon` is optional closed semantic metadata discovered from the
+manifest (default `connection`). It cannot name an asset, font, SVG, or drawing
+payload. YT Music uses `music` and is the first complete [Community-addon
+package reference](../samples/YtMusicWidget/README.md).
+
 The archive may contain regular files under `assets/`, but successful packing
 does not make them renderable. General package-asset resolution is not wired to
 the widget protocol yet. Images currently use the bounded HTTPS image node;
@@ -102,6 +107,13 @@ Directory ID and version must exactly match the validated manifest. Discovery
 fails closed when installed content is missing, malformed, reparse-backed, or
 identity-mismatched. Widget IDs use ordinal ordering; versions use descending
 `System.Version` ordering.
+
+After validation and extraction, installation computes a bounded SHA-256 digest
+over the normalized relative path, length, and bytes of every package file, then
+writes host-owned `.gbar-integrity.json`. That path is reserved and rejected if
+the archive supplies it. Discovery recomputes the digest in fixed ordinal path
+order and rejects missing/malformed metadata or any changed content. The
+integrity file is excluded from the digest it records.
 
 Schema-version-2 `catalog-state.json` stores enablement, presentation order,
 and an optional canonical `activeVersion` pin. New IDs are disabled by default
@@ -182,10 +194,12 @@ then trigger a complete bounded discovery/validation. The watcher is a change
 hint, never catalog authority.
 
 A semantically different complete catalog publishes a monotonically increasing
-revision for the lifetime of that bridge process. Invalid trusted JSON or
-invalid installed catalog/state retains the complete last-good catalog and
-revision. Invalid individual styles or unsupported capabilities omit only that
-package with bounded diagnostics. Reload and list never start workers.
+revision for the lifetime of that bridge process. Invalid trusted shell JSON
+retains the complete last-good catalog. Invalid installed state or package
+integrity publishes a trusted-only revision instead: Community registrations
+are removed synchronously, their running workers are retired, and a stale ID
+cannot relaunch. Invalid individual styles or unsupported capabilities omit
+only that package with bounded diagnostics. Reload and list never start workers.
 Watcher startup schedules one catch-up reload after both watchers are active,
 closing the load-to-watch mutation window.
 
@@ -218,11 +232,13 @@ catalog projection or consent document is invalid or incomplete.
 
 Every package joined from the current-user catalog is marked by trusted bridge
 policy as requiring AppContainer isolation. For unsigned packages, the host
-derives an authority ID from the asserted publisher, package ID, and exact
-immutable version. Each version therefore receives a distinct profile and
-consent identity; rollback returns to that exact version's prior authority,
-while an update cannot silently inherit it. Future signing will replace the
-self-asserted provenance input with verified publisher identity. Neither
+derives its authority ID from the host-verified content-tree digest, not the
+manifest's self-asserted publisher label. Each distinct byte tree therefore
+receives a distinct profile, consent identity, and private-secret namespace;
+rollback to the exact previously verified bytes returns to that prior authority,
+while changed bytes cannot silently inherit it even if package ID and version
+text are reused. Future signing can replace this content identity with verified
+signer authority that is stable across authenticated updates. Neither
 `manifest.json`, catalog state, worker arguments, nor widget protocol messages
 can select or weaken the isolation policy.
 
@@ -244,14 +260,19 @@ token fallback for an installed package.
 This execution boundary is independent of archive validation and publisher
 trust. A well-contained unsigned package is still unsigned. Public distribution
 still requires signing/revocation, CPU quotas, disk/profile quotas and cleanup,
-and a security audit/history surface. Trusted bundled Settings and YT Music
-workers temporarily remain Job-only because they require desktop-user
-resources; packages cannot request that exception.
-YT Music is not intended to remain Built-in: it is the first planned Community
-addon migration and conformance case. Until exact-port loopback HTTP and private
-per-widget secret access are brokered and the ordinary CLI install/AppContainer
-path passes clean-machine verification, its current trusted package is not
-evidence that an independently installed addon can request the same authority.
+and a security audit/history surface. Trusted bundled Settings temporarily
+remains Job-only for desktop-user resources; packages cannot request that
+exception.
+
+YT Music is the first Community-addon integration case. Its trusted catalog and
+custom worker were removed; `Build-CommunityPackage.ps1` stages its payload and
+uses the same public validate/pack/install/enable commands documented below.
+The installed addon runs in the generic package AppContainer and reaches only
+its separately declared/consented exact loopback port and private-secret
+service. Package conformance proves the public path without a fallback; clean
+packaged user testing remains open.
+Its exact-port and vault declarations remain ordinary permission review items;
+see [local companion HTTP and private secrets](community-companion-services.md).
 Win32k system-call disable is not enabled because the tested mitigation caused
 CoreCLR DLL initialization failure (`0xC0000142`); Job Object UI restrictions
 remain part of the enforced boundary.
@@ -263,8 +284,9 @@ the overlay cancels and abandons the sequence, after which the same revision can
 be announced again and a later open/list can catch up. An ordinary open-time
 failure does not start a retry loop. A new bridge session resets revision
 tracking, and stale lists cannot replace newer state. Bridge-side revision
-numbering also resets when the bridge process restarts. The current watcher and
-semantic comparison do not provide package signing or code-integrity proof.
+numbering also resets when the bridge process restarts. Host-sealed content-tree
+verification provides local installed-byte integrity, but the watcher, digest,
+and semantic comparison do not prove publisher identity or benign behavior.
 
 ## Remote acquisition
 

@@ -725,7 +725,7 @@ public sealed class WidgetBridgeServer(
 
         var requested = quickAction.Capability;
         if (!PlatformCapabilities.TryGet(requested.CapabilityId, out var capability) ||
-            capability.Kind != BrokerCapabilityKind.Control ||
+            capability.KindForOperation(requested.OperationId) != BrokerCapabilityKind.Control ||
             !capability.Operations.Contains(requested.OperationId))
             throw new BridgeProtocolException(
                 "Dashboard quick action names an unsupported control operation.");

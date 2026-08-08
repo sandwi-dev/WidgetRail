@@ -79,7 +79,7 @@ public sealed partial class SettingsWidget
                 foreach (var manifest in DiscoverBundledManifests(_bundledWidgetRoot))
                 {
                     var package = CreatePermissionPackage(
-                        manifest, installed: false, unknownDeclarations);
+                        manifest, manifest.Publisher, unknownDeclarations);
                     if (package.Capabilities.Count != 0)
                         discovered.TryAdd(package.Id, package);
                 }
@@ -88,7 +88,9 @@ public sealed partial class SettingsWidget
             {
                 var manifest = widget.ActiveVersion.Manifest;
                 var package = CreatePermissionPackage(
-                    manifest, installed: true, unknownDeclarations);
+                    manifest,
+                    InstalledWidgetAuthority.PublisherId(widget.ActiveVersion),
+                    unknownDeclarations);
                 if (package.Capabilities.Count != 0)
                     discovered.TryAdd(package.Id, package);
             }
@@ -225,14 +227,11 @@ public sealed partial class SettingsWidget
 
     private static PermissionPackage CreatePermissionPackage(
         WidgetManifest manifest,
-        bool installed,
+        string authorityPublisher,
         UnknownDeclarationAccumulator unknownDeclarations)
     {
         var capabilities = new List<DeclaredCapability>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var authorityPublisher = installed
-            ? InstalledWidgetAuthority.PublisherId(manifest)
-            : manifest.Publisher;
         foreach (var id in manifest.Permissions)
         {
             if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
@@ -781,8 +780,12 @@ public sealed partial class SettingsWidget
         _ => "Not decided — access is blocked",
     };
 
-    private static string CapabilityName(string id) => id switch
+    private static string CapabilityName(string id)
     {
+        if (PlatformCapabilities.TryGetLoopbackPort(id, out var port))
+            return $"Access local app on port {port}";
+        return id switch
+        {
         PlatformCapabilities.AudioSessionsReadV1 => "Read audio sessions",
         PlatformCapabilities.AudioSessionsControlV1 => "Control audio sessions",
         PlatformCapabilities.AudioOutputReadV1 => "Read master output state",
@@ -803,11 +806,20 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
+        PlatformCapabilities.PrivateSecretsV1 => "Store private connection secrets",
         _ => "Unsupported capability",
-    };
+        };
+    }
 
-    private static string CapabilityDescription(string id) => id switch
+    private static string CapabilityDescription(string id)
     {
+        if (PlatformCapabilities.TryGetLoopbackPort(id, out var port))
+            return $"Exchange bounded JSON with only 127.0.0.1:{port}. GET works while the " +
+                "widget is visible; POST requires an interactive widget or a host-issued dashboard " +
+                "gesture. The widget cannot choose another host or port, use DNS, follow redirects, " +
+                "configure a proxy, or open raw sockets.";
+        return id switch
+        {
         PlatformCapabilities.AudioSessionsReadV1 =>
             "See sanitized audio-session names, volume, mute, and activity state.",
         PlatformCapabilities.AudioSessionsControlV1 =>
@@ -860,8 +872,14 @@ public sealed partial class SettingsWidget
         PlatformCapabilities.MediaSessionsControlV1 =>
             "Use only the play, pause, previous, and next actions that Windows reports as supported " +
             "while the widget is interactive. It cannot automate an app or access its account.",
+        PlatformCapabilities.PrivateSecretsV1 =>
+            "Create, replace, inspect metadata for, or delete package-scoped secrets in Windows " +
+            "Credential Manager. Stored values are never returned to widget code; an exact-port " +
+            "loopback request can ask the trusted host to inject one as a Bearer value. Secrets " +
+            "remain available to authenticated updates from the same package publisher.",
         _ => "This capability is not supported.",
-    };
+        };
+    }
 
     private static void LinkVertical(List<WidgetElement> elements)
     {

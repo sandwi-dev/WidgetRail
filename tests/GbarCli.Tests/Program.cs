@@ -158,6 +158,9 @@ static async Task NewScaffolds()
     Assert.Contains("dev.test.media-deck", allText);
     Assert.Contains("ControllerButton.LeftBumper", allText);
     Assert.Contains("ProjectReference", File.ReadAllText(Path.Combine(destination, "MediaDeck.csproj")));
+    var manifest = ManifestJson.Deserialize(
+        await File.ReadAllBytesAsync(Path.Combine(destination, "manifest.json")));
+    Assert.Equal(WidgetGlyph.Connection, manifest.Presentation.Icon);
 }
 
 static async Task NewRejectsIdentity()

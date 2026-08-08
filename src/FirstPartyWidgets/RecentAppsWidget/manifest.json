@@ -13,6 +13,7 @@
     "assembly": "payload/RecentAppsWidget.dll",
     "type": "GameBarAlternative.FirstPartyWidgets.RecentApps.RecentAppsWidget"
   },
+  "presentation": { "icon": "play" },
   "permissions": [
     "system.activity.recent.read.v1"
   ],

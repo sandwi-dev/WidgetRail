@@ -13,6 +13,7 @@
     "assembly": "payload/SettingsWidget.dll",
     "type": "GameBarAlternative.FirstPartyWidgets.Settings.SettingsWidget"
   },
+  "presentation": { "icon": "settings" },
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": {

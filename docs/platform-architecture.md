@@ -112,10 +112,13 @@ memory ceiling; the job permits one active process and terminates the worker on
 job close, rejects unhandled-exception continuation, and applies the complete
 basic UI-restriction set.
 
-Installed/community workers additionally require a package-version-specific
-AppContainer. Until signing exists, the host hashes the asserted publisher,
-package ID, and exact immutable version into a separate unsigned authority ID;
-different versions cannot inherit profiles or consent. Before resume,
+Installed/community workers additionally require a package-content-specific
+AppContainer. Until signing exists, installation seals the complete normalized
+content tree and the host derives a separate unsigned authority ID from that
+verified digest rather than manifest publisher text. Different bytes cannot
+inherit profiles, consent, or private secrets even if their asserted ID/version
+text is unchanged; rollback to the exact verified bytes restores that authority.
+Before resume,
 the runtime grants its exact SID read/execute access to the generic executable
 and immutable package roots, creates a small allowlisted environment, and
 verifies the process is Low integrity with the expected
@@ -125,9 +128,10 @@ ACL only the desktop host and that SID, allow Low-integrity access, verify the
 expected worker PID, and then perform protocol nonce/identity authentication.
 Any failure aborts startup; there is no desktop-token fallback.
 
-Trusted bundled Settings and YT Music workers remain a temporary Job-only host
-policy because they still require desktop-user resources. A package manifest
-or worker message cannot select that exception. Job memory containment is not
+Trusted bundled Settings remains a temporary Job-only host policy because it
+still requires desktop-user resources. YT Music was removed from that policy
+and is installed as a normal Community package. A package manifest or worker
+message cannot select the exception. Job memory containment is not
 a CPU quota, and AppContainer creation does not yet provide disk/profile size
 quotas, stale-profile cleanup, or a user-facing audit surface.
 Win32k system-call disable is not active because its test configuration caused

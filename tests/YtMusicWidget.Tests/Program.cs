@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text;
 using System.Text.Json;
 using GameBarAlternative.Samples.YtMusicWidget;
@@ -7,11 +6,11 @@ using GameBarAlternative.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Endpoint validation permits only bounded loopback HTTP", EndpointValidation),
-    ("HTTP client parses now playing and sends authorization", HttpClientParsesSnapshot),
-    ("HTTP client maps rating command and body", HttpClientMapsCommand),
-    ("Windows Credential Manager persists and removes the token", WindowsCredentialStoreRoundTrip),
-    ("HTTP client reloads a durable credential", HttpClientLoadsDurableCredential),
+    ("Client is bound to the declared exact loopback capability", EndpointValidation),
+    ("Broker client parses now playing and requests host authorization", BrokerClientParsesSnapshot),
+    ("Broker client maps rating command and body", BrokerClientMapsCommand),
+    ("Private secret service persists and removes the token without reading it", PrivateSecretRoundTrip),
+    ("Broker client detects a durable private secret without reading it", BrokerClientLoadsDurableSecret),
     ("Pairing never sends stale authorization and replaces the token", PairingReplacesStaleCredential),
     ("HTTP 401 is classified as expired authorization", HttpUnauthorizedIsTyped),
     ("Disconnected UI offers controller-first connect and pair", DisconnectedUi),
@@ -65,17 +64,21 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
-static Task EndpointValidation()
+static async Task EndpointValidation()
 {
-    Assert.Equal("http://127.0.0.1:13091/", YtmDesktopApiClient.ValidateEndpoint("http://127.0.0.1:13091/api").AbsoluteUri);
-    Assert.Equal("http://localhost:39999/", YtmDesktopApiClient.ValidateEndpoint("http://localhost:39999").AbsoluteUri);
-    Assert.Equal("http://[::1]:13091/", YtmDesktopApiClient.ValidateEndpoint("http://[::1]:13091").AbsoluteUri);
-    Assert.Throws<InvalidOperationException>(() => YtmDesktopApiClient.ValidateEndpoint("https://127.0.0.1:13091"));
-    Assert.Throws<InvalidOperationException>(() => YtmDesktopApiClient.ValidateEndpoint("http://example.com:13091"));
-    Assert.Throws<InvalidOperationException>(() => YtmDesktopApiClient.ValidateEndpoint("http://127.0.0.1:9000"));
-    Assert.Throws<InvalidOperationException>(() => YtmDesktopApiClient.ValidateEndpoint("http://user@127.0.0.1:13091"));
-    Assert.Throws<InvalidOperationException>(() => YtmDesktopApiClient.ValidateEndpoint("http://127.0.0.1:13091?token=bad"));
-    return Task.CompletedTask;
+    var host = new BrokerClientHarness(request => BrokerJson("{\"authRequired\":false}"));
+    using var client = new YtmDesktopApiClient(host.Services);
+    _ = await client.GetStatusAsync();
+
+    Assert.Equal(13091, YtmDesktopApiClient.CompanionPort);
+    Assert.Equal("network.loopback:13091",
+        WidgetLoopbackCapabilities.CapabilityId(YtmDesktopApiClient.CompanionPort));
+    var request = host.Requests.Single();
+    Assert.Equal(false, request.IsPost);
+    Assert.Equal("/", request.Request.Path);
+    Assert.Equal(null, request.Request.BearerSecretSlot);
+    Assert.Equal(WidgetCommunityPlatformLimits.DefaultLoopbackTimeoutMilliseconds,
+        request.Request.TimeoutMilliseconds);
 }
 
 static async Task SurfaceContractAcrossConnectionStates()
@@ -123,7 +126,11 @@ static async Task SurfaceContractAcrossConnectionStates()
 
 static void AssertStandardSurface(ViewSnapshot snapshot)
 {
-    Assert.Equal(ProtocolConstants.SurfaceHintsVersion, snapshot.ProtocolVersion);
+    Assert.Equal(
+        snapshot.QuickActions.Any(action => action.Capability is not null)
+            ? ProtocolConstants.DashboardGestureAuthorityVersion
+            : ProtocolConstants.SurfaceHintsVersion,
+        snapshot.ProtocolVersion);
     Assert.True(snapshot.Surface is not null, "YT Music omitted its bounded surface hint.");
     Assert.Equal(WidgetSurfaceMode.Standard, snapshot.Surface!.Mode);
     Assert.Equal(760D, snapshot.Surface.PreferredWidth);
@@ -134,24 +141,21 @@ static void AssertStandardSurface(ViewSnapshot snapshot)
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
 }
 
-static async Task HttpClientParsesSnapshot()
+static async Task BrokerClientParsesSnapshot()
 {
-    var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath switch
+    var host = new BrokerClientHarness(request => request.Request.Path switch
     {
-        "/track" => Json("""
+        "/track" => BrokerJson("""
             {"video":{"title":"Example Song","author":"Example Artist","videoId":"video-1"},
              "music":{"album":"Example Album"},
              "meta":{"thumbnail":"https://img.example/cover.jpg","duration":245}}
             """),
-        "/track/state" => Json("""
+        "/track/state" => BrokerJson("""
             {"id":"video-1","playing":true,"liked":true,"disliked":false,"shuffle":true,"repeat":"one","uiProgress":42.5,"duration":245}
             """),
         _ => throw new InvalidOperationException("Unexpected request."),
-    });
-    using var client = new YtmDesktopApiClient(
-        token: " secret-token ",
-        handler: handler,
-        credentialStore: new FakeCredentialStore());
+    }) { SecretExists = true };
+    using var client = new YtmDesktopApiClient(host.Services);
     var snapshot = await client.GetSnapshotAsync();
     Assert.Equal("Example Song", snapshot.Title);
     Assert.Equal("Example Artist", snapshot.Artist);
@@ -163,100 +167,122 @@ static async Task HttpClientParsesSnapshot()
     Assert.Equal(YtMusicRepeatMode.One, snapshot.RepeatMode);
     Assert.Equal("video-1", snapshot.MetadataTrackId);
     Assert.True(snapshot.HasCompleteMetadata, "Complete API metadata was not identified.");
-    Assert.Equal(2, handler.Requests.Count);
-    Assert.True(handler.Requests.All(request => request.Authorization == "Bearer secret-token"), "Bearer token was not applied.");
+    Assert.Equal(2, host.Requests.Count);
+    Assert.True(host.Requests.All(request =>
+            request.Request.BearerSecretSlot == YtmDesktopApiClient.BearerSecretSlot),
+        "The client did not request host-side bearer injection.");
+    Assert.True(host.Requests.All(request =>
+            request.Request.Headers.All(header =>
+                !header.Name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))),
+        "The addon attempted to send a raw authorization header.");
 }
 
-static async Task HttpClientMapsCommand()
+static async Task BrokerClientMapsCommand()
 {
-    var handler = new RecordingHandler(_ => Json("{}"));
-    using var client = new YtmDesktopApiClient(
-        handler: handler,
-        credentialStore: new FakeCredentialStore());
+    var host = new BrokerClientHarness(_ => BrokerJson("{}"));
+    using var client = new YtmDesktopApiClient(host.Services);
     await client.SendCommandAsync(YtMusicCommand.Like, toggleState: false);
-    var request = handler.Requests.Single();
-    Assert.Equal("POST", request.Method);
-    Assert.Equal("/track/like", request.Path);
-    Assert.Equal("false", request.Body);
+    var request = host.Requests.Single();
+    Assert.Equal(true, request.IsPost);
+    Assert.Equal("/track/like", request.Request.Path);
+    Assert.Equal("false", request.Request.JsonBody);
 }
 
-static Task WindowsCredentialStoreRoundTrip()
+static async Task PrivateSecretRoundTrip()
 {
-    if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
-    var endpoint = $"http://127.0.0.1:{Random.Shared.Next(10000, 39999)}";
-    var token = $"credential-test-{Guid.NewGuid():N}";
-    var store = new WindowsCredentialManagerYtMusicCredentialStore(endpoint);
-    store.ClearToken();
-    try
+    var host = new BrokerClientHarness(request => request.Request.Path switch
     {
-        Assert.Equal(null, store.LoadToken());
-        store.SaveToken(token);
-        Assert.Equal(token, store.LoadToken());
-        store.ClearToken();
-        Assert.Equal(null, store.LoadToken());
-    }
-    finally
-    {
-        store.ClearToken();
-    }
-    return Task.CompletedTask;
+        "/auth/request" => BrokerJson("{\"token\":\"credential-test\"}"),
+        _ => BrokerJson("{}"),
+    });
+    using var client = new YtmDesktopApiClient(host.Services);
+
+    await client.CompletePairingAsync("739204");
+    Assert.Equal(1, host.SaveCalls);
+    Assert.Equal("credential-test", host.LastSavedSecret);
+    Assert.True(host.SecretExists, "The fake host did not persist the private secret.");
+    await client.ClearCredentialAsync();
+    Assert.Equal(1, host.DeleteCalls);
+    Assert.True(!host.SecretExists, "The fake host did not remove the private secret.");
 }
 
-static async Task HttpClientLoadsDurableCredential()
+static async Task BrokerClientLoadsDurableSecret()
 {
-    var store = new FakeCredentialStore("durable-token");
-    var handler = new RecordingHandler(_ => Json("""{"authRequired":true}"""));
-    using var client = new YtmDesktopApiClient(handler: handler, credentialStore: store);
+    var host = new BrokerClientHarness(_ => BrokerJson("""{"authRequired":true}"""))
+    {
+        SecretExists = true,
+    };
+    using var client = new YtmDesktopApiClient(host.Services);
 
     var status = await client.GetStatusAsync();
 
     Assert.True(status.AuthRequired, "Expected auth-required server configuration.");
     Assert.True(status.HasCredential, "The durable credential was not loaded.");
-    Assert.Equal("Bearer durable-token", handler.Requests.Single().Authorization);
+    Assert.Equal(YtmDesktopApiClient.BearerSecretSlot,
+        host.Requests.Single().Request.BearerSecretSlot);
+    Assert.Equal(1, host.ExistsCalls);
 }
 
 static async Task PairingReplacesStaleCredential()
 {
-    var store = new FakeCredentialStore("stale-token");
-    var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath switch
+    var host = new BrokerClientHarness(request => request.Request.Path switch
     {
-        "/auth/requestcode" => Json("""{"code":"739204"}"""),
-        "/auth/request" => Json("""{"token":"replacement-token"}"""),
-        "/" => Json("""{"authRequired":true}"""),
-        _ => throw new InvalidOperationException($"Unexpected request {request.RequestUri!.AbsolutePath}."),
-    });
-    using var client = new YtmDesktopApiClient(handler: handler, credentialStore: store);
+        "/auth/requestcode" => BrokerJson("""{"code":"739204"}"""),
+        "/auth/request" => BrokerJson("""{"token":"replacement-token"}"""),
+        "/" => BrokerJson("""{"authRequired":true}"""),
+        _ => throw new InvalidOperationException($"Unexpected request {request.Request.Path}."),
+    }) { SecretExists = true };
+    using var client = new YtmDesktopApiClient(host.Services);
 
     var pairing = await client.RequestPairingCodeAsync();
     await client.CompletePairingAsync(pairing.Code);
     var status = await client.GetStatusAsync();
 
-    Assert.Equal("replacement-token", store.Token);
-    Assert.Equal(1, store.SaveCalls);
-    Assert.True(handler.Requests.Take(2).All(request => request.Authorization is null),
+    Assert.Equal("replacement-token", host.LastSavedSecret);
+    Assert.Equal(1, host.SaveCalls);
+    Assert.True(host.Requests.Take(2).All(request => request.Request.BearerSecretSlot is null),
         "Pairing endpoints must not receive a stale bearer credential.");
-    Assert.Equal("Bearer replacement-token", handler.Requests[2].Authorization);
+    Assert.Equal(YtmDesktopApiClient.BearerSecretSlot,
+        host.Requests[2].Request.BearerSecretSlot);
+    Assert.Equal(WidgetCommunityPlatformLimits.MaximumLoopbackTimeoutMilliseconds,
+        host.Requests[1].Request.TimeoutMilliseconds);
     Assert.True(status.HasCredential, "The replacement token was not activated.");
 }
 
 static async Task HttpUnauthorizedIsTyped()
 {
-    var store = new FakeCredentialStore("rejected-token");
-    var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+    var host = new BrokerClientHarness(request =>
+        request.Request.BearerSecretSlot is null
+            ? BrokerJson("{\"authRequired\":true}")
+            : BrokerJson("credential rejected", statusCode: 401))
     {
-        Content = new StringContent("credential rejected", Encoding.UTF8, "application/json"),
-    });
-    using var client = new YtmDesktopApiClient(handler: handler, credentialStore: store);
-    var classified = false;
-    try
+        SecretExists = true,
+    };
+    using (var client = new YtmDesktopApiClient(host.Services))
     {
-        _ = await client.GetStatusAsync();
+        var classified = false;
+        try
+        {
+            _ = await client.GetStatusAsync();
+        }
+        catch (YtMusicAuthorizationRequiredException)
+        {
+            classified = true;
+        }
+        Assert.True(classified, "HTTP 401 did not use the authorization-required recovery path.");
+        Assert.True(host.Requests.Single().Request.InvalidateBearerSecretOnUnauthorized,
+            "Authenticated YT requests did not opt into host-side rejected-bearer invalidation.");
+        Assert.True(!host.SecretExists, "The host simulation retained the rejected durable bearer.");
+        Assert.Equal(1, host.UnauthorizedInvalidationCalls);
+        Assert.Equal(0, host.DeleteCalls);
     }
-    catch (YtMusicAuthorizationRequiredException)
+
+    using (var restarted = new YtmDesktopApiClient(host.Services))
     {
-        classified = true;
+        var status = await restarted.GetStatusAsync();
+        Assert.True(!status.HasCredential, "A restarted addon rediscovered the rejected bearer.");
+        Assert.Equal(null, host.Requests[^1].Request.BearerSecretSlot);
     }
-    Assert.True(classified, "HTTP 401 did not use the authorization-required recovery path.");
 }
 
 static Task DisconnectedUi()
@@ -750,7 +776,7 @@ static async Task UnauthorizedConnectRequiresPairing()
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
 
     Assert.Equal(YtMusicWidgetConnectionState.Disconnected, widget.ConnectionState);
-    Assert.Equal(1, fake.ClearCredentialCalls);
+    Assert.Equal(0, fake.ClearCredentialCalls);
     Assert.True(!fake.HasCredential, "The rejected credential was not removed from the client.");
     var snapshot = widget.Render().CreateSnapshot("ytmusic.test", 1);
     Assert.Equal("connect", snapshot.InitialFocusId);
@@ -772,7 +798,7 @@ static async Task UnauthorizedPollRequiresPairing()
     await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Connected);
     await WaitUntil(() => widget.ConnectionState == YtMusicWidgetConnectionState.Disconnected);
 
-    Assert.Equal(1, fake.ClearCredentialCalls);
+    Assert.Equal(0, fake.ClearCredentialCalls);
     Assert.True(!fake.HasCredential, "The rejected polling credential was not removed.");
     Assert.Equal("Authorization expired · pair device", Find(
         widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
@@ -1230,6 +1256,9 @@ static Task ManifestIsValid()
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.Equal(0, errors.Count);
     Assert.True(manifest.Permissions.Contains("network.loopback:13091"), "Loopback permission is missing.");
+    Assert.True(manifest.OptionalPermissions.Contains("storage.private-secrets.v1"),
+        "Private-secret permission is missing.");
+    Assert.Equal(WidgetGlyph.Music, manifest.Presentation.Icon);
     return Task.CompletedTask;
 }
 
@@ -1237,10 +1266,8 @@ static YtMusicPlaybackSnapshot PlayingSnapshot(string title) => new(
     "track-id", title, "Artist", "Album", "https://img.example/cover.jpg",
     true, false, false, 65, 240);
 
-static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK)
-{
-    Content = new StringContent(json, Encoding.UTF8, "application/json"),
-};
+static WidgetLoopbackJsonResponse BrokerJson(string json, int statusCode = 200) =>
+    new(statusCode, json, []);
 
 static async Task WaitUntil(Func<bool> predicate)
 {
@@ -1270,6 +1297,8 @@ static void AssertQuickAction(ViewSnapshot snapshot, ControllerButton button, st
     var action = snapshot.QuickActions.Single(item => item.Button == button);
     Assert.Equal(actionId, action.ActionId);
     Assert.Equal(label, action.Label);
+    Assert.Equal("network.loopback:13091", action.Capability?.CapabilityId);
+    Assert.Equal(WidgetLoopbackCapabilities.PostJsonOperation, action.Capability?.OperationId);
 }
 
 static void AssertWindowShortcut(ViewNode root, ControllerButton button, string actionId)
@@ -1279,7 +1308,7 @@ static void AssertWindowShortcut(ViewNode root, ControllerButton button, string 
     Assert.Equal(ControllerEventPhase.Pressed, shortcut.Phase);
 }
 
-file sealed record RecordedRequest(string Method, string Path, string? Authorization, string? Body);
+file sealed record BrokerRecordedRequest(bool IsPost, WidgetLoopbackJsonRequest Request);
 
 file sealed record SecondaryActionScenario(
     string NodeId,
@@ -1381,19 +1410,92 @@ file sealed class ScopedRoutingProbeYtMusicWidget(
     }
 }
 
-file sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+file sealed class BrokerClientHarness
 {
-    public List<RecordedRequest> Requests { get; } = [];
+    private readonly Func<BrokerRecordedRequest, WidgetLoopbackJsonResponse> _respond;
 
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    public BrokerClientHarness(Func<BrokerRecordedRequest, WidgetLoopbackJsonResponse> respond)
     {
-        var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-        Requests.Add(new RecordedRequest(
-            request.Method.Method,
-            request.RequestUri!.AbsolutePath,
-            request.Headers.Authorization?.ToString(),
-            body));
-        return respond(request);
+        _respond = respond;
+        Services = new WidgetTestHostServicesBuilder()
+            .WithHandler(
+                WidgetLoopbackCapabilities.GetJson(YtmDesktopApiClient.CompanionPort),
+                (request, cancellationToken) => RecordAsync(false, request, cancellationToken))
+            .WithHandler(
+                WidgetLoopbackCapabilities.PostJson(YtmDesktopApiClient.CompanionPort),
+                (request, cancellationToken) => RecordAsync(true, request, cancellationToken))
+            .WithHandler(
+                WidgetPrivateSecretCapabilities.Exists,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Assert.Equal(YtmDesktopApiClient.BearerSecretSlot, request.Slot);
+                    ExistsCalls++;
+                    return ValueTask.FromResult(new WidgetPrivateSecretExists(SecretExists));
+                })
+            .WithHandler(
+                WidgetPrivateSecretCapabilities.Metadata,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Assert.Equal(YtmDesktopApiClient.BearerSecretSlot, request.Slot);
+                    return ValueTask.FromResult(new WidgetPrivateSecretMetadata(SecretExists, null));
+                })
+            .WithHandler(
+                WidgetPrivateSecretCapabilities.Save,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Assert.Equal(YtmDesktopApiClient.BearerSecretSlot, request.Slot);
+                    SaveCalls++;
+                    LastSavedSecret = request.Secret;
+                    SecretExists = true;
+                    return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+                })
+            .WithHandler(
+                WidgetPrivateSecretCapabilities.Delete,
+                (request, cancellationToken) =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Assert.Equal(YtmDesktopApiClient.BearerSecretSlot, request.Slot);
+                    DeleteCalls++;
+                    SecretExists = false;
+                    LastSavedSecret = null;
+                    return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+                })
+            .Build();
+    }
+
+    public WidgetHostServices Services { get; }
+    public List<BrokerRecordedRequest> Requests { get; } = [];
+    public bool SecretExists { get; set; }
+    public string? LastSavedSecret { get; private set; }
+    public int ExistsCalls { get; private set; }
+    public int SaveCalls { get; private set; }
+    public int DeleteCalls { get; private set; }
+    public int UnauthorizedInvalidationCalls { get; private set; }
+
+    private ValueTask<WidgetLoopbackJsonResponse> RecordAsync(
+        bool isPost,
+        WidgetLoopbackJsonRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var recorded = new BrokerRecordedRequest(isPost, request);
+        Requests.Add(recorded);
+        var response = _respond(recorded);
+        if (response.StatusCode == 401 &&
+            request is
+            {
+                InvalidateBearerSecretOnUnauthorized: true,
+                BearerSecretSlot: not null,
+            })
+        {
+            SecretExists = false;
+            LastSavedSecret = null;
+            UnauthorizedInvalidationCalls++;
+        }
+        return ValueTask.FromResult(response);
     }
 }
 
@@ -1423,7 +1525,11 @@ file sealed class FakeClient : IYtMusicClient
     {
         var call = Interlocked.Increment(ref _statusCalls);
         var failure = StatusException ?? StatusFailure?.Invoke(call);
-        if (failure is not null) throw failure;
+        if (failure is not null)
+        {
+            if (failure is YtMusicAuthorizationRequiredException) HasCredential = false;
+            throw failure;
+        }
         return StatusTask ?? Task.FromResult(StatusInfo with
         {
             HasCredential = StatusInfo.HasCredential || HasCredential,
@@ -1434,7 +1540,11 @@ file sealed class FakeClient : IYtMusicClient
     {
         var call = Interlocked.Increment(ref _snapshotCalls);
         var failure = SnapshotFailure?.Invoke(call);
-        if (failure is not null) throw failure;
+        if (failure is not null)
+        {
+            if (failure is YtMusicAuthorizationRequiredException) HasCredential = false;
+            throw failure;
+        }
         return SnapshotAsync?.Invoke(call, cancellationToken) ?? Task.FromResult(Snapshot);
     }
 
@@ -1459,10 +1569,11 @@ file sealed class FakeClient : IYtMusicClient
         HasCredential = true;
     }
 
-    public void ClearCredential()
+    public Task ClearCredentialAsync(CancellationToken cancellationToken = default)
     {
         ClearCredentialCalls++;
         HasCredential = false;
+        return Task.CompletedTask;
     }
 }
 
@@ -1475,27 +1586,6 @@ file sealed class ManualTimeProvider : TimeProvider
 
     public void Advance(TimeSpan interval) =>
         Interlocked.Add(ref _timestamp, interval.Ticks);
-}
-
-file sealed class FakeCredentialStore(string? token = null) : IYtMusicCredentialStore
-{
-    public string? Token { get; private set; } = token;
-    public int SaveCalls { get; private set; }
-    public int ClearCalls { get; private set; }
-
-    public string? LoadToken() => Token;
-
-    public void SaveToken(string value)
-    {
-        SaveCalls++;
-        Token = value;
-    }
-
-    public void ClearToken()
-    {
-        ClearCalls++;
-        Token = null;
-    }
 }
 
 file static class Assert

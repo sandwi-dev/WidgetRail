@@ -354,7 +354,10 @@ public sealed class WidgetCatalog
                 if (!FileSystemSafety.IsWithin(versionDirectory, entrypointPath) || !File.Exists(entrypointPath))
                     throw new WidgetPackageException("missing_entrypoint", $"Installed widget entrypoint is missing: {entrypointPath}");
                 FileSystemSafety.EnsureNoReparsePoints(_root, entrypointPath);
-                result.Add(new InstalledWidgetVersion(manifest.Id, version, versionDirectory, manifest));
+                var contentDigest = InstalledPackageIntegrity.Verify(
+                    _root, versionDirectory, _options);
+                result.Add(new InstalledWidgetVersion(
+                    manifest.Id, version, versionDirectory, manifest, contentDigest));
             }
         }
         return result.OrderBy(item => item.Id, StringComparer.Ordinal)

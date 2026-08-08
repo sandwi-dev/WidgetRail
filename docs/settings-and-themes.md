@@ -210,8 +210,11 @@ Up/Down navigation and focus-follow. The pages contain no duplicate Back row;
 B returns exactly one level. Grant is accepted only from the active explicit
 confirmation page. Deny/revoke is immediate there. Decisions are atomically
 stored by package ID, publisher ID, and capability ID. Missing/malformed
-catalog or consent state disables actions and shows sanitized diagnostics;
-unknown declarations and stale/undeclared decisions are hidden. Required
+catalog or consent state disables actions and shows sanitized diagnostics.
+Unknown declarations and stale/undeclared saved decisions are excluded from
+normal editable permission rows because they cannot grant current authority;
+the focusable **Review unsupported or inactive access** row shows their exact
+sanitized identities read-only. Required
 capabilities are not auto-granted, including for first-party packages. The
 exact retired `system.activity.recent.activate.v1` decision is tombstoned:
 loading filters it without discarding current decisions, and the next atomic
@@ -239,12 +242,15 @@ A controller-selectable **Refresh** action on the Settings root performs the
 same bounded settings, theme, installed-package, and permission reload while
 Settings remains visible. Selecting an installed widget version also refreshes
 its permission projection immediately, because both capability declarations
-and the host-derived unsigned package authority may change with exact version.
+and the host-derived unsigned package authority change with verified package
+content (including ordinary version changes).
 A process/identity/declaration policy change retires the old worker and binds
 the next lazy start to the new declarations; presentation-only changes preserve
 a compatible worker while atomically replacing validated style/quick-action
-metadata. Invalid reloads retain last-good state. Consent decisions are separate
-and take effect without a catalog or worker restart. See [widget
+metadata. Invalid trusted shell reloads retain last-good state; invalid
+installed state/integrity removes Community registrations and retires their
+workers. Consent decisions are separate and take effect without a catalog or
+worker restart. See [widget
 capabilities](capabilities.md) for author behavior and the security boundary.
 
 The manifest requests no permissions, budgets 32 MB and 1 Hz, and declares

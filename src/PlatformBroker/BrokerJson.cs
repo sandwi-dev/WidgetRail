@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Encodings.Web;
 
 namespace GameBarAlternative.PlatformBroker;
 
@@ -30,10 +31,12 @@ public sealed record BrokerEventEnvelope(
 public static class BrokerJson
 {
     public const int ProtocolVersion = 1;
-    public const int MaximumRequestBytes = 32 * 1024;
+    public const int MaximumRequestBytes = 64 * 1024;
     public const int MaximumEventBytes = 64 * 1024;
+    public const int MaximumResponseBytes = 224 * 1024;
     public const int MaximumDepth = 16;
-    public const int MaximumStringLength = 4096;
+    public const int MaximumTransportStringLength =
+        CommunityPlatformLimits.MaximumLoopbackResponseBodyUtf8Bytes;
     public const int MaximumArrayItems = 256;
     private static readonly JsonSerializerOptions Options = CreateOptions();
 
@@ -60,7 +63,7 @@ public static class BrokerJson
     public static byte[] SerializeResponse(BrokerResponseEnvelope response)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(response, Options);
-        if (bytes.Length > MaximumEventBytes)
+        if (bytes.Length > MaximumResponseBytes)
             throw new BrokerException("response_too_large", "Broker response exceeds its bound.");
         return bytes;
     }
@@ -118,7 +121,7 @@ public static class BrokerJson
                     break;
                 case JsonValueKind.String:
                     var text = value.GetString() ?? string.Empty;
-                    if (text.Length > MaximumStringLength || text.Any(char.IsControl))
+                    if (text.Length > MaximumTransportStringLength || text.Any(char.IsControl))
                         throw new BrokerException(code, "Broker string exceeds its bound.");
                     break;
                 case JsonValueKind.Number:
@@ -185,6 +188,7 @@ public static class BrokerJson
             PropertyNameCaseInsensitive = false,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             MaxDepth = MaximumDepth,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase,
             allowIntegerValues: false));

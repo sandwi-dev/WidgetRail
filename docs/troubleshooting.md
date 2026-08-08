@@ -259,8 +259,9 @@ Direct sockets and arbitrary desktop-user files are intentionally unavailable
 to installed/community code. Use declared typed `HostServices` audio/network
 operations and grant them separately in Settings. A broker request still fails
 closed on missing declaration/consent, Background lifecycle, wrong PID, nonce,
-or package/publisher/instance identity. Bundled Settings and YT Music are a
-temporary trusted Job-only exception, not evidence that packages can opt out.
+or package/publisher/instance identity. Bundled Settings is the only temporary
+trusted Job-only exception. YT Music now uses the normal Community package,
+AppContainer, broker, and consent path; no package can opt out.
 Win32k disable is not enabled because its tested configuration caused CoreCLR
 DLL initialization failure (`0xC0000142`); Job Object UI restrictions are the
 active UI containment control.
@@ -350,6 +351,25 @@ the overlay; it is not forwarded to a widget or evidence of general mouse UI.
 
 ## YT Music state snaps back or stops updating
 
+YT Music is a Community package, so first confirm it appears under Installed
+widgets and is enabled, then grant `network.loopback:13091` under Permissions.
+If YTMDesktop2 requires authentication, grant the separate optional private-
+secret capability before pairing. Enable YTMDesktop2's companion API on its
+standard port; the addon never scans other ports or bypasses denied consent.
+
+`loopback_unavailable` means nothing accepted the exact local connection;
+`loopback_timeout` means the bounded request expired. `secret_not_found`
+returns to pairing. A revoked/denied vault may leave an authentication-disabled
+companion usable, but authenticated pairing cannot persist. Do not paste raw
+service bodies or bearer values into diagnostics or issues.
+
+YT Music's authenticated requests opt into host-side rejected-Bearer
+invalidation. If YTMDesktop2 returns HTTP 401, the host deletes the exact scoped
+slot before the widget receives that status; the widget clears only local state
+and offers pairing again. If deletion fails or its consent/lifecycle lease is
+revoked, the request surfaces that typed error instead of returning a misleading
+401 with the rejected credential still stored.
+
 The reference widget works only while the host marks it active. It locally
 interpolates progress at four Hz and requests authoritative YTMDesktop2 state
 every two seconds. Transport and rating commands are optimistic for at most two
@@ -360,6 +380,10 @@ A failed command restores the prior snapshot and keeps connected controls
 available with a bounded error status. Next/previous set visible progress to
 zero but retain old metadata until the companion reports a changed track. The
 progress control is display-only; seeking and scrubbing are not implemented.
+
+For packaging or consent issues, follow the [YT Music Community addon
+workflow](../samples/YtMusicWidget/README.md#build-and-tests) and [local
+companion service errors](community-companion-services.md#errors-and-recovery).
 
 ## Remote artwork is missing
 

@@ -3,21 +3,6 @@
   "genericWorkerExecutable": "runtime/WidgetWorkerHost/WidgetWorkerHost.exe",
   "widgets": [
     {
-      "id": "yt-music",
-      "packageId": "org.gbar.firstparty.ytmusic",
-      "publisherId": "org.gbar.firstparty",
-      "name": "YT Music",
-      "instanceId": "yt-music.default",
-      "icon": "music",
-      "workerExecutable": "runtime/YtMusic/YtMusicWidget.Worker.exe",
-      "styleFile": "runtime/YtMusic/styles/default.gbss",
-      "memoryLimitMb": 64,
-      "residencyPolicy": { "schemaVersion": 1, "mode": "suspend-when-hidden" },
-      "workerArguments": [],
-      "declaredCapabilities": [],
-      "quickActions": []
-    },
-    {
       "id": "settings",
       "packageId": "org.gbar.firstparty.settings",
       "publisherId": "org.gbar.firstparty",

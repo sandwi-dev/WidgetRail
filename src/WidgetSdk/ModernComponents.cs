@@ -25,6 +25,141 @@ public sealed record SegmentedTab(
 /// </summary>
 public static partial class UI
 {
+    /// <summary>
+    /// Creates a flat, read-only label/value row. The row never enters focus;
+    /// use <see cref="ChoiceRow"/> when the whole row represents an action.
+    /// </summary>
+    public static RowElement ValueRow(
+        string label,
+        string value,
+        string id,
+        string? description = null,
+        WidgetGlyph? glyph = null,
+        string? valueAccessibilityLabel = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+        var children = new List<WidgetElement>();
+        if (glyph is { } semanticGlyph)
+        {
+            children.Add(new IconElement(
+                StableIdentifier.Child(id, "icon"),
+                semanticGlyph,
+                label)
+            {
+                StyleClasses = ["gbar-value-row__icon"],
+            });
+        }
+
+        var textChildren = new List<WidgetElement>
+        {
+            new TextElement(StableIdentifier.Child(id, "label"), label, label)
+            {
+                StyleClasses = ["gbar-value-row__label"],
+            },
+        };
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            textChildren.Add(new TextElement(
+                StableIdentifier.Child(id, "description"),
+                description,
+                description)
+            {
+                StyleClasses = ["gbar-value-row__description"],
+            });
+        }
+
+        children.Add(new StackElement(StableIdentifier.Child(id, "text"), textChildren)
+        {
+            StyleClasses = ["gbar-value-row__text"],
+        });
+        children.Add(new TextElement(
+            StableIdentifier.Child(id, "value"),
+            value,
+            string.IsNullOrWhiteSpace(valueAccessibilityLabel)
+                ? $"{label}: {value}"
+                : valueAccessibilityLabel)
+        {
+            StyleClasses = ["gbar-value-row__value"],
+        });
+
+        return new RowElement(id, children)
+        {
+            StyleClasses = ["gbar-value-row"],
+        };
+    }
+
+    /// <summary>
+    /// Creates one full-row controller focus stop for a choice or list action.
+    /// Selected, Disabled, and Busy state remain semantic protocol state, so
+    /// changing any of them never changes the stable focus ID.
+    /// </summary>
+    public static ButtonElement ChoiceRow(
+        string label,
+        string action,
+        string id,
+        bool isSelected = false,
+        bool isDisabled = false,
+        bool isBusy = false,
+        WidgetGlyph? glyph = null,
+        string? accessibilityLabel = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        var accessibleName = string.IsNullOrWhiteSpace(accessibilityLabel)
+            ? label
+            : accessibilityLabel;
+        var states = new List<string>
+        {
+            isSelected ? "Selected" : "Not selected",
+        };
+        if (isDisabled) states.Add("Unavailable");
+        if (isBusy) states.Add("Busy");
+
+        return new ButtonElement(id, label, action)
+        {
+            AccessibilityLabel = $"{accessibleName}, {string.Join(", ", states)}",
+            Glyph = glyph ?? (isSelected ? WidgetGlyph.Check : null),
+            IsSelected = isSelected ? true : null,
+            IsDisabled = isDisabled ? true : null,
+            IsBusy = isBusy ? true : null,
+            StyleClasses =
+            [
+                "gbar-choice-row",
+                isSelected ? "gbar-choice-row--selected" : "gbar-choice-row--idle",
+            ],
+        };
+    }
+
+    /// <summary>
+    /// Creates a nonfocusable, themeable controller-help pair. It documents an
+    /// action but never registers the shortcut; bind input explicitly on the
+    /// owning button or input-scope container.
+    /// </summary>
+    public static RowElement ControllerHint(
+        ControllerButton button,
+        string label,
+        string id)
+    {
+        EnsureDefined(button, nameof(button));
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        var (shortName, spokenName) = ControllerButtonNames(button);
+        return new RowElement(id,
+        [
+            new TextElement(StableIdentifier.Child(id, "key"), shortName, spokenName)
+            {
+                StyleClasses = ["gbar-controller-hint__key"],
+            },
+            new TextElement(StableIdentifier.Child(id, "label"), label, label)
+            {
+                StyleClasses = ["gbar-controller-hint__label"],
+            },
+        ])
+        {
+            StyleClasses = ["gbar-controller-hint"],
+        };
+    }
+
     public static ButtonElement IconButton(
         WidgetGlyph glyph,
         string action,
@@ -377,6 +512,28 @@ public static partial class UI
 
     private static string Token<T>(T value) where T : struct, Enum =>
         value.ToString().ToLowerInvariant();
+
+    private static (string ShortName, string SpokenName) ControllerButtonNames(
+        ControllerButton button) => button switch
+    {
+        ControllerButton.A => ("A", "A button"),
+        ControllerButton.B => ("B", "B button"),
+        ControllerButton.X => ("X", "X button"),
+        ControllerButton.Y => ("Y", "Y button"),
+        ControllerButton.LeftBumper => ("LB", "Left bumper"),
+        ControllerButton.RightBumper => ("RB", "Right bumper"),
+        ControllerButton.LeftTrigger => ("LT", "Left trigger"),
+        ControllerButton.RightTrigger => ("RT", "Right trigger"),
+        ControllerButton.DPadUp => ("D-pad up", "D-pad up"),
+        ControllerButton.DPadDown => ("D-pad down", "D-pad down"),
+        ControllerButton.DPadLeft => ("D-pad left", "D-pad left"),
+        ControllerButton.DPadRight => ("D-pad right", "D-pad right"),
+        ControllerButton.LeftStick => ("LS", "Left stick button"),
+        ControllerButton.RightStick => ("RS", "Right stick button"),
+        ControllerButton.Menu => ("Menu", "Menu button"),
+        ControllerButton.View => ("View", "View button"),
+        _ => throw new ArgumentOutOfRangeException(nameof(button)),
+    };
 
     private static void EnsureDefined<T>(T value, string parameterName) where T : struct, Enum
     {

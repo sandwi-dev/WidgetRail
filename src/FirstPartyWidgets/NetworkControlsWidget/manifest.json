@@ -13,6 +13,7 @@
     "assembly": "payload/NetworkControlsWidget.dll",
     "type": "GameBarAlternative.FirstPartyWidgets.NetworkControls.NetworkControlsWidget"
   },
+  "presentation": { "icon": "wifi" },
   "permissions": [
     "system.network.read.v1",
     "system.network.wifi.read.v1",

@@ -107,6 +107,9 @@ public sealed class WidgetPackageInstaller
             if (prePublish is not null)
                 await prePublish(stagedInspection, cancellationToken);
 
+            var contentDigest = InstalledPackageIntegrity.Seal(
+                _root, stage, _options);
+
             var idParent = Path.Combine(_packagesRoot, stagedInspection.Id);
             Directory.CreateDirectory(idParent);
             FileSystemSafety.EnsureNoReparsePoints(_root, idParent);
@@ -121,7 +124,8 @@ public sealed class WidgetPackageInstaller
                 stagedInspection.Id,
                 stagedInspection.Version,
                 destination,
-                stagedManifest);
+                stagedManifest,
+                contentDigest);
         }
         finally
         {
@@ -288,6 +292,11 @@ public sealed class WidgetPackageInstaller
             throw new WidgetPackageException("invalid_path", $"Archive entry path is invalid or ambiguous: '{value}'.");
         isDirectory = value.EndsWith("/", StringComparison.Ordinal);
         var path = isDirectory ? value[..^1] : value;
+        if (string.Equals(
+                path, InstalledPackageIntegrity.MetadataFileName,
+                StringComparison.OrdinalIgnoreCase))
+            throw new WidgetPackageException(
+                "reserved_path", "Package contains a host-reserved integrity path.");
         if (path.Length == 0 || path.StartsWith("/", StringComparison.Ordinal) || Path.IsPathRooted(path))
             throw new WidgetPackageException("invalid_path", $"Archive entry path is not relative: '{value}'.");
 

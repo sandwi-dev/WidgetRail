@@ -6,6 +6,7 @@ using GameBarAlternative.WindowsNetworkProvider;
 using GameBarAlternative.WindowsActivityProvider;
 using GameBarAlternative.WindowsBluetoothProvider;
 using GameBarAlternative.WindowsMediaProvider;
+using GameBarAlternative.WindowsCommunityProvider;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -56,13 +57,16 @@ internal static class Program
             await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
             var consentStore = new ConsentStore(
                 Path.Combine(settingsPaths.RootDirectory, "consent"));
+            await using var communityBackend = new WindowsCommunityPlatformBackend();
             await using var platformBackend = new CompositePlatformBrokerBackend(
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend(),
                 new WindowsActivityPlatformBackend(),
                 new WindowsBluetoothPlatformBackend(),
                 new WindowsMediaPlatformBackend(),
-                new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider());
+                new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider(),
+                communityBackend,
+                communityBackend);
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor);

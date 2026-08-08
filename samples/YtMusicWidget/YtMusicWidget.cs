@@ -32,11 +32,11 @@ public class YtMusicWidget : Widget
     };
     private static readonly IReadOnlyList<WidgetQuickAction> ConnectedQuickActions =
     [
-        new(ControllerButton.LeftBumper, "previous", "Previous track"),
-        new(ControllerButton.X, "toggle-playback", "Play or pause"),
-        new(ControllerButton.RightBumper, "next", "Next track"),
+        new(ControllerButton.LeftBumper, "previous", "Previous track", LoopbackControlAuthority()),
+        new(ControllerButton.X, "toggle-playback", "Play or pause", LoopbackControlAuthority()),
+        new(ControllerButton.RightBumper, "next", "Next track", LoopbackControlAuthority()),
     ];
-    private readonly IYtMusicClient _client;
+    private IYtMusicClient? _client;
     private readonly SemaphoreSlim _actionGate = new(1, 1);
     private readonly SemaphoreSlim _clientGate = new(1, 1);
     private readonly object _stateLock = new();
@@ -64,7 +64,7 @@ public class YtMusicWidget : Widget
         YtMusicUpdatePolicy? updatePolicy = null,
         TimeProvider? timeProvider = null)
     {
-        _client = client ?? new YtmDesktopApiClient();
+        _client = client;
         _updatePolicy = updatePolicy ?? new YtMusicUpdatePolicy();
         _updatePolicy.Validate();
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -74,6 +74,24 @@ public class YtMusicWidget : Widget
     public YtMusicWidgetConnectionState ConnectionState
     {
         get { lock (_stateLock) return _connectionState; }
+    }
+
+    private static WidgetQuickActionCapability LoopbackControlAuthority() => new(
+        WidgetLoopbackCapabilities.CapabilityId(YtmDesktopApiClient.CompanionPort),
+        WidgetLoopbackCapabilities.PostJsonOperation);
+
+    private IYtMusicClient Client
+    {
+        get
+        {
+            var current = Volatile.Read(ref _client);
+            if (current is not null) return current;
+            var created = new YtmDesktopApiClient(HostServices);
+            var winner = Interlocked.CompareExchange(ref _client, created, null);
+            if (winner is null) return created;
+            created.Dispose();
+            return winner;
+        }
     }
 
     public override WidgetView Render()
@@ -262,6 +280,13 @@ public class YtMusicWidget : Widget
             Interlocked.Exchange(ref _autoConnectStarted, 0);
     }
 
+    protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
+    {
+        var client = Interlocked.Exchange(ref _client, null);
+        (client as IDisposable)?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
     private async Task AutoConnectAsync(CancellationToken activeLifetime)
     {
         var entered = false;
@@ -300,7 +325,7 @@ public class YtMusicWidget : Widget
         }
         catch (YtMusicAuthorizationRequiredException)
         {
-            SetAuthorizationRequired();
+            await SetAuthorizationRequiredAsync().ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -366,7 +391,7 @@ public class YtMusicWidget : Widget
             await _clientGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                var status = await _client.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+                var status = await Client.GetStatusAsync(cancellationToken).ConfigureAwait(false);
                 if (status.AuthRequired && !status.HasCredential)
                 {
                     SetState(YtMusicWidgetConnectionState.Disconnected, "Connected · pairing required", pairingCode: null);
@@ -389,7 +414,7 @@ public class YtMusicWidget : Widget
         }
         catch (YtMusicAuthorizationRequiredException)
         {
-            SetAuthorizationRequired();
+            await SetAuthorizationRequiredAsync().ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -405,9 +430,9 @@ public class YtMusicWidget : Widget
             await _clientGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                var pairing = await _client.RequestPairingCodeAsync(cancellationToken).ConfigureAwait(false);
+                var pairing = await Client.RequestPairingCodeAsync(cancellationToken).ConfigureAwait(false);
                 SetState(YtMusicWidgetConnectionState.Pairing, "Approve this code in YTMDesktop2", pairing.Code);
-                await _client.CompletePairingAsync(pairing.Code, cancellationToken).ConfigureAwait(false);
+                await Client.CompletePairingAsync(pairing.Code, cancellationToken).ConfigureAwait(false);
                 await FetchConnectedSnapshotAsync(
                     force: true,
                     cancellationToken,
@@ -425,7 +450,7 @@ public class YtMusicWidget : Widget
         }
         catch (YtMusicAuthorizationRequiredException)
         {
-            SetAuthorizationRequired();
+            await SetAuthorizationRequiredAsync().ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -452,7 +477,7 @@ public class YtMusicWidget : Widget
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             if (exception is YtMusicAuthorizationRequiredException)
-                SetAuthorizationRequired();
+                await SetAuthorizationRequiredAsync().ConfigureAwait(false);
             else
                 SetError(exception);
         }
@@ -476,7 +501,7 @@ public class YtMusicWidget : Widget
         Invalidate();
         try
         {
-            await _client.SendCommandAsync(
+            await Client.SendCommandAsync(
                 command,
                 cancellationToken,
                 optimistic.ToggleState).ConfigureAwait(false);
@@ -501,7 +526,7 @@ public class YtMusicWidget : Widget
         catch (YtMusicAuthorizationRequiredException)
         {
             RollBackOptimisticState(optimistic, "Authorization expired");
-            SetAuthorizationRequired();
+            await SetAuthorizationRequiredAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -599,7 +624,7 @@ public class YtMusicWidget : Widget
                 }
                 catch (YtMusicAuthorizationRequiredException)
                 {
-                    SetAuthorizationRequired();
+                    await SetAuthorizationRequiredAsync().ConfigureAwait(false);
                     return;
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
@@ -635,7 +660,7 @@ public class YtMusicWidget : Widget
         long? expectedTransportGeneration = null,
         bool establishConnection = false)
     {
-        var snapshot = await _client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         if (expectedTransportGeneration is { } expectedBeforeLock &&
             expectedBeforeLock != Interlocked.Read(ref _transportRefreshGeneration))
             return false;
@@ -1072,25 +1097,16 @@ public class YtMusicWidget : Widget
         SetState(YtMusicWidgetConnectionState.Error, SafeStatus(exception), pairingCode: null);
     }
 
-    private void SetAuthorizationRequired()
+    private Task SetAuthorizationRequiredAsync()
     {
         Interlocked.Increment(ref _transportRefreshGeneration);
         CancelTransportRefresh();
-        try
-        {
-            _client.ClearCredential();
-        }
-        catch (Exception exception)
-        {
-            SetError(exception);
-            return;
-        }
-
         lock (_stateLock) _pendingOptimistic.Clear();
         SetState(
             YtMusicWidgetConnectionState.Disconnected,
             "Authorization expired · pair device",
             pairingCode: null);
+        return Task.CompletedTask;
     }
 
     private static string SafeStatus(Exception exception)

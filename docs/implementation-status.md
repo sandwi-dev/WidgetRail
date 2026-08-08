@@ -57,7 +57,8 @@ Up/Down navigation.
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network/Bluetooth/recent-activity/app-library/media-session services,
-  descriptors, DTOs, events, and errors.
+  exact-port loopback JSON, write-only private secrets, descriptors, DTOs,
+  events, and errors.
 - `WidgetRuntime`: lazy out-of-process workers over bounded framed JSON with
   explicit lifecycle transitions, per-start host-owned companion sessions,
   timeouts, failure reporting, and limited restart. Installed/community workers
@@ -88,18 +89,21 @@ Up/Down navigation.
 - `PlatformSettings`: strict atomic/cross-process appearance persistence,
   version-pinned development themes, built-in default, safe theme discovery,
   layer composition, and last-good snapshots.
-- `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, immutable versions,
-  schema-1 state migration, fail-closed exact version pins, discovery,
+- `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, host-sealed content-
+  tree integrity, immutable versions, schema-1 state migration, fail-closed
+  exact version pins, discovery,
   enablement, and pin-preserving order persistence. Enabled compatible packages
   join complete validated live bridge revisions and remain lazy until first use.
-- `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity/app-library/media
+- `PlatformBroker`: a version-1 audio/network/Bluetooth/recent-activity/app-library/media/
+  exact-loopback/private-secret
   capability foundation with a closed versioned grant vocabulary, SID/Low-
   label/PID-bound isolated endpoints plus nonce/
   identity authentication, manifest/consent/lifecycle enforcement, strict
   bounded DTOs/events, atomic consent persistence, bounded/coalesced
   subscriptions, and a deterministic simulator. It is connected to widget
   `HostServices`; the trusted bridge composes the real Windows audio, network,
-  Bluetooth, foreground-activity, Start Menu app-library, and media backends.
+  Bluetooth, foreground-activity, Start Menu app-library, media, and community-
+  companion backends.
 - `WindowsAudioProvider`: an event-driven Core Audio backend for sanitized
   per-application sessions on the current default multimedia render endpoint.
   A dedicated MTA owns native objects; callbacks only enqueue coalesced refresh
@@ -135,6 +139,15 @@ Up/Down navigation.
   with broker-issued process-lifetime IDs, retains multiple sessions from the
   same source application, controls the exact selected session, and does not
   expose AUMID, PID, executable path, window handle, or raw platform objects.
+- `WindowsCommunityProvider`: constrained JSON GET/POST to one declared
+  nonprivileged IPv4 loopback port plus package-scoped write-only private
+  secret slots. It disables DNS, proxy, redirects, cookies, decompression, and
+  raw socket exposure; streams bounded strict-JSON responses; injects optional
+  Bearer values inside the trusted provider; optionally removes the exact
+  rejected scoped Bearer on HTTP 401 while its dependent lease remains valid;
+  and stores hashed publisher/
+  package/slot targets in Windows Credential Manager without returning values
+  to widget IPC.
 - `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
   `enable`, `disable`, and `version list|select|rollback` commands. Local and
@@ -154,14 +167,16 @@ renderer, and manifest-derived authority as an independently installed
 community package. Their host catalog entries supply only platform-owned shell
 presentation identity and package location. A Windows Release conformance suite
 packages, installs, enables, resolves, launches, renders, and acts through that
-same public path for all four. Settings and YT Music are the two temporary
-trusted Job-only exceptions because their remaining desktop-user dependencies
-are not yet brokered. The Clock sample exercises the public package path.
+same public path for all four. YT Music is a separately installable Community
+package on that same generic AppContainer path; its conformance case builds the
+real `.gbarwidget`, installs/enables it through the public catalog, drives
+pairing and dashboard transport through the broker, and asserts there is no
+trusted catalog/worker fallback. Settings is the only temporary trusted Job-
+only exception. The Clock sample also exercises the public package path.
 Audio Mixer and Network Controls are bounded integration slices for the larger
 controller-first Audio Control and Network Control roadmap items; their
 presence here does not mean those product widgets are complete or shipped.
-Settings is packaged and
-registered beside YT Music, renders through
+Settings renders through
 the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
 requires confirmation before reset, and provides two separate controller
@@ -283,13 +298,18 @@ identity/PID/snapshot/input-sequence-bound broker lease for at most two seconds.
 It is consumed once without promoting lifecycle or enabling subscriptions.
 Normal declaration, consent, payload, and provider checks still apply.
 
-YT Music remains a temporarily bundled, trusted Job-only worker today; this is
-not its intended permanent product tier. It is planned as the first Community
-addon conformance and migration target once reusable exact-port loopback and
-private per-widget secret services can replace its desktop-user exception. That
-migration is not implemented yet. The current YT Music worker uses the
-YTMDesktop2 loopback API, performs a non-blocking automatic
-connection attempt, and renders media metadata, artwork, transport state, and
+YT Music is the first Community addon integration reference. It is absent from
+the trusted/bundled host catalog and runtime-copy list, and its retired custom
+desktop worker/Credential Manager adapter are removed. The build helper stages
+the real manifest, assembly, and GBSS, then uses public `gbar validate`, `pack`,
+`install`, and `enable` commands. The generic package AppContainer accesses
+YTMDesktop2 only through declared `network.loopback:13091`; optional
+`storage.private-secrets.v1` persists pairing without returning a token to the
+worker. Host-side bearer injection requires both grants. The addon performs a
+request-scoped host-side invalidation of the exact rejected Bearer slot on HTTP
+401, clears only its local connection cache, and never races a second delete.
+It performs a non-blocking automatic connection attempt and renders media
+metadata, artwork, transport state, and
 dashboard quick actions through the declarative protocol. It auto-connects on
 first entry into Visible/Interactive, interpolates progress there at four Hz,
 reconciles the companion every two seconds, and uses bounded optimistic transport/rating
@@ -359,7 +379,9 @@ current-user `catalog-state.json` and packages subtree. A capacity-one channel
 coalesces file hints and debounces write bursts for 175 ms before a complete
 bounded reload. Staging, cross-process lock, and atomic temporary files are
 ignored. Semantic changes advance a bridge-lifetime revision; invalid trusted
-or installed catalog/state retains the complete last-good catalog/revision.
+shell state retains the complete last-good catalog/revision. Invalid installed
+state or package integrity instead publishes a trusted-only revision,
+synchronously removes Community registrations, and retires their workers.
 Invalid individual styles or unsupported capabilities are isolated with
 bounded diagnostics. Reload/list never starts a worker.
 Starting the monitor schedules a complete catch-up reload after both watchers
@@ -459,8 +481,10 @@ two-clock dashboard-gesture propagation. Its focused Release harness passes
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK and YT Music Release suites pass 46/46 and
-38/38 respectively. The current Settings Release suite passes 39/39, including
+bounded cleanup. The current SDK and YT Music Release suites pass 48/48 and
+38/38 respectively, including serialization and widget recovery for host-side
+rejected-Bearer invalidation without a second widget delete. The current
+Settings Release suite passes 40/40, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
@@ -473,37 +497,44 @@ failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, catalog limits, immutable
-versions, and adversarial package cases. Catalog passes 21/21, including
+versions, and adversarial package cases. Catalog passes 23/23, including
 schema-1 state migration, exact active-version pins and disabled repair,
 linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
-version unsigned authority derivation. Bridge
-passes 29/29, including semantic catalog revisions/last-good/catch-up reload,
+content-tree sealing/tamper rejection plus content-bound unsigned authority.
+Bridge
+passes 30/30, including semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
-gesture derivation. PlatformBroker passes 36/36, including closed isolated-
+gesture derivation, including trusted-only publication and worker retirement
+when installed state/integrity fails. PlatformBroker passes 40/40, including closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
 consent/lifecycle gates, revocation, and cancellation of already in-flight
 provider work when lifecycle or consent changes, plus dormant-reservation and
-exact-operation single-use broker-lease expiry/replay/revocation checks. An
+exact-operation single-use broker-lease expiry/replay/revocation checks and
+dependent-lease 401 Bearer invalidation. An
 actual AppContainer-to-broker
 request integration also passes with the exact SID, Low-label global endpoint,
 expected PID, nonce, and widget identity checks in force.
  The generic worker-host suite passes 9/9, including that real typed broker
  request from an AppContainer worker. Audio provider and Audio Mixer pass 15/15
  and 25/25; Network provider and Network Controls pass 31/31 and 17/17.
- Bluetooth provider passes 11/11; Games & Apps and its Windows app-library
+ Bluetooth provider passes 11/11; the constrained Windows Community provider
+ passes 6/6; Games & Apps and its Windows app-library
  provider pass 6/6 and 13/13, including exact shortcut launch revalidation.
  The retained Recent Apps and Windows activity reference suites pass 8/8 and
  10/10; Windows Media provider and Now Playing pass 11/11 and 9/9.
- The first-party conformance suite passes 4/4 by building and installing the
- actual Audio Mixer, Network Controls, Games & Apps, and Now Playing packages,
- launching each with the generic host in its package AppContainer, and observing
- a safe brokered action through simulated platform providers. Pre-resume native
- fault injection remains an explicit release-test gap.
+ The first-party conformance suite passes 5/5 by building and installing the
+ actual Audio Mixer, Network Controls, Games & Apps, Now Playing, and YT Music
+ packages, launching each with the generic host in its package AppContainer, and
+ observing safe brokered reads/actions through simulated platform providers.
+ The YT case additionally exercises public validate/pack/install/enable,
+ pairing, host-side private-secret persistence and Bearer injection, dashboard
+ transport, lifecycle enforcement, and the absence of a trusted fallback. Pre-
+ resume native fault injection remains an explicit release-test gap.
 Network Controls and its Windows provider retain their focused 17/17 and 31/31
 coverage for controller/focus, lifecycle/no-poll subscription ordering,
 privacy/explicit state, optimistic command reconciliation, opaque identity,
@@ -554,11 +585,9 @@ with C++ installed:
   safe worker reconciliation. Closed capability declarations are connected to
   the separate Settings consent flow.
 - Mandatory capability-free AppContainer isolation is implemented for every
-  installed/community worker, while trusted bundled Settings and YT Music
-  temporarily remain Job-only for desktop-user dependencies. YT Music is the
-  planned first Community-addon migration/conformance target, not a permanent
-  Built-in classification; the required loopback/secret broker work and actual
-  package migration remain unimplemented. Publisher
+  installed/community worker. YT Music now uses that path with exact-loopback
+  and write-only private-secret broker services; Settings is the only temporary
+  trusted Job-only worker. Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The
   narrow Core Audio and Windows network backends still need broader hardware/

@@ -53,6 +53,12 @@ The canonical runtime list is `GbssPropertyCatalog.AllowedProperties`. It curren
 
 Values are typed before reaching a renderer. Dimensions, spacing, scale, opacity, blur, border widths, and transition durations are bounded. Out-of-range finite values are clamped with a source-located warning; malformed values are errors.
 
+`transition-duration` and `transition-easing` currently participate in parsing,
+cascade, computed styles, and reduced-motion policy, but the native renderer
+does not yet interpolate state changes. They are forward-compatible style
+declarations, not a current animation guarantee. Track implementation and
+evidence under [GBA-032](known-issues.md#gba-032--gbss-transition-declarations-do-not-animate).
+
 Untrusted input is bounded before publication: source bytes/characters, statements, imports and import depth, selectors per rule, declarations per rule, raw values, and expanded variable values all have hard limits exposed through `GbssLimits`.
 
 ## Imports and safety

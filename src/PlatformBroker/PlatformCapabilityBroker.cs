@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using System.Threading.Channels;
 
 namespace GameBarAlternative.PlatformBroker;
@@ -123,6 +124,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly Dictionary<DashboardGestureKey, DashboardGestureAuthority>
         _dashboardGestureAuthorities = [];
     private readonly SemaphoreSlim _appLibraryGate = new(1, 1);
+    private readonly SemaphoreSlim _loopbackGate = new(2, 2);
     private readonly Dictionary<string, string> _appLibraryPublicIdsByBackendId =
         new(StringComparer.Ordinal);
     private IReadOnlyList<AppLibraryItemSummary>? _appLibrarySnapshot;
@@ -191,9 +193,9 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         TimeSpan validFor)
     {
         if (!PlatformCapabilities.TryGet(capabilityId, out var capability) ||
-            capability.Kind != BrokerCapabilityKind.Control ||
+            capability.KindForOperation(operationId) != BrokerCapabilityKind.Control ||
             !capability.Operations.Contains(operationId) ||
-            !capability.AllowsDashboardGesture)
+            !capability.AllowsDashboardGestureForOperation(operationId))
             throw new BrokerException(
                 "unsupported_capability", "Dashboard authority requires a supported control operation.");
         if (!_declaredCapabilities.Contains(capabilityId))
@@ -367,6 +369,18 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     await _backend.GetMediaSessionsAsync(requestToken).ConfigureAwait(false))),
             PlatformCapabilities.MediaSessionControl =>
                 await ControlMediaSessionAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.LoopbackHttpGetJson =>
+                await SendLoopbackJsonAsync(request, lease, isPost: false).ConfigureAwait(false),
+            PlatformCapabilities.LoopbackHttpPostJson =>
+                await SendLoopbackJsonAsync(request, lease, isPost: true).ConfigureAwait(false),
+            PlatformCapabilities.PrivateSecretExists =>
+                await GetPrivateSecretExistsAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.PrivateSecretMetadata =>
+                await GetPrivateSecretMetadataAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.PrivateSecretSave =>
+                await SavePrivateSecretAsync(request.Payload, requestToken).ConfigureAwait(false),
+            PlatformCapabilities.PrivateSecretDelete =>
+                await DeletePrivateSecretAsync(request.Payload, requestToken).ConfigureAwait(false),
             _ => throw new BrokerException("unsupported_operation", "Broker operation is unsupported."),
         };
     }
@@ -513,8 +527,9 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             if (_revokedCapabilities.Contains(capability.Id))
                 throw new BrokerException("capability_revoked", "Capability permission was revoked.");
             var dashboardGestureAuthorized = false;
-            if (capability.Kind == BrokerCapabilityKind.Control &&
-                capability.AllowsDashboardGesture &&
+            var operationKind = capability.KindForOperation(request.Operation);
+            if (operationKind == BrokerCapabilityKind.Control &&
+                capability.AllowsDashboardGestureForOperation(request.Operation) &&
                 _lifecycle == BrokerLifecycleState.Visible)
             {
                 if (request.GestureInputSequence is not { } inputSequence ||
@@ -537,10 +552,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
             else
             {
-                DemandLifecycle(capability.Kind, _lifecycle);
+                DemandLifecycle(operationKind, _lifecycle);
             }
             var lease = new RequestLease(
-                this, capability.Id, capability.Kind, dashboardGestureAuthorized,
+                this, capability.Id, operationKind, dashboardGestureAuthorized,
                 callerCancellation);
             _requestLeases.Add(lease);
             return lease;
@@ -909,6 +924,288 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         await _backend.ControlMediaSessionAsync(
             request.SessionId, request.Command, cancellationToken).ConfigureAwait(false);
         return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> SendLoopbackJsonAsync(
+        BrokerRequestEnvelope envelope,
+        RequestLease primaryLease,
+        bool isPost)
+    {
+        if (!PlatformCapabilities.TryGetLoopbackPort(envelope.CapabilityId, out var port))
+            throw new BrokerException("invalid_declaration", "Loopback port declaration is invalid.");
+        var request = BrokerJson.ParsePayload<LoopbackJsonRequest>(envelope.Payload);
+        ValidateLoopbackRequest(request, isPost);
+
+        await _loopbackGate.WaitAsync(primaryLease.Token).ConfigureAwait(false);
+        try
+        {
+            if (request.BearerSecretSlot is null)
+            {
+                return BrokerJson.ToElement(ValidateLoopbackResponse(
+                    await _backend.SendLoopbackJsonAsync(
+                        _identity, port, isPost, request, primaryLease.Token)
+                        .ConfigureAwait(false)));
+            }
+
+            var secretCapability = await AuthorizeAsync(
+                PlatformCapabilities.PrivateSecretsV1,
+                PlatformCapabilities.PrivateSecretMetadata,
+                primaryLease.Token).ConfigureAwait(false);
+            var secretLeaseRequest = envelope with
+            {
+                CapabilityId = PlatformCapabilities.PrivateSecretsV1,
+                Operation = PlatformCapabilities.PrivateSecretMetadata,
+                Payload = envelope.Payload,
+                GestureInputSequence = null,
+                GestureSnapshotSequence = null,
+            };
+            using var secretLease = CreateRequestLease(
+                secretCapability, secretLeaseRequest, primaryLease.Token);
+            try
+            {
+                return BrokerJson.ToElement(ValidateLoopbackResponse(
+                    await _backend.SendLoopbackJsonAsync(
+                        _identity, port, isPost, request, secretLease.Token)
+                        .ConfigureAwait(false)));
+            }
+            catch (OperationCanceledException exception)
+                when (secretLease.CancellationCode is { } code)
+            {
+                throw new BrokerException(code,
+                    code == "capability_revoked"
+                        ? "Private secret permission was revoked while the request was running."
+                        : "Private secret access became unavailable in this lifecycle.",
+                    exception);
+            }
+        }
+        finally
+        {
+            _loopbackGate.Release();
+        }
+    }
+
+    private async Task<JsonElement> GetPrivateSecretExistsAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<PrivateSecretSlotRequest>(payload);
+        ValidatePrivateSecretSlot(request.Slot);
+        var metadata = ValidatePrivateSecretMetadata(
+            await _backend.GetPrivateSecretMetadataAsync(
+                _identity, request.Slot, cancellationToken).ConfigureAwait(false));
+        return BrokerJson.ToElement(new PrivateSecretExistsSummary(metadata.Exists));
+    }
+
+    private async Task<JsonElement> GetPrivateSecretMetadataAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<PrivateSecretSlotRequest>(payload);
+        ValidatePrivateSecretSlot(request.Slot);
+        return BrokerJson.ToElement(ValidatePrivateSecretMetadata(
+            await _backend.GetPrivateSecretMetadataAsync(
+                _identity, request.Slot, cancellationToken).ConfigureAwait(false)));
+    }
+
+    private async Task<JsonElement> SavePrivateSecretAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<SavePrivateSecretRequest>(payload);
+        ValidatePrivateSecretSlot(request.Slot);
+        ValidatePrivateSecret(request.Secret);
+        await _backend.SavePrivateSecretAsync(
+            _identity, request.Slot, request.Secret, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private async Task<JsonElement> DeletePrivateSecretAsync(
+        JsonElement payload, CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<PrivateSecretSlotRequest>(payload);
+        ValidatePrivateSecretSlot(request.Slot);
+        await _backend.DeletePrivateSecretAsync(
+            _identity, request.Slot, cancellationToken).ConfigureAwait(false);
+        return BrokerJson.ToElement(new { acknowledged = true });
+    }
+
+    private static void ValidateLoopbackRequest(LoopbackJsonRequest? request, bool isPost)
+    {
+        if (request is null || request.Headers is null ||
+            request.TimeoutMilliseconds is < 1 or
+                > CommunityPlatformLimits.MaximumLoopbackTimeoutMilliseconds ||
+            !IsSafeOriginFormPath(request.Path) ||
+            request.BearerSecretSlot is { } slot && !IsValidPrivateSecretSlot(slot) ||
+            request.InvalidateBearerSecretOnUnauthorized && request.BearerSecretSlot is null ||
+            isPost != (request.JsonBody is not null))
+            throw new BrokerException("invalid_payload", "Loopback HTTP request is invalid.");
+        ValidateLoopbackHeaders(request.Headers, "invalid_payload", requestHeaders: true);
+        if (request.JsonBody is { } json)
+            ValidateJsonBody(json, CommunityPlatformLimits.MaximumLoopbackRequestBodyUtf8Bytes,
+                "invalid_payload");
+    }
+
+    private static LoopbackJsonResponse ValidateLoopbackResponse(LoopbackJsonResponse? response)
+    {
+        if (response is null || response.StatusCode is < 100 or > 599 ||
+            response.Headers is null)
+            throw new BrokerException("invalid_backend_data", "Loopback HTTP response is invalid.");
+        var canonicalJsonBody = ValidateAndCanonicalizeJsonBody(response.JsonBody,
+            CommunityPlatformLimits.MaximumLoopbackResponseBodyUtf8Bytes,
+            "invalid_backend_data", allowEmpty: response.StatusCode is 204 or 205);
+        ValidateLoopbackHeaders(response.Headers, "invalid_backend_data", requestHeaders: false);
+        return response with
+        {
+            JsonBody = canonicalJsonBody,
+            Headers = Array.AsReadOnly(response.Headers.ToArray()),
+        };
+    }
+
+    private static void ValidateLoopbackHeaders(
+        IReadOnlyList<LoopbackHttpHeader> headers,
+        string errorCode,
+        bool requestHeaders)
+    {
+        if (headers.Count > CommunityPlatformLimits.MaximumLoopbackHeaderCount)
+            throw new BrokerException(errorCode, "Loopback HTTP headers are invalid.");
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var characters = 0;
+        foreach (var header in headers)
+        {
+            if (header is null || string.IsNullOrEmpty(header.Name) ||
+                header.Name.Length > CommunityPlatformLimits.MaximumLoopbackHeaderNameCharacters ||
+                header.Value is null ||
+                header.Value.Length > CommunityPlatformLimits.MaximumLoopbackHeaderValueCharacters ||
+                !header.Name.All(IsHttpTokenCharacter) ||
+                header.Value.Any(character => character is '\r' or '\n' || char.IsControl(character)) ||
+                !names.Add(header.Name) ||
+                requestHeaders && IsRestrictedRequestHeader(header.Name) ||
+                !requestHeaders && !IsProjectedResponseHeader(header.Name))
+                throw new BrokerException(errorCode, "Loopback HTTP headers are invalid.");
+            characters += header.Name.Length + header.Value.Length;
+            if (characters > CommunityPlatformLimits.MaximumLoopbackHeaderCharacters)
+                throw new BrokerException(errorCode, "Loopback HTTP headers are invalid.");
+        }
+    }
+
+    private static bool IsSafeOriginFormPath(string? path) =>
+        !string.IsNullOrEmpty(path) &&
+        path.Length <= CommunityPlatformLimits.MaximumLoopbackPathCharacters &&
+        path[0] == '/' &&
+        !path.StartsWith("//", StringComparison.Ordinal) &&
+        !path.Contains('\\') &&
+        !path.Contains('#') &&
+        !path.Any(character => character is '\r' or '\n' || char.IsControl(character)) &&
+        Uri.TryCreate(path, UriKind.Relative, out _);
+
+    private static bool IsRestrictedRequestHeader(string name) =>
+        name.Equals("Authorization", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Connection", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Cookie", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Expect", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Upgrade", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("TE", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Trailer", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("Proxy-", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProjectedResponseHeader(string name) =>
+        name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("ETag", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Last-Modified", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Retry-After", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("X-RateLimit-", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHttpTokenCharacter(char character) =>
+        char.IsAsciiLetterOrDigit(character) ||
+        character is '!' or '#' or '$' or '%' or '&' or '\'' or '*' or '+' or '-' or '.' or
+            '^' or '_' or '`' or '|' or '~';
+
+    private static void ValidateJsonBody(
+        string? json, int maximumUtf8Bytes, string errorCode, bool allowEmpty = false)
+    {
+        if (json is null || Encoding.UTF8.GetByteCount(json) > maximumUtf8Bytes ||
+            !allowEmpty && json.Length == 0)
+            throw new BrokerException(errorCode, "Loopback JSON body is invalid.");
+        if (allowEmpty && json.Length == 0) return;
+        try
+        {
+            using var _ = JsonDocument.Parse(json, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = BrokerJson.MaximumDepth,
+            });
+        }
+        catch (JsonException exception)
+        {
+            throw new BrokerException(errorCode, "Loopback JSON body is invalid.", exception);
+        }
+    }
+
+    private static string ValidateAndCanonicalizeJsonBody(
+        string? json, int maximumUtf8Bytes, string errorCode, bool allowEmpty = false)
+    {
+        if (json is null || Encoding.UTF8.GetByteCount(json) > maximumUtf8Bytes ||
+            !allowEmpty && json.Length == 0)
+            throw new BrokerException(errorCode, "Loopback JSON body is invalid.");
+        if (allowEmpty && json.Length == 0) return string.Empty;
+        try
+        {
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = BrokerJson.MaximumDepth,
+            });
+            // Broker envelopes reject raw control characters inside strings.
+            // Compact serialization removes insignificant pretty-print
+            // whitespace while preserving escaped controls in JSON values.
+            var canonical = JsonSerializer.Serialize(document.RootElement, BrokerJson.StrictOptions);
+            if (Encoding.UTF8.GetByteCount(canonical) > maximumUtf8Bytes)
+                throw new BrokerException(errorCode, "Loopback JSON body is invalid.");
+            return canonical;
+        }
+        catch (JsonException exception)
+        {
+            throw new BrokerException(errorCode, "Loopback JSON body is invalid.", exception);
+        }
+    }
+
+    private static void ValidatePrivateSecretSlot(string? slot)
+    {
+        if (!IsValidPrivateSecretSlot(slot))
+            throw new BrokerException("invalid_payload", "Private secret slot is invalid.");
+    }
+
+    private static bool IsValidPrivateSecretSlot(string? slot) =>
+        !string.IsNullOrEmpty(slot) &&
+        slot.Length <= CommunityPlatformLimits.MaximumPrivateSecretSlotCharacters &&
+        slot.All(character => char.IsAsciiLetterOrDigit(character) ||
+            character is '.' or '_' or '-');
+
+    private static void ValidatePrivateSecret(string? secret)
+    {
+        if (string.IsNullOrEmpty(secret) || secret.Contains('\0'))
+            throw new BrokerException("invalid_payload", "Private secret is invalid.");
+        try
+        {
+            if (new UTF8Encoding(false, true).GetByteCount(secret) >
+                CommunityPlatformLimits.MaximumPrivateSecretUtf8Bytes)
+                throw new BrokerException("invalid_payload", "Private secret is invalid.");
+        }
+        catch (EncoderFallbackException exception)
+        {
+            throw new BrokerException("invalid_payload", "Private secret is invalid.", exception);
+        }
+    }
+
+    private static PrivateSecretMetadataSummary ValidatePrivateSecretMetadata(
+        PrivateSecretMetadataSummary? metadata)
+    {
+        if (metadata is null || metadata.Exists != metadata.LastWrittenUnixMilliseconds.HasValue ||
+            metadata.LastWrittenUnixMilliseconds is < 0)
+            throw new BrokerException("invalid_backend_data", "Private secret metadata is invalid.");
+        return metadata;
     }
 
     private static IReadOnlyList<MediaSessionSummary> ValidateMediaSessions(

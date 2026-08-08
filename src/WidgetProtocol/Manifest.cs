@@ -14,6 +14,11 @@ public sealed record WidgetManifest
     public required string Version { get; init; }
     public required HostApiRange HostApi { get; init; }
     public required WidgetEntrypoint Entrypoint { get; init; }
+    /// <summary>
+    /// Safe shell presentation metadata. Icons are semantic host glyphs, never
+    /// package paths, font names, SVG, or executable drawing content.
+    /// </summary>
+    public WidgetPresentation Presentation { get; init; } = new();
     public IReadOnlyList<string> Permissions { get; init; } = [];
     public IReadOnlyList<string> OptionalPermissions { get; init; } = [];
     /// <summary>
@@ -31,6 +36,7 @@ public sealed record WidgetManifest
 
 public sealed record HostApiRange(string Minimum, int MaximumMajor);
 public sealed record WidgetEntrypoint(string Runtime, string Assembly, string Type);
+public sealed record WidgetPresentation(WidgetGlyph Icon = WidgetGlyph.Connection);
 public sealed record WidgetResourceRequest(int MemoryMb = 48, int UpdateHz = 1);
 public sealed record ManifestValidationError(string Path, string Code, string Message);
 
@@ -163,6 +169,12 @@ public static partial class WidgetManifestValidator
                 Add("$.entrypoint.type", "invalid_type", "Entrypoint type must be namespace-qualified.");
         }
 
+        if (manifest.Presentation is null)
+            Add("$.presentation", "required", "Presentation cannot be null.");
+        else if (!Enum.IsDefined(manifest.Presentation.Icon))
+            Add("$.presentation.icon", "unsupported_icon",
+                "Presentation icon must use a host-defined semantic glyph.");
+
         if (manifest.BackgroundPolicy is not null &&
             !SupportedBackgroundPolicies.Contains(manifest.BackgroundPolicy))
             Add("$.backgroundPolicy", "unsupported_policy",
@@ -283,6 +295,7 @@ public static class ManifestJson
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         WriteIndented = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) },
     };
 
     public static WidgetManifest Deserialize(ReadOnlySpan<byte> payload) =>

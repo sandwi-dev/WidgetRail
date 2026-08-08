@@ -52,10 +52,32 @@ foreach (var contract in requiredGuideContracts)
     if (!guide.Contains(contract, StringComparison.Ordinal))
         failures.Add($"docs/widget-authoring-guide.md is missing '{contract}'.");
 
+var companionPath = Path.Combine(repository, "docs", "community-companion-services.md");
+var companion = File.ReadAllText(companionPath);
+string[] requiredCompanionContracts =
+[
+    "## Manifest declarations",
+    "## Typed SDK",
+    "## Lifecycle, consent, and dashboard actions",
+    "## HTTP security boundary",
+    "## Limits",
+    "## Secret identity and persistence",
+    "## Errors and recovery",
+    "## Testing pattern",
+    "InvalidateBearerSecretOnUnauthorized",
+];
+foreach (var contract in requiredCompanionContracts)
+    if (!companion.Contains(contract, StringComparison.Ordinal))
+        failures.Add($"docs/community-companion-services.md is missing '{contract}'.");
+
 RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
+RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");
+RequireLink(Path.Combine(repository, "docs", "README.md"), "community-companion-services.md");
 RequireLink(Path.Combine(repository, "samples", "ClockWidget", "README.md"),
     "../../docs/widget-authoring-guide.md");
+RequireLink(Path.Combine(repository, "samples", "YtMusicWidget", "README.md"),
+    "../../docs/community-companion-services.md");
 
 if (failures.Count != 0)
 {

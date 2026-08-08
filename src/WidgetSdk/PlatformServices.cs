@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using System.Text.Json;
+using System.Text;
 
 namespace GameBarAlternative.WidgetSdk;
 
@@ -6,6 +8,65 @@ public sealed record WidgetCapabilityQuery;
 
 public sealed record WidgetCapabilityAcknowledgement(
     [property: JsonRequired] bool Acknowledged);
+
+public static class WidgetCommunityPlatformLimits
+{
+    public const int MinimumLoopbackPort = 1_024;
+    public const int MaximumLoopbackPort = 65_535;
+    public const int MaximumLoopbackPathCharacters = 2_048;
+    public const int MaximumLoopbackHeaderCount = 16;
+    public const int MaximumLoopbackHeaderNameCharacters = 64;
+    public const int MaximumLoopbackHeaderValueCharacters = 1_024;
+    public const int MaximumLoopbackHeaderCharacters = 8_192;
+    public const int MaximumLoopbackRequestBodyUtf8Bytes = 16 * 1_024;
+    public const int MaximumLoopbackResponseBodyUtf8Bytes = 96 * 1_024;
+    public const int DefaultLoopbackTimeoutMilliseconds = 10_000;
+    public const int MaximumLoopbackTimeoutMilliseconds = 40_000;
+    public const int MaximumPrivateSecretSlotCharacters = 64;
+    public const int MaximumPrivateSecretUtf8Bytes = 2_048;
+}
+
+public sealed record WidgetLoopbackHttpHeader(
+    [property: JsonRequired] string Name,
+    [property: JsonRequired] string Value);
+
+public sealed record WidgetLoopbackRequestOptions
+{
+    public IReadOnlyDictionary<string, string> Headers { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    public string? BearerSecretSlot { get; init; }
+    /// <summary>
+    /// When an injected bearer credential receives HTTP 401, asks the trusted
+    /// host to delete that exact package-scoped slot before returning the
+    /// response. This is host-side credential hygiene, not general secret
+    /// control, and is valid only with <see cref="BearerSecretSlot"/>.
+    /// </summary>
+    public bool InvalidateBearerSecretOnUnauthorized { get; init; }
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromMilliseconds(
+        WidgetCommunityPlatformLimits.DefaultLoopbackTimeoutMilliseconds);
+}
+
+public sealed record WidgetLoopbackJsonRequest(
+    [property: JsonRequired] string Path,
+    [property: JsonRequired] IReadOnlyList<WidgetLoopbackHttpHeader> Headers,
+    string? BearerSecretSlot,
+    string? JsonBody,
+    [property: JsonRequired] int TimeoutMilliseconds,
+    bool InvalidateBearerSecretOnUnauthorized = false);
+
+public sealed record WidgetLoopbackJsonResponse(
+    [property: JsonRequired] int StatusCode,
+    [property: JsonRequired] string JsonBody,
+    [property: JsonRequired] IReadOnlyList<WidgetLoopbackHttpHeader> Headers);
+
+public sealed record WidgetPrivateSecretSlotRequest([property: JsonRequired] string Slot);
+public sealed record SaveWidgetPrivateSecretRequest(
+    [property: JsonRequired] string Slot,
+    [property: JsonRequired] string Secret);
+public sealed record WidgetPrivateSecretExists([property: JsonRequired] bool Exists);
+public sealed record WidgetPrivateSecretMetadata(
+    [property: JsonRequired] bool Exists,
+    long? LastWrittenUnixMilliseconds);
 
 public sealed record WidgetAudioSession(
     [property: JsonRequired] string SessionId,
@@ -439,6 +500,38 @@ public static class WidgetMediaCapabilities
         new("system.media.sessions.read.v1", "media.sessions.changed");
 }
 
+public static class WidgetLoopbackCapabilities
+{
+    public const string CapabilityPrefix = "network.loopback:";
+    public const string GetJsonOperation = "loopback.http.get-json";
+    public const string PostJsonOperation = "loopback.http.post-json";
+
+    public static string CapabilityId(int port) =>
+        port is >= WidgetCommunityPlatformLimits.MinimumLoopbackPort and
+            <= WidgetCommunityPlatformLimits.MaximumLoopbackPort
+            ? $"{CapabilityPrefix}{port}"
+            : throw new ArgumentOutOfRangeException(nameof(port));
+
+    public static WidgetCapabilityOperation<WidgetLoopbackJsonRequest, WidgetLoopbackJsonResponse>
+        GetJson(int port) => new(CapabilityId(port), GetJsonOperation);
+
+    public static WidgetCapabilityOperation<WidgetLoopbackJsonRequest, WidgetLoopbackJsonResponse>
+        PostJson(int port) => new(CapabilityId(port), PostJsonOperation);
+}
+
+public static class WidgetPrivateSecretCapabilities
+{
+    public const string CapabilityId = "storage.private-secrets.v1";
+    public static WidgetCapabilityOperation<WidgetPrivateSecretSlotRequest, WidgetPrivateSecretExists>
+        Exists { get; } = new(CapabilityId, "private-secret.exists");
+    public static WidgetCapabilityOperation<WidgetPrivateSecretSlotRequest, WidgetPrivateSecretMetadata>
+        Metadata { get; } = new(CapabilityId, "private-secret.metadata");
+    public static WidgetCapabilityOperation<SaveWidgetPrivateSecretRequest, WidgetCapabilityAcknowledgement>
+        Save { get; } = new(CapabilityId, "private-secret.save");
+    public static WidgetCapabilityOperation<WidgetPrivateSecretSlotRequest, WidgetCapabilityAcknowledgement>
+        Delete { get; } = new(CapabilityId, "private-secret.delete");
+}
+
 public sealed class WidgetAudioService
 {
     private readonly IWidgetCapabilityClient _client;
@@ -790,4 +883,229 @@ public sealed class WidgetMediaService
     public IAsyncEnumerable<WidgetMediaSessionsChanged> WatchAsync(
         CancellationToken cancellationToken = default) =>
         _client.SubscribeAsync(WidgetMediaCapabilities.Changed, cancellationToken);
+}
+
+/// <summary>
+/// Constrained JSON HTTP for a manifest-declared, exact nonprivileged loopback
+/// port. This API never accepts a host name, URI authority, proxy, redirect or
+/// raw socket and therefore does not grant ambient network access.
+/// </summary>
+public sealed class WidgetLoopbackHttpService
+{
+    private readonly IWidgetCapabilityClient _client;
+    internal WidgetLoopbackHttpService(IWidgetCapabilityClient client) => _client = client;
+
+    public ValueTask<WidgetLoopbackJsonResponse> GetJsonAsync(
+        int port,
+        string path,
+        WidgetLoopbackRequestOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(port, path, jsonBody: null, options, cancellationToken);
+
+    public ValueTask<WidgetLoopbackJsonResponse> PostJsonAsync(
+        int port,
+        string path,
+        string jsonBody,
+        WidgetLoopbackRequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(jsonBody);
+        return SendAsync(port, path, jsonBody, options, cancellationToken);
+    }
+
+    private ValueTask<WidgetLoopbackJsonResponse> SendAsync(
+        int port,
+        string path,
+        string? jsonBody,
+        WidgetLoopbackRequestOptions? options,
+        CancellationToken cancellationToken)
+    {
+        var capabilityId = WidgetLoopbackCapabilities.CapabilityId(port);
+        ValidatePath(path);
+        options ??= new WidgetLoopbackRequestOptions();
+        var headers = ValidateHeaders(options.Headers);
+        if (options.BearerSecretSlot is { } slot) ValidateSlot(slot);
+        if (options.InvalidateBearerSecretOnUnauthorized && options.BearerSecretSlot is null)
+            throw new ArgumentException(
+                "Unauthorized bearer invalidation requires a bearer secret slot.",
+                nameof(options));
+        var timeoutMilliseconds = ValidateTimeout(options.Timeout);
+        if (jsonBody is not null) ValidateJson(jsonBody);
+        var request = new WidgetLoopbackJsonRequest(
+            path, headers, options.BearerSecretSlot, jsonBody, timeoutMilliseconds,
+            options.InvalidateBearerSecretOnUnauthorized);
+        return _client.InvokeAsync(
+            jsonBody is null
+                ? WidgetLoopbackCapabilities.GetJson(port)
+                : WidgetLoopbackCapabilities.PostJson(port),
+            request,
+            cancellationToken);
+    }
+
+    private static void ValidatePath(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Length is < 1 or > WidgetCommunityPlatformLimits.MaximumLoopbackPathCharacters ||
+            path[0] != '/' || path.StartsWith("//", StringComparison.Ordinal) ||
+            path.Contains('\\') || path.Contains('#') ||
+            path.Any(character => character is '\r' or '\n' || char.IsControl(character)) ||
+            !Uri.TryCreate(path, UriKind.Relative, out _))
+            throw new ArgumentException("Path must be a bounded origin-form path.", nameof(path));
+    }
+
+    private static IReadOnlyList<WidgetLoopbackHttpHeader> ValidateHeaders(
+        IReadOnlyDictionary<string, string>? source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (source.Count > WidgetCommunityPlatformLimits.MaximumLoopbackHeaderCount)
+            throw new ArgumentException("Too many loopback request headers.", nameof(source));
+        var result = new List<WidgetLoopbackHttpHeader>(source.Count);
+        var total = 0;
+        foreach (var (name, value) in source.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrEmpty(name) ||
+                name.Length > WidgetCommunityPlatformLimits.MaximumLoopbackHeaderNameCharacters ||
+                value is null ||
+                value.Length > WidgetCommunityPlatformLimits.MaximumLoopbackHeaderValueCharacters ||
+                !name.All(IsHttpTokenCharacter) ||
+                value.Any(character => character is '\r' or '\n' || char.IsControl(character)) ||
+                IsRestrictedRequestHeader(name))
+                throw new ArgumentException("A loopback request header is invalid.", nameof(source));
+            total += name.Length + value.Length;
+            if (total > WidgetCommunityPlatformLimits.MaximumLoopbackHeaderCharacters)
+                throw new ArgumentException("Loopback request headers are too large.", nameof(source));
+            result.Add(new WidgetLoopbackHttpHeader(name, value));
+        }
+        return result.AsReadOnly();
+    }
+
+    private static int ValidateTimeout(TimeSpan timeout)
+    {
+        if (timeout <= TimeSpan.Zero ||
+            timeout > TimeSpan.FromMilliseconds(
+                WidgetCommunityPlatformLimits.MaximumLoopbackTimeoutMilliseconds) ||
+            !double.IsFinite(timeout.TotalMilliseconds))
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+        return checked((int)Math.Ceiling(timeout.TotalMilliseconds));
+    }
+
+    private static void ValidateJson(string json)
+    {
+        if (json.Length == 0 || Encoding.UTF8.GetByteCount(json) >
+            WidgetCommunityPlatformLimits.MaximumLoopbackRequestBodyUtf8Bytes)
+            throw new ArgumentException("Loopback JSON body is empty or too large.", nameof(json));
+        try
+        {
+            using var _ = JsonDocument.Parse(json, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = false,
+                CommentHandling = JsonCommentHandling.Disallow,
+                MaxDepth = 64,
+            });
+        }
+        catch (JsonException exception)
+        {
+            throw new ArgumentException("Loopback request body must be valid JSON.", nameof(json), exception);
+        }
+    }
+
+    private static bool IsRestrictedRequestHeader(string name) =>
+        name.Equals("Authorization", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Connection", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Cookie", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Expect", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Upgrade", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("TE", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("Trailer", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("Proxy-", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHttpTokenCharacter(char character) =>
+        char.IsAsciiLetterOrDigit(character) ||
+        character is '!' or '#' or '$' or '%' or '&' or '\'' or '*' or '+' or '-' or '.' or
+            '^' or '_' or '`' or '|' or '~';
+
+    internal static void ValidateSlot(string slot)
+    {
+        if (string.IsNullOrEmpty(slot) ||
+            slot.Length > WidgetCommunityPlatformLimits.MaximumPrivateSecretSlotCharacters ||
+            !slot.All(character => char.IsAsciiLetterOrDigit(character) ||
+                character is '.' or '_' or '-'))
+            throw new ArgumentException("Private secret slot is invalid.", nameof(slot));
+    }
+}
+
+/// <summary>
+/// Package-scoped private persistence for authentication material. Stored
+/// values can be replaced or deleted but are deliberately never readable by a
+/// widget; loopback HTTP may ask the host to inject a slot as a Bearer value.
+/// </summary>
+public sealed class WidgetPrivateSecretService
+{
+    private readonly IWidgetCapabilityClient _client;
+    internal WidgetPrivateSecretService(IWidgetCapabilityClient client) => _client = client;
+
+    public async ValueTask<bool> ExistsAsync(
+        string slot, CancellationToken cancellationToken = default)
+    {
+        WidgetLoopbackHttpService.ValidateSlot(slot);
+        var result = await _client.InvokeAsync(
+            WidgetPrivateSecretCapabilities.Exists,
+            new WidgetPrivateSecretSlotRequest(slot),
+            cancellationToken).ConfigureAwait(false);
+        return result?.Exists ?? throw new WidgetCapabilityException(
+            "malformed_response", "The private secret provider returned an invalid result.");
+    }
+
+    public ValueTask<WidgetPrivateSecretMetadata> GetMetadataAsync(
+        string slot, CancellationToken cancellationToken = default)
+    {
+        WidgetLoopbackHttpService.ValidateSlot(slot);
+        return _client.InvokeAsync(
+            WidgetPrivateSecretCapabilities.Metadata,
+            new WidgetPrivateSecretSlotRequest(slot),
+            cancellationToken);
+    }
+
+    public async ValueTask SaveAsync(
+        string slot, string secret, CancellationToken cancellationToken = default)
+    {
+        WidgetLoopbackHttpService.ValidateSlot(slot);
+        ArgumentNullException.ThrowIfNull(secret);
+        if (secret.Length == 0 || secret.Contains('\0'))
+            throw new ArgumentException("Private secret is empty or too large.", nameof(secret));
+        try
+        {
+            if (new UTF8Encoding(false, true).GetByteCount(secret) >
+                WidgetCommunityPlatformLimits.MaximumPrivateSecretUtf8Bytes)
+                throw new ArgumentException("Private secret is empty or too large.", nameof(secret));
+        }
+        catch (EncoderFallbackException exception)
+        {
+            throw new ArgumentException("Private secret is not valid UTF-8 text.", nameof(secret), exception);
+        }
+        DemandAcknowledged(await _client.InvokeAsync(
+            WidgetPrivateSecretCapabilities.Save,
+            new SaveWidgetPrivateSecretRequest(slot, secret),
+            cancellationToken).ConfigureAwait(false));
+    }
+
+    public async ValueTask DeleteAsync(
+        string slot, CancellationToken cancellationToken = default)
+    {
+        WidgetLoopbackHttpService.ValidateSlot(slot);
+        DemandAcknowledged(await _client.InvokeAsync(
+            WidgetPrivateSecretCapabilities.Delete,
+            new WidgetPrivateSecretSlotRequest(slot),
+            cancellationToken).ConfigureAwait(false));
+    }
+
+    private static void DemandAcknowledged(WidgetCapabilityAcknowledgement? response)
+    {
+        if (response?.Acknowledged != true)
+            throw new WidgetCapabilityException(
+                "malformed_response", "The private secret provider returned an invalid acknowledgement.");
+    }
 }

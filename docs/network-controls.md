@@ -6,8 +6,8 @@ The typed SDK, authenticated capability transport, consent UI, lifecycle
 enforcement, real event-driven Windows provider, first-party widget/worker,
 trusted catalog entry, and Release packaging hooks exist. The focused Release
 network provider and widget suites pass 31/31 and 17/17 respectively; the
-Bluetooth provider passes 11/11; the last complete Release verifier recorded
-PlatformBroker 34/34; and the full managed suite, native host
+Bluetooth provider passes 11/11; the current focused PlatformBroker suite
+passes 40/40; and the last complete full managed suite, native host
 suite, packaged hidden-startup smoke, and controller input-probe smoke also
 pass. The split Wi-Fi/Bluetooth presentation still needs packaged controller
 and visual verification. Hardware/privacy matrices and performance evidence
@@ -40,7 +40,14 @@ The initial surface is intentionally narrow:
 - present Wi-Fi and Bluetooth as separate controller views rather than one
   overlong mixed list; and
 - switch those views with LB/RB or a focused segmented-tab A action while
-  retaining independent selected-item focus.
+  retaining independent focus memory.
+
+Focus, tab selection, radio state, and connection state are separate concepts.
+A focused Wi-Fi/device row is only the current controller target; it must not
+look connected or toggle merely because it has focus. The selected segmented
+tab names the visible section, while connected/paired/radio-On state comes only
+from the provider snapshot. Completing these semantics under scan/device churn
+is tracked as [GBA-034](known-issues.md).
 
 The bundled surface does **not** prompt for or store a password, create/edit/
 delete protected profiles, read profile XML or key material, expose BSSID/MAC/

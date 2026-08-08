@@ -26,7 +26,8 @@ public sealed record InstalledWidgetVersion(
     string Id,
     Version Version,
     string InstallPath,
-    WidgetManifest Manifest);
+    WidgetManifest Manifest,
+    string ContentDigest);
 
 public sealed record CatalogWidget(
     string Id,

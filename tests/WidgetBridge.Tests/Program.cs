@@ -29,7 +29,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
-    ("Catalog monitor publishes semantic revisions and retains last good state", CatalogMonitorIsRevisionedAndLastGood),
+    ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
+    ("Installed package tamper retires the live worker and cannot relaunch it", InstalledPackageTamperRetiresLiveWorker),
     ("Catalog monitor closes the startup notification window", CatalogMonitorStartupCatchUp),
     ("Catalog reconciliation preserves compatible workers and retires changed workers", CatalogReconciliationPreservesCompatibleWorkers),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
@@ -248,7 +249,9 @@ static async Task InstalledWidgetsJoinCatalog()
     using var temporary = new TemporaryDirectory("gba-bridge-installed");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
-    await InstallWidgetAsync(catalog, temporary.Path, "dev.example.enabled", enabled: true);
+    await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.enabled", enabled: true,
+        icon: WidgetGlyph.Music);
     await InstallWidgetAsync(catalog, temporary.Path, "dev.example.disabled", enabled: false);
 
     var load = await BridgeCatalog.LoadWithInstalledAsync(
@@ -257,10 +260,12 @@ static async Task InstalledWidgetsJoinCatalog()
     Assert.SequenceEqual(["test-widget", "dev.example.enabled"],
         load.Catalog.Widgets.Select(widget => widget.Id));
     var installed = load.Catalog.GetConfigured("dev.example.enabled");
-    var installedManifest = (await catalog.DiscoverAsync()).Widgets
+    var installedVersion = (await catalog.DiscoverAsync()).Widgets
         .Single(widget => widget.Id == "dev.example.enabled")
-        .ActiveVersion.Manifest;
+        .ActiveVersion;
+    var installedManifest = installedVersion.Manifest;
     Assert.Equal(64, installed.MemoryLimitMb);
+    Assert.Equal(WidgetGlyph.Music, installed.Icon);
     Assert.Equal(Environment.ProcessPath, installed.WorkerExecutable);
     Assert.Equal("styles/default.gbss", installed.StyleFile);
     Assert.True(installed.RequiresAppContainer,
@@ -268,7 +273,7 @@ static async Task InstalledWidgetsJoinCatalog()
     Assert.True(!string.IsNullOrWhiteSpace(installed.IsolationKey),
         "Installed community workers need a stable host-owned isolation identity.");
     Assert.Equal(
-        InstalledWidgetAuthority.PublisherId(installedManifest),
+        InstalledWidgetAuthority.PublisherId(installedVersion),
         installed.PublisherId);
     Assert.True(!string.Equals(
             installedManifest.Publisher,
@@ -340,12 +345,22 @@ static async Task InstalledCapabilityDeclarationsAreClosed()
             PlatformCapabilities.AppLibraryReadV1,
             PlatformCapabilities.AppLibraryLaunchV1,
         ]);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.companion",
+        enabled: true,
+        permissions:
+        [
+            "network.loopback:13091",
+            PlatformCapabilities.PrivateSecretsV1,
+        ]);
 
     var load = await BridgeCatalog.LoadWithInstalledAsync(
         trusted.Path, catalogRoot, Environment.ProcessPath!);
 
     Assert.SequenceEqual(
-        ["test-widget", "dev.example.audio", "dev.example.apps"],
+        ["test-widget", "dev.example.audio", "dev.example.apps", "dev.example.companion"],
         load.Catalog.Widgets.Select(widget => widget.Id));
     Assert.SequenceEqual(
         [PlatformCapabilities.AudioSessionsReadV1],
@@ -353,6 +368,9 @@ static async Task InstalledCapabilityDeclarationsAreClosed()
     Assert.SequenceEqual(
         [PlatformCapabilities.AppLibraryLaunchV1, PlatformCapabilities.AppLibraryReadV1],
         load.Catalog.GetConfigured("dev.example.apps").DeclaredCapabilities);
+    Assert.SequenceEqual(
+        ["network.loopback:13091", PlatformCapabilities.PrivateSecretsV1],
+        load.Catalog.GetConfigured("dev.example.companion").DeclaredCapabilities);
     Assert.Equal(1, load.Warnings.Count);
     Assert.True(load.Warnings[0].Contains("unsupported capability", StringComparison.Ordinal),
         "Unknown capabilities need a safe closed-vocabulary warning.");
@@ -443,23 +461,84 @@ static async Task CatalogMonitorIsRevisionedAndLastGood()
     await File.WriteAllBytesAsync(trusted.Path, validTrusted);
     await File.WriteAllTextAsync(Path.Combine(catalogRoot, "catalog-state.json"), "{");
     var invalidInstalled = await monitor.ReloadNowAsync();
-    Assert.True(invalidInstalled.RetainedLastGood, "Invalid installed state replaced last-good state.");
-    Assert.Equal(2L, invalidInstalled.Revision);
+    Assert.False(invalidInstalled.RetainedLastGood,
+        "Invalid installed state retained stale community package authority.");
+    Assert.True(invalidInstalled.Published, "Invalid installed state did not publish trusted-only state.");
+    Assert.Equal(3L, invalidInstalled.Revision);
+    Assert.SequenceEqual(["test-widget"], invalidInstalled.Current.Widgets.Select(widget => widget.Id));
     await File.WriteAllBytesAsync(Path.Combine(catalogRoot, "catalog-state.json"), validState);
+
+    var restored = await monitor.ReloadNowAsync();
+    Assert.True(restored.Published, "Restored installed state was not published.");
+    Assert.Equal(4L, restored.Revision);
+    Assert.SequenceEqual(["test-widget", "dev.example.alpha"],
+        restored.Current.Widgets.Select(widget => widget.Id));
 
     var watched = new TaskCompletionSource<BridgeCatalogChanged>(
         TaskCreationOptions.RunContinuationsAsynchronously);
     monitor.Changed += (_, change) =>
     {
-        if (change.Revision >= 3) watched.TrySetResult(change);
+        if (change.Revision >= 5) watched.TrySetResult(change);
     };
     monitor.Start();
     await catalog.SetEnabledAsync("dev.example.beta", true);
     var fileSystemChange = await watched.Task.WaitAsync(TimeSpan.FromSeconds(5));
-    Assert.Equal(3L, fileSystemChange.Revision);
+    Assert.Equal(5L, fileSystemChange.Revision);
     Assert.SequenceEqual(["test-widget", "dev.example.beta", "dev.example.alpha"],
         fileSystemChange.Catalog.Widgets.Select(widget => widget.Id));
-    Assert.SequenceEqual([1L, 2L, 3L], revisions);
+    Assert.SequenceEqual([1L, 2L, 3L, 4L, 5L], revisions);
+}
+
+static async Task InstalledPackageTamperRetiresLiveWorker()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-tamper-retire");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    var installed = await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.tamper", enabled: true);
+    var initial = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    await using var monitor = new BridgeCatalogMonitor(
+        trusted.Path, catalogRoot, Environment.ProcessPath!, initial.Catalog);
+    var pipeName = $"gba-bridge-tamper-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(
+        pipeName, initial.Catalog, 64 * 1024, catalogMonitor: monitor);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        var started = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest("dev.example.tamper", WidgetLifecycleState.Visible));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, started.Type);
+        Assert.Equal(1, server.RunningWorkerCount);
+
+        await File.AppendAllTextAsync(
+            Path.Combine(installed.InstallPath, "payload", "Widget.dll"), "tampered");
+        var failedClosed = await monitor.ReloadNowAsync();
+        Assert.True(failedClosed.Published, "Tampered package did not publish trusted-only state.");
+        Assert.False(failedClosed.RetainedLastGood, "Tampered package retained stale authority.");
+        Assert.SequenceEqual(["test-widget"],
+            failedClosed.Current.Widgets.Select(widget => widget.Id));
+        Assert.Equal(0, server.RunningWorkerCount);
+
+        var changed = await client.ReadEventAsync(BridgeMessageTypes.CatalogChanged);
+        Assert.Equal(failedClosed.Revision, changed.Payload.GetProperty("revision").GetInt64());
+        var listed = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.SequenceEqual(["test-widget"], listed.Payload.GetProperty("widgets")
+            .EnumerateArray().Select(widget => widget.GetProperty("id").GetString()!));
+        var relaunch = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest("dev.example.tamper", WidgetLifecycleState.Visible));
+        Assert.Equal(BridgeMessageTypes.Error, relaunch.Type);
+        Assert.Equal(0, server.RunningWorkerCount);
+    }
+    finally
+    {
+        await client.RequestAsync(BridgeMessageTypes.Stop, new { });
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+    }
 }
 
 static async Task CatalogMonitorStartupCatchUp()
@@ -546,7 +625,8 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     bool enabled,
     string styleSource = "button { color: #abcdef; }",
     IReadOnlyList<string>? permissions = null,
-    WidgetResidencyPolicy? residencyPolicy = null)
+    WidgetResidencyPolicy? residencyPolicy = null,
+    WidgetGlyph icon = WidgetGlyph.Connection)
 {
     var packagePath = Path.Combine(packageDirectory, $"{id}.gbarwidget");
     var manifest = new WidgetManifest
@@ -558,6 +638,7 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
         HostApi = new HostApiRange("1.0", 1),
         Entrypoint = new WidgetEntrypoint(
             "dotnet-worker", "payload/Widget.dll", "Example.EnabledWidget"),
+        Presentation = new WidgetPresentation(icon),
         Permissions = permissions ?? [],
         OptionalPermissions = [],
         BackgroundPolicy = residencyPolicy is null ? "none" : null,

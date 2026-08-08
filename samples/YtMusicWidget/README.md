@@ -1,20 +1,34 @@
-# YT Music reference widget
+# YT Music community addon
 
-This is a source port of `YtMusicGameBar`, rewritten as a controller-first consumer of the declarative `WidgetSdk`. It demonstrates a useful community-widget shape rather than attempting binary compatibility with Xbox Game Bar.
+This is a source port of `YtMusicGameBar`, rewritten as a controller-first
+community addon for the declarative `WidgetSdk`. It uses the same immutable
+`.gbarwidget` package, generic worker, AppContainer, consent, lifecycle, and
+broker path available to an independent developer. It has no bundled-worker or
+trusted-catalog fallback and does not attempt binary compatibility with Xbox
+Game Bar.
 
-The port retains the original project's security and integration choices:
+The reusable host-service contract is documented in [local companion HTTP and
+private secrets](../../docs/community-companion-services.md). This README
+covers the YTMDesktop2-specific integration and package workflow.
+
+The addon keeps the useful integration behavior while moving privileged work
+behind public host services:
 
 - Playback remains owned by YTMDesktop2.
-- The client accepts only `http` loopback endpoints on ports 9999-39999.
-- Proxies are disabled for the default HTTP handler.
+- The manifest declares exactly `network.loopback:13091`; the host fixes the
+  origin to `127.0.0.1`, disables proxies and redirects, and exposes bounded
+  JSON GET/POST operations rather than raw sockets or arbitrary URLs.
 - API error bodies are capped before they reach UI state.
 - Artwork is accepted only from HTTPS URLs.
-- Pairing tokens are stored as endpoint-scoped, per-user Windows Generic
-  Credentials. They are never rendered, logged, placed in widget settings, or
-  sent to a different endpoint.
+- Pairing tokens are written to the public authenticated-publisher/package/slot-scoped
+  `storage.private-secrets.v1` service. The addon can query only existence and
+  metadata; it cannot read a stored secret. For authenticated loopback calls,
+  the host injects the named `ytmdesktop2.bearer` slot as a Bearer value.
 - Pairing requests never carry an existing Bearer token. A successful pairing
-  replaces the prior credential, and an HTTP 401 removes the rejected token
-  before returning the UI to its pairing-required state.
+  replaces the prior credential. Authenticated requests opt into
+  `InvalidateBearerSecretOnUnauthorized`; on HTTP 401 the trusted host removes
+  that exact scoped token before returning, then the addon clears only its local
+  connection state and returns to pairing without racing a second delete.
 
 ## Controller map
 
@@ -29,7 +43,17 @@ The port retains the original project's security and integration choices:
 
 When the connected widget card is selected on the dashboard, its snapshot also advertises three host-routable quick actions: `LB → previous`, `X → toggle-playback`, and `RB → next`. The SDK resolves those through the dashboard input context and reports `SourceElementId = "dashboard-card"`. `Y` is intentionally absent because the dashboard host owns it for widget reordering; after the widget is opened, its own `Y → refresh` shortcut remains available.
 
-The widget renders explicit disconnected, connecting, pairing, connected, and error states. During pairing it displays the approval code returned by YTMDesktop2, then continues automatically when the companion approves it. A configured server may continue to report `authRequired` after pairing; the widget reconnects with its stored credential and treats an actual HTTP 401—not that configuration flag—as credential rejection. The client and credential store are injected through `IYtMusicClient` and `IYtMusicCredentialStore`, so tests and future capability-broker adapters do not need a live companion application or real credentials.
+The widget renders explicit disconnected, connecting, pairing, connected, and
+error states. During pairing it displays the approval code returned by
+YTMDesktop2, then allows up to 40 seconds for companion approval. A configured
+server may continue to report `authRequired` after pairing; the widget
+reconnects using host-side bearer injection and treats an actual HTTP 401—not
+that configuration flag—as credential rejection. A returned 401 means the host
+has already removed the rejected durable slot; a deletion failure is surfaced
+instead. `IYtMusicClient` remains an
+injectable test seam, while the production default client is created lazily
+after `HostServices` attachment and uses only `HostServices.Loopback` and
+`HostServices.PrivateSecrets`.
 
 The first entry into the shared Visible/Interactive lifetime starts a
 non-blocking automatic connection attempt; a mere render does not connect.
@@ -83,19 +107,80 @@ dotnet build samples\YtMusicWidget\YtMusicWidget.csproj -c Release
 dotnet run --project tests\YtMusicWidget.Tests\YtMusicWidget.Tests.csproj -c Release
 ```
 
-The test executable has no test-framework or other NuGet dependencies. Its fake client, credential store, and HTTP handler cover UI state transitions, shortcuts, command routing, pairing, endpoint rejection, JSON parsing, durable Windows Credential Manager round trips, credential reload/replacement, authorization expiry, and manifest validity.
+Build a deterministic community package through the public CLI:
 
-## Current platform gaps exposed by this port
+```powershell
+.\samples\YtMusicWidget\Build-CommunityPackage.ps1 -Configuration Release
+```
 
-The sample intentionally does not change the SDK/protocol to work around these gaps:
+The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
+`styles/default.gbss` into a clean staging root, then runs `gbar validate` and
+`gbar pack`. By default the package is written to:
 
-- The bundled trusted worker currently accesses Windows Credential Manager
-  directly. Community AppContainer workers still require a future host secret
-  broker; they must never copy this trusted-worker access pattern or keep tokens
-  in plaintext widget settings.
+```text
+artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.0.gbarwidget
+```
+
+To install and enable it for the current user through the same public catalog
+commands used by any addon publisher:
+
+```powershell
+.\samples\YtMusicWidget\Build-CommunityPackage.ps1 -Configuration Release -Install
+```
+
+`-Install` runs the equivalent public catalog operations:
+
+```powershell
+$gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
+& $gbar install `
+  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.0.gbarwidget
+& $gbar enable org.gbar.samples.ytmusic
+& $gbar list
+```
+
+Installation/enablement does not grant capabilities. Open overlay Settings →
+Permissions → YT Music and separately grant **Access local app on port 13091**.
+Grant **Store private connection secrets** only if YTMDesktop2 requires pairing
+and the addon should retain its bearer slot. Then return to the tray; the
+manifest-declared `music` icon is discovered from the Community package and the
+worker starts lazily when selected.
+
+Before testing, enable YTMDesktop2's companion API on its standard port. If the
+service is absent, the addon renders a bounded retry state; it never scans other
+ports or falls back to direct network access. Required loopback denial prevents
+the integration. Optional vault denial still permits an authentication-disabled
+companion, but pairing cannot persist a token and must show an explicit error.
+
+Installed versions are immutable. Bump `manifest.json` before installing a
+replacement version. Pass `-Catalog <directory>` to exercise the complete
+pack/install/enable workflow against an isolated catalog.
+
+To review or test version behavior with the public CLI:
+
+```powershell
+& $gbar disable org.gbar.samples.ytmusic
+& $gbar version list org.gbar.samples.ytmusic
+& $gbar version select org.gbar.samples.ytmusic 0.2.0
+& $gbar enable org.gbar.samples.ytmusic
+```
+
+The current CLI has no version-removal command. Unsigned authority is derived
+from the host-verified package content tree, so changed package bytes use a new
+secret namespace and require pairing again; rollback to the exact verified
+bytes regains the prior namespace. Publisher signing and uninstall secret
+cleanup are not implemented, so do not promise authenticated-update retention
+or uninstall cleanup yet.
+
+The test executable has no test-framework or other NuGet dependencies. Its
+fake widget client and typed host-service harness cover UI state transitions,
+shortcuts, dashboard authority, command routing, pairing, exact-port requests,
+JSON parsing, write-only secret replacement/removal, authorization expiry, and
+manifest validity without a live companion or real credential.
+
+## Current limitations
+
 - There is no endpoint settings/text-input primitive. This reference uses YTMDesktop2's standard `127.0.0.1:13091` endpoint. Advanced endpoint changes require future controller-friendly settings primitives.
-- The manifest can declare `network.loopback:13091`, but enforcement through a capability broker is not implemented by this sample.
-- Image, semantic-icon, selected, disabled, and busy protocol state now exist;
-  this sample uses selected/busy state for its secondary toggles. The generic
-  native renderer and all GBSS state maps are still incomplete.
-- Progress is read-only. The current protocol has no slider/scrubber primitive.
+- Progress remains read-only in this addon; wiring the SDK slider to a
+  companion seek endpoint is separate work.
+- The host's semantic `music` tray glyph is intentionally package-declared;
+  arbitrary icon files and executable drawing payloads are not accepted.

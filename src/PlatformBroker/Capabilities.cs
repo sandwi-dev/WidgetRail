@@ -12,7 +12,15 @@ public sealed record BrokerCapabilityDefinition(
     BrokerCapabilityKind Kind,
     IReadOnlySet<string> Operations,
     IReadOnlySet<string> Events,
-    bool AllowsDashboardGesture = false);
+    bool AllowsDashboardGesture = false,
+    IReadOnlySet<string>? ReadOperations = null)
+{
+    public BrokerCapabilityKind KindForOperation(string operation) =>
+        ReadOperations?.Contains(operation) == true ? BrokerCapabilityKind.Read : Kind;
+
+    public bool AllowsDashboardGestureForOperation(string operation) =>
+        KindForOperation(operation) == BrokerCapabilityKind.Control && AllowsDashboardGesture;
+}
 
 /// <summary>Closed public capability vocabulary. Version is part of every ID.</summary>
 public static class PlatformCapabilities
@@ -37,6 +45,11 @@ public static class PlatformCapabilities
     public const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
+    public const string PrivateSecretsV1 = "storage.private-secrets.v1";
+
+    public const string LoopbackCapabilityPrefix = "network.loopback:";
+    public const int MinimumLoopbackPort = 1024;
+    public const int MaximumLoopbackPort = 65535;
 
     public const string AudioSessionsList = "audio.sessions.list";
     public const string AudioSessionSetVolume = "audio.session.set-volume";
@@ -63,6 +76,12 @@ public static class PlatformCapabilities
     public const string AppLibraryLaunch = "apps.library.launch";
     public const string MediaSessionsGet = "media.sessions.get";
     public const string MediaSessionControl = "media.session.control";
+    public const string LoopbackHttpGetJson = "loopback.http.get-json";
+    public const string LoopbackHttpPostJson = "loopback.http.post-json";
+    public const string PrivateSecretExists = "private-secret.exists";
+    public const string PrivateSecretMetadata = "private-secret.metadata";
+    public const string PrivateSecretSave = "private-secret.save";
+    public const string PrivateSecretDelete = "private-secret.delete";
 
     public const string AudioSessionsChanged = "audio.sessions.changed";
     public const string AudioOutputChanged = "audio.output.changed";
@@ -120,13 +139,50 @@ public static class PlatformCapabilities
             [MediaSessionsControlV1] = new(MediaSessionsControlV1, 1,
                 BrokerCapabilityKind.Control, Set(MediaSessionControl), Set(),
                 AllowsDashboardGesture: true),
+            [PrivateSecretsV1] = new(PrivateSecretsV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(PrivateSecretExists, PrivateSecretMetadata,
+                    PrivateSecretSave, PrivateSecretDelete),
+                Set(),
+                AllowsDashboardGesture: false,
+                ReadOperations: Set(PrivateSecretExists, PrivateSecretMetadata)),
         };
 
     public static IReadOnlyCollection<BrokerCapabilityDefinition> All { get; } =
         Definitions.Values.ToArray();
 
-    public static bool TryGet(string id, out BrokerCapabilityDefinition definition) =>
-        Definitions.TryGetValue(id, out definition!);
+    public static bool TryGet(string id, out BrokerCapabilityDefinition definition)
+    {
+        if (Definitions.TryGetValue(id, out definition!)) return true;
+        if (!TryGetLoopbackPort(id, out _)) return false;
+        definition = new BrokerCapabilityDefinition(
+            id,
+            1,
+            BrokerCapabilityKind.Control,
+            Set(LoopbackHttpGetJson, LoopbackHttpPostJson),
+            Set(),
+            AllowsDashboardGesture: true,
+            ReadOperations: Set(LoopbackHttpGetJson));
+        return true;
+    }
+
+    public static bool TryGetLoopbackPort(string? capabilityId, out int port)
+    {
+        port = 0;
+        if (capabilityId is null ||
+            !capabilityId.StartsWith(LoopbackCapabilityPrefix, StringComparison.Ordinal))
+            return false;
+        var text = capabilityId.AsSpan(LoopbackCapabilityPrefix.Length);
+        if (text.Length is < 1 or > 5 || text[0] == '0' ||
+            !int.TryParse(text, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out port) ||
+            port is < MinimumLoopbackPort or > MaximumLoopbackPort)
+        {
+            port = 0;
+            return false;
+        }
+        return true;
+    }
 
     private static IReadOnlySet<string> Set(params string[] values) =>
         new HashSet<string>(values, StringComparer.Ordinal);

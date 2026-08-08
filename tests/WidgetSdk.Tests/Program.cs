@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
     ("Modern controller composites preserve tab switch and dialog semantics", ModernControllerComponentsAreSemantic),
+    ("Minimalist rows and controller hints preserve public focus and accessibility contracts", MinimalistRowsAreSemantic),
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
     ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
     ("Style helpers eagerly enforce GBSS class contracts", StyleExtensionsValidateClasses),
@@ -32,6 +33,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
     ("Null protocol collections report validation errors", NullCollectionsAreRejected),
     ("Valid manifest passes", ValidManifestPasses),
+    ("Manifest presentation uses only closed semantic host icons", ManifestPresentationIsSemantic),
     ("Manifest permission declarations are bounded ASCII-safe and unambiguous", ManifestPermissionsAreBounded),
     ("Residency policy is versioned bounded and legacy compatible", ResidencyPolicyIsVersioned),
     ("Unsafe manifest values report errors", UnsafeManifestFails),
@@ -50,6 +52,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Public test host services are typed immutable and attach once", HostCapabilityServices),
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
     ("App library host service uses opaque paged read and launch contracts", AppLibraryPlatformService),
+    ("Community services expose exact loopback and write-only secret contracts", CommunityPlatformServices),
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
 };
 
@@ -155,6 +158,93 @@ static async Task AppLibraryPlatformService()
     Assert.Throws<ArgumentOutOfRangeException>(() =>
         widget.AppLibrary.GetPageAsync(0, WidgetAppLibraryService.MaximumPageSize + 1)
             .GetAwaiter().GetResult());
+}
+
+static async Task CommunityPlatformServices()
+{
+    var get = WidgetLoopbackCapabilities.GetJson(13091);
+    var post = WidgetLoopbackCapabilities.PostJson(13091);
+    var services = new WidgetTestHostServicesBuilder()
+        .WithHandler(get, (request, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("/api/v1/state", request.Path);
+            Assert.Equal("session", request.BearerSecretSlot);
+            Assert.True(request.InvalidateBearerSecretOnUnauthorized,
+                "Rejected-bearer invalidation was not serialized to the host request.");
+            Assert.Equal(10_000, request.TimeoutMilliseconds);
+            Assert.Equal<string?>(null, request.JsonBody);
+            return ValueTask.FromResult(new WidgetLoopbackJsonResponse(
+                200, "{\"playing\":true}",
+                [new WidgetLoopbackHttpHeader("ETag", "\"one\"")]));
+        })
+        .WithHandler(post, (request, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("/auth/request", request.Path);
+            Assert.Equal("{\"app\":\"widget\"}", request.JsonBody);
+            Assert.Equal(40_000, request.TimeoutMilliseconds);
+            return ValueTask.FromResult(new WidgetLoopbackJsonResponse(200, "{}", []));
+        })
+        .WithResponse(
+            WidgetPrivateSecretCapabilities.Exists,
+            new WidgetPrivateSecretExists(true))
+        .WithResponse(
+            WidgetPrivateSecretCapabilities.Metadata,
+            new WidgetPrivateSecretMetadata(true, 1234))
+        .WithResponse(
+            WidgetPrivateSecretCapabilities.Save,
+            new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetPrivateSecretCapabilities.Delete,
+            new WidgetCapabilityAcknowledgement(true))
+        .Build();
+    var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
+    var state = await widget.Loopback.GetJsonAsync(13091, "/api/v1/state",
+        new WidgetLoopbackRequestOptions
+        {
+            BearerSecretSlot = "session",
+            InvalidateBearerSecretOnUnauthorized = true,
+        });
+    Assert.Equal(200, state.StatusCode);
+    Assert.Equal("{\"playing\":true}", state.JsonBody);
+    Assert.Equal("ETag", state.Headers[0].Name);
+    await widget.Loopback.PostJsonAsync(13091, "/auth/request", "{\"app\":\"widget\"}",
+        new WidgetLoopbackRequestOptions { Timeout = TimeSpan.FromSeconds(40) });
+    Assert.True(await widget.PrivateSecrets.ExistsAsync("session"),
+        "Expected private secret slot to exist.");
+    var metadata = await widget.PrivateSecrets.GetMetadataAsync("session");
+    Assert.Equal<long?>(1234, metadata.LastWrittenUnixMilliseconds);
+    await widget.PrivateSecrets.SaveAsync("session", "new-secret");
+    await widget.PrivateSecrets.DeleteAsync("session");
+
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        widget.Loopback.GetJsonAsync(80, "/").GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.Loopback.GetJsonAsync(13091, "//remote.example/path").GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.Loopback.PostJsonAsync(13091, "/", "not-json").GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.Loopback.GetJsonAsync(13091, "/", new WidgetLoopbackRequestOptions
+        {
+            Headers = new Dictionary<string, string> { ["Authorization"] = "Bearer stolen" },
+        }).GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.Loopback.GetJsonAsync(13091, "/", new WidgetLoopbackRequestOptions
+        {
+            InvalidateBearerSecretOnUnauthorized = true,
+        }).GetAwaiter().GetResult());
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        widget.Loopback.GetJsonAsync(13091, "/", new WidgetLoopbackRequestOptions
+        {
+            Timeout = TimeSpan.FromMilliseconds(40_001),
+        }).GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.PrivateSecrets.SaveAsync("bad/slot", "secret").GetAwaiter().GetResult());
+    Assert.True(typeof(WidgetPrivateSecretService).GetMethods()
+            .Where(method => method.DeclaringType == typeof(WidgetPrivateSecretService))
+            .All(method => method.Name is not ("ReadAsync" or "GetSecretAsync")),
+        "The public vault must not expose stored secret values.");
 }
 
 static async Task TypedPlatformServices()
@@ -660,6 +750,15 @@ static Task DashboardAuthorityContract()
     var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
     Assert.Equal(capability, roundTrip.QuickActions.Single().Capability);
 
+    var scopedCapability = new WidgetQuickActionCapability(
+        "network.loopback:13091", "loopback.http.post-json");
+    var scoped = new WidgetView(
+        UI.Stack("root"),
+        QuickActions:
+        [new WidgetQuickAction(ControllerButton.X, "next", "Next track", scopedCapability)])
+        .CreateSnapshot("authority.instance", 5);
+    Assert.Equal(scopedCapability, scoped.QuickActions.Single().Capability);
+
     var legacy = snapshot with { ProtocolVersion = ProtocolConstants.SliderVersion };
     Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
         error.Code == "feature_requires_version"),
@@ -676,6 +775,17 @@ static Task DashboardAuthorityContract()
         error.Code == "required"), "Empty capability IDs must fail closed.");
     Assert.True(errors.Any(error => error.Path.EndsWith("operationId", StringComparison.Ordinal) &&
         error.Code == "too_long"), "Unbounded operation IDs must fail closed.");
+    var invalidScoped = scoped with
+    {
+        QuickActions =
+        [new WidgetQuickAction(
+            ControllerButton.X, "next", "Next track",
+            new WidgetQuickActionCapability("network.loopback:13091/path", "loopback.http.post-json"))]
+    };
+    Assert.True(ViewSnapshotValidator.Validate(invalidScoped).Any(error =>
+            error.Path.EndsWith("capabilityId", StringComparison.Ordinal) &&
+            error.Code == "invalid_identifier"),
+        "Capability qualifiers must remain bounded ASCII tokens.");
     return Task.CompletedTask;
 }
 
@@ -954,6 +1064,95 @@ static Task ModernControllerComponentsAreSemantic()
     return Task.CompletedTask;
 }
 
+static Task MinimalistRowsAreSemantic()
+{
+    var value = UI.ValueRow(
+        "Output device",
+        "Living room TV",
+        "minimal.output",
+        description: "HDMI audio",
+        glyph: WidgetGlyph.Volume,
+        valueAccessibilityLabel: "Current output: Living room TV");
+    var selected = UI.ChoiceRow(
+        "Living room TV",
+        "select-output",
+        "minimal.choice.selected",
+        isSelected: true);
+    var unavailable = UI.ChoiceRow(
+        "Headset",
+        "select-headset",
+        "minimal.choice.unavailable",
+        isDisabled: true,
+        accessibilityLabel: "Wireless headset");
+    var pending = UI.ChoiceRow(
+        "Speakers",
+        "select-speakers",
+        "minimal.choice.pending",
+        isBusy: true,
+        glyph: WidgetGlyph.Volume);
+    var bumperHint = UI.ControllerHint(
+        ControllerButton.LeftBumper,
+        "Previous track",
+        "minimal.hint.previous");
+    var view = new WidgetView(
+        UI.Stack("minimal.root", value, selected, unavailable, pending, bumperHint),
+        InitialFocusId: "minimal.choice.unavailable");
+
+    var snapshot = view.CreateSnapshot("minimal.components", 1);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+
+    var valueNode = Find(snapshot.Root, "minimal.output");
+    Assert.Equal(ViewNodeKind.Row, valueNode.Kind);
+    Assert.True(valueNode.StyleClasses.Contains("gbar-value-row"),
+        "ValueRow must publish its semantic theme hook.");
+    Assert.True(new[]
+    {
+        "minimal.output.icon",
+        "minimal.output.text",
+        "minimal.output.value",
+    }.SequenceEqual(valueNode.Children.Select(child => child.Id)),
+        "ValueRow child order or stable IDs changed.");
+    Assert.Equal(WidgetGlyph.Volume, Find(snapshot.Root, "minimal.output.icon").Glyph);
+    Assert.Equal("Output device", Find(snapshot.Root, "minimal.output.label").Text);
+    Assert.Equal("HDMI audio", Find(snapshot.Root, "minimal.output.description").Text);
+    Assert.Equal("Current output: Living room TV",
+        Find(snapshot.Root, "minimal.output.value").AccessibilityLabel);
+
+    var selectedNode = Find(snapshot.Root, "minimal.choice.selected");
+    Assert.Equal(ViewNodeKind.Button, selectedNode.Kind);
+    Assert.Equal(true, selectedNode.IsSelected);
+    Assert.Equal(WidgetGlyph.Check, selectedNode.Glyph);
+    Assert.Equal("Living room TV, Selected", selectedNode.AccessibilityLabel);
+    Assert.True(selectedNode.StyleClasses.Contains("gbar-choice-row--selected"),
+        "Selected ChoiceRow did not expose its state theme hook.");
+
+    var unavailableNode = Find(snapshot.Root, "minimal.choice.unavailable");
+    Assert.Equal(true, unavailableNode.IsDisabled);
+    Assert.Equal("Wireless headset, Not selected, Unavailable", unavailableNode.AccessibilityLabel);
+    Assert.Equal("minimal.choice.unavailable", snapshot.InitialFocusId);
+    Assert.Equal(null, unavailableNode.IsBusy);
+
+    var pendingNode = Find(snapshot.Root, "minimal.choice.pending");
+    Assert.Equal(true, pendingNode.IsBusy);
+    Assert.Equal(WidgetGlyph.Volume, pendingNode.Glyph);
+    Assert.Equal("Speakers, Not selected, Busy", pendingNode.AccessibilityLabel);
+
+    var hint = Find(snapshot.Root, "minimal.hint.previous");
+    Assert.Equal(ViewNodeKind.Row, hint.Kind);
+    Assert.Equal(null, hint.ActionId);
+    Assert.Equal("LB", Find(snapshot.Root, "minimal.hint.previous.key").Text);
+    Assert.Equal("Left bumper", Find(snapshot.Root, "minimal.hint.previous.key").AccessibilityLabel);
+    Assert.Equal("Previous track", Find(snapshot.Root, "minimal.hint.previous.label").Text);
+
+    Assert.Throws<ArgumentException>(() => UI.ValueRow("", "value", "row"));
+    Assert.Throws<ArgumentException>(() => UI.ValueRow("Label", "", "row"));
+    Assert.Throws<ArgumentException>(() => UI.ChoiceRow("", "action", "choice"));
+    Assert.Throws<ArgumentException>(() => UI.ControllerHint(ControllerButton.A, "", "hint"));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.ControllerHint(
+        (ControllerButton)999, "Action", "hint"));
+    return Task.CompletedTask;
+}
+
 static Task CompositeChildIdsValidateEagerly()
 {
     const int maximumIdentifierLength = 128;
@@ -1189,6 +1388,44 @@ static Task ValidManifestPasses()
     }).Count);
     var roundTrip = ManifestJson.Deserialize(ManifestJson.Serialize(manifest));
     Assert.Equal(manifest.Id, roundTrip.Id);
+    return Task.CompletedTask;
+}
+
+static Task ManifestPresentationIsSemantic()
+{
+    var manifest = ValidManifest() with
+    {
+        Presentation = new WidgetPresentation(WidgetGlyph.Music),
+    };
+    var payload = ManifestJson.Serialize(manifest);
+    var json = Encoding.UTF8.GetString(payload);
+    Assert.True(json.Contains("\"presentation\"", StringComparison.Ordinal) &&
+                json.Contains("\"icon\": \"music\"", StringComparison.Ordinal),
+        "Manifest presentation icon was not serialized as a semantic camel-case glyph.");
+    var roundTrip = ManifestJson.Deserialize(payload);
+    Assert.Equal(WidgetGlyph.Music, roundTrip.Presentation.Icon);
+
+    var withoutPresentation = System.Text.Json.JsonSerializer.Deserialize<
+        Dictionary<string, System.Text.Json.JsonElement>>(payload)!;
+    Assert.True(withoutPresentation.Remove("presentation"),
+        "Serialized manifest omitted the presentation member.");
+    var omitted = ManifestJson.Deserialize(
+        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(withoutPresentation));
+    Assert.Equal(WidgetGlyph.Connection, omitted.Presentation.Icon);
+
+    Assert.Throws<System.Text.Json.JsonException>(() => ManifestJson.Deserialize(
+        Encoding.UTF8.GetBytes(json.Replace("\"music\"", "\"../../icon.svg\"",
+            StringComparison.Ordinal))));
+    Assert.Throws<System.Text.Json.JsonException>(() => ManifestJson.Deserialize(
+        Encoding.UTF8.GetBytes(json.Replace("\"music\"", "999",
+            StringComparison.Ordinal))));
+    var invalid = WidgetManifestValidator.Validate(manifest with
+    {
+        Presentation = new WidgetPresentation((WidgetGlyph)999),
+    });
+    Assert.True(invalid.Any(error => error.Path == "$.presentation.icon" &&
+                                     error.Code == "unsupported_icon"),
+        "Undefined semantic glyph was not rejected by manifest validation.");
     return Task.CompletedTask;
 }
 
@@ -1909,6 +2146,8 @@ file sealed class CapabilityWidget : Widget
     public WidgetAudioService Audio => HostServices.Audio;
     public WidgetNetworkService Network => HostServices.Network;
     public WidgetAppLibraryService AppLibrary => HostServices.AppLibrary;
+    public WidgetLoopbackHttpService Loopback => HostServices.Loopback;
+    public WidgetPrivateSecretService PrivateSecrets => HostServices.PrivateSecrets;
     public ValueTask<string> CallAsync() =>
         HostServices.Capabilities.InvokeAsync(Operation, "request");
     public override WidgetView Render() => new(UI.Text("Ready", "root"));

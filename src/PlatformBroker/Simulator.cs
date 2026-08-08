@@ -11,6 +11,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<AppLibraryItemSummary> _appLibrary = [];
     private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
     private readonly List<MediaSessionSummary> _mediaSessions = [];
+    private readonly Dictionary<string, (string Secret, long WrittenAt)> _privateSecrets =
+        new(StringComparer.Ordinal);
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
@@ -36,6 +38,14 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int AppLibraryLaunchCalls { get; private set; }
     public int AppLibraryReadCalls { get; private set; }
     public int AppLibraryRefreshCalls { get; private set; }
+    public int LoopbackCalls { get; private set; }
+    public int PrivateSecretSaveCalls { get; private set; }
+    public int PrivateSecretDeleteCalls { get; private set; }
+    public int LastLoopbackPort { get; private set; }
+    public bool LastLoopbackWasPost { get; private set; }
+    public LoopbackJsonRequest? LastLoopbackRequest { get; private set; }
+    public Func<BrokerWidgetIdentity, int, bool, LoopbackJsonRequest,
+        CancellationToken, Task<LoopbackJsonResponse>>? LoopbackHandler { get; set; }
     public string? LastLaunchedAppId { get; private set; }
     public string? LastControlledMediaSessionId { get; private set; }
     public MediaSessionCommand? LastMediaCommand { get; private set; }
@@ -309,4 +319,71 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         LastMediaCommand = command;
         return Task.CompletedTask;
     }
+
+    public Task<PrivateSecretMetadataSummary> GetPrivateSecretMetadataAsync(
+        BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(_privateSecrets.TryGetValue(SecretKey(identity, slot), out var value)
+            ? new PrivateSecretMetadataSummary(true, value.WrittenAt)
+            : new PrivateSecretMetadataSummary(false, null));
+    }
+
+    public Task SavePrivateSecretAsync(
+        BrokerWidgetIdentity identity, string slot, string secret,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        PrivateSecretSaveCalls++;
+        _privateSecrets[SecretKey(identity, slot)] =
+            (secret, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        return Task.CompletedTask;
+    }
+
+    public Task DeletePrivateSecretAsync(
+        BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        PrivateSecretDeleteCalls++;
+        _privateSecrets.Remove(SecretKey(identity, slot));
+        return Task.CompletedTask;
+    }
+
+    public Task<LoopbackJsonResponse> SendLoopbackJsonAsync(
+        BrokerWidgetIdentity identity, int port, bool isPost,
+        LoopbackJsonRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LoopbackCalls++;
+        LastLoopbackPort = port;
+        LastLoopbackWasPost = isPost;
+        LastLoopbackRequest = request;
+        if (request.BearerSecretSlot is { } slot &&
+            !_privateSecrets.ContainsKey(SecretKey(identity, slot)))
+            throw new BrokerException("secret_not_found", "Private secret slot is empty.");
+        return SendAsync();
+
+        async Task<LoopbackJsonResponse> SendAsync()
+        {
+            var response = LoopbackHandler is null
+                ? new LoopbackJsonResponse(200, "{}", [])
+                : await LoopbackHandler(identity, port, isPost, request, cancellationToken)
+                    .ConfigureAwait(false);
+            if (response.StatusCode == 401 &&
+                request is
+                {
+                    InvalidateBearerSecretOnUnauthorized: true,
+                    BearerSecretSlot: { } rejectedSlot,
+                })
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                PrivateSecretDeleteCalls++;
+                _privateSecrets.Remove(SecretKey(identity, rejectedSlot));
+            }
+            return response;
+        }
+    }
+
+    private static string SecretKey(BrokerWidgetIdentity identity, string slot) =>
+        $"{identity.PublisherId}\0{identity.PackageId}\0{slot}";
 }

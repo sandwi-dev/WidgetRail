@@ -43,11 +43,20 @@ GBSS design constrained by controller navigation and overlay performance.
 | Tabs | `SegmentedTabs` | Stable author IDs, semantic selected state, explicit Left/Right neighbors. |
 | Switch | `Switch` | One focus stop with visible/audible On/Off state; Disabled remains focusable. |
 | Scoped dialog | `ScopedDialog` | Nested input scope and focus-independent B action; widget publishes active scope/focus. |
+| Read-only metadata row | `ValueRow` | Flat label/value hierarchy with optional description and semantic glyph; never enters focus. |
+| Full-row choice | `ChoiceRow` | One stable 44-DIP-or-larger focus target with selected, Disabled, and Busy semantics. |
+| Controller help | `ControllerHint` | Nonfocusable semantic key/label pair; documents but never implicitly binds input. |
 
 These primitives are deliberately small. Reusable components should normally
 be SDK composition helpers that emit the same bounded tree rather than new
 protocol kinds. A new protocol kind is justified only when the host must own
 unique input, accessibility, or rendering behavior—as with Slider.
+
+The current helpers are a functional contract, not the final visual language.
+The restrained minimalist default hierarchy, density, typography, radii,
+focus treatment, and state motion are tracked together as
+[GBA-031](known-issues.md#gba-031--default-components-need-a-minimalist-visual-system)
+so Community authors do not need per-widget repairs.
 
 ### Modern composite helpers
 
@@ -80,6 +89,19 @@ semantic classes. They do not add worker code, polling, or a new native node:
 - `UI.ScopedDialog(...)` creates a styled nested input scope with B bound on the
   scope container. When shown, publish its `scopeId` as `ActiveInputScopeId` and
   a focusable descendant as `InitialFocusId`; restore the opener when dismissed.
+- `UI.ValueRow(...)` creates a flat read-only metadata row with optional glyph
+  and description. It is intentionally nonfocusable; do not use it to disguise
+  an action. Its trailing value has a separate accessible label for units or
+  localized pronunciation.
+- `UI.ChoiceRow(...)` creates one full-width Button focus stop for a list choice
+  or action. Selected, Disabled, and Busy state stay on that same ID across
+  rerenders. The default selected glyph is Check, but authors may supply a more
+  meaningful semantic leading glyph while selected state remains explicit.
+- `UI.ControllerHint(...)` creates a restrained key-cap and label from the
+  closed `ControllerButton` enum. It is display-only: authors must still bind
+  the matching shortcut to the active input scope or focused control. Compose
+  hints in a Row or Stack appropriate to the current surface width rather than
+  assuming one unbroken desktop-width footer.
 
 Use `.AddClasses(...)` to add widget-specific styling while preserving and
 deduplicating required component classes. `.Classes(...)` remains the explicit
@@ -104,6 +126,9 @@ diagnostics, but must not reuse them for another node in the same snapshot.
 | `SegmentedTabs(id, selectedTabId, tabs)` | The Row uses `id`; each Button uses its author-provided `SegmentedTab.Id`. |
 | `Switch(..., id)` | None; the Button itself uses `id`. |
 | `ScopedDialog(..., id, scopeId, ...)` | `id.title` and `id.content`; supplied children retain their IDs. |
+| `ValueRow(..., id, description?, glyph?)` | `id.text`, `id.label`, and `id.value`; optional `id.icon` and `id.description`. |
+| `ChoiceRow(..., id)` | None; the Button itself uses `id`. |
+| `ControllerHint(button, label, id)` | `id.key` and `id.label`. |
 
 Generated IDs use the same 128-character stable-ID grammar as ordinary nodes.
 The helper validates the parent and complete generated IDs eagerly, so leave
@@ -177,6 +202,12 @@ position. When a provider event arrives, ignore stale values that predate the
 pending intent; apply external authoritative changes normally once no command
 is pending. Cancel provider operations when the active lifecycle ends.
 
+Treat optional providers as independent feature slices. Loss or denial of
+device enumeration or microphone control must disable/explain only those rows;
+working master output and per-application sessions stay usable, and focus stays
+on the same stable target. This partial-degradation/focus contract is tracked as
+[GBA-035](known-issues.md).
+
 ## Interaction-state contract
 
 Focusable does not mean actionable:
@@ -201,8 +232,9 @@ tested composition helpers or native semantics before authors depend on names:
 
 1. **Status line and loading state** — bounded live state without making
    metadata focusable or inventing a polling contract.
-2. **List row / media row** — leading visual, primary/secondary text, trailing
-   status/action, stable child-ID suffixes, and focus-ring-safe insets.
+2. **Rich media row** — artwork, multi-line metadata, and a full-row action
+   require a future host semantic or composition contract beyond the flat
+   `ValueRow` and single-label `ChoiceRow` primitives.
 3. **Select/listbox helper** — opens a nested scrollable scope instead of
    cycling hidden values with bumpers or triggers.
 4. **Toast/notification model** — host-announced, time-bounded feedback that

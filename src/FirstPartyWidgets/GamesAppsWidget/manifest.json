@@ -13,6 +13,7 @@
     "assembly": "payload/GamesAppsWidget.dll",
     "type": "GameBarAlternative.FirstPartyWidgets.GamesApps.GamesAppsWidget"
   },
+  "presentation": { "icon": "play" },
   "permissions": [
     "system.apps.library.read.v1"
   ],

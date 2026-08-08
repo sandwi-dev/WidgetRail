@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace GameBarAlternative.WidgetProtocol;
 
 public sealed record ProtocolValidationError(string Path, string Code, string Message);
@@ -56,7 +58,7 @@ public static class ViewSnapshotValidator
                 if (snapshot.ProtocolVersion < ProtocolConstants.DashboardGestureAuthorityVersion)
                     Add($"$.quickActions[{index}].capability", "feature_requires_version",
                         $"Dashboard capability authority requires protocol version {ProtocolConstants.DashboardGestureAuthorityVersion} or later.");
-                CheckIdentifier(capability.CapabilityId,
+                CheckCapabilityIdentifier(capability.CapabilityId,
                     $"$.quickActions[{index}].capability.capabilityId", "capability ID");
                 CheckIdentifier(capability.OperationId,
                     $"$.quickActions[{index}].capability.operationId", "capability operation ID");
@@ -367,6 +369,20 @@ public static class ViewSnapshotValidator
                 Add(path, "too_long", $"The {label} may not exceed 128 characters.");
             else if (!value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.'))
                 Add(path, "invalid_identifier", $"The {label} may contain only ASCII letters, digits, '.', '-' and '_'.");
+        }
+
+        void CheckCapabilityIdentifier(string? value, string path, string label)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                Add(path, "required", $"The {label} is required.");
+            else if (value.Length > ProtocolConstants.MaximumCapabilityIdLength)
+                Add(path, "too_long",
+                    $"The {label} may not exceed {ProtocolConstants.MaximumCapabilityIdLength} characters.");
+            else if (!Regex.IsMatch(value,
+                "^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z](?:[a-z0-9-]*[a-z0-9])?)*(?::[A-Za-z0-9._-]+)?$",
+                RegexOptions.CultureInvariant))
+                Add(path, "invalid_identifier",
+                    $"The {label} must use the bounded manifest capability syntax.");
         }
 
         void CheckString(string? value, string path)

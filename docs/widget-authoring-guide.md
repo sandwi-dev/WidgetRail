@@ -2,10 +2,11 @@
 
 Status: the package schema, managed SDK, declarative protocol versions 1–3,
 controller routing, lifecycle, GBSS, local packaging/install workflow, and
-typed audio/network capabilities described as **implemented** below exist in
-this repository. Public NuGet packages, publisher signing/revocation, a widget
-gallery, automatic updates, a graphical installer, general secret storage,
-and arbitrary network access are **not implemented**.
+typed host capabilities described as **implemented** below exist in this
+repository, including exact-port local JSON and write-only private secrets.
+Public NuGet packages, publisher signing/revocation, a widget gallery,
+automatic updates, a graphical installer, readable/general secret storage,
+and arbitrary internet/LAN/socket access are **not implemented**.
 
 This is the primary end-to-end guide for widget authors. The narrower reference
 pages remain authoritative for their detailed limits and are linked throughout.
@@ -426,12 +427,12 @@ For a remote toggle:
 5. On failure, restore only that feature's prior state, publish a short safe
    error, and invalidate again.
 
-The [YT Music reference](../samples/YtMusicWidget/README.md) demonstrates
-optimistic playback/rating/shuffle/repeat state, stale-event guards, bounded
-progress interpolation, and rapid ordered LB/RB actions. Those are current
-widget-UI behavior examples, not yet a Community packaging/isolation example:
-YT Music still runs through a temporary bundled trusted exception while its
-public-addon migration is developed.
+The [YT Music Community reference](../samples/YtMusicWidget/README.md)
+demonstrates optimistic playback/rating/shuffle/repeat state, stale-event
+guards, bounded progress interpolation, rapid ordered LB/RB actions, exact-port
+local companion access, write-only pairing secrets, dashboard gesture
+authority, and the public pack/install/AppContainer path. It has no trusted
+catalog or custom desktop-worker fallback.
 
 ## Lifecycle API
 
@@ -575,6 +576,8 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.apps.library.launch.v1` | launch one current broker-issued opaque app ID | Interactive only |
 | `system.media.sessions.read.v1` | list/watch sanitized system media sessions | Visible or Interactive |
 | `system.media.sessions.control.v1` | control one broker-issued media session | Interactive, or one exact declared dashboard gesture while Visible |
+| `network.loopback:<port>` | bounded JSON GET/POST to one exact IPv4 loopback port | GET Visible/Interactive; POST Interactive or one exact dashboard gesture while Visible |
+| `storage.private-secrets.v1` | write-only package secret slots and metadata; optional host-side Bearer injection | metadata Visible/Interactive; save/delete Interactive |
 
 Required capabilities are not auto-granted. Put core authority in
 `permissions`, degradable features in `optionalPermissions`, then render
@@ -690,13 +693,18 @@ include `permission_denied`, `capability_not_declared`, `lifecycle_denied`,
 `launch_failed`. Treat unknown codes as a
 generic bounded provider failure.
 
-The YT Music trusted reference currently declares `network.loopback:13091`,
-but general loopback/network brokering is not implemented for community
-workers. Installed AppContainer workers have no network capability. Do not
-copy the trusted built-in's direct Credential Manager or socket access; a
-private per-widget secret service and exact-port loopback HTTP broker remain
-planned. YT Music is intended to be their first Community-addon conformance and
-migration case, but it remains temporarily bundled/trusted today.
+Exact-port local companions and private secrets are now public typed services;
+they do not give the AppContainer worker ambient network or Credential Manager
+access. Declare one `network.loopback:<port>` plus the separate
+`storage.private-secrets.v1` grant when host-side Bearer injection is needed,
+then call only `HostServices.Loopback` and `HostServices.PrivateSecrets`.
+Secrets can be saved, replaced, deleted, or checked for presence, but never read
+back into widget code. For companions that reject credentials with HTTP 401,
+set `WidgetLoopbackRequestOptions.InvalidateBearerSecretOnUnauthorized` with the
+Bearer slot so the host removes that exact rejected value before returning;
+clear local state without racing a second delete. The [local companion service reference](community-companion-services.md)
+documents lifecycle, consent/dashboard authority, exact SDK calls, identity
+scope, limits, errors, and tests. YT Music is the first migration consumer.
 
 ## Manifest reference
 
@@ -716,6 +724,7 @@ migration case, but it remains temporarily bundled/trusted today.
     "assembly": "payload/AudioControl.dll",
     "type": "Dev.Example.AudioControl.AudioControlWidget"
   },
+  "presentation": { "icon": "connection" },
   "permissions": [
     "system.audio.output.read.v1"
   ],
@@ -746,6 +755,7 @@ migration case, but it remains temporarily bundled/trusted today.
 | `entrypoint.runtime` | Only `dotnet-worker`. |
 | `entrypoint.assembly` | Exact-case normalized package-relative path with `/`, no traversal. |
 | `entrypoint.type` | Namespace-qualified public concrete `Widget` type with a public constructor whose parameters are all optional. |
+| `presentation.icon` | Optional closed semantic `WidgetGlyph` name, default `connection`; never a file, SVG, font, or drawing payload. |
 | `permissions` | Required declarations. Required still means explicit user consent. |
 | `optionalPermissions` | Degradable declarations; may not duplicate a required ID. |
 | `residencyPolicy.schemaVersion` | `1`. Unknown versions fail validation. |
@@ -893,6 +903,12 @@ disabled-only review operations:
 `version rollback` selects an installed older version and also leaves the ID
 disabled. Never edit catalog JSON or installed directories by hand.
 
+For a real local-companion addon using this same staging/catalog workflow, run
+the [YT Music Community package helper](../samples/YtMusicWidget/README.md#build-and-tests).
+It produces only the manifest, entry DLL, and GBSS needed by `gbar pack`, then
+optionally performs install and enable. Capability consent remains a separate
+Settings step.
+
 ## Share from a GitHub repository
 
 The implemented sharing unit is a deterministic `.gbarwidget` attached to an
@@ -926,17 +942,12 @@ Current job policy limits memory, active processes to one, desktop UI access,
 and kill-on-close cleanup. Isolation, token, ACL, PID, or authenticated IPC
 failure aborts launch; there is no desktop-token fallback.
 
-Typed audio/network services cross a separate identity-, declaration-,
-consent-, and lifecycle-bound broker. A manifest cannot request raw pipe
-details, arbitrary operation IDs, an AppContainer capability SID, or the
-trusted Job-only launch used temporarily by bundled Settings and YT Music.
-
-That YT Music exception is transitional and cannot be requested by authors. The
-planned migration must install it as an ordinary Community package and pass the
-same AppContainer, declaration, consent, lifecycle, update/rollback, and removal
-contracts described here. Until that work is implemented, use YT Music for its
-controller/media interaction patterns, not as evidence of current loopback or
-secret authority available to a Community widget.
+Typed host services cross a separate identity-, declaration-, consent-, and
+lifecycle-bound broker. A manifest cannot request raw pipe details, arbitrary
+operation IDs, an AppContainer capability SID, or a trusted Job-only launch.
+Loopback and secret services remain constrained broker authorities: the worker
+receives no socket, URI authority, proxy, Credential Manager handle, or stored
+secret value. See the [local companion reference](community-companion-services.md).
 
 This is meaningful containment, not proof that an unsigned publisher is safe.
 CPU quotas, disk/profile quotas and cleanup, Win32k system-call disable,
@@ -1022,8 +1033,8 @@ Do not design or advertise a widget around any of these yet:
 - public SDK/runtime NuGet packages or a stable external template feed;
 - publisher signing, certificate identity, revocation, or a public gallery;
 - automatic update discovery, graphical install/remove, or repository builds;
-- arbitrary outbound/loopback network access for community workers;
-- a community secret/token store;
+- ambient internet/LAN access or loopback outside the exact-port JSON broker;
+- a readable/general-purpose community secret or OAuth-token store;
 - package-relative Image/font asset resolution;
 - HTML, browser CSS, JavaScript, SVG, shaders, or native drawing payloads;
 - sliders/scrubbing, text entry, arbitrary pointer UI, or arbitrary raw HID;
@@ -1036,6 +1047,7 @@ Do not design or advertise a widget around any of these yet:
 ## Reference map
 
 - [Widget quickstart](widget-quickstart.md)
+- [Local companion HTTP and private secrets](community-companion-services.md)
 - [Declarative UI](declarative-ui.md)
 - [Controller input](controller-input.md)
 - [GBSS](gbss.md)

@@ -221,7 +221,9 @@ the overlay without a restart; listing/reload does not eagerly start the worker.
 
 Enablement is not capability consent. If the package declares a brokered
 service, review and grant it separately under Settings → Permissions &
-capabilities. Invalid catalog updates retain the last-good running catalog.
+capabilities. Invalid trusted shell updates retain last-good. Invalid installed
+state/integrity removes Community registrations and retires their workers until
+the catalog is valid again.
 
 On first use, every installed/community package is launched in a mandatory
 package-specific AppContainer selected by trusted host policy. It is Low
@@ -230,7 +232,8 @@ environment, and can read/execute only the generic worker runtime and its exact
 immutable package root. Job Object policy limits memory, active processes,
 desktop UI access, and cleanup. A manifest or widget
 argument cannot opt into the temporary Job-only policy used by trusted bundled
-Settings and YT Music workers. If isolation or authenticated IPC cannot be
+Settings. YT Music is an ordinary Community addon and cannot opt out either. If
+isolation or authenticated IPC cannot be
 established, the widget does not start; there is no desktop-token fallback.
 
 Author against the SDK boundary: do not depend on arbitrary user-profile paths,
@@ -239,6 +242,10 @@ processes, or desktop UI. Request only published `HostServices` capabilities
 and handle unavailable/denied states. The AppContainer profile may retain
 private OS-managed data, but it is not yet a portable storage API and currently
 has no platform disk quota or user-facing cleanup control.
+For a local desktop companion, use only the implemented [exact-port JSON and
+write-only private-secret services](community-companion-services.md); those
+narrow broker grants do not make direct sockets or Credential Manager available
+to the worker.
 Win32k system-call disable is not active because it prevents CoreCLR from
 initializing in the tested configuration (`0xC0000142`); do not mistake Job UI
 restrictions for that stronger mitigation.

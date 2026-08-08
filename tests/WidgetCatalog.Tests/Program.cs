@@ -24,8 +24,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Publisher and package identity are enforced", IdentityIsEnforced),
     ("Missing entrypoint assemblies are rejected", MissingEntrypointIsRejected),
     ("Tampered installed directory identity is rejected", TamperedInstallIsRejected),
+    ("Tampered installed content fails closed", TamperedContentFailsClosed),
+    ("Package cannot supply host integrity metadata", ReservedIntegrityPathIsRejected),
     ("Host compatibility is deterministic across API and architecture", HostCompatibility),
-    ("Unsigned authority is stable only for one exact package version", UnsignedAuthorityIsVersionBound),
+    ("Unsigned authority is stable only for one exact content tree", UnsignedAuthorityIsContentBound),
 };
 
 var failures = new List<string>();
@@ -406,6 +408,44 @@ static async Task TamperedInstallIsRejected()
     Assert.Equal("identity_mismatch", exception.Code);
 }
 
+static async Task TamperedContentFailsClosed()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    var installed = await catalog.InstallAsync(
+        CreatePackage(temp.Path, "dev.test.content-tamper", "dev.test", "1.0.0"));
+    await File.AppendAllTextAsync(
+        Path.Combine(installed.InstallPath, "payload", "Widget.dll"), "tampered");
+    var content = await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.DiscoverAsync());
+    Assert.Equal("package_tampered", content.Code);
+
+    using var metadataTemp = new TemporaryDirectory();
+    var metadataCatalog = new WidgetCatalog(Path.Combine(metadataTemp.Path, "catalog"));
+    var metadataInstalled = await metadataCatalog.InstallAsync(
+        CreatePackage(metadataTemp.Path, "dev.test.metadata-tamper", "dev.test", "1.0.0"));
+    await File.WriteAllTextAsync(
+        Path.Combine(metadataInstalled.InstallPath, ".gbar-integrity.json"),
+        "{\"schemaVersion\":1,\"algorithm\":\"sha256-content-tree-v1\",\"contentDigest\":\"00\"}");
+    var metadata = await Assert.ThrowsAsync<WidgetPackageException>(
+        () => metadataCatalog.DiscoverAsync());
+    Assert.Equal("invalid_integrity_metadata", metadata.Code);
+}
+
+static async Task ReservedIntegrityPathIsRejected()
+{
+    using var temp = new TemporaryDirectory();
+    var package = CreatePackage(
+        temp.Path,
+        "dev.test.integrity-reserved",
+        "dev.test",
+        "1.0.0",
+        extras: [new ExtraEntry(".gbar-integrity.json", "attacker supplied")]);
+    var exception = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        new WidgetCatalog(Path.Combine(temp.Path, "catalog")).CreateInstaller()
+            .ValidateAsync(package));
+    Assert.Equal("reserved_path", exception.Code);
+}
+
 static Task HostCompatibility()
 {
     var manifest = new WidgetManifest
@@ -434,28 +474,32 @@ static Task HostCompatibility()
     return Task.CompletedTask;
 }
 
-static Task UnsignedAuthorityIsVersionBound()
+static async Task UnsignedAuthorityIsContentBound()
 {
-    var manifest = new WidgetManifest
-    {
-        Id = "dev.test.authority",
-        Publisher = "dev.test",
-        Name = "Authority",
-        Version = "1.0.0",
-        HostApi = new HostApiRange("1.0", 1),
-        Entrypoint = new WidgetEntrypoint("dotnet-worker", "payload/Widget.dll", "Example.Widget"),
-        Permissions = [],
-    };
-    var first = InstalledWidgetAuthority.PublisherId(manifest);
-    Assert.Equal(first, InstalledWidgetAuthority.PublisherId(manifest));
+    using var temp = new TemporaryDirectory();
+    var package = CreatePackage(
+        temp.Path, "dev.test.authority", "dev.test", "1.0.0");
+    var first = await new WidgetCatalog(Path.Combine(temp.Path, "first"))
+        .InstallAsync(package);
+    var sameBytes = await new WidgetCatalog(Path.Combine(temp.Path, "same"))
+        .InstallAsync(package);
+    var changedBytes = await new WidgetCatalog(Path.Combine(temp.Path, "changed"))
+        .InstallAsync(CreatePackage(
+            temp.Path,
+            "dev.test.authority",
+            "dev.test",
+            "1.0.0",
+            extras: [new ExtraEntry("payload/content.txt", "different bytes")]));
+
+    var authority = InstalledWidgetAuthority.PublisherId(first);
+    Assert.Equal(authority, InstalledWidgetAuthority.PublisherId(sameBytes));
     Assert.True(!string.Equals(
-            first,
-            InstalledWidgetAuthority.PublisherId(manifest with { Version = "2.0.0" }),
+            authority,
+            InstalledWidgetAuthority.PublisherId(changedBytes),
             StringComparison.Ordinal),
-        "A different unsigned package version inherited the same authority identity.");
-    Assert.True(!string.Equals(first, manifest.Publisher, StringComparison.Ordinal),
+        "Different bytes with the same asserted ID and version inherited authority.");
+    Assert.True(!string.Equals(authority, first.Manifest.Publisher, StringComparison.Ordinal),
         "Unsigned authority trusted the self-asserted publisher label directly.");
-    return Task.CompletedTask;
 }
 
 static string CreatePackage(

@@ -18,6 +18,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
+    ("Exact-port loopback separates visible reads from interactive controls", LoopbackHttpContracts),
+    ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
@@ -33,6 +35,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipe framing rejects oversized payloads before allocation", PipeFramesAreBounded),
     ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
     ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
+    ("Pipe loopback timeout extends only the declared long operation", PipeLoopbackTimeoutIsOperationSpecific),
+    ("Pipe transports a near-limit loopback JSON response", PipeLoopbackNearLimitResponse),
     ("Pipe request cancellation reaches the fixed backend", PipeCancellationIsObserved),
     ("Pipe lifecycle transitions cancel leased reads and controls", PipeLifecycleCancelsLeasedRequests),
     ("Pipe consent revocation cancels a leased control before effects", PipeConsentCancelsLeasedControl),
@@ -63,7 +67,7 @@ Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(20, PlatformCapabilities.All.Count);
+    Assert.Equal(21, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -73,6 +77,19 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(!PlatformCapabilities.TryGet("system.full-access.v1", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.audio.sessions.read.v2", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.activity.recent.activate.v1", out _));
+    Assert.True(PlatformCapabilities.TryGet("network.loopback:13091", out var loopback));
+    Assert.Equal(BrokerCapabilityKind.Read,
+        loopback.KindForOperation(PlatformCapabilities.LoopbackHttpGetJson));
+    Assert.Equal(BrokerCapabilityKind.Control,
+        loopback.KindForOperation(PlatformCapabilities.LoopbackHttpPostJson));
+    Assert.True(loopback.AllowsDashboardGestureForOperation(
+        PlatformCapabilities.LoopbackHttpPostJson));
+    Assert.True(!loopback.AllowsDashboardGestureForOperation(
+        PlatformCapabilities.LoopbackHttpGetJson));
+    Assert.True(!PlatformCapabilities.TryGet("network.loopback:0", out _));
+    Assert.True(!PlatformCapabilities.TryGet("network.loopback:80", out _));
+    Assert.True(!PlatformCapabilities.TryGet("network.loopback:013091", out _));
+    Assert.True(!PlatformCapabilities.TryGet("network.loopback:13091/path", out _));
     Assert.True(PlatformCapabilities.TryGet(
         PlatformCapabilities.AppLibraryLaunchV1, out var appLaunch));
     Assert.Equal(BrokerCapabilityKind.Control, appLaunch.Kind);
@@ -92,6 +109,351 @@ static Task CapabilityVocabularyIsClosed()
         new HashSet<string>(StringComparer.Ordinal));
     Assert.True(!defaultControl.AllowsDashboardGesture);
     return Task.CompletedTask;
+}
+
+static async Task LoopbackHttpContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var capability = "network.loopback:13091";
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend
+    {
+        LoopbackHandler = (_, _, _, _, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new LoopbackJsonResponse(
+                200,
+                "{\r\n  \"state\": true\r\n}",
+                []));
+        },
+    };
+    await using var broker = new PlatformCapabilityBroker(
+        identity, [capability], store, backend);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var get = await broker.HandleAsync(Request(identity, capability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "/api/v1/state?compact=true",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 10_000,
+        }));
+    Assert.True(get.Succeeded);
+    Assert.Equal("{\"state\":true}",
+        get.Payload!.Value.GetProperty("jsonBody").GetString());
+    Assert.Equal(13091, backend.LastLoopbackPort);
+    Assert.True(!backend.LastLoopbackWasPost);
+
+    var visiblePost = await broker.HandleAsync(Request(identity, capability,
+        PlatformCapabilities.LoopbackHttpPostJson, new
+        {
+            path = "/api/v1/player/next",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = "{}",
+            timeoutMilliseconds = 10_000,
+        }));
+    Assert.Equal("lifecycle_denied", visiblePost.ErrorCode);
+    Assert.Equal(1, backend.LoopbackCalls);
+
+    broker.GrantDashboardGestureAuthority(capability,
+        PlatformCapabilities.LoopbackHttpPostJson, 11, 12, TimeSpan.FromSeconds(1));
+    var dashboardPost = await broker.HandleAsync(GestureRequest(identity, capability,
+        PlatformCapabilities.LoopbackHttpPostJson, new
+        {
+            path = "/api/v1/player/next",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = "{}",
+            timeoutMilliseconds = 10_000,
+        }, 11, 12));
+    Assert.True(dashboardPost.Succeeded);
+
+    var authorityHeader = await broker.HandleAsync(Request(identity, capability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "/",
+            headers = new[] { new { name = "Authorization", value = "Bearer stolen" } },
+            bearerSecretSlot = (string?)null,
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 10_000,
+        }));
+    Assert.Equal("invalid_payload", authorityHeader.ErrorCode);
+    var absolutePath = await broker.HandleAsync(Request(identity, capability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "//example.com/steal",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 10_000,
+        }));
+    Assert.Equal("invalid_payload", absolutePath.ErrorCode);
+    var invalidBearerInvalidation = await broker.HandleAsync(Request(identity, capability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "/",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 10_000,
+            invalidateBearerSecretOnUnauthorized = true,
+        }));
+    Assert.Equal("invalid_payload", invalidBearerInvalidation.ErrorCode);
+
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var longPairing = await broker.HandleAsync(Request(identity, capability,
+        PlatformCapabilities.LoopbackHttpPostJson, new
+        {
+            path = "/auth/request",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = "{\"app\":\"test\"}",
+            timeoutMilliseconds = 40_000,
+        }));
+    Assert.True(longPairing.Succeeded);
+    var excessiveTimeout = await broker.HandleAsync(Request(identity, capability,
+        PlatformCapabilities.LoopbackHttpPostJson, new
+        {
+            path = "/auth/request",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = "{}",
+            timeoutMilliseconds = 40_001,
+        }));
+    Assert.Equal("invalid_payload", excessiveTimeout.ErrorCode);
+}
+
+static async Task PrivateSecretContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var loopbackCapability = "network.loopback:13091";
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, loopbackCapability, ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.PrivateSecretsV1,
+        ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    await using var broker = new PlatformCapabilityBroker(identity,
+        [loopbackCapability, PlatformCapabilities.PrivateSecretsV1], store, backend);
+
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var visibleSave = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.PrivateSecretsV1,
+        PlatformCapabilities.PrivateSecretSave,
+        new { slot = "ytm.token", secret = "private-value" }));
+    Assert.Equal("lifecycle_denied", visibleSave.ErrorCode);
+    var absent = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.PrivateSecretsV1,
+        PlatformCapabilities.PrivateSecretMetadata,
+        new { slot = "ytm.token" }));
+    Assert.True(absent.Succeeded);
+    Assert.True(absent.Payload!.Value.GetProperty("exists").GetBoolean() == false);
+
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var saved = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.PrivateSecretsV1,
+        PlatformCapabilities.PrivateSecretSave,
+        new { slot = "ytm.token", secret = "private-value" }));
+    Assert.True(saved.Succeeded);
+    Assert.Equal(1, backend.PrivateSecretSaveCalls);
+    Assert.True(!PlatformCapabilities.TryGet(
+        PlatformCapabilities.PrivateSecretsV1, out var secrets) ||
+        !secrets.Operations.Contains("private-secret.read"));
+
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    backend.LoopbackHandler = (_, _, _, _, cancellationToken) =>
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new LoopbackJsonResponse(401, "{}", []));
+    };
+    broker.GrantDashboardGestureAuthority(
+        loopbackCapability,
+        PlatformCapabilities.LoopbackHttpPostJson,
+        inputSequence: 31,
+        snapshotSequence: 32,
+        TimeSpan.FromSeconds(1));
+    var rejected = await broker.HandleAsync(GestureRequest(
+        identity,
+        loopbackCapability,
+        PlatformCapabilities.LoopbackHttpPostJson,
+        new
+        {
+            path = "/track/next",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = "ytm.token",
+            jsonBody = "{}",
+            timeoutMilliseconds = 10_000,
+            invalidateBearerSecretOnUnauthorized = true,
+        },
+        inputSequence: 31,
+        snapshotSequence: 32));
+    Assert.True(rejected.Succeeded, rejected.ErrorCode);
+    Assert.Equal(401, rejected.Payload!.Value.GetProperty("statusCode").GetInt32());
+    Assert.Equal(1, backend.PrivateSecretDeleteCalls);
+    var invalidated = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.PrivateSecretsV1,
+        PlatformCapabilities.PrivateSecretMetadata,
+        new { slot = "ytm.token" }));
+    Assert.True(invalidated.Succeeded);
+    Assert.True(!invalidated.Payload!.Value.GetProperty("exists").GetBoolean());
+
+    // Restore the independent revocation fixture through the normal
+    // Interactive control path; the preceding scenario intentionally removed
+    // the durable slot while Visible.
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var restored = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.PrivateSecretsV1,
+        PlatformCapabilities.PrivateSecretSave,
+        new { slot = "ytm.token", secret = "replacement-value" }));
+    Assert.True(restored.Succeeded);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    backend.LoopbackHandler = async (_, _, _, _, cancellationToken) =>
+    {
+        started.TrySetResult();
+        try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            canceled.TrySetResult();
+            throw;
+        }
+        throw new InvalidOperationException();
+    };
+    var pending = broker.HandleAsync(Request(identity, loopbackCapability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "/api/v1/state",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = "ytm.token",
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 10_000,
+        }));
+    await started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    await store.SetDecisionAsync(identity, PlatformCapabilities.PrivateSecretsV1,
+        ConsentDecision.Deny);
+    await broker.RefreshConsentAsync();
+    await canceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    var revoked = await pending;
+    Assert.Equal("capability_revoked", revoked.ErrorCode);
+
+    var deniedUse = await broker.HandleAsync(Request(identity, loopbackCapability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "/api/v1/state",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = "ytm.token",
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 10_000,
+        }));
+    Assert.Equal("permission_denied", deniedUse.ErrorCode);
+}
+
+static async Task PipeLoopbackTimeoutIsOperationSpecific()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var capability = "network.loopback:13091";
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend
+    {
+        LoopbackHandler = async (_, _, _, _, cancellationToken) =>
+        {
+            await Task.Delay(200, cancellationToken);
+            return new LoopbackJsonResponse(200, "{}", []);
+        },
+    };
+    var options = new BrokerPipeTransportOptions
+    {
+        MaximumFrameBytes = 64 * 1024,
+        AcceptTimeout = TimeSpan.FromSeconds(2),
+        HandshakeTimeout = TimeSpan.FromSeconds(1),
+        RequestTimeout = TimeSpan.FromMilliseconds(50),
+        MaximumInFlightRequests = 4,
+        MaximumSubscriptions = 2,
+    };
+    var pipeName = $"gba-broker-community-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity, [capability], store, backend,
+        options, new string('T', 64));
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce, options);
+    await client.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    var response = await client.RequestAsync(capability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "/slow-but-bounded",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 500,
+        });
+    Assert.True(response.Succeeded, response.ErrorCode);
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static async Task PipeLoopbackNearLimitResponse()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var capability = "network.loopback:13091";
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var padding = new string(
+        'x', CommunityPlatformLimits.MaximumLoopbackResponseBodyUtf8Bytes - 32);
+    var body = $"{{\"data\":\"{padding}\"}}";
+    Assert.True(Encoding.UTF8.GetByteCount(body) >
+        CommunityPlatformLimits.MaximumLoopbackResponseBodyUtf8Bytes - 64);
+    var backend = new SimulatedPlatformBrokerBackend
+    {
+        LoopbackHandler = (_, _, _, _, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new LoopbackJsonResponse(200, body, []));
+        },
+    };
+    var options = new BrokerPipeTransportOptions
+    {
+        MaximumFrameBytes = 256 * 1024,
+        AcceptTimeout = TimeSpan.FromSeconds(2),
+        HandshakeTimeout = TimeSpan.FromSeconds(1),
+        RequestTimeout = TimeSpan.FromSeconds(2),
+        MaximumInFlightRequests = 4,
+        MaximumSubscriptions = 2,
+    };
+    var pipeName = $"gba-broker-near-limit-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName, identity, [capability], store, backend,
+        options, new string('L', 64));
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce, options);
+    await client.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    var response = await client.RequestAsync(capability,
+        PlatformCapabilities.LoopbackHttpGetJson, new
+        {
+            path = "/large-state",
+            headers = Array.Empty<object>(),
+            bearerSecretSlot = (string?)null,
+            jsonBody = (string?)null,
+            timeoutMilliseconds = 1_000,
+        });
+    Assert.True(response.Succeeded, response.ErrorCode);
+    Assert.Equal(body,
+        response.Payload!.Value.GetProperty("jsonBody").GetString());
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
 }
 
 static async Task BrokerPipeScopesAreClosed()

@@ -3,7 +3,7 @@
   "id": "org.gbar.samples.ytmusic",
   "publisher": "org.gbar.samples",
   "name": "YT Music",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -13,10 +13,13 @@
     "assembly": "payload/YtMusicWidget.dll",
     "type": "GameBarAlternative.Samples.YtMusicWidget.YtMusicWidget"
   },
+  "presentation": { "icon": "music" },
   "permissions": [
     "network.loopback:13091"
   ],
-  "optionalPermissions": [],
+  "optionalPermissions": [
+    "storage.private-secrets.v1"
+  ],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "suspend-when-hidden"

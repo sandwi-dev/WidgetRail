@@ -1,9 +1,11 @@
 using System.IO.Compression;
+using System.Diagnostics;
 using System.Text.Json;
 using GameBarAlternative.FirstPartyWidgets.AudioMixer;
 using GameBarAlternative.FirstPartyWidgets.GamesApps;
 using GameBarAlternative.FirstPartyWidgets.MediaSessions;
 using GameBarAlternative.FirstPartyWidgets.NetworkControls;
+using GameBarAlternative.Samples.YtMusicWidget;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetCatalog;
@@ -23,6 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bundled catalog rejects unsafe and ambiguous package sources", BundledCatalogRejectsUnsafeSources),
     ("Real first-party packages merge through the community catalog path", InstalledPackagesMerge),
     ("All first-party packages run through generic AppContainer worker and broker", PackagesRunIsolated),
+    ("YT Music community package uses generic AppContainer loopback secret and dashboard paths", YtMusicCommunityPackageRunsIsolated),
 };
 var failures = new List<string>();
 foreach (var test in tests)
@@ -154,19 +157,33 @@ static async Task InstalledPackagesMerge()
         deployment.WorkerHostPath);
     Assert.True(load.InstalledCatalogValid, "Installed first-party catalog was rejected.");
     Assert.Equal(0, load.Warnings.Count);
-    Assert.Equal(4, load.Catalog.Widgets.Count);
+    Assert.Equal(5, load.Catalog.Widgets.Count);
+    var installedSnapshot = await new WidgetCatalog(deployment.InstalledCatalogRoot)
+        .DiscoverAsync();
 
     foreach (var package in deployment.Packages)
     {
         var configured = load.Catalog.GetConfigured(package.Manifest.Id);
+        var installedVersion = installedSnapshot.Widgets
+            .Single(widget => widget.Id == package.Manifest.Id).ActiveVersion;
         Assert.True(configured.RequiresAppContainer,
             $"Installed {package.Manifest.Name} must require AppContainer.");
         Assert.Equal(deployment.WorkerHostPath, configured.WorkerExecutable);
-        Assert.Equal(InstalledWidgetAuthority.PublisherId(package.Manifest), configured.PublisherId);
+        Assert.Equal(
+            InstalledWidgetAuthority.PublisherId(installedVersion),
+            configured.PublisherId);
         Assert.SequenceEqual(package.DeclaredCapabilities, configured.DeclaredCapabilities);
         AssertWorkerArguments(configured, configured.ReadOnlyPaths.Single(), package.Manifest);
         AssertResidency(package.Manifest, configured.ResidencyPolicy);
     }
+    var community = deployment.YtMusicPackage ??
+        throw new InvalidOperationException("YT Music community package was not installed.");
+    var ytMusic = load.Catalog.GetConfigured(community.Manifest.Id);
+    Assert.True(ytMusic.RequiresAppContainer,
+        "YT Music did not use mandatory community AppContainer isolation.");
+    Assert.Equal(deployment.WorkerHostPath, ytMusic.WorkerExecutable);
+    Assert.Equal(WidgetGlyph.Music, ytMusic.Icon);
+    Assert.SequenceEqual(community.DeclaredCapabilities, ytMusic.DeclaredCapabilities);
 }
 
 static async Task PackagesRunIsolated()
@@ -188,6 +205,175 @@ static async Task PackagesRunIsolated()
         deployment.Packages,
         package => package.ShellId,
         "bundled");
+}
+
+static async Task YtMusicCommunityPackageRunsIsolated()
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var package = deployment.YtMusicPackage ??
+        throw new InvalidOperationException("YT Music community package was not produced.");
+    Assert.True(File.Exists(package.PackagePath),
+        "The public gbar pack workflow did not publish a .gbarwidget archive.");
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    var configured = installed.Catalog.GetConfigured(package.Manifest.Id);
+    Assert.True(configured.RequiresAppContainer,
+        "YT Music community addon bypassed AppContainer isolation.");
+    Assert.Equal(deployment.WorkerHostPath, configured.WorkerExecutable);
+    Assert.SequenceEqual(
+        new[] { "network.loopback:13091", "storage.private-secrets.v1" },
+        configured.DeclaredCapabilities);
+    Assert.Equal(WidgetGlyph.Music, configured.Icon);
+
+    var trackState = """
+        {"id":"conformance-track","playing":true,"liked":false,"disliked":false,
+         "shuffle":false,"repeat":"off","uiProgress":12.5,"duration":180}
+        """;
+    var track = """
+        {"video":{"title":"Conformance Song","author":"Conformance Artist","videoId":"conformance-track"},
+         "music":{"album":"Conformance Album"},
+         "meta":{"thumbnail":"https://img.example/conformance.jpg","duration":180}}
+        """;
+    var nextCalls = 0;
+    var loopbackPaths = new List<string>();
+    var backend = CreateBackend();
+    backend.LoopbackHandler = (_, port, isPost, request, cancellationToken) =>
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Assert.Equal(YtmDesktopApiClient.CompanionPort, port);
+        lock (loopbackPaths) loopbackPaths.Add(request.Path);
+        var response = (isPost, request.Path) switch
+        {
+            (false, "/") => new LoopbackJsonResponse(200, "{\"authRequired\":true}", []),
+            (false, "/track") => new LoopbackJsonResponse(200, track, []),
+            (false, "/track/state") => new LoopbackJsonResponse(200, trackState, []),
+            (true, "/auth/requestcode") =>
+                new LoopbackJsonResponse(200, "{\"code\":\"739204\"}", []),
+            (true, "/auth/request") =>
+                new LoopbackJsonResponse(200, "{\"token\":\"conformance-secret\"}", []),
+            (true, "/track/next") => NextResponse(),
+            _ when isPost && request.Path.StartsWith("/track/", StringComparison.Ordinal) =>
+                new LoopbackJsonResponse(200, "{}", []),
+            _ => throw new InvalidOperationException(
+                $"Unexpected YTMDesktop2 conformance request {request.Path}.")
+        };
+        return Task.FromResult(response);
+
+        LoopbackJsonResponse NextResponse()
+        {
+            Interlocked.Increment(ref nextCalls);
+            return new LoopbackJsonResponse(200, "{}", []);
+        }
+    };
+
+    using var consentRoot = new TemporaryDirectory("gba-ytmusic-community-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId,
+        configured.PublisherId,
+        configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(45),
+        MaximumRestartAttempts = 0,
+        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var pairing = await WaitForSnapshotAsync(client, "Pair device");
+    Assert.True(Nodes(pairing.Root).Any(node => node.ActionId == "pair"),
+        "Pairing action was not controller reachable.");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    await client.SendActionAsync(new WidgetActionEvent("pair", "pair"));
+    ViewSnapshot connected;
+    try
+    {
+        connected = await WaitForSnapshotAsync(client, "Conformance Song");
+    }
+    catch (Exception exception)
+    {
+        string paths;
+        lock (loopbackPaths) paths = string.Join(", ", loopbackPaths);
+        throw new InvalidOperationException(
+            $"{exception.Message} Broker paths: {paths}; secret saves: " +
+            $"{backend.PrivateSecretSaveCalls}.", exception);
+    }
+    Assert.Equal(1, backend.PrivateSecretSaveCalls);
+    Assert.True(backend.LastLoopbackRequest?.BearerSecretSlot ==
+        YtmDesktopApiClient.BearerSecretSlot,
+        "Authenticated companion calls did not use the host-side secret slot.");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    connected = await client.GetSnapshotAsync();
+    var quickAction = connected.QuickActions.Single(action =>
+        action.Button == ControllerButton.RightBumper);
+    Assert.Equal("next", quickAction.ActionId);
+    Assert.Equal("network.loopback:13091", quickAction.Capability?.CapabilityId);
+    Assert.Equal(WidgetLoopbackCapabilities.PostJsonOperation,
+        quickAction.Capability?.OperationId);
+    var inputSequence = 71L;
+    var handled = await client.SendControllerInputAsync(
+        new ControllerInputEvent(
+            ControllerButton.RightBumper,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: inputSequence,
+            SnapshotSequence: connected.Sequence),
+        new WidgetDashboardGestureAuthority(
+            quickAction.Capability!.CapabilityId,
+            quickAction.Capability.OperationId,
+            inputSequence,
+            connected.Sequence,
+            TimeSpan.FromSeconds(2)));
+    Assert.True(handled, "Dashboard RB quick action was not accepted by the addon.");
+    await WaitUntilAsync(() => Volatile.Read(ref nextCalls) == 1);
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.StopAsync();
+
+    var repo = FindRepositoryRootForTest();
+    using var productionCatalog = JsonDocument.Parse(File.ReadAllBytes(
+        Path.Combine(repo, "src", "OverlayHost", "widget-catalog.json")));
+    Assert.True(!productionCatalog.RootElement.GetProperty("widgets")
+            .EnumerateArray().Any(widget =>
+                widget.TryGetProperty("packageId", out var packageId) &&
+                packageId.GetString()?.Contains("ytmusic", StringComparison.OrdinalIgnoreCase) == true),
+        "YT Music still has a trusted catalog fallback.");
+    var buildScript = File.ReadAllText(Path.Combine(repo, "src", "OverlayHost", "build.ps1"));
+    Assert.True(!buildScript.Contains("YtMusicWidget.Worker", StringComparison.Ordinal),
+        "OverlayHost still publishes the retired trusted YT Music worker.");
+}
+
+static string FindRepositoryRootForTest()
+{
+    var current = new DirectoryInfo(AppContext.BaseDirectory);
+    while (current is not null)
+    {
+        if (File.Exists(Path.Combine(current.FullName, "src", "OverlayHost", "widget-catalog.json")))
+            return current.FullName;
+        current = current.Parent;
+    }
+    throw new DirectoryNotFoundException("Repository root was not found.");
 }
 
 static async Task RunCatalogAsync(
@@ -273,6 +459,21 @@ static async Task ExerciseControlAsync(
             calls = () => backend.WifiRadioControlCalls;
             break;
         case "org.gbar.firstparty.games-apps":
+            var openCatalog = Nodes(snapshot.Root).Single(node =>
+                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent(
+                "games.open-catalog", openCatalog.Id));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "games.toggle-curation", "Conformance Library App");
+            var add = Nodes(snapshot.Root).Single(node =>
+                string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent(
+                "games.toggle-curation", add.Id));
+            await WaitForActionSnapshotAsync(
+                client, "games.toggle-curation", "Conformance Library App", selected: true);
+            await client.SendActionAsync(new WidgetActionEvent("back", "games.catalog"));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "games.launch", "Conformance Library App");
             actionId = "games.launch";
             calls = () => backend.AppLibraryLaunchCalls;
             break;
@@ -361,8 +562,36 @@ static async Task<ViewSnapshot> WaitForSnapshotAsync(
             return latest;
         await Task.Delay(40);
     }
+    var renderedText = latest is null
+        ? "none"
+        : string.Join(" | ", Nodes(latest.Root)
+            .Select(node => node.Text)
+            .Where(text => !string.IsNullOrWhiteSpace(text)));
     throw new InvalidOperationException(
-        $"Expected rendered broker data '{expectedText}', latest root was '{latest?.Root.Id ?? "none"}'.");
+        $"Expected rendered broker data '{expectedText}', latest root was " +
+        $"'{latest?.Root.Id ?? "none"}' with text: {renderedText}");
+}
+
+static async Task<ViewSnapshot> WaitForActionSnapshotAsync(
+    WidgetProcessClient client,
+    string actionId,
+    string expectedText,
+    bool? selected = null)
+{
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+    while (DateTime.UtcNow < deadline)
+    {
+        var snapshot = await client.GetSnapshotAsync();
+        Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        if (Nodes(snapshot.Root).Any(node =>
+                string.Equals(node.ActionId, actionId, StringComparison.Ordinal) &&
+                (node.Text ?? string.Empty).Contains(expectedText, StringComparison.Ordinal) &&
+                (selected is null || node.IsSelected == selected)))
+            return snapshot;
+        await Task.Delay(40);
+    }
+    throw new InvalidOperationException(
+        $"Snapshot omitted action '{actionId}' for '{expectedText}'.");
 }
 
 static async Task WaitUntilAsync(Func<bool> predicate)
@@ -421,6 +650,7 @@ file sealed class Deployment : IDisposable
     public required string BundledCatalogPath { get; init; }
     public required string InstalledCatalogRoot { get; init; }
     public required IReadOnlyList<PackageFixture> Packages { get; init; }
+    public PackageFixture? YtMusicPackage { get; init; }
 
     public static async Task<Deployment> CreateAsync(bool installAsCommunity)
     {
@@ -441,7 +671,7 @@ file sealed class Deployment : IDisposable
                 new PackageSpec("media-sessions", "MediaSessions", WidgetGlyph.Music,
                     typeof(MediaSessionsWidget), "Conformance Song"),
                 new PackageSpec("games-apps", "GamesApps", WidgetGlyph.Play,
-                    typeof(GamesAppsWidget), "Conformance Library App"),
+                    typeof(GamesAppsWidget), "Build your library"),
                 new PackageSpec("audio-mixer", "AudioMixer", WidgetGlyph.Volume,
                     typeof(AudioMixerWidget), "Conformance Game"),
                 new PackageSpec("network-controls", "NetworkControls", WidgetGlyph.Wifi,
@@ -497,6 +727,7 @@ file sealed class Deployment : IDisposable
             }));
 
             var installedRoot = Path.Combine(temporary.Path, "installed");
+            PackageFixture? ytMusicPackage = null;
             if (installAsCommunity)
             {
                 var catalog = new WidgetCatalog(installedRoot);
@@ -504,6 +735,27 @@ file sealed class Deployment : IDisposable
                     await catalog.InstallAsync(fixture.PackagePath);
                 foreach (var fixture in fixtures)
                     await catalog.SetEnabledAsync(fixture.Manifest.Id, true);
+
+                var ytProjectRoot = Path.Combine(repo, "samples", "YtMusicWidget");
+                var ytManifest = ManifestJson.Deserialize(
+                    await File.ReadAllBytesAsync(Path.Combine(ytProjectRoot, "manifest.json")));
+                var ytOutput = Path.Combine(temporary.Path, "ytmusic-community-package");
+                await RunCommunityPackageScriptAsync(
+                    Path.Combine(ytProjectRoot, "Build-CommunityPackage.ps1"),
+                    ytOutput,
+                    installedRoot);
+                var installedYt = (await catalog.DiscoverAsync()).Widgets
+                    .Single(widget => widget.Id == ytManifest.Id)
+                    .ActiveVersion;
+                ytMusicPackage = new PackageFixture(
+                    ytManifest.Id,
+                    ytManifest.Presentation.Icon,
+                    "Conformance Song",
+                    ytManifest,
+                    installedYt.InstallPath,
+                    Path.Combine(ytOutput, $"{ytManifest.Id}-{ytManifest.Version}.gbarwidget"),
+                    ytManifest.Permissions.Concat(ytManifest.OptionalPermissions)
+                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
             }
             return new Deployment(temporary)
             {
@@ -513,6 +765,7 @@ file sealed class Deployment : IDisposable
                 BundledCatalogPath = bundledCatalog,
                 InstalledCatalogRoot = installedRoot,
                 Packages = fixtures,
+                YtMusicPackage = ytMusicPackage,
             };
         }
         catch
@@ -579,6 +832,54 @@ file sealed class Deployment : IDisposable
                     source);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(source, destination, overwrite: true);
+        }
+    }
+
+    private static async Task RunCommunityPackageScriptAsync(
+        string script,
+        string outputDirectory,
+        string catalogRoot)
+    {
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in new[]
+        {
+            "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-File", script,
+            "-Configuration", "Release",
+            "-OutputDirectory", outputDirectory,
+            "-Catalog", catalogRoot,
+            "-Install",
+        }) start.ArgumentList.Add(argument);
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        using var process = Process.Start(start) ??
+            throw new InvalidOperationException("YT Music package script did not start.");
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            throw new TimeoutException("YT Music public package workflow exceeded three minutes.");
+        }
+        var output = await outputTask;
+        var error = await errorTask;
+        if (process.ExitCode != 0)
+        {
+            var diagnostic = (output + Environment.NewLine + error).Trim();
+            if (diagnostic.Length > 2_000) diagnostic = diagnostic[..2_000];
+            throw new InvalidOperationException(
+                $"YT Music public package workflow failed ({process.ExitCode}): {diagnostic}");
         }
     }
 

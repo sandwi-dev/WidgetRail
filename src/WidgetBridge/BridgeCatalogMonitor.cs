@@ -148,14 +148,27 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             if (!loaded.InstalledCatalogValid)
             {
                 var warnings = loaded.Warnings.Concat(
-                ["Widget catalog reload retained the last-good installed catalog."]).ToArray();
-                Diagnostics?.Invoke(this, warnings);
+                ["Widget catalog reload failed closed to the trusted catalog; all community widgets were retired."])
+                    .Take(64)
+                    .ToArray();
+                BridgeCatalogChanged? failClosedChange = null;
                 lock (_stateGate)
                 {
                     _lastDiagnostics = warnings;
-                    _retainedLastGood = true;
-                    return new BridgeCatalogReloadResult(false, true, _revision, _current, warnings);
+                    _retainedLastGood = false;
+                    if (!_current.IsEquivalentTo(loaded.Catalog))
+                    {
+                        _current = loaded.Catalog;
+                        checked { ++_revision; }
+                        failClosedChange = new BridgeCatalogChanged(_revision, _current, warnings);
+                    }
                 }
+
+                Diagnostics?.Invoke(this, warnings);
+                if (failClosedChange is not null) Changed?.Invoke(this, failClosedChange);
+                lock (_stateGate)
+                    return new BridgeCatalogReloadResult(
+                        failClosedChange is not null, false, _revision, _current, warnings);
             }
 
             BridgeCatalogChanged? changed = null;

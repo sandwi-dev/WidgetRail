@@ -26,9 +26,9 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   version-pinned themes, platform/widget/user cascade, no-poll reload, and live
   native shell appearance plus post-cascade text/contrast/motion/transparency
   accessibility policy
-- Controller-first Settings, YT Music, Audio Mixer, Network Controls, Games &
-  Apps, and Now Playing workers
-  in the runnable catalog, plus a separate Clock SDK sample
+- Controller-first Settings, Audio Mixer, Network Controls, Games & Apps, and
+  Now Playing workers in the runnable catalog; an installable YT Music
+  Community addon; and a separate Clock SDK sample
 - A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
   immutable version pin/rollback commands; accepted catalog changes reconcile
@@ -36,7 +36,7 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 - A generic installed-widget worker host with mandatory capability-free
   AppContainer isolation, pre-launch Job Object memory/process/UI containment,
   controller permission review, and typed authenticated audio/network/
-  Bluetooth/recent-activity/app-library/media
+  Bluetooth/recent-activity/app-library/media/exact-loopback/private-secret
   capability transport backed by deterministic simulators and narrow
   event-driven Windows Core Audio, WLAN, Bluetooth, and foreground providers
 - A bounded GameInput/XInput/Raw Input containment probe with overlay and background-observer modes
@@ -69,6 +69,7 @@ The complete verification command requires Visual Studio's Desktop development w
 - [Documentation index](docs/README.md)
 - [Widget authoring guide and API map](docs/widget-authoring-guide.md)
 - [Games & Apps reference](docs/games-and-apps.md)
+- [YT Music Community addon reference](samples/YtMusicWidget/README.md)
 - [Retired Recent Apps reference](docs/recent-apps.md)
 - [Platform architecture](docs/platform-architecture.md)
 - [Widget quickstart](docs/widget-quickstart.md)
@@ -76,6 +77,7 @@ The complete verification command requires Visual Studio's Desktop development w
 - [Settings and global themes](docs/settings-and-themes.md)
 - [Theme packaging and distribution](docs/theme-packaging.md)
 - [Controller input](docs/controller-input.md)
+- [Local companion HTTP and private secrets](docs/community-companion-services.md)
 - [Publishing, installation](docs/publishing-and-installation.md), and [security](docs/security-and-trust.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
@@ -88,8 +90,9 @@ remains resident in Background by default, and sends a declarative UI tree over
 versioned local IPC. Typed capability brokering is connected to simulators and
 narrow Windows providers. Installed/community workers fail closed unless their
 host-owned AppContainer, executable/package grants, and authenticated IPC can
-be established. Trusted bundled Settings and YT Music workers temporarily
-remain Job-only because they require desktop-user resources. Publisher
+be established. Settings is the only temporary trusted Job-only worker; YT
+Music has no trusted fallback and uses the public package AppContainer plus
+exact-port loopback/private-secret broker services. Publisher
 signing/revocation, CPU and disk/profile quotas/cleanup, audit UI, broader
 hardware/privacy evidence, and lifecycle-policy enforcement remain required
 before public community distribution is safe.

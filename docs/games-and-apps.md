@@ -22,6 +22,10 @@ than applications the user happened to foreground.
   broker-issued opaque app IDs.
 - Left/Right selects a card. A launches that exact card only while the widget
   is Interactive.
+- A successful launch currently leaves the overlay open. The planned product
+  behavior is to close only after the trusted provider reports success for that
+  exact request; enqueueing, timeout, denial, or failure must leave the overlay
+  visible with focus and an actionable status.
 - `Load more` requests another bounded page and moves selection to the first
   newly appended item. The widget retains at most 512 items.
 - Permission denied, lifecycle denied, provider unavailable, healthy empty,
@@ -96,6 +100,9 @@ Shell failures are sanitized before returning to widget code.
 
 - Discovery is Start Menu `.lnk`-only. AppsFolder/UWP registrations, Steam,
   Xbox, Epic, GOG, and other launcher libraries are not integrated.
+- A curated combined Games & Apps library—deduplication across launchers,
+  authoritative game classification, favorites/order, and close-after-
+  correlated-success—is tracked as [GBA-033](known-issues.md).
 - The provider does not extract or publish application artwork or icons. The
   current card uses a host semantic Play glyph.
 - The public kind enum supports Unknown, Application, and Game, but the real

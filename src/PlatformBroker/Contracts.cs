@@ -331,6 +331,47 @@ public sealed record ControlMediaSessionRequest(
 public sealed record MediaSessionsChangedEvent(
     IReadOnlyList<MediaSessionSummary> Sessions);
 
+public sealed record LoopbackHttpHeader(
+    [property: JsonRequired] string Name,
+    [property: JsonRequired] string Value);
+
+public sealed record LoopbackJsonRequest(
+    [property: JsonRequired] string Path,
+    [property: JsonRequired] IReadOnlyList<LoopbackHttpHeader> Headers,
+    string? BearerSecretSlot,
+    string? JsonBody,
+    [property: JsonRequired] int TimeoutMilliseconds,
+    bool InvalidateBearerSecretOnUnauthorized = false);
+
+public sealed record LoopbackJsonResponse(
+    [property: JsonRequired] int StatusCode,
+    [property: JsonRequired] string JsonBody,
+    [property: JsonRequired] IReadOnlyList<LoopbackHttpHeader> Headers);
+
+public sealed record PrivateSecretSlotRequest([property: JsonRequired] string Slot);
+public sealed record SavePrivateSecretRequest(
+    [property: JsonRequired] string Slot,
+    [property: JsonRequired] string Secret);
+public sealed record PrivateSecretExistsSummary([property: JsonRequired] bool Exists);
+public sealed record PrivateSecretMetadataSummary(
+    [property: JsonRequired] bool Exists,
+    long? LastWrittenUnixMilliseconds);
+
+public static class CommunityPlatformLimits
+{
+    public const int MaximumLoopbackPathCharacters = 2_048;
+    public const int MaximumLoopbackHeaderCount = 16;
+    public const int MaximumLoopbackHeaderNameCharacters = 64;
+    public const int MaximumLoopbackHeaderValueCharacters = 1_024;
+    public const int MaximumLoopbackHeaderCharacters = 8_192;
+    public const int MaximumLoopbackRequestBodyUtf8Bytes = 16 * 1024;
+    public const int MaximumLoopbackResponseBodyUtf8Bytes = 96 * 1024;
+    public const int DefaultLoopbackTimeoutMilliseconds = 10_000;
+    public const int MaximumLoopbackTimeoutMilliseconds = 40_000;
+    public const int MaximumPrivateSecretSlotCharacters = 64;
+    public const int MaximumPrivateSecretUtf8Bytes = 2_048;
+}
+
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
 
 public interface IPlatformBrokerEventSource
@@ -415,6 +456,35 @@ public interface IMediaPlatformBrokerBackend : IPlatformBrokerEventSource
             new BrokerException("platform_unavailable", "Windows media session control is unavailable."));
 }
 
+public interface IPrivateSecretPlatformBrokerBackend
+{
+    Task<PrivateSecretMetadataSummary> GetPrivateSecretMetadataAsync(
+        BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
+        Task.FromException<PrivateSecretMetadataSummary>(
+            new BrokerException("platform_unavailable", "Private secret storage is unavailable."));
+    Task SavePrivateSecretAsync(
+        BrokerWidgetIdentity identity, string slot, string secret,
+        CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "Private secret storage is unavailable."));
+    Task DeletePrivateSecretAsync(
+        BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
+        Task.FromException(
+            new BrokerException("platform_unavailable", "Private secret storage is unavailable."));
+}
+
+public interface ILoopbackHttpPlatformBrokerBackend
+{
+    Task<LoopbackJsonResponse> SendLoopbackJsonAsync(
+        BrokerWidgetIdentity identity,
+        int port,
+        bool isPost,
+        LoopbackJsonRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<LoopbackJsonResponse>(
+            new BrokerException("platform_unavailable", "Loopback HTTP is unavailable."));
+}
+
 /// <summary>
 /// Complete host backend. Providers can implement the narrower audio or network
 /// contracts and be joined with <see cref="CompositePlatformBrokerBackend"/>.
@@ -422,7 +492,8 @@ public interface IMediaPlatformBrokerBackend : IPlatformBrokerEventSource
 public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     INetworkPlatformBrokerBackend, IActivityPlatformBrokerBackend,
     IAppLibraryPlatformBrokerBackend, IBluetoothPlatformBrokerBackend,
-    IMediaPlatformBrokerBackend
+    IMediaPlatformBrokerBackend, IPrivateSecretPlatformBrokerBackend,
+    ILoopbackHttpPlatformBrokerBackend
 {
 }
 

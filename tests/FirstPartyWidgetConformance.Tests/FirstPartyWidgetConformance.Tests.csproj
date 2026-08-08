@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\FirstPartyWidgets\MediaSessionsWidget\MediaSessionsWidget.csproj" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\NetworkControlsWidget.csproj" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsWidget.csproj" />
+    <ProjectReference Include="..\..\samples\YtMusicWidget\YtMusicWidget.csproj" />
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
     <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />

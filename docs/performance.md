@@ -52,8 +52,9 @@ unbounded caches, or unnecessary helper processes.
 
 Job memory containment is not a CPU or disk/profile quota. Installed/community
 workers separately have mandatory capability-free AppContainer isolation with
-network denied; trusted bundled Settings and YT Music remain temporarily Job-
-only. Isolation does not establish publisher trust. See [security and
+ambient network denied; trusted bundled Settings remains temporarily Job-only.
+YT Music uses the Community AppContainer and narrow loopback/secret broker.
+Isolation does not establish publisher trust. See [security and
 trust](security-and-trust.md).
 
 ## Lifecycle and background work

@@ -1,58 +1,63 @@
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
+using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.Samples.YtMusicWidget;
 
 /// <summary>
-/// Narrow, loopback-only client for the YTMDesktop2 companion application's local API.
-/// The endpoint restrictions are intentionally carried over from the original Game Bar widget.
+/// YTMDesktop2 client implemented exclusively with public, typed host services.
+/// The addon never opens a socket, reads a persisted token, or calls a Windows
+/// credential API. The host fixes the origin to 127.0.0.1:13091 and injects the
+/// package-scoped bearer secret only for requests that explicitly name its slot.
 /// </summary>
 public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
 {
-    public const string DefaultEndpoint = "http://127.0.0.1:13091";
+    public const int CompanionPort = 13091;
+    public const string BearerSecretSlot = "ytmdesktop2.bearer";
+    private static readonly TimeSpan PairingApprovalTimeout = TimeSpan.FromSeconds(40);
 
-    private readonly Uri _baseUri;
-    private readonly HttpClient _client;
-    private readonly IYtMusicCredentialStore _credentialStore;
-    private readonly object _credentialLock = new();
-    private string? _token;
+    private readonly WidgetHostServices _services;
+    private readonly SemaphoreSlim _credentialGate = new(1, 1);
+    private readonly object _credentialStateLock = new();
+    private bool _credentialKnown;
+    private bool _hasCredential;
 
-    public YtmDesktopApiClient(
-        string endpoint = DefaultEndpoint,
-        string? token = null,
-        HttpMessageHandler? handler = null,
-        IYtMusicCredentialStore? credentialStore = null)
+    public YtmDesktopApiClient(WidgetHostServices services) =>
+        _services = services ?? throw new ArgumentNullException(nameof(services));
+
+    public async Task<YtMusicConnectionInfo> GetStatusAsync(
+        CancellationToken cancellationToken = default)
     {
-        _baseUri = ValidateEndpoint(endpoint);
-        _credentialStore = credentialStore ??
-            new WindowsCredentialManagerYtMusicCredentialStore(_baseUri.AbsoluteUri);
-        _token = NormalizeToken(token) ?? NormalizeToken(_credentialStore.LoadToken());
-        handler ??= new HttpClientHandler
-        {
-            UseProxy = false,
-            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-        };
-        _client = new HttpClient(handler, disposeHandler: true)
-        {
-            Timeout = TimeSpan.FromSeconds(35),
-        };
-    }
-
-    public async Task<YtMusicConnectionInfo> GetStatusAsync(CancellationToken cancellationToken = default)
-    {
-        using var document = await SendAsync(HttpMethod.Get, "/", null, cancellationToken).ConfigureAwait(false);
+        var hasCredential = await HasCredentialAsync(cancellationToken).ConfigureAwait(false);
+        using var document = await SendAsync(
+            isPost: false, "/", jsonBody: null, includeAuthorization: hasCredential,
+            options: null, cancellationToken).ConfigureAwait(false);
         return new YtMusicConnectionInfo(
             GetBoolean(document.RootElement, "authRequired"),
-            HasCredential());
+            hasCredential);
     }
 
-    public async Task<YtMusicPlaybackSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
+    public async Task<YtMusicPlaybackSnapshot> GetSnapshotAsync(
+        CancellationToken cancellationToken = default)
     {
-        var trackTask = SendAsync(HttpMethod.Get, "/track", null, cancellationToken);
-        var stateTask = SendAsync(HttpMethod.Get, "/track/state", null, cancellationToken);
-        await Task.WhenAll(trackTask, stateTask).ConfigureAwait(false);
+        var hasCredential = await HasCredentialAsync(cancellationToken).ConfigureAwait(false);
+        var trackTask = SendAsync(
+            isPost: false, "/track", jsonBody: null, includeAuthorization: hasCredential,
+            options: null, cancellationToken);
+        var stateTask = SendAsync(
+            isPost: false, "/track/state", jsonBody: null, includeAuthorization: hasCredential,
+            options: null, cancellationToken);
+        try
+        {
+            await Task.WhenAll(trackTask, stateTask).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Task.WhenAll does not own successful sibling results when one
+            // request fails. Dispose either document that was already created.
+            if (trackTask.IsCompletedSuccessfully) trackTask.Result.Dispose();
+            if (stateTask.IsCompletedSuccessfully) stateTask.Result.Dispose();
+            throw;
+        }
         using var trackDocument = await trackTask.ConfigureAwait(false);
         using var stateDocument = await stateTask.ConfigureAwait(false);
         return ParseSnapshot(trackDocument.RootElement, stateDocument.RootElement);
@@ -68,78 +73,71 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
             YtMusicCommand.TogglePlayback => ("/track/toggle-play-state", null),
             YtMusicCommand.Previous => ("/track/prev", null),
             YtMusicCommand.Next => ("/track/next", null),
-            YtMusicCommand.Like => ("/track/like", (object)(toggleState ?? true)),
-            YtMusicCommand.Dislike => ("/track/dislike", (object)(toggleState ?? true)),
+            YtMusicCommand.Like => ("/track/like", JsonSerializer.Serialize(toggleState ?? true)),
+            YtMusicCommand.Dislike => ("/track/dislike", JsonSerializer.Serialize(toggleState ?? true)),
             YtMusicCommand.Shuffle => ("/track/shuffle", null),
             YtMusicCommand.Repeat => ("/track/repeat", null),
             _ => throw new ArgumentOutOfRangeException(nameof(command)),
         };
-        using var response = await SendAsync(HttpMethod.Post, path, body, cancellationToken).ConfigureAwait(false);
+        var hasCredential = await HasCredentialAsync(cancellationToken).ConfigureAwait(false);
+        using var response = await SendAsync(
+            isPost: true, path, body ?? "{}", includeAuthorization: hasCredential,
+            options: null, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<YtMusicPairingCode> RequestPairingCodeAsync(CancellationToken cancellationToken = default)
+    public async Task<YtMusicPairingCode> RequestPairingCodeAsync(
+        CancellationToken cancellationToken = default)
     {
-        var body = new
+        var body = JsonSerializer.Serialize(new
         {
             appId = "gamebaralternative.ytmusic",
             appName = "Game Bar Alternative YT Music",
-            appVersion = "0.1.0",
-        };
+            appVersion = "0.2.0",
+        });
         using var document = await SendAsync(
-            HttpMethod.Post,
-            "/auth/requestcode",
-            body,
-            cancellationToken,
-            includeAuthorization: false).ConfigureAwait(false);
+            isPost: true, "/auth/requestcode", body, includeAuthorization: false,
+            options: null, cancellationToken).ConfigureAwait(false);
         var code = GetString(document.RootElement, "code");
         if (string.IsNullOrWhiteSpace(code))
             throw new InvalidOperationException("YTMDesktop2 did not return a pairing code.");
         return new YtMusicPairingCode(code);
     }
 
-    public async Task CompletePairingAsync(string code, CancellationToken cancellationToken = default)
+    public async Task CompletePairingAsync(
+        string code,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
-        var body = new { appId = "gamebaralternative.ytmusic", code = code.Trim() };
+        var body = JsonSerializer.Serialize(new
+        {
+            appId = "gamebaralternative.ytmusic",
+            code = code.Trim(),
+        });
         using var document = await SendAsync(
-            HttpMethod.Post,
+            isPost: true,
             "/auth/request",
             body,
-            cancellationToken,
-            includeAuthorization: false).ConfigureAwait(false);
+            includeAuthorization: false,
+            options: new WidgetLoopbackRequestOptions { Timeout = PairingApprovalTimeout },
+            cancellationToken).ConfigureAwait(false);
         var token = GetString(document.RootElement, "token");
         if (string.IsNullOrWhiteSpace(token))
             throw new InvalidOperationException("YTMDesktop2 approved pairing but returned no token.");
-        var normalized = NormalizeToken(token)!;
-        _credentialStore.SaveToken(normalized);
-        lock (_credentialLock) _token = normalized;
+        await _services.PrivateSecrets.SaveAsync(
+            BearerSecretSlot, token.Trim(), cancellationToken).ConfigureAwait(false);
+        SetCredentialState(hasCredential: true);
     }
 
-    public void ClearCredential()
+    public async Task ClearCredentialAsync(CancellationToken cancellationToken = default)
     {
-        lock (_credentialLock) _token = null;
-        _credentialStore.ClearToken();
+        // Fail safe locally before an asynchronous provider call. A failed
+        // delete cannot cause this client to reuse a rejected credential.
+        SetCredentialState(hasCredential: false);
+        await _services.PrivateSecrets.DeleteAsync(
+            BearerSecretSlot, cancellationToken).ConfigureAwait(false);
     }
 
-    public void Dispose() => _client.Dispose();
-
-    public static Uri ValidateEndpoint(string endpoint)
-    {
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ||
-            !string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("The YTMDesktop2 endpoint must be a local HTTP URL.");
-
-        var normalizedHost = uri.DnsSafeHost;
-        var isLoopback = string.Equals(normalizedHost, "localhost", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(normalizedHost, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(normalizedHost, "::1", StringComparison.OrdinalIgnoreCase);
-        if (!isLoopback || uri.Port is < 9999 or > 39999)
-            throw new InvalidOperationException("Only localhost YTMDesktop2 endpoints on ports 9999-39999 are allowed.");
-        if (!string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
-            throw new InvalidOperationException("The YTMDesktop2 endpoint cannot contain credentials, a query, or a fragment.");
-
-        return new UriBuilder(uri) { Path = "/", Query = string.Empty, Fragment = string.Empty }.Uri;
-    }
+    public void Dispose() => _credentialGate.Dispose();
 
     internal static YtMusicPlaybackSnapshot ParseSnapshot(JsonElement track, JsonElement state)
     {
@@ -181,33 +179,105 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
     }
 
     private async Task<JsonDocument> SendAsync(
-        HttpMethod method,
+        bool isPost,
         string path,
-        object? body,
-        CancellationToken cancellationToken,
-        bool includeAuthorization = true)
+        string? jsonBody,
+        bool includeAuthorization,
+        WidgetLoopbackRequestOptions? options,
+        CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(method, new Uri(_baseUri, path.TrimStart('/')));
-        string? token;
-        lock (_credentialLock) token = _token;
-        if (includeAuthorization && !string.IsNullOrWhiteSpace(token))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        if (body is not null)
-            request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        options = options is null
+            ? new WidgetLoopbackRequestOptions()
+            : options with { };
+        if (includeAuthorization)
+            options = options with
+            {
+                BearerSecretSlot = BearerSecretSlot,
+                InvalidateBearerSecretOnUnauthorized = true,
+            };
 
-        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new YtMusicAuthorizationRequiredException();
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        var response = isPost
+            ? await _services.Loopback.PostJsonAsync(
+                CompanionPort, path, jsonBody ?? "{}", options, cancellationToken)
+                .ConfigureAwait(false)
+            : await _services.Loopback.GetJsonAsync(
+                CompanionPort, path, options, cancellationToken)
+                .ConfigureAwait(false);
+        if (response.StatusCode == 401)
         {
-            var detail = string.IsNullOrWhiteSpace(responseBody) ? response.ReasonPhrase : responseBody.Trim();
-            if (detail is { Length: > 500 }) detail = detail[..500];
+            // The opted-in host request has already invalidated the durable
+            // slot before returning. Keep only the non-secret local cache in
+            // sync; do not attempt a second lifecycle-gated Delete operation.
+            SetCredentialState(hasCredential: false);
+            throw new YtMusicAuthorizationRequiredException();
+        }
+        if (response.StatusCode is < 200 or > 299)
+        {
+            var detail = string.IsNullOrWhiteSpace(response.JsonBody)
+                ? "Request failed"
+                : response.JsonBody.Trim();
+            if (detail.Length > 500) detail = detail[..500];
             throw new InvalidOperationException(
-                $"YTMDesktop2 returned HTTP {(int)response.StatusCode} {response.ReasonPhrase}: {detail}");
+                $"YTMDesktop2 returned HTTP {response.StatusCode}: {detail}");
         }
 
-        return JsonDocument.Parse(string.IsNullOrWhiteSpace(responseBody) ? "{}" : responseBody);
+        try
+        {
+            return JsonDocument.Parse(
+                string.IsNullOrWhiteSpace(response.JsonBody) ? "{}" : response.JsonBody,
+                new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = false,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    MaxDepth = 64,
+                });
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException(
+                "YTMDesktop2 returned malformed JSON.", exception);
+        }
+    }
+
+    private async Task<bool> HasCredentialAsync(CancellationToken cancellationToken)
+    {
+        lock (_credentialStateLock)
+            if (_credentialKnown) return _hasCredential;
+
+        await _credentialGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            lock (_credentialStateLock)
+                if (_credentialKnown) return _hasCredential;
+            bool exists;
+            try
+            {
+                exists = await _services.PrivateSecrets.ExistsAsync(
+                    BearerSecretSlot, cancellationToken).ConfigureAwait(false);
+            }
+            catch (WidgetCapabilityException)
+            {
+                // Secret storage is optional so an authentication-disabled
+                // companion remains usable without a vault grant. Pairing will
+                // surface a concrete error if persistence is actually needed.
+                exists = false;
+            }
+            SetCredentialState(exists);
+            return exists;
+        }
+        finally
+        {
+            _credentialGate.Release();
+        }
+    }
+
+    private void SetCredentialState(bool hasCredential)
+    {
+        lock (_credentialStateLock)
+        {
+            _hasCredential = hasCredential;
+            _credentialKnown = true;
+        }
     }
 
     private static JsonElement GetObject(JsonElement value, string propertyName) =>
@@ -219,7 +289,8 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
 
     private static string? GetString(JsonElement value, string propertyName)
     {
-        if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty(propertyName, out var item)) return null;
+        if (value.ValueKind != JsonValueKind.Object ||
+            !value.TryGetProperty(propertyName, out var item)) return null;
         return item.ValueKind switch
         {
             JsonValueKind.String => item.GetString(),
@@ -240,7 +311,7 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         value.ValueKind == JsonValueKind.Object &&
         value.TryGetProperty(propertyName, out var item) &&
         item.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-            item.GetBoolean();
+        item.GetBoolean();
 
     private static bool? GetOptionalBoolean(JsonElement value, string propertyName) =>
         value.ValueKind == JsonValueKind.Object && value.TryGetProperty(propertyName, out var item)
@@ -277,13 +348,10 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         };
     }
 
-    private static string? NormalizeToken(string? token) => string.IsNullOrWhiteSpace(token) ? null : token.Trim();
-    private bool HasCredential()
-    {
-        lock (_credentialLock) return !string.IsNullOrWhiteSpace(_token);
-    }
-    private static double SanitizeNonNegative(double value) => double.IsFinite(value) ? Math.Max(0, value) : 0;
+    private static double SanitizeNonNegative(double value) =>
+        double.IsFinite(value) ? Math.Max(0, value) : 0;
 
     private static bool IsSafeArtworkUrl(string value) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps;
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        uri.Scheme == Uri.UriSchemeHttps;
 }

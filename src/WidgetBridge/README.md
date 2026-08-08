@@ -121,9 +121,11 @@ the companion pipe is additionally ACLed to the runtime's exact AppContainer
 SID, labeled for Low-integrity access, and bound to the exact started PID before
 accept. The production bridge composes the narrow real Core Audio, Windows
 network/Bluetooth, foreground-activity, Start Menu app-library, and GSMTC
-media-session providers;
+media-session providers plus constrained loopback JSON and write-only package
+secret services;
 deterministic tests use `SimulatedPlatformBrokerBackend`.
-See [widget capabilities](../../docs/capabilities.md).
+See [widget capabilities](../../docs/capabilities.md) and [local companion HTTP
+and private secrets](../../docs/community-companion-services.md).
 
 Asynchronous `widget-invalidated` and `widget-failed` events identify the widget
 by catalog ID. `platform-appearance-changed` instead contains only the newly
@@ -276,9 +278,11 @@ enabled, host/architecture-compatible packages in persisted order. It assigns
 each installed package a fixed host-owned 64 MiB cap, exact read-only package
 root, package-specific AppContainer identity, and the packaged
 `WidgetWorkerHost`. Listing remains lazy and does not launch workers. Disabled
-packages stay inert. An invalid installed catalog retains the last-good host
-catalog; a conflicting, tampered, incompatible, unsupported-capability, or
-invalid-GBSS installed package is skipped with a bounded warning. Supported
+packages stay inert. Invalid installed state or package integrity publishes a
+trusted-only catalog revision; Community registrations are removed
+synchronously and running workers retire before a stale ID can relaunch. A
+conflicting, incompatible, unsupported-capability, or invalid-GBSS installed
+package is skipped with a bounded warning. Supported
 required and optional manifest declarations are combined into the broker
 declaration set; neither kind is auto-granted.
 
@@ -296,10 +300,12 @@ Win32k system-call disable is not active: testing that mitigation caused
 CoreCLR DLL initialization failure (`0xC0000142`). Job Object UI restrictions
 remain enabled.
 
-Trusted bundled Settings and YT Music entries temporarily remain Job-only
-because they require desktop-user resources not yet brokered. This exception is
-bundled host policy and cannot be introduced through catalog JSON or a package
-manifest.
+Trusted bundled Settings temporarily remains Job-only for desktop-user
+resources not yet brokered. YT Music is no longer an entry in this trusted
+section: it installs through the Community catalog and uses the generic worker,
+AppContainer, loopback/secret broker, lifecycle, and consent path. The Settings
+exception is host policy and cannot be introduced through catalog JSON or a
+package manifest.
 
 Audio Mixer, Network Controls, Games & Apps, and Now Playing are
 `bundledWidgets`, not trusted-worker shortcuts. A Windows conformance suite
@@ -308,7 +314,9 @@ builds and installs those same four package layouts, merges them through
 AppContainer, drives lifecycle, validates a snapshot, and observes a simulated
 brokered action. `gbar dev` points `--installed-catalog-root` at a unique
 session catalog, so local author builds traverse this same bridge path without
-mutating the user's installed catalog.
+mutating the user's installed catalog. YT Music adds a fifth Community-package
+conformance case built and installed by the public CLI rather than appearing in
+`bundledWidgets`.
 
 The bridge watches current-user catalog state and package changes without
 polling, publishes complete semantic revisions, preserves compatible workers,

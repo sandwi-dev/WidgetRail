@@ -24,21 +24,21 @@ optional presentation metadata. Audio Mixer, Network Controls, Games & Apps,
 and Now Playing derive code identity, publisher, permissions, resource request,
 residency, and styles from those manifests and use the same generic worker,
 package-specific AppContainer, broker, lifecycle, and renderer as community
-packages. A Windows conformance suite exercises that complete path for all four.
+packages. A Windows conformance suite exercises that complete path for all four
+plus the separately installed YT Music Community addon.
 
-Settings and YT Music are the only temporary trusted Job-only entries because
-their current desktop-user dependencies are not yet brokered. A package cannot
-request that exception. Privileged OS and service integrations remain behind
-authenticated, task-shaped providers; being bundled does not bypass manifest
-declaration or user consent.
+Settings is the only temporary trusted Job-only entry; a package cannot request
+that exception. Privileged OS and service integrations remain behind
+authenticated task-shaped providers, and being bundled does not bypass
+declaration or consent.
 
-YT Music is intentionally transitional, not a permanent Built-in tier. It is
-the planned first Community-addon conformance and migration: the same widget
-must eventually package/install through the public workflow and run in the
-generic package AppContainer after reusable exact-port loopback HTTP and private
-per-widget secret services replace its direct desktop-user dependencies. That
-broker work and migration are not implemented today, so the current trusted
-worker is UI/behavior evidence rather than Community isolation evidence.
+YT Music is the first Community-addon integration reference. Its trusted
+catalog/custom-worker exception is removed. The real addon is staged, validated,
+packed, installed, enabled, isolated, consented, and launched through public
+paths, while exact-port loopback JSON and write-only private secrets replace
+its direct desktop-user dependencies. Its package conformance test covers
+pairing, host-side Bearer injection, dashboard transport, and absence of a
+trusted fallback. Clean packaged hands-on evidence remains a release gate.
 
 ### Community executable widgets
 
@@ -287,19 +287,22 @@ public sealed class ClockWidget : Widget
 Default deny. Prefer task-shaped broker operations over broad access.
 
 The implemented closed set currently covers typed audio, Wi-Fi/network,
-Bluetooth, recent-activity, and system-media-session reads/controls; see
+Bluetooth, recent activity, app-library launch, system media, exact-port local
+companion JSON, and write-only private secrets; see
 [widget capabilities](capabilities.md) for the authoritative IDs and lifecycle
-rules. Candidate capability domains are:
+rules. The companion-specific security contract is in [local companion HTTP and
+private secrets](community-companion-services.md).
+
+The implemented companion grants are deliberately narrower than the earlier
+generic candidates: `network.loopback:<port>` is one user-visible grant for one
+nonprivileged IPv4 loopback port, JSON GET/POST only; and
+`storage.private-secrets.v1` can save/delete/check metadata but never return a
+stored value to widget code. The trusted provider alone can inject a named slot
+as Bearer authorization while both grants remain valid.
+
+Remaining candidate capability domains are:
 
 - `storage.own`: private bounded widget storage
-- `storage.secret.own`: host-protected per-widget secrets whose values are
-  returned only to the same authenticated package instance under explicit
-  policy; no cross-widget enumeration
-- `network.loopback.client`: brokered access to a declared local companion. The
-  manifest supplies bounded endpoint constraints such as protocol and one port
-  or port range; those are enforcement parameters, not separate user-facing
-  permission IDs. The initial design allows no subnet/LAN authority, unsafe
-  redirects, proxy inheritance, or ambient sockets.
 - `network.internet.client`: brokered HTTPS whose manifest declaration carries
   one or more allowlisted domains as constraints rather than minting a separate
   permission ID for each host
@@ -314,7 +317,10 @@ rules. Candidate capability domains are:
 - `microphone.use`
 - `clipboard.read` / `clipboard.write`
 
-The broker owns OAuth tokens and other secrets. Widgets receive scoped results or opaque handles, never raw host credentials. Permission prompts explain the concrete action and support Allow Once, Always Allow, and Deny where meaningful.
+The broker owns host-only credential reads. Widgets receive scoped results,
+metadata, or opaque handles, never raw stored credentials. Current Settings
+supports durable Grant/Deny/Not-decided decisions; one-shot consent is not
+implemented.
 
 The first community SDK should omit capabilities that cannot yet be sandboxed and audited safely.
 
@@ -379,7 +385,8 @@ Available now:
 - `WidgetWorkerBootstrap`, `WidgetTestHost`, and typed fake host services; and
 - first-party Audio Mixer, Network Controls, Games & Apps, and Now Playing
   projects as generic-AppContainer, public-SDK, brokered-capability reference
-  implementations, plus a packaged 4/4 conformance harness.
+  implementations, plus YT Music as the first Community-addon integration and a
+  packaged 5/5 conformance harness.
 
 Remaining tooling:
 
@@ -431,8 +438,7 @@ AppContainer isolation and broker permissions remain independent requirements.
 2. Is a cached widget tree sufficient to make on-demand workers feel instantaneous?
 3. Which UI primitives cover the first-party widgets without encouraging bespoke escape hatches?
 4. Which remaining Settings desktop-user dependencies should become brokered so
-   it can move from Job-only to AppContainer policy after the planned YT Music
-   Community-addon migration?
+   it can follow YT Music from Job-only to AppContainer policy?
 5. Which additional permissions can be safely brokered without elevating the host?
 6. What disk/profile quotas, stale-profile cleanup, and user controls are
    required before public distribution?

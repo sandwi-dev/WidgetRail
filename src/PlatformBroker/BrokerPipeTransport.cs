@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Security.Cryptography;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
@@ -10,7 +11,7 @@ namespace GameBarAlternative.PlatformBroker;
 
 public sealed record BrokerPipeTransportOptions
 {
-    public int MaximumFrameBytes { get; init; } = 64 * 1024;
+    public int MaximumFrameBytes { get; init; } = 256 * 1024;
     public TimeSpan AcceptTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public TimeSpan HandshakeTimeout { get; init; } = TimeSpan.FromSeconds(3);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(3);
@@ -34,6 +35,26 @@ public sealed record BrokerPipeTransportOptions
     {
         if (value <= TimeSpan.Zero || value > TimeSpan.FromMinutes(1))
             throw new ArgumentOutOfRangeException(name);
+    }
+}
+
+internal static class BrokerPipeRequestTimeoutPolicy
+{
+    internal static TimeSpan Resolve(
+        BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
+    {
+        if (!PlatformCapabilities.TryGetLoopbackPort(request.CapabilityId, out _) ||
+            request.Operation is not (PlatformCapabilities.LoopbackHttpGetJson or
+                PlatformCapabilities.LoopbackHttpPostJson) ||
+            !request.Payload.TryGetProperty("timeoutMilliseconds", out var timeoutProperty) ||
+            !timeoutProperty.TryGetInt32(out var timeoutMilliseconds) ||
+            timeoutMilliseconds is < 1 or
+                > CommunityPlatformLimits.MaximumLoopbackTimeoutMilliseconds)
+            return options.RequestTimeout;
+
+        // Provider timeout plus a small, fixed IPC completion budget. Only the
+        // exact-port loopback operations can extend the normal broker deadline.
+        return TimeSpan.FromMilliseconds(timeoutMilliseconds + 2_000);
     }
 }
 
@@ -134,6 +155,7 @@ internal static class BrokerPipeJson
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         MaxDepth = BrokerJson.MaximumDepth,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     static BrokerPipeJson() => Options.Converters.Add(
@@ -410,7 +432,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         }
         var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, _lifetime.Token);
-        requestCancellation.CancelAfter(_options.RequestTimeout);
+        requestCancellation.CancelAfter(
+            BrokerPipeRequestTimeoutPolicy.Resolve(_options, request));
         if (!_requests.TryAdd(message.CorrelationId, requestCancellation))
         {
             requestCancellation.Dispose();
@@ -438,6 +461,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         {
             var response = await _broker.HandleAsync(requestBytes, requestCancellation.Token)
                 .ConfigureAwait(false);
+            _ = BrokerJson.SerializeResponse(response);
             await SendAsync(BrokerPipeMessageTypes.Response, correlationId, response, _lifetime.Token)
                 .ConfigureAwait(false);
         }
@@ -703,7 +727,9 @@ public sealed class BrokerPipeClient : IAsyncDisposable
             BrokerPipeMessageTypes.Request,
             request,
             cancellationToken,
-            sendCancellation: true).ConfigureAwait(false);
+            sendCancellation: true,
+            requestTimeout: BrokerPipeRequestTimeoutPolicy.Resolve(_options, request))
+            .ConfigureAwait(false);
         if (response.Type == BrokerPipeMessageTypes.Error)
         {
             var error = BrokerPipeJson.Payload<BrokerPipeError>(response.Payload);
@@ -765,7 +791,8 @@ public sealed class BrokerPipeClient : IAsyncDisposable
         string type,
         T payload,
         CancellationToken cancellationToken,
-        bool sendCancellation = false)
+        bool sendCancellation = false,
+        TimeSpan? requestTimeout = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var correlation = type == BrokerPipeMessageTypes.Request && payload is BrokerRequestEnvelope request
@@ -780,7 +807,7 @@ public sealed class BrokerPipeClient : IAsyncDisposable
             await WriteAsync(type, correlation, payload, cancellationToken).ConfigureAwait(false);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken, _lifetime.Token);
-            timeout.CancelAfter(_options.RequestTimeout);
+            timeout.CancelAfter(requestTimeout ?? _options.RequestTimeout);
             try { return await completion.Task.WaitAsync(timeout.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
             {
