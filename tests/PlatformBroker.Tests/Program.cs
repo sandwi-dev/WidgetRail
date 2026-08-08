@@ -1415,6 +1415,16 @@ static async Task SpotifyContracts()
     Assert.True(configured.Succeeded);
     Assert.Equal(identity, backend.LastSpotifyIdentity);
 
+    await store.SetDecisionAsync(identity, PlatformCapabilities.SpotifyLocalPlaybackV1,
+        ConsentDecision.Deny);
+    var deniedLocalPlayback = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyAuthorizationV1,
+        PlatformCapabilities.SpotifyAuthorizationConnect,
+        new { requestedScopes = new[] { "localPlayback" } }));
+    Assert.Equal("permission_denied", deniedLocalPlayback.ErrorCode);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.SpotifyLocalPlaybackV1,
+        ConsentDecision.Grant);
+
     await store.SetDecisionAsync(identity, PlatformCapabilities.SpotifyPlaybackControlV1,
         ConsentDecision.Deny);
     var overScoped = await broker.HandleAsync(Request(identity,
@@ -1427,9 +1437,22 @@ static async Task SpotifyContracts()
     var connected = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.SpotifyAuthorizationV1,
         PlatformCapabilities.SpotifyAuthorizationConnect,
-        new { requestedScopes = new[] { "playbackStateRead", "playbackStateControl" } }));
+        new
+        {
+            requestedScopes = new[]
+            {
+                "playbackStateRead",
+                "playbackStateControl",
+                "localPlayback",
+                "playlistsRead",
+            },
+        }));
     Assert.True(connected.Succeeded);
-    Assert.Equal(2, backend.LastSpotifyConnectRequest!.RequestedScopes.Count);
+    Assert.Equal(4, backend.LastSpotifyConnectRequest!.RequestedScopes.Count);
+    Assert.True(backend.LastSpotifyConnectRequest.RequestedScopes.Contains(
+        SpotifyAuthorizationScope.LocalPlayback));
+    Assert.True(backend.LastSpotifyConnectRequest.RequestedScopes.Contains(
+        SpotifyAuthorizationScope.PlaylistsRead));
 
     broker.SetLifecycle(BrokerLifecycleState.Background);
     var backgroundRead = await broker.HandleAsync(Request(identity,

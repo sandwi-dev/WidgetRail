@@ -1256,6 +1256,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                     PlatformCapabilities.SpotifyPlaybackReadV1,
                 SpotifyAuthorizationScope.PlaybackStateControl =>
                     PlatformCapabilities.SpotifyPlaybackControlV1,
+                SpotifyAuthorizationScope.LocalPlayback =>
+                    PlatformCapabilities.SpotifyLocalPlaybackV1,
+                SpotifyAuthorizationScope.PlaylistsRead =>
+                    PlatformCapabilities.SpotifyPlaylistsReadV1,
                 _ => throw new BrokerException("invalid_payload", "Spotify scope is invalid."),
             };
             await AuthorizeAsync(capabilityId, operation: null, cancellationToken)

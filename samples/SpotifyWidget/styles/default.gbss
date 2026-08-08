@@ -214,7 +214,7 @@
   text-align: center;
 }
 .spotify-responsive-action { flex-grow: 1; }
-.spotify-primary { background: var(--text); color: var(--canvas, #090908); }
+.spotify-primary { background: var(--accent); color: var(--canvas, #090908); }
 .spotify-primary:focused,
 .spotify-secondary:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .spotify-setup-scroll {

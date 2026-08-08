@@ -7,6 +7,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Disconnected copy and paired actions remain bounded and centered", DisconnectedLayoutContract),
+    ("Primary actions keep theme-safe fill and focus contrast", PrimaryActionContrast),
     ("Unconfigured state provides safe exact setup guidance", UnconfiguredSetup),
     ("Setup is a nested B-dismissible input scope", NestedSetupBack),
     ("Setup uses a bounded controller-native scroll surface", SetupUsesVerticalScroll),
@@ -81,6 +82,10 @@ static async Task DisconnectedLayoutContract()
         AppContext.BaseDirectory, "styles", "default.gbss"));
     var parsed = GbssParser.Parse(source, "styles/default.gbss");
     Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
+    Assert.True(source.Contains(".spotify-primary { background: var(--accent);", StringComparison.Ordinal),
+        "Primary actions must derive their fill from the active theme accent.");
+    Assert.True(source.Contains("outline-color: var(--focus)", StringComparison.Ordinal),
+        "Focused primary actions must derive their outline from the active theme focus token.");
     var compiled = GbssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var theme = compiled.Theme!;
@@ -107,6 +112,46 @@ static async Task DisconnectedLayoutContract()
     Assert.Equal("1.25", button.Get("line-height")?.Text);
     Assert.Equal("2", button.Get("max-lines")?.Text);
     Assert.Equal("1", button.Get("flex-grow")?.Text);
+    await StopAsync(widget);
+}
+
+static async Task PrimaryActionContrast()
+{
+    var harness = new SpotifyHarness { Configured = true, Connected = false };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
+    var disconnected = widget.RenderSnapshot("spotify.contrast", 1);
+    Assert.True(Find(disconnected.Root, "spotify.connect").StyleClasses.Contains("spotify-primary"),
+        "Connect lost the shared primary-action style.");
+
+    await StopAsync(widget);
+
+    harness = new SpotifyHarness { Configured = false, Connected = false };
+    widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Unconfigured);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open"));
+    var setup = widget.RenderSnapshot("spotify.contrast", 2);
+    Assert.True(Find(setup.Root, "spotify.setup.done").StyleClasses.Contains("spotify-primary"),
+        "Check configuration lost the shared primary-action style.");
+
+    var source = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory, "styles", "default.gbss"));
+    var parsed = GbssParser.Parse(source, "styles/default.gbss");
+    Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
+    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+    var classes = new HashSet<string>(["spotify-primary"]);
+    var normal = compiled.Theme!.Resolve(new GbssElement("button", null, classes, null))!;
+    var focused = compiled.Theme.Resolve(new GbssElement(
+        "button", null, classes,
+        new HashSet<GbssPseudoState> { GbssPseudoState.Focused }))!;
+    Assert.Equal("#8f80ff", normal.Get("background")?.Text);
+    Assert.Equal("#090908", normal.Get("color")?.Text);
+    Assert.Equal("#ff7898", focused.Get("outline-color")?.Text);
+    Assert.True(normal.Get("background")?.Text != focused.Get("outline-color")?.Text,
+        "Primary fill and focused outline must use distinct semantic theme tokens.");
+    Assert.Equal("-2px", focused.Get("outline-offset")?.Text);
     await StopAsync(widget);
 }
 
@@ -525,7 +570,7 @@ static Task ManifestContract()
         WidgetSpotifyCapabilities.LocalPlaybackCapabilityId), "Local playback must remain optional.");
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaylistsReadCapabilityId), "Playlist reading must remain optional.");
-    Assert.Equal("0.2.0", manifest.Version);
+    Assert.Equal("0.2.1", manifest.Version);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
