@@ -17,6 +17,12 @@ public enum GamesAppsViewState
     Error,
 }
 
+public enum GamesAppsPage
+{
+    Library,
+    Catalog,
+}
+
 /// <summary>
 /// Controller-first installed application library. Widget code receives only
 /// bounded names, conservative kinds, and opaque host IDs. Listing and launch
@@ -41,8 +47,10 @@ public sealed class GamesAppsWidget : Widget
     private IReadOnlyList<WidgetAppLibraryItem> _items = [];
     private IReadOnlyDictionary<string, string> _appByElementId =
         new Dictionary<string, string>(StringComparer.Ordinal);
+    private readonly List<string> _curatedAppIds = [];
     private GamesAppsViewState _viewState = GamesAppsViewState.Initial;
-    private string _status = "Installed apps load when this widget becomes visible";
+    private GamesAppsPage _page = GamesAppsPage.Library;
+    private string _status = "Your launch library loads when this widget becomes visible";
     private string? _selectedAppId;
     private string? _launchingAppId;
     private bool _loadingMore;
@@ -57,6 +65,18 @@ public sealed class GamesAppsWidget : Widget
     }
     public string? SelectedAppId { get { lock (_gate) return _selectedAppId; } }
     public int? NextOffset { get { lock (_gate) return _nextOffset; } }
+    public GamesAppsPage Page { get { lock (_gate) return _page; } }
+    public IReadOnlyList<WidgetAppLibraryItem> CuratedItems
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var byId = _items.ToDictionary(item => item.AppId, StringComparer.Ordinal);
+                return _curatedAppIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
+            }
+        }
+    }
 
     public override WidgetView Render()
     {
@@ -67,6 +87,8 @@ public sealed class GamesAppsWidget : Widget
         string? launchingAppId;
         bool loadingMore;
         int? nextOffset;
+        GamesAppsPage page;
+        IReadOnlyList<string> curatedAppIds;
         lock (_gate)
         {
             items = _items;
@@ -76,6 +98,8 @@ public sealed class GamesAppsWidget : Widget
             launchingAppId = _launchingAppId;
             loadingMore = _loadingMore;
             nextOffset = _nextOffset;
+            page = _page;
+            curatedAppIds = _curatedAppIds.ToArray();
         }
 
         var header = UI.Stack("games.header",
@@ -93,22 +117,60 @@ public sealed class GamesAppsWidget : Widget
         if (state != GamesAppsViewState.Ready || items.Count == 0)
             return RenderState(header, state);
 
-        var elementIds = items.Select(item => ElementId(item.AppId)).ToArray();
-        var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        var cards = new List<WidgetElement>(items.Count + (nextOffset is null ? 0 : 1));
-        for (var index = 0; index < items.Count; index++)
+        return page == GamesAppsPage.Catalog
+            ? RenderCatalog(header, items, curatedAppIds, selectedAppId, launchingAppId,
+                loadingMore, nextOffset)
+            : RenderLibrary(header, items, curatedAppIds, selectedAppId, launchingAppId);
+    }
+
+    private WidgetView RenderLibrary(
+        StackElement header,
+        IReadOnlyList<WidgetAppLibraryItem> items,
+        IReadOnlyList<string> curatedAppIds,
+        string? selectedAppId,
+        string? launchingAppId)
+    {
+        var byId = items.ToDictionary(item => item.AppId, StringComparer.Ordinal);
+        var curated = curatedAppIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
+        if (curated.Length == 0)
         {
-            var item = items[index];
+            lock (_gate) _appByElementId = new Dictionary<string, string>(StringComparer.Ordinal);
+            var add = UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
+                .Icon(WidgetGlyph.Play, "Choose applications for your library")
+                .Disabled(LifecycleState != WidgetLifecycleState.Interactive)
+                .Classes("games-retry");
+            var emptyRoot = UI.Stack("games.root",
+                    header,
+                    UI.Stack("games.state",
+                            UI.Text("Build your library", "games.state.title", "Build your library")
+                                .Classes("games-state-title"),
+                            UI.Text("Choose only the games and applications you want in the overlay.",
+                                    "games.state.help", "Choose applications for your library")
+                                .Classes("games-state-help"),
+                            add)
+                        .Classes("games-state-card"))
+                .InputScope("games-apps")
+                .Classes("games-apps-widget", "has-state");
+            return new WidgetView(emptyRoot, "games.open-catalog", Surface: StandardSurface);
+        }
+
+        var elementIds = curated.Select(item => ElementId(item.AppId)).ToArray();
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var cards = new List<WidgetElement>(curated.Length + 1);
+        for (var index = 0; index < curated.Length; index++)
+        {
+            var item = curated[index];
             var id = elementIds[index];
             map[id] = item.AppId;
             var kind = item.Kind == WidgetAppLibraryKind.Game ? "GAME" : "APPLICATION";
-            var right = index + 1 < items.Count
+            var right = index + 1 < curated.Length
                 ? elementIds[index + 1]
-                : nextOffset is not null ? "games.load-more" : id;
+                : "games.open-catalog";
             var button = UI.Button(item.DisplayName, "games.launch", id)
                 .Icon(WidgetGlyph.Play, $"Launch {item.DisplayName}")
+                .Shortcut(ControllerButton.X, actionId: "games.remove")
                 .Busy(string.Equals(launchingAppId, item.AppId, StringComparison.Ordinal))
-                .Disabled(launchingAppId is not null || loadingMore ||
+                .Disabled(launchingAppId is not null ||
                     LifecycleState != WidgetLifecycleState.Interactive)
                 .Selected(string.Equals(selectedAppId, item.AppId, StringComparison.Ordinal))
                 .FocusLeft(index == 0 ? id : elementIds[index - 1])
@@ -119,21 +181,94 @@ public sealed class GamesAppsWidget : Widget
                     button,
                     UI.Row(id + ".meta",
                             UI.Text(kind, id + ".kind", kind).Classes("games-card-kind"),
-                            UI.Text("A  LAUNCH", id + ".hint", $"Press A to launch {item.DisplayName}")
+                            UI.Text("A  Open · X  Remove", id + ".hint",
+                                    $"Press A to launch or X to remove {item.DisplayName}")
                                 .Classes("games-card-hint"))
                         .Classes("games-card-meta"))
                 .Classes("games-card"));
         }
 
+        cards.Add(UI.Stack("games.open-catalog.card",
+                UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
+                    .Icon(WidgetGlyph.Play, "Choose more applications")
+                    .Disabled(launchingAppId is not null ||
+                        LifecycleState != WidgetLifecycleState.Interactive)
+                    .FocusLeft(elementIds[^1])
+                    .FocusRight("games.open-catalog")
+                    .FocusUp("games.open-catalog")
+                    .Classes("games-card-action", "games-load-more"),
+                UI.Text($"{items.Count} available", "games.open-catalog.count",
+                        $"{items.Count} applications available")
+                    .Classes("games-card-kind"))
+            .Classes("games-card", "is-load-more"));
+        lock (_gate) _appByElementId = map;
+
+        var selected = curated.FirstOrDefault(item =>
+            string.Equals(item.AppId, selectedAppId, StringComparison.Ordinal)) ?? curated[0];
+        var root = UI.Stack("games.root",
+                header,
+                UI.Row("games.section.heading",
+                        UI.Text("YOUR LIBRARY", "games.section.label", "Your library")
+                            .Classes("games-section-label"),
+                        UI.Text($"{curated.Length} saved",
+                                "games.section.count", $"{curated.Length} saved applications")
+                            .Classes("games-section-count"))
+                    .Classes("games-section-heading"),
+                UI.HorizontalScroll("games.library.scroll", cards.ToArray())
+                    .Classes("games-library-scroll"))
+            .InputScope("games-apps")
+            .Classes("games-apps-widget");
+        return new WidgetView(root, ElementId(selected.AppId), Surface: StandardSurface);
+    }
+
+    private WidgetView RenderCatalog(
+        StackElement header,
+        IReadOnlyList<WidgetAppLibraryItem> items,
+        IReadOnlyList<string> curatedAppIds,
+        string? selectedAppId,
+        string? launchingAppId,
+        bool loadingMore,
+        int? nextOffset)
+    {
+        var curated = curatedAppIds.ToHashSet(StringComparer.Ordinal);
+        var elementIds = items.Select(item => CatalogElementId(item.AppId)).ToArray();
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var cards = new List<WidgetElement>(items.Count + (nextOffset is null ? 0 : 1));
+        for (var index = 0; index < items.Count; index++)
+        {
+            var item = items[index];
+            var id = elementIds[index];
+            map[id] = item.AppId;
+            var saved = curated.Contains(item.AppId);
+            var right = index + 1 < items.Count
+                ? elementIds[index + 1]
+                : nextOffset is not null ? "games.load-more" : id;
+            cards.Add(UI.Stack(id + ".card",
+                    UI.Button(item.DisplayName, "games.toggle-curation", id)
+                        .Icon(saved ? WidgetGlyph.Check : WidgetGlyph.Play,
+                            saved ? $"Remove {item.DisplayName} from your library" :
+                                $"Add {item.DisplayName} to your library")
+                        .Selected(saved)
+                        .Disabled(launchingAppId is not null || loadingMore ||
+                            LifecycleState != WidgetLifecycleState.Interactive)
+                        .FocusLeft(index == 0 ? id : elementIds[index - 1])
+                        .FocusRight(right)
+                        .FocusUp(id)
+                        .Classes("games-card-action"),
+                    UI.Text(saved ? "Saved · A removes" : "A adds to library",
+                            id + ".hint", saved ? "Saved in your library" : "Add to your library")
+                        .Classes("games-card-kind"))
+                .Classes("games-card", saved ? "is-saved" : "is-available"));
+        }
         if (nextOffset is not null)
         {
             cards.Add(UI.Stack("games.load-more.card",
                     UI.Button("Load more", "games.load-more", "games.load-more")
-                        .Icon(WidgetGlyph.Refresh, "Load more installed applications")
+                        .Icon(WidgetGlyph.Refresh, "Load more available applications")
                         .Busy(loadingMore)
                         .Disabled(launchingAppId is not null || loadingMore ||
                             LifecycleState != WidgetLifecycleState.Interactive)
-                        .FocusLeft(items.Count == 0 ? "games.load-more" : elementIds[^1])
+                        .FocusLeft(elementIds[^1])
                         .FocusRight("games.load-more")
                         .FocusUp("games.load-more")
                         .Classes("games-card-action", "games-load-more"),
@@ -146,20 +281,22 @@ public sealed class GamesAppsWidget : Widget
 
         var selected = items.FirstOrDefault(item =>
             string.Equals(item.AppId, selectedAppId, StringComparison.Ordinal)) ?? items[0];
-        var root = UI.Stack("games.root",
-                header,
+        var scope = UI.Stack("games.catalog",
                 UI.Row("games.section.heading",
-                        UI.Text("INSTALLED", "games.section.label", "Installed applications")
+                        UI.Text("ADD APPLICATIONS", "games.section.label", "Add applications")
                             .Classes("games-section-label"),
-                        UI.Text($"{items.Count}{(nextOffset is null ? string.Empty : "+")} apps",
-                                "games.section.count", $"{items.Count} installed applications loaded")
+                        UI.Text($"{items.Count}{(nextOffset is null ? string.Empty : "+")} available",
+                                "games.section.count", $"{items.Count} applications available")
                             .Classes("games-section-count"))
                     .Classes("games-section-heading"),
                 UI.HorizontalScroll("games.library.scroll", cards.ToArray())
                     .Classes("games-library-scroll"))
-            .InputScope("games-apps")
-            .Classes("games-apps-widget");
-        return new WidgetView(root, ElementId(selected.AppId), Surface: StandardSurface);
+            .InputScope("games.catalog")
+            .Shortcut(ControllerButton.B, "back")
+            .Classes("games-catalog");
+        var root = UI.Stack("games.root", header, scope).Classes("games-apps-widget");
+        return new WidgetView(root, CatalogElementId(selected.AppId),
+            ActiveInputScopeId: "games.catalog", Surface: StandardSurface);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -198,6 +335,36 @@ public sealed class GamesAppsWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         switch (action.ActionId)
         {
+            case "back":
+                lock (_gate)
+                {
+                    if (_page != GamesAppsPage.Catalog) return;
+                    _page = GamesAppsPage.Library;
+                    _selectedAppId = ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
+                    _status = LibraryStatusLocked();
+                }
+                Invalidate();
+                return;
+            case "games.open-catalog":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                lock (_gate)
+                {
+                    _page = GamesAppsPage.Catalog;
+                    _selectedAppId = _items.FirstOrDefault()?.AppId;
+                    _status = "Choose applications to keep in your overlay library";
+                }
+                Invalidate();
+                return;
+            case "games.toggle-curation":
+                string? catalogAppId;
+                lock (_gate) _appByElementId.TryGetValue(action.SourceElementId, out catalogAppId);
+                if (catalogAppId is not null) ToggleCurated(catalogAppId);
+                return;
+            case "games.remove":
+                string? curatedAppId;
+                lock (_gate) _appByElementId.TryGetValue(action.SourceElementId, out curatedAppId);
+                if (curatedAppId is not null) RemoveCurated(curatedAppId);
+                return;
             case "retry":
                 if (IsActive) StartActiveRun(ActiveCancellationToken);
                 return;
@@ -211,6 +378,54 @@ public sealed class GamesAppsWidget : Widget
                     await LaunchAsync(appId, cancellationToken).ConfigureAwait(false);
                 return;
         }
+    }
+
+    private void ToggleCurated(string appId)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        lock (_gate)
+        {
+            var item = _items.FirstOrDefault(candidate =>
+                string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
+            if (item is null) return;
+            _selectedAppId = item.AppId;
+            if (_curatedAppIds.Remove(item.AppId))
+                _status = $"Removed {item.DisplayName} from your library";
+            else
+            {
+                _curatedAppIds.Add(item.AppId);
+                _status = $"Added {item.DisplayName} to your library";
+            }
+        }
+        Invalidate();
+    }
+
+    private void RemoveCurated(string appId)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        lock (_gate)
+        {
+            var item = _items.FirstOrDefault(candidate =>
+                string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
+            if (item is null || !_curatedAppIds.Remove(item.AppId)) return;
+            _selectedAppId = ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
+            _status = $"Removed {item.DisplayName} from your library";
+        }
+        Invalidate();
+    }
+
+    private IReadOnlyList<WidgetAppLibraryItem> ResolveCuratedItemsLocked()
+    {
+        var byId = _items.ToDictionary(item => item.AppId, StringComparer.Ordinal);
+        return _curatedAppIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
+    }
+
+    private string LibraryStatusLocked()
+    {
+        var count = ResolveCuratedItemsLocked().Count;
+        return count == 0
+            ? "Your library is empty · choose only the apps you want here"
+            : $"{count} saved {(count == 1 ? "application" : "applications")} · most recently opened first";
     }
 
     private WidgetView RenderState(StackElement header, GamesAppsViewState state)
@@ -256,7 +471,7 @@ public sealed class GamesAppsWidget : Widget
         lock (_gate)
         {
             _viewState = GamesAppsViewState.Loading;
-            _status = "Loading installed applications…";
+            _status = "Loading your application catalog…";
             _launchingAppId = null;
             _loadingMore = false;
         }
@@ -311,7 +526,8 @@ public sealed class GamesAppsWidget : Widget
             {
                 offset = _nextOffset;
                 generation = Interlocked.Read(ref _generation);
-                if (offset is null || LifecycleState != WidgetLifecycleState.Interactive)
+                if (offset is null || _page != GamesAppsPage.Catalog ||
+                    LifecycleState != WidgetLifecycleState.Interactive)
                     return;
                 _loadingMore = true;
                 _status = "Loading more installed apps…";
@@ -366,6 +582,8 @@ public sealed class GamesAppsWidget : Widget
                 .ConfigureAwait(false);
             lock (_gate)
             {
+                if (_curatedAppIds.Remove(selected.AppId))
+                    _curatedAppIds.Insert(0, selected.AppId);
                 _launchingAppId = null;
                 _status = $"Opened {selected.DisplayName}";
             }
@@ -416,11 +634,15 @@ public sealed class GamesAppsWidget : Widget
             if (firstNew is not null)
                 _selectedAppId = firstNew.AppId;
             else if (_selectedAppId is null || !_items.Any(item => item.AppId == _selectedAppId))
-                _selectedAppId = _items.FirstOrDefault()?.AppId;
+                _selectedAppId = _page == GamesAppsPage.Catalog
+                    ? _items.FirstOrDefault()?.AppId
+                    : ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
             _viewState = _items.Count == 0 ? GamesAppsViewState.Empty : GamesAppsViewState.Ready;
             _status = _items.Count == 0
                 ? "No launchable Start Menu apps found"
-                : $"{_items.Count}{(_nextOffset is null ? string.Empty : "+")} installed apps · paths stay private";
+                : _page == GamesAppsPage.Catalog
+                    ? $"{_items.Count}{(_nextOffset is null ? string.Empty : "+")} applications available"
+                    : LibraryStatusLocked();
         }
         Invalidate();
     }
@@ -491,5 +713,12 @@ public sealed class GamesAppsWidget : Widget
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(opaqueId));
         return "games.item." + Convert.ToHexString(hash.AsSpan(0, 10)).ToLowerInvariant();
+    }
+
+    private static string CatalogElementId(string opaqueId)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(opaqueId));
+        return "games.catalog.item." +
+            Convert.ToHexString(hash.AsSpan(0, 10)).ToLowerInvariant();
     }
 }

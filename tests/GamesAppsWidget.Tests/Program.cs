@@ -6,8 +6,12 @@ using GameBarAlternative.WidgetStyling;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Visible lifecycle loads one bounded opaque catalog page", LoadsFirstPage),
-    ("Installed apps render as a horizontal controller strip", RendersControllerStrip),
+    ("Library starts curated and catalog is a bounded controller picker", RendersControllerStrip),
+    ("Catalog add remove and B navigation retain a user-owned library", CuratesLibrary),
     ("Interactive A launches only the selected opaque app", LaunchesSelectedApp),
+    ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
+    ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
+    ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
     ("Load more appends a bounded page and restores focus forward", LoadsMore),
     ("Rapid repeated load more is one busy controller command", LoadMoreIsSingleFlight),
     ("Pagination stops exactly at the bounded catalog maximum", PaginationStopsAtMaximum),
@@ -73,10 +77,19 @@ static async Task RendersControllerStrip()
     Assert.True(snapshot.Surface.PreferredWidth > snapshot.Surface.MinimumWidth);
     Assert.True(snapshot.Surface.PreferredHeight > snapshot.Surface.MinimumHeight);
     Assert.Equal("games-apps", snapshot.ActiveInputScopeId);
+    Assert.True(Buttons(snapshot.Root).Any(button => button.ActionId == "games.open-catalog"));
+    Assert.False(Buttons(snapshot.Root).Any(button => button.ActionId == "games.launch"));
+
+    await OpenCatalog(widget);
+    snapshot = Snapshot(widget, 4);
+    Assert.Equal("games.catalog", snapshot.ActiveInputScopeId);
+    var catalogScope = Nodes(snapshot.Root).Single(node => node.Id == "games.catalog");
+    Assert.True(catalogScope.Shortcuts.Any(shortcut =>
+        shortcut.Button == ControllerButton.B && shortcut.ActionId == "back"));
     var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
     Assert.Equal(ViewNodeKind.Scroll, scroll.Kind);
     Assert.Equal(ScrollAxis.Horizontal, scroll.ScrollAxis);
-    var buttons = Buttons(scroll).Where(button => button.ActionId == "games.launch").ToArray();
+    var buttons = Buttons(scroll).Where(button => button.ActionId == "games.toggle-curation").ToArray();
     Assert.Equal(3, buttons.Length);
     Assert.Equal(buttons[0].Id, buttons[0].Focus!.Left);
     Assert.Equal(buttons[1].Id, buttons[0].Focus!.Right);
@@ -89,6 +102,43 @@ static async Task RendersControllerStrip()
     await Background(widget);
 }
 
+static async Task CuratesLibrary()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("opaque-a", "Alpha"), App("opaque-b", "Beta")], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    Assert.Equal(0, widget.CuratedItems.Count);
+
+    await OpenCatalog(widget);
+    var catalog = Snapshot(widget, 40);
+    var beta = Buttons(catalog.Root).Single(button => button.Text == "Beta");
+    await widget.OnActionAsync(new("games.toggle-curation", beta.Id));
+    Assert.SequenceEqual(["opaque-b"], widget.CuratedItems.Select(item => item.AppId));
+    Assert.True(Buttons(Snapshot(widget, 41).Root).Single(button => button.Text == "Beta")
+        .IsSelected == true);
+
+    await widget.OnActionAsync(new("back", "games.catalog"));
+    Assert.Equal(GamesAppsPage.Library, widget.Page);
+    var library = Snapshot(widget, 42);
+    Assert.Equal("games-apps", library.ActiveInputScopeId);
+    Assert.False(Nodes(library.Root).Single(node => node.Id == "games.root").Shortcuts
+        .Any(shortcut => shortcut.Button == ControllerButton.B));
+    var savedBeta = Buttons(library.Root).Single(button => button.Text == "Beta");
+    Assert.Equal("games.launch", savedBeta.ActionId);
+    Assert.True(savedBeta.Shortcuts.Any(shortcut =>
+        shortcut.Button == ControllerButton.X && shortcut.ActionId == "games.remove"));
+
+    await widget.OnActionAsync(new("games.remove", savedBeta.Id));
+    Assert.Equal(0, widget.CuratedItems.Count);
+    Assert.True(Buttons(Snapshot(widget, 43).Root)
+        .Any(button => button.ActionId == "games.open-catalog"));
+    await Background(widget);
+}
+
 static async Task LaunchesSelectedApp()
 {
     var fake = new FakeAppLibraryHost
@@ -98,12 +148,83 @@ static async Task LaunchesSelectedApp()
     var widget = Create(fake);
     await Interactive(widget);
     await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
-    var snapshot = Snapshot(widget, 4);
+    await AddFromCatalog(widget, "Beta");
+    await BackToLibrary(widget);
+    var snapshot = Snapshot(widget, 44);
     var beta = Buttons(snapshot.Root).Single(button => button.Text == "Beta");
     await widget.OnActionAsync(new("games.launch", beta.Id));
     Assert.SequenceEqual(["opaque-b"], fake.LaunchedIds);
     Assert.Equal("opaque-b", widget.SelectedAppId);
     Assert.Contains("Opened Beta", Text(Snapshot(widget, 5).Root, "games.status").Text!);
+    await Background(widget);
+}
+
+static async Task SuccessfulLaunchOrdersRecentFirst()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("opaque-a", "Alpha"), App("opaque-b", "Beta")], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await OpenCatalog(widget);
+    await AddFromOpenCatalog(widget, "Alpha");
+    await AddFromOpenCatalog(widget, "Beta");
+    await BackToLibrary(widget);
+    Assert.SequenceEqual(["opaque-a", "opaque-b"],
+        widget.CuratedItems.Select(item => item.AppId));
+
+    var beta = Buttons(Snapshot(widget, 45).Root).Single(button => button.Text == "Beta");
+    await widget.OnActionAsync(new("games.launch", beta.Id));
+    Assert.SequenceEqual(["opaque-b", "opaque-a"],
+        widget.CuratedItems.Select(item => item.AppId));
+    Assert.Equal(beta.Id, Snapshot(widget, 46).InitialFocusId);
+    await Background(widget);
+}
+
+static async Task FailedLaunchKeepsOrder()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("opaque-a", "Alpha"), App("opaque-b", "Beta")], null) },
+        LaunchException = new WidgetCapabilityException("platform_unavailable", "private failure"),
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await OpenCatalog(widget);
+    await AddFromOpenCatalog(widget, "Alpha");
+    await AddFromOpenCatalog(widget, "Beta");
+    await BackToLibrary(widget);
+    var beta = Buttons(Snapshot(widget, 47).Root).Single(button => button.Text == "Beta");
+    await widget.OnActionAsync(new("games.launch", beta.Id));
+
+    Assert.SequenceEqual(["opaque-a", "opaque-b"],
+        widget.CuratedItems.Select(item => item.AppId));
+    var failed = Snapshot(widget, 48);
+    Assert.Equal(beta.Id, failed.InitialFocusId);
+    Assert.Contains("App library unavailable", Text(failed.Root, "games.status").Text!);
+    await Background(widget);
+}
+
+static async Task CurationSurvivesReactivation()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("opaque-a", "Alpha")], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await AddFromCatalog(widget, "Alpha");
+    await BackToLibrary(widget);
+    await Background(widget);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    Assert.SequenceEqual(["opaque-a"], widget.CuratedItems.Select(item => item.AppId));
+    Assert.True(Buttons(Snapshot(widget, 49).Root)
+        .Any(button => button.ActionId == "games.launch" && button.Text == "Alpha"));
     await Background(widget);
 }
 
@@ -120,6 +241,7 @@ static async Task LoadsMore()
     var widget = Create(fake);
     await Interactive(widget);
     await WaitUntil(() => widget.Items.Count == 2);
+    await OpenCatalog(widget);
     Assert.True(Buttons(Snapshot(widget, 6).Root).Any(button => button.Id == "games.load-more"));
     await widget.OnActionAsync(new("games.load-more", "games.load-more"));
     Assert.Equal(4, widget.Items.Count);
@@ -127,7 +249,7 @@ static async Task LoadsMore()
     Assert.Equal<int?>(null, widget.NextOffset);
     var snapshot = Snapshot(widget, 7);
     Assert.True(!Buttons(snapshot.Root).Any(button => button.Id == "games.load-more"));
-    Assert.Equal(4, Buttons(snapshot.Root).Count(button => button.ActionId == "games.launch"));
+    Assert.Equal(4, Buttons(snapshot.Root).Count(button => button.ActionId == "games.toggle-curation"));
     Assert.Equal(Buttons(snapshot.Root).Single(button => button.Text == "Three").Id,
         snapshot.InitialFocusId);
     Assert.Valid(snapshot);
@@ -149,6 +271,7 @@ static async Task LoadMoreIsSingleFlight()
     var widget = Create(fake);
     await Interactive(widget);
     await WaitUntil(() => widget.Items.Count == 1);
+    await OpenCatalog(widget);
 
     var first = widget.OnActionAsync(new("games.load-more", "games.load-more")).AsTask();
     await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -156,7 +279,7 @@ static async Task LoadMoreIsSingleFlight()
     var loadMore = Buttons(busy.Root).Single(button => button.Id == "games.load-more");
     Assert.True(loadMore.IsBusy == true);
     Assert.True(loadMore.IsDisabled == true);
-    Assert.True(Buttons(busy.Root).Where(button => button.ActionId == "games.launch")
+    Assert.True(Buttons(busy.Root).Where(button => button.ActionId == "games.toggle-curation")
         .All(button => button.IsDisabled == true));
 
     await widget.OnActionAsync(new("games.load-more", "games.load-more"));
@@ -182,6 +305,7 @@ static async Task PaginationStopsAtMaximum()
     var widget = Create(fake);
     await Interactive(widget);
     await WaitUntil(() => widget.Items.Count == GamesAppsWidget.PageSize);
+    await OpenCatalog(widget);
     while (widget.NextOffset is not null)
         await widget.OnActionAsync(new("games.load-more", "games.load-more"));
 
@@ -205,6 +329,10 @@ static async Task LaunchIsSingleFlight()
     var widget = Create(fake);
     await Interactive(widget);
     await WaitUntil(() => widget.Items.Count == 2);
+    await OpenCatalog(widget);
+    await AddFromOpenCatalog(widget, "Alpha");
+    await AddFromOpenCatalog(widget, "Beta");
+    await BackToLibrary(widget);
     var initial = Snapshot(widget, 10);
     var alpha = Buttons(initial.Root).Single(button => button.Text == "Alpha");
     var beta = Buttons(initial.Root).Single(button => button.Text == "Beta");
@@ -239,6 +367,7 @@ static async Task BackgroundCancelsPageWork()
     var widget = Create(fake);
     await Interactive(widget);
     await WaitUntil(() => widget.Items.Count == 1);
+    await OpenCatalog(widget);
 
     var command = widget.OnActionAsync(new("games.load-more", "games.load-more")).AsTask();
     await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -258,6 +387,8 @@ static async Task LaunchDenialKeepsLibrary()
     var widget = Create(fake);
     await Interactive(widget);
     await WaitUntil(() => widget.Items.Count == 1);
+    await AddFromCatalog(widget, "Alpha");
+    await BackToLibrary(widget);
     var alpha = Buttons(Snapshot(widget, 13).Root).Single(button => button.Text == "Alpha");
     await widget.OnActionAsync(new("games.launch", alpha.Id));
 
@@ -319,6 +450,31 @@ static WidgetAppLibraryPage Page(IReadOnlyList<WidgetAppLibraryItem> items, int?
 
 static GamesAppsWidget Create(FakeAppLibraryHost fake) =>
     WidgetTestHost.Attach(new GamesAppsWidget(), fake.Build());
+
+static async Task OpenCatalog(GamesAppsWidget widget)
+{
+    await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+    Assert.Equal(GamesAppsPage.Catalog, widget.Page);
+}
+
+static async Task AddFromCatalog(GamesAppsWidget widget, string displayName)
+{
+    await OpenCatalog(widget);
+    await AddFromOpenCatalog(widget, displayName);
+}
+
+static async Task AddFromOpenCatalog(GamesAppsWidget widget, string displayName)
+{
+    var button = Buttons(Snapshot(widget, 100).Root).Single(candidate =>
+        candidate.ActionId == "games.toggle-curation" && candidate.Text == displayName);
+    await widget.OnActionAsync(new("games.toggle-curation", button.Id));
+}
+
+static async Task BackToLibrary(GamesAppsWidget widget)
+{
+    await widget.OnActionAsync(new("back", "games.catalog"));
+    Assert.Equal(GamesAppsPage.Library, widget.Page);
+}
 
 static async Task Visible(GamesAppsWidget widget) =>
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
