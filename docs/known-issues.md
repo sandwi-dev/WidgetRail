@@ -46,6 +46,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-025 | P0 | Verifying | Controller quick actions / capability broker | A dormant non-authorizing host reservation now activates one exact-operation broker lease only at the typed call; packaged controller/media evidence remains. |
 | GBA-026 | P1 | Verifying | Reference widgets / package isolation | The four brokered references now ship through the generic AppContainer path and pass real-package conformance; packaged overlay evidence remains. |
 | GBA-027 | P0 | Verifying | Recent Apps / broker / OverlayHost | Unreliable foreground switching and broad bridge foreground delegation were removed; Recent Apps remains read-only until the Games & Apps launcher replaces it. |
+| GBA-028 | P0 | Verifying | PlatformBroker consent migration / Settings permissions | The exact retired Recent Apps activation capability is now tombstoned without discarding current decisions; arbitrary unknown capabilities remain fail-closed, and packaged visual verification remains. |
+| GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -703,6 +705,72 @@ and disclose no process/window identifiers. Release suites pass for Recent Apps
 Settings (34/34); installed and bundled AppContainer conformance passes 4/4,
 and the complete native Debug suite passes. Packaged overlay hands-on evidence
 remains before closure.
+
+## GBA-028 — A retired capability invalidates the entire consent document
+
+**Evidence:** Removing the retired Recent Apps foreground-activation capability
+from the closed capability vocabulary left its older durable consent decision
+behind. Strict consent validation treated that entry as an arbitrary unknown
+capability, rejected the complete document as `invalid_consent`, and disabled
+permission review and changes even though the user's other decisions were
+still current and structurally valid.
+
+**Implementation evidence:** Consent validation now has an exact tombstone for
+`system.activity.recent.activate.v1`. Loading an otherwise valid document
+filters only that retired decision from the broker-visible result while
+preserving its revision and every current decision. The next atomic consent
+write omits the tombstoned entry from persistence. The tombstone does not make
+unknown capability IDs forward-compatible: arbitrary unknown IDs, duplicate
+retired entries, malformed identities, invalid decisions, and invalid document
+bounds still reject the complete document and fail closed. Focused broker and
+Settings tests cover current Grant/Deny preservation, the next-write cleanup,
+unknown-capability rejection, duplicate rejection, and usable permission
+review after migration.
+
+**Acceptance:**
+
+1. Only the exact retired capability is migrated; it never produces broker
+   authority and cannot become valid again through accidental re-registration.
+2. Current decisions and the loaded revision survive migration unchanged, and
+   the next atomic write removes the tombstoned entry from durable storage.
+3. Arbitrary unknown capabilities and duplicate tombstones continue to fail
+   closed as `invalid_consent`.
+4. Settings keeps current permission rows actionable and accurately displays
+   their retained decisions after migration.
+5. The packaged Release Settings permission flow receives controller and visual
+   verification with a migrated consent document.
+
+## GBA-029 — Installed Widgets omits bundled first-party widgets
+
+**Evidence:** Settings projected only the installed community-package catalog.
+Manifest-backed widgets bundled with the app could appear in the overlay and in
+permission review but were absent from Installed Widgets, making the inventory
+look incomplete and obscuring the difference between app-owned and
+user-installed packages.
+
+**Implementation evidence:** Installed Widgets now renders one bounded
+controller Scroll with explicit **Built in** and **Community** sections.
+Bundled manifests supply stable read-only rows and details for identity,
+publisher, version, runtime, compatibility, and required/optional capabilities.
+Built-in details expose no enable/disable or version-management action, and
+forged community-management actions cannot mutate built-in manifests or create
+community catalog state. Community package paging, review, enablement, and
+version management remain separate and unchanged. Focused Settings tests cover
+multiple built-ins with an empty community catalog, read-only details, guarded
+actions, and valid controller snapshots.
+
+**Acceptance:**
+
+1. Every discovered bundled first-party manifest appears under Built in, even
+   when no community package is installed.
+2. Installed community packages appear under Community and retain their
+   existing review, enable/disable, compatibility, and version workflows.
+3. Built-in details are explicitly read-only and cannot mutate bundled files or
+   community catalog state through normal or forged actions.
+4. B, Up/Down focus-follow, community LB/RB paging, empty sections, long labels,
+   and high text/interface scale remain bounded in the packaged Release overlay.
+5. Packaged visual/controller verification confirms the two sections are clear
+   and the complete inventory is reachable without clipping.
 
 ## Closed issues
 

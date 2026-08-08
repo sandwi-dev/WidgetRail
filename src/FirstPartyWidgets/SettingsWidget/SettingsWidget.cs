@@ -45,11 +45,13 @@ public sealed partial class SettingsWidget : Widget
     private ThemeCatalogSnapshot _themes;
     private PlatformDiagnosticsSnapshot _diagnostics = PlatformDiagnosticsSnapshot.Unavailable();
     private WidgetCatalogSnapshot _installedWidgets = new([]);
+    private IReadOnlyList<WidgetManifest> _builtInWidgets = [];
     private bool _installedWidgetCatalogValid = true;
     private string? _installedWidgetDiagnostic;
     private int _installedWidgetPage;
     private int _installedVersionPage;
     private string? _selectedInstalledWidgetId;
+    private string? _selectedBuiltInWidgetId;
     private SettingsPage _page;
     private int _themePage;
     private int _activationLoadCount;
@@ -177,7 +179,7 @@ public sealed partial class SettingsWidget : Widget
                 case "theme.next-page": ChangeThemePage(1); break;
                 case "installed.previous-page": ChangeInstalledWidgetPage(-1); break;
                 case "installed.next-page": ChangeInstalledWidgetPage(1); break;
-                case "installed.versions.open": Navigate(SettingsPage.InstalledWidgetVersions); break;
+                case "installed.versions.open": OpenInstalledWidgetVersions(); break;
                 case "installed.versions.previous-page": ChangeInstalledVersionPage(-1); break;
                 case "installed.versions.next-page": ChangeInstalledVersionPage(1); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
@@ -261,6 +263,8 @@ public sealed partial class SettingsWidget : Widget
                         await SelectThemeAsync(index, cancellationToken).ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.select.", out index))
                         SelectInstalledWidget(index);
+                    else if (TryIndexedAction(action.ActionId, "installed.builtin.select.", out index))
+                        SelectBuiltInWidget(index);
                     else if (TryIndexedAction(action.ActionId, "installed.version.select.", out index))
                         await SelectInstalledVersionAsync(index, cancellationToken).ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "permission.select.", out index))

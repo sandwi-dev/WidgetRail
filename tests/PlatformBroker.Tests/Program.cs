@@ -21,6 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
     ("Consent updates are atomic across store instances", ConsentUpdatesAreAtomic),
+    ("Retired consent migrates without weakening unknown-capability validation", RetiredConsentMigratesSafely),
     ("Subscriptions coalesce and suspend with lifecycle", EventsCoalesceAcrossLifecycle),
     ("Consent revocation terminates subscriptions", RevocationTerminatesSubscriptions),
     ("Lifecycle gates read control and destroying states", LifecycleGatesOperations),
@@ -854,6 +855,53 @@ static async Task ConsentUpdatesAreAtomic()
     Assert.Equal(capabilities.Length, checked((int)document.Revision));
     Assert.SequenceEqual(capabilities.Order(StringComparer.Ordinal),
         document.Entries.Select(entry => entry.CapabilityId).Order(StringComparer.Ordinal));
+}
+
+static async Task RetiredConsentMigratesSafely()
+{
+    using var temp = new TemporaryDirectory();
+    Directory.CreateDirectory(temp.Path);
+    var documentPath = Path.Combine(temp.Path, "consent-v1.json");
+    await File.WriteAllTextAsync(documentPath,
+        """
+        {"schemaVersion":1,"revision":7,"entries":[
+          {"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.audio.sessions.read.v1","decision":"grant"},
+          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"},
+          {"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.audio.sessions.control.v1","decision":"deny"}
+        ]}
+        """);
+
+    var store = new ConsentStore(temp.Path);
+    var migrated = await store.LoadAsync();
+    Assert.Equal(7L, migrated.Revision);
+    Assert.Equal(2, migrated.Entries.Count);
+    Assert.True(!migrated.Entries.Any(entry =>
+        entry.CapabilityId == "system.activity.recent.activate.v1"));
+    var identity = new BrokerWidgetIdentity("dev.test.widget", "dev.test.publisher", "test");
+    Assert.Equal(ConsentDecision.Grant, await store.GetDecisionAsync(
+        identity, PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Equal(ConsentDecision.Deny, await store.GetDecisionAsync(
+        identity, PlatformCapabilities.AudioSessionsControlV1));
+
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkReadV1,
+        ConsentDecision.Grant);
+    var persisted = await File.ReadAllTextAsync(documentPath);
+    Assert.True(!persisted.Contains("system.activity.recent.activate.v1", StringComparison.Ordinal));
+
+    await File.WriteAllTextAsync(documentPath,
+        """{"schemaVersion":1,"revision":8,"entries":[{"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.unknown.future.v1","decision":"grant"}]}""");
+    await Assert.ThrowsAsync<BrokerException>(async () => await store.LoadAsync(),
+        "invalid_consent");
+
+    await File.WriteAllTextAsync(documentPath,
+        """
+        {"schemaVersion":1,"revision":9,"entries":[
+          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"},
+          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"deny"}
+        ]}
+        """);
+    await Assert.ThrowsAsync<BrokerException>(async () => await store.LoadAsync(),
+        "invalid_consent");
 }
 
 static async Task EventsCoalesceAcrossLifecycle()

@@ -35,7 +35,7 @@ Accessibility policy remains host-owned and wins after every theme layer.
 | Platform → widget → user cascade | Implemented in bridge snapshots | Explicit user-layer priority beats widget selector specificity. |
 | No-poll reload and last-good revision | Implemented in bridge | `FileSystemWatcher` events are debounced; invalid reloads retain the prior snapshot. |
 | Controller Settings widget | Implemented | Open the first-party Settings card; it uses the generic worker/SDK/renderer path. |
-| Installed widget review/enablement | Implemented | Install with the CLI, then review identity, versions, runtime, and required/optional capabilities in Settings; enablement is separate from consent. |
+| Installed widget review/enablement | Implemented | Review read-only Built-in widgets separately from CLI-installed Community packages; only Community packages expose enablement and version management, and enablement remains separate from consent. |
 | Scaffold, validate, preview, pack, inspect, install, and list themes | Implemented | Use the `gbar theme` command group and the data-only `.gbartheme` format. |
 | Select a discovered theme | Implemented | Settings pins an exact valid ID/version after controller review. |
 | Native shell appearance | Implemented | `OverlayHost` applies live shell styles, interface scale, shell DirectWrite text scale, backdrop opacity, and motion. |
@@ -137,10 +137,11 @@ The implemented root categories are:
   contrast, Bold text, and Reduced transparency. With neither contrast toggle
   selected, the explicit preference is `standard`.
 - **Overlay:** interface scale and backdrop darkness in 5% steps.
-- **Installed widgets:** paginated installed packages with explicit package ID,
-  publisher, active/installed versions, runtime, host-API range, architectures,
-  compatibility reason, and required versus optional capability review before
-  enable/disable.
+- **Installed widgets:** a scrollable source-separated inventory. Read-only
+  Built-in rows show bundled manifest identity, publisher, version, runtime,
+  compatibility, and required/optional capabilities. Community rows add active/
+  installed versions, host-API range, architectures, compatibility reason,
+  enable/disable, and version management.
 - **Permissions & capabilities:** installed packages, their supported required/
   optional declarations, and explicit Grant/Deny/Not decided state.
 - **Diagnostics:** settings validity, total/invalid themes, and schema version.
@@ -170,16 +171,23 @@ The Settings surface requires no mouse, keyboard, hover state, or text entry.
 Each nested page owns B to return one level. Guide/Home remains the immediate
 overlay-wide toggle.
 
-The Installed widgets page shows five packages per page. LB/RB page inside its
-nested scope, A opens package details, and the details page enables or disables
-the reviewed identity. Install itself remains a CLI operation; Settings has no
-file picker. A shared catalog evaluator matches bridge host-API/architecture
-gating: an incompatible package shows a bounded reason and cannot be enabled,
-while an already enabled incompatible package can still be disabled for
-recovery. Enabling makes a compatible package available to the overlay but does
-not grant any declared capability. Required and optional declarations are shown
-separately, and consent remains the next explicit Permissions & capabilities
-decision.
+The Installed widgets page uses one bounded controller Scroll with **Built in**
+and **Community** sections. Bundled first-party manifests remain visible even
+when the community catalog is empty. A opens read-only Built-in details; those
+rows cannot be disabled or version-managed because they are updated with the
+app. Forged management actions are also rejected rather than being allowed to
+mutate a bundled manifest or community catalog state.
+
+Community packages retain pages of at most five rows; LB/RB changes only the
+Community page inside the nested scope. A opens package details, and the details
+page enables or disables the reviewed identity. Install itself remains a CLI
+operation; Settings has no file picker. A shared catalog evaluator matches
+bridge host-API/architecture gating: an incompatible package shows a bounded
+reason and cannot be enabled, while an already enabled incompatible package can
+still be disabled for recovery. Enabling makes a compatible package available
+to the overlay but does not grant any declared capability. Required and
+optional declarations are shown separately, and consent remains the next
+explicit Permissions & capabilities decision.
 
 The SDK now provides verified `UI.ToggleButton(...)` and `UI.Stepper(...)`
 helpers for this interaction model. They are available to any widget and are
@@ -204,7 +212,12 @@ confirmation page. Deny/revoke is immediate there. Decisions are atomically
 stored by package ID, publisher ID, and capability ID. Missing/malformed
 catalog or consent state disables actions and shows sanitized diagnostics;
 unknown declarations and stale/undeclared decisions are hidden. Required
-capabilities are not auto-granted, including for first-party packages.
+capabilities are not auto-granted, including for first-party packages. The
+exact retired `system.activity.recent.activate.v1` decision is tombstoned:
+loading filters it without discarding current decisions, and the next atomic
+write removes it from persistence. This is a closed migration, not general
+forward compatibility; every arbitrary unknown capability ID still invalidates
+the document and fails closed.
 
 Settings → Installed widgets uses a separate nested controller flow for
 package versions. Open a package, choose **Manage versions**, and page through

@@ -27,6 +27,14 @@ public sealed class ConsentStore
     public const int MaximumEntries = 1024;
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan LockRetry = TimeSpan.FromMilliseconds(25);
+    // Capability IDs are immutable once published. When a capability is
+    // retired, an exact tombstone lets older consent documents migrate without
+    // treating arbitrary unknown authority as valid. Tombstoned decisions are
+    // never returned to a broker and disappear on the next atomic write.
+    private static readonly HashSet<string> RetiredCapabilities = new(StringComparer.Ordinal)
+    {
+        "system.activity.recent.activate.v1",
+    };
     private readonly string _root;
     private readonly string _documentFile;
     private readonly string _lockFile;
@@ -55,8 +63,7 @@ public sealed class ConsentStore
             BrokerJson.RejectDuplicateProperties(bytes);
             var document = JsonSerializer.Deserialize<ConsentDocument>(
                 bytes, BrokerJson.StrictOptions) ?? throw new JsonException("Consent was null.");
-            Validate(document);
-            return document;
+            return ValidateAndMigrate(document);
         }
         catch (BrokerException) { throw; }
         catch (JsonException exception)
@@ -93,7 +100,7 @@ public sealed class ConsentStore
             entries.Add(new(identity.PackageId, identity.PublisherId, capabilityId, decision));
             entries.Sort(CompareEntries);
             var updated = new ConsentDocument(1, checked(current.Revision + 1), entries);
-            Validate(updated);
+            updated = ValidateAndMigrate(updated);
             await SaveAtomicAsync(updated, cancellationToken).ConfigureAwait(false);
             return updated;
         }
@@ -171,22 +178,31 @@ public sealed class ConsentStore
         }
     }
 
-    private static void Validate(ConsentDocument document)
+    private static ConsentDocument ValidateAndMigrate(ConsentDocument document)
     {
         if (document.SchemaVersion != 1 || document.Revision < 0 ||
             document.Entries is null || document.Entries.Count > MaximumEntries)
             throw new BrokerException("invalid_consent", "Consent document bounds are invalid.");
         var keys = new HashSet<string>(StringComparer.Ordinal);
+        var migrated = new List<ConsentEntry>(document.Entries.Count);
         foreach (var entry in document.Entries)
         {
             if (entry is null)
                 throw new BrokerException("invalid_consent", "Consent entry is invalid.");
             new BrokerWidgetIdentity(entry.PackageId, entry.PublisherId, "consent").Validate();
-            if (!PlatformCapabilities.TryGet(entry.CapabilityId, out _) ||
+            var retired = RetiredCapabilities.Contains(entry.CapabilityId);
+            var supported = PlatformCapabilities.TryGet(entry.CapabilityId, out _);
+            if ((!supported && !retired) ||
                 !Enum.IsDefined(entry.Decision) ||
                 !keys.Add(entry.PackageId + "\n" + entry.PublisherId + "\n" + entry.CapabilityId))
                 throw new BrokerException("invalid_consent", "Consent entry is invalid or duplicated.");
+            // A tombstone always wins, even if a future code change
+            // accidentally re-registers the retired ID.
+            if (!retired) migrated.Add(entry);
         }
+        return migrated.Count == document.Entries.Count
+            ? document
+            : document with { Entries = migrated };
     }
 
     private static int CompareEntries(ConsentEntry left, ConsentEntry right)

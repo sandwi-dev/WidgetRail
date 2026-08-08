@@ -160,12 +160,17 @@ registered beside YT Music, renders through
 the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
 requires confirmation before reset, and provides two separate controller
-flows: installed package identity/version/publisher/runtime/required-optional
-capability review, a nested paged Manage versions surface with disabled-only
-exact selection/rollback, plus enable/disable; then package → capability →
-grant/deny consent. Enablement is not consent. Permission grants require explicit
+flows: a source-separated widget inventory with read-only Built-in manifest
+details and Community package identity/version/publisher/runtime/required-
+optional capability review, a nested paged Manage versions surface with
+disabled-only exact selection/rollback, plus enable/disable for Community
+packages only; then package → capability → grant/deny consent. Enablement is
+not consent. Permission grants require explicit
 confirmation; deny/revoke is immediate, missing/invalid state fails closed,
-and first-party packages are not auto-granted. It reloads settings/themes/
+and first-party packages are not auto-granted. An exact tombstone migrates the
+retired Recent Apps activation decision without discarding current consent;
+arbitrary unknown capability IDs still invalidate the document and fail closed.
+It reloads settings/themes/
 catalog/permissions once per active lifetime and does not poll in Background.
 The same public compatibility evaluator gates Bridge and Settings: details show
 host API/architectures and a bounded reason, incompatible enablement is blocked,

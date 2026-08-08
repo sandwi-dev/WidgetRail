@@ -14,9 +14,18 @@ public sealed partial class SettingsWidget
         try
         {
             var snapshot = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            var builtIn = _bundledWidgetRoot is null
+                ? []
+                : DiscoverBundledManifests(_bundledWidgetRoot)
+                    .GroupBy(manifest => manifest.Id, StringComparer.Ordinal)
+                    .Select(group => group.First())
+                    .OrderBy(manifest => manifest.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(manifest => manifest.Id, StringComparer.Ordinal)
+                    .ToArray();
             lock (_stateLock)
             {
                 _installedWidgets = snapshot;
+                _builtInWidgets = builtIn;
                 _installedWidgetCatalogValid = true;
                 _installedWidgetDiagnostic = null;
                 _installedWidgetPage = Math.Clamp(
@@ -27,6 +36,13 @@ public sealed partial class SettingsWidget
                     _selectedInstalledWidgetId = null;
                     _installedVersionPage = 0;
                     if (_page is SettingsPage.InstalledWidgetDetails or SettingsPage.InstalledWidgetVersions)
+                        _page = SettingsPage.InstalledWidgets;
+                }
+                if (_selectedBuiltInWidgetId is not null &&
+                    !builtIn.Any(manifest => manifest.Id == _selectedBuiltInWidgetId))
+                {
+                    _selectedBuiltInWidgetId = null;
+                    if (_page == SettingsPage.InstalledWidgetDetails)
                         _page = SettingsPage.InstalledWidgets;
                 }
             }
@@ -51,10 +67,12 @@ public sealed partial class SettingsWidget
         lock (_stateLock)
         {
             _installedWidgets = new WidgetCatalogSnapshot([]);
+            _builtInWidgets = [];
             _installedWidgetCatalogValid = false;
             _installedWidgetDiagnostic = diagnostic;
             _installedWidgetPage = 0;
             _selectedInstalledWidgetId = null;
+            _selectedBuiltInWidgetId = null;
             _installedVersionPage = 0;
             if (_page is SettingsPage.InstalledWidgetDetails or SettingsPage.InstalledWidgetVersions)
                 _page = SettingsPage.InstalledWidgets;
@@ -65,15 +83,19 @@ public sealed partial class SettingsWidget
     private WidgetView RenderInstalledWidgets(StackElement header, bool busy)
     {
         WidgetCatalogSnapshot snapshot;
+        IReadOnlyList<WidgetManifest> builtIn;
         bool valid;
         string? diagnostic;
         int page;
+        string? selectedBuiltInId;
         lock (_stateLock)
         {
             snapshot = _installedWidgets;
+            builtIn = _builtInWidgets;
             valid = _installedWidgetCatalogValid;
             diagnostic = _installedWidgetDiagnostic;
             page = _installedWidgetPage;
+            selectedBuiltInId = _selectedBuiltInWidgetId;
         }
 
         var lastPage = LastInstalledWidgetPage(snapshot);
@@ -84,13 +106,33 @@ public sealed partial class SettingsWidget
         {
             UI.Text("Installed widgets", "installed.heading", "Installed widgets").Classes("page-heading"),
             UI.Text(valid
-                    ? "Review package identity and permissions before enabling a newly installed widget."
+                    ? "Built-in widgets are included with the app. Review community package identity and permissions before enabling one."
                     : diagnostic ?? "Installed widget catalog is unavailable.",
                 "installed.help", "Installed widget help")
                 .Classes(valid ? "page-help" : "diagnostic-error"),
-            UI.Text($"Page {page + 1} of {lastPage + 1}", "installed.page-label", "Installed widget page")
-                .Classes("page-counter"),
         };
+
+        if (builtIn.Count != 0)
+        {
+            children.Add(UI.Text("BUILT IN", "installed.builtin.heading", "Built-in widgets")
+                .Classes("section-heading"));
+            for (var index = 0; index < builtIn.Count; index++)
+            {
+                var manifest = builtIn[index];
+                children.Add(UI.Button(
+                        $"{manifest.Name} · {manifest.Version} · Built-in",
+                        $"installed.builtin.select.{index}", $"installed.builtin.item.{index}")
+                    .Disabled(!valid).Busy(busy)
+                    .Selected(manifest.Id == selectedBuiltInId)
+                    .Classes("setting-row", "is-built-in"));
+            }
+        }
+
+        children.Add(UI.Text("COMMUNITY", "installed.community.heading", "Community widgets")
+            .Classes("section-heading"));
+        if (lastPage != 0)
+            children.Add(UI.Text($"Page {page + 1} of {lastPage + 1}",
+                "installed.page-label", "Community widget page").Classes("page-counter"));
 
         for (var offset = 0; offset < visible.Length; offset++)
         {
@@ -114,24 +156,74 @@ public sealed partial class SettingsWidget
         children.Add(UI.Button("Back", "back", "installed.back").Classes("secondary-button"));
         LinkVertical(children);
 
-        var scope = UI.Stack("installed.widgets", children.ToArray())
+        var scope = UI.VerticalScroll("installed.widgets", children.ToArray())
             .InputScope("installed.widgets")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
         if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "installed.previous-page");
         if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "installed.next-page");
-        var initialFocus = visible.Length == 0 ? "installed.back" : $"installed.item.{start}";
+        var selectedBuiltInIndex = builtIn
+            .Select((manifest, index) => (manifest, index))
+            .Where(item => item.manifest.Id == selectedBuiltInId)
+            .Select(item => item.index)
+            .FirstOrDefault(-1);
+        var initialFocus = selectedBuiltInIndex >= 0
+            ? $"installed.builtin.item.{selectedBuiltInIndex}"
+            : builtIn.Count != 0
+                ? "installed.builtin.item.0"
+                : visible.Length == 0 ? "installed.back" : $"installed.item.{start}";
         return View(header, scope, initialFocus, "installed.widgets");
     }
 
     private WidgetView RenderInstalledWidgetDetails(StackElement header, bool busy)
     {
         CatalogWidget? package;
+        WidgetManifest? builtIn;
         bool valid;
         lock (_stateLock)
         {
             package = SelectedInstalledWidgetLocked();
+            builtIn = SelectedBuiltInWidgetLocked();
             valid = _installedWidgetCatalogValid;
+        }
+        if (builtIn is not null && valid)
+        {
+            var builtInCompatibility = WidgetHostCompatibility.Evaluate(builtIn);
+            var builtInRequiredPermissions = builtIn.Permissions.Count == 0
+                ? "None"
+                : string.Join(", ", builtIn.Permissions.Order(StringComparer.Ordinal));
+            var builtInOptionalPermissions = builtIn.OptionalPermissions.Count == 0
+                ? "None"
+                : string.Join(", ", builtIn.OptionalPermissions.Order(StringComparer.Ordinal));
+            return View(header,
+                PageScope("installed.details",
+                    UI.Text(builtIn.Name, "installed.details.heading", "Built-in widget name")
+                        .Classes("page-heading"),
+                    UI.Text("Source: Built-in", "installed.details.source", "Built-in widget source")
+                        .Classes("diagnostic-ok"),
+                    UI.Text($"ID: {builtIn.Id}", "installed.details.id", "Package ID")
+                        .Classes("diagnostic-line"),
+                    UI.Text($"Publisher: {builtIn.Publisher}", "installed.details.publisher", "Package publisher")
+                        .Classes("diagnostic-line"),
+                    UI.Text($"Version: {builtIn.Version}", "installed.details.version", "Built-in version")
+                        .Classes("diagnostic-line"),
+                    UI.Text($"Runtime: {builtIn.Entrypoint.Runtime}", "installed.details.runtime", "Package runtime")
+                        .Classes("diagnostic-line"),
+                    UI.Text($"Compatibility: {builtInCompatibility.Message}",
+                        "installed.details.compatibility", "Package compatibility")
+                        .Classes(builtInCompatibility.IsSupported ? "diagnostic-ok" : "diagnostic-error"),
+                    UI.Text($"Required capabilities: {builtInRequiredPermissions}",
+                        "installed.details.required-permissions", "Required capabilities")
+                        .Classes("page-help"),
+                    UI.Text($"Optional capabilities: {builtInOptionalPermissions}",
+                        "installed.details.optional-permissions", "Optional capabilities")
+                        .Classes("page-help"),
+                    UI.Text(
+                        "Included with Game Bar Alternative. Built-in widgets are updated with the app and cannot be disabled or version-managed here.",
+                        "installed.details.status", "Built-in widget management status")
+                        .Classes("page-help"),
+                    UI.Button("Back", "back", "installed.details.back").Classes("secondary-button")),
+                "installed.details.back", "installed.details");
         }
         if (package is null || !valid)
             return View(header,
@@ -302,8 +394,35 @@ public sealed partial class SettingsWidget
         {
             if (!_installedWidgetCatalogValid || index < 0 || index >= _installedWidgets.Widgets.Count) return;
             _selectedInstalledWidgetId = _installedWidgets.Widgets[index].Id;
+            _selectedBuiltInWidgetId = null;
             _installedVersionPage = 0;
             _page = SettingsPage.InstalledWidgetDetails;
+        }
+        Invalidate();
+    }
+
+    private void SelectBuiltInWidget(int index)
+    {
+        lock (_stateLock)
+        {
+            if (!_installedWidgetCatalogValid || index < 0 || index >= _builtInWidgets.Count) return;
+            _selectedBuiltInWidgetId = _builtInWidgets[index].Id;
+            _selectedInstalledWidgetId = null;
+            _installedVersionPage = 0;
+            _page = SettingsPage.InstalledWidgetDetails;
+        }
+        Invalidate();
+    }
+
+    private void OpenInstalledWidgetVersions()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails ||
+                SelectedInstalledWidgetLocked() is null ||
+                SelectedBuiltInWidgetLocked() is not null)
+                return;
+            _page = SettingsPage.InstalledWidgetVersions;
         }
         Invalidate();
     }
@@ -440,6 +559,9 @@ public sealed partial class SettingsWidget
 
     private CatalogWidget? SelectedInstalledWidgetLocked() => _installedWidgets.Widgets.FirstOrDefault(
         widget => widget.Id == _selectedInstalledWidgetId);
+
+    private WidgetManifest? SelectedBuiltInWidgetLocked() => _builtInWidgets.FirstOrDefault(
+        manifest => manifest.Id == _selectedBuiltInWidgetId);
 
     private static int LastInstalledWidgetPage(WidgetCatalogSnapshot snapshot) =>
         Math.Max(0, (snapshot.Widgets.Count - 1) / InstalledWidgetsPerPage);

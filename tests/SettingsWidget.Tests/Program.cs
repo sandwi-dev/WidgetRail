@@ -25,6 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
+    ("Built-in widgets remain visible and read-only without community packages", BuiltInWidgetInventory),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
     ("Installed version changes immediately refresh permission authority", InstalledVersionRefreshesPermissions),
@@ -38,6 +39,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Consent decisions isolate package publisher identities", PublisherIsolation),
     ("Undeclared capabilities and decisions are never actionable", UndeclaredCapabilitiesAreHidden),
     ("Malformed catalog and consent fail closed with diagnostics", MalformedPermissionStateFailsClosed),
+    ("Retired consent migrates without blocking current permission review", RetiredConsentMigration),
     ("Permission catalog reloads only on activation", PermissionActivationReload),
     ("Bundled first-party capability manifests join permission review", BundledPermissionsAreDiscovered),
     ("First-party packages are never auto-granted", FirstPartyIsNotAutoGranted),
@@ -470,6 +472,74 @@ static async Task InstalledWidgetReview()
     Assert.Contains("Enable reviewed widget", Button(details.Root, "installed.details.toggle").Text!);
     Assert.Valid(first);
     Assert.Valid(second);
+    Assert.Valid(details);
+}
+
+static async Task BuiltInWidgetInventory()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var bundledRoot = Path.Combine(temp.Path, "runtime");
+    WriteBundledWidget(
+        bundledRoot,
+        "AudioMixer",
+        "org.gbar.firstparty.audio-mixer",
+        "org.gbar.firstparty",
+        "Audio Mixer",
+        [PlatformCapabilities.AudioSessionsReadV1],
+        [PlatformCapabilities.AudioSessionsControlV1]);
+    WriteBundledWidget(
+        bundledRoot,
+        "MediaSessions",
+        "org.gbar.firstparty.media-sessions",
+        "org.gbar.firstparty",
+        "Now Playing",
+        [PlatformCapabilities.MediaSessionsReadV1],
+        [PlatformCapabilities.MediaSessionsControlV1]);
+    var audioManifest = Path.Combine(bundledRoot, "AudioMixer", "manifest.json");
+    var mediaManifest = Path.Combine(bundledRoot, "MediaSessions", "manifest.json");
+    var audioBefore = await File.ReadAllBytesAsync(audioManifest);
+    var mediaBefore = await File.ReadAllBytesAsync(mediaManifest);
+
+    var widget = CreateWithPermissions(
+        temp.Path,
+        catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")),
+        bundledRoot);
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+
+    var list = Snapshot(widget);
+    Assert.Equal(ViewNodeKind.Scroll,
+        Nodes(list.Root).Single(node => node.Id == "installed.widgets").Kind);
+    Assert.Equal(2, Buttons(list.Root).Count(button =>
+        button.Id.StartsWith("installed.builtin.item.", StringComparison.Ordinal)));
+    Assert.Contains("Built-in", Button(list.Root, "installed.builtin.item.0").Text!);
+    Assert.Contains("Audio Mixer", Button(list.Root, "installed.builtin.item.0").Text!);
+    Assert.Contains("Now Playing", Button(list.Root, "installed.builtin.item.1").Text!);
+    Assert.True(!Buttons(list.Root).Any(button =>
+        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+        "Empty community catalog exposed a community package row.");
+
+    await Action(widget, "installed.builtin.select.0");
+    var details = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    Assert.Contains("Built-in", Text(details.Root, "installed.details.source").Text!);
+    Assert.Contains("cannot be disabled or version-managed",
+        Text(details.Root, "installed.details.status").Text!);
+    Assert.True(!Buttons(details.Root).Any(button =>
+        button.ActionId is "installed.toggle" or "installed.versions.open"),
+        "Built-in details exposed a package-management action.");
+
+    await Action(widget, "installed.toggle");
+    await Action(widget, "installed.versions.open");
+    await Action(widget, "installed.version.select.0");
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    Assert.SequenceEqual(audioBefore, await File.ReadAllBytesAsync(audioManifest));
+    Assert.SequenceEqual(mediaBefore, await File.ReadAllBytesAsync(mediaManifest));
+    Assert.True(!File.Exists(Path.Combine(catalogRoot, "catalog-state.json")),
+        "A forged built-in management action mutated community catalog state.");
+    Assert.Valid(list);
     Assert.Valid(details);
 }
 
@@ -963,6 +1033,39 @@ static async Task MalformedPermissionStateFailsClosed()
     var consentFailure = Snapshot(consentFailureWidget);
     Assert.Contains("invalid_consent", Text(consentFailure.Root, "capabilities.diagnostic").Text!);
     Assert.Equal(true, Button(consentFailure.Root, "capability.item.0").IsDisabled);
+}
+
+static async Task RetiredConsentMigration()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    const string packageId = "dev.test.current";
+    const string publisherId = "dev.publisher.current";
+    WriteInstalledWidget(catalogRoot, packageId, publisherId, "Current",
+        [PlatformCapabilities.AudioSessionsReadV1], []);
+    var authorityPublisher = InstalledAuthority(catalogRoot, packageId, "1.0.0");
+    var consentRoot = Path.Combine(temp.Path, "consent");
+    Directory.CreateDirectory(consentRoot);
+    await File.WriteAllTextAsync(Path.Combine(consentRoot, "consent-v1.json"),
+        $$"""
+        {"schemaVersion":1,"revision":2,"entries":[
+          {"packageId":"{{packageId}}","publisherId":"{{authorityPublisher}}","capabilityId":"system.audio.sessions.read.v1","decision":"grant"},
+          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"}
+        ]}
+        """);
+
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, new ConsentStore(consentRoot));
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    var packages = Snapshot(widget);
+    Assert.True(!Text(packages.Root, "permissions.help").Text!
+        .Contains("invalid_consent", StringComparison.Ordinal),
+        "Retired capability left the permission catalog in invalid_consent.");
+    await Action(widget, "permission.select.0");
+    var capabilities = Snapshot(widget);
+    var current = Button(capabilities.Root, "capability.item.0");
+    Assert.Equal(false, current.IsDisabled is true);
+    Assert.Contains("Granted by you", current.Text!);
 }
 
 static async Task PermissionActivationReload()
