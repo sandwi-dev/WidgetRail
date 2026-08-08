@@ -42,6 +42,8 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.LoadingIndicatorVersion);
             if (ContainsInlinePng(Root))
                 required = Math.Max(required, ProtocolConstants.InlinePngImageVersion);
+            if (ContainsActionSurface(Root))
+                required = Math.Max(required, ProtocolConstants.ActionSurfaceVersion);
             return required;
         }
     }
@@ -52,6 +54,7 @@ public sealed record WidgetView(
         StackElement stack => stack.Children.Any(ContainsLoadingIndicator),
         RowElement row => row.Children.Any(ContainsLoadingIndicator),
         ScrollElement scroll => scroll.Children.Any(ContainsLoadingIndicator),
+        ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsLoadingIndicator),
         _ => false,
     };
 
@@ -60,6 +63,7 @@ public sealed record WidgetView(
         ScrollElement => true,
         StackElement stack => stack.Children.Any(ContainsScroll),
         RowElement row => row.Children.Any(ContainsScroll),
+        ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsScroll),
         _ => false,
     };
 
@@ -70,6 +74,16 @@ public sealed record WidgetView(
         StackElement stack => stack.Children.Any(ContainsSlider),
         RowElement row => row.Children.Any(ContainsSlider),
         ScrollElement scroll => scroll.Children.Any(ContainsSlider),
+        ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsSlider),
+        _ => false,
+    };
+
+    private static bool ContainsActionSurface(WidgetElement element) => element switch
+    {
+        ActionSurfaceElement => true,
+        StackElement stack => stack.Children.Any(ContainsActionSurface),
+        RowElement row => row.Children.Any(ContainsActionSurface),
+        ScrollElement scroll => scroll.Children.Any(ContainsActionSurface),
         _ => false,
     };
 
@@ -82,6 +96,7 @@ public sealed record WidgetView(
         StackElement stack => stack.Children.Any(ContainsInlinePng),
         RowElement row => row.Children.Any(ContainsInlinePng),
         ScrollElement scroll => scroll.Children.Any(ContainsInlinePng),
+        ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsInlinePng),
         _ => false,
     };
 
@@ -496,7 +511,7 @@ public abstract partial class Widget
             if (input.Button == ControllerButton.A &&
                 input.Phase == ControllerEventPhase.Pressed &&
                 focusedActionable &&
-                focusedNode is { Kind: ViewNodeKind.Button or ViewNodeKind.Slider,
+                focusedNode is { Kind: ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface,
                     ActionId: { Length: > 0 } actionId })
             {
                 return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(

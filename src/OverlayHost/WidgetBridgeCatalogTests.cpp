@@ -91,7 +91,18 @@ int main() {
                 "kind": "stack",
                 "children": [
                     {"id":"play","kind":"button","text":"Play","actionId":"play"},
-                    {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact"}
+                    {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact"},
+                    {
+                        "id":"album","kind":"actionSurface","actionId":"open-album",
+                        "accessibilityLabel":"Open album","actionSurfaceOrientation":"horizontal",
+                        "children":[
+                            {"id":"album.art","kind":"image","imageSource":"https://example.test/album.png","imageFit":"cover"},
+                            {"id":"album.copy","kind":"stack","children":[
+                                {"id":"album.title","kind":"text","text":"Album title"},
+                                {"id":"album.artist","kind":"text","text":"Artist"}
+                            ]}
+                        ]
+                    }
                 ]
             }
         },
@@ -104,7 +115,7 @@ int main() {
         }
     })json", error);
     assert(styledSnapshot && error.empty());
-    assert(styledSnapshot->root.children.size() == 2);
+    assert(styledSnapshot->root.children.size() == 3);
     const auto& styledButton = styledSnapshot->root.children.front();
     (void)styledButton;
     assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
@@ -115,6 +126,18 @@ int main() {
     assert(loadingIndicator.kind == L"loadingIndicator");
     assert(loadingIndicator.accessibilityLabel == L"Loading music");
     assert(loadingIndicator.indicatorSize == L"compact");
+    const auto& actionSurface = styledSnapshot->root.children[2];
+    (void)actionSurface;
+    assert(actionSurface.kind == L"actionSurface");
+    assert(actionSurface.actionId == L"open-album");
+    assert(actionSurface.accessibilityLabel == L"Open album");
+    assert(actionSurface.actionSurfaceOrientation == L"horizontal");
+    assert(actionSurface.children.size() == 2);
+    assert(actionSurface.children[0].kind == L"image");
+    assert(actionSurface.children[0].imageFit == L"cover");
+    assert(actionSurface.children[1].kind == L"stack");
+    assert(actionSurface.children[1].children.size() == 2);
+    assert(actionSurface.children[1].children[0].text == L"Album title");
 
     error.clear();
     const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(

@@ -23,7 +23,8 @@ const WidgetNode* FindNode(
 }
 
 bool IsEnabledFocusNode(const WidgetNode* node) noexcept {
-    return node && (node->kind == L"slider" || node->kind == L"button");
+    return node && (node->kind == L"slider" || node->kind == L"button" ||
+                    node->kind == L"actionSurface");
 }
 
 const WidgetNode* FirstEnabledFocusNode(

@@ -108,7 +108,8 @@ private:
         const std::wstring_view protocolButton) noexcept {
         if (!node || node->isDisabled || node->isBusy || protocolButton.empty()) return false;
         if (protocolButton == L"a") {
-            return (node->kind == L"button" || node->kind == L"slider") &&
+            return (node->kind == L"button" || node->kind == L"slider" ||
+                    node->kind == L"actionSurface") &&
                 !node->actionId.empty();
         }
         if (node->kind == L"slider" && node->hasSliderRange &&

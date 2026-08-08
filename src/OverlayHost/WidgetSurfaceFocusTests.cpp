@@ -32,6 +32,24 @@ gba::WidgetNode Slider(const wchar_t* id, const bool disabled = false, const boo
     return node;
 }
 
+gba::WidgetNode ActionSurface(
+    const wchar_t* id,
+    const bool disabled = false,
+    const bool busy = false) {
+    gba::WidgetNode node;
+    node.id = id;
+    node.kind = L"actionSurface";
+    node.actionId = L"open";
+    node.isDisabled = disabled;
+    node.isBusy = busy;
+    gba::WidgetNode title;
+    title.id = std::wstring{id} + L".title";
+    title.kind = L"text";
+    title.text = L"Tile title";
+    node.children.push_back(std::move(title));
+    return node;
+}
+
 gba::WidgetSnapshot Snapshot(const wchar_t* activeScope) {
     gba::WidgetSnapshot snapshot;
     snapshot.sequence = 1;
@@ -131,6 +149,25 @@ int main() {
     sliderSurface.root.children[1].isDisabled = true;
     Check(memory.Restore(L"slider-widget", sliderSurface) == L"volume",
           "disabled slider remains navigable and retains exact focus");
+
+    auto tileSurface = Snapshot(L"root");
+    tileSurface.root.children.insert(
+        tileSurface.root.children.begin(),
+        ActionSurface(L"library.tile"));
+    tileSurface.initialFocusId = L"library.tile";
+    Check(memory.Restore(L"tile-widget", tileSurface) == L"library.tile",
+          "ActionSurface participates in initial focus restoration");
+    memory.Remember(L"tile-widget", tileSurface, L"library.tile");
+    tileSurface.root.children[0].isDisabled = true;
+    Check(memory.Restore(L"tile-widget", tileSurface) == L"library.tile",
+          "disabled ActionSurface retains exact controller focus");
+    tileSurface.root.children[0].isBusy = true;
+    Check(memory.Restore(L"tile-widget", tileSurface) == L"library.tile",
+          "busy disabled ActionSurface remains a stable navigation target");
+    tileSurface.initialFocusId = L"library.tile.title";
+    memory.Forget(L"tile-widget");
+    Check(memory.Restore(L"tile-widget", tileSurface) == L"library.tile",
+          "presentational ActionSurface descendants never become focus targets");
 
     auto sessions = SessionList({
         L"session.game.mute", L"session.chat.mute", L"session.music.mute",

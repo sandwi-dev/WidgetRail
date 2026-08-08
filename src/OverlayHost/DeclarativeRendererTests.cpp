@@ -274,6 +274,156 @@ void SliderPlanningAndAccessibilityTargets() {
           "fully clipped Slider is excluded even though disabled/busy states remain navigable");
 }
 
+WidgetSnapshot RichActionSurfaceSnapshot(const wchar_t* orientation) {
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 7;
+    snapshot.instanceId = L"tiles.runtime.v1";
+    snapshot.activeInputScopeId = L"tiles.root";
+    snapshot.initialFocusId = L"album.tile";
+    snapshot.root = Node(L"tiles.root", L"stack");
+    snapshot.root.inputScopeId = L"tiles.root";
+    snapshot.root.baseStyle = {
+        {L"padding", LengthList(L"8px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+
+    auto tile = Node(L"album.tile", L"actionSurface");
+    tile.actionId = L"open-album";
+    tile.accessibilityLabel = L"Open Album title by Artist";
+    tile.actionSurfaceOrientation = orientation;
+    tile.baseStyle = {
+        {L"width", Length(280)},
+        {L"min-height", Length(72)},
+        {L"padding", LengthList(L"8px")},
+        {L"gap", LengthList(L"8px")},
+        {L"border-width", Length(1)},
+        {L"border-color", Color(L"#8899aa")},
+        {L"corner-radius", Length(10)},
+        {L"flex-shrink", Number(0)},
+    };
+    tile.focusedStyle = {
+        {L"outline-width", Length(2)},
+        {L"outline-offset", Length(-2)},
+        {L"outline-color", Color(L"#ffffff")},
+    };
+    tile.pressedStyle = {{L"scale", Number(0.98)}};
+
+    auto artwork = Node(L"album.artwork", L"icon");
+    artwork.glyph = L"music";
+    artwork.baseStyle = {
+        {L"width", Length(56)},
+        {L"height", Length(56)},
+        {L"flex-shrink", Number(0)},
+    };
+    auto copy = Node(L"album.copy", L"stack");
+    copy.baseStyle = {
+        {L"width", Length(300)},
+        {L"gap", LengthList(L"3px")},
+        {L"flex-shrink", Number(0)},
+    };
+    auto title = Node(L"album.title", L"text");
+    title.text = L"Album title";
+    auto artist = Node(L"album.artist", L"text");
+    artist.text = L"Artist";
+    copy.children = {std::move(title), std::move(artist)};
+    tile.children = {std::move(artwork), std::move(copy)};
+    snapshot.root.children = {std::move(tile)};
+    return snapshot;
+}
+
+void ActionSurfacePlanningAndInteractionGeometry() {
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    auto horizontalSnapshot = RichActionSurfaceSnapshot(L"horizontal");
+    const auto horizontal = renderer.Render(
+        nullptr, horizontalSnapshot, L"album.tile",
+        {0.0F, 0.0F, 340.0F, 180.0F});
+
+    Check(horizontal.hitRegions.size() == 1,
+          "ActionSurface subtree produces one pointer hit region");
+    Check(horizontal.focusRects.size() == 1 &&
+              horizontal.focusRects.contains(L"album.tile"),
+          "ActionSurface subtree produces one full-tile focus target");
+    Check(horizontal.navigationRects.size() == 1 &&
+              horizontal.navigationRects.contains(L"album.tile"),
+          "ActionSurface subtree produces one controller navigation target");
+    Check(!horizontal.focusRects.contains(L"album.title") &&
+              !horizontal.navigationRects.contains(L"album.artwork"),
+          "ActionSurface descendants remain presentational");
+    Check(horizontal.currentFocusRect.has_value(),
+          "focused ActionSurface publishes current focus geometry");
+    const auto tileRect = horizontal.elementRects.at(L"album.tile");
+    const auto focusRect = horizontal.focusRects.at(L"album.tile");
+    const auto navigationRect = horizontal.navigationRects.at(L"album.tile");
+    Near(focusRect.x, tileRect.x, "ActionSurface focus uses the full parent x");
+    Near(focusRect.y, tileRect.y, "ActionSurface focus uses the full parent y");
+    Near(focusRect.width, tileRect.width,
+         "ActionSurface focus uses the full parent width");
+    Near(focusRect.height, tileRect.height,
+         "ActionSurface focus uses the full parent height");
+    Near(navigationRect.width, tileRect.width,
+         "ActionSurface navigation uses the full parent width");
+    Near(horizontal.hitRegions.front().rect.width, tileRect.width,
+         "ActionSurface hit testing uses the full parent width");
+    Check(navigationRect.width >= 44.0F && navigationRect.height >= 44.0F,
+          "ActionSurface enforces the 44-DIP minimum target");
+    Check(horizontal.elementRects.at(L"album.artwork").x <
+              horizontal.elementRects.at(L"album.copy").x,
+          "horizontal ActionSurface lays presentational children side by side");
+    const auto copyVisible = horizontal.elementVisibleRects.at(L"album.copy");
+    Check(copyVisible.x + copyVisible.width <= tileRect.x + tileRect.width + 0.01F,
+          "ActionSurface clips oversized presentational content to its parent");
+    for (const auto& diagnostic : horizontal.diagnostics) {
+        Check(diagnostic.code != L"unknown_kind",
+              "ActionSurface and its public descendants are recognized");
+    }
+
+    auto verticalSnapshot = RichActionSurfaceSnapshot(L"vertical");
+    const auto vertical = renderer.Render(
+        nullptr, verticalSnapshot, L"album.tile",
+        {0.0F, 0.0F, 340.0F, 240.0F});
+    Check(vertical.elementRects.at(L"album.artwork").y <
+              vertical.elementRects.at(L"album.copy").y,
+          "vertical ActionSurface lays presentational children top to bottom");
+    Check(vertical.hitRegions.size() == 1 && vertical.focusRects.size() == 1,
+          "vertical orientation preserves the single full-tile target");
+
+    horizontalSnapshot.root.children[0].isSelected = true;
+    const auto selected = renderer.Render(
+        nullptr, horizontalSnapshot, L"album.tile",
+        {0.0F, 0.0F, 340.0F, 180.0F});
+    Check(selected.hitRegions.front().enabled,
+          "selected ActionSurface remains actionable");
+    horizontalSnapshot.root.children[0].isDisabled = true;
+    const auto disabled = renderer.Render(
+        nullptr, horizontalSnapshot, L"album.tile",
+        {0.0F, 0.0F, 340.0F, 180.0F});
+    Check(disabled.navigationEnabled.at(L"album.tile") &&
+              disabled.focusRects.contains(L"album.tile"),
+          "disabled ActionSurface retains stable controller focus");
+    Check(!disabled.hitRegions.front().enabled,
+          "disabled ActionSurface suppresses pointer activation");
+    horizontalSnapshot.root.children[0].isDisabled = false;
+    horizontalSnapshot.root.children[0].isBusy = true;
+    const auto busy = renderer.Render(
+        nullptr, horizontalSnapshot, L"album.tile",
+        {0.0F, 0.0F, 340.0F, 180.0F});
+    Check(busy.navigationEnabled.at(L"album.tile") &&
+              !busy.hitRegions.front().enabled,
+          "busy ActionSurface stays navigable while activation is suppressed");
+
+    horizontalSnapshot.root.children[0].isBusy = false;
+    const auto clipped = renderer.Render(
+        nullptr, horizontalSnapshot, L"album.tile",
+        {0.0F, 0.0F, 340.0F, 32.0F});
+    Check(clipped.navigationRects.at(L"album.tile").height >= 44.0F,
+          "clipping never shrinks the logical ActionSurface controller target");
+    Check(clipped.focusRects.at(L"album.tile").height <
+              clipped.navigationRects.at(L"album.tile").height,
+          "visible ActionSurface focus geometry is clipped to the viewport");
+    Check(clipped.hitRegions.front().rect.y + clipped.hitRegions.front().rect.height <= 32.01F,
+          "clipped ActionSurface hit testing never escapes the viewport");
+}
+
 void FocusMotionUsesStableSnapshotIdentity() {
     WidgetSnapshot snapshot;
     snapshot.sequence = 1;
@@ -1460,6 +1610,7 @@ int main() {
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();
     SliderPlanningAndAccessibilityTargets();
+    ActionSurfacePlanningAndInteractionGeometry();
     FocusMotionUsesStableSnapshotIdentity();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();

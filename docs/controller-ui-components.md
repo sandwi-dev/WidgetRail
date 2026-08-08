@@ -33,6 +33,9 @@ GBSS design constrained by controller navigation and overlay performance.
 | Layout | `Stack`, `Row`, `Scroll`, `Spacer` | Host layout, clipping, and focus-follow; no widget pixel scrolling. |
 | Content | `Text`, `Image`, `Icon` | Bounded semantic content and a closed glyph vocabulary. |
 | Indeterminate activity | `LoadingIndicator` | Protocol v5, nonfocusable native arc; bounded size and required accessible label. |
+| Rich full-tile action | `ActionSurface` | Protocol v7, one full-surface focus/pointer/action target with bounded presentational descendants. |
+| Media/application tile | `MediaTile`, `AppTile`, `TileArtwork` | Full-tile ActionSurface compositions with optional safe artwork, multiline copy, and visible state. |
+| Transient feedback | `Toast` | Nonfocusable baseline-node composition; widget lifecycle owns its bounded duration. |
 | Discrete action | `Button`, button glyph, shortcut | One focus stop; A activates; scoped shortcuts remain explicit. |
 | Two-state action | `ToggleButton`, selected Button | Visible and accessible state remains widget-owned. |
 | Read-only value | `Progress` | Not focusable and never accepts controller changes. |
@@ -134,6 +137,23 @@ semantic classes. They do not add worker code, polling, or a new native node:
   Slider coalescing applies. The SDK formats `m:ss` or `h:mm:ss` unless the
   author supplies localized labels. Disabled, Busy, Up/Down neighbors, and an
   optional A activation action remain on the stable Slider child.
+- `UI.ActionSurface(...)` is the low-level rich-control escape hatch. The root
+  is the only focus, pointer, pressed, and action target; descendants are
+  presentation only. The v7 validator rejects nested actions, focus, scopes,
+  shortcuts, interaction state, scrolling, Buttons, Sliders, and
+  ActionSurfaces. Content is bounded to 8 direct children, 32 descendants, and
+  four relative levels, and the native host clips it to the actionable box.
+- `UI.MediaTile(...)` and `UI.AppTile(...)` build safe ActionSurfaces with
+  title, state, optional subtitle/metadata, and optional `TileArtwork` from a
+  semantic glyph, credential-free HTTPS image, or bounded inline PNG. The
+  entire tile activates; do not put a second Button around or inside it. Games
+  & Apps uses `AppTile` for both its curated launch rows and add/remove catalog
+  rows, proving first-party widgets use the same public API as Community code.
+- `UI.Toast(...)` composes a nonfocusable notification from baseline nodes.
+  Neutral/Info/Success/Warning/Danger tone is always paired with text. The
+  widget keeps it in state for its 2–30 second duration (five seconds by
+  default) and removes it through lifecycle-aware invalidation; the component
+  creates no timer, polling loop, shortcut, input scope, or hidden residency.
 - `UI.ControllerHint(...)` creates a restrained key-cap and label from the
   closed `ControllerButton` enum. It is display-only: authors must still bind
   the matching shortcut to the active input scope or focused control. Compose
@@ -313,11 +333,7 @@ tested composition helpers or native semantics before authors depend on names:
 1. **Advanced listbox semantics** — `Picker` covers bounded single selection.
    Multi-select, type-ahead/search, and asynchronous empty/loading contracts
    remain separate future designs rather than overloading its stable contract.
-2. **Toast/notification model** — host-announced, time-bounded feedback that
-   never steals focus; persistent failures remain in the owning surface.
-3. **`MediaTile` and `AppTile`** — bounded artwork/icon, multi-line metadata,
-   state, and one primary full-tile action without private widget geometry.
-4. **Layout/style primitives** — per-edge borders, responsive grid, and
+2. **Layout/style primitives** — per-edge borders, responsive grid, and
    semantic monospace for diagnostics or code-like values. These need bounded
    native layout/style contracts rather than author-specific workarounds.
 

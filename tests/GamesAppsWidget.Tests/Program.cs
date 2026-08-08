@@ -11,6 +11,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("One saved app uses one full-width icon-led focus target", OneAppUsesCompactTile),
     ("Resolved application pixels replace the semantic fallback icon", ResolvedIconRenders),
     ("Many saved apps retain a compact vertical focus list", ManyAppsUseCompactRail),
+    ("Library feedback uses a non-focusable lifecycle-bound toast", ToastFeedbackIsLifecycleBound),
     ("Catalog add remove and B navigation retain a user-owned library", CuratesLibrary),
     ("Interactive A launches only the selected opaque app", LaunchesSelectedApp),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
@@ -114,7 +115,7 @@ static async Task RendersControllerStrip()
     Assert.True(snapshot.Surface.PreferredHeight > snapshot.Surface.MinimumHeight);
     Assert.Equal("games-apps", snapshot.ActiveInputScopeId);
     Assert.True(Buttons(snapshot.Root).Any(button => button.ActionId == "games.open-catalog"));
-    Assert.False(Buttons(snapshot.Root).Any(button => button.ActionId == "games.launch"));
+    Assert.False(ActionSurfaces(snapshot.Root).Any(tile => tile.ActionId == "games.launch"));
 
     await OpenCatalog(widget);
     snapshot = Snapshot(widget, 4);
@@ -127,12 +128,13 @@ static async Task RendersControllerStrip()
     var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
     Assert.Equal(ViewNodeKind.Scroll, scroll.Kind);
     Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
-    var buttons = Buttons(scroll).Where(button => button.ActionId == "games.toggle-curation").ToArray();
-    Assert.Equal(3, buttons.Length);
-    Assert.Equal(buttons[0].Id, buttons[0].Focus!.Left);
-    Assert.Equal(buttons[0].Id, buttons[0].Focus!.Right);
-    Assert.Equal(buttons[1].Id, buttons[0].Focus!.Down);
-    Assert.Equal(buttons[0].Id, snapshot.InitialFocusId);
+    var tiles = ActionSurfaces(scroll)
+        .Where(tile => tile.ActionId == "games.toggle-curation").ToArray();
+    Assert.Equal(3, tiles.Length);
+    Assert.Equal(tiles[0].Id, tiles[0].Focus!.Left);
+    Assert.Equal(tiles[0].Id, tiles[0].Focus!.Right);
+    Assert.Equal(tiles[1].Id, tiles[0].Focus!.Down);
+    Assert.Equal(tiles[0].Id, snapshot.InitialFocusId);
     var json = System.Text.Json.JsonSerializer.Serialize(snapshot);
     Assert.False(json.Contains("private-one", StringComparison.Ordinal));
     Assert.False(json.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
@@ -154,9 +156,11 @@ static async Task OneAppUsesCompactTile()
     var snapshot = Snapshot(widget, 62);
     Assert.Equal(430d, snapshot.Surface!.PreferredHeight);
     Assert.Equal(300d, snapshot.Surface.MinimumHeight);
-    var launch = Buttons(snapshot.Root).Single(button => button.ActionId == "games.launch");
-    Assert.Equal(WidgetGlyph.Play, launch.Glyph);
-    Assert.True(launch.ImageSource is null);
+    var launch = ActionSurfaces(snapshot.Root).Single(tile => tile.ActionId == "games.launch");
+    Assert.Equal(ViewNodeKind.ActionSurface, launch.Kind);
+    var artwork = Nodes(launch).Single(node => node.Id == launch.Id + ".artwork");
+    Assert.Equal(WidgetGlyph.Play, artwork.Glyph);
+    Assert.True(artwork.ImageSource is null);
     Assert.Equal(launch.Id, launch.Focus!.Left);
     Assert.Equal(launch.Id, launch.Focus.Right);
     Assert.Equal("games.open-catalog", launch.Focus.Down);
@@ -179,12 +183,13 @@ static async Task ResolvedIconRenders()
     await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
 
     var snapshot = Snapshot(widget, 64);
-    var launch = Buttons(snapshot.Root).Single(button => button.ActionId == "games.launch");
-    Assert.Equal(ViewNodeKind.Button, launch.Kind);
-    Assert.True(launch.ImageSource!.StartsWith("data:image/png;base64,", StringComparison.Ordinal));
-    Assert.Equal(ImageFit.Contain, launch.ImageFit);
-    Assert.True(launch.Glyph is null);
-    Assert.Equal(ProtocolConstants.InlinePngImageVersion, snapshot.ProtocolVersion);
+    var launch = ActionSurfaces(snapshot.Root).Single(tile => tile.ActionId == "games.launch");
+    Assert.Equal(ViewNodeKind.ActionSurface, launch.Kind);
+    var artwork = Nodes(launch).Single(node => node.Id == launch.Id + ".artwork");
+    Assert.True(artwork.ImageSource!.StartsWith("data:image/png;base64,", StringComparison.Ordinal));
+    Assert.Equal(ImageFit.Contain, artwork.ImageFit);
+    Assert.True(artwork.Glyph is null);
+    Assert.Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -206,15 +211,38 @@ static async Task ManyAppsUseCompactRail()
     Assert.Equal(430d, snapshot.Surface!.PreferredHeight);
     Assert.Equal(300d, snapshot.Surface.MinimumHeight);
     var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
-    var launches = Buttons(scroll).Where(button => button.ActionId == "games.launch").ToArray();
+    var launches = ActionSurfaces(scroll).Where(tile => tile.ActionId == "games.launch").ToArray();
     Assert.Equal(8, launches.Length);
-    Assert.True(launches.All(launch => launch.Glyph == WidgetGlyph.Play));
+    Assert.True(launches.All(launch => Nodes(launch).Single(node =>
+        node.Id == launch.Id + ".artwork").Glyph == WidgetGlyph.Play));
     for (var index = 1; index < launches.Length; index++)
         Assert.Equal(launches[index - 1].Id, launches[index].Focus!.Up);
     Assert.Equal("games.open-catalog", launches[^1].Focus!.Down);
     Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
     Assert.Valid(snapshot);
     await Background(widget);
+}
+
+static async Task ToastFeedbackIsLifecycleBound()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("opaque-a", "Alpha")], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await AddFromCatalog(widget, "Alpha");
+
+    var feedback = Snapshot(widget, 66);
+    var toast = Nodes(feedback.Root).Single(node => node.Id == "games.toast");
+    Assert.Equal(ViewNodeKind.Row, toast.Kind);
+    Assert.False(Nodes(toast).Any(node => node.IsFocusable));
+    var alpha = ActionSurfaces(feedback.Root).Single(tile => TileTitle(tile) == "Alpha");
+    Assert.Equal(alpha.Id, feedback.InitialFocusId);
+    Assert.Contains("Added Alpha", Text(feedback.Root, "games.toast.message").Text!);
+
+    await Background(widget);
+    Assert.False(Nodes(Snapshot(widget, 67).Root).Any(node => node.Id == "games.toast"));
 }
 
 static async Task CuratesLibrary()
@@ -230,10 +258,11 @@ static async Task CuratesLibrary()
 
     await OpenCatalog(widget);
     var catalog = Snapshot(widget, 40);
-    var beta = Buttons(catalog.Root).Single(button => button.Text == "Beta");
+    var beta = ActionSurfaces(catalog.Root).Single(tile => TileTitle(tile) == "Beta");
     await widget.OnActionAsync(new("games.toggle-curation", beta.Id));
     Assert.SequenceEqual(["opaque-b"], widget.CuratedItems.Select(item => item.AppId));
-    Assert.True(Buttons(Snapshot(widget, 41).Root).Single(button => button.Text == "Beta")
+    Assert.True(ActionSurfaces(Snapshot(widget, 41).Root)
+        .Single(tile => TileTitle(tile) == "Beta")
         .IsSelected == true);
 
     await widget.OnActionAsync(new("back", "games.catalog"));
@@ -242,15 +271,17 @@ static async Task CuratesLibrary()
     Assert.Equal("games-apps", library.ActiveInputScopeId);
     Assert.False(Nodes(library.Root).Single(node => node.Id == "games.root").Shortcuts
         .Any(shortcut => shortcut.Button == ControllerButton.B));
-    var savedBeta = Buttons(library.Root).Single(button => button.Text == "Beta");
+    var savedBeta = ActionSurfaces(library.Root).Single(tile => TileTitle(tile) == "Beta");
     Assert.Equal("games.launch", savedBeta.ActionId);
     Assert.True(savedBeta.Shortcuts.Any(shortcut =>
         shortcut.Button == ControllerButton.X && shortcut.ActionId == "games.remove"));
 
     await widget.OnActionAsync(new("games.remove", savedBeta.Id));
     Assert.Equal(0, widget.CuratedItems.Count);
-    Assert.True(Buttons(Snapshot(widget, 43).Root)
+    var removed = Snapshot(widget, 43);
+    Assert.True(Buttons(removed.Root)
         .Any(button => button.ActionId == "games.open-catalog"));
+    Assert.Contains("Removed Beta", Text(removed.Root, "games.toast.message").Text!);
     await Background(widget);
 }
 
@@ -266,11 +297,13 @@ static async Task LaunchesSelectedApp()
     await AddFromCatalog(widget, "Beta");
     await BackToLibrary(widget);
     var snapshot = Snapshot(widget, 44);
-    var beta = Buttons(snapshot.Root).Single(button => button.Text == "Beta");
+    var beta = ActionSurfaces(snapshot.Root).Single(tile => TileTitle(tile) == "Beta");
     await widget.OnActionAsync(new("games.launch", beta.Id));
     Assert.SequenceEqual(["opaque-b"], fake.LaunchedIds);
     Assert.Equal("opaque-b", widget.SelectedAppId);
-    Assert.Contains("Opened Beta", Text(Snapshot(widget, 5).Root, "games.status").Text!);
+    var opened = Snapshot(widget, 5);
+    Assert.Contains("Opened Beta", Text(opened.Root, "games.status").Text!);
+    Assert.Contains("Opened Beta", Text(opened.Root, "games.toast.message").Text!);
     await Background(widget);
 }
 
@@ -290,7 +323,8 @@ static async Task SuccessfulLaunchOrdersRecentFirst()
     Assert.SequenceEqual(["opaque-a", "opaque-b"],
         widget.CuratedItems.Select(item => item.AppId));
 
-    var beta = Buttons(Snapshot(widget, 45).Root).Single(button => button.Text == "Beta");
+    var beta = ActionSurfaces(Snapshot(widget, 45).Root)
+        .Single(tile => TileTitle(tile) == "Beta");
     await widget.OnActionAsync(new("games.launch", beta.Id));
     Assert.SequenceEqual(["opaque-b", "opaque-a"],
         widget.CuratedItems.Select(item => item.AppId));
@@ -312,7 +346,8 @@ static async Task FailedLaunchKeepsOrder()
     await AddFromOpenCatalog(widget, "Alpha");
     await AddFromOpenCatalog(widget, "Beta");
     await BackToLibrary(widget);
-    var beta = Buttons(Snapshot(widget, 47).Root).Single(button => button.Text == "Beta");
+    var beta = ActionSurfaces(Snapshot(widget, 47).Root)
+        .Single(tile => TileTitle(tile) == "Beta");
     await widget.OnActionAsync(new("games.launch", beta.Id));
 
     Assert.SequenceEqual(["opaque-a", "opaque-b"],
@@ -320,6 +355,8 @@ static async Task FailedLaunchKeepsOrder()
     var failed = Snapshot(widget, 48);
     Assert.Equal(beta.Id, failed.InitialFocusId);
     Assert.Contains("App library unavailable", Text(failed.Root, "games.status").Text!);
+    Assert.True(Nodes(failed.Root).Single(node => node.Id == "games.toast")
+        .StyleClasses.Contains("gbar-toast--danger", StringComparer.Ordinal));
     await Background(widget);
 }
 
@@ -338,8 +375,8 @@ static async Task CurationSurvivesReactivation()
     await Interactive(widget);
     await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
     Assert.SequenceEqual(["opaque-a"], widget.CuratedItems.Select(item => item.AppId));
-    Assert.True(Buttons(Snapshot(widget, 49).Root)
-        .Any(button => button.ActionId == "games.launch" && button.Text == "Alpha"));
+    Assert.True(ActionSurfaces(Snapshot(widget, 49).Root)
+        .Any(tile => tile.ActionId == "games.launch" && TileTitle(tile) == "Alpha"));
     await Background(widget);
 }
 
@@ -361,8 +398,8 @@ static async Task ReactivationReusesCachedLibrary()
     Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
     var cached = Snapshot(widget, 52);
     Assert.Equal(focusBefore, cached.InitialFocusId);
-    Assert.True(Buttons(cached.Root).Any(button =>
-        button.ActionId == "games.launch" && button.Text == "Alpha"));
+    Assert.True(ActionSurfaces(cached.Root).Any(tile =>
+        tile.ActionId == "games.launch" && TileTitle(tile) == "Alpha"));
     await Task.Delay(GamesAppsWidget.ColdLoadingDelayMilliseconds + 75);
     Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
     Assert.Equal(resolvesBefore, fake.ResolveRequests.Count);
@@ -388,8 +425,8 @@ static async Task ExplicitRefreshReconcilesCachedLibrary()
 
     Assert.Equal(before + 1, fake.ResolveRequests.Count);
     Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
-    Assert.True(Buttons(Snapshot(widget, 65).Root).Any(button =>
-        button.ActionId == "games.launch" && button.Text == "Alpha"));
+    Assert.True(ActionSurfaces(Snapshot(widget, 65).Root).Any(tile =>
+        tile.ActionId == "games.launch" && TileTitle(tile) == "Alpha"));
     await Background(widget);
 }
 
@@ -467,8 +504,8 @@ static async Task CurationSurvivesNewInstance()
     await WaitUntil(() => restarted.ViewState == GamesAppsViewState.Ready);
     Assert.Equal(0, restartedHost.PageRequests.Count);
     Assert.SequenceEqual(["fresh-a"], restarted.CuratedItems.Select(item => item.AppId));
-    Assert.True(Buttons(Snapshot(restarted, 50).Root).Any(button =>
-        button.ActionId == "games.launch" && button.Text == "Alpha"));
+    Assert.True(ActionSurfaces(Snapshot(restarted, 50).Root).Any(tile =>
+        tile.ActionId == "games.launch" && TileTitle(tile) == "Alpha"));
     await Background(restarted);
 }
 
@@ -492,8 +529,9 @@ static async Task LoadsMore()
     Assert.Equal<int?>(null, widget.NextOffset);
     var snapshot = Snapshot(widget, 7);
     Assert.True(!Buttons(snapshot.Root).Any(button => button.Id == "games.load-more"));
-    Assert.Equal(4, Buttons(snapshot.Root).Count(button => button.ActionId == "games.toggle-curation"));
-    Assert.Equal(Buttons(snapshot.Root).Single(button => button.Text == "Three").Id,
+    Assert.Equal(4, ActionSurfaces(snapshot.Root)
+        .Count(tile => tile.ActionId == "games.toggle-curation"));
+    Assert.Equal(ActionSurfaces(snapshot.Root).Single(tile => TileTitle(tile) == "Three").Id,
         snapshot.InitialFocusId);
     Assert.Valid(snapshot);
     await Background(widget);
@@ -521,8 +559,9 @@ static async Task LoadMoreIsSingleFlight()
     var loadMore = Buttons(busy.Root).Single(button => button.Id == "games.load-more");
     Assert.True(loadMore.IsBusy == true);
     Assert.True(loadMore.IsDisabled == true);
-    Assert.True(Buttons(busy.Root).Where(button => button.ActionId == "games.toggle-curation")
-        .All(button => button.IsDisabled == true));
+    Assert.True(ActionSurfaces(busy.Root)
+        .Where(tile => tile.ActionId == "games.toggle-curation")
+        .All(tile => tile.IsDisabled == true));
 
     await widget.OnActionAsync(new("games.load-more", "games.load-more"));
     Assert.Equal(1, fake.PageRequests.Count(request => request.Offset == 32));
@@ -574,15 +613,16 @@ static async Task LaunchIsSingleFlight()
     await AddFromOpenCatalog(widget, "Beta");
     await BackToLibrary(widget);
     var initial = Snapshot(widget, 10);
-    var alpha = Buttons(initial.Root).Single(button => button.Text == "Alpha");
-    var beta = Buttons(initial.Root).Single(button => button.Text == "Beta");
+    var alpha = ActionSurfaces(initial.Root).Single(tile => TileTitle(tile) == "Alpha");
+    var beta = ActionSurfaces(initial.Root).Single(tile => TileTitle(tile) == "Beta");
 
     var first = widget.OnActionAsync(new("games.launch", alpha.Id)).AsTask();
     await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
     var busy = Snapshot(widget, 11);
-    Assert.True(Buttons(busy.Root).Single(button => button.Text == "Alpha").IsBusy == true);
-    Assert.True(Buttons(busy.Root).Where(button => button.ActionId == "games.launch")
-        .All(button => button.IsDisabled == true));
+    Assert.True(ActionSurfaces(busy.Root)
+        .Single(tile => TileTitle(tile) == "Alpha").IsBusy == true);
+    Assert.True(ActionSurfaces(busy.Root).Where(tile => tile.ActionId == "games.launch")
+        .All(tile => tile.IsDisabled == true));
 
     await widget.OnActionAsync(new("games.launch", beta.Id));
     Assert.SequenceEqual(["opaque-a"], fake.LaunchedIds);
@@ -627,7 +667,8 @@ static async Task LaunchDenialKeepsLibrary()
     await Interactive(widget);
     await AddFromCatalog(widget, "Alpha");
     await BackToLibrary(widget);
-    var alpha = Buttons(Snapshot(widget, 13).Root).Single(button => button.Text == "Alpha");
+    var alpha = ActionSurfaces(Snapshot(widget, 13).Root)
+        .Single(tile => TileTitle(tile) == "Alpha");
     await widget.OnActionAsync(new("games.launch", alpha.Id));
 
     var denied = Snapshot(widget, 14);
@@ -696,8 +737,8 @@ static async Task RetryRecoversTransientFailure()
     Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
     Assert.SequenceEqual(["opaque-a"], widget.CuratedItems.Select(item => item.AppId));
     var recovered = Snapshot(widget, 61);
-    Assert.True(Buttons(recovered.Root).Any(button =>
-        button.ActionId == "games.launch" && button.Text == "Alpha"));
+    Assert.True(ActionSurfaces(recovered.Root).Any(tile =>
+        tile.ActionId == "games.launch" && TileTitle(tile) == "Alpha"));
     Assert.Valid(recovered);
     await Background(widget);
 }
@@ -756,9 +797,9 @@ static async Task AddFromCatalog(GamesAppsWidget widget, string displayName)
 
 static async Task AddFromOpenCatalog(GamesAppsWidget widget, string displayName)
 {
-    var button = Buttons(Snapshot(widget, 100).Root).Single(candidate =>
-        candidate.ActionId == "games.toggle-curation" && candidate.Text == displayName);
-    await widget.OnActionAsync(new("games.toggle-curation", button.Id));
+    var tile = ActionSurfaces(Snapshot(widget, 100).Root).Single(candidate =>
+        candidate.ActionId == "games.toggle-curation" && TileTitle(candidate) == displayName);
+    await widget.OnActionAsync(new("games.toggle-curation", tile.Id));
 }
 
 static async Task BackToLibrary(GamesAppsWidget widget)
@@ -788,6 +829,12 @@ static IEnumerable<ViewNode> Nodes(ViewNode node)
 
 static IEnumerable<ViewNode> Buttons(ViewNode node) =>
     Nodes(node).Where(candidate => candidate.Kind == ViewNodeKind.Button);
+
+static IEnumerable<ViewNode> ActionSurfaces(ViewNode node) =>
+    Nodes(node).Where(candidate => candidate.Kind == ViewNodeKind.ActionSurface);
+
+static string? TileTitle(ViewNode tile) =>
+    Nodes(tile).Single(node => node.Id == tile.Id + ".title").Text;
 
 static ViewNode Text(ViewNode node, string id) => Nodes(node).Single(candidate => candidate.Id == id);
 

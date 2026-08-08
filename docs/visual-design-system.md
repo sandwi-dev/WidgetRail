@@ -136,13 +136,14 @@ oversized hero whitespace. Optional packaged fonts are lower priority and
 security-sensitive; the baseline remains the Windows UI family until an
 immutable, licensed, bounded host asset contract exists.
 
-The remaining component gap is functional as well as visual. `SettingsRow`,
-nested `ActionSheet`, single-select `Picker`, and controller `Scrubber` now have
-shared public contracts. Rows can wrap responsively without private layout
-hacks. Future increments should cover non-focus-stealing toast,
-`MediaTile`/`AppTile`, per-edge borders, responsive grid, and semantic
-monospace. First-party widgets must not invent private substitutes unavailable
-to Community authors.
+`SettingsRow`, nested `ActionSheet`, single-select `Picker`, controller
+`Scrubber`, non-focus-stealing `Toast`, and protocol-v7
+`ActionSurface`/`MediaTile`/`AppTile` now have shared public contracts. Games &
+Apps uses the public AppTile and Toast APIs rather than private geometry. Rows
+can wrap responsively without widget-specific layout hacks. Remaining shared
+gaps are per-edge borders, responsive grid, semantic monospace, and broader
+shell/subtree motion. First-party widgets must not invent private substitutes
+unavailable to Community authors.
 
 ## Dashboard geometry
 

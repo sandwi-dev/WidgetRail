@@ -29,6 +29,9 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.InlinePngImage(pngBase64, id, accessibilityLabel, fit?)` | `image` | Protocol-v6 bounded host-decoded PNG pixels for trusted broker artwork; never a native path. |
 | `UI.Icon(glyph, id, accessibilityLabel)` | `icon` | Host-rendered semantic vector icon from a closed enum. |
 | `UI.LoadingIndicator(id, accessibilityLabel, size?)` | `loadingIndicator` | Protocol-v5 nonfocusable native activity arc with Compact, Standard, or Large sizing. |
+| `UI.ActionSurface(action, id, accessibilityLabel, orientation, children...)` | `actionSurface` | Protocol-v7 rich full-surface action whose bounded descendants are presentation only. |
+| `UI.MediaTile(...)`, `UI.AppTile(...)` | `actionSurface` | Controller-first tile compositions with optional artwork, multiline copy, visible state, and one full-tile target. |
+| `UI.Toast(title, message, tone, id, duration?, glyph?)` | baseline `row`, `stack`, `text`, `icon` | Nonfocusable lifecycle-owned notification with bounded copy, tone, and duration metadata. |
 | `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
 | `UI.SettingsRow(label, action, id, ...)` | `stack`, `row`, `text`, `button` | Responsive setting summary whose `id.action` Button is its only focus stop. |
 | `UI.ActionSheet(title, id, scopeId, backAction, items, description?)` | `stack`, `scroll`, `button` | Bounded 1–32 item nested action scope with stable item focus IDs and scope-owned B. |
@@ -53,6 +56,70 @@ intersects the widget viewport. Reduced-motion mode uses a static incomplete
 arc, preserving the honest "work is in progress" meaning without movement.
 Prefer keeping cached content in place for fast refreshes; do not flash a
 single-frame indicator when work normally finishes before the next paint.
+The bridge maps this node to the distinct `loadingIndicator` render role, not a
+container role, so GBSS role selectors and native activity geometry agree.
+
+## Rich action surfaces and tiles (protocol v7)
+
+Use `UI.ActionSurface(...)` when a rich group must behave as one controller and
+pointer target. The ActionSurface owns focus, A activation, pressed/selected/
+disabled/busy state, optional shortcuts, and its accessible name. Its children
+are visual content only: they cannot own actions, value changes, focus links,
+input scopes, shortcuts, interaction state, nested Scroll, Slider, Button, or
+another ActionSurface. The host clips the subtree to the surface and uses the
+surface's complete border box for focus, hit testing, pressed feedback, and
+state cues.
+
+```csharp
+var tile = UI.MediaTile(
+    title: track.Title,
+    stateLabel: track.IsPlaying ? "Playing" : "Paused",
+    action: "track.open",
+    id: $"track.{track.Id}",
+    subtitle: track.Artist,
+    metadata: track.Album,
+    artwork: TileArtwork.FromHttps(track.ArtworkUrl, $"Artwork for {track.Title}"),
+    accessibilityLabel: $"Open {track.Title} by {track.Artist}");
+```
+
+`UI.MediaTile(...)` and `UI.AppTile(...)` build that safe structure for common
+content. Artwork is optional and accepts exactly one closed semantic glyph,
+absolute credential-free HTTPS image, or canonical bounded inline PNG through
+`TileArtwork.FromGlyph`, `FromHttps`, or `FromInlinePng`. Both tiles require a
+title, visible state label, action, and stable base ID; subtitle and metadata
+are optional. Horizontal is the default orientation and Vertical is available
+for tall compositions.
+
+The generated root classes are `.gbar-action-surface`, `.gbar-tile`, and
+`.gbar-media-tile` or `.gbar-app-tile`. Generated child IDs are
+`id.artwork` when present, `id.content`, `id.title`, optional `id.subtitle`,
+optional `id.metadata`, and `id.state`; matching generic and media/app-specific
+`gbar-*` classes are stable theme hooks. Keep the base ID stable because it is
+the only focus/action identity.
+
+ActionSurface content is intentionally bounded to 1–8 direct children, at most
+32 total descendants, and at most four descendant levels relative to the
+surface. Invalid trees fail in the SDK and protocol validator. A snapshot that
+contains an ActionSurface automatically selects protocol v7. Older snapshots
+continue using the lowest version their features require; an older host rejects
+v7 instead of interpreting the rich action as a different control.
+
+## Toast feedback
+
+`UI.Toast(...)` creates brief, non-interactive feedback without adding a focus
+stop or shortcut. Tones are Neutral, Info, Success, Warning, and Danger; text
+must communicate the state because color is supplementary. Title and message
+are bounded to 120 and 512 characters. Duration defaults to five seconds and
+must be between two and thirty seconds.
+
+Duration is author intent, not a host timer. Keep the Toast in widget state for
+that duration and remove it through the widget's normal lifecycle-aware update.
+Do not start a worker, ticker, or hidden-background residency solely to dismiss
+or animate it. Persistent errors belong in the owning surface. Themes may use
+short appearance/removal motion, but reduced motion must suppress or shorten it.
+Generated IDs are `id.icon` when a semantic icon is present, `id.copy`,
+`id.title`, and `id.message`; stable classes include `.gbar-toast`, the tone
+modifier, and matching `__icon`, `__copy`, `__title`, and `__message` hooks.
 
 ## Controller scroll containers
 
@@ -338,9 +405,11 @@ migration.
 
 The current snapshot limits include:
 
-- protocol versions 1–3. Plain Stack/Row views remain v1; Scroll or explicit
-  surface hints opt that snapshot into v2; a view containing Slider opts into
-  v3. These additive snapshot features do not change package host API 1;
+- protocol versions 1–7. Plain Stack/Row views remain v1; Scroll or explicit
+  surface hints opt into v2, Slider into v3, capability-backed dashboard
+  gestures into v4, LoadingIndicator into v5, inline PNG into v6, and
+  ActionSurface into v7. These additive snapshot features do not change package
+  host API 1;
 - at most 2,048 nodes;
 - at most 32 levels of tree depth;
 - strings up to 4,096 characters; and
@@ -352,7 +421,8 @@ are rejected before publication.
 
 ## Focus and actions
 
-Buttons and Sliders are focusable elements. Buttons use `.FocusUp(id)`,
+Buttons, Sliders, and ActionSurfaces are focusable elements. Buttons and
+ActionSurfaces use `.FocusUp(id)`,
 `.FocusDown(id)`, `.FocusLeft(id)`, and `.FocusRight(id)` when automatic spatial
 navigation would be ambiguous. Sliders accept only Up/Down neighbors because
 they own Left/Right adjustment. `WidgetView.InitialFocusId` must name a

@@ -121,6 +121,7 @@ struct WidgetNode final {
     std::wstring indicatorSize;
     std::wstring inputScopeId;
     std::wstring scrollAxis;
+    std::wstring actionSurfaceOrientation;
     std::vector<std::wstring> styleClasses;
     std::vector<WidgetShortcut> shortcuts;
     std::wstring focusUp;

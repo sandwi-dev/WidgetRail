@@ -426,6 +426,10 @@ Scroll for overflow after host clamping.
 | `UI.Spacer(id)` | spacer | Layout-only. |
 | `UI.Image(httpsUrl, id, alt, fit?)` | image | HTTPS only; host applies download/decode/cache limits. |
 | `UI.Icon(glyph, id, label)` | semantic icon | Closed host-rendered glyph vocabulary. |
+| `UI.LoadingIndicator(id, label, size?)` | indeterminate status | Protocol 5; native, nonfocusable, static under reduced motion. |
+| `UI.ActionSurface(action, id, label, orientation, children...)` | rich full-surface action | Protocol 7; one focus/pointer/action target with bounded presentational children. |
+| `UI.MediaTile(...)`, `UI.AppTile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, and one full-tile action. |
+| `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or timer; remove through lifecycle-owned widget state. |
 
 All nodes can use `.Classes("name", ...)`. Buttons additionally provide
 `.FocusUp/Down/Left/Right(id)`, `.Disabled(...)`, `.Selected(...)`,
@@ -436,6 +440,9 @@ Button focus target; it accepts only the same bounded canonical PNG contract as
 Sliders provide
 `.FocusUp/Down(id)`, `.Disabled(...)`, `.Busy(...)`, and `.Activate(...)`;
 horizontal focus links are invalid because the control owns Left/Right.
+ActionSurfaces provide directional focus helpers, Disabled/Selected/Busy, and
+shortcuts on their one stable root. Their descendants cannot own input,
+actions, focus, scopes, scrolling, shortcuts, or interaction state.
 
 Current semantic glyphs are `Music`, `Play`, `Pause`, `Previous`, `Next`,
 `Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `Settings`, `Warning`,
@@ -446,7 +453,10 @@ Every node ID must be unique in the snapshot, at most 128 characters, and use
 only ASCII letters, digits, `.`, `-`, and `_`. Do not derive IDs from list
 positions or displayed text; changing an ID discards host focus/scroll memory.
 Protocol limits are 2,048 nodes, depth 32, strings up to 4,096 characters, and
-three dashboard quick actions.
+three dashboard quick actions. An ActionSurface additionally permits 1–8 direct
+children, at most 32 descendants, and four relative content levels; a snapshot
+that contains one automatically selects protocol v7 and fails closed on hosts
+that do not understand it.
 
 ## Interaction state and reconciliation
 

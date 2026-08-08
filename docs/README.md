@@ -25,10 +25,11 @@ guarantees that are available now.
   the Audio icon-Slider-percentage reference, focusable Disabled/Busy states,
   and the public controller-safe Card, IconButton, StatusBadge, Alert,
   EmptyState, SegmentedTabs, Switch, ScopedDialog, SettingsRow, ActionSheet,
-  single-select Picker, and Scrubber compositions. Settings uses Picker,
-  Spotify uses Scrubber, and responsive Row wrapping is implemented. Toast and
-  purpose-built media/app tiles remain roadmap work until implementation and
-  packaged evidence land.
+  single-select Picker, Scrubber, non-focus-stealing Toast, and protocol-v7
+  ActionSurface/MediaTile/AppTile compositions. Settings uses Picker, Spotify
+  uses Scrubber, Games & Apps uses AppTile and lifecycle-safe Toast feedback,
+  and responsive Row wrapping is implemented. Packaged visual/accessibility
+  evidence remains open.
 - [GBSS styling reference](gbss.md) — safe selectors, variables, typed
   properties, imports, diagnostics, and bounded native opacity/scale
   transitions.

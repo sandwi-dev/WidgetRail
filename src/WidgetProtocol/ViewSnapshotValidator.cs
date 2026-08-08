@@ -187,6 +187,7 @@ public static class ViewSnapshotValidator
                 CheckString(node.ImageSource, $"{path}.imageSource");
 
             var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll;
+            var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
             if (node.Kind is ViewNodeKind.LoadingIndicator)
             {
                 if (snapshot.ProtocolVersion < ProtocolConstants.LoadingIndicatorVersion)
@@ -227,6 +228,36 @@ public static class ViewSnapshotValidator
                 Add($"{path}.scrollAxis", "scroll_axis_not_allowed",
                     "Scroll axis applies only to scroll containers.");
             }
+            if (isActionSurface)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.ActionSurfaceVersion)
+                    Add(path, "feature_requires_version",
+                        $"ActionSurface requires protocol version {ProtocolConstants.ActionSurfaceVersion} or later.");
+                if (node.ActionSurfaceOrientation is null)
+                    Add($"{path}.actionSurfaceOrientation", "required",
+                        "An action surface requires a bounded content orientation.");
+                else if (!Enum.IsDefined(node.ActionSurfaceOrientation.Value))
+                    Add($"{path}.actionSurfaceOrientation", "invalid_action_surface_orientation",
+                        "The action-surface orientation is not supported.");
+                if (string.IsNullOrWhiteSpace(node.ActionId))
+                    Add($"{path}.actionId", "required", "An action surface requires an action ID.");
+                if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
+                    Add($"{path}.accessibilityLabel", "required",
+                        "An action surface requires an accessibility label independent of its visual content.");
+                if (node.Text is not null || node.AccessibilityValue is not null ||
+                    node.Value is not null || node.Minimum is not null || node.Maximum is not null ||
+                    node.Step is not null || node.ValueChangedActionId is not null ||
+                    node.ImageSource is not null || node.ImageFit is not null ||
+                    node.Glyph is not null || node.IndicatorSize is not null ||
+                    node.InputScopeId is not null || node.ScrollAxis is not null)
+                    Add(path, "action_surface_property_not_allowed",
+                        "Action surfaces accept interaction metadata, orientation, style classes, shortcuts, and bounded presentational children only.");
+            }
+            else if (node.ActionSurfaceOrientation is not null)
+            {
+                Add($"{path}.actionSurfaceOrientation", "action_surface_orientation_not_allowed",
+                    "Action-surface orientation applies only to action surfaces.");
+            }
             if (node.InputScopeId is not null)
             {
                 CheckIdentifier(node.InputScopeId, $"{path}.inputScopeId", "input scope ID");
@@ -251,9 +282,10 @@ public static class ViewSnapshotValidator
             if (node.Kind is ViewNodeKind.Button &&
                 string.IsNullOrWhiteSpace(node.Text) && string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                 Add(path, "missing_accessible_name", "A button requires visible text or an accessibility label.");
-            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider) &&
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface) &&
                 (node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null))
-                Add(path, "interaction_state_not_allowed", "Interaction states apply only to buttons and sliders.");
+                Add(path, "interaction_state_not_allowed",
+                    "Interaction states apply only to buttons, sliders, and action surfaces.");
             if (node.Kind is ViewNodeKind.Slider && node.IsSelected is not null)
                 Add($"{path}.isSelected", "interaction_state_not_allowed", "Selected state does not apply to sliders.");
             if (node.Kind is ViewNodeKind.Progress &&
@@ -299,8 +331,10 @@ public static class ViewSnapshotValidator
                     Add(path, "slider_property_not_allowed",
                         "Minimum, step, value-change action, and accessible value apply only to sliders.");
             }
-            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider) && node.ActionId is not null)
-                Add($"{path}.actionId", "action_not_allowed", "Action IDs apply only to buttons and sliders.");
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface) &&
+                node.ActionId is not null)
+                Add($"{path}.actionId", "action_not_allowed",
+                    "Action IDs apply only to buttons, sliders, and action surfaces.");
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button;
             if (node.Kind is ViewNodeKind.Image ||
                 (node.Kind is ViewNodeKind.Button && node.ImageSource is not null))
@@ -381,11 +415,27 @@ public static class ViewSnapshotValidator
                         Add(classPath, "duplicate_style_class", $"The style class '{className}' is repeated.");
                 }
             }
-            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll) && children.Count != 0)
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.ActionSurface) &&
+                children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
-            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button) && shortcuts.Count != 0)
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
+                ViewNodeKind.Button or ViewNodeKind.ActionSurface) && shortcuts.Count != 0)
                 Add($"{path}.shortcuts", "shortcuts_not_allowed",
-                    "Only input-scope containers and buttons may declare shortcuts.");
+                    "Only input-scope containers, buttons, and action surfaces may declare shortcuts.");
+
+            if (isActionSurface)
+            {
+                if (children.Count == 0)
+                    Add($"{path}.children", "required",
+                        "An action surface requires at least one presentational child.");
+                if (children.Count > ProtocolConstants.MaximumActionSurfaceDirectChildren)
+                    Add($"{path}.children", "too_many_action_surface_children",
+                        $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDirectChildren} direct children.");
+                var descendantCount = 0;
+                for (var index = 0; index < children.Count; index++)
+                    ValidateActionSurfaceContent(
+                        children[index], $"{path}.children[{index}]", 1, ref descendantCount);
+            }
 
             var shortcutButtons = new HashSet<(ControllerButton, ControllerEventPhase)>();
             for (var index = 0; index < shortcuts.Count; index++)
@@ -411,6 +461,36 @@ public static class ViewSnapshotValidator
 
             for (var index = 0; index < children.Count; index++)
                 Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey);
+        }
+
+        void ValidateActionSurfaceContent(
+            ViewNode? child,
+            string path,
+            int relativeDepth,
+            ref int descendantCount)
+        {
+            if (child is null) return;
+            descendantCount++;
+            if (descendantCount == ProtocolConstants.MaximumActionSurfaceDescendants + 1)
+                Add(path, "action_surface_too_large",
+                    $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDescendants} descendants.");
+            if (relativeDepth > ProtocolConstants.MaximumActionSurfaceRelativeDepth)
+                Add(path, "action_surface_too_deep",
+                    $"Action-surface content may be at most {ProtocolConstants.MaximumActionSurfaceRelativeDepth} levels deep relative to its surface.");
+            if (child.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
+                ViewNodeKind.ActionSurface or ViewNodeKind.Scroll ||
+                child.ActionId is not null || child.ValueChangedActionId is not null ||
+                child.Focus is not null || child.InputScopeId is not null ||
+                (child.Shortcuts?.Count ?? 0) != 0 ||
+                child.IsDisabled is not null || child.IsSelected is not null || child.IsBusy is not null)
+            {
+                Add(path, "interactive_action_surface_descendant",
+                    "Action-surface descendants must be presentational; nested focus, actions, scopes, scrolling, shortcuts, or interaction state are not allowed.");
+            }
+            foreach (var (descendant, index) in (child.Children ?? []).Select((item, index) => (item, index)))
+                ValidateActionSurfaceContent(
+                    descendant, $"{path}.children[{index}]", relativeDepth + 1,
+                    ref descendantCount);
         }
 
         void CheckIdentifier(string? value, string path, string label)

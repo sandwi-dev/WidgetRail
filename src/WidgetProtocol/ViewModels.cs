@@ -16,6 +16,19 @@ public enum ViewNodeKind
     Image,
     Icon,
     LoadingIndicator,
+    ActionSurface,
+}
+
+/// <summary>
+/// Selects the bounded primary layout direction for an ActionSurface. The
+/// host lays out the complete child subtree first, then uses its final bounds
+/// as one focus, pointer, pressed, and activation target.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ActionSurfaceOrientation>))]
+public enum ActionSurfaceOrientation
+{
+    Horizontal,
+    Vertical,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<LoadingIndicatorSize>))]
@@ -177,6 +190,12 @@ public sealed record ViewNode
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
     public LoadingIndicatorSize? IndicatorSize { get; init; }
+    /// <summary>
+    /// Primary content direction for an ActionSurface. It is intentionally
+    /// semantic rather than pixel geometry; responsive wrapping remains a
+    /// host/theme concern.
+    /// </summary>
+    public ActionSurfaceOrientation? ActionSurfaceOrientation { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
     public bool? IsBusy { get; init; }
@@ -196,7 +215,8 @@ public sealed record ViewNode
     public IReadOnlyList<ViewNode> Children { get; init; } = [];
 
     [JsonIgnore]
-    public bool IsFocusable => Kind is ViewNodeKind.Button or ViewNodeKind.Slider;
+    public bool IsFocusable => Kind is
+        ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface;
 }
 
 public sealed record ViewSnapshot

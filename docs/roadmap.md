@@ -167,9 +167,9 @@ remains off until the publisher-trust gates in Phase 4.
   implemented. `SettingsRow` and the bounded nested `ActionSheet` are now also
   public, with one stable action target, scroll/focus-follow, Disabled/Busy
   focus safety, and scope-owned B. The selection-specific Picker, controller
-  Scrubber, and responsive Row wrapping are implemented. Next component/API
-  increments are a non-focus-stealing toast and purpose-built
-  `MediaTile`/`AppTile`; then per-edge borders, responsive grid, and semantic
+  Scrubber, responsive Row wrapping, non-focus-stealing Toast, and protocol-v7
+  ActionSurface/MediaTile/AppTile are implemented; Games & Apps adopts the
+  public tile and Toast APIs. Next add per-edge borders, responsive grid, and semantic
   monospace for diagnostics/code-like values. Preserve
   44-DIP targets, non-color state, stable IDs, and one inset focus cue. Optional
   packaged fonts are lower priority and security-sensitive; they require
@@ -249,12 +249,11 @@ not irreversible API priority:
 3. **Fill the public component gaps before more one-off UI.** `SettingsRow`,
    bounded nested `ActionSheet`, and the single-select `Picker` contracts are
    public. Settings now adopts Picker, Spotify adopts the public controller
-   Scrubber, and responsive Row wrapping is implemented. Implement and verify a
-   non-focus-stealing toast and `MediaTile`/`AppTile` as public SDK contracts.
-   Then add per-edge borders, responsive grid, and semantic monospace. The
-   remaining media/app composites are active work, not shipped features, until
-   source, focused tests, full Release verification, and reference
-   documentation land together.
+   Scrubber, responsive Row wrapping, lifecycle-owned Toast, and protocol-v7
+   ActionSurface/MediaTile/AppTile contracts are public. Games & Apps adopts
+   AppTile and Toast. Next add per-edge borders, responsive grid, and semantic
+   monospace; retain full Release and packaged visual/accessibility evidence as
+   the verification gate for the implemented component set.
 4. **Complete motion without web-style overhead.** Add bounded composited
    subtree translation and short shell/widget open, close, and replacement
    transitions with reduced-motion cancellation and hidden-idle evidence.

@@ -585,7 +585,9 @@ static async Task<ViewSnapshot> WaitForActionSnapshotAsync(
         Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
         if (Nodes(snapshot.Root).Any(node =>
                 string.Equals(node.ActionId, actionId, StringComparison.Ordinal) &&
-                (node.Text ?? string.Empty).Contains(expectedText, StringComparison.Ordinal) &&
+                Nodes(node).Any(descendant =>
+                    (descendant.Text ?? string.Empty).Contains(
+                        expectedText, StringComparison.Ordinal)) &&
                 (selected is null || node.IsSelected == selected)))
             return snapshot;
         await Task.Delay(40);

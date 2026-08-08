@@ -97,6 +97,36 @@ void ShortcutsAndSlidersAreNativePressedComponents() {
           "slider adjustment participates in pressed styling");
 }
 
+void ActionSurfacesUseTheNativePressLifecycle() {
+    auto snapshot = Snapshot();
+    auto tile = Button(L"album", L"open-album");
+    tile.kind = L"actionSurface";
+    auto title = gba::WidgetNode{};
+    title.id = L"album.title";
+    title.kind = L"text";
+    title.text = L"Album title";
+    tile.children.push_back(std::move(title));
+    snapshot.root.children.insert(snapshot.root.children.begin(), std::move(tile));
+
+    gba::input::PressedInteractionState state;
+    Check(state.Begin(snapshot, L"album", L"a"),
+          "A begins the full ActionSurface press target");
+    Check(state.ActiveElementId(snapshot, L"album") == L"album",
+          "ActionSurface exposes its exact full-tile pressed identity");
+    Check(state.Release(L"a"), "ActionSurface releases with the matching A button");
+
+    snapshot.root.children[0].isDisabled = true;
+    Check(!state.Begin(snapshot, L"album", L"a"),
+          "disabled ActionSurface rejects activation");
+    snapshot.root.children[0].isDisabled = false;
+    snapshot.root.children[0].isBusy = true;
+    Check(!state.Begin(snapshot, L"album", L"a"),
+          "busy ActionSurface rejects activation");
+    snapshot.root.children[0].isBusy = false;
+    Check(!state.Begin(snapshot, L"album.title", L"a"),
+          "presentational ActionSurface child cannot begin an independent press");
+}
+
 void SnapshotAndFocusReplacementClearState() {
     auto snapshot = Snapshot();
     gba::input::PressedInteractionState state;
@@ -121,6 +151,7 @@ int main() {
     ExactPhysicalPressLifecycle();
     ActionabilityAndScopeFailClosed();
     ShortcutsAndSlidersAreNativePressedComponents();
+    ActionSurfacesUseTheNativePressLifecycle();
     SnapshotAndFocusReplacementClearState();
     std::cout << "Pressed interaction checks passed: " << checks << '\n';
     return EXIT_SUCCESS;

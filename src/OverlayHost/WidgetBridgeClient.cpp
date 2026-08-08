@@ -474,6 +474,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.indicatorSize = OptionalString(source, L"indicatorSize");
     node.inputScopeId = OptionalString(source, L"inputScopeId");
     node.scrollAxis = OptionalString(source, L"scrollAxis");
+    node.actionSurfaceOrientation = OptionalString(source, L"actionSurfaceOrientation");
     if (source.HasKey(L"styleClasses")) {
         const auto classes = source.GetNamedArray(L"styleClasses");
         node.styleClasses.reserve(classes.Size());

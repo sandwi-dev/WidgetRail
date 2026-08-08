@@ -49,7 +49,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-028 | P0 | Verifying | PlatformBroker consent migration / Settings permissions | The exact retired Recent Apps activation capability is tombstoned; unsupported/inactive details moved to a safe bounded read-only Review page, and packaged visual verification remains. |
 | GBA-029 | P1 | Verifying | Settings installed-widget inventory | Installed Widgets now separates read-only Built-in widgets from manageable Community packages instead of omitting bundled first-party widgets; packaged visual/controller verification remains. |
 | GBA-030 | P0 | Verifying | YT Music packaging / community isolation / local companion broker | YT Music now uses the public Community package/AppContainer/loopback/secret path without a trusted fallback; clean packaged controller and lifecycle evidence remains. |
-| GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | A shared minimalist default, responsive Row wrapping, public Picker, and public Scrubber exist; Settings and Spotify adopt them, while media/app tiles and packaged scale/accessibility evidence remain. |
+| GBA-031 | P1 | Verifying | Widget SDK components / built-in themes / native renderer | The shared default, responsive Row wrapping, Picker, Scrubber, Toast, and protocol-v7 ActionSurface/MediaTile/AppTile exist; Games & Apps adopts the public tile/Toast APIs, while packaged scale/accessibility evidence remains. |
 | GBA-032 | P1 | Verifying | GBSS / native renderer / accessibility | Stable declarative nodes now interpolate bounded opacity/scale targets with reduced-motion cancellation; packaged visual/performance evidence remains. |
 | GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable authority-scoped curation and close-after-correlated-success are implemented; broader sources, icons, classification, and packaged controller evidence remain. |
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
@@ -897,10 +897,11 @@ display/accessibility matrix are not recorded yet.
 5. Packaged screenshots and controller traversal verify the complete component
    set, not only one hand-tuned widget.
 6. Common product composition no longer requires private widget hacks:
-   `SettingsRow`, `ActionSheet`, single-select `Picker`, and controller
-   `Scrubber` have reviewed bounded contracts, and Rows can wrap responsively;
-   toast, `MediaTile`/`AppTile`, per-edge borders, responsive grid, and semantic
-   monospace retain explicit deferrals.
+   `SettingsRow`, `ActionSheet`, single-select `Picker`, controller `Scrubber`,
+   lifecycle-owned `Toast`, and protocol-v7 `ActionSurface`/`MediaTile`/
+   `AppTile` have reviewed bounded contracts, and Rows can wrap responsively;
+   per-edge borders, responsive grid, and semantic monospace retain explicit
+   deferrals.
 7. The default rejects web-centric stagger/ambient motion, editorial serif or
    faux-macOS chrome, and treats packaged fonts as lower-priority security-
    sensitive assets rather than a baseline dependency.
@@ -910,10 +911,13 @@ its complete theme catalog, including selected focus restoration, disabled
 invalid entries, one host-owned Scroll, scope-owned B, and no LB/RB pagination.
 Its focused Release suite passes 41/41. Responsive Row wrapping and the public
 controller Scrubber now have source and focused regression coverage; Spotify
-uses the Scrubber instead of a private seek composition. Complete Release and
-packaged visual evidence remain before ledger closure. Purpose-built
-`MediaTile`/`AppTile`, toast, and other new semantic theme hooks remain
-incomplete.
+uses the Scrubber instead of a private seek composition. Protocol-v7
+ActionSurface supplies one clipped full-tile focus/pointer/pressed target with
+bounded presentation-only descendants. Public MediaTile/AppTile and lifecycle-
+owned Toast helpers plus stable theme hooks are implemented, and Games & Apps
+adopts AppTile and Toast. Complete Release and packaged visual evidence remain
+before ledger closure; per-edge borders, responsive grid, semantic monospace,
+and broader motion remain incomplete.
 
 ## GBA-032 — GBSS transition declarations do not animate
 

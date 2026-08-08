@@ -72,13 +72,22 @@ public sealed class GamesAppsWidget : Widget
     private bool _hasLibrarySnapshot;
     private int? _nextOffset;
     private CancellationTokenSource? _activeRun;
+    private CancellationTokenSource? _toastLifetime;
+    private ToastNotice? _toast;
     private long _generation;
+    private long _toastGeneration;
     private long _stateRevision;
 
     private sealed record PersistedLibraryState(
         int Version,
         IReadOnlyList<string> SavedIds,
         string? SelectedSavedId);
+
+    private sealed record ToastNotice(
+        string Title,
+        string Message,
+        ToastTone Tone,
+        TimeSpan Duration);
 
     public GamesAppsViewState ViewState { get { lock (_gate) return _viewState; } }
     public IReadOnlyList<WidgetAppLibraryItem> Items
@@ -111,6 +120,7 @@ public sealed class GamesAppsWidget : Widget
         int? nextOffset;
         GamesAppsPage page;
         IReadOnlyList<string> curatedAppIds;
+        ToastNotice? toast;
         lock (_gate)
         {
             items = _items;
@@ -122,9 +132,11 @@ public sealed class GamesAppsWidget : Widget
             nextOffset = _nextOffset;
             page = _page;
             curatedAppIds = _curatedSavedIds.ToArray();
+            toast = _toast;
         }
 
-        var header = UI.Stack("games.header",
+        var headerChildren = new List<WidgetElement>
+        {
                 UI.Text("LIBRARY", "games.eyebrow", "Installed application library")
                     .Classes("games-eyebrow"),
                 UI.Text("Games & Apps", "games.title", "Games and Apps")
@@ -133,7 +145,12 @@ public sealed class GamesAppsWidget : Widget
                     "games-status",
                     state == GamesAppsViewState.Ready ? "is-ready" :
                     state is GamesAppsViewState.PermissionDenied or GamesAppsViewState.Error
-                        ? "is-error" : "is-neutral"))
+                        ? "is-error" : "is-neutral"),
+        };
+        if (toast is not null)
+            headerChildren.Add(UI.Toast(
+                toast.Title, toast.Message, toast.Tone, "games.toast", toast.Duration));
+        var header = UI.Stack("games.header", headerChildren.ToArray())
             .Classes("games-header");
 
         if (state != GamesAppsViewState.Ready)
@@ -184,9 +201,20 @@ public sealed class GamesAppsWidget : Widget
             var item = curated[index];
             var id = elementIds[index];
             map[id] = item.AppId;
-            var button = UI.Button(item.DisplayName, "games.launch", id)
+            var isOpening = string.Equals(
+                launchingAppId, item.AppId, StringComparison.Ordinal);
+            var tileState = isOpening ? "Opening…" : "Ready";
+            var tile = UI.AppTile(
+                    item.DisplayName,
+                    tileState,
+                    "games.launch",
+                    id,
+                    subtitle: AppKindLabel(item.Kind),
+                    artwork: AppArtwork(item, $"{item.DisplayName} icon"),
+                    accessibilityLabel:
+                        $"{item.DisplayName}, {AppKindLabel(item.Kind)}, {tileState}")
                 .Shortcut(ControllerButton.X, actionId: "games.remove")
-                .Busy(string.Equals(launchingAppId, item.AppId, StringComparison.Ordinal))
+                .Busy(isOpening)
                 .Disabled(launchingAppId is not null ||
                     LifecycleState != WidgetLifecycleState.Interactive)
                 .Selected(string.Equals(selectedAppId, item.AppId, StringComparison.Ordinal))
@@ -198,11 +226,7 @@ public sealed class GamesAppsWidget : Widget
                 .FocusRight(id)
                 .Classes("games-card-action", "games-app-row",
                     item.Kind == WidgetAppLibraryKind.Game ? "is-game" : "is-application");
-            button = item.IconPngBase64 is { Length: > 0 } png
-                ? button.LeadingInlinePng(
-                    png, ImageFit.Contain, $"Launch {item.DisplayName}")
-                : button.Icon(WidgetGlyph.Play, $"Launch {item.DisplayName}");
-            rows.Add(button);
+            rows.Add(tile);
         }
 
         rows.Add(UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
@@ -257,10 +281,16 @@ public sealed class GamesAppsWidget : Widget
             var down = index + 1 < items.Count
                 ? elementIds[index + 1]
                 : nextOffset is not null ? "games.load-more" : id;
-            rows.Add(UI.Button(item.DisplayName, "games.toggle-curation", id)
-                .Icon(saved ? WidgetGlyph.Check : WidgetGlyph.Play,
-                    saved ? $"{item.DisplayName}, saved, A removes" :
-                        $"{item.DisplayName}, A adds to library")
+            rows.Add(UI.AppTile(
+                    item.DisplayName,
+                    saved ? "Saved" : "Available",
+                    "games.toggle-curation",
+                    id,
+                    subtitle: AppKindLabel(item.Kind),
+                    artwork: AppArtwork(item, $"{item.DisplayName} icon"),
+                    accessibilityLabel: saved
+                        ? $"{item.DisplayName}, saved, A removes from library"
+                        : $"{item.DisplayName}, available, A adds to library")
                 .Selected(saved)
                 .Disabled(launchingAppId is not null || loadingMore ||
                     LifecycleState != WidgetLifecycleState.Interactive)
@@ -388,6 +418,7 @@ public sealed class GamesAppsWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         IReadOnlyList<string>? savedIds = null;
         string? selectedSavedId = null;
+        string? toastMessage = null;
         lock (_gate)
         {
             var item = _items.FirstOrDefault(candidate =>
@@ -400,17 +431,19 @@ public sealed class GamesAppsWidget : Widget
                     .Where(candidate => !string.Equals(
                         candidate.SavedId, item.SavedId, StringComparison.Ordinal)).ToArray();
                 _status = $"Removed {item.DisplayName} from your library";
+                toastMessage = _status;
             }
             else
             {
                 _curatedSavedIds.Add(item.SavedId);
                 _libraryItems = _libraryItems.Append(item).ToArray();
                 _status = $"Added {item.DisplayName} to your library";
+                toastMessage = _status;
             }
             savedIds = _curatedSavedIds.ToArray();
             selectedSavedId = item.SavedId;
         }
-        Invalidate();
+        ShowToast("Library updated", toastMessage!, ToastTone.Success);
         await PersistLibraryAsync(savedIds, selectedSavedId, cancellationToken).ConfigureAwait(false);
     }
 
@@ -419,6 +452,7 @@ public sealed class GamesAppsWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         IReadOnlyList<string>? savedIds = null;
         string? selectedSavedId = null;
+        string? toastMessage = null;
         lock (_gate)
         {
             var item = _items.FirstOrDefault(candidate =>
@@ -430,10 +464,11 @@ public sealed class GamesAppsWidget : Widget
             _items = _libraryItems;
             _selectedAppId = ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
             _status = $"Removed {item.DisplayName} from your library";
+            toastMessage = _status;
             savedIds = _curatedSavedIds.ToArray();
             selectedSavedId = ResolveCuratedItemsLocked().FirstOrDefault()?.SavedId;
         }
-        Invalidate();
+        ShowToast("Library updated", toastMessage!, ToastTone.Success);
         await PersistLibraryAsync(savedIds, selectedSavedId, cancellationToken).ConfigureAwait(false);
     }
 
@@ -600,6 +635,7 @@ public sealed class GamesAppsWidget : Widget
     private void StopActiveRun()
     {
         Interlocked.Increment(ref _generation);
+        ClearToast(invalidate: false);
         var lifetime = Interlocked.Exchange(ref _activeRun, null);
         lifetime?.Cancel();
         lifetime?.Dispose();
@@ -682,7 +718,8 @@ public sealed class GamesAppsWidget : Widget
         }
         catch (Exception exception)
         {
-            ApplyCommandError(exception, "Applications could not be loaded");
+            var message = ApplyCommandError(exception, "Applications could not be loaded");
+            ShowToast("Catalog unavailable", message, ToastTone.Danger);
             lock (_gate)
             {
                 _page = GamesAppsPage.Library;
@@ -736,7 +773,8 @@ public sealed class GamesAppsWidget : Widget
         }
         catch (Exception exception)
         {
-            ApplyCommandError(exception, "More apps could not be loaded");
+            var message = ApplyCommandError(exception, "More apps could not be loaded");
+            ShowToast("Could not load more", message, ToastTone.Danger);
         }
         finally
         {
@@ -789,6 +827,7 @@ public sealed class GamesAppsWidget : Widget
                 _launchingAppId = null;
                 _status = $"Opened {selected.DisplayName}";
             }
+            ShowToast("Application opened", $"Opened {selected.DisplayName}", ToastTone.Success);
             await PersistLibraryAsync(
                 persistedOrder, selected.SavedId, commandLifetime.Token).ConfigureAwait(false);
         }
@@ -800,9 +839,10 @@ public sealed class GamesAppsWidget : Widget
         catch (Exception exception)
         {
             lock (_gate) _launchingAppId = null;
-            ApplyCommandError(exception, selected is null
+            var message = ApplyCommandError(exception, selected is null
                 ? "The selected app could not be opened"
                 : $"{selected.DisplayName} could not be opened");
+            ShowToast("Application not opened", message, ToastTone.Danger);
             return;
         }
         finally
@@ -987,11 +1027,75 @@ public sealed class GamesAppsWidget : Widget
         Invalidate();
     }
 
-    private void ApplyCommandError(Exception exception, string fallback)
+    private string ApplyCommandError(Exception exception, string fallback)
     {
         var (_, status) = ErrorState(exception);
-        lock (_gate) _status = status == "App library request failed" ? fallback : status;
+        var message = status == "App library request failed" ? fallback : status;
+        lock (_gate) _status = message;
         Invalidate();
+        return message;
+    }
+
+    private void ShowToast(string title, string message, ToastTone tone)
+    {
+        var duration = UI.DefaultToastDuration;
+        var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ActiveCancellationToken);
+        CancellationTokenSource? previous;
+        var generation = Interlocked.Increment(ref _toastGeneration);
+        lock (_gate)
+        {
+            previous = _toastLifetime;
+            _toastLifetime = lifetime;
+            _toast = new ToastNotice(title, message, tone, duration);
+        }
+        previous?.Cancel();
+        previous?.Dispose();
+        Invalidate();
+        _ = ExpireToastAsync(generation, duration, lifetime);
+    }
+
+    private async Task ExpireToastAsync(
+        long generation,
+        TimeSpan duration,
+        CancellationTokenSource lifetime)
+    {
+        try
+        {
+            await Task.Delay(duration, lifetime.Token).ConfigureAwait(false);
+            lock (_gate)
+            {
+                if (Interlocked.Read(ref _toastGeneration) != generation ||
+                    !ReferenceEquals(_toastLifetime, lifetime))
+                    return;
+                _toast = null;
+                _toastLifetime = null;
+            }
+            Invalidate();
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            lifetime.Dispose();
+        }
+    }
+
+    private void ClearToast(bool invalidate)
+    {
+        Interlocked.Increment(ref _toastGeneration);
+        CancellationTokenSource? lifetime;
+        bool changed;
+        lock (_gate)
+        {
+            lifetime = _toastLifetime;
+            _toastLifetime = null;
+            changed = _toast is not null;
+            _toast = null;
+        }
+        lifetime?.Cancel();
+        lifetime?.Dispose();
+        if (changed && invalidate) Invalidate();
     }
 
     private static (GamesAppsViewState State, string Status) ErrorState(Exception exception)
@@ -1021,6 +1125,14 @@ public sealed class GamesAppsWidget : Widget
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(opaqueId));
         return "games.item." + Convert.ToHexString(hash.AsSpan(0, 10)).ToLowerInvariant();
     }
+
+    private static string AppKindLabel(WidgetAppLibraryKind kind) =>
+        kind == WidgetAppLibraryKind.Game ? "Game" : "Application";
+
+    private static TileArtwork AppArtwork(WidgetAppLibraryItem item, string accessibilityLabel) =>
+        item.IconPngBase64 is { Length: > 0 } png
+            ? TileArtwork.FromInlinePng(png, accessibilityLabel, ImageFit.Contain)
+            : TileArtwork.FromGlyph(WidgetGlyph.Play, accessibilityLabel);
 
     private static string CatalogElementId(string opaqueId)
     {

@@ -32,6 +32,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pickers preserve single-select controller and accessibility semantics", PickersAreSemantic),
     ("Scrubbers compose stable controller seeking and responsive time semantics", ScrubbersAreSemantic),
     ("Scrubbers route absolute millisecond targets through the native Slider contract", ScrubberInputResolves),
+    ("Toasts are bounded semantic notifications that never steal controller focus", ToastsAreNonInteractive),
+    ("Media tiles expose one rich full-tile controller target", TileComponentTests.MediaTilesAreSemantic),
+    ("App tiles constrain artwork and keep state non-color-only", TileComponentTests.AppTilesAreSemantic),
+    ("Action surfaces fail closed and route one activation", TileComponentTests.ActionSurfacesValidateAndRoute),
     ("Minimalist rows and controller hints preserve public focus and accessibility contracts", MinimalistRowsAreSemantic),
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
     ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
@@ -1861,6 +1865,108 @@ static async Task ScrubberInputResolves()
     var activation = await widget.NextActionAsync();
     Assert.Equal("media.seek.preview", activation.ActionId);
     Assert.Equal(null, activation.RequestedValue);
+}
+
+static Task ToastsAreNonInteractive()
+{
+    var toast = UI.Toast(
+        "Network restored",
+        "Your game can use online services again.",
+        ToastTone.Success,
+        "network.toast")
+        .AddClasses("widget-toast");
+    var snapshot = new WidgetView(
+        UI.Stack("toast.root",
+                UI.Button("Continue", "continue", "continue"),
+                toast)
+            .InputScope("toast.scope")
+            .Shortcut(ControllerButton.B, "back"),
+        InitialFocusId: "continue",
+        ActiveInputScopeId: "toast.scope")
+        .CreateSnapshot("toast.instance", 3);
+
+    Assert.Equal(ProtocolConstants.BaselineVersion, snapshot.ProtocolVersion);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    Assert.Equal("continue", snapshot.InitialFocusId);
+    Assert.Equal("toast.scope", snapshot.ActiveInputScopeId);
+
+    var root = Find(snapshot.Root, "network.toast");
+    Assert.Equal(ViewNodeKind.Row, root.Kind);
+    Assert.True(
+        new[] { "gbar-toast", "gbar-toast--success", "widget-toast" }
+            .SequenceEqual(root.StyleClasses),
+        "Toast tone and author classes must remain stable theme hooks.");
+    Assert.True(!root.IsFocusable, "A Toast root must never enter controller focus.");
+    Assert.True(AllNodes(root).All(node => !node.IsFocusable),
+        "A Toast must contain zero controller focus stops.");
+    Assert.True(AllNodes(root).All(node => node.ActionId is null),
+        "A Toast must not expose an action.");
+    Assert.True(AllNodes(root).All(node => node.Shortcuts.Count == 0),
+        "A Toast must not intercept shortcuts from its owning input scope.");
+    Assert.True(
+        new[] { "network.toast.icon", "network.toast.copy" }
+            .SequenceEqual(root.Children.Select(child => child.Id)),
+        "Toast child order or stable IDs changed.");
+    Assert.Equal(WidgetGlyph.Check, Find(root, "network.toast.icon").Glyph);
+    Assert.Equal("Success notification", Find(root, "network.toast.icon").AccessibilityLabel);
+    Assert.Equal("Network restored", Find(root, "network.toast.title").Text);
+    Assert.Equal("Your game can use online services again.",
+        Find(root, "network.toast.message").Text);
+    Assert.Equal(UI.DefaultToastDuration, toast.Duration);
+
+    var neutral = UI.Toast(
+        "Saved", "Settings were saved.", ToastTone.Neutral, "neutral.toast",
+        TimeSpan.FromSeconds(2)).ToProtocolNode();
+    Assert.Equal(null, FindOrNull(neutral, "neutral.toast.icon"));
+    Assert.True(AllNodes(neutral).All(node => !node.IsFocusable),
+        "A glyph-free Toast must remain nonfocusable.");
+
+    var custom = UI.Toast(
+        "Connected", "Ethernet is active.", ToastTone.Info, "custom.toast",
+        TimeSpan.FromSeconds(30), WidgetGlyph.Ethernet).ToProtocolNode();
+    Assert.Equal(WidgetGlyph.Ethernet, Find(custom, "custom.toast.icon").Glyph);
+    Assert.Equal(TimeSpan.FromSeconds(30), UI.Toast(
+        "Connected", "Ethernet is active.", ToastTone.Info, "duration.toast",
+        TimeSpan.FromSeconds(30)).Duration);
+    var maximumCopy = UI.Toast(
+        new string('t', UI.MaximumToastTitleCharacters),
+        new string('m', UI.MaximumToastMessageCharacters),
+        ToastTone.Neutral,
+        "maximum.copy");
+    Assert.Equal(UI.MaximumToastTitleCharacters, maximumCopy.Title.Length);
+    Assert.Equal(UI.MaximumToastMessageCharacters, maximumCopy.Message.Length);
+
+    Assert.Throws<ArgumentException>(() => UI.Toast(
+        " ", "Message", ToastTone.Info, "empty.title"));
+    Assert.Throws<ArgumentException>(() => UI.Toast(
+        "Title", " ", ToastTone.Info, "empty.message"));
+    Assert.Throws<ArgumentException>(() => UI.Toast(
+        new string('t', UI.MaximumToastTitleCharacters + 1),
+        "Message", ToastTone.Info, "long.title"));
+    Assert.Throws<ArgumentException>(() => UI.Toast(
+        "Title", new string('m', UI.MaximumToastMessageCharacters + 1),
+        ToastTone.Info, "long.message"));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Toast(
+        "Title", "Message", ToastTone.Info, "short.duration",
+        UI.MinimumToastDuration - TimeSpan.FromMilliseconds(1)));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Toast(
+        "Title", "Message", ToastTone.Info, "long.duration",
+        UI.MaximumToastDuration + TimeSpan.FromMilliseconds(1)));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Toast(
+        "Title", "Message", (ToastTone)999, "bad.tone"));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Toast(
+        "Title", "Message", ToastTone.Info, "bad.glyph", glyph: (WidgetGlyph)999));
+    Assert.Throws<ArgumentException>(() => UI.Toast(
+        "Title", "Message", ToastTone.Info, new string('i', 125)));
+    return Task.CompletedTask;
+
+    static IEnumerable<ViewNode> AllNodes(ViewNode node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+        foreach (var descendant in AllNodes(child))
+            yield return descendant;
+    }
 }
 
 static Task MinimalistRowsAreSemantic()

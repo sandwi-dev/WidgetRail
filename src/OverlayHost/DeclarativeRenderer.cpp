@@ -276,7 +276,7 @@ struct DeclarativeRenderer::RenderPass final {
                 options.rootFontSizePx,
                 focused,
                 inheritedBackground,
-                node.kind == L"button"
+                (node.kind == L"button" || node.kind == L"actionSurface")
                     ? std::optional<NativeColor>{kDefaultButton}
                     : std::nullopt,
             },
@@ -319,7 +319,8 @@ struct DeclarativeRenderer::RenderPass final {
 
         const auto& style = base.style;
         auto paintedBackground = style.background();
-        if (!paintedBackground && node.kind == L"button")
+        if (!paintedBackground &&
+            (node.kind == L"button" || node.kind == L"actionSurface"))
             paintedBackground = kDefaultButton;
         std::optional<NativeColor> effectiveBackground = ResolveNativeSurfaceColor(
             paintedBackground,
@@ -327,7 +328,9 @@ struct DeclarativeRenderer::RenderPass final {
             style.opacity());
         LayoutElement element;
         element.id = narrowId;
-        const auto semanticRow = node.kind == L"row";
+        const auto semanticRow = node.kind == L"row" ||
+            (node.kind == L"actionSurface" &&
+             node.actionSurfaceOrientation == L"horizontal");
         element.direction = node.kind == L"scroll"
             ? (node.scrollAxis == L"horizontal"
                 ? LayoutDirection::Row
@@ -371,6 +374,12 @@ struct DeclarativeRenderer::RenderPass final {
         if (node.kind == L"slider") {
             element.minWidth = std::max(element.minWidth.value_or(0.0F), 160.0F);
             element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
+        } else if (node.kind == L"actionSurface") {
+            // A rich tile is one controller and pointer target. Enforce the
+            // platform's minimum target and clip its presentational subtree so
+            // painted content can never extend beyond the actionable bounds.
+            element.minWidth = std::max(element.minWidth.value_or(0.0F), kMinimumControlSize);
+            element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
         } else if (node.kind == L"loadingIndicator") {
             const auto semanticSize = node.indicatorSize == L"compact"
                 ? 16.0F
@@ -387,6 +396,8 @@ struct DeclarativeRenderer::RenderPass final {
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
             : declarative::OverflowBehavior::Visible;
+        if (node.kind == L"actionSurface")
+            element.overflow = declarative::OverflowBehavior::Clip;
         if (node.kind == L"scroll") {
             element.overflow = declarative::OverflowBehavior::Clip;
             if (node.scrollAxis == L"vertical")
@@ -483,7 +494,8 @@ struct DeclarativeRenderer::RenderPass final {
         const std::wstring_view inputScope = !node.inputScopeId.empty()
             ? std::wstring_view(node.inputScopeId)
             : inheritedScope.empty() ? std::wstring_view(node.id) : inheritedScope;
-        if ((node.kind == L"button" || node.kind == L"slider") &&
+        if ((node.kind == L"button" || node.kind == L"slider" ||
+             node.kind == L"actionSurface") &&
             inputScope == matchingScope) {
             ids.emplace_back(node.id);
         }
@@ -991,7 +1003,9 @@ struct DeclarativeRenderer::RenderPass final {
                 Add(node.id, L"shadow_blur_fallback", L"Blur is approximated by a bounded offset shadow.");
         }
         auto background = style.background();
-        if (!background && node.kind == L"button") background = kDefaultButton;
+        if (!background &&
+            (node.kind == L"button" || node.kind == L"actionSurface"))
+            background = kDefaultButton;
         if (background) {
             auto brush = Brush(target, WithOpacity(*background, opacity));
             if (brush)
@@ -1208,8 +1222,8 @@ struct DeclarativeRenderer::RenderPass final {
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity) {
-        if (!target || node.kind != L"button") return;
-        if (node.text.empty()) {
+        if (!target || (node.kind != L"button" && node.kind != L"actionSurface")) return;
+        if (node.text.empty() && node.kind != L"actionSurface") {
             // Icon-only controls have no trailing-label space for a checkmark
             // or spinner. Use compact peripheral cues so state never covers
             // the control's primary glyph.
@@ -1320,7 +1334,8 @@ struct DeclarativeRenderer::RenderPass final {
             Intersection(box->borderBox, box->visibleBox);
 #endif
 
-        if (node.kind == L"button" || node.kind == L"slider") {
+        if (node.kind == L"button" || node.kind == L"slider" ||
+            node.kind == L"actionSurface") {
             result.navigationRects[node.id] = box->borderBox;
             // A busy slider retains its place in the focus graph while its
             // value is pending, but the host suppresses adjustment/activation.
@@ -1402,10 +1417,15 @@ struct DeclarativeRenderer::RenderPass final {
             }
         } else if (node.kind != L"stack" && node.kind != L"row" &&
                    node.kind != L"scroll" && node.kind != L"spacer") {
+            if (node.kind != L"actionSurface")
             Add(node.id, L"unknown_kind", L"Unsupported declarative node kind: " + node.kind);
         }
 
         for (const auto& child : node.children) DrawNode(child, inputScope);
+        // Draw semantic state after descendants so it remains visible over a
+        // composed tile while the entire surface stays the sole input target.
+        if (node.kind == L"actionSurface")
+            DrawStateCue(node, style, paintRect, opacity);
         target->PopAxisAlignedClip();
         // Defer the focus ring until the entire tree is out of its nested
         // overflow clips. An outline is presentation, not child content, and

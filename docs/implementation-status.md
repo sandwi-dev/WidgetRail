@@ -6,11 +6,12 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
-Responsive Row wrapping and the first production uses of the public
-single-select Picker and controller Scrubber are implemented in source and
-focused tests. Complete Release and packaged visual evidence remain the gate
-for closing their tracked verification issues. Purpose-built media/app tiles
-remain a follow-up rather than an implemented claim.
+Responsive Row wrapping, protocol-v7 ActionSurface, MediaTile/AppTile, Toast,
+and the first production uses of the public Picker and Scrubber are implemented
+in source and focused tests. Games & Apps uses the public AppTile for its full-
+tile launch/catalog targets and lifecycle-safe Toast feedback. Complete Release
+and packaged visual evidence remain the gate for closing the tracked visual and
+accessibility verification issue.
 
 ## Implemented
 
@@ -60,15 +61,17 @@ Up/Down navigation.
 ### Widget platform
 
 - `WidgetProtocol`: strict version-1 manifests and additive snapshot protocols
-  v1–v3, deterministic JSON, stable IDs, focus validation, quick actions with
+  v1–v7, deterministic JSON, stable IDs, focus validation, quick actions with
   optional typed control-operation metadata, Scroll/surface hints, absolute-
   value Sliders, images, closed semantic glyphs, explicit active controller
   scopes and snapshot correlation, and interaction state.
 - `WidgetSdk`: typed Stack, Row, Text, Button, Progress, Slider, Scroll, Spacer,
-  Image, and Icon authoring; controller-ready ToggleButton, Stepper,
+  Image, Icon, LoadingIndicator, and protocol-v7 ActionSurface authoring;
+  controller-ready ToggleButton, Stepper,
   IconButton, Card, SectionHeader, StatusBadge, Divider, Alert, EmptyState,
   SegmentedTabs, Switch, ScopedDialog, SettingsRow, and bounded nested
-  ActionSheet plus single-select Picker composites with stable semantic
+  ActionSheet plus single-select Picker, Scrubber, MediaTile, AppTile, and Toast
+  composites with stable semantic
   `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
@@ -96,6 +99,11 @@ Up/Down navigation.
   authority, invalidation/failure events, no-poll platform-appearance revisions,
   globally layered widget themes, bounded shell appearance, and computed GBSS
   styles.
+- `WidgetBridge` and the native declarative renderer preserve the distinct
+  `loadingIndicator` render role (rather than treating it as a container) and
+  understand protocol-v7 ActionSurface orientation, computed style, bounded
+  layout, full-surface focus/hit/pressed geometry, and fail-closed unknown-kind
+  behavior. Reduced motion keeps LoadingIndicator accessible but static.
 - `WidgetWorkerHost`: a packaged generic worker executable that loads one
   installed package's public concrete SDK `Widget` entrypoint and contained
   dependencies inside the mandatory package AppContainer, authenticates an
@@ -779,11 +787,11 @@ and [troubleshooting](troubleshooting.md).
    Spotify authorization is a separate authenticated evidence gate.
 2. Complete the YT Music clean Community-addon install/consent/lifecycle/crash/
    update/rollback/uninstall proof without a trusted fallback.
-3. Build the next public component milestone: non-focus-stealing toast,
-   `MediaTile`, and `AppTile`. `SettingsRow`, bounded nested `ActionSheet`,
-   single-select `Picker`, and controller `Scrubber` are public; Settings and
-   Spotify provide their first production uses. Responsive Row wrapping is
-   implemented. Follow with per-edge borders, responsive grid, semantic
+3. Build the next public component milestone after the completed Toast and
+   protocol-v7 ActionSurface/MediaTile/AppTile slice. `SettingsRow`, bounded
+   nested `ActionSheet`, single-select `Picker`, controller `Scrubber`, and the
+   rich-tile APIs are public; Settings, Spotify, and Games & Apps provide first
+   production uses. Follow with per-edge borders, responsive grid, semantic
    monospace, and bounded shell transitions. None of those follow-up contracts
    are claimed as implemented until their focused and complete Release evidence
    is recorded.

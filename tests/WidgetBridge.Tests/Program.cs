@@ -48,6 +48,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
+    ("Protocol-v7 action surfaces and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
 };
@@ -1199,6 +1200,29 @@ static Task ScrollRenderRole()
     Assert.Equal(2, styles.Count);
     Assert.True(styles.ContainsKey("sessions"), "Scroll role was omitted from bridge styles.");
     Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
+    return Task.CompletedTask;
+}
+
+static Task ActionSurfaceRenderRole()
+{
+    var snapshot = new WidgetView(
+        UI.Stack("root",
+            UI.AppTile(
+                "Long application name",
+                "Ready",
+                "launch",
+                "library.app",
+                subtitle: "Application",
+                artwork: TileArtwork.FromGlyph(WidgetGlyph.Play, "Application icon")),
+            UI.LoadingIndicator("library.loading", "Loading applications")),
+        InitialFocusId: "library.app")
+        .CreateSnapshot("bridge.action-surface", 1);
+    var styles = BridgeRenderStyleResolver.Resolve(snapshot, theme: null);
+    Assert.True(styles.ContainsKey("library.app"),
+        "ActionSurface role was omitted from bridge styles.");
+    Assert.True(styles.ContainsKey("library.loading"),
+        "LoadingIndicator role was omitted from bridge styles.");
+    Assert.Equal(ProtocolConstants.ActionSurfaceVersion, snapshot.ProtocolVersion);
     return Task.CompletedTask;
 }
 

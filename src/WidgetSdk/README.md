@@ -37,6 +37,24 @@ only while it is visible; reduced-motion mode keeps the same accessible status
 as a static indeterminate arc. Keep fast cached transitions visually quiet
 instead of flashing a spinner for a single frame.
 
+For rich media/application rows, use `UI.MediaTile` or `UI.AppTile`. Both are
+protocol-v7 `ActionSurface` compositions: the complete tile is the sole focus,
+pointer, pressed, and A-action target, while generated artwork/copy children are
+presentation only. `TileArtwork` accepts one semantic glyph, credential-free
+HTTPS image, or bounded inline PNG. Custom rich actions may use
+`UI.ActionSurface`, but its subtree is limited to 8 direct children, 32 total
+descendants, and four relative levels and cannot contain actions, focus,
+scopes, shortcuts, scrolling, interaction state, Buttons, Sliders, or another
+ActionSurface. Preserve generated `id.artwork`, `id.content`, `id.title`,
+`id.subtitle`, `id.metadata`, and `id.state` suffixes and `gbar-action-surface`/
+`gbar-tile` classes when adding widget-specific classes.
+
+Use `UI.Toast` for brief feedback that must not steal focus. Tone is paired
+with visible text, duration is bounded to 2–30 seconds (five by default), and
+the widget—not the host or component—owns removal through normal lifecycle-
+aware state. Do not create a timer or hidden worker solely for Toast animation;
+themes must suppress or shorten motion when reduced motion is active.
+
 Unit tests can use the supported transport-free fake instead of reflection,
 internal APIs, named pipes, or hand-written JSON:
 
