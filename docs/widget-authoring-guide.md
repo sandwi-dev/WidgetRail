@@ -609,6 +609,69 @@ passwords, and cookies belong in the separate private-secret service. The full
 64 KiB JSON, rate, CAS, identity/update, uninstall-retention, and public test
 fixture contract is in [Private widget state](private-widget-state.md).
 
+## Runtime-owned async operations
+
+Use the protected `Operations` coordinator for user-triggered or route-loading
+work instead of owning task fields, cancellation sources, or semaphores:
+
+```csharp
+var refresh = Operations.RunSingleFlight(
+    "library.refresh",
+    async context => await RefreshAsync(context.CancellationToken));
+
+var page = Operations.RunLatest(
+    "library.page",
+    async context => await LoadPageAsync(route, context),
+    WidgetOperationLifetime.Active);
+
+var save = Operations.RunSerial(
+    "library.save",
+    async context => await SaveAsync(context.CancellationToken),
+    WidgetOperationLifetime.Widget);
+```
+
+Each stable key is one lane with one policy and lifetime while it is busy:
+
+- `RunSingleFlight` starts once; another call with the same key joins the
+  running completion instead of invoking its delegate.
+- `RunLatest` starts once, then keeps at most one pending replacement. A newer
+  call synchronously makes the active context non-current, requests its
+  cancellation, supersedes any older pending call, and starts the newest only
+  after the active delegate exits. Delegates never overlap for that key.
+- `RunSerial` preserves FIFO order with one active delegate and at most 16
+  pending calls per key.
+
+Choose the shortest `WidgetOperationLifetime`: `Active` spans Visible and
+Interactive, `State` belongs only to the exact current Background/Visible/
+Interactive state, and `Widget` spans creation through Destroying for
+intentional work such as an already-started authorization flow. Work is
+rejected before creation, after Destroying begins, or when its requested
+lifetime is unavailable. On a lifecycle boundary, the SDK cancels and awaits
+all operations owned by the ending lifetime before it calls the corresponding
+lifecycle transition callbacks; delegates must therefore honor
+`context.CancellationToken` and finish promptly.
+
+Admission and completion are separate. `WidgetOperationHandle.Admission` is
+`Started`, `Joined`, `Replaced`, `Enqueued`, `RejectedInactive`, or
+`RejectedCapacity`; `IsAccepted` is false only for the two rejection cases.
+`Completion` never faults and returns `Succeeded`, `Canceled`, `Superseded`,
+`Failed`, or `Rejected`, with the exception attached only to `Failed`.
+`OperationFailed` publishes that failure once. For latest-wins work, check
+`context.IsCurrent` immediately before committing state; its generation becomes
+non-current synchronously when a replacement is admitted.
+
+The coordinator admits at most 32 keys and 64 total active/pending operations.
+Capacity rejection is a result, not an invitation to spin or create a fallback
+task. A busy key cannot change policy or lifetime. Use `IsBusy`, `Cancel`,
+`WhenIdleAsync`, `WhenAllIdleAsync`, and `BusyChanged` for presentation and
+tests; busy-edge changes already invalidate the widget.
+
+Spotify's Community addon is the first migration: all destination, retry,
+playlist-open, and protocol-v11 near-edge page loads share one Active
+`RunLatest` lane. Its 12-row playlist windows and six-page caches remain domain
+policy, while cancellation, non-overlap, stale-result authority, and lifecycle
+draining now come from the SDK. There is still no visible **Load more** row.
+
 ## GBSS: safe widget-local styling
 
 Attach semantic classes in C# and ship `styles/default.gbss`:

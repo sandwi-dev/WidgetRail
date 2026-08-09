@@ -402,6 +402,13 @@ public abstract partial class Widget
             Volatile.Write(ref _isActive, 0);
             Volatile.Write(ref _lifecycleState, (int)WidgetLifecycleState.Destroying);
 
+            var endingLifetimes = new List<CancellationToken>(3);
+            if (stateLifetime is not null) endingLifetimes.Add(stateLifetime.Token);
+            if (activeLifetime is not null) endingLifetimes.Add(activeLifetime.Token);
+            endingLifetimes.Add(_widgetLifetime.Token);
+            await _operations.DrainLifetimesAsync(endingLifetimes, shutdownToken)
+                .ConfigureAwait(false);
+
             try
             {
                 if (activeLifetime is not null)
@@ -469,6 +476,13 @@ public abstract partial class Widget
         Volatile.Write(ref _lifecycleState, (int)current);
         try
         {
+            var endingLifetimes = new List<CancellationToken>(2);
+            if (previousStateLifetime is not null)
+                endingLifetimes.Add(previousStateLifetime.Token);
+            if (endedActiveLifetime is not null)
+                endingLifetimes.Add(endedActiveLifetime.Token);
+            await _operations.DrainLifetimesAsync(endingLifetimes, transitionToken)
+                .ConfigureAwait(false);
             await OnLifecycleStateChangedAsync(previous, current, currentStateLifetime.Token)
                 .ConfigureAwait(false);
             if (!wasVisible && isVisible)

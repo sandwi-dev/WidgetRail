@@ -59,6 +59,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Null manifest collections report validation errors", NullManifestCollectionsFail),
     ("Clock sample renders controller metadata", ClockRenders),
     ("Clock refresh invalidates once", ClockInvalidates),
+    ("Runtime-owned operations coordinate concurrency and lifecycle cleanup", WidgetOperationTests.Run),
     ("Default controller routing resolves dashboard quick actions", DashboardInputResolves),
     ("Default controller routing resolves focused shortcuts", FocusedShortcutResolves),
     ("Repeated row shortcuts resolve by exact focus and ambiguous fallback fails closed", FocusedRowShortcutsResolve),

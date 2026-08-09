@@ -82,6 +82,36 @@ the widget—not the host or component—owns removal through normal lifecycle-
 aware state. Do not create a timer or hidden worker solely for Toast animation;
 themes must suppress or shorten motion when reduced motion is active.
 
+Use the protected `Operations` coordinator for bounded asynchronous work:
+
+```csharp
+Operations.RunSingleFlight("refresh",
+    async context => await RefreshAsync(context.CancellationToken));
+Operations.RunLatest("page",
+    async context => await LoadPageAsync(context),
+    WidgetOperationLifetime.Active);
+Operations.RunSerial("save",
+    async context => await SaveAsync(context.CancellationToken),
+    WidgetOperationLifetime.Widget);
+```
+
+`RunSingleFlight` joins duplicate work, `RunLatest` cancels/supersedes stale
+work while keeping delegates non-overlapping, and `RunSerial` preserves FIFO.
+`Active` spans Visible/Interactive, `State` ends on every state transition, and
+`Widget` ends at Destroying. Ending lifetimes are canceled and drained before
+their lifecycle callbacks run. Check `WidgetOperationContext.IsCurrent` before
+committing latest-wins results and always honor its cancellation token.
+
+The returned handle separates admission (`Started`, `Joined`, `Replaced`,
+`Enqueued`, `RejectedInactive`, `RejectedCapacity`) from completion
+(`Succeeded`, `Canceled`, `Superseded`, `Failed`, `Rejected`). Completion tasks
+never fault; failed results carry the exception and also raise
+`OperationFailed` once. Limits are 32 busy keys, 64 total active/pending
+operations, and 16 pending Serial operations per key. Do not retry capacity
+rejection in a tight loop or mix a key's policy/lifetime while it is busy.
+`IsBusy`, `BusyChanged`, `Cancel`, `WhenIdleAsync`, and `WhenAllIdleAsync`
+support UI and deterministic tests.
+
 Unit tests can use the supported transport-free fake instead of reflection,
 internal APIs, named pipes, or hand-written JSON:
 
