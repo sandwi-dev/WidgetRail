@@ -1596,8 +1596,12 @@ struct DeclarativeRenderer::RenderPass final {
             textRect = placement.text;
             if (hasLeading) {
                 const Rect iconRect = placement.leading;
-                if (!node.imageSource.empty())
-                    DrawImage(node, style, iconRect, opacity, focused);
+                if (!node.imageSource.empty()) {
+                    const auto visibleImageRect = Intersection(
+                        iconRect, presented.visibleBox);
+                    if (visibleImageRect.width > 0.5F && visibleImageRect.height > 0.5F)
+                        DrawImage(node, style, iconRect, opacity, focused);
+                }
                 else
                     DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
             }
@@ -1608,7 +1612,10 @@ struct DeclarativeRenderer::RenderPass final {
         } else if (node.kind == L"slider") {
             DrawSlider(node, style, presented.contentBox, opacity, focused);
         } else if (node.kind == L"image") {
-            DrawImage(node, style, paintRect, opacity, focused);
+            const auto visibleImageRect = Intersection(
+                paintRect, presented.visibleBox);
+            if (visibleImageRect.width > 0.5F && visibleImageRect.height > 0.5F)
+                DrawImage(node, style, paintRect, opacity, focused);
         } else if (node.kind == L"icon") {
             DrawSemanticIcon(node, style, presented.contentBox, opacity, node.glyph);
         } else if (node.kind == L"loadingIndicator") {

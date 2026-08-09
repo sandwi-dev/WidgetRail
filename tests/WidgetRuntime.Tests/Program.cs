@@ -52,6 +52,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("A crashed nonexistent session cannot gain an intentional-resume exemption", CrashedSessionIsNotIntentionalUnload),
     ("Non-completing companion disposal cannot hold worker teardown", CompanionDisposalIsBounded),
     ("Request timeout terminates a hung worker", HungWorkerTimesOut),
+    ("Worker protocol diagnostics expose only the first validation path and code", ProtocolValidationDiagnosticIsStructural),
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
     ("Worker destruction is bounded when widget cleanup hangs", DestroyIsBounded),
 };
@@ -85,6 +86,8 @@ static async Task<int> RunWorkerAsync(string[] arguments)
 
     Widget widget = arguments.Contains("--hanging-destroy", StringComparer.Ordinal)
         ? new HangingDestroyWidget()
+        : arguments.Contains("--invalid-protocol-widget", StringComparer.Ordinal)
+            ? new InvalidProtocolWidget()
         : arguments.Contains("--gesture-queue-probe", StringComparer.Ordinal)
             ? new GestureQueueWidget()
         : arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal)
@@ -1091,6 +1094,25 @@ static async Task MalformedSnapshotIsRejected()
     await Assert.ThrowsAsync<WidgetProtocolViolationException>(() => client.GetSnapshotAsync());
 }
 
+static async Task ProtocolValidationDiagnosticIsStructural()
+{
+    await using var client = CreateClient(extraArguments: ["--invalid-protocol-widget"]);
+    var exception = await Assert.ThrowsAsync<WidgetProcessException>(() => client.GetSnapshotAsync());
+
+    Assert.True(exception.Message.Contains("$.activeInputScopeId", StringComparison.Ordinal),
+        "The worker response omitted the first validation path.");
+    Assert.True(exception.Message.Contains("invalid_active_input_scope", StringComparison.Ordinal),
+        "The worker response omitted the first validation code.");
+    Assert.True(!exception.Message.Contains("FIRST_WIDGET_SECRET", StringComparison.Ordinal),
+        "The worker response exposed widget-controlled text from the first validation message.");
+    Assert.True(!exception.Message.Contains("$.initialFocusId", StringComparison.Ordinal),
+        "The worker response exposed a later validation path.");
+    Assert.True(!exception.Message.Contains("invalid_focus_target", StringComparison.Ordinal),
+        "The worker response exposed a later validation code.");
+    Assert.True(!exception.Message.Contains("SECOND_WIDGET_SECRET", StringComparison.Ordinal),
+        "The worker response exposed widget-controlled text from a later validation message.");
+}
+
 static async Task DestroyIsBounded()
 {
     await using var client = CreateClient(
@@ -1244,6 +1266,14 @@ file sealed class TestWidget : Widget
     {
         lock (_historyLock) return string.Join(',', _controllerHistory);
     }
+}
+
+file sealed class InvalidProtocolWidget : Widget
+{
+    public override WidgetView Render() => new(
+        UI.Stack("root"),
+        InitialFocusId: "SECOND_WIDGET_SECRET",
+        ActiveInputScopeId: "FIRST_WIDGET_SECRET");
 }
 
 file sealed class GestureQueueWidget : Widget

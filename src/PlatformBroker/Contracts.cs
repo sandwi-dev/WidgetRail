@@ -639,7 +639,8 @@ public sealed record StartSpotifyPlaybackRequest(
     string? ContextUri,
     IReadOnlyList<string>? ItemUris,
     string? DeviceId,
-    int? Offset);
+    int? Offset,
+    string? OffsetUri = null);
 
 public sealed record LoopbackHttpHeader(
     [property: JsonRequired] string Name,

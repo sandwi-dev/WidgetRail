@@ -20,7 +20,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
+    ("Maximum playlist pages remain valid on the wire", MaximumPlaylistPageContract),
     ("Playlist detail is a B-dismissible navigation entry", PlaylistDetailBack),
+    ("Failed playlist detail keeps valid focus and retries the detail", PlaylistDetailFailureRetry),
+    ("Slow playlist detail acknowledges and cannot reopen after B", SlowPlaylistDetailBack),
+    ("Active polling reuses configuration and authorization state", PollingRequestBudget),
     ("Devices expose trusted local playback and safe transfer actions", DeviceActions),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
@@ -69,6 +73,7 @@ static async Task DisconnectedLayoutContract()
     var snapshot = widget.Render().CreateSnapshot("spotify.layout", 1);
 
     var detail = Find(snapshot.Root, "spotify.state-detail");
+    Assert.Equal(ViewNodeKind.Scroll, Find(snapshot.Root, "spotify.state-scroll").Kind);
     Assert.Equal(
         "Spotify opens a browser and uses PKCE. Your credentials stay in the trusted host.",
         detail.Text);
@@ -95,7 +100,7 @@ static async Task DisconnectedLayoutContract()
     Assert.Equal("0px", detailStyle.Get("min-width")?.Text);
     Assert.Equal("560px", detailStyle.Get("max-width")?.Text);
     Assert.Equal("0", detailStyle.Get("flex-shrink")?.Text);
-    Assert.Equal("4", detailStyle.Get("max-lines")?.Text);
+    Assert.Equal<string?>(null, detailStyle.Get("max-lines")?.Text);
     Assert.Equal("1.35", detailStyle.Get("line-height")?.Text);
     Assert.Equal("center", detailStyle.Get("text-align")?.Text);
 
@@ -264,9 +269,9 @@ static Task SetupCodeAndTextAreBounded()
     var command = compiled.Theme.Resolve(new GbssElement(
         "text", StyleClasses: new HashSet<string>(
             ["gbar-code-text", "spotify-setup-command"])))!;
-    Assert.Equal("3", step.Get("max-lines")?.Text);
+    Assert.Equal<string?>(null, step.Get("max-lines")?.Text);
     Assert.Equal("1.3", step.Get("line-height")?.Text);
-    Assert.Equal("4", command.Get("max-lines")?.Text);
+    Assert.Equal<string?>(null, command.Get("max-lines")?.Text);
     Assert.Equal("1.25", command.Get("line-height")?.Text);
     return Task.CompletedTask;
 }
@@ -467,6 +472,102 @@ static async Task PlaylistDetailBack()
     await StopAsync(widget);
 }
 
+static async Task PlaylistDetailFailureRetry()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.PlaylistDetailError = new WidgetCapabilityException(
+        "spotify_unavailable", "Spotify could not load this playlist");
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.compact.0"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+
+    var failure = widget.RenderSnapshot("spotify.playlist.failure", 1);
+    Assert.Equal("spotify.page.error.compact.action", failure.InitialFocusId);
+    Assert.NotNull(Find(failure.Root, failure.InitialFocusId!));
+
+    harness.PlaylistDetailError = null;
+    await widget.OnActionAsync(new("spotify.page.retry", failure.InitialFocusId!));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 2);
+    await WaitUntil(() => widget.Render().InitialFocusId == "spotify.playlist.play.compact");
+    var recovered = widget.RenderSnapshot("spotify.playlist.recovered", 2);
+    Assert.NotNull(Find(recovered.Root, "spotify.playlist.track.compact.0"));
+    Assert.Equal("spotify.playlist.play.compact", recovered.InitialFocusId);
+    await StopAsync(widget);
+}
+
+static async Task SlowPlaylistDetailBack()
+{
+    var completion = new TaskCompletionSource<WidgetSpotifyPlaylistItemsSummary>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var harness = SpotifyHarness.Ready();
+    harness.PlaylistDetailCompletion = completion;
+    harness.IgnorePlaylistDetailCancellation = true;
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+
+    var acknowledgement = widget.OnActionAsync(new(
+        "spotify.playlist.open.0", "spotify.playlist.item.wide.0")).AsTask();
+    await acknowledgement.WaitAsync(TimeSpan.FromMilliseconds(250));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+    await widget.OnActionAsync(new("spotify.playlist.back", "spotify.playlist.item.wide.0"));
+    completion.SetResult(harness.PlaylistDetail);
+    await Task.Delay(50);
+
+    var list = widget.RenderSnapshot("spotify.playlist.cancelled", 1);
+    Assert.NotNull(Find(list.Root, "spotify.playlist.item.wide.0"));
+    Assert.Equal("spotify.playlist.item.wide.0", list.InitialFocusId);
+    await StopAsync(widget);
+}
+
+static async Task PollingRequestBudget()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var configurationCalls = harness.ConfigurationCalls;
+    var playbackCalls = harness.PlaybackCalls;
+    await Task.Delay(TimeSpan.FromMilliseconds(2_250));
+    Assert.Equal(configurationCalls, harness.ConfigurationCalls);
+    Assert.True(harness.PlaybackCalls > playbackCalls,
+        "Adaptive playback polling did not refresh live state.");
+    await StopAsync(widget);
+}
+
+static async Task MaximumPlaylistPageContract()
+{
+    var playlists = Enumerable.Range(0, WidgetSpotifyService.MaximumCollectionPageSize)
+        .Select(index => new WidgetSpotifyPlaylistSummary(
+            $"playlist-{index}", $"Playlist {index}", $"Description {index}",
+            $"https://i.scdn.co/image/playlist-{index}",
+            $"https://open.spotify.com/playlist/playlist-{index}",
+            $"spotify:playlist:playlist-{index}", "Listener", false, true,
+            WidgetSpotifyService.MaximumCollectionPageSize))
+        .ToArray();
+    var tracks = Enumerable.Range(0, WidgetSpotifyService.MaximumCollectionPageSize)
+        .Select(index => new WidgetSpotifyMediaItemSummary(
+            WidgetSpotifyPlaybackItemType.Track, $"Track {index}", $"Artist {index}",
+            180_000, $"https://i.scdn.co/image/track-{index}",
+            $"spotify:track:track-{index}",
+            $"https://open.spotify.com/track/track-{index}", true))
+        .ToArray();
+    var harness = SpotifyHarness.Ready();
+    harness.Playlists = new(playlists, 0, playlists.Length, playlists.Length);
+    harness.PlaylistDetail = new(playlists[0], tracks, 0, tracks.Length, tracks.Length);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    _ = SnapshotJson.Serialize(widget.RenderSnapshot("spotify.maximum-playlists", 1));
+    await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.wide.0"));
+    _ = SnapshotJson.Serialize(widget.RenderSnapshot("spotify.maximum-playlist-detail", 2));
+    await widget.OnActionAsync(new("spotify.playlist.track.0", "spotify.playlist.track.wide.0"));
+    Assert.Equal(1, harness.StartedPlayback.Count);
+    await StopAsync(widget);
+}
+
 static async Task DeviceActions()
 {
     var harness = SpotifyHarness.Ready();
@@ -570,7 +671,7 @@ static Task ManifestContract()
         WidgetSpotifyCapabilities.LocalPlaybackCapabilityId), "Local playback must remain optional.");
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaylistsReadCapabilityId), "Playlist reading must remain optional.");
-    Assert.Equal("0.2.1", manifest.Version);
+    Assert.Equal("0.2.2", manifest.Version);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
@@ -648,6 +749,7 @@ file sealed class SpotifyHarness
     public int PlaybackCalls { get; private set; }
     public int QueueCalls { get; private set; }
     public int PlaylistCalls { get; private set; }
+    public int PlaylistDetailCalls { get; private set; }
     public int DeviceCalls { get; private set; }
     public IReadOnlyList<WidgetSpotifyAuthorizationScope>? LastScopes { get; private set; }
     public List<WidgetSpotifyPlaybackCommand> Commands { get; } = [];
@@ -676,6 +778,10 @@ file sealed class SpotifyHarness
             "Midnight Run", "Northern Lines", 201_000,
             "https://i.scdn.co/image/next", "spotify:track:next",
             "https://open.spotify.com/track/next", true)], 0, 50, 1);
+    public Exception? PlaylistDetailError { get; set; }
+    public TaskCompletionSource<WidgetSpotifyPlaylistItemsSummary>?
+        PlaylistDetailCompletion { get; set; }
+    public bool IgnorePlaylistDetailCancellation { get; set; }
     public WidgetSpotifyDevicesSummary Devices { get; set; } = new(
         [new WidgetSpotifyDeviceSummary("local-placeholder", "Game Bar Alternative",
             "Computer", false, false, true, 60, true),
@@ -743,10 +849,17 @@ file sealed class SpotifyHarness
                     return ValueTask.FromResult(Playlists);
                 })
             .WithHandler(WidgetSpotifyCapabilities.GetPlaylistItems,
-                (request, cancellationToken) =>
+                async (request, cancellationToken) =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    return ValueTask.FromResult(PlaylistDetail);
+                    PlaylistDetailCalls++;
+                    if (PlaylistDetailError is not null) throw PlaylistDetailError;
+                    if (PlaylistDetailCompletion is not null)
+                        return IgnorePlaylistDetailCancellation
+                            ? await PlaylistDetailCompletion.Task.ConfigureAwait(false)
+                            : await PlaylistDetailCompletion.Task.WaitAsync(cancellationToken)
+                                .ConfigureAwait(false);
+                    return PlaylistDetail;
                 })
             .WithHandler(WidgetSpotifyCapabilities.GetDevices,
                 (request, cancellationToken) =>

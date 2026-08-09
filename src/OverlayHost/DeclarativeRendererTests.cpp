@@ -1,4 +1,5 @@
 #include "DeclarativeRenderer.h"
+#include "RemoteImageCache.h"
 
 #include <wincodec.h>
 #include <wrl/client.h>
@@ -2059,6 +2060,107 @@ void RealDirect2DSmoke() {
           "overflowing finite Slider range produces a renderer diagnostic");
 }
 
+void OffscreenScrollArtworkDoesNotEnterRemoteCache() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create D2D factory for artwork culling");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "create DirectWrite factory for artwork culling");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create WIC factory for artwork culling");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        200, 120, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "create WIC canvas for artwork culling");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "create render target for artwork culling");
+
+    gba::RemoteImageLimits limits;
+    limits.maximumEntries = 32;
+    gba::RemoteImageCache cache(
+        limits,
+        {},
+        [](std::wstring_view, std::stop_token, const gba::RemoteImageLimits&) {
+            gba::RemoteDecodedImage image;
+            image.width = 1;
+            image.height = 1;
+            image.stride = 4;
+            image.premultipliedBgra = {0x10, 0x20, 0x30, 0xFF};
+            image.mimeType = L"image/fake";
+            return gba::RemoteImageFetchResult{S_OK, std::move(image), {}};
+        });
+
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"artwork-scroll.runtime";
+    snapshot.root = Node(L"artwork-scroll", L"scroll");
+    snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.baseStyle = {
+        {L"gap", LengthList(L"8px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+
+    std::vector<std::pair<std::wstring, std::wstring>> artwork;
+    std::size_t buttonCount{};
+    for (int index = 0; index < 10; ++index) {
+        const auto id = L"artwork-" + std::to_wstring(index);
+        const auto url = L"https://example.test/artwork-" +
+            std::to_wstring(index) + L".png";
+        auto item = Node(id.c_str(), index % 2 == 0 ? L"image" : L"button");
+        item.imageSource = url;
+        item.baseStyle = {
+            {L"height", Length(48)},
+            {L"flex-shrink", Number(0)},
+        };
+        if (index % 2 != 0) {
+            item.text = L"Play item " + std::to_wstring(index);
+            item.actionId = L"play-item";
+            ++buttonCount;
+        }
+        artwork.emplace_back(id, url);
+        snapshot.root.children.push_back(std::move(item));
+    }
+
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+    target->BeginDraw();
+    const auto result = renderer.Render(
+        target.Get(), snapshot, {}, {0.0F, 0.0F, 200.0F, 120.0F});
+    Check(SUCCEEDED(target->EndDraw()),
+        "offscreen artwork culling keeps Direct2D state balanced");
+
+    std::size_t visibleArtwork{};
+    for (const auto& [id, url] : artwork) {
+        const auto& visible = result.elementVisibleRects.at(id);
+        const bool isVisible = visible.width > 0.5F && visible.height > 0.5F;
+        if (isVisible) {
+            ++visibleArtwork;
+            Check(cache.GetState(url) != gba::RemoteImageState::Missing,
+                "visible artwork enters the remote cache");
+        } else {
+            Check(cache.GetState(url) == gba::RemoteImageState::Missing,
+                "fully offscreen artwork never enters the remote cache");
+        }
+    }
+    Check(visibleArtwork == 3,
+        "120-DIP scroll viewport exposes exactly two complete and one partial artwork row");
+    Check(cache.GetStats().entries == visibleArtwork,
+        "remote cache queues only artwork intersecting its presented visible box");
+    Check(result.navigationRects.size() == buttonCount,
+        "offscreen leading-image buttons remain in the logical navigation graph");
+    cache.Shutdown();
+}
+
 } // namespace
 
 int main() {
@@ -2091,6 +2193,7 @@ int main() {
     ScrollStateCapEvictsOnlyInactiveLruEntries();
     DeferredFocusOutlineUsesEffectiveVisibilityClip();
     RealDirect2DSmoke();
+    OffscreenScrollArtworkDoesNotEnterRemoteCache();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();
     return EXIT_SUCCESS;

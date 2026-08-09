@@ -686,6 +686,17 @@ static async Task SpotifyTypedContracts()
                 Assert.True(request.ContinuePlaying, "Transfer did not retain playback state.");
                 return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
             })
+        .WithHandler(
+            WidgetSpotifyCapabilities.StartPlayback,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal("spotify:playlist:playlist-opaque", request.ContextUri);
+                Assert.Equal("spotify:track:track-opaque", request.OffsetUri);
+                Assert.True(request.Offset is null,
+                    "Exact Spotify offset URI unexpectedly retained a numeric offset.");
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+            })
         .WithResponse(
             WidgetSpotifyCapabilities.GetQueue,
             new WidgetSpotifyQueueSummary(null, [
@@ -741,6 +752,9 @@ static async Task SpotifyTypedContracts()
         (await widget.Spotify.ControlLocalPlaybackAsync(new(
             WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
             ContinuePlaying: true))).State);
+    await widget.Spotify.StartPlaybackAsync(new(
+        "spotify:playlist:playlist-opaque", null,
+        OffsetUri: "spotify:track:track-opaque"));
     Assert.Equal("Gaming", (await widget.Spotify.GetPlaylistsAsync(0, 20)).Items.Single().Name);
 }
 
@@ -801,6 +815,15 @@ static async Task SpotifyInputValidation()
     Assert.Throws<ArgumentException>(() => widget.Spotify.StartPlaybackAsync(
             new StartWidgetSpotifyPlaybackRequest(
                 "spotify:playlist:one", ["spotify:track:two"]))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.StartPlaybackAsync(
+            new StartWidgetSpotifyPlaybackRequest(
+                "spotify:playlist:one", null, Offset: 1,
+                OffsetUri: "spotify:track:two"))
+        .AsTask().GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() => widget.Spotify.StartPlaybackAsync(
+            new StartWidgetSpotifyPlaybackRequest(
+                null, ["spotify:track:one"], OffsetUri: "spotify:track:two"))
         .AsTask().GetAwaiter().GetResult());
     Assert.Throws<ArgumentException>(() => widget.Spotify.ControlLocalPlaybackAsync(
             new WidgetSpotifyLocalPlaybackCommand(

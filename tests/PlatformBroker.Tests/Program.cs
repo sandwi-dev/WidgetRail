@@ -1520,8 +1520,25 @@ static async Task SpotifyContracts()
     var start = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.SpotifyPlaybackControlV1,
         PlatformCapabilities.SpotifyPlaybackStart,
-        new { contextUri = "spotify:playlist:playlist", offset = 0 }));
+        new
+        {
+            contextUri = "spotify:playlist:playlist",
+            offsetUri = "spotify:track:item",
+        }));
     Assert.True(start.Succeeded);
+    Assert.Equal("spotify:track:item", backend.LastSpotifyStartRequest!.OffsetUri);
+    Assert.True(backend.LastSpotifyStartRequest.Offset is null,
+        "Exact Spotify offset URI unexpectedly retained a numeric offset.");
+    var invalidStartOffset = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.SpotifyPlaybackControlV1,
+        PlatformCapabilities.SpotifyPlaybackStart,
+        new
+        {
+            contextUri = "spotify:playlist:playlist",
+            offset = 0,
+            offsetUri = "spotify:track:item",
+        }));
+    Assert.Equal("invalid_payload", invalidStartOffset.ErrorCode);
     var local = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.SpotifyLocalPlaybackV1,
         PlatformCapabilities.SpotifyLocalPlaybackGet, new { }));

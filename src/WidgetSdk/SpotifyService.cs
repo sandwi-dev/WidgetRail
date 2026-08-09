@@ -222,7 +222,8 @@ public sealed record StartWidgetSpotifyPlaybackRequest(
     string? ContextUri,
     IReadOnlyList<string>? ItemUris,
     string? DeviceId = null,
-    int? Offset = null);
+    int? Offset = null,
+    string? OffsetUri = null);
 
 /// <summary>Exact, versioned Spotify capability contracts understood by the broker.</summary>
 public static class WidgetSpotifyCapabilities
@@ -620,10 +621,14 @@ public sealed class WidgetSpotifyService
         ArgumentNullException.ThrowIfNull(request);
         if ((request.ContextUri is null) == (request.ItemUris is null) ||
             request.ItemUris is { Count: < 1 or > 50 } || request.Offset is < 0 ||
-            request.Offset is not null && request.ContextUri is null)
+            request.Offset is not null && request.ContextUri is null ||
+            request.OffsetUri is not null && request.ContextUri is null ||
+            request.Offset is not null && request.OffsetUri is not null)
             throw new ArgumentException("Spotify playback selection is invalid.", nameof(request));
         if (request.ContextUri is not null)
             ValidateSpotifyUri(request.ContextUri, nameof(request));
+        if (request.OffsetUri is not null)
+            ValidateSpotifyUri(request.OffsetUri, nameof(request));
         if (request.ItemUris is not null)
         {
             if (request.ItemUris.Any(string.IsNullOrWhiteSpace))

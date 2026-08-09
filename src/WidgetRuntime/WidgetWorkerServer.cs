@@ -474,6 +474,14 @@ public sealed class WidgetWorkerServer
 
     private static string SafeMessage(Exception exception)
     {
+        if (exception is ProtocolValidationException validationException)
+        {
+            var firstError = validationException.Errors.FirstOrDefault();
+            return firstError is null
+                ? "Widget protocol validation failed."
+                : $"Widget protocol validation failed at {firstError.Path} ({firstError.Code}).";
+        }
+
         var message = exception.Message;
         if (message.Length > 512) message = message[..512];
         return message.Replace(Environment.NewLine, " ", StringComparison.Ordinal);

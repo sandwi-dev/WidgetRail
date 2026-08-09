@@ -718,6 +718,18 @@ static async Task WebApiMutations()
         Assert.True(!body.RootElement.TryGetProperty("context_uri", out _));
         return new SpotifyHttpResponse(204, string.Empty, EmptyHeaders());
     });
+    apiRequests.Enqueue(request =>
+    {
+        Assert.Equal(HttpMethod.Put, request.Method);
+        Assert.Equal("https://api.spotify.com/v1/me/player/play", request.Uri.AbsoluteUri);
+        using var body = JsonDocument.Parse(request.JsonBody!);
+        Assert.Equal("spotify:playlist:playlist-1",
+            body.RootElement.GetProperty("context_uri").GetString());
+        Assert.Equal("spotify:track:exact",
+            body.RootElement.GetProperty("offset").GetProperty("uri").GetString());
+        Assert.True(!body.RootElement.GetProperty("offset").TryGetProperty("position", out _));
+        return new SpotifyHttpResponse(204, string.Empty, EmptyHeaders());
+    });
     var scopes = new HashSet<string>(StringComparer.Ordinal)
     {
         WindowsSpotifyPlatformBackend.PlaybackReadScope,
@@ -739,6 +751,10 @@ static async Task WebApiMutations()
             "spotify:playlist:playlist-1", null, "device+value", 3), default);
     await backend.StartSpotifyPlaybackAsync(identity,
         new StartSpotifyPlaybackRequest(null, ["spotify:track:one"], null, null), default);
+    await backend.StartSpotifyPlaybackAsync(identity,
+        new StartSpotifyPlaybackRequest(
+            "spotify:playlist:playlist-1", null, null, null,
+            "spotify:track:exact"), default);
     Assert.Equal(0, apiRequests.Count);
 }
 

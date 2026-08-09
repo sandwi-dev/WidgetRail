@@ -2001,9 +2001,12 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     {
         if ((request.ContextUri is null) == (request.ItemUris is null) ||
             request.ItemUris is { Count: < 1 or > 50 } || request.Offset is < 0 ||
-            request.Offset is not null && request.ContextUri is null)
+            request.Offset is not null && request.ContextUri is null ||
+            request.OffsetUri is not null && request.ContextUri is null ||
+            request.Offset is not null && request.OffsetUri is not null)
             throw new BrokerException("invalid_payload", "Spotify playback selection is invalid.");
         if (request.ContextUri is not null) ValidateSpotifyUri(request.ContextUri);
+        if (request.OffsetUri is not null) ValidateSpotifyUri(request.OffsetUri);
         if (request.ItemUris is not null)
             foreach (var uri in request.ItemUris) ValidateSpotifyUri(uri);
         if (request.DeviceId is not null)

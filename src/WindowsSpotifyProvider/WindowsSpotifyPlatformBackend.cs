@@ -473,13 +473,19 @@ public sealed class WindowsSpotifyPlatformBackend :
             string body;
             if (request.ContextUri is not null)
             {
-                body = request.Offset is { } offset
+                body = request.OffsetUri is { } offsetUri
                     ? JsonSerializer.Serialize(new
                     {
                         context_uri = request.ContextUri,
-                        offset = new { position = offset },
+                        offset = new { uri = offsetUri },
                     })
-                    : JsonSerializer.Serialize(new { context_uri = request.ContextUri });
+                    : request.Offset is { } offset
+                        ? JsonSerializer.Serialize(new
+                        {
+                            context_uri = request.ContextUri,
+                            offset = new { position = offset },
+                        })
+                        : JsonSerializer.Serialize(new { context_uri = request.ContextUri });
             }
             else
             {
@@ -1477,10 +1483,13 @@ public sealed class WindowsSpotifyPlatformBackend :
     {
         if ((request.ContextUri is null) == (request.ItemUris is null) ||
             request.ItemUris is { Count: < 1 or > MaximumCollectionPageSize } ||
-            request.Offset is < 0 || request.Offset is not null && request.ContextUri is null)
+            request.Offset is < 0 || request.Offset is not null && request.ContextUri is null ||
+            request.OffsetUri is not null && request.ContextUri is null ||
+            request.Offset is not null && request.OffsetUri is not null)
             throw new SpotifyProviderException(
                 "invalid_request", "Spotify playback selection is invalid.");
         if (request.ContextUri is not null) ValidateSpotifyUri(request.ContextUri);
+        if (request.OffsetUri is not null) ValidateSpotifyUri(request.OffsetUri);
         if (request.ItemUris is not null)
             foreach (var uri in request.ItemUris) ValidateSpotifyUri(uri);
         if (request.DeviceId is not null)
