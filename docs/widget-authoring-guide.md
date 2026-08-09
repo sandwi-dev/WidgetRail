@@ -690,11 +690,13 @@ alias shell behavior. IDs must still be unique within your widget snapshot.
 
 The composite root exposes a scope-correct Back command. At your root scope it
 returns to the tray. At a nested scope it exists only when that exact scope root
-binds a pressed-B shortcut, as `WidgetNavigator`, `UI.Picker`, and
-`UI.ActionSheet` do. UIA invocation rechecks the current generation, snapshot,
-and active scope before sending automation-origin B. Missing or stale nested
-Back never falls through to the tray, so custom scopes must author their own
-one-level B action.
+binds a pressed-B shortcut reachable through the SDK's current-focus resolution,
+as `WidgetNavigator`, `UI.Picker`, and `UI.ActionSheet` do. Focused controls may
+own B themselves; an unavailable focused B suppresses ancestor fallback exactly
+as controller input does. UIA invocation rechecks the current generation,
+snapshot, active scope, and focus before sending automation-origin B. Missing or
+stale nested Back never falls through to the tray, so custom scopes must author
+their own one-level B action.
 
 Open-widget UIA is currently an implemented preview rather than the completed
 screen-reader ship gate. One composite root retains the active widget controls,

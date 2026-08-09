@@ -3145,6 +3145,24 @@ static async Task ScopedShortcutRouting()
     var closeAction = await widget.NextActionAsync();
     Assert.Equal("dialog-close", closeAction.ActionId);
     Assert.Equal("dialog-window", closeAction.InputScopeId);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.B, "dialog-focus", 2, "dialog-window")),
+        "Focused input without a local B shortcut should resolve its ancestor B shortcut.");
+    Assert.Equal("dialog-close", (await widget.NextActionAsync()).ActionId);
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.B, "dialog-own", 2, "dialog-window")),
+        "A focused B shortcut should outrank its ancestor.");
+    Assert.Equal("dialog-own-back", (await widget.NextActionAsync()).ActionId);
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.B, "dialog-disabled", 2, "dialog-window")),
+        "A disabled focused B shortcut must suppress ancestor fallback.");
+    Assert.True(!await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.B, "dialog-busy", 2, "dialog-window")),
+        "A busy focused B shortcut must suppress ancestor fallback.");
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.B, "dialog-disabled-inherit", 2, "dialog-window")),
+        "A disabled focus without a local B shortcut should retain ancestor fallback.");
+    Assert.Equal("dialog-close", (await widget.NextActionAsync()).ActionId);
 
     widget.SetSurface("empty-window");
     _ = widget.RenderSnapshot("scope.instance", 3);
@@ -3413,7 +3431,15 @@ file sealed class SurfaceRoutingWidget : Widget
             UI.Button("Root focus", "root-focus", "root-focus"),
             UI.Stack("dialog",
                 UI.Button("Dialog back", "dialog-back", "dialog-back"),
-                UI.Button("Dialog focus", "dialog-focus", "dialog-focus"))
+                UI.Button("Dialog focus", "dialog-focus", "dialog-focus"),
+                UI.Button("Dialog own", "dialog-own-back", "dialog-own")
+                    .Shortcut(ControllerButton.B, actionId: "dialog-own-back"),
+                UI.Button("Dialog disabled", "dialog-disabled-back", "dialog-disabled")
+                    .Disabled().Shortcut(ControllerButton.B, actionId: "dialog-disabled-back"),
+                UI.Button("Dialog busy", "dialog-busy-back", "dialog-busy")
+                    .Busy().Shortcut(ControllerButton.B, actionId: "dialog-busy-back"),
+                UI.Button("Dialog disabled inherit", "dialog-disabled-inherit-action",
+                    "dialog-disabled-inherit").Disabled())
                 .InputScope("dialog-window")
                 .Shortcut(ControllerButton.LeftBumper, "dialog-back")
                 .Shortcut(ControllerButton.B, "dialog-close"),

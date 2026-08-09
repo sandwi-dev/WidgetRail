@@ -107,11 +107,15 @@ Composite elements now carry a closed widget/host-shell/tray owner domain
 through AutomationId, runtime identity, lookup, event diffing, and queued action
 authority. Cross-domain raw-ID reuse is safe, duplicate same-domain publication
 fails closed, and authors do not reserve shell prefixes. Root Back remains a
-typed tray transition; nested Back is published only for the exact active scope
-root's pressed-B shortcut and is revalidated before automation-origin dispatch,
-with no scope fallback.
+typed tray transition; nested Back now mirrors the managed pressed-B resolver
+for current focus, focusless scope roots, focused Disabled/Busy suppression,
+ancestor fallback, stale focus, and nested-scope isolation. Revalidation repeats
+the same focus-aware decision before automation-origin dispatch, with no scope
+fallback. The native mirror uses allocation-free recursion within the protocol's
+bounded tree depth, so the `noexcept` publication path cannot terminate on an
+allocation failure.
 Focused Release coverage passes Slider Interaction 2086, renderer 4636,
-accessibility tree 16, projection cadence 11, host semantics 25, event planning
+accessibility tree 16, projection cadence 11, host semantics 32, event planning
 11, and provider 149 checks. The isolated Release native aggregate passes 24/24,
 and the canonical Debug build/test path is green. Legacy MSAA and packaged
 Narrator evidence remain open, so full screen-reader support is not yet claimed.

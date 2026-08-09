@@ -35,18 +35,20 @@ struct OpenWidgetSemantics final {
     declarative::Rect statusBounds;
 };
 
-/// Returns true only when the exact active scope root owns a pressed-B
-/// shortcut. The root surface's host-owned Back behavior is intentionally
+/// Mirrors managed open-widget B resolution for the exact active scope and
+/// current focus. The root surface's host-owned Back behavior is intentionally
 /// handled separately.
 [[nodiscard]] bool HasActiveScopeBackShortcut(
-    const WidgetSnapshot& snapshot) noexcept;
+    const WidgetSnapshot& snapshot,
+    std::wstring_view focusedElementId) noexcept;
 
 /// Revalidates a published Back command against the current immutable
 /// snapshot. No Back action falls through to a different scope behavior.
 [[nodiscard]] bool IsCurrentBackAction(
     HostAction action,
     std::wstring_view targetScopeId,
-    const WidgetSnapshot& snapshot) noexcept;
+    const WidgetSnapshot& snapshot,
+    std::wstring_view focusedElementId) noexcept;
 
 [[nodiscard]] long long ComputeTraySemanticRevision(
     const std::vector<TrayItem>& items,

@@ -2866,7 +2866,8 @@ private:
                         continue;
                     }
                     if (!gba::accessibility::IsCurrentBackAction(
-                            request.hostAction, request.hostTargetId, *snapshot))
+                            request.hostAction, request.hostTargetId, *snapshot,
+                            focusedElementId_))
                         continue;
                     if (request.hostAction == gba::accessibility::HostAction::BackToTray) {
                         Dispatch(gba::Command::SampleWidgetBack);
@@ -4162,7 +4163,8 @@ private:
             std::wstring_view(snapshot->activeInputScopeId) ==
                 gba::input::RootInputScope(*snapshot);
         const bool nestedBack = snapshot && !rootScope &&
-            gba::accessibility::HasActiveScopeBackShortcut(*snapshot);
+            gba::accessibility::HasActiveScopeBackShortcut(
+                *snapshot, focusedElementId_);
         const bool hasBack = rootScope || nestedBack;
         const std::wstring hostPrompt = hasBack
             ? L"B  Back     Guide  Close"

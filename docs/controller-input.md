@@ -52,10 +52,13 @@ regions' navigation graphs, and closes immediately from any depth.
 
 The UI Automation composite exposes the same hierarchy. Root Back is a typed
 host transition to the tray. Nested Back is present only for an exact active
-scope root with a pressed-B shortcut, and invocation revalidates the current
-widget generation, snapshot sequence, and scope before sending B with
-`AccessibilityAutomation` origin. A stale or missing nested binding is dropped;
-it never becomes a root or tray fallback.
+scope where the managed open-widget resolver would handle pressed B for the
+current focus. Focusless input checks the scope root; focused input honors the
+focused shortcut first, including Disabled/Busy suppression, then its nearest
+ancestor shortcut. Stale focus and focus inside another scope fail closed.
+Invocation revalidates the current widget generation, snapshot sequence, scope,
+and focus before sending B with `AccessibilityAutomation` origin. A stale or
+missing nested binding is dropped; it never becomes a root or tray fallback.
 
 The tray and each widget scope retain independent focus memory. A on the tray
 enters the selected panel at its remembered/root initial control. Down from the

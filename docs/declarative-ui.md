@@ -86,11 +86,13 @@ without aliasing it, while duplicate IDs inside one owner domain reject the
 entire publication.
 
 Back is also scope-typed. At the widget root, the composite Back command returns
-to the tray. In a nested input scope, Back is exposed only when that exact scope
-root declares a pressed-B shortcut; invoking it sends B through the ordinary
-automation-origin route after revalidating widget, runtime generation, snapshot,
-and active scope. It never falls through to root/tray behavior. A nested scope
-without an explicit B shortcut publishes no Back command.
+to the tray. In a nested input scope, Back is exposed only when the same
+focus-aware shortcut resolution used by the SDK would handle pressed B. The
+native mirror covers focusless scope-root handling, focused shortcut priority,
+Disabled/Busy suppression, ancestor fallback, stale focus, and nested-scope
+isolation. Invocation revalidates widget, runtime generation, snapshot, active
+scope, and current focus before sending B through the ordinary automation-origin
+route. It never falls through to root/tray behavior.
 
 This is not yet the complete screen-reader ship gate. UIA-originated widget
 actions now carry the explicit `AccessibilityAutomation` origin. They may use

@@ -175,23 +175,71 @@ int main() {
     sheet.id = L"sheet";
     sheet.inputScopeId = L"music.sheet";
     sheet.shortcuts.push_back({L"b", L"sheet.back", L"pressed"});
+    gba::WidgetNode sheetAction;
+    sheetAction.id = L"sheet.action";
+    sheetAction.kind = L"button";
+    sheet.children.push_back(sheetAction);
     nested.root.children.push_back(sheet);
-    Check(gba::accessibility::HasActiveScopeBackShortcut(nested) &&
+    Check(gba::accessibility::HasActiveScopeBackShortcut(nested, {}) &&
+          gba::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.action") &&
           gba::accessibility::IsCurrentBackAction(
               gba::accessibility::HostAction::BackWithinWidget,
-              L"music.sheet", nested) &&
+              L"music.sheet", nested, L"sheet.action") &&
           !gba::accessibility::IsCurrentBackAction(
               gba::accessibility::HostAction::BackToTray,
-              L"music.sheet", nested) &&
+              L"music.sheet", nested, L"sheet.action") &&
           !gba::accessibility::IsCurrentBackAction(
               gba::accessibility::HostAction::BackWithinWidget,
-              L"music.stale", nested),
-          "nested Back resolves only to the active scope's explicit B shortcut");
+              L"music.stale", nested, L"sheet.action"),
+          "focusless and descendant focus resolve the active scope's B shortcut");
+
+    nested.root.children[0].children[0].shortcuts.push_back(
+        {L"b", L"action.back", L"pressed"});
+    Check(gba::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.action"),
+          "an enabled focused B shortcut publishes nested Back");
+    nested.root.children[0].children[0].isDisabled = true;
+    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.action"),
+          "a disabled focused B shortcut suppresses ancestor fallback");
+    nested.root.children[0].children[0].isDisabled = false;
+    nested.root.children[0].children[0].isBusy = true;
+    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.action"),
+          "a busy focused B shortcut suppresses ancestor fallback");
+    nested.root.children[0].children[0].isBusy = false;
+    nested.root.children[0].children[0].shortcuts.clear();
+    nested.root.children[0].children[0].isDisabled = true;
+    Check(gba::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.action"),
+          "a disabled focus without its own B still resolves the ancestor shortcut");
+    nested.root.children[0].children[0].isDisabled = false;
+    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.missing"),
+          "stale focused identity suppresses nested Back publication");
+
+    gba::WidgetNode innerScope;
+    innerScope.id = L"inner";
+    innerScope.inputScopeId = L"music.inner";
+    gba::WidgetNode innerAction;
+    innerAction.id = L"inner.action";
+    innerAction.kind = L"button";
+    innerScope.children.push_back(innerAction);
+    nested.root.children[0].children.push_back(innerScope);
+    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+              nested, L"inner.action"),
+          "focus in another input scope cannot authorize the active scope's Back");
+
+    nested.root.children[0].isBusy = true;
+    Check(!gba::accessibility::HasActiveScopeBackShortcut(nested, {}),
+          "a focusless busy scope root does not publish Back");
+    nested.root.children[0].isBusy = false;
     nested.root.children[0].shortcuts[0].phase = L"released";
-    Check(!gba::accessibility::HasActiveScopeBackShortcut(nested) &&
+    Check(!gba::accessibility::HasActiveScopeBackShortcut(nested, {}) &&
           !gba::accessibility::IsCurrentBackAction(
               gba::accessibility::HostAction::BackWithinWidget,
-              L"music.sheet", nested),
+              L"music.sheet", nested, {}),
           "missing pressed-B authority suppresses nested Back without tray fallback");
 
     std::cout << "HostAccessibilityTests passed (" << checks << " checks)\n";

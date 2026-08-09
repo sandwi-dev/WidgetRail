@@ -16,25 +16,69 @@ const WidgetNode* FindDeclaredScopeRoot(
     return nullptr;
 }
 
-} // namespace
-
-bool HasActiveScopeBackShortcut(const WidgetSnapshot& snapshot) noexcept {
-    if (snapshot.activeInputScopeId.empty()) return false;
-    const auto* scopeRoot = FindDeclaredScopeRoot(
-        snapshot.root, snapshot.activeInputScopeId);
-    if (!scopeRoot) return false;
+bool HasPressedBackShortcut(const WidgetNode& node) noexcept {
     return std::any_of(
-        scopeRoot->shortcuts.begin(), scopeRoot->shortcuts.end(),
+        node.shortcuts.begin(), node.shortcuts.end(),
         [](const WidgetShortcut& shortcut) {
             return shortcut.button == L"b" && shortcut.phase == L"pressed" &&
                 !shortcut.actionId.empty();
         });
 }
 
+enum class FocusedBackResolution {
+    NotFound,
+    NoShortcut,
+    Handled,
+    Suppressed,
+};
+
+FocusedBackResolution ResolveFocusedBackInScope(
+    const WidgetNode& node,
+    const std::wstring_view nodeId,
+    const bool isScopeRoot) noexcept {
+    if (!isScopeRoot && !node.inputScopeId.empty())
+        return FocusedBackResolution::NotFound;
+    if (node.id == nodeId) {
+        if (!HasPressedBackShortcut(node))
+            return FocusedBackResolution::NoShortcut;
+        return node.isDisabled || node.isBusy
+            ? FocusedBackResolution::Suppressed
+            : FocusedBackResolution::Handled;
+    }
+    for (const auto& child : node.children) {
+        const auto nested = ResolveFocusedBackInScope(child, nodeId, false);
+        if (nested == FocusedBackResolution::NotFound) continue;
+        if (nested != FocusedBackResolution::NoShortcut) return nested;
+        return HasPressedBackShortcut(node)
+            ? FocusedBackResolution::Handled
+            : FocusedBackResolution::NoShortcut;
+    }
+    return FocusedBackResolution::NotFound;
+}
+
+} // namespace
+
+bool HasActiveScopeBackShortcut(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId) noexcept {
+    if (snapshot.activeInputScopeId.empty()) return false;
+    const auto* scopeRoot = FindDeclaredScopeRoot(
+        snapshot.root, snapshot.activeInputScopeId);
+    if (!scopeRoot) return false;
+    if (focusedElementId.empty()) {
+        return !scopeRoot->isDisabled && !scopeRoot->isBusy &&
+            HasPressedBackShortcut(*scopeRoot);
+    }
+
+    return ResolveFocusedBackInScope(*scopeRoot, focusedElementId, true) ==
+        FocusedBackResolution::Handled;
+}
+
 bool IsCurrentBackAction(
     const HostAction action,
     const std::wstring_view targetScopeId,
-    const WidgetSnapshot& snapshot) noexcept {
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId) noexcept {
     if (targetScopeId.empty() || targetScopeId != snapshot.activeInputScopeId)
         return false;
     const std::wstring_view rootScope = snapshot.root.inputScopeId.empty()
@@ -43,7 +87,8 @@ bool IsCurrentBackAction(
     if (action == HostAction::BackToTray)
         return targetScopeId == rootScope;
     if (action == HostAction::BackWithinWidget)
-        return targetScopeId != rootScope && HasActiveScopeBackShortcut(snapshot);
+        return targetScopeId != rootScope &&
+            HasActiveScopeBackShortcut(snapshot, focusedElementId);
     return false;
 }
 
