@@ -89,9 +89,10 @@ $sliderTestObjectDirectory = Join-Path $outputDirectory 'obj\slider-tests'
 $focusTestObjectDirectory = Join-Path $outputDirectory 'obj\focus-tests'
 $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus-tests'
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
+$actionFeedbackTestObjectDirectory = Join-Path $outputDirectory 'obj\action-feedback-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -131,6 +132,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'FocusNavigation.cpp'),
     (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
     (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),
+    (Join-Path $projectDirectory 'WidgetActionFeedback.cpp'),
     "/Fo:$hostObjectDirectory\",
     "/Fe:$outputDirectory\OverlayHost.exe",
     '/link'
@@ -606,6 +608,22 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'WidgetLifecycleTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetLifecycleTests failed with exit code $LASTEXITCODE."
+    }
+
+    $actionFeedbackTestArguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetActionFeedbackTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetActionFeedback.cpp'),
+        "/Fo:$actionFeedbackTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetActionFeedbackTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $actionFeedbackTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetActionFeedbackTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'WidgetActionFeedbackTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetActionFeedbackTests failed with exit code $LASTEXITCODE."
     }
 
     $rendererTestArguments = $common + @(

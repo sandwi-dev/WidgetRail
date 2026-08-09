@@ -37,6 +37,15 @@ routing for the reference widget, managed bridge startup, bounded HTTPS
 artwork, fixed native semantic icon geometry, responsive logical viewports,
 and per-monitor placement.
 
+Asynchronous widget action failures are retained as fixed generic copy in a
+host-owned, 256-widget-bounded store keyed by widget ID and runtime generation.
+Concurrent failures for different widgets no longer overwrite each other;
+dashboard and open-widget footers resolve only the requested widget's current
+generation. Catalog replacement/removal and overlay hide discard retained
+state. A dedicated deadline timer removes expired copy and requests one repaint,
+with the already-active controller timer providing a no-extra-repaint fallback
+if Win32 cannot create that timer.
+
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
 overlay. Both windows are topmost only while visible. Ordinary controller reads
@@ -714,7 +723,17 @@ provenance records a clean tree, release eligibility, and zero stderr or output
 truncation. The dispatcher does not hard-bound cancellation-ignoring Windows ACL
 calls or its final drain, and the shipping native client cannot pipeline while
 its synchronous read blocks the UI; those are still release-blocking startup/
-availability work. PlatformBroker focused coverage passes
+availability work.
+
+Clean release-eligible all-lane run `20260809T171327Z-7e90ff88` passes 41/41
+steps in 323.958 seconds for action-admission documentation commit `689a933`
+over implementation commits `6c5f932`, `7d33ce1`, and `7d92dcd`; it records a
+clean source tree, zero stderr, and no output truncation. The subsequent native
+per-widget failure-feedback slice passes its 279-check deterministic target and
+the canonical Release native build/test script, including the full OverlayHost
+link and all existing state-machine suites.
+
+PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,

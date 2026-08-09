@@ -34,6 +34,7 @@ add_executable(OverlayHost WIN32
     FocusNavigation.cpp
     WidgetSurfaceFocus.cpp
     WidgetLifecycle.cpp
+    WidgetActionFeedback.cpp
 )
 
 target_compile_features(OverlayHost PRIVATE cxx_std_20)
@@ -167,6 +168,13 @@ if(GBA_BUILD_TESTS)
     target_compile_options(WidgetSurfaceFocusTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetSurfaceFocusTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME WidgetSurfaceFocusTests COMMAND WidgetSurfaceFocusTests)
+
+    add_executable(WidgetActionFeedbackTests
+        WidgetActionFeedbackTests.cpp WidgetActionFeedback.cpp)
+    target_compile_features(WidgetActionFeedbackTests PRIVATE cxx_std_20)
+    target_compile_options(WidgetActionFeedbackTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(WidgetActionFeedbackTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME WidgetActionFeedbackTests COMMAND WidgetActionFeedbackTests)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp

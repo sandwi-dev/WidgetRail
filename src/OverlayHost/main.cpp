@@ -12,6 +12,7 @@
 #include "PressedInteraction.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
+#include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
 #include "WidgetSurfaceFocus.h"
 #include "SliderInteraction.h"
@@ -58,6 +59,7 @@ constexpr UINT_PTR kGuideCompatibilityTimer = 2;
 constexpr UINT_PTR kZOrderSettleTimer = 3;
 constexpr UINT_PTR kCatalogRetryTimer = 4;
 constexpr UINT_PTR kForegroundLossTimer = 5;
+constexpr UINT_PTR kActionFeedbackTimer = 6;
 constexpr UINT kGuideMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
 constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
@@ -1117,6 +1119,10 @@ private:
             }
             if (wParam == kControllerTimer) {
                 const auto now = GetTickCount64();
+                // The dedicated deadline timer owns normal expiry. This cheap
+                // state check also closes the race if Win32 timer creation is
+                // temporarily unavailable; it never repaints unless state changed.
+                bool actionFeedbackChanged = actionFailureFeedback_.Expire(now);
                 if (overlayTransition_.active()) {
                     AdvanceOverlayTransition(now);
                 }
@@ -1177,14 +1183,20 @@ private:
                             L"Dropped stale widget action failure for " + failure.widgetId);
                         continue;
                     }
-                    lastActionWidgetId_ = failure.widgetId;
-                    lastActionMessage_ = std::wstring(DisplayWidgetName(failure.widgetId)) +
-                        L" action failed; try again";
-                    lastActionExpiresAt_ = GetTickCount64() + 4000;
+                    actionFeedbackChanged = actionFailureFeedback_.Publish(
+                        failure.widgetId,
+                        failure.runtimeGeneration,
+                        std::wstring(DisplayWidgetName(failure.widgetId)) +
+                            L" action failed; try again",
+                        now,
+                        4000) || actionFeedbackChanged;
                     AppendDiagnostic(
                         L"Widget action failed: widget=" + failure.widgetId +
                         L" action=" + failure.actionId +
                         L" source=" + failure.sourceElementId);
+                }
+                if (actionFeedbackChanged) {
+                    ScheduleActionFeedbackExpiry();
                     InvalidateRect(window_, nullptr, FALSE);
                 }
                 for (const auto& effect : bridge_.TakeHostEffects()) {
@@ -1247,6 +1259,12 @@ private:
                         Dispatch(gba::Command::CloseOverlay);
                     }
                 }
+            } else if (wParam == kActionFeedbackTimer) {
+                KillTimer(window_, kActionFeedbackTimer);
+                if (actionFailureFeedback_.Expire(GetTickCount64())) {
+                    InvalidateRect(window_, nullptr, FALSE);
+                }
+                ScheduleActionFeedbackExpiry();
             }
             return 0;
         case WM_ACTIVATEAPP:
@@ -1386,6 +1404,7 @@ private:
             KillTimer(window_, kZOrderSettleTimer);
             KillTimer(window_, kCatalogRetryTimer);
             KillTimer(window_, kForegroundLossTimer);
+            KillTimer(window_, kActionFeedbackTimer);
             UnregisterHotKey(window_, kDeveloperHotkey);
         }
         guideCompatibility_.Shutdown();
@@ -1768,8 +1787,10 @@ private:
         // Runtime identity owns focus memory independently of snapshot cache
         // residency. Clear every replaced/removed runtime even when its
         // offscreen snapshot was evicted earlier.
+        bool actionFeedbackRemoved = false;
         for (const auto& id : gba::ChangedWidgetRuntimeIds(
                  previousDescriptors, widgetDescriptors_)) {
+            actionFeedbackRemoved = actionFailureFeedback_.Forget(id) || actionFeedbackRemoved;
             focusMemory_.Forget(id);
             const auto previous = std::find_if(
                 previousDescriptors.begin(), previousDescriptors.end(),
@@ -1784,6 +1805,10 @@ private:
                 declarativeRenderer_->ForgetWidgetState(previous->instanceId);
                 sliderInteraction_.ForgetWidget(previous->instanceId);
             }
+        }
+        if (actionFeedbackRemoved) {
+            ScheduleActionFeedbackExpiry();
+            InvalidateRect(window_, nullptr, FALSE);
         }
         std::erase_if(widgetSnapshots_, [&](const auto& entry) {
             const auto descriptor = std::find_if(
@@ -2098,6 +2123,8 @@ private:
 
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
+        KillTimer(window_, kActionFeedbackTimer);
+        (void)actionFailureFeedback_.Clear();
         visibleControllerReadLease_ = false;
         lastControllerReadPath_ = gba::input::ControllerReadPath::None;
         lastControllerForegroundExclusive_.reset();
@@ -2121,6 +2148,21 @@ private:
         if (restoreTarget && IsWindow(restoreTarget)) {
             SetForegroundWindow(restoreTarget);
         }
+    }
+
+    void ScheduleActionFeedbackExpiry() {
+        KillTimer(window_, kActionFeedbackTimer);
+        if (state_.surface() == gba::Surface::Hidden) return;
+        const auto next = actionFailureFeedback_.NextExpiry();
+        if (!next) return;
+        const auto now = GetTickCount64();
+        const auto remaining = *next <= now ? 1ULL : *next - now;
+        constexpr ULONGLONG maximumTimerDelay = 0x7FFFFFFFULL;
+        SetTimer(
+            window_,
+            kActionFeedbackTimer,
+            static_cast<UINT>(std::min(remaining, maximumTimerDelay)),
+            nullptr);
     }
 
     void ReassertOverlayZOrder() {
@@ -3652,6 +3694,19 @@ private:
     }
 
     std::wstring DashboardHint(const float availableWidth) const {
+        const auto selectedDescriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [&](const gba::WidgetDescriptor& descriptor) {
+                return descriptor.id == state_.selectedWidget();
+            });
+        if (selectedDescriptor != widgetDescriptors_.end()) {
+            if (const auto failure = actionFailureFeedback_.MessageFor(
+                    selectedDescriptor->id,
+                    selectedDescriptor->runtimeGeneration,
+                    GetTickCount64())) {
+                return std::wstring{*failure};
+            }
+        }
         if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty() &&
             lastActionWidgetId_ == state_.selectedWidget()) {
             return lastActionMessage_;
@@ -3714,6 +3769,19 @@ private:
     }
 
     std::wstring OpenWidgetPrompt() const {
+        const auto activeDescriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [&](const gba::WidgetDescriptor& descriptor) {
+                return descriptor.id == state_.activeWidget();
+            });
+        if (activeDescriptor != widgetDescriptors_.end()) {
+            if (const auto failure = actionFailureFeedback_.MessageFor(
+                    activeDescriptor->id,
+                    activeDescriptor->runtimeGeneration,
+                    GetTickCount64())) {
+                return std::wstring{*failure};
+            }
+        }
         if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty() &&
             lastActionWidgetId_ == state_.activeWidget()) {
             return lastActionMessage_;
@@ -3984,6 +4052,7 @@ private:
     std::wstring lastActionMessage_;
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
+    gba::WidgetActionFeedbackStore actionFailureFeedback_;
     ULONGLONG lastGuideDispatchAt_{};
     ULONGLONG sliderReconcileAt_{};
     std::wstring focusedElementId_;
