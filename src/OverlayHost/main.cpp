@@ -2631,6 +2631,70 @@ private:
         };
     }
 
+    static bool ContainsWidgetNode(
+        const gba::WidgetNode& node,
+        const std::wstring_view nodeId) noexcept {
+        if (node.id == nodeId) return true;
+        return std::ranges::any_of(node.children, [&](const gba::WidgetNode& child) {
+            return ContainsWidgetNode(child, nodeId);
+        });
+    }
+
+    static std::optional<std::pair<std::wstring, std::wstring>>
+    ScrollPaginationActionForFocus(
+        const gba::WidgetNode& node,
+        const std::wstring_view focusedId,
+        const gba::input::NavigationDirection direction) {
+        for (const auto& child : node.children) {
+            if (const auto nested = ScrollPaginationActionForFocus(
+                    child, focusedId, direction))
+                return nested;
+        }
+        if (node.kind != L"scroll" || node.scrollPaginationThreshold == 0 ||
+            node.children.empty())
+            return std::nullopt;
+        const bool towardStart =
+            (node.scrollAxis == L"vertical" &&
+                direction == gba::input::NavigationDirection::Up) ||
+            (node.scrollAxis == L"horizontal" &&
+                direction == gba::input::NavigationDirection::Left);
+        const bool towardEnd =
+            (node.scrollAxis == L"vertical" &&
+                direction == gba::input::NavigationDirection::Down) ||
+            (node.scrollAxis == L"horizontal" &&
+                direction == gba::input::NavigationDirection::Right);
+        if (!towardStart && !towardEnd) return std::nullopt;
+        for (std::size_t index = 0; index < node.children.size(); ++index) {
+            if (!ContainsWidgetNode(node.children[index], focusedId)) continue;
+            if (towardStart && !node.scrollNearStartActionId.empty() &&
+                index < node.scrollPaginationThreshold)
+                return std::pair{node.scrollNearStartActionId, node.id};
+            if (towardEnd && !node.scrollNearEndActionId.empty() &&
+                node.children.size() - index <= node.scrollPaginationThreshold)
+                return std::pair{node.scrollNearEndActionId, node.id};
+            break;
+        }
+        return std::nullopt;
+    }
+
+    void DispatchScrollPagination(
+        const std::wstring_view widgetId,
+        const gba::WidgetSnapshot& snapshot,
+        const gba::input::NavigationDirection direction) {
+        const auto action = ScrollPaginationActionForFocus(
+            snapshot.root, focusedElementId_, direction);
+        if (!action) return;
+        const auto handled = bridge_.SendAction(
+            widgetId, action->first, action->second, snapshot.activeInputScopeId);
+        if (!handled) {
+            AppendDiagnostic(std::wstring(DisplayWidgetName(widgetId)) +
+                L" pagination failed: " + bridge_.lastError());
+            return;
+        }
+        if (*handled)
+            RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widgetId); });
+    }
+
     void HandleWidgetDirection(
         const gba::input::NavigationDirection direction,
         const gba::input::NavigationEventPhase phase,
@@ -2834,21 +2898,22 @@ private:
             gba::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_);
         const bool explicitMoves = explicitTarget && gba::input::IsDistinctFocusMove(
             focusedElementId_, explicitTarget->id, explicitNavigable);
-        if (explicitMoves) {
-            sliderInteraction_.DeactivateAll();
-            (void)pressedInteraction_.Clear();
-            focusedElementId_ = explicitTarget->id;
-            focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-
         gba::input::NavigationDirection navigationDirection =
             gba::input::NavigationDirection::None;
         if (direction == L"left") navigationDirection = gba::input::NavigationDirection::Left;
         else if (direction == L"right") navigationDirection = gba::input::NavigationDirection::Right;
         else if (direction == L"up") navigationDirection = gba::input::NavigationDirection::Up;
         else if (direction == L"down") navigationDirection = gba::input::NavigationDirection::Down;
+        if (explicitMoves) {
+            sliderInteraction_.DeactivateAll();
+            (void)pressedInteraction_.Clear();
+            focusedElementId_ = explicitTarget->id;
+            focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
+            InvalidateRect(window_, nullptr, FALSE);
+            DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
+            return;
+        }
+
         const auto fallback = gba::input::FindGeometricFocusTarget(
             focusedElementId_, navigationDirection, lastWidgetRenderResult_);
         if (fallback) {
@@ -2857,6 +2922,7 @@ private:
             focusedElementId_ = *fallback;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
+            DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
         if (gba::input::ShouldTransferFocusToTray(

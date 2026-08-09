@@ -257,6 +257,14 @@ public sealed record ViewNode
     /// clips descendants, and reveals controller focus; widgets never publish pixels.
     /// </summary>
     public ScrollAxis? ScrollAxis { get; init; }
+    /// <summary>
+    /// Optional protocol-v11 actions emitted once controller or keyboard focus
+    /// approaches the leading or trailing edge of this scroll container.
+    /// The host owns detection; widgets own paging and cache policy.
+    /// </summary>
+    public string? ScrollNearStartActionId { get; init; }
+    public string? ScrollNearEndActionId { get; init; }
+    public int? ScrollPaginationThreshold { get; init; }
     public IReadOnlyList<string> StyleClasses { get; init; } = [];
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public IReadOnlyList<ViewNode> Children { get; init; } = [];

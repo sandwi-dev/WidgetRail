@@ -195,7 +195,9 @@ static SpotifyLocalPlaybackState PlaybackState(string artworkUrl, string name = 
 
 static Task PageSourceContract()
 {
-    Assert.True(SpotifyPlaybackPageValidator.IsTrustedSource("about:blank"));
+    Assert.True(SpotifyPlaybackPageValidator.IsTrustedSource(
+        "https://spotify-playback.gbar.internal/index.html"));
+    Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("about:blank"));
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("https://sdk.scdn.co/"));
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource(null));
     return Task.CompletedTask;

@@ -327,6 +327,13 @@ internal sealed class SpotifyPlaybackHostClient : ISpotifyPlaybackHostClient
                         "protocol_violation",
                         "The Spotify playback host returned an unknown event.");
                 if (value.Type == "sdk_loaded") _sdkLoaded?.TrySetResult();
+                else if (value.Type == "sdk_error" &&
+                         _sdkLoaded?.Task.IsCompleted == false)
+                {
+                    var error = SafeCommandError(value.Payload);
+                    _sdkLoaded.TrySetException(new SpotifyPlaybackHostClientException(
+                        error.Code, "The Spotify playback host could not initialize."));
+                }
                 try { EventReceived?.Invoke(this, value); }
                 catch (Exception exception) when (exception is not OutOfMemoryException)
                 {

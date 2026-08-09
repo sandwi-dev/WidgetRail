@@ -2,7 +2,7 @@ namespace GameBarAlternative.SpotifyPlaybackHost;
 
 internal static class SpotifyPlaybackPage
 {
-    internal const string TopLevelUri = "about:blank";
+    internal const string TopLevelUri = "https://spotify-playback.gbar.internal/index.html";
 
     internal const string Html = """
         <!doctype html>
@@ -14,7 +14,6 @@ internal static class SpotifyPlaybackPage
           <title>Spotify Playback Host</title>
         </head>
         <body>
-          <script src="https://sdk.scdn.co/spotify-player.js"></script>
           <script>
           (() => {
             'use strict';
@@ -130,6 +129,19 @@ internal static class SpotifyPlaybackPage
               sdkReady = true;
               post('sdk_loaded', null);
             };
+
+            // Define the global callback before requesting Spotify's script. The SDK
+            // invokes it from the document load path and fails closed when it is absent.
+            // Dynamic insertion also gives the trusted host an explicit download error
+            // instead of making every bootstrap failure look like a generic timeout.
+            const sdkScript = document.createElement('script');
+            sdkScript.src = 'https://sdk.scdn.co/spotify-player.js';
+            sdkScript.async = true;
+            sdkScript.onerror = () => post('sdk_error', null, {
+              code: 'initialization_error',
+              message: 'The Spotify playback SDK could not be downloaded.'
+            });
+            document.head.appendChild(sdkScript);
 
             chrome.webview.addEventListener('message', event => {
               const message = event.data;

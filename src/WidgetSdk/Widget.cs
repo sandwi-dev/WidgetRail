@@ -38,6 +38,8 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.SliderVersion);
             if (ContainsActivationRequiredSlider(Root))
                 required = Math.Max(required, ProtocolConstants.SliderActivationVersion);
+            if (ContainsPaginatedScroll(Root))
+                required = Math.Max(required, ProtocolConstants.ScrollPaginationVersion);
             if (QuickActions?.Any(action => action.Capability is not null) == true)
                 required = Math.Max(required, ProtocolConstants.DashboardGestureAuthorityVersion);
             if (ContainsLoadingIndicator(Root))
@@ -85,6 +87,19 @@ public sealed record WidgetView(
         RowElement row => row.Children.Any(ContainsScroll),
         ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsScroll),
         GridElement grid => grid.Children.Any(ContainsScroll),
+        _ => false,
+    };
+
+    private static bool ContainsPaginatedScroll(WidgetElement element) => element switch
+    {
+        ResponsiveBranchElement branch => ContainsPaginatedScroll(branch.Child),
+        ScrollElement scroll when scroll.PaginationThreshold is not null ||
+            scroll.NearStartActionId is not null || scroll.NearEndActionId is not null => true,
+        StackElement stack => stack.Children.Any(ContainsPaginatedScroll),
+        RowElement row => row.Children.Any(ContainsPaginatedScroll),
+        ScrollElement scroll => scroll.Children.Any(ContainsPaginatedScroll),
+        ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsPaginatedScroll),
+        GridElement grid => grid.Children.Any(ContainsPaginatedScroll),
         _ => false,
     };
 

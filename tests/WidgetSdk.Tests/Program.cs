@@ -8,6 +8,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),
     ("Protocol v2 scroll containers round-trip with host-owned semantics", ScrollContainersRoundTrip),
+    ("Protocol v11 scroll pagination is bounded and versioned", ScrollPaginationRoundTrip),
     ("Baseline widgets remain protocol v1 compatible", BaselineProtocolCompatibility),
     ("Protocol v9 responsive branches are semantic and versioned", ResponsiveVisibilityRoundTrip),
     ("Scroll containers and surface hints fail closed", ScrollAndSurfaceValidation),
@@ -1072,6 +1073,37 @@ static Task ScrollContainersRoundTrip()
     Assert.Equal(560D, restored.Surface.PreferredWidth);
     Assert.Equal(360D, restored.Surface.MinimumWidth);
     Assert.Equal("close-details", restored.Root.Shortcuts.Single().ActionId);
+    return Task.CompletedTask;
+}
+
+static Task ScrollPaginationRoundTrip()
+{
+    var snapshot = new WidgetView(
+        UI.VerticalScroll("paged-list",
+                UI.Button("First", "open-first", "first"),
+                UI.Button("Last", "open-last", "last"))
+            .Paginate("previous-page", "next-page", threshold: 1),
+        InitialFocusId: "first")
+        .CreateSnapshot("pagination.instance", 1);
+
+    Assert.Equal(ProtocolConstants.ScrollPaginationVersion, snapshot.ProtocolVersion);
+    Assert.Equal("previous-page", snapshot.Root.ScrollNearStartActionId);
+    Assert.Equal("next-page", snapshot.Root.ScrollNearEndActionId);
+    Assert.Equal(1, snapshot.Root.ScrollPaginationThreshold);
+    var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+    Assert.Equal("next-page", restored.Root.ScrollNearEndActionId);
+
+    var legacy = snapshot with
+    {
+        ProtocolVersion = ProtocolConstants.SliderActivationVersion,
+    };
+    Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+            error.Code == "feature_requires_version"),
+        "Protocol v10 must reject host-owned scroll pagination.");
+    Assert.Throws<ArgumentException>(() => UI.VerticalScroll("missing-actions")
+        .Paginate(null, null));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.VerticalScroll("bad-threshold")
+        .Paginate(null, "next", threshold: 0));
     return Task.CompletedTask;
 }
 

@@ -124,6 +124,9 @@ public sealed record ScrollElement : WidgetElement
     public ScrollAxis Axis { get; init; }
     public IReadOnlyList<WidgetElement> Children { get; init; }
     public string? InputScopeId { get; init; }
+    public string? NearStartActionId { get; init; }
+    public string? NearEndActionId { get; init; }
+    public int? PaginationThreshold { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
     public ScrollElement Shortcut(
@@ -134,11 +137,38 @@ public sealed record ScrollElement : WidgetElement
             Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase)],
         };
 
+    /// <summary>
+    /// Requests host-owned focus-edge pagination. When focus enters the first
+    /// or last <paramref name="threshold"/> direct items, the corresponding
+    /// action is emitted without adding a visible Load more control.
+    /// </summary>
+    public ScrollElement Paginate(
+        string? nearStartActionId,
+        string? nearEndActionId,
+        int threshold = 2)
+    {
+        if (nearStartActionId is null && nearEndActionId is null)
+            throw new ArgumentException("At least one pagination action is required.");
+        if (nearStartActionId is not null) RequireId(nearStartActionId);
+        if (nearEndActionId is not null) RequireId(nearEndActionId);
+        if (threshold is < 1 or > ProtocolConstants.MaximumScrollPaginationThreshold)
+            throw new ArgumentOutOfRangeException(nameof(threshold));
+        return this with
+        {
+            NearStartActionId = nearStartActionId,
+            NearEndActionId = nearEndActionId,
+            PaginationThreshold = threshold,
+        };
+    }
+
     internal override ViewNode ToProtocolNode() => new()
     {
         Id = Id,
         Kind = ViewNodeKind.Scroll,
         ScrollAxis = Axis,
+        ScrollNearStartActionId = NearStartActionId,
+        ScrollNearEndActionId = NearEndActionId,
+        ScrollPaginationThreshold = PaginationThreshold,
         StyleClasses = StyleClasses,
         InputScopeId = InputScopeId,
         Shortcuts = Shortcuts,

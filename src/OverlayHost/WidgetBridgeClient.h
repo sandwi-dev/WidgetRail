@@ -126,6 +126,9 @@ struct WidgetNode final {
     std::wstring visibleWhen;
     std::wstring inputScopeId;
     std::wstring scrollAxis;
+    std::wstring scrollNearStartActionId;
+    std::wstring scrollNearEndActionId;
+    std::size_t scrollPaginationThreshold{};
     std::wstring actionSurfaceOrientation;
     std::optional<double> gridMinimumColumnWidth;
     std::optional<std::size_t> gridMaximumColumns;
@@ -273,6 +276,11 @@ public:
         long long monotonicTimestampMicroseconds,
         std::wstring_view phase = L"pressed",
         std::optional<double> requestedValue = std::nullopt);
+    [[nodiscard]] std::optional<bool> SendAction(
+        std::wstring_view widgetId,
+        std::wstring_view actionId,
+        std::wstring_view sourceElementId,
+        std::wstring_view inputScopeId);
     [[nodiscard]] const std::wstring& lastError() const noexcept { return lastError_; }
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();

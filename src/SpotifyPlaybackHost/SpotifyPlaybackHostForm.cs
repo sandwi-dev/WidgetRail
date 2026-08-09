@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using GameBarAlternative.SpotifyPlayback;
 using Microsoft.Web.WebView2.Core;
@@ -151,6 +152,23 @@ internal sealed class SpotifyPlaybackHostForm : Form
             await _webView.EnsureCoreWebView2Async(environment).ConfigureAwait(true);
             var core = _webView.CoreWebView2;
             Harden(core);
+            core.AddWebResourceRequestedFilter(
+                SpotifyPlaybackPage.TopLevelUri,
+                CoreWebView2WebResourceContext.Document);
+            core.WebResourceRequested += (_, args) =>
+            {
+                if (!string.Equals(args.Request.Uri, SpotifyPlaybackPage.TopLevelUri,
+                        StringComparison.Ordinal))
+                    return;
+                args.Response = core.Environment.CreateWebResourceResponse(
+                    new MemoryStream(Encoding.UTF8.GetBytes(SpotifyPlaybackPage.Html),
+                        writable: false),
+                    200,
+                    "OK",
+                    "Content-Type: text/html; charset=utf-8\r\n" +
+                    "Cache-Control: no-store\r\n" +
+                    "X-Content-Type-Options: nosniff");
+            };
             core.WebMessageReceived += OnWebMessageReceived;
             core.NavigationStarting += (_, args) =>
                 args.Cancel = !string.Equals(args.Uri, SpotifyPlaybackPage.TopLevelUri,
@@ -184,7 +202,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
             };
             _initialized = true;
             _sdkLoadTimeout.Start();
-            _webView.NavigateToString(SpotifyPlaybackPage.Html);
+            core.Navigate(SpotifyPlaybackPage.TopLevelUri);
             Emit("host_initialized", null, new { });
         }
         catch (Exception)

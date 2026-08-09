@@ -483,6 +483,18 @@ WidgetNode ParseNode(const JsonObject& source) {
         throw winrt::hresult_invalid_argument();
     node.inputScopeId = OptionalString(source, L"inputScopeId");
     node.scrollAxis = OptionalString(source, L"scrollAxis");
+    node.scrollNearStartActionId = OptionalString(source, L"scrollNearStartActionId");
+    node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
+    if (source.HasKey(L"scrollPaginationThreshold")) {
+        if (source.GetNamedValue(L"scrollPaginationThreshold").ValueType() !=
+            JsonValueType::Number)
+            throw winrt::hresult_invalid_argument();
+        const auto value = source.GetNamedNumber(L"scrollPaginationThreshold");
+        if (!std::isfinite(value) || value < 1.0 || value > 8.0 ||
+            std::floor(value) != value)
+            throw winrt::hresult_invalid_argument();
+        node.scrollPaginationThreshold = static_cast<std::size_t>(value);
+    }
     node.actionSurfaceOrientation = OptionalString(source, L"actionSurfaceOrientation");
     if (source.HasKey(L"gridMinimumColumnWidth")) {
         if (source.GetNamedValue(L"gridMinimumColumnWidth").ValueType() != JsonValueType::Number)
@@ -1362,6 +1374,79 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge JSON: " + std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> WidgetBridgeClient::SendAction(
+    const std::wstring_view widgetId,
+    const std::wstring_view actionId,
+    const std::wstring_view sourceElementId,
+    const std::wstring_view inputScopeId) {
+    if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() || actionId.empty() ||
+        sourceElementId.empty() || !IsIdentifier(widgetId) ||
+        !IsIdentifier(actionId) || !IsIdentifier(sourceElementId) ||
+        (!inputScopeId.empty() && !IsIdentifier(inputScopeId))) {
+        if (pipe_ != INVALID_HANDLE_VALUE) Fail(L"Widget action request is invalid.");
+        return std::nullopt;
+    }
+    try {
+        JsonObject action;
+        action.Insert(L"actionId", JsonValue::CreateStringValue(winrt::hstring(actionId)));
+        action.Insert(L"sourceElementId",
+                      JsonValue::CreateStringValue(winrt::hstring(sourceElementId)));
+        action.Insert(L"phase", JsonValue::CreateStringValue(L"pressed"));
+        if (!inputScopeId.empty()) {
+            action.Insert(L"inputScopeId",
+                          JsonValue::CreateStringValue(winrt::hstring(inputScopeId)));
+        }
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        payload.Insert(L"action", action);
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"action"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (!ReadRequestId(response, responseId)) {
+                Fail(L"WidgetBridge returned an invalid action request ID.");
+                return std::nullopt;
+            }
+            const auto type = response.GetNamedString(L"type");
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, hostEffects_,
+                                      appearanceChanges_, catalogChanges_, status)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
+                continue;
+            }
+            if (responseId != requestId) {
+                Fail(L"WidgetBridge returned a mismatched action request ID.");
+                return std::nullopt;
+            }
+            if (type == L"error") {
+                Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            if (type != L"acknowledged") {
+                Fail(L"WidgetBridge returned an unexpected action response.");
+                return std::nullopt;
+            }
+            lastError_.clear();
+            return true;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge action JSON: " + std::wstring(error.message()));
     }
     return std::nullopt;
 }

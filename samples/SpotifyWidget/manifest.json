@@ -3,7 +3,7 @@
   "id": "org.gbar.samples.spotify",
   "publisher": "org.gbar.samples",
   "name": "Spotify",
-  "version": "0.2.4",
+  "version": "0.2.7",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

@@ -7,6 +7,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Process launch is redirected and parent bounded", PlaybackHostStartInfo),
     ("Client correlates commands without leaking tokens", PlaybackHostClientProtocol),
+    ("Startup SDK errors fail immediately with their exact code", StartupSdkError),
 };
 
 var failures = 0;
@@ -84,6 +85,31 @@ static async Task PlaybackHostClientProtocol()
     {
         Assert.Equal("authentication_error", exception.Code);
         Assert.True(!exception.ToString().Contains(accessToken, StringComparison.Ordinal));
+    }
+}
+
+static async Task StartupSdkError()
+{
+    var process = new FakePlaybackHostProcess();
+    var factory = new FakePlaybackHostProcessFactory(process);
+    var options = new SpotifyPlaybackHostClientOptions(
+        Environment.ProcessPath!, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(2));
+    await using var client = new SpotifyPlaybackHostClient(options, factory);
+    process.OutputChannel.WriteLine(SpotifyPlaybackProtocolCodec.EncodeEvent(new(
+        SpotifyPlaybackProtocol.Version, "sdk_error", null,
+        new { code = "host_initialization_error", message = "private detail" })));
+
+    var started = System.Diagnostics.Stopwatch.StartNew();
+    try
+    {
+        await client.StartAsync(default);
+        throw new InvalidOperationException("Expected playback-host startup to fail.");
+    }
+    catch (SpotifyPlaybackHostClientException exception)
+    {
+        Assert.Equal("host_initialization_error", exception.Code);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2));
+        Assert.True(!exception.ToString().Contains("private detail", StringComparison.Ordinal));
     }
 }
 

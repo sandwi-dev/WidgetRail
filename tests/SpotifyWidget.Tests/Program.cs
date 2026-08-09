@@ -20,7 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
-    ("Maximum playlist pages remain valid on the wire", MaximumPlaylistPageContract),
+    ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
     ("Playlist detail is a B-dismissible navigation entry", PlaylistDetailBack),
     ("Failed playlist detail keeps valid focus and retries the detail", PlaylistDetailFailureRetry),
     ("Slow playlist detail acknowledges and cannot reopen after B", SlowPlaylistDetailBack),
@@ -582,9 +582,39 @@ static async Task MaximumPlaylistPageContract()
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
 
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
-    _ = SnapshotJson.Serialize(widget.RenderSnapshot("spotify.maximum-playlists", 1));
+    await WaitUntil(() => harness.PlaylistCalls == 1);
+    var firstPage = widget.RenderSnapshot("spotify.maximum-playlists", 1);
+    Assert.Equal(ProtocolConstants.ScrollPaginationVersion, firstPage.ProtocolVersion);
+    var playlistScroll = Find(firstPage.Root, "spotify.playlists.scroll.wide");
+    Assert.Equal(12, playlistScroll.Children.Count);
+    Assert.Equal("spotify.playlists.more", playlistScroll.ScrollNearEndActionId);
+    Assert.True(playlistScroll.ScrollNearStartActionId is null,
+        "The first page must not request a previous page.");
+    Assert.True(SnapshotJson.Serialize(firstPage).Length < 400_000,
+        "A bounded playlist snapshot must remain comfortably below the bridge limit.");
+
+    await widget.OnActionAsync(new(
+        "spotify.playlists.more", "spotify.playlists.scroll.wide"));
+    await WaitUntil(() => harness.PlaylistCalls == 2);
+    var secondPage = widget.RenderSnapshot("spotify.second-playlists", 2);
+    Assert.NotNull(Find(secondPage.Root, "spotify.playlist.item.wide.12"));
+    Assert.Equal("spotify.playlist.item.wide.12", secondPage.InitialFocusId);
+    await widget.OnActionAsync(new(
+        "spotify.playlists.previous", "spotify.playlists.scroll.wide"));
+    await Task.Delay(25);
+    Assert.Equal(2, harness.PlaylistCalls);
+    var cachedFirstPage = widget.RenderSnapshot("spotify.cached-playlists", 3);
+    Assert.NotNull(Find(cachedFirstPage.Root, "spotify.playlist.item.wide.0"));
+    Assert.Equal("spotify.playlist.item.wide.11", cachedFirstPage.InitialFocusId);
+
     await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.wide.0"));
-    _ = SnapshotJson.Serialize(widget.RenderSnapshot("spotify.maximum-playlist-detail", 2));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+    var detailPage = widget.RenderSnapshot("spotify.maximum-playlist-detail", 4);
+    var trackScroll = Find(detailPage.Root, "spotify.playlist.detail.scroll.wide");
+    Assert.Equal(12, trackScroll.Children.Count);
+    Assert.Equal("spotify.playlist.more", trackScroll.ScrollNearEndActionId);
+    Assert.True(SnapshotJson.Serialize(detailPage).Length < 400_000,
+        "A bounded playlist-detail snapshot must remain comfortably below the bridge limit.");
     await widget.OnActionAsync(new("spotify.playlist.track.0", "spotify.playlist.track.wide.0"));
     Assert.Equal(1, harness.StartedPlayback.Count);
     Assert.Equal("spotify:track:track-0", harness.StartedPlayback[0].OffsetUri);
@@ -734,7 +764,7 @@ static Task ManifestContract()
         WidgetSpotifyCapabilities.LocalPlaybackCapabilityId), "Local playback must remain optional.");
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaylistsReadCapabilityId), "Playlist reading must remain optional.");
-    Assert.Equal("0.2.4", manifest.Version);
+    Assert.Equal("0.2.7", manifest.Version);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
@@ -913,7 +943,13 @@ file sealed class SpotifyHarness
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     PlaylistCalls++;
-                    return ValueTask.FromResult(Playlists);
+                    var items = Playlists.Items.Skip(request.Offset).Take(request.Limit).ToArray();
+                    return ValueTask.FromResult(Playlists with
+                    {
+                        Items = items,
+                        Offset = request.Offset,
+                        Limit = request.Limit,
+                    });
                 })
             .WithHandler(WidgetSpotifyCapabilities.GetPlaylistItems,
                 async (request, cancellationToken) =>
@@ -921,12 +957,18 @@ file sealed class SpotifyHarness
                     cancellationToken.ThrowIfCancellationRequested();
                     PlaylistDetailCalls++;
                     if (PlaylistDetailError is not null) throw PlaylistDetailError;
-                    if (PlaylistDetailCompletion is not null)
-                        return IgnorePlaylistDetailCancellation
+                    var detail = PlaylistDetailCompletion is not null
+                        ? IgnorePlaylistDetailCancellation
                             ? await PlaylistDetailCompletion.Task.ConfigureAwait(false)
                             : await PlaylistDetailCompletion.Task.WaitAsync(cancellationToken)
-                                .ConfigureAwait(false);
-                    return PlaylistDetail;
+                                .ConfigureAwait(false)
+                        : PlaylistDetail;
+                    return detail with
+                    {
+                        Items = detail.Items.Skip(request.Offset).Take(request.Limit).ToArray(),
+                        Offset = request.Offset,
+                        Limit = request.Limit,
+                    };
                 })
             .WithHandler(WidgetSpotifyCapabilities.GetDevices,
                 (request, cancellationToken) =>

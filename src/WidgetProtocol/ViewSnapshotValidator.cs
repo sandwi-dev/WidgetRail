@@ -235,11 +235,35 @@ public static class ViewSnapshotValidator
                     Add($"{path}.scrollAxis", "required", "A scroll container requires an axis.");
                 else if (!Enum.IsDefined(node.ScrollAxis.Value))
                     Add($"{path}.scrollAxis", "invalid_scroll_axis", "The scroll axis is not supported.");
+                var hasPagination = node.ScrollNearStartActionId is not null ||
+                    node.ScrollNearEndActionId is not null ||
+                    node.ScrollPaginationThreshold is not null;
+                if (hasPagination)
+                {
+                    if (snapshot.ProtocolVersion < ProtocolConstants.ScrollPaginationVersion)
+                        Add(path, "feature_requires_version",
+                            $"Scroll pagination requires protocol version {ProtocolConstants.ScrollPaginationVersion} or later.");
+                    if (node.ScrollNearStartActionId is not null)
+                        CheckIdentifier(node.ScrollNearStartActionId,
+                            $"{path}.scrollNearStartActionId", "scroll near-start action ID");
+                    if (node.ScrollNearEndActionId is not null)
+                        CheckIdentifier(node.ScrollNearEndActionId,
+                            $"{path}.scrollNearEndActionId", "scroll near-end action ID");
+                    if (node.ScrollNearStartActionId is null && node.ScrollNearEndActionId is null)
+                        Add(path, "scroll_pagination_action_required",
+                            "Scroll pagination requires at least one boundary action.");
+                    if (node.ScrollPaginationThreshold is not { } threshold ||
+                        threshold is < 1 or > ProtocolConstants.MaximumScrollPaginationThreshold)
+                        Add($"{path}.scrollPaginationThreshold", "invalid_scroll_pagination_threshold",
+                            $"Scroll pagination threshold must be between 1 and {ProtocolConstants.MaximumScrollPaginationThreshold}.");
+                }
             }
-            else if (node.ScrollAxis is not null)
+            else if (node.ScrollAxis is not null || node.ScrollNearStartActionId is not null ||
+                     node.ScrollNearEndActionId is not null ||
+                     node.ScrollPaginationThreshold is not null)
             {
-                Add($"{path}.scrollAxis", "scroll_axis_not_allowed",
-                    "Scroll axis applies only to scroll containers.");
+                Add(path, "scroll_property_not_allowed",
+                    "Scroll properties apply only to scroll containers.");
             }
             if (node.Kind is ViewNodeKind.Grid)
             {

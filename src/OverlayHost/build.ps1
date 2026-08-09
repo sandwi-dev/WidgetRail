@@ -265,7 +265,8 @@ if (-not $SkipPackaging) {
     & dotnet publish (Join-Path $projectDirectory '..\SpotifyPlaybackHost\SpotifyPlaybackHost.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $spotifyPlaybackHostOutput
     if ($LASTEXITCODE -ne 0 -or
-        -not (Test-Path -LiteralPath (Join-Path $spotifyPlaybackHostOutput 'SpotifyPlaybackHost.exe'))) {
+        -not (Test-Path -LiteralPath (Join-Path $spotifyPlaybackHostOutput 'SpotifyPlaybackHost.exe')) -or
+        -not (Test-Path -LiteralPath (Join-Path $spotifyPlaybackHostOutput 'WebView2Loader.dll'))) {
         throw "Spotify playback host publish failed with exit code $LASTEXITCODE."
     }
     & dotnet publish (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
