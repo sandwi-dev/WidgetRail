@@ -8,6 +8,8 @@ param(
     [string[]]$StepId = @(),
     [ValidateRange(60, 7200)]
     [int]$OverallTimeoutSeconds = 1800,
+    [ValidateRange(0, 300)]
+    [int]$LeaseWaitSeconds = 0,
     [string]$OutputRoot
 )
 
@@ -55,11 +57,16 @@ $runStatus = 'passed'
 $failureMessage = $null
 $runDirectory = $null
 $provenance = $null
+$repositoryLease = $null
+$runId = $startedUtc.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
 try {
     if ($SkipNative -and $Lane -eq 'native') {
         throw '-SkipNative cannot be combined with -Lane native.'
     }
     if ($SkipNative) { $Lane = 'managed' }
+    $repositoryLease = Enter-RepositoryVerificationLease `
+        -RepositoryRoot $repositoryRoot -RunId $runId -Configuration $Configuration `
+        -StartedUtc $startedUtc -WaitSeconds ([Math]::Min($LeaseWaitSeconds, $OverallTimeoutSeconds))
     $manifestFile = Get-Item -LiteralPath $stepManifestPath
     if ($manifestFile.Length -gt 262144) {
         throw 'Verification step manifest exceeds 256 KiB.'
@@ -107,7 +114,6 @@ try {
         throw 'No verification steps match the selected IDs and lane.'
     }
 
-    $runId = $startedUtc.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
     if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
         $OutputRoot = Join-Path $repositoryRoot 'artifacts\verification'
     }
@@ -129,19 +135,6 @@ try {
         -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
     $dirtyText = $gitStatus.text
     $dirtyBytes = [Text.Encoding]::UTF8.GetBytes($dirtyText)
-    $packageRoot = Join-Path $repositoryRoot 'artifacts\community-addons'
-    $packageProvenance = Invoke-ProvenanceCommand -Id package-artifacts -File pwsh `
-        -Arguments @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'Get-PackageProvenance.ps1'),
-            '-Root', $packageRoot, '-RelativeTo', $repositoryRoot) `
-        -MaximumOutputBytes $manifest.maximumOutputBytesPerStream `
-        -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
-        -TimeoutSeconds (Get-RemainingVerificationTimeout 30 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
-    if ($packageProvenance.truncated) {
-        throw 'Package provenance output exceeded its configured limit.'
-    }
-    $artifactDigests = if ([string]::IsNullOrWhiteSpace($packageProvenance.text)) { @() } else {
-        @($packageProvenance.text | ConvertFrom-Json)
-    }
     $nativeToolchainResult = Invoke-ProvenanceCommand -Id native-toolchain -File pwsh `
         -Arguments @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'Get-NativeToolchainProvenance.ps1')) `
         -MaximumOutputBytes 65536 -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
@@ -151,7 +144,7 @@ try {
     }
     $nativeToolchain = $nativeToolchainResult.text | ConvertFrom-Json
     $provenance = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         runId = $runId
         configuration = $Configuration
         lane = $Lane
@@ -161,7 +154,13 @@ try {
         repositoryDirty = -not [string]::IsNullOrEmpty($dirtyText)
         dirtyStatusSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($dirtyBytes)).ToLowerInvariant()
         dirtyStatusTruncated = $gitStatus.truncated
-        releaseEvidenceEligible = [string]::IsNullOrEmpty($dirtyText) -and -not $gitStatus.truncated
+        finishedRepositoryCommit = $null
+        finishedRepositoryDirty = $null
+        finishedDirtyStatusSha256 = $null
+        finishedDirtyStatusTruncated = $null
+        repositoryStateStable = $false
+        releaseEvidenceEligible = $false
+        releaseEvidenceIneligibilityReasons = @('verification_in_progress')
         stepManifestSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($manifestBytes)).ToLowerInvariant()
         os = [Environment]::OSVersion.VersionString
         processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
@@ -173,9 +172,8 @@ try {
             $gitStatus.stdoutLog, $gitStatus.stderrLog,
             $gitCommit.stdoutLog, $gitCommit.stderrLog,
             $dotnetVersion.stdoutLog, $dotnetVersion.stderrLog,
-            $packageProvenance.stdoutLog, $packageProvenance.stderrLog,
             $nativeToolchainResult.stdoutLog, $nativeToolchainResult.stderrLog))
-        artifactDigests = $artifactDigests
+        artifactDigests = @()
     }
 
     foreach ($step in $allSteps) {
@@ -209,9 +207,75 @@ try {
 catch {
     $runStatus = 'failed'
     $failureMessage = $_.Exception.Message
-    throw
 }
 finally {
+    try {
+    if ($null -ne $provenance -and $null -ne $runDirectory) {
+        $finishedCommitText = ''
+        $finishedStatusText = ''
+        $finishedStatusTruncated = $true
+        $finalProvenanceSucceeded = $false
+        try {
+            $finishedGitStatus = Invoke-ProvenanceCommand -Id git-status-finished -File git `
+                -Arguments @('status', '--porcelain=v1', '--untracked-files=all') `
+                -MaximumOutputBytes $manifest.maximumOutputBytesPerStream `
+                -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+                -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+            $finishedGitCommit = Invoke-ProvenanceCommand -Id git-commit-finished -File git `
+                -Arguments @('rev-parse', 'HEAD') -MaximumOutputBytes 4096 `
+                -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+                -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+            $packageRoot = Join-Path $repositoryRoot 'artifacts\community-addons'
+            $packageProvenance = Invoke-ProvenanceCommand -Id package-artifacts-finished -File pwsh `
+                -Arguments @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'Get-PackageProvenance.ps1'),
+                    '-Root', $packageRoot, '-RelativeTo', $repositoryRoot) `
+                -MaximumOutputBytes $manifest.maximumOutputBytesPerStream `
+                -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+                -TimeoutSeconds (Get-RemainingVerificationTimeout 30 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+            if ($finishedGitStatus.truncated) {
+                throw 'Final Git status provenance output exceeded its configured limit.'
+            }
+            if ($packageProvenance.truncated) {
+                throw 'Final package provenance output exceeded its configured limit.'
+            }
+            $finishedCommitText = $finishedGitCommit.text
+            $finishedStatusText = $finishedGitStatus.text
+            $finishedStatusTruncated = $finishedGitStatus.truncated
+            $finishedDirtyBytes = [Text.Encoding]::UTF8.GetBytes($finishedStatusText)
+            $provenance.finishedRepositoryCommit = $finishedCommitText
+            $provenance.finishedRepositoryDirty = -not [string]::IsNullOrEmpty($finishedStatusText)
+            $provenance.finishedDirtyStatusSha256 = [Convert]::ToHexString(
+                [Security.Cryptography.SHA256]::HashData($finishedDirtyBytes)).ToLowerInvariant()
+            $provenance.finishedDirtyStatusTruncated = $finishedStatusTruncated
+            $provenance.artifactDigests = if ([string]::IsNullOrWhiteSpace($packageProvenance.text)) {
+                @()
+            } else {
+                @($packageProvenance.text | ConvertFrom-Json)
+            }
+            $provenance.provenanceCommandLogs = @($provenance.provenanceCommandLogs) + @(
+                $finishedGitStatus.stdoutLog, $finishedGitStatus.stderrLog,
+                $finishedGitCommit.stdoutLog, $finishedGitCommit.stderrLog,
+                $packageProvenance.stdoutLog, $packageProvenance.stderrLog)
+            $finalProvenanceSucceeded = $true
+        }
+        catch {
+            if ($runStatus -eq 'passed') {
+                $runStatus = 'failed'
+                $failureMessage = "Final verification provenance failed: $($_.Exception.Message)"
+            }
+        }
+        $eligibility = Get-VerificationEvidenceEligibility `
+            -VerificationPassed ($runStatus -eq 'passed') `
+            -StartingCommit ([string]$provenance.repositoryCommit) `
+            -StartingStatus $dirtyText `
+            -StartingStatusTruncated ([bool]$provenance.dirtyStatusTruncated) `
+            -FinalProvenanceSucceeded $finalProvenanceSucceeded `
+            -FinishedCommit $finishedCommitText -FinishedStatus $finishedStatusText `
+            -FinishedStatusTruncated $finishedStatusTruncated
+        $provenance.repositoryStateStable = $eligibility.repositoryStateStable
+        $provenance.releaseEvidenceEligible = $eligibility.eligible
+        $provenance.releaseEvidenceIneligibilityReasons = @($eligibility.reasons)
+    }
     $runStopwatch.Stop()
     if ($null -ne $runDirectory) {
         $summary = [ordered]@{
@@ -229,5 +293,12 @@ finally {
             [Text.UTF8Encoding]::new($false))
         Write-Host "`nVerification result: $resultPath"
     }
-    Pop-Location
+    }
+    finally {
+        if ($null -ne $repositoryLease) {
+            Exit-RepositoryVerificationLease -Lease $repositoryLease
+        }
+        Pop-Location
+    }
 }
+if ($runStatus -ne 'passed') { throw $failureMessage }

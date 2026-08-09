@@ -44,6 +44,31 @@ try {
 }
 catch { $exhausted = $_.Exception.Message -eq 'Verification exceeded its 60-second overall limit.' }
 if (-not $exhausted) { throw 'Shared verification deadline did not fail before launch at exhaustion.' }
+$stableEligibility = Get-VerificationEvidenceEligibility `
+    -VerificationPassed $true -StartingCommit 'abc' -StartingStatus '' `
+    -StartingStatusTruncated $false -FinalProvenanceSucceeded $true `
+    -FinishedCommit 'abc' -FinishedStatus '' -FinishedStatusTruncated $false
+if (-not $stableEligibility.eligible -or -not $stableEligibility.repositoryStateStable -or
+    $stableEligibility.reasons.Count -ne 0) {
+    throw 'Stable clean repository state was not release eligible.'
+}
+$dirtyFinishEligibility = Get-VerificationEvidenceEligibility `
+    -VerificationPassed $true -StartingCommit 'abc' -StartingStatus '' `
+    -StartingStatusTruncated $false -FinalProvenanceSucceeded $true `
+    -FinishedCommit 'abc' -FinishedStatus ' M source.cs' -FinishedStatusTruncated $false
+if ($dirtyFinishEligibility.eligible -or $dirtyFinishEligibility.repositoryStateStable -or
+    'finished_worktree_dirty' -notin $dirtyFinishEligibility.reasons -or
+    'repository_status_changed' -notin $dirtyFinishEligibility.reasons) {
+    throw 'Start-clean/end-dirty fixture remained release eligible.'
+}
+$changedCommitEligibility = Get-VerificationEvidenceEligibility `
+    -VerificationPassed $true -StartingCommit 'abc' -StartingStatus '' `
+    -StartingStatusTruncated $false -FinalProvenanceSucceeded $true `
+    -FinishedCommit 'def' -FinishedStatus '' -FinishedStatusTruncated $false
+if ($changedCommitEligibility.eligible -or $changedCommitEligibility.repositoryStateStable -or
+    'repository_commit_changed' -notin $changedCommitEligibility.reasons) {
+    throw 'Start-clean/end-different-commit fixture remained release eligible.'
+}
 $workflowPath = Join-Path $repositoryRoot '.github\workflows\verify.yml'
 if (-not (Test-Path -LiteralPath $workflowPath)) {
     throw 'Windows verification workflow is missing.'
@@ -62,6 +87,100 @@ if ($actionReferences.Count -eq 0 -or
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ("gba-verification-runner-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
+    $leaseRoot = Join-Path $temporary 'lease-repository'
+    New-Item -ItemType Directory -Path $leaseRoot | Out-Null
+    $leaseFixturePath = Join-Path $temporary 'lease-fixture.ps1'
+    [IO.File]::WriteAllText($leaseFixturePath, @'
+param(
+    [string]$ModulePath,
+    [string]$RepositoryRoot,
+    [string]$MarkerPath,
+    [int]$HoldMilliseconds = 0
+)
+$ErrorActionPreference = 'Stop'
+Import-Module $ModulePath -Force
+$lease = Enter-RepositoryVerificationLease -RepositoryRoot $RepositoryRoot `
+    -RunId 'fixture-child' -Configuration Release -StartedUtc ([DateTimeOffset]::UtcNow)
+try {
+    [IO.File]::WriteAllText($MarkerPath, 'acquired')
+    if ($HoldMilliseconds -gt 0) { Start-Sleep -Milliseconds $HoldMilliseconds }
+    Write-Output 'PASS repository lease acquired'
+}
+finally { Exit-RepositoryVerificationLease -Lease $lease }
+'@, [Text.UTF8Encoding]::new($false))
+
+    $heldLease = Enter-RepositoryVerificationLease -RepositoryRoot $leaseRoot `
+        -RunId 'fixture-parent' -Configuration Release -StartedUtc ([DateTimeOffset]::UtcNow)
+    $contendedMarker = Join-Path $temporary 'contended.marker'
+    try {
+        $contended = Invoke-BoundedVerificationProcess -Id lease-contended `
+            -Description 'lease contended' -FilePath pwsh `
+            -ArgumentList @('-NoProfile', '-File', $leaseFixturePath,
+                '-ModulePath', (Join-Path $PSScriptRoot 'VerificationRunner.psm1'),
+                '-RepositoryRoot', $leaseRoot, '-MarkerPath', $contendedMarker) `
+            -WorkingDirectory $temporary -TimeoutSeconds 10 -OutputDirectory $temporary `
+            -SuppressReplay
+        $contendedError = [IO.File]::ReadAllText((Join-Path $temporary $contended.stderrLog))
+        if ($contended.status -ne 'failed' -or
+            -not $contendedError.Contains('verification_lease_busy', [StringComparison]::Ordinal) -or
+            -not $contendedError.Contains('fixture-parent', [StringComparison]::Ordinal) -or
+            (Test-Path -LiteralPath $contendedMarker)) {
+            throw 'Concurrent verification did not fail before touching shared output.'
+        }
+    }
+    finally { Exit-RepositoryVerificationLease -Lease $heldLease }
+
+    $releasedMarker = Join-Path $temporary 'released.marker'
+    $released = Invoke-BoundedVerificationProcess -Id lease-released `
+        -Description 'lease released' -FilePath pwsh `
+        -ArgumentList @('-NoProfile', '-File', $leaseFixturePath,
+            '-ModulePath', (Join-Path $PSScriptRoot 'VerificationRunner.psm1'),
+            '-RepositoryRoot', $leaseRoot, '-MarkerPath', $releasedMarker) `
+        -WorkingDirectory $temporary -TimeoutSeconds 10 -OutputDirectory $temporary `
+        -SuppressReplay
+    if ($released.status -ne 'passed' -or -not (Test-Path -LiteralPath $releasedMarker)) {
+        throw 'Repository lease did not become available after handle release.'
+    }
+
+    $crashMarker = Join-Path $temporary 'crash.marker'
+    $crashStartInfo = [Diagnostics.ProcessStartInfo]::new()
+    $crashStartInfo.FileName = 'pwsh'
+    $crashStartInfo.WorkingDirectory = $temporary
+    $crashStartInfo.UseShellExecute = $false
+    $crashStartInfo.CreateNoWindow = $true
+    foreach ($argument in @('-NoProfile', '-File', $leaseFixturePath,
+            '-ModulePath', (Join-Path $PSScriptRoot 'VerificationRunner.psm1'),
+            '-RepositoryRoot', $leaseRoot, '-MarkerPath', $crashMarker,
+            '-HoldMilliseconds', '30000')) {
+        [void]$crashStartInfo.ArgumentList.Add($argument)
+    }
+    $crashHolder = [Diagnostics.Process]::new()
+    $crashHolder.StartInfo = $crashStartInfo
+    if (-not $crashHolder.Start()) { throw 'Crash-release lease holder did not start.' }
+    try {
+        $readyStopwatch = [Diagnostics.Stopwatch]::StartNew()
+        while (-not (Test-Path -LiteralPath $crashMarker) -and
+            $readyStopwatch.ElapsedMilliseconds -lt 5000) {
+            Start-Sleep -Milliseconds 25
+        }
+        if (-not (Test-Path -LiteralPath $crashMarker)) {
+            throw 'Crash-release lease holder did not acquire within five seconds.'
+        }
+        $crashHolder.Kill($true)
+        if (-not $crashHolder.WaitForExit(5000)) {
+            throw 'Crash-release lease holder did not terminate.'
+        }
+    }
+    finally {
+        if (-not $crashHolder.HasExited) {
+            try { $crashHolder.Kill($true); [void]$crashHolder.WaitForExit(5000) } catch { }
+        }
+        $crashHolder.Dispose()
+    }
+    $afterCrash = Enter-RepositoryVerificationLease -RepositoryRoot $leaseRoot `
+        -RunId 'fixture-after-crash' -Configuration Release -StartedUtc ([DateTimeOffset]::UtcNow)
+    Exit-RepositoryVerificationLease -Lease $afterCrash
+
     $jobMembershipCommand = @'
 Add-Type -Namespace GbaVerificationFixture -Name NativeJob -MemberDefinition @"
 [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet=System.Runtime.InteropServices.CharSet.Unicode, SetLastError=true)]

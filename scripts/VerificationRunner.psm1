@@ -382,5 +382,133 @@ function Get-RemainingVerificationTimeout {
     [Math]::Min($RequestedSeconds, [int]$remainingSeconds)
 }
 
+function Enter-RepositoryVerificationLease {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$RepositoryRoot,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9A-Za-z-]{1,80}$')][string]$RunId,
+        [Parameter(Mandatory)][ValidateSet('Debug', 'Release')][string]$Configuration,
+        [Parameter(Mandatory)][DateTimeOffset]$StartedUtc,
+        [ValidateRange(0, 300)][int]$WaitSeconds = 0
+    )
+
+    $root = [IO.Path]::GetFullPath($RepositoryRoot)
+    $leaseDirectory = Join-Path $root 'artifacts\verification'
+    New-Item -ItemType Directory -Path $leaseDirectory -Force | Out-Null
+    $leasePath = Join-Path $leaseDirectory '.repository-run.lock'
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($WaitSeconds)
+    while ($true) {
+        $stream = $null
+        try {
+            # Readers may inspect owner metadata, but no second writer can open
+            # this live handle. Process death releases the OS lock; file bytes
+            # are deliberately never treated as lock authority.
+            $stream = [IO.FileStream]::new(
+                $leasePath,
+                [IO.FileMode]::OpenOrCreate,
+                [IO.FileAccess]::ReadWrite,
+                [IO.FileShare]::Read)
+            $metadata = [ordered]@{
+                processId = [Environment]::ProcessId
+                runId = $RunId
+                configuration = $Configuration
+                startedUtc = $StartedUtc.ToString('O')
+            } | ConvertTo-Json -Compress
+            $bytes = [Text.UTF8Encoding]::new($false).GetBytes($metadata)
+            $stream.SetLength(0)
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+            return [pscustomobject]@{
+                path = $leasePath
+                stream = $stream
+                metadata = $metadata
+            }
+        }
+        catch [IO.IOException] {
+            if ($null -ne $stream) { $stream.Dispose() }
+            if ([DateTimeOffset]::UtcNow -ge $deadline) {
+                $owner = try {
+                    $ownerStream = [IO.FileStream]::new(
+                        $leasePath,
+                        [IO.FileMode]::Open,
+                        [IO.FileAccess]::Read,
+                        [IO.FileShare]::ReadWrite)
+                    try {
+                        $reader = [IO.StreamReader]::new($ownerStream, [Text.Encoding]::UTF8)
+                        try { $reader.ReadToEnd() } finally { $reader.Dispose() }
+                    }
+                    finally { $ownerStream.Dispose() }
+                }
+                catch { '[unavailable]' }
+                if ($owner.Length -gt 1024) { $owner = $owner.Substring(0, 1024) }
+                throw [InvalidOperationException]::new(
+                    "verification_lease_busy: Another verification run owns this checkout. Owner: $owner")
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        catch {
+            if ($null -ne $stream) { $stream.Dispose() }
+            throw
+        }
+    }
+}
+
+function Exit-RepositoryVerificationLease {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Lease)
+
+    if ($null -ne $Lease.stream) {
+        $Lease.stream.Dispose()
+        $Lease.stream = $null
+    }
+}
+
+function Get-VerificationEvidenceEligibility {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][bool]$VerificationPassed,
+        [Parameter(Mandatory)][string]$StartingCommit,
+        [AllowEmptyString()][string]$StartingStatus = '',
+        [Parameter(Mandatory)][bool]$StartingStatusTruncated,
+        [Parameter(Mandatory)][bool]$FinalProvenanceSucceeded,
+        [AllowEmptyString()][string]$FinishedCommit = '',
+        [AllowEmptyString()][string]$FinishedStatus = '',
+        [Parameter(Mandatory)][bool]$FinishedStatusTruncated
+    )
+
+    $reasons = [Collections.Generic.List[string]]::new()
+    if (-not $VerificationPassed) { $reasons.Add('verification_failed') }
+    if ($StartingStatusTruncated) { $reasons.Add('starting_status_truncated') }
+    if (-not [string]::IsNullOrEmpty($StartingStatus)) {
+        $reasons.Add('starting_worktree_dirty')
+    }
+    if (-not $FinalProvenanceSucceeded) {
+        $reasons.Add('final_provenance_failed')
+    }
+    else {
+        if ($FinishedStatusTruncated) { $reasons.Add('finished_status_truncated') }
+        if (-not [string]::IsNullOrEmpty($FinishedStatus)) {
+            $reasons.Add('finished_worktree_dirty')
+        }
+        if ($StartingCommit -ne $FinishedCommit) {
+            $reasons.Add('repository_commit_changed')
+        }
+        if ($StartingStatus -ne $FinishedStatus) {
+            $reasons.Add('repository_status_changed')
+        }
+    }
+    $stable = $FinalProvenanceSucceeded -and
+        -not $StartingStatusTruncated -and
+        -not $FinishedStatusTruncated -and
+        $StartingCommit -eq $FinishedCommit -and
+        $StartingStatus -eq $FinishedStatus
+    [pscustomobject]@{
+        eligible = $reasons.Count -eq 0
+        repositoryStateStable = $stable
+        reasons = @($reasons)
+    }
+}
+
 Export-ModuleMember -Function Invoke-BoundedVerificationProcess, Write-VerificationJUnit, `
-    Get-RemainingVerificationTimeout
+    Get-RemainingVerificationTimeout, Enter-RepositoryVerificationLease, `
+    Exit-RepositoryVerificationLease, Get-VerificationEvidenceEligibility

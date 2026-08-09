@@ -874,6 +874,26 @@ typed simulated broker command. The existing YT Music acceptance route already
 proves direct and controller-resolved playback commands through its installed
 generic worker; live accounts and browser authorization remain separate gates.
 
+The verification runner now acquires one repository-scoped live file lease
+before provenance and holds it through result publication. A contending process
+fails with `verification_lease_busy` before writing its fixture marker; normal
+release and forced holder death both permit the next process. Schema-v2 results
+recapture commit and full porcelain status, recompute package digests after all
+steps, report stability and bounded ineligibility reasons, and require a passed,
+clean, identical start/end state. Focused wrapper run
+`20260809T231421Z-73303441` passes its runner step and records identical commit
+`ddb66c2`, identical dirty fingerprints, 29 final package digests,
+`repositoryStateStable: true`, and `releaseEvidenceEligible: false` with exact
+start/finish dirty reasons. A clean non-overlapping exact-HEAD all-lane bundle
+remains pending while the reviewer-owned ledgers are intentionally dirty.
+Final leased all-lane run `20260809T232451Z-15d2e7b6` passes 41/41 steps in
+326.534 seconds with identical start/end commit `ddb66c2`, identical status
+fingerprints, 29 final package digests, and the same two explicit dirty reasons.
+While it held the lease, a second real `Verify.ps1` invocation exited in one
+second before its requested step and reported the owner's PID, run ID,
+configuration, and start time; the primary run completed without shared-output
+contention.
+
 PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
 client SID/

@@ -26,6 +26,20 @@ failure without silently changing its command, use its stable ID:
 .\scripts\Verify.ps1 -Configuration Release -Lane managed -StepId widget-catalog-tests
 ```
 
+One checkout runs one verifier at a time because managed and native builds share
+output trees. `verification_lease_busy` means another process still owns the
+live lease under ignored `artifacts/verification`; do not delete the lock file.
+Wait for that process, or request an explicit bounded wait such as
+`-LeaseWaitSeconds 30`. Process exit releases the OS handle automatically, so
+stale metadata never owns the lease.
+
+Schema-v2 results record starting and finished commit/status fingerprints,
+`repositoryStateStable`, and `releaseEvidenceIneligibilityReasons`. A passing
+test set is not release evidence when either endpoint is dirty, the commit or
+status changed, output was truncated, final provenance failed, or the run itself
+failed. Package hashes are captured after all steps and therefore describe the
+retained final artifacts.
+
 A `timed_out` result means the runner terminated that process tree. A Windows
 filesystem or driver call that never returns can still require the independent
 GitHub job timeout or an external local watchdog.

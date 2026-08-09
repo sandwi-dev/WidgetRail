@@ -63,6 +63,12 @@ Managed verification is immediately available:
 defined in `scripts/verification-steps.json`, has a process-tree timeout, and
 writes stdout, stderr, JUnit-compatible results, revision/dirty-state/toolchain
 provenance, and package hashes under `artifacts/verification/<run-id>`.
+One checkout owns an exclusive verification lease until its result is written;
+a concurrent invocation fails with `verification_lease_busy` before starting a
+step. Use `-LeaseWaitSeconds <0-300>` only for an intentionally bounded local
+wait. Schema-v2 provenance captures commit and full porcelain status at both
+ends, recomputes final package hashes, and marks release evidence eligible only
+when the run passed and the clean repository state stayed identical.
 
 The complete verification command requires Visual Studio's Desktop development with C++ workload:
 
