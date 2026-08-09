@@ -147,6 +147,17 @@ records and never mutate a published reference in place. `Changed` is a
 contained diagnostic/test observer, not a second state store. After Destroying,
 model changes no longer invalidate the widget.
 
+For one non-paged provider value, create a `WidgetResource<TValue>` with
+`CreateResource`. Supply an async `Load`, a presentation-safe `MapError`, and
+optionally an explicit cache duration, lifecycle, and last-good policy. Its
+immutable snapshot reports `NotLoaded`, `Loading`, `Ready`, `Refreshing`, or
+`Error`. `EnsureLoaded` reuses a fresh success and joins a duplicate in-flight
+read; `Refresh` and `Retry` force a new read. `Publish` commits an authoritative
+subscription value and prevents an older read from overwriting it. `Reset`
+cancels and clears the resource. State changes invalidate automatically and
+`WhenIdleAsync` supports deterministic tests. The helper starts no implicit
+polling, subscription, or automatic retry.
+
 For a remote mutation with immediate UI feedback, create one
 `WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>` over that model:
 
@@ -223,12 +234,35 @@ Statuses are `NotLoaded`, `Loading`, `Ready`, `Refreshing`,
 cached items 1–512 (and at least one page), pagination threshold 1–8, and error
 messages up to 256 visible characters. The lifetime defaults to `Active`, cache
 duration to five minutes, and last-good retention to enabled. This API is
-offset-based: cursor paging, append/infinite feeds, and a generic
-`WidgetResource<T>` are not implemented.
+offset-based: cursor paging and append/infinite feeds are not implemented. Use
+the separate `WidgetResource<TValue>` for one current non-paged value.
 Sparse pages are supported for providers that filter unavailable server
 entries; next-page offsets use the server page limit rather than rendered item
 count. An empty non-terminal page still needs a focusable widget placeholder so
 the host can emit the next focus-edge action.
+
+For controller-native pages and nested surfaces, create a bounded
+`WidgetNavigator<TRoute>` with `CreateNavigator`. `Navigate` changes the root
+destination, `Push` opens a nested route, `Back` pops it, and
+`TryHandleBack` accepts only the navigator's exact pressed-B action in the
+current input scope. Render the current route through `Scope(root)` and publish
+`Value.InitialFocusId` plus `Value.InputScopeId`. Route changes cancel
+`Value.RouteCancellationToken` before invalidating, and focus is remembered per
+route and restored to the parent source on Back. The default maximum depth is
+eight (16 hard maximum) and the route-identity table is bounded at 32.
+
+All open-widget actions produced by the standard router carry the current
+`WidgetActionEvent.InputScopeId`, including A activation, focused/root
+shortcuts, and Slider changes. Validate it for nested manual routing; never
+derive the active page from an element-ID substring.
+
+Use `WidgetIds.Scope(root)` to construct validated hierarchical IDs.
+`scope.Scope(segment)` creates a child prefix, `scope.Id(name)` creates a leaf,
+and `scope.KeyedId(name, durableKey)` creates a deterministic opaque leaf by
+hashing a bounded durable domain key. Segments reject dots and unsafe
+characters. The helper prevents malformed/provider-revealing IDs, but it does
+not make an index or display label semantically stable. Duplicate-ID/action
+handler analyzer rules remain future work.
 
 Unit tests can use the supported transport-free fake instead of reflection,
 internal APIs, named pipes, or hand-written JSON:

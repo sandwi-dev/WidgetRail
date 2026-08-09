@@ -23,7 +23,7 @@ foreach (var (name, run) in tests)
     }
     catch (Exception exception)
     {
-        failures.Add($"FAIL {name}: {exception.Message}");
+        failures.Add($"FAIL {name}: {exception}");
         Console.Error.WriteLine(failures[^1]);
     }
 }
@@ -37,7 +37,7 @@ static async Task PageCoverage()
     var overview = Snapshot(widget, 1);
     Assert.Equal(ProtocolConstants.ResponsiveGridVersion, overview.ProtocolVersion);
     Assert.Equal("gallery.tab.overview", overview.InitialFocusId);
-    Assert.Equal("gallery.root", overview.ActiveInputScopeId);
+    Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
     Assert.Equal(320d, overview.Surface.MinimumWidth);
     Assert.ContainsClass(overview, "gbar-card");
@@ -94,33 +94,45 @@ static async Task NestedScopes()
     var widget = new SdkGalleryWidget();
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
     await Act(widget, "gallery.tab.controls");
+    var controlsLifetime = widget.Navigation.RouteCancellationToken;
     await Act(widget, "gallery.picker.open");
     var picker = widget.RenderSnapshot("sdk-gallery.test", 1);
     Assert.Equal(GalleryModal.Picker, widget.Modal);
-    Assert.Equal("gallery.picker.scope", picker.ActiveInputScopeId);
+    Assert.True(controlsLifetime.IsCancellationRequested,
+        "Opening a nested gallery route did not cancel parent route work.");
+    Assert.Equal(widget.Navigation.InputScopeId, picker.ActiveInputScopeId);
     Assert.Equal("gallery.density.comfortable", picker.InitialFocusId);
-    Assert.ContainsShortcut(Find(picker, "gallery.picker"), ControllerButton.B, "gallery.modal.back");
+    Assert.ContainsShortcut(Find(picker, "gallery.picker"), ControllerButton.B,
+        widget.Navigation.BackActionId!);
 
+    var pickerLifetime = widget.Navigation.RouteCancellationToken;
     var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
         ControllerButton.B,
         ControllerEventPhase.Pressed,
         ControllerInputContext.OpenWidget,
         FocusedElementId: "gallery.density.comfortable",
-        ActiveInputScopeId: "gallery.picker.scope",
+        ActiveInputScopeId: picker.ActiveInputScopeId,
         SnapshotSequence: picker.Sequence));
     Assert.True(handled);
     await WaitUntil(() => widget.Modal == GalleryModal.None);
+    Assert.True(pickerLifetime.IsCancellationRequested,
+        "Nested Back did not cancel picker route work.");
     Assert.Equal(GalleryModal.None, widget.Modal);
     Assert.Equal("gallery.picker.open", widget.Render().InitialFocusId);
 
     await Act(widget, "gallery.sheet.open");
     var sheet = widget.RenderSnapshot("sdk-gallery.test", 2);
-    Assert.Equal("gallery.sheet.scope", sheet.ActiveInputScopeId);
-    Assert.ContainsShortcut(Find(sheet, "gallery.sheet"), ControllerButton.B, "gallery.modal.back");
+    Assert.Equal(widget.Navigation.InputScopeId, sheet.ActiveInputScopeId);
+    Assert.ContainsShortcut(Find(sheet, "gallery.sheet"), ControllerButton.B,
+        widget.Navigation.BackActionId!);
     Assert.Equal(ActionSheetItemToneClass("danger"),
         Find(sheet, "gallery.sheet.remove").StyleClasses.Single(value => value.EndsWith("danger", StringComparison.Ordinal)));
 
-    await Act(widget, "gallery.modal.back");
+    await widget.OnActionAsync(new WidgetActionEvent(
+        widget.Navigation.BackActionId!,
+        "gallery.sheet",
+        ControllerButton.B,
+        InputScopeId: sheet.ActiveInputScopeId));
     Assert.Equal(GalleryModal.None, widget.Modal);
     await WidgetTestHost.DestroyAsync(widget);
 }

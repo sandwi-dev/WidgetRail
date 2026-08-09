@@ -5,6 +5,7 @@ namespace GameBarAlternative.Samples.SdkGalleryWidget;
 
 public enum GalleryPage { Overview, Controls, Tiles, Utilities }
 public enum GalleryModal { None, Picker, ActionSheet }
+public readonly record struct GalleryRoute(GalleryPage Page, GalleryModal Modal);
 
 /// <summary>
 /// Copyable, capability-free reference for the public controller-first SDK.
@@ -12,17 +13,21 @@ public enum GalleryModal { None, Picker, ActionSheet }
 /// </summary>
 public sealed class SdkGalleryWidget : Widget
 {
-    private GalleryPage _page;
-    private GalleryModal _modal;
+    private static readonly WidgetIdScope Ids = WidgetIds.Scope("gallery");
+    private readonly WidgetNavigator<GalleryRoute> _navigation;
     private bool _compactMode = true;
     private string _density = "Comfortable";
     private TimeSpan _position = TimeSpan.FromSeconds(74);
     private bool _showToast;
     private int _toastGeneration;
-    private string? _restoreFocusId;
 
-    public GalleryPage Page => _page;
-    public GalleryModal Modal => _modal;
+    public SdkGalleryWidget() => _navigation = CreateNavigator(
+        Ids.Id("navigation"),
+        new GalleryRoute(GalleryPage.Overview, GalleryModal.None));
+
+    public GalleryPage Page => _navigation.Value.Route.Page;
+    public GalleryModal Modal => _navigation.Value.Route.Modal;
+    public WidgetNavigationSnapshot<GalleryRoute> Navigation => _navigation.Value;
     public bool CompactMode => _compactMode;
     public string Density => _density;
     public TimeSpan Position => _position;
@@ -30,12 +35,17 @@ public sealed class SdkGalleryWidget : Widget
 
     public override WidgetView Render()
     {
+        var navigation = _navigation.Value;
         var root = UI.Stack("gallery.root",
             Header(),
-            Tabs(),
-            _modal == GalleryModal.None ? PageContent() : ModalContent())
-            .InputScope("gallery.root")
+            Tabs(navigation.Route.Page),
+            navigation.Route.Modal == GalleryModal.None
+                ? PageContent(navigation.Route.Page)
+                : ModalContent(navigation))
             .Classes("gallery-root");
+
+        if (navigation.Route.Modal == GalleryModal.None)
+            root = _navigation.Scope(navigation, root);
 
         if (_showToast)
         {
@@ -56,7 +66,7 @@ public sealed class SdkGalleryWidget : Widget
 
         return new WidgetView(
             root,
-            InitialFocusId: InitialFocus(),
+            InitialFocusId: InitialFocus(navigation),
             QuickActions:
             [
                 new WidgetQuickAction(
@@ -64,12 +74,7 @@ public sealed class SdkGalleryWidget : Widget
                     "gallery.toast.show",
                     "Show feedback"),
             ],
-            ActiveInputScopeId: _modal switch
-            {
-                GalleryModal.Picker => "gallery.picker.scope",
-                GalleryModal.ActionSheet => "gallery.sheet.scope",
-                _ => "gallery.root",
-            },
+            ActiveInputScopeId: navigation.InputScopeId,
             Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard,
@@ -87,25 +92,39 @@ public sealed class SdkGalleryWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (_navigation.TryHandleBack(action))
+            return ValueTask.CompletedTask;
+
         switch (action.ActionId)
         {
-            case "gallery.tab.overview": SetPage(GalleryPage.Overview); break;
-            case "gallery.tab.controls": SetPage(GalleryPage.Controls); break;
-            case "gallery.tab.tiles": SetPage(GalleryPage.Tiles); break;
-            case "gallery.tab.utilities": SetPage(GalleryPage.Utilities); break;
+            case "gallery.tab.overview":
+                SetPage(GalleryPage.Overview, action.SourceElementId);
+                return ValueTask.CompletedTask;
+            case "gallery.tab.controls":
+                SetPage(GalleryPage.Controls, action.SourceElementId);
+                return ValueTask.CompletedTask;
+            case "gallery.tab.tiles":
+                SetPage(GalleryPage.Tiles, action.SourceElementId);
+                return ValueTask.CompletedTask;
+            case "gallery.tab.utilities":
+                SetPage(GalleryPage.Utilities, action.SourceElementId);
+                return ValueTask.CompletedTask;
             case "gallery.compact.toggle": _compactMode = !_compactMode; break;
             case "gallery.picker.open":
-                _modal = GalleryModal.Picker;
-                _restoreFocusId = "gallery.picker.open";
-                break;
+                OpenModal(GalleryModal.Picker, action.SourceElementId);
+                return ValueTask.CompletedTask;
             case "gallery.sheet.open":
-                _modal = GalleryModal.ActionSheet;
-                _restoreFocusId = "gallery.sheet.open";
-                break;
-            case "gallery.modal.back": _modal = GalleryModal.None; break;
-            case "gallery.density.compact": SelectDensity("Compact"); break;
-            case "gallery.density.comfortable": SelectDensity("Comfortable"); break;
-            case "gallery.density.spacious": SelectDensity("Spacious"); break;
+                OpenModal(GalleryModal.ActionSheet, action.SourceElementId);
+                return ValueTask.CompletedTask;
+            case "gallery.density.compact":
+                SelectDensity("Compact", action.SourceElementId);
+                return ValueTask.CompletedTask;
+            case "gallery.density.comfortable":
+                SelectDensity("Comfortable", action.SourceElementId);
+                return ValueTask.CompletedTask;
+            case "gallery.density.spacious":
+                SelectDensity("Spacious", action.SourceElementId);
+                return ValueTask.CompletedTask;
             case "gallery.scrub":
                 if (action.RequestedValue is { } requested && double.IsFinite(requested))
                     _position = TimeSpan.FromMilliseconds(Math.Clamp(requested, 0, 225_000));
@@ -121,7 +140,7 @@ public sealed class SdkGalleryWidget : Widget
                 ShowToast();
                 return ValueTask.CompletedTask;
             case "gallery.sheet.remove":
-                _modal = GalleryModal.None;
+                _navigation.Back(action.SourceElementId);
                 ShowToast();
                 return ValueTask.CompletedTask;
             default:
@@ -151,17 +170,17 @@ public sealed class SdkGalleryWidget : Widget
         trailing: UI.StatusBadge("Public SDK", StatusTone.Success, "gallery.header.status"))
         .AddClasses("gallery-header");
 
-    private RowElement Tabs() => UI.SegmentedTabs(
+    private RowElement Tabs(GalleryPage page) => UI.SegmentedTabs(
         "gallery.tabs",
-        TabId(_page),
+        TabId(page),
         new SegmentedTab("gallery.tab.overview", "Overview", "gallery.tab.overview"),
         new SegmentedTab("gallery.tab.controls", "Controls", "gallery.tab.controls"),
         new SegmentedTab("gallery.tab.tiles", "Tiles", "gallery.tab.tiles"),
         new SegmentedTab("gallery.tab.utilities", "Utilities", "gallery.tab.utilities"));
 
-    private ScrollElement PageContent() => UI.VerticalScroll(
+    private ScrollElement PageContent(GalleryPage page) => UI.VerticalScroll(
         "gallery.page-scroll",
-        _page switch
+        page switch
         {
             GalleryPage.Overview => OverviewPage(),
             GalleryPage.Controls => ControlsPage(),
@@ -282,55 +301,57 @@ public sealed class SdkGalleryWidget : Widget
             .Icon(WidgetGlyph.Check).Classes("gallery-utilities-toast-button"))
         .AddClasses("gallery-page");
 
-    private WidgetElement ModalContent() => _modal switch
-    {
-        GalleryModal.Picker => UI.Picker(
-            "Choose density",
-            "gallery.picker",
-            "gallery.picker.scope",
-            "gallery.modal.back",
-            [
-                new PickerOption("gallery.density.compact", "Compact", "gallery.density.compact",
-                    IsSelected: _density == "Compact"),
-                new PickerOption("gallery.density.comfortable", "Comfortable", "gallery.density.comfortable",
-                    IsSelected: _density == "Comfortable"),
-                new PickerOption("gallery.density.spacious", "Spacious", "gallery.density.spacious",
-                    IsSelected: _density == "Spacious"),
-            ],
-            "B closes this nested scope and restores the main gallery."),
-        GalleryModal.ActionSheet => UI.ActionSheet(
-            "Example actions",
-            "gallery.sheet",
-            "gallery.sheet.scope",
-            "gallery.modal.back",
-            [
-                new ActionSheetItem("gallery.sheet.pin", "Pin sample", "gallery.sheet.pin", WidgetGlyph.Check),
-                new ActionSheetItem("gallery.sheet.share", "Share reference", "gallery.sheet.share", WidgetGlyph.Connection),
-                new ActionSheetItem("gallery.sheet.remove", "Remove example", "gallery.sheet.remove",
-                    WidgetGlyph.Warning, Tone: ActionSheetItemTone.Danger),
-            ],
-            "Nested surfaces own B without stealing it from other widget windows."),
-        _ => throw new InvalidOperationException("No modal is active."),
-    };
+    private StackElement ModalContent(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
+        _navigation.Scope(navigation, navigation.Route.Modal switch
+        {
+            GalleryModal.Picker => UI.Picker(
+                "Choose density",
+                "gallery.picker",
+                navigation.InputScopeId,
+                navigation.BackActionId!,
+                [
+                    new PickerOption("gallery.density.compact", "Compact", "gallery.density.compact",
+                        IsSelected: _density == "Compact"),
+                    new PickerOption("gallery.density.comfortable", "Comfortable", "gallery.density.comfortable",
+                        IsSelected: _density == "Comfortable"),
+                    new PickerOption("gallery.density.spacious", "Spacious", "gallery.density.spacious",
+                        IsSelected: _density == "Spacious"),
+                ],
+                "B closes this nested scope and restores the main gallery."),
+            GalleryModal.ActionSheet => UI.ActionSheet(
+                "Example actions",
+                "gallery.sheet",
+                navigation.InputScopeId,
+                navigation.BackActionId!,
+                [
+                    new ActionSheetItem("gallery.sheet.pin", "Pin sample", "gallery.sheet.pin", WidgetGlyph.Check),
+                    new ActionSheetItem("gallery.sheet.share", "Share reference", "gallery.sheet.share", WidgetGlyph.Connection),
+                    new ActionSheetItem("gallery.sheet.remove", "Remove example", "gallery.sheet.remove",
+                        WidgetGlyph.Warning, Tone: ActionSheetItemTone.Danger),
+                ],
+                "Nested surfaces own B without stealing it from other widget windows."),
+            _ => throw new InvalidOperationException("No modal is active."),
+        });
 
-    private string InitialFocus() => _modal switch
-    {
-        GalleryModal.Picker => $"gallery.density.{_density.ToLowerInvariant()}",
-        GalleryModal.ActionSheet => "gallery.sheet.pin",
-        _ => _restoreFocusId ?? TabId(_page),
-    };
+    private string InitialFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
+        navigation.InitialFocusId ?? navigation.Route.Modal switch
+        {
+            GalleryModal.Picker => $"gallery.density.{_density.ToLowerInvariant()}",
+            GalleryModal.ActionSheet => "gallery.sheet.pin",
+            _ => TabId(navigation.Route.Page),
+        };
 
-    private void SetPage(GalleryPage page)
-    {
-        _page = page;
-        _modal = GalleryModal.None;
-        _restoreFocusId = null;
-    }
+    private void SetPage(GalleryPage page, string sourceFocusId) =>
+        _navigation.Navigate(new GalleryRoute(page, GalleryModal.None), sourceFocusId);
 
-    private void SelectDensity(string density)
+    private void OpenModal(GalleryModal modal, string sourceFocusId) =>
+        _navigation.Push(new GalleryRoute(Page, modal), sourceFocusId);
+
+    private void SelectDensity(string density, string sourceFocusId)
     {
         _density = density;
-        _modal = GalleryModal.None;
+        if (_navigation.Back(sourceFocusId) != WidgetNavigationResult.Changed)
+            Invalidate();
     }
 
     private void ShowToast()

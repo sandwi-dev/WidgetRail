@@ -242,6 +242,13 @@ Override `OnControllerInputAsync` only for semantic controls that cannot be
 represented as declarative actions; Guide/Home and arbitrary HID reports are
 never transported.
 
+Every successfully resolved open-widget action carries the exact active scope
+as `WidgetActionEvent.InputScopeId`: A activation, focused shortcuts,
+scope-root shortcuts, and Slider value changes all use the same rule. Validate
+that value for manually routed nested actions; do not infer a route or dialog
+from `SourceElementId`. Dashboard quick actions are not open-scope actions and
+therefore do not publish an input scope.
+
 Only the `Pressed` shortcut phase is carried end to end today. Do not bind
 `Released` or `Repeated`, and do not bind `A` or D-pad as shortcuts.
 
@@ -292,6 +299,46 @@ Rules:
 
 This is the supported model for dialogs, settings pages, detail panes, and
 other nested widget windows.
+
+For more than one nested page, prefer `CreateNavigator<TRoute>` over manually
+tracking pages, scope strings, Back actions, cancellation sources, and return
+focus:
+
+```csharp
+private readonly WidgetNavigator<Route> _navigation;
+
+public SettingsWidget() => _navigation = CreateNavigator(
+    "settings.navigation", Route.Root);
+
+// Render the current route through _navigation.Scope(root), then publish:
+return new WidgetView(
+    _navigation.Scope(root),
+    InitialFocusId: _navigation.Value.InitialFocusId ?? DefaultFocus(route),
+    ActiveInputScopeId: _navigation.Value.InputScopeId);
+```
+
+Use `Navigate(route, sourceFocusId)` for a root destination, `Push` for a
+nested route, `Back` for an authored close, and `TryHandleBack(action)` before
+other dispatch. The navigator publishes B only for nested routes and accepts
+it only as a pressed action from the exact current input scope. Leaving a route
+cancels `Value.RouteCancellationToken` before invalidating the new snapshot;
+bind route-specific reads to that token. It remembers focus per route and the
+parent source focus for Back. Depth is bounded (eight by default, 16 maximum),
+known routes are bounded (32), and overflow returns `RejectedCapacity`.
+
+Use `WidgetIds` for large stable hierarchies:
+
+```csharp
+var ids = WidgetIds.Scope("settings").Scope("devices");
+var refreshId = ids.Id("refresh");
+var deviceId = ids.KeyedId("device", providerDeviceKey);
+```
+
+Segments allow only ASCII letters, digits, `-`, and `_`; the complete ID is
+validated against the protocol limit. `KeyedId` hashes the bounded durable key
+into a deterministic opaque suffix, avoiding provider text or identity in the
+snapshot. It does not make list positions stable—supply a real durable domain
+key. A build-time duplicate/handler analyzer is not implemented yet.
 
 ## Tutorial 4: controller-owned scrolling
 
@@ -843,6 +890,38 @@ commands, immediately projects Play/Pause, retains sibling control presentation,
 and rolls back the affected session only when the provider snapshot revision
 still matches.
 
+### Non-paged resources
+
+Create a `WidgetResource<TValue>` once when one provider read produces one
+current value rather than an offset page:
+
+```csharp
+_status = CreateResource<PlayerStatus>("player.status", new()
+{
+    Load = token => LoadPlayerStatusAsync(token),
+    MapError = _ => new WidgetResourceError(
+        "player_unavailable", "Player status could not be loaded."),
+    CacheDuration = TimeSpan.FromSeconds(30),
+});
+```
+
+Call `EnsureLoaded()` from lifecycle or action code, never from `Render`.
+`EnsureLoaded` reuses a fresh successful value; `Refresh` and `Retry` force a
+read. The immutable snapshot exposes `NotLoaded`, `Loading`, `Ready`,
+`Refreshing`, and `Error`, plus `Value`, `Error`, `HasValue`, and `Revision`.
+An identical in-flight request joins the current operation. Errors must map to
+a stable code and at most 256 presentation-safe characters; mapper failure
+uses the generic safe fallback.
+
+`RetainLastGoodValue` defaults to true, the cache duration defaults to five
+minutes, and lifetime defaults to `Active`. `Publish(value)` is the
+authoritative subscription/event path: it cancels an older read so that read
+cannot overwrite the newer event. `Reset` cancels work and clears value,
+cache, and error state. Both own invalidation, with a non-invalidating overload
+only for an owner that immediately publishes one composed update.
+`WhenIdleAsync` supports deterministic tests. The resource starts no polling,
+subscription, or retry by itself and never infers domain merge policy.
+
 ### Bounded offset-paged resources
 
 Create a `WidgetPagedResource<TItem>` once from the widget constructor for an
@@ -912,7 +991,8 @@ Spotify 0.2.10 is the first migration. Its playlist and playlist-item resources
 use 12-row windows, a six-page/72-item LRU, automatic protocol-v11 focus-edge
 paging across compact and wide Scroll IDs, cached reverse navigation, and no
 visible **Load more** row. Queue remains non-paged state owned by the widget.
-Cursor/append collections are not supplied by this API.
+Cursor/append collections are not supplied by this API; use
+`WidgetResource<TValue>` only for one non-paged current value.
 
 ## GBSS: safe widget-local styling
 
@@ -1473,8 +1553,8 @@ Do not design or advertise a widget around any of these yet:
 - a readable/general-purpose community secret or OAuth-token store;
 - package-relative Image/font asset resolution;
 - HTML, browser CSS, JavaScript, SVG, shaders, or native drawing payloads;
-- a purpose-built media scrubber composite, text entry, arbitrary pointer UI,
-  or arbitrary raw HID (the controller-native `UI.Slider` itself is implemented);
+- text entry, arbitrary pointer UI, or arbitrary raw HID (`UI.Slider` and the
+  purpose-built `UI.Scrubber` media composite are implemented);
 - `Released`/`Repeated` shortcut routing end to end;
 - CPU/disk quotas or AppContainer profile cleanup (versioned keep-alive,
   cooperative suspend, and bounded idle-unload policies are implemented); or

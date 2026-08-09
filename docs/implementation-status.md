@@ -15,6 +15,15 @@ for root categories and CodeText for schema/worker diagnostics. The authoritativ
 full Release verification aggregate is green; hands-on packaged visual/
 controller evidence remains pending until the relaunched overlay is exercised.
 
+The current authoring-coordination milestone also implements public non-paged
+`WidgetResource<TValue>`, bounded `WidgetNavigator<TRoute>`, validated
+`WidgetIds`/opaque `KeyedId`, and active input-scope propagation on every
+standard open-widget action. SDK Gallery is the production-style navigation/ID
+migration. YT Music 0.2.5 now maps typed/status-only failures to bounded copy;
+it neither retains provider response bodies nor renders unknown exception text.
+Focused Release suites pass Widget SDK 80/80, SDK Gallery 6/6, and YT Music
+45/45. Packaged controller/companion evidence remains separate.
+
 ## Implemented
 
 ### Native overlay and input
@@ -79,9 +88,12 @@ Up/Down navigation.
   composites with stable semantic
   `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
-  runtime-integrated immutable `WidgetModel<TState>` snapshots/updates and
-  model-backed SingleFlight/Latest/Serial optimistic commands; bounded
-  lifecycle-owned operation lanes and offset-paged resources;
+  runtime-integrated immutable `WidgetModel<TState>` snapshots/updates,
+  non-paged resources, model-backed SingleFlight/Latest/Serial optimistic
+  commands, bounded route navigation with exact-scope Back/return focus, and
+  validated hierarchical/opaque-key IDs; bounded lifecycle-owned operation
+  lanes and offset-paged resources; active input-scope correlation on every
+  standard open-widget action;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network/Bluetooth/recent-activity/app-library/media-session services,
@@ -612,8 +624,9 @@ two-clock dashboard-gesture propagation. Its focused Release harness passes
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK and YT Music focused suites pass 77/77 and
-43/43 respectively, including serialization and widget recovery for host-side
+bounded cleanup. The current SDK, SDK Gallery, and YT Music focused suites pass
+80/80, 6/6, and 45/45 respectively, including navigation/resource contracts,
+safe typed companion errors, serialization, and widget recovery for host-side
 rejected-Bearer invalidation without a second widget delete. The current
 Settings Release suite passes 41/41, including
 scrollable identity and permission review,
@@ -905,7 +918,8 @@ and [troubleshooting](troubleshooting.md).
 5. Extend the bounded process sampler with ETW/PresentMon automation, stored
    comparable baselines, latency scenarios, and per-widget resource diagnostics.
 6. Add native graphical theme preview, package remove/update discovery,
-   editor schemas, controller/focus inspection, and an SDK Gallery. Complete
+   editor schemas, controller/focus inspection, and scenario-based Gallery
+   preview/capture coverage. The public SDK Gallery is implemented. Complete
    packaged author-workflow evidence for the implemented `gbar dev` loop.
 7. Implement publisher signing/revocation, crash quarantine, CPU and disk/
    profile quotas/cleanup, and security audit UI before public community

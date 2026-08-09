@@ -71,6 +71,9 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-050 | P0 | Verifying | YT Music / asynchronous playback reconciliation | Accepted play/pause reconciliation now outlives the transient action request, rejects stale companion state as confirmation, and lets repeated toggles supersede an earlier refresh burst. Packaged real-companion evidence remains. |
 | GBA-051 | P1 | Verifying | Widget SDK optimistic command coordination / Media Sessions | Public SingleFlight/Latest/Serial optimistic commands now derive projection and provider input from one model revision, preserve provider events through authored merge/rollback, own bounded lifecycle work, and never retry mutations; Media Sessions is the production migration. Packaged evidence and broader migrations remain. |
 | GBA-052 | P0 | Verifying | Games & Apps / worker lifecycle | Initial and retry library loads now use runtime-owned Active operations, while toast expiry has one cancellation-source disposer and clears the shared reference before disposal. Focused coverage and three consecutive generic-worker/AppContainer conformance runs pass; packaged churn evidence remains. |
+| GBA-053 | P1 | Verifying | Widget SDK resource coordination | Public `WidgetResource<TValue>` now owns bounded non-paged load/cache/retry/last-good/subscription state with lifecycle cancellation and stale-result rejection; broader production migrations and packaged evidence remain. |
+| GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
+| GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | YT Music 0.2.5 now exposes typed status-only service failures and bounded safe UI copy without retaining response bodies or unknown exception messages; real-companion failure evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -1464,8 +1467,8 @@ five minutes, and immediately refreshes metadata on identity change, missing
 data, or expiry. Stable playback therefore uses about 30 requests per minute
 while transition state and metadata remain coherent. Protocol v12 adds the
 closed `RepeatOne` glyph across managed validation/serialization, native bridge
-parsing, vector rendering, and YT Music. Focused suites pass 43 YT Music tests,
-77 SDK tests, and native icon rendering is part of the native integration gate.
+parsing, vector rendering, and YT Music. Focused suites pass 45 YT Music tests,
+80 SDK tests, and native icon rendering is part of the native integration gate.
 
 **Acceptance:**
 
@@ -1583,6 +1586,92 @@ runs.
    remain green.
 4. Packaged rapid widget cycling/retry testing records no worker lifecycle
    failure or leaked process.
+
+## GBA-053 — Widget authors hand-roll non-paged resource coordination
+
+**Evidence:** Single current-value reads still required authors to coordinate
+loading/refreshing/error snapshots, freshness caching, duplicate calls,
+last-good retention, subscription races, reset, lifecycle cancellation, and
+late completion independently. The offset-paged resource was deliberately the
+wrong abstraction for this common case.
+
+**Implementation evidence:** `Widget.CreateResource<TValue>` constructs a
+public `WidgetResource<TValue>` over the bounded runtime operation coordinator.
+Its immutable snapshot publishes `NotLoaded`, `Loading`, `Ready`, `Refreshing`,
+or `Error`; `EnsureLoaded` reuses a bounded fresh value and joins an identical
+in-flight read; `Refresh`/`Retry`, `Publish`, and `Reset` have explicit
+semantics. Publication cancels an older read so it cannot overwrite an
+authoritative event. Errors are mapped to bounded `WidgetResourceError`,
+last-good retention and lifetime are explicit, and no read starts from render
+or through implicit polling/retry. The focused Widget SDK suite passes 80/80.
+
+**Acceptance:**
+
+1. A current-value resource needs no author-owned task, semaphore, generation,
+   cache timestamp, or manual invalidation.
+2. Duplicate loads coalesce; reset, subscription publication, replacement, and
+   lifecycle exit reject stale completion deterministically.
+3. Cache, last-good, safe error, retry, reset, and inactive behavior have
+   focused coverage without sleeps.
+4. At least one suitable production widget migrates and packaged lifecycle/
+   recovery behavior is recorded before closure.
+
+## GBA-054 — Multipage widgets hand-roll routes, IDs, Back, and focus restoration
+
+**Evidence:** Advanced widgets repeated route/page fields, modal flags, scope
+strings, return-focus fields, Back dispatch, route cancellation, and
+provider-derived ID concatenation. Open actions did not uniformly expose their
+resolved active scope, encouraging route guesses from source IDs.
+
+**Implementation evidence:** `Widget.CreateNavigator<TRoute>` constructs a
+bounded `WidgetNavigator<TRoute>` with stable generated route scopes,
+root/nested navigation, exact pressed-B routing, per-route/parent return focus,
+and a route cancellation token canceled before invalidation. All standard
+open-widget A, focused/root shortcut, and Slider actions now propagate the
+active `InputScopeId`. `WidgetIds.Scope` supplies validated hierarchical IDs;
+`KeyedId` hashes bounded durable keys into deterministic opaque leaves. SDK
+Gallery has migrated to these public contracts without host-only helpers. Its
+6/6 focused tests cover page composition, route cancellation, exact nested B,
+focus restoration, package parity, and GBSS. Widget SDK passes 80/80.
+
+**Acceptance:**
+
+1. One navigator owns a bounded root/nested stack, stable route scopes,
+   route-owned cancellation, exact nested B, and deterministic return focus.
+2. Every standard open-widget action carries the exact active scope; a stale
+   nested-scope action fails closed.
+3. Hierarchical and durable-key IDs are validated, deterministic, bounded, and
+   never expose the durable provider key in a snapshot.
+4. SDK Gallery remains a capability-free generic-worker migration with focused
+   tests, and at least one advanced production widget plus packaged controller
+   evidence follows before closure.
+5. Responsive navigation-shell recipes and analyzer diagnostics remain tracked
+   as roadmap work rather than being implied by this primitive.
+
+## GBA-055 — YT Music could expose provider or exception details in status UI
+
+**Evidence:** A local companion can return arbitrary response text, and unknown
+runtime/provider exceptions can contain implementation details. Rendering
+either directly would make Community-addon status unpredictable and could leak
+local data into UI, logs, screenshots, or issue reports.
+
+**Implementation evidence:** YT Music package 0.2.5 uses typed
+`YtMusicServiceException` containing only the HTTP status code. Non-success
+loopback bodies are not retained. The widget maps known capability codes and
+status classes to bounded authored copy and maps every unknown exception to one
+generic message; it never appends `Exception.Message` or response JSON. The
+focused YT Music suite passes 45/45, including the safe typed error regressions.
+
+**Acceptance:**
+
+1. Non-success companion response bodies never enter an exception retained by
+   the addon and never reach rendered state.
+2. Known status/capability failures map to bounded actionable copy; unknown
+   exception types and messages map to one generic safe status.
+3. Focused tests prove status-only mapping, hostile-body exclusion, and unknown
+   exception-text exclusion.
+4. A packaged real-companion run records representative authorization, 4xx,
+   5xx, malformed-response, timeout, and unavailable failures before closure.
 
 ## Closed issues
 

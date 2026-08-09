@@ -12,6 +12,14 @@ The four pages cover:
 - responsive `MediaTile` and `AppTile` action surfaces; and
 - `CodeText`, `LoadingIndicator`, and non-focus-stealing `Toast` feedback.
 
+The sample is also the production-style reference for the public navigation
+and stable-ID coordination APIs. `WidgetIds.Scope("gallery")` builds the
+validated navigation ID. One `WidgetNavigator<GalleryRoute>` owns root tabs, nested
+Picker/ActionSheet routes, stable input scopes, exact-scope B, remembered return
+focus, and route-lifetime cancellation. It does not keep parallel page/modal,
+focus-return, or scope-string fields. The focused suite proves that leaving a
+route cancels its token before the replacement view is published.
+
 The sample has no permissions, custom executable worker, native provider, or
 host-only escape hatch. Its manifest selects `dotnet-worker`, so an installed
 package is loaded by the host's generic Community AppContainer worker. The
@@ -57,12 +65,19 @@ version, or pass `-Catalog <directory>` to test against an isolated catalog.
 - Picker and ActionSheet publish their own active input scope. `B` closes that
   nested scope; at the gallery root, `B` remains available to the shell's normal
   navigation stack.
+- Every open-widget action resolved by the standard SDK router carries the
+  active input-scope ID. The gallery's navigator accepts nested B only from the
+  exact current scope, so a stale action from a prior modal fails closed.
 - Stable IDs survive state updates, so toggling, selecting, scrubbing, and toast
   insertion do not discard unrelated focus.
 - Toast is presentational and adds no focus stop. The widget removes it through
   lifecycle-aware local state and clears it when the widget becomes hidden.
 - The responsive grid derives columns from available logical-DIP width. The
   host may clamp every surface hint for work area, DPI, or text scale.
+
+The focused Gallery suite currently passes 6/6 tests, including complete page
+coverage, control state, route-owned nested scopes, non-focus-stealing Toast,
+generic package isolation, and responsive/theme-safe GBSS.
 
 See the [widget authoring guide](../../docs/widget-authoring-guide.md),
 [declarative UI reference](../../docs/declarative-ui.md), and

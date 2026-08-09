@@ -62,7 +62,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Runtime-owned operations coordinate concurrency and lifecycle cleanup", WidgetOperationTests.Run),
     ("Immutable widget models serialize state and suppress redundant invalidation", WidgetModelTests.Run),
     ("Optimistic commands coordinate projection rollback and lifecycle", WidgetOptimisticCommandTests.Run),
+    ("Non-paged resources coordinate cache events retry and lifecycle", WidgetResourceTests.Run),
     ("Paged resources coordinate bounded automatic collection loading", WidgetPagedResourceTests.Run),
+    ("Hierarchical widget IDs stay stable bounded and opaque", WidgetIdsTests.Run),
+    ("Widget navigation owns bounded routes scopes focus Back and cancellation", WidgetNavigatorTests.Run),
     ("Default controller routing resolves dashboard quick actions", DashboardInputResolves),
     ("Default controller routing resolves focused shortcuts", FocusedShortcutResolves),
     ("Repeated row shortcuts resolve by exact focus and ambiguous fallback fails closed", FocusedRowShortcutsResolve),
@@ -3094,7 +3097,9 @@ static async Task ScopedShortcutRouting()
 
     Assert.True(await widget.OnControllerInputAsync(OpenInput(
         ControllerButton.LeftBumper, "root-focus", 1, "root")), "Root surface shortcut did not resolve.");
-    Assert.Equal("root-back", (await widget.NextActionAsync()).ActionId);
+    var rootAction = await widget.NextActionAsync();
+    Assert.Equal("root-back", rootAction.ActionId);
+    Assert.Equal("root", rootAction.InputScopeId);
 
     widget.SetSurface("dialog-window");
     _ = widget.RenderSnapshot("scope.instance", 2);
@@ -3109,11 +3114,15 @@ static async Task ScopedShortcutRouting()
         "Focus outside the active scope must be rejected.");
     Assert.True(await widget.OnControllerInputAsync(OpenInput(
         ControllerButton.LeftBumper, "dialog-focus", 2, "dialog-window")), "Nested surface shortcut did not resolve.");
-    Assert.Equal("dialog-back", (await widget.NextActionAsync()).ActionId);
+    var nestedAction = await widget.NextActionAsync();
+    Assert.Equal("dialog-back", nestedAction.ActionId);
+    Assert.Equal("dialog-window", nestedAction.InputScopeId);
     Assert.True(await widget.OnControllerInputAsync(OpenInput(
         ControllerButton.B, null, 2, "dialog-window")),
         "A focusless modal should resolve its scope-container B shortcut.");
-    Assert.Equal("dialog-close", (await widget.NextActionAsync()).ActionId);
+    var closeAction = await widget.NextActionAsync();
+    Assert.Equal("dialog-close", closeAction.ActionId);
+    Assert.Equal("dialog-window", closeAction.InputScopeId);
 
     widget.SetSurface("empty-window");
     _ = widget.RenderSnapshot("scope.instance", 3);

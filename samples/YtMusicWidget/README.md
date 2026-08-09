@@ -18,7 +18,8 @@ behind public host services:
 - The manifest declares exactly `network.loopback:13091`; the host fixes the
   origin to `127.0.0.1`, disables proxies and redirects, and exposes bounded
   JSON GET/POST operations rather than raw sockets or arbitrary URLs.
-- API error bodies are capped before they reach UI state.
+- API error bodies are discarded rather than rendered or logged. Stable broker
+  codes and HTTP status classes map to short recovery guidance.
 - Artwork is accepted only from HTTPS URLs.
 - Pairing tokens are written to the public authenticated-publisher/package/slot-scoped
   `storage.private-secrets.v1` service. The addon can query only existence and
@@ -123,7 +124,7 @@ The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
 `gbar pack`. By default the package is written to:
 
 ```text
-artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.4.gbarwidget
+artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.5.gbarwidget
 ```
 
 To install and enable it for the current user through the same public catalog
@@ -138,7 +139,7 @@ commands used by any addon publisher:
 ```powershell
 $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar install `
-  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.4.gbarwidget
+  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.5.gbarwidget
 & $gbar enable org.gbar.samples.ytmusic
 & $gbar list
 ```
@@ -167,7 +168,7 @@ the public validator and packer:
 
 ```powershell
 .\samples\YtMusicWidget\Build-CommunityPackage.ps1 `
-  -Configuration Release -Version 0.2.4 `
+  -Configuration Release -Version 0.2.5 `
   -OutputDirectory .\artifacts\community-addons\ytmusic-update
 ```
 
@@ -176,7 +177,7 @@ To review or test version behavior with the public CLI:
 ```powershell
 & $gbar disable org.gbar.samples.ytmusic
 & $gbar version list org.gbar.samples.ytmusic
-& $gbar version select org.gbar.samples.ytmusic 0.2.4
+& $gbar version select org.gbar.samples.ytmusic 0.2.5
 & $gbar enable org.gbar.samples.ytmusic
 ```
 

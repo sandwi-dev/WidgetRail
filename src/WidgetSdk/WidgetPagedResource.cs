@@ -42,7 +42,7 @@ public sealed record WidgetResourceError
     public string Message { get; }
 
     public static WidgetResourceError Unexpected { get; } =
-        new("resource_error", "This page could not be loaded. Try again.");
+        new("resource_error", "This content could not be loaded. Try again.");
 
     public static WidgetResourceError InvalidPage { get; } =
         new("invalid_page", "This page returned invalid data. Try again.");

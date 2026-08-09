@@ -110,7 +110,7 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         {
             appId = "gamebaralternative.ytmusic",
             appName = "Game Bar Alternative YT Music",
-            appVersion = "0.2.4",
+            appVersion = "0.2.5",
         });
         using var document = await SendAsync(
             isPost: true, "/auth/requestcode", body, includeAuthorization: false,
@@ -258,14 +258,7 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
             throw new YtMusicAuthorizationRequiredException();
         }
         if (response.StatusCode is < 200 or > 299)
-        {
-            var detail = string.IsNullOrWhiteSpace(response.JsonBody)
-                ? "Request failed"
-                : response.JsonBody.Trim();
-            if (detail.Length > 500) detail = detail[..500];
-            throw new InvalidOperationException(
-                $"YTMDesktop2 returned HTTP {response.StatusCode}: {detail}");
-        }
+            throw new YtMusicServiceException(response.StatusCode);
 
         try
         {

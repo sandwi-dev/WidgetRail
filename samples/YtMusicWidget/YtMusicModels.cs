@@ -109,3 +109,18 @@ public sealed class YtMusicAuthorizationRequiredException : InvalidOperationExce
     {
     }
 }
+
+/// <summary>
+/// A bounded YTMDesktop2 HTTP failure. Response bodies are deliberately not
+/// retained because they may contain implementation details unsuitable for UI.
+/// </summary>
+public sealed class YtMusicServiceException : InvalidOperationException
+{
+    public YtMusicServiceException(int statusCode)
+        : base($"YTMDesktop2 request failed with HTTP {statusCode}.")
+    {
+        StatusCode = statusCode;
+    }
+
+    public int StatusCode { get; }
+}

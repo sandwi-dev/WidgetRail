@@ -15,6 +15,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Broker client detects a durable private secret without reading it", BrokerClientLoadsDurableSecret),
     ("Pairing never sends stale authorization and replaces the token", PairingReplacesStaleCredential),
     ("HTTP 401 is classified as expired authorization", HttpUnauthorizedIsTyped),
+    ("HTTP failure bodies never escape the companion client", HttpFailureBodyIsDiscarded),
+    ("Capability failures render actionable status without provider details", CapabilityFailuresAreSafe),
     ("Disconnected UI offers controller-first connect and pair", DisconnectedUi),
     ("Every connection state publishes one bounded standard surface", SurfaceContractAcrossConnectionStates),
     ("First activation starts one non-blocking automatic connection", AutoConnectStartsOnce),
@@ -331,6 +333,73 @@ static async Task HttpUnauthorizedIsTyped()
     }
 }
 
+static async Task HttpFailureBodyIsDiscarded()
+{
+    const string privateResponse =
+        "{\"error\":\"C:\\\\Users\\\\private\\\\ytmusic-token SECRET_RESPONSE_DETAIL\"}";
+    var host = new BrokerClientHarness(_ => BrokerJson(privateResponse, statusCode: 503));
+    using var client = new YtmDesktopApiClient(host.Services);
+
+    YtMusicServiceException? failure = null;
+    try
+    {
+        _ = await client.GetStatusAsync();
+    }
+    catch (YtMusicServiceException exception)
+    {
+        failure = exception;
+    }
+
+    Assert.True(failure is not null, "A non-success response was not classified.");
+    Assert.Equal(503, failure!.StatusCode);
+    Assert.True(!failure.Message.Contains("private", StringComparison.OrdinalIgnoreCase),
+        "A private response-body detail escaped through the client exception.");
+    Assert.True(!failure.Message.Contains("SECRET_RESPONSE_DETAIL", StringComparison.Ordinal),
+        "The companion response body escaped through the client exception.");
+
+    var fake = new FakeClient { StatusException = failure };
+    var widget = new YtMusicWidget(fake);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    var status = Find(widget.Render().CreateSnapshot("ytmusic.test", 0).Root,
+        "connection-status").Text;
+    Assert.Equal("YTMDesktop2 reported an error · try again", status);
+}
+
+static async Task CapabilityFailuresAreSafe()
+{
+    var cases = new (Exception Failure, string Expected)[]
+    {
+        (new WidgetCapabilityUnavailableException("private provider path"),
+            "Overlay services are unavailable · reload the widget"),
+        (new WidgetCapabilityException("permission_denied", "private provider path"),
+            "Local API access is blocked · review YT Music permissions"),
+        (new WidgetCapabilityException("loopback_unavailable", "private provider path"),
+            "YTMDesktop2 is not running · start it and retry"),
+        (new WidgetCapabilityException("loopback_timeout", "private provider path"),
+            "YTMDesktop2 did not respond · try again"),
+        (new WidgetCapabilityException("invalid_response", "private provider path"),
+            "YTMDesktop2 returned an invalid response · try again"),
+        (new WidgetCapabilityException("future_error_code", "private provider path"),
+            "YT Music request failed · try again"),
+        (new InvalidOperationException("C:\\Users\\private\\unknown SECRET_DETAIL"),
+            "YT Music request failed · try again"),
+    };
+
+    foreach (var testCase in cases)
+    {
+        var fake = new FakeClient { StatusException = testCase.Failure };
+        var widget = new YtMusicWidget(fake);
+
+        await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+        var status = Find(widget.Render().CreateSnapshot("ytmusic.test", 0).Root,
+            "connection-status").Text;
+        Assert.Equal(testCase.Expected, status);
+        Assert.True(!(status ?? string.Empty).Contains("private provider path", StringComparison.Ordinal),
+            "Private capability-provider text escaped into the widget UI.");
+    }
+}
+
 static Task DisconnectedUi()
 {
     var widget = new YtMusicWidget(new FakeClient());
@@ -584,7 +653,8 @@ static async Task OptimisticStateRules()
     Assert.True(Find(rolledBack.Root, "track-progress").Value!.Value > 60,
         "Failed next command did not restore the prior progress.");
     Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
-    Assert.Equal("Companion rejected command", Find(rolledBack.Root, "connection-status").Text);
+    Assert.Equal("YT Music request failed · try again",
+        Find(rolledBack.Root, "connection-status").Text);
 }
 
 static async Task SecondaryActionFeedback()
@@ -690,7 +760,8 @@ static async Task SecondaryActionRollback()
             $"{actionId} did not roll back selected state.");
         Assert.True(Find(rolledBack.Root, actionId).IsBusy is not true,
             $"{actionId} did not clear busy state after failure.");
-        Assert.Equal($"{actionId} rejected", Find(rolledBack.Root, "connection-status").Text);
+        Assert.Equal("YT Music request failed · try again",
+            Find(rolledBack.Root, "connection-status").Text);
         Assert.True(invalidations >= 2, $"{actionId} needs an optimistic and rollback invalidation.");
     }
 }
@@ -1382,7 +1453,8 @@ static async Task ErrorState()
     var snapshot = widget.Render().CreateSnapshot("ytmusic.test", 1);
     Assert.Equal(YtMusicWidgetConnectionState.Error, widget.ConnectionState);
     Assert.Equal("retry", snapshot.InitialFocusId);
-    Assert.Equal("YTMDesktop2 is not running", Find(snapshot.Root, "connection-status").Text);
+    Assert.Equal("YT Music request failed · try again",
+        Find(snapshot.Root, "connection-status").Text);
 }
 
 static async Task PairingStateFlow()

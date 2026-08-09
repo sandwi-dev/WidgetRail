@@ -621,7 +621,8 @@ public abstract partial class Widget
                     input.Button,
                     input.Phase,
                     input.Sequence,
-                    input.MonotonicTimestampMicroseconds)));
+                    input.MonotonicTimestampMicroseconds,
+                    InputScopeId: snapshot.ActiveInputScopeId)));
             }
 
             // A always belongs to focused activation and never falls back to a
@@ -639,7 +640,8 @@ public abstract partial class Widget
                     input.Button,
                     input.Phase,
                     input.Sequence,
-                    input.MonotonicTimestampMicroseconds)));
+                    input.MonotonicTimestampMicroseconds,
+                    InputScopeId: snapshot.ActiveInputScopeId)));
             }
 
             var scopedShortcut = input.FocusedElementId is { } activeFocus
@@ -653,7 +655,8 @@ public abstract partial class Widget
                 input.Button,
                 input.Phase,
                 input.Sequence,
-                input.MonotonicTimestampMicroseconds)));
+                input.MonotonicTimestampMicroseconds,
+                InputScopeId: snapshot.ActiveInputScopeId)));
         }
 
         return ValueTask.FromResult(false);

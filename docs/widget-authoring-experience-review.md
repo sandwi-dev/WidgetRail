@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; operation scopes, immutable models, optimistic commands, and bounded offset-paged resources implemented, later recommendations open<br>
+Status: living assessment; operation scopes, immutable models, resources, optimistic commands, bounded navigation, and stable-ID scopes implemented, later recommendations open<br>
 Date: 2026-08-08<br>
-Reassessed: 2026-08-08 after public paged resources, the Spotify resource migration, and the Media Sessions model/optimistic-command production migration<br>
+Reassessed: 2026-08-09 after public non-paged resources, bounded navigation, stable-ID scopes, the SDK Gallery migration, and YT Music safe-error hardening<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 ## Executive conclusion
@@ -35,7 +35,7 @@ declarative protocol, GBSS, AppContainer isolation, and typed capabilities.
 Add optional high-level SDK primitives that encode the safe patterns already
 implemented repeatedly by first-party widgets.
 
-The latest Spotify work supports this direction. Protocol-v11 host-owned
+The Spotify and SDK Gallery work support this direction. Protocol-v11 host-owned
 focus-edge pagination and `ScrollElement.Paginate` move a generic controller
 interaction out of Spotify and into the platform. The public
 `WidgetOperations` coordinator now also owns bounded SingleFlight, Latest, and
@@ -47,8 +47,12 @@ focus. Spotify has migrated its playlist collections to that API. The public
 equal-state invalidations, and can derive an operation input from the exact
 committed revision. Media Sessions now keeps all render-facing state in one
 model and uses the public `WidgetOptimisticCommand` coordinator for transport.
-Cursor/append resources and navigation remain open; other widgets still need
-deliberate migration to the new command contract.
+The public `WidgetResource<TValue>` now coordinates non-paged reads, while
+`WidgetNavigator<TRoute>` and `WidgetIds` own bounded route history, route
+cancellation, exact-scope Back, focus restoration, and validated hierarchical
+IDs. SDK Gallery is the production-style reference for the navigation and ID
+contracts. Cursor/append resources, a responsive navigation shell, an ID
+analyzer, and broader migrations remain open.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -99,9 +103,18 @@ The SDK already provides important low-level safety mechanisms:
   supplies an offset-based immutable page snapshot, Latest coordination,
   bounded LRU, safe error/retry state, invalidation, and responsive Scroll-to-
   focus mappings.
+- [`WidgetResource<TValue>`](../src/WidgetSdk/WidgetResource.cs) supplies a
+  non-paged immutable loading snapshot, bounded freshness caching, duplicate
+  coalescing, safe errors/retry, last-good retention, subscription publication,
+  stale-result rejection, reset, and lifecycle cancellation.
 - [`WidgetModel<TState>`](../src/WidgetSdk/WidgetModel.cs) supplies atomic
   immutable snapshots, serialized updates, equality-based invalidation, exact
   revisions, result-bearing mutations, and contained diagnostic observation.
+- [`WidgetNavigator<TRoute>`](../src/WidgetSdk/WidgetNavigator.cs) supplies a
+  bounded route stack, stable route input scopes, exact nested Back handling,
+  return-focus memory, and route-owned cancellation.
+- [`WidgetIds`](../src/WidgetSdk/WidgetIds.cs) supplies validated hierarchical
+  scopes and deterministic opaque `KeyedId` leaves for durable domain keys.
 - [`ScrollElement.Paginate`](../src/WidgetSdk/Elements.cs) supplies protocol-v11
   host-owned near-start and near-end focus triggers without visible paging
   buttons.
@@ -116,6 +129,11 @@ The SDK already provides important low-level safety mechanisms:
   per-edge borders, `:pressed`, and bounded presentation translation, cover the
   low-level responsive/presentation contracts already required by advanced
   widgets.
+
+Focused Release evidence for this milestone is Widget SDK 80/80, SDK Gallery
+6/6, and YT Music 45/45. These suites establish the API semantics and sample
+migrations; they do not replace packaged controller, companion, or visual
+evidence.
 
 These primitives prevent several classes of misuse, but the author still has to
 compose them into an application architecture. Spotify is evidence that the
@@ -151,8 +169,9 @@ and selected-playlist domain state. Queue remains a separate non-paged path.
 The latest changes are a successful example of moving proven generic behavior
 into the SDK/host without changing the protocol boundary. Immutable state now
 also has a medium production migration, including optimistic transport
-commands. The next targets are navigation and broader helper migrations;
-cursor and append/infinite-feed resource semantics need a separate design
+commands. The next targets are broader helper migrations, responsive
+navigation recipes, and analyzer support; cursor and append/infinite-feed
+resource semantics need a separate design
 rather than being implied by the offset-paged API.
 
 No authenticated Player, Queue, Playlists, or Devices screenshots were found in
@@ -177,9 +196,10 @@ implemented facilities from remaining on the roadmap under an older name.
 | Typography lacked semantic monospace | `UI.CodeText` supplies bounded, whitespace-preserving semantic code text. | Packaged fonts and browser-style fallback stacks remain unavailable. |
 
 The highest-priority remaining authoring gaps are therefore application
-coordination, not basic controls: a bounded navigator with focus restoration,
-non-offset resource variants, broader coordination-helper migrations, and
-credential-free scenario/visual testing. Documentation should keep those
+composition and proof, not basic controls: cursor/append resource variants, a
+responsive navigation shell and recipes, broader coordination-helper
+migrations, an ID/action analyzer, and credential-free scenario/visual testing.
+Documentation should keep those
 separate from already shipped primitives so authors can use the safe short path
 today.
 
@@ -320,7 +340,41 @@ lifecycle-bound execution, current-attempt completion, and the exact callback
 sequence. Domain-specific projection, provider-event merge, safe messages, and
 rollback remain explicit callbacks rather than hidden framework policy.
 
-### 3. Bounded offset-paged resource state — implemented
+### 3. Non-paged resource state — implemented
+
+Use `CreateResource<TValue>` for one current provider value that does not have
+page semantics:
+
+```csharp
+private readonly WidgetResource<PlayerSnapshot> _player;
+
+public PlayerWidget()
+{
+    _player = CreateResource("player.snapshot", new()
+    {
+        Load = token => LoadPlayerSnapshotAsync(token),
+        MapError = _ => new WidgetResourceError(
+            "player_unavailable", "Playback could not be loaded."),
+        CacheDuration = TimeSpan.FromSeconds(30),
+    });
+}
+```
+
+The immutable snapshot exposes `NotLoaded`, `Loading`, `Ready`, `Refreshing`,
+and `Error`, plus the current value, safe error, and revision. `EnsureLoaded`
+reuses a fresh successful value, `Refresh` and `Retry` force a read,
+`Publish` accepts an authoritative subscription value, and `Reset` cancels and
+clears the resource. Identical in-flight reads join one operation. Late reads
+cannot overwrite a reset or newer subscription publication. The default
+Active lifetime, five-minute freshness window, and last-good retention are
+explicit options rather than hidden polling or retry policy.
+
+The resource owns state invalidation and bounded coordination, but the widget
+still chooses when to read, how to render each state, and how to merge provider
+events. It never starts work from `Render`. Cursor pages and append/infinite
+feeds remain separate open designs.
+
+### 4. Bounded offset-paged resource state — implemented
 
 The public resource is constructed once through `CreatePagedResource<TItem>`:
 
@@ -363,11 +417,11 @@ visible Load-more row is required.
 
 The resource owns its state-change invalidation and runtime-owned Latest lane,
 including synchronous cache-hit/reset changes that have no operation busy
-edge. The widget still owns copy and visual composition. A generic
-`WidgetResource<T>`, cursor paging, append/infinite feeds, and a
-`UI.ResourcePage` composition are not implemented and remain later design work.
+edge. The widget still owns copy and visual composition. Cursor paging,
+append/infinite feeds, and a `UI.ResourcePage` composition are not implemented
+and remain later design work.
 
-### 4. Command and optimistic-update helper — implemented
+### 5. Command and optimistic-update helper — implemented
 
 Media, audio, network, and settings widgets repeatedly implement pending state,
 busy controls, optimistic projection, success reconciliation, and rollback. The
@@ -423,26 +477,45 @@ or a correct merge/rollback for the widget. Authors must implement those
 callbacks over immutable state. It builds on `WidgetOperations`; it does not
 create a second controller-input queue.
 
-### 5. Navigation and focus model
+### 6. Navigation and focus model — implemented
 
 Advanced widgets need a small controller-native router:
 
 ```csharp
-private readonly WidgetNavigator<Route> _navigation = new(Route.Player);
+private readonly WidgetNavigator<Route> _navigation;
+
+public PlayerWidget() => _navigation = CreateNavigator(
+    "player.navigation", Route.Player);
 
 _navigation.Navigate(Route.Playlists, sourceFocusId);
 _navigation.Push(new Route.Playlist(id), sourceFocusId);
-_navigation.Back();
+_navigation.Back(sourceFocusId);
 ```
 
-It should own:
+The implemented navigator owns:
 
 - a bounded route stack;
 - selected root destination;
 - source focus ID and return focus restoration;
 - nested input-scope identity;
 - Back action publication only when a nested route exists; and
-- route-change cancellation through an associated operation scope.
+- a route-lifetime cancellation token that is canceled before each route
+  invalidation; and
+- exact pressed-B handling only when the action carries the current route's
+  active `InputScopeId`.
+
+`Scope(root)` applies the current generated input scope and publishes B only
+for nested routes. `Value.InitialFocusId` restores remembered route focus, and
+`RouteCancellationToken` owns work that must end when the route changes. Depth
+defaults to eight and is capped at 16; known routes default and cap at 32. A
+capacity overflow is an explicit `RejectedCapacity` result. Every open-widget
+action now carries the active scope ID, including A activation, focused
+shortcuts, scope-root shortcuts, and Slider changes, so stale nested actions
+fail closed instead of being inferred from element-name conventions.
+
+SDK Gallery is the production-style public migration. Its tabs use
+`Navigate`, Picker and ActionSheet use `Push`, nested B uses `TryHandleBack`,
+and leaving a route cancels its token before the new snapshot is published.
 
 Add a responsive composition such as `UI.NavigationShell` that maps the same
 destinations to an expanded rail and compact tabs. It should allow a persistent
@@ -450,10 +523,10 @@ expanded pane without requiring authors to duplicate the entire semantic tree.
 The current low-level Row, Stack, visibility, and input-scope APIs should remain
 available as escape hatches.
 
-### 6. Stable ID scopes
+### 7. Stable ID scopes — implemented
 
-Stable IDs are necessary, but large widgets currently assemble many strings by
-hand. Add a lightweight hierarchical ID builder:
+Large widgets can use the public hierarchical ID builder instead of assembling
+every string by hand:
 
 ```csharp
 var ids = WidgetIds.Scope("spotify").Scope(mode).Scope("player");
@@ -465,13 +538,19 @@ analyzer or `gbar validate` rule should detect duplicate literal IDs, unstable
 index-derived IDs where a durable domain key is available, invalid focus
 targets, and action IDs with no known handler in declarative action maps.
 
+`Scope` and `Id` validate each dot-free segment and the final protocol ID.
+`KeyedId(name, durableKey)` hashes a bounded durable key into a deterministic
+opaque suffix, so unsafe provider text and provider identity do not enter the
+snapshot. This helper creates stable identifiers; it does not register action
+handlers or prove that an ID is semantically stable. The analyzer remains open.
+
 Spotify's current pagination code also derives compact or wide mode from the
 source element ID. IDs should identify elements, not become an undocumented
 action-data channel. A navigation-shell helper or bounded typed action context
 should provide the current route/presentation variant without requiring string
 parsing.
 
-### 7. Layout recipes and semantic styling
+### 8. Layout recipes and semantic styling
 
 The component library is useful, but advanced widgets still carry hundreds of
 lines of GBSS. Add reusable, theme-respecting recipes rather than
@@ -497,7 +576,7 @@ media/app tiles, and Toast. The missing recipes should compose those contracts;
 they should not introduce parallel controls with different focus or styling
 semantics.
 
-### 8. Scenario-based preview and visual testing
+### 9. Scenario-based preview and visual testing
 
 The current Spotify evidence can render setup without credentials, but not its
 authenticated playback surfaces. Add author-defined scenarios:
@@ -525,7 +604,7 @@ hardware, or user secrets. Visual artifacts should be deterministic enough for
 review, with pixel comparisons used cautiously and semantic snapshots retained
 as the primary contract.
 
-### 9. Higher-level test harness
+### 10. Higher-level test harness
 
 Keep `WidgetTestHostServicesBuilder`, but add fluent scenario and interaction
 helpers over it:
@@ -544,7 +623,7 @@ The harness should provide deterministic operation completion, virtual time,
 route navigation, focus assertions, lifecycle leak detection, and standard
 capability states such as unavailable, denied, revoked, stale, and delayed.
 
-### 10. Templates organized by complexity
+### 11. Templates organized by complexity
 
 One starter cannot teach every level. Provide repository templates such as:
 
@@ -593,13 +672,14 @@ code describes Spotify behavior or presentation rather than task plumbing.
 
 Completed foundation: protocol-v11 focus-edge Scroll pagination, the public
 `ScrollElement.Paginate` authoring API, runtime-owned operation scopes,
-immutable widget models, bounded optimistic commands, and bounded offset-paged
-resources. Spotify playlists are the first resource migration; Media Sessions
-is the first medium model and command migration.
+immutable widget models, bounded optimistic commands, non-paged resources, and
+bounded offset-paged resources. Spotify playlists are the first paged-resource
+migration; Media Sessions is the first medium model and command migration.
 
 Next work:
 
-1. Generic non-paged and separately designed cursor/append resource state.
+1. Design cursor/append resource state separately from current-value and
+   offset-page semantics.
 2. Migrate the remaining suitable widgets and Spotify operation families while
    preserving their explicit lifetime, ordering, and reconciliation policies.
 3. Add focused recipes for provider-event merge, confirmation deadlines, and
@@ -610,10 +690,12 @@ sources, task fields, locks, generation checks, and manual invalidations.
 
 ### Phase 2: improve application composition
 
-1. Navigator and route stack.
-2. Responsive navigation shell and standard page recipes.
-3. Stable ID scopes and analyzer rules.
-4. Split advanced samples by responsibility.
+Completed foundation: `WidgetNavigator<TRoute>`, `WidgetIds`/`KeyedId`, exact
+active-scope action propagation, and the SDK Gallery production-style migration.
+
+1. Responsive navigation shell and standard page recipes.
+2. Stable-ID/action analyzer rules.
+3. Split and migrate advanced samples by responsibility.
 
 ### Phase 3: improve feedback and onboarding
 
@@ -685,16 +767,17 @@ Suggested baseline metrics for each migrated widget:
 Do not replace the C# SDK or declarative widget model. Treat Spotify, Network
 Controls, and Audio Mixer as design probes that reveal the same missing
 application-level layer. Continue building that layer from small,
-lifecycle-aware, testable primitives: operations and bounded offset-paged
-resources plus general immutable state and optimistic command coordination are
-now implemented and production-exercised; non-paged/cursor resources,
-navigation, preview tooling, and broader migrations remain.
+lifecycle-aware, testable primitives: operations, non-paged and bounded
+offset-paged resources, immutable state, optimistic command coordination,
+bounded navigation, and stable-ID scopes are now implemented and exercised;
+cursor/append resources, responsive navigation recipes, analyzer/preview
+tooling, and broader migrations remain.
 
 The protocol-v11 pagination change is a strong example to repeat: identify a
 generic behavior proven by a demanding widget, move the security- and
 input-sensitive portion into the host, expose a small declarative SDK surface,
-and leave domain policy with the widget. Applying that same approach to other
-resource variants, commands, navigation, and scenario tooling would remove
+and leave domain policy with the widget. Applying that same approach to cursor
+resource variants, responsive recipes, broader migrations, and scenario tooling would remove
 much more author plumbing without weakening the platform boundary.
 
 The framework will be ready for sophisticated human-authored community widgets
