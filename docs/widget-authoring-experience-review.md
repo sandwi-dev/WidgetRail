@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, aggregate catalog scaling, native host widget-session ownership, and advanced-widget adoption audits<br>
+Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget adoption, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -80,7 +80,7 @@ escape and making `gbar dev` the only executable CLI integration path. An
 initial path-level 4 MiB preflight was racy; the current source now reads one
 restrictively shared stream through a ceiling-plus-one detector and rejects
 legacy assembly-only options for JSON. A deterministic misreported-length test
-covers the consumed-byte bound. The implementation agent reports the live
+covers the consumed-byte bound. The implementation agent reports the focused
 Release CLI suite at 49/49 after adding the external scaffold case; this review
 did not execute it or inspect retained output.
 The broader tradeoff is an explicit tooling gap: there is no headless isolated
@@ -109,20 +109,27 @@ be treated as current authoring tools, not roadmap proposals. Higher-level page
 recipes beyond the navigation shell and packaged-font support remain distinct
 open work.
 
-The live GBSS file reader is safer but currently less diagnosable than a senior
-authoring tool should be. It correctly bounds consumed bytes, requires strict
-UTF-8, and can match installed sources to the verified digest inventory.
-However, the boolean `IGbssSourceProvider.TryRead` contract collapses a missing
-file, oversize source, changing length, invalid encoding, access failure, and
-digest mismatch into `missing_import`. `gbar validate` and package/theme
-compilation therefore tell authors that rejected content was not found. Before
-API 1.0, return a closed typed source-read result and let the loader emit safe
-distinct diagnostics; add positive BOM/multi-import coverage as well as one
-case for each rejection reason.
+The committed GBSS source migration is a meaningful pre-1.0 authoring
+improvement.
+`IGbssSourceProvider.Read` now returns `GbssSourceReadResult`; the loader maps
+missing, unsafe, oversized, changing, invalidly encoded, digest-mismatched, and
+unavailable input to distinct bounded diagnostics without exposing raw
+exceptions or paths. `gbar validate` routes file entries and imports through
+the same bounded strict reader. Implementation-reported Styling 23/23 includes
+the complete status map, UTF-8 BOM, verified imports, and hostile-length cases;
+CLI 49/49 adds one real-file `invalid_encoding` case.
+
+The result is factory-only with read-only state, correcting the initial
+positional-record hole before publication. The loader contains non-fatal
+custom-provider exceptions as sanitized
+`source_unavailable` diagnostics while preserving cancellation and process-
+fatal conditions. Add real CLI/import coverage beyond invalid encoding, and
+route installed digest/change rejection to typed catalog integrity status
+rather than only “invalid styles.”
 
 ## Evidence from the repository
 
-Approximate implementation sizes in the current worktree illustrate the gap
+Approximate implementation sizes in current HEAD illustrate the gap
 between a minimal and an application-like widget:
 
 | Widget | Approximate C# size | What it demonstrates |
@@ -218,8 +225,9 @@ is suppressed; renderer and focus-test source encode that contract. The
 repository still lacks retained structured results or an immutable CI run, and
 available default packages are one source version behind for YT Music and SDK
 Gallery, so they are not current packaged evidence. Real controller, companion,
-physical-display, performance-trace, and representative visual evidence remain
-pending.
+physical-display and performance-trace evidence remain pending. This review did
+inspect representative retained PNGs, but the bundle is a dirty older widget-
+body-only artifact rather than current packaged/full-shell visual proof.
 
 These primitives prevent several classes of misuse, but the author still has to
 compose them into an application architecture. Spotify is evidence that the
@@ -268,6 +276,18 @@ No authenticated Player, Queue, Playlists, or Devices screenshots were found in
 the current evidence set; the stored Spotify images still cover configuration
 and setup. The semantic and interaction tests are stronger, but credential-free
 visual scenarios remain necessary to assess the complete playback UI.
+
+The retained `final-schema-v2-20260808-final` bundle makes this gap measurable.
+It records 44 dirty entries at revision `f3ac48c`, packages Spotify 0.1.6 rather
+than current 0.2.10, and explicitly excludes shell/window, focus/input,
+transitions, compositor, and physical-display fidelity. Its capture verifier
+checks hashes, semantic invariants, computed-style presence, and renderer exit;
+it does not judge clipping, overlap, focus visibility, scroll reachability, or
+text truncation. The compact and 150%-text Spotify setup captures are legible,
+but they do not answer whether a human can produce and maintain the current
+advanced playback experience. Credential-free state fixtures and a clean
+current package/profile matrix are therefore authoring infrastructure, not
+optional release polish.
 
 ## Reassessment after navigation-shell and scenario-preview changes
 
@@ -492,7 +512,7 @@ overlay startup.
 ## Reassessment of residency defaults and ecosystem cost
 
 The framework makes an individual worker's resource request explicit and
-enforces it with a one-process Job. The current worktree now also reserves a
+enforces it with a one-process Job. Current HEAD also reserves a
 default application envelope of eight workers and 512 MiB of summed declared
 Job limits before lazy launch. One exact trusted Settings worker is separately
 bounded/accounted so a full application budget cannot hide the control plane.
@@ -501,7 +521,7 @@ per-widget measured cost nor budget ownership/remediation, and existing
 performance evidence covers one selected worker rather than ecosystem-scale
 accumulation.
 
-The current worktree also repairs the ordinary authoring default. The
+Current HEAD also repairs the ordinary authoring default. The
 controller-widget template and Clock sample now choose five-minute
 `unload-after-idle` and teach reconstruction from durable state. The protocol
 retains `keep-alive` as its compatibility default, while authors must choose it
@@ -993,6 +1013,15 @@ preview authenticated-looking, empty, denied, or error surfaces. Executing those
 factories in the CLI process would grant ambient authority and a timeout could
 not safely terminate them, so semantic execution must wait for isolation.
 
+The repository-internal auth-free evidence harness proves that packaged
+workers, simulated broker services, production style resolution, and an
+offscreen native renderer can be composed safely enough to export selected
+first-party snapshots. It is not yet an author workflow: its retained bundle is
+from a dirty older revision, Spotify covers setup only, Settings failed to
+start, and the verifier records rendering success without a layout or visual
+acceptance verdict. Reuse those proven components behind the isolated public
+scenario contract rather than creating a second preview architecture.
+
 The remaining target is an interactive and visual layer over the same named
 states:
 
@@ -1134,7 +1163,9 @@ and fail-closed scenario selection with contract and safety tests.
 2. Move scenario assembly execution into a dedicated production-equivalent
    AppContainer/Job/IPC process boundary.
 3. Real-widget scenarios with typed fake services, lifecycle, and actions.
-4. Viewport-aware native preview, capture, and controller replay.
+4. Viewport-aware native preview, capture, and controller replay, with
+   deterministic bounds/focus/scroll assertions and reviewed tolerant images
+   from clean current packages.
 5. Fluent deterministic test harness.
 6. Compile-test the canonical copyable guide and quickstart examples against
    the public SDK; the corrected glyph and protocol-matrix regressions

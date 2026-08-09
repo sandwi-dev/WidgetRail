@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after live digest-bound GBSS work, aggregate catalog scaling, the native host widget-session ownership boundary, and advanced-widget SDK adoption were audited<br>
+Last reassessed: 2026-08-09 after committed digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget SDK adoption, and retained visual/performance evidence were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -41,16 +41,16 @@ generated repository still points back to the platform source tree, no SDK
 artifact is published, and the README refers snapshot export to typed-fake
 tests the template does not generate.
 
-The current worktree closes the remaining CLI author-code bypass: `gbar render`
+Current HEAD closes the remaining CLI author-code bypass: `gbar render`
 now accepts only bounded snapshot JSON, and DLL input fails closed before type
 resolution or output handling. `gbar dev` remains the executable integration
-path through the production AppContainer worker boundary. The current worktree
+path through the production AppContainer worker boundary. Current HEAD
 also resolves the prior responsive-focus
 identity risk by separating focus persistence from action and source-element
 routing. It also moves reconciliation out of steady paint and onto relevant
 state transitions. The implementation agent reports that focused managed and
 native Release tests, the OverlayHost Release build, and the repository-wide
-Release verifier all pass on the current worktree; this review did not rerun
+Release verifier all pass on current HEAD; this review did not rerun
 them or inspect a retained machine-readable result.
 
 A separate public-distribution blocker is the incomplete publisher/provenance
@@ -66,7 +66,7 @@ to the verified relative-path/SHA-256 inventory, but no launch lease currently
 binds worker-loaded executable bytes or general assets to that identity. This
 is now the highest-risk package-boundary finding.
 
-The current worktree now adds a system-wide application-worker admission
+Current HEAD adds a system-wide application-worker admission
 envelope on top of the independent Jobs: eight workers and 512 MiB of declared
 Job limits by default, plus one separately accounted trusted Settings control
 plane. The follow-up correctly moves reservation lifetime into an exact runtime
@@ -79,7 +79,7 @@ controller remediation. No bounded critical-work lease exists, and the
 retained baseline still exercises only one selected worker.
 
 The YT Music operation-lane migration removes a substantial amount of manual
-lifecycle machinery. The current worktree also closes its stale-failure gap:
+lifecycle machinery. Current HEAD also closes its stale-failure gap:
 success, retry status, and authorization mutations now share the
 `WidgetOperationContext.IsCurrent` contract, including a final check serialized
 with state mutation and same-lane admission.
@@ -197,25 +197,40 @@ EQ-016. The rotating native audit also deepened EQ-003 by identifying the
 missing host-side widget-session owner above the already cohesive bridge
 transport. No native code change is claimed.
 
+Commit `0d4eb80` resolves EQ-017's false-missing contract by replacing boolean
+GBSS source reads with typed statuses, closing result construction behind
+validated factories, containing non-fatal custom-provider exceptions, and
+routing CLI file validation through the bounded reader. Installed digest/change
+failures still collapse to a generic bridge style warning; that cross-layer
+integrity-state gap remains tracked by EQ-014.
+
 ## Verification snapshot
 
-Implementation-reported bounded local Release results on the current worktree
+Implementation-reported bounded local Release results on current HEAD
 are:
 
 | Scope | Result |
 | --- | ---: |
 | Widget SDK | 84/84 passed |
-| Gbar CLI | 49/49 reported on the live scaffold worktree |
+| Gbar CLI | 49/49 passed on the typed-diagnostic milestone |
 | Settings Widget | 41/41 passed |
 | SDK Gallery | 6/6 passed |
 | YT Music | 48/48 passed |
 | Widget Catalog | 28/28 passed |
-| Widget Styling | 23/23 implementation-reported on current HEAD |
+| Widget Styling | 23/23 passed on current HEAD |
+| Platform Settings | 15/15 implementation-reported on the typed-diagnostic milestone |
 | Focus Navigation | 41 checks passed |
 | Declarative Renderer | 4,632 checks passed |
 | Widget bridge catalog | passed |
 | OverlayHost Release target | built successfully |
-| Full `scripts/Verify.ps1 -Configuration Release` | passed end to end in 283.5 seconds before GBSS-only retention narrowing; affected current suites rerun green |
+| Documentation contract | 49 Markdown files passed on the typed-diagnostic milestone |
+| Full `scripts/Verify.ps1 -Configuration Release` | passed in 283.5 seconds before GBSS-only narrowing and typed diagnostics; affected focused suites are green |
+
+The typed-diagnostic milestone is committed. Styling 23/23, CLI 49/49, and the
+49-file documentation contract were run and their output inspected around the
+final API-shape change; Platform Settings 15/15 and Bridge 40/40 were reported
+green earlier in the same milestone. The previous full-verifier run predates
+this commit, so it is not retained end-to-end evidence for current HEAD.
 
 The implementation agent reports that the full verifier additionally exercised
 the managed, protocol, capability,
@@ -224,10 +239,14 @@ OverlayHost smoke, and InputProbe paths. The repository still retains no
 machine-readable per-run result or immutable CI link, and this review did not
 independently execute the commands, so EQ-004 remains open.
 This milestone did not verify a real controller, real YTMDesktop2 companion,
-Spotify authentication, physical mixed-DPI display, representative visual
-capture, or PresentMon/ETW trace. Available default package artifacts also
-predate the updated YT Music and SDK Gallery source manifests and are not
-current packaged evidence.
+Spotify authentication, physical mixed-DPI display, or PresentMon/ETW trace.
+This review visually inspected the retained Spotify setup, accessible setup,
+Games & Apps wide, and ad hoc overlay-window captures. The two widget-body
+setup views are legible and internally consistent, but the retained bundle is
+from a 44-entry dirty tree at old revision `f3ac48c`, packages Spotify 0.1.6
+instead of current 0.2.10, and explicitly excludes shell/window, focus/input,
+transitions, compositor, and physical-display fidelity. Available default YT
+Music and SDK Gallery packages likewise predate their current manifests.
 The retained performance baseline is one dirty-worktree run with one selected
 Settings worker and only 31 observations per state; it does not measure
 multi-widget accumulation, scheduler wakeups, GPU/game-frame impact, controller
@@ -261,14 +280,13 @@ rejection of one late-added import. The implementation agent
 also inspected a green 283.5-second full Release gate, then reran Catalog 28/28,
 Styling 23/23, and Bridge 40/40 after narrowing retained hashes to GBSS only.
 The cases do not include a catalog-to-bridge race seam, aggregate installed-
-version limits, or retained
-full-verifier output for the live worktree.
+version limits, or retained full-verifier output tied to current HEAD.
 
 ## Prioritized findings
 
 ### EQ-001 — P0 — CLI inspection executed author code outside the production sandbox
 
-**Status: Implemented in the current worktree; focused Release verification is reported, retained evidence is pending.**
+**Status: Implemented in current HEAD; focused Release verification is reported, retained evidence is pending.**
 
 **Implementation.** `gbar render` now accepts only `.json` snapshots. It checks
 the file length against the 4 MiB absolute transport ceiling before allocation,
@@ -391,8 +409,8 @@ or update authority merely by reusing the manifest publisher and package ID.
 
 ### EQ-013 — P1 — Aggregate worker residency needs a verified process-lease and refusal contract
 
-**Status: Architecturally implemented with focused direct coverage in the
-current worktree; retained execution evidence, an actionable controller
+**Status: Architecturally implemented with focused direct coverage in current
+HEAD; retained execution evidence, an actionable controller
 refusal path, critical-work leases, and ecosystem-scale proof remain open.**
 
 **Implementation evidence.** The new `WorkerResidencyBudget` owns one locked,
@@ -439,6 +457,17 @@ denial is deliberately not a worker failure, it identifies neither the denied
 widget nor the resident owners. Installed community widgets can be disabled on
 a separate details page; built-in widgets explicitly cannot, and neither route
 is connected to the capacity refusal.
+
+The retained schema-2 performance baseline does not yet prove the aggregate
+contract. It launches only the trusted Settings worker, takes 31 observations
+per state in one dirty-tree run, and reports Hidden CPU p95 of 0.0977% against a
+0.1% diagnostic target—too little margin and repetition to establish a noise
+envelope. Hidden also records 31.65 Guide-compatibility timer messages per
+second. The harness correctly labels these as host messages rather than OS
+wakeups and reports GPU, scheduler, presentation, controller latency, and
+long-run trends as unavailable. Visible/Interactive aggregate working set
+reaches 203.6/214.3 MiB, but Settings' trusted control-plane exception makes
+that run unsuitable for extrapolating ordinary Community-widget cost.
 
 **Why it matters.** A user exploring community widgets can accumulate resident
 .NET processes during a gaming session even when every individual package
@@ -509,7 +538,7 @@ visual and interaction evidence.
 
 ### EQ-015 — P1 — The generated widget lacks a published standalone SDK/test contract
 
-**Status: Partially implemented in the current worktree. Local-project SDK
+**Status: Partially implemented in current HEAD. Local-project SDK
 resolution is truthful and build-tested; published SDK and generated snapshot/
 test contracts remain open.**
 
@@ -521,7 +550,7 @@ path, and fails with an actionable message rather than emitting the unpublished
 quickstart, authoring, publishing, and troubleshooting guides state the same
 temporary local-project contract.
 
-The current worktree corrects two immediate template defects. The generated
+Current HEAD corrects two immediate template defects. The generated
 README now uses `gbar dev` for executable integration and accurately says
 `gbar render` consumes snapshot JSON only. The manifest and Clock sample switch
 from permanent `keep-alive` to `unload-after-idle` at 300 seconds, and the CLI
@@ -588,7 +617,7 @@ CI artifact as the public proof.
 
 ### EQ-002 — P1 — Responsive focus identity required an explicit contract
 
-**Status: Implemented in the current worktree; local verification is reported, retained independent evidence is pending.**
+**Status: Implemented in current HEAD; local verification is reported, retained independent evidence is pending.**
 
 **Implementation.** Protocol v13 adds an optional bounded
 `focusPersistenceId` only to focusable nodes. SDK focusable elements expose
@@ -723,7 +752,7 @@ large `scripts/Verify.ps1`, but no checked-in `.github/workflows` pipeline.
 directly; `Invoke-Checked` validates exit codes but supplies no per-step or
 overall timeout. The console-style test executables also have no standard test
 runner timeout or structured result artifact. Documentation frequently cites a
-green full Release gate, but the current uncommitted worktree has no immutable
+green full Release gate, but current HEAD has no immutable
 CI run associated with it.
 
 `docs/implementation-status.md` now upgrades several focused counts and states
@@ -766,7 +795,7 @@ the job.
 
 ### EQ-010 — P1 — Superseded YT Music reconciliation could commit stale failure state
 
-**Status: Implemented in the current worktree; focused Release verification is reported, packaged proof remains.**
+**Status: Implemented in current HEAD; focused Release verification is reported, packaged proof remains.**
 
 **Implementation.** `RunTransportRefreshBurstAsync` now routes attempt-local
 retry status and authorization failure through context-aware helpers. Each
@@ -984,7 +1013,7 @@ prose inspection alone is not closure evidence.
 
 ### EQ-012 — P2 — Data-only rendering must enforce its byte ceiling on consumed bytes
 
-**Status: Resolved in the current worktree; focused Release verification passes.**
+**Status: Resolved in current HEAD; focused Release verification is implementation-reported.**
 
 **Implementation.** The first `RenderCommand` revision checked path metadata
 and then reopened the file, which did not bind the limit to the bytes consumed.
@@ -1131,7 +1160,7 @@ promise. This is not currently a direct self-tamper vector for the
 capability-free AppContainer, which receives read-only access, so it is not a
 P0 claim. It is nevertheless a P1 trust-boundary defect before public package
 distribution: externally modified or accidentally changed bytes can be loaded
-under stale digest-derived authority. The live bounded-reader work removes the
+under stale digest-derived authority. The committed bounded-reader work removes the
 known oversized metadata pressure path with focused Release evidence,
 but it does not close the authority defect.
 
@@ -1200,7 +1229,7 @@ and 64 MiB by default. `DiscoverInstalledVersions` nevertheless enumerates
 every ID directory and every version directory with no maximum package IDs,
 versions per ID, total versions, catalog files, bytes hashed, or elapsed work.
 It verifies and materializes the complete list before catalog state groups or
-selects active versions. The live integrity change additionally builds and
+selects active versions. The committed integrity change additionally builds and
 freezes a GBSS-relative-path/SHA-256 dictionary for every discovered version
 and retains it on each `InstalledWidgetVersion`, even though only an enabled
 active version needs it. It deliberately does not retain hashes for assemblies,
@@ -1261,58 +1290,144 @@ versions per ID, and retain the result as a release budget.
 
 ### EQ-017 — P2 — GBSS file-source failures collapse into a false “missing” diagnostic
 
-**Status: Open; the live reader fails closed but its public provider contract
-cannot preserve the reason.**
+**Status: Resolved in commit `0d4eb80`; focused Release verification passes.
+Installed integrity-state UX remains separately open under EQ-014.**
 
-**Evidence.** `IGbssSourceProvider` exposes only
-`bool TryRead(path, out source)`. The live `GbssFileSourceProvider` returns
-`false` for a genuinely missing path, a consumed-byte overflow, length change,
-invalid UTF-8, digest absence/mismatch, `IOException`, and access denial.
-`GbssPackageLoader.LoadOne` maps every `false` to `missing_import` with “source
-was not found.” The new focused cases assert `TryRead == false` for invalid
-UTF-8/oversize/digest mismatch and expect `missing_import` for a late import;
-they do not prove distinct safe diagnostics. The same file provider is used by
-`gbar validate`, first-party widget tests, installed widget compilation, and
-the data-only theme catalog.
+**Evidence.** The committed migration replaces
+`IGbssSourceProvider.TryRead(path, out source)` with
+`Read(path) -> GbssSourceReadResult`. `GbssFileSourceProvider` distinguishes
+`Missing`, `UnsafePath`, `TooLarge`, `ChangedDuringRead`, `InvalidEncoding`,
+`DigestMismatch`, and `IoUnavailable`; the loader maps them to stable bounded
+diagnostic codes. Embedded Settings, in-memory tests, and the CLI entry-source
+adapter have migrated. `gbar validate` now reads a real entry through the
+bounded strict-UTF-8 provider instead of `File.ReadAllTextAsync`, and a focused
+CLI case proves invalid UTF-8 reports `invalid_encoding`.
 
-**Why it matters.** An author whose file is UTF-16, malformed UTF-8, too large,
-or temporarily locked is told it does not exist, encouraging path changes and
-source inspection instead of the correct fix. During installed-package
-publication, a digest mismatch caused by a verification/compile race is
-reported as an ordinary invalid or missing style rather than integrity
-evidence. Fail-closed behavior is preserved, but diagnostics and telemetry no
-longer communicate the security/resource invariant that rejected the source.
+The Styling case now proves valid BOM handling and maps every closed status to
+its expected diagnostic. It still uses a synthetic `ResultProvider` for most
+loader mappings. Only invalid encoding is exercised through the CLI; no
+end-to-end CLI/import cases currently prove `source_too_large`,
+`source_changed`, `source_unavailable`, or a nested failure's safe source
+location. Platform Settings changes one reparse case from `missing_import` to
+`unsafe_import`. Installed digest mismatch reaches a `digest_mismatch`
+compilation diagnostic, but `BridgeCatalog.LoadWithInstalledAsync` catches the
+resulting `BridgeCatalogException` and publishes only “invalid styles”; it does
+not raise a typed package-integrity state for Settings/retirement telemetry.
 
-**Underlying problem.** The provider abstraction treats data availability as a
-boolean even though file-backed sources now enforce a typed trust boundary.
-The loader owns source-located diagnostics but receives too little information
-to distinguish absence from invalid content or failed verification.
+The initial public positional result briefly admitted contradictory states. The
+committed revision corrects that before publication: construction is private,
+`Status`/`Source` are read-only, and validated success/failure factories are the
+only normal creation path. The latest loader revision also contains unexpected
+third-party provider failures as `source_unavailable` while deliberately
+allowing cancellation, out-of-memory, stack-overflow, and access-violation
+conditions to propagate. A throwing-provider case proves its secret exception
+text does not enter diagnostics.
 
-**Recommended direction.** Before public API 1.0, replace or augment `TryRead`
-with a bounded `GbssSourceReadResult` carrying either source text or a closed
-status such as `Missing`, `TooLarge`, `ChangedDuringRead`, `InvalidEncoding`,
-`DigestMismatch`, and `IoUnavailable`. The loader—not an arbitrary provider—
-should map those statuses to stable sanitized diagnostic codes/messages and
-continue bounding source labels. Keep exceptions contained at the file-provider
-boundary. Installed digest mismatch should additionally reach the catalog/
-bridge integrity status path rather than masquerading as author syntax.
+**Why it matters.** Authors now receive the actionable reason that content was
+rejected without leaking provider paths or exception details. The remaining
+installed digest-race presentation is not information loss inside the styling
+loader; it is a bridge/catalog integrity-state ownership gap tracked by EQ-014.
 
-**Tradeoff.** A richer result changes a small public styling interface and adds
-status mapping for in-memory/embedded providers. A backward-compatible default
-adapter is possible, but preserving a boolean API indefinitely would encode the
-wrong pre-1.0 contract. Do not expose raw exception messages or filesystem
-paths merely to improve diagnostics.
+**Underlying problem.** The former boolean contract could not express the
+security and resource policy enforced by file-backed providers. The closed
+result and loader-owned mapping now preserve that information without making
+filesystem exception text part of the public diagnostic contract.
 
-**Resolution evidence.** Add end-to-end loader/CLI diagnostics for missing,
-oversized, changing-length, invalid UTF-8, inaccessible, and digest-mismatched
-sources, including an imported file. Prove codes are distinct, messages are
-bounded/path-safe, invalid installed content cannot publish a theme, and valid
-UTF-8 with and without BOM plus a positive digest-bound multi-import package
-still compile.
+**Recommended follow-up.** Add real file/import CLI cases for every feasible
+rejection reason. Carry an
+installed `DigestMismatch`/`ChangedDuringRead` through bridge catalog status as
+package integrity evidence rather than only generic invalid-style copy; syntax
+errors should remain widget-local style diagnostics. Keep raw exceptions and
+filesystem paths contained at the provider boundary.
+
+**Tradeoff.** The interface break is appropriate before 1.0 but requires every
+custom/in-memory provider to migrate. Factory-only construction adds small
+friction that protects external implementations from invalid states. Containing
+non-fatal provider exceptions can hide programming errors unless diagnostics
+remain observable, but it preserves the advertised compiler boundary. Treating
+every I/O failure as package tampering would overstate
+transient access problems, so only verified-content statuses should enter the
+integrity path.
+
+**Resolution evidence.** Styling 23/23 covers factory invariants, throwing-
+provider redaction, every status-to-code mapping, hostile lengths, invalid
+UTF-8, BOM input, and positive digest-bound imports. CLI 49/49 proves real-file
+invalid UTF-8 reports `invalid_encoding`; Platform Settings 15/15 proves a
+reparse-backed theme reports `unsafe_import`. Broader real-file/import coverage
+and installed integrity-state routing remain valuable follow-up, but the false
+`missing_import` abstraction defect is closed.
+
+### EQ-018 — P2 — Retained captures prove renderer execution, not current visual quality
+
+**Status: Open; the evidence pipeline is provenance-aware but has no current
+state matrix or visual regression verdict.**
+
+**Evidence.** The retained
+`artifacts/evidence/auth-free/final-schema-v2-20260808-final/manifest.json`
+honestly identifies a standalone widget-body harness, exact source/tool hashes,
+and excluded pass criteria. It records a dirty source tree with 44 entries at
+revision `f3ac48c`; the implementation HEAD at reassessment is `0d4eb80`. Its
+Spotify package is 0.1.6,
+while the current manifest is 0.2.10. The 12 captures cover Games & Apps and
+Spotify's initial/setup states only. Settings failed to start in the harness,
+and YT Music, SDK Gallery, Spotify Player, Queue, Playlists, Devices, loading,
+denied, retry, empty, maximum-page, and long-copy states are absent.
+
+`Capture-OverlayEvidence.ps1` proves retained-file hashes, semantic snapshot
+invariants, computed-style presence, process bounds, and zero renderer
+diagnostics. It explicitly excludes golden image comparison and shell/window,
+backdrop, tray/footer, transition, focus/input, compositor, and physical-
+display fidelity. It records `rendererDiagnosticCount = 0` when the renderer
+process exits successfully; it does not inspect layout bounds, clipping,
+overlap, focus visibility, contrast, scroll reachability, or text truncation.
+This review visually inspected four representative PNGs. The Spotify setup
+compact and 150%-text views are legible, but that manual observation cannot
+validate current playback surfaces or full-shell composition.
+
+**Why it matters.** A professional UI can serialize, style, and render without
+errors while still clipping translated content, hiding actions below a scroll
+boundary, losing focus indication, wasting space, or becoming unreadable at
+150% text. The most complicated widget's polished appearance is therefore
+still asserted from old setup screens and semantic tests rather than current
+representative product states.
+
+**Underlying problem.** Artifact integrity, renderer execution, semantic
+correctness, and visual acceptance are separate evidence classes, but only the
+first three are automated. Authenticated-looking state fixtures are not part
+of the public scenario workflow, so the hardest screens remain coupled to real
+credentials or one-off test code.
+
+**Recommended direction.** Build the credential-free scenario worker already
+specified by the authoring roadmap and make first-party state fixtures ordinary
+consumers of it. For each release candidate, produce one clean-HEAD bundle from
+the actual packaged version and cover compact, standard, wide, 150% text,
+reduced transparency, and high contrast across ready, loading, empty, denied,
+retry/error, long-copy, and bounded-maximum collection states. Add deterministic
+semantic layout checks for finite/in-viewport bounds, required focus cue,
+reachable scroll endpoints, and non-overlap of declared controls. Use reviewed
+tolerance-based image baselines only in a pinned renderer/toolchain lane, with
+an explicit human approval artifact for intentional visual changes. Keep a
+smaller physical full-shell/controller/mixed-DPI smoke separate from the stable
+offscreen gate.
+
+**Tradeoff.** Full-image hashes are fragile across fonts, drivers, and Windows
+rendering revisions; avoiding them entirely leaves large regressions invisible.
+A two-layer contract—deterministic geometry/semantic assertions everywhere and
+tolerant images in one pinned lane—contains noise without treating visual QA as
+subjective memory. State-fixture maintenance adds work, but also gives widget
+authors the credential-free preview workflow the SDK currently lacks.
+
+**Resolution evidence.** Retain a clean current-revision manifest whose package
+versions match source manifests, with no unexplained harness gap. Prove all
+required state/profile pairs have semantic snapshots, zero layout violations,
+reviewed image results, and exact provenance. Add current full-shell captures
+for dashboard, open widget, focus, reorder, failure, and transition endpoints,
+then complete a physical controller and mixed-DPI/150% text smoke. A green
+renderer exit or unchanged PNG digest alone is not closure.
 
 ### EQ-008 — P2 — Focus persistence was scheduled from the steady paint path
 
-**Status: Architecturally resolved in the current worktree; targeted performance and scheduling verification remain.**
+**Status: Architecturally resolved in current HEAD; targeted performance and scheduling verification remain.**
 
 **Evidence.** `OverlayApp::DrawWidget` no longer calls the resolver. The new
 `ReconcileResponsiveFocusPersistence` path is invoked on `WM_SIZE`, snapshot or
@@ -1389,12 +1504,14 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | --- | --- | --- |
 | Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded catalog metadata, paired manifest policy, exact GBSS path/hash inventory, and digest-bound styles | Session launch lease for executable/dependency/assets; changing/insertion-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
 | Installed catalog scale | Each version is entry/byte bounded, but all IDs/versions are eagerly hashed and current HEAD retains every version's GBSS inventory | Aggregate ID/version/file/byte/time limits, active-only inventory ownership, cleanup UX, and maximum-catalog cold/reload memory measurements |
+| GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
 | CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency or generated snapshot exporter | Versioned public SDK/template release, packaged clean-directory scaffold/build/README proof, isolated scenario execution, native preview, provenance/signing, and automated CI |
-| Performance | Per-worker Jobs plus worktree aggregate admission and runtime-owned process leases; one local single-worker baseline | Direct lease fault-injection proof, ownership/reclamation UI, multi-widget/churn matrix, clean immutable GPU/ETW regression gate |
+| Performance | Per-worker Jobs plus current-HEAD aggregate admission and runtime-owned process leases; one dirty single-Settings-worker baseline sits at the Hidden CPU diagnostic edge | Direct lease fault-injection proof, ownership/remediation UI, repeated 1/8/many-widget churn, clean GPU/ETW noise-qualified regression gate |
+| Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
 | Documentation | Extensive and now internally current, but copyable examples are not executable evidence | Compile-test canonical snippets and reduce ledger/status duplication |
 
@@ -1414,7 +1531,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    SDK/template set, generate a real snapshot fixture/exporter, and prove the
    full build/run/test/package path from an unrelated clean directory.
 
-The next review should first reassess these three items, then rotate into
-credential-free visual-state evidence and performance/residency behavior under
-multi-widget churn. Revisit advanced-widget composition when the next YT Music,
-Spotify, Audio Mixer, or Network Controls migration lands.
+The next review should first reassess these three items, then rotate into test-
+architecture credibility and public-documentation/API drift. Revisit visual,
+performance, or advanced-widget composition when a new fixture, retained
+baseline, or widget migration lands.
