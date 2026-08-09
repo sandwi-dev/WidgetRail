@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -24,6 +25,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unix symlink entries are rejected", SymlinkIsRejected),
     ("Entry count and expanded size limits are enforced", LimitsAreEnforced),
     ("Aggregate installed catalog limits reject work before publication", AggregateCatalogLimits),
+    ("Over-limit catalogs expose bounded inactive-version recovery", OverLimitCatalogRecovery),
+    ("Maximum catalog recovery projection stays within its budget", MaximumCatalogRecoveryIsBounded),
     ("Publisher and package identity are enforced", IdentityIsEnforced),
     ("Missing entrypoint assemblies are rejected", MissingEntrypointIsRejected),
     ("Tampered installed directory identity is rejected", TamperedInstallIsRejected),
@@ -534,6 +537,107 @@ static async Task AggregateCatalogLimits()
     Assert.Equal(
         "installed_discovery_time_limit",
         (await Assert.ThrowsAsync<WidgetPackageException>(() => timedCatalog.DiscoverAsync())).Code);
+}
+
+static async Task OverLimitCatalogRecovery()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var permissive = new WidgetCatalog(root, AggregateOptions(maximumVersionsPerWidget: 3));
+    foreach (var version in new[] { "1.0.0", "2.0.0", "3.0.0" })
+        await permissive.InstallAsync(CreatePackage(
+            temp.Path, "dev.test.repair", "dev.test", version));
+    await permissive.SetEnabledAsync("dev.test.repair", true);
+
+    var untrustedManifest = Path.Combine(
+        root, "packages", "dev.test.repair", "3.0.0", "manifest.json");
+    await File.WriteAllTextAsync(untrustedManifest, "not trusted by repair inspection");
+    var constrained = new WidgetCatalog(
+        root, AggregateOptions(maximumVersionsPerWidget: 2));
+    var health = await constrained.InspectHealthAsync();
+    Assert.Equal("installed_widget_version_limit", health.FailureCode);
+    Assert.Equal(3, health.Candidates.Count);
+    Assert.True(health.Candidates.Single(item => item.Version == new Version(1, 0, 0)) is
+            { Selected: true, WidgetEnabled: true, CanRemove: false },
+        "Repair inspection did not protect the selected version.");
+    Assert.True(health.Candidates.Single(item => item.Version == new Version(3, 0, 0)).CanRemove,
+        "Repair inspection did not expose an inactive excess version.");
+
+    var selected = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        constrained.RemoveInactiveVersionAsync("dev.test.repair", new Version(1, 0, 0)));
+    Assert.Equal("selected_version", selected.Code);
+    using var cancelled = new CancellationTokenSource();
+    cancelled.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() =>
+        constrained.RemoveInactiveVersionAsync(
+            "dev.test.repair", new Version(3, 0, 0), cancelled.Token));
+    Assert.True(Directory.Exists(Path.GetDirectoryName(untrustedManifest)!),
+        "Cancellation retired a version before the commit point.");
+
+    var oversizedEntries = Enumerable.Range(0, 65)
+        .Select(index => Path.Combine(
+            Path.GetDirectoryName(untrustedManifest)!, $"oversized-{index:D2}"))
+        .ToArray();
+    foreach (var entry in oversizedEntries) Directory.CreateDirectory(entry);
+    var oversized = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        constrained.RemoveInactiveVersionAsync(
+            "dev.test.repair", new Version(3, 0, 0)));
+    Assert.Equal("integrity_limit", oversized.Code);
+    Assert.True(Directory.Exists(Path.GetDirectoryName(untrustedManifest)!),
+        "An over-budget version tree was retired before validation completed.");
+    foreach (var entry in oversizedEntries) Directory.Delete(entry);
+
+    var removed = await constrained.RemoveInactiveVersionAsync(
+        "dev.test.repair", new Version(3, 0, 0));
+    Assert.Equal(new Version(3, 0, 0), removed.Version);
+    Assert.True(!Directory.Exists(Path.Combine(
+            root, "packages", "dev.test.repair", "3.0.0")),
+        "Exact-version repair retained the retired directory.");
+    var recovered = await constrained.DiscoverAsync();
+    Assert.Equal(2, recovered.Widgets.Single().Versions.Count);
+
+    var enabledHealth = await constrained.InspectHealthAsync();
+    Assert.True(enabledHealth.Candidates.Single(item => item.Version == new Version(2, 0, 0)) is
+            { WidgetEnabled: true, Selected: false, CanRemove: true },
+        "Inactive enabled-widget history was not actionable.");
+    await constrained.RemoveInactiveVersionAsync(
+        "dev.test.repair", new Version(2, 0, 0));
+    var activeOnly = await constrained.DiscoverAsync();
+    var activeWidget = activeOnly.Widgets.Single();
+    Assert.True(activeWidget.Enabled &&
+                activeWidget.ActiveVersion.Version == new Version(1, 0, 0) &&
+                activeWidget.Versions.Count == 1,
+        "Enabled-history repair changed or removed the selected generation.");
+}
+
+static async Task MaximumCatalogRecoveryIsBounded()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    for (var index = 0; index < 256; index++)
+    {
+        var idRoot = Path.Combine(root, "packages", $"dev.test.repair{index:D3}");
+        Directory.CreateDirectory(Path.Combine(idRoot, "1.0.0"));
+        Directory.CreateDirectory(Path.Combine(idRoot, "2.0.0"));
+    }
+    var catalog = new WidgetCatalog(root);
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+    var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
+    var stopwatch = Stopwatch.StartNew();
+    var health = await catalog.InspectHealthAsync();
+    stopwatch.Stop();
+    var allocated = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
+    Console.WriteLine(
+        $"METRIC catalog_repair versions={health.Candidates.Count} " +
+        $"milliseconds={stopwatch.Elapsed.TotalMilliseconds:F3} allocated_bytes={allocated}");
+    Assert.True(health.IsWithinDirectoryLimits && health.Candidates.Count == 512,
+        "Maximum supported version inventory did not produce a complete health projection.");
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+        "Maximum supported health projection exceeded five seconds.");
+    Assert.True(allocated < 32L * 1024 * 1024,
+        "Maximum supported health projection allocated 32 MiB or more.");
 }
 
 static WidgetCatalogOptions AggregateOptions(

@@ -30,6 +30,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
     ("Installed version changes immediately refresh permission authority", InstalledVersionRefreshesPermissions),
     ("Malformed installed widget catalogs fail closed", InstalledWidgetCatalogFailure),
+    ("Over-limit catalogs expose confirmed inactive-version recovery", InstalledWidgetCatalogRecovery),
     ("Installed widget review reloads only on activation", InstalledWidgetActivationReload),
     ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
     ("Permissions use nested controller-scroll scopes and B-only Back", PermissionScopesAreScrollable),
@@ -755,12 +756,65 @@ static async Task InstalledWidgetCatalogFailure()
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     var snapshot = Snapshot(widget);
-    Assert.Contains("invalid_manifest", Text(snapshot.Root, "installed.help").Text!);
+    Assert.Contains("invalid_manifest", Text(snapshot.Root, "installed.repair.failure").Text!);
     Assert.True(!Buttons(snapshot.Root).Any(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
         "Malformed catalog exposed an installed-widget action.");
-    Assert.Equal("installed.back", snapshot.InitialFocusId);
+    Assert.Equal("installed.repair.back", snapshot.InitialFocusId);
     Assert.Valid(snapshot);
+}
+
+static async Task InstalledWidgetCatalogRecovery()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    for (var major = 1; major <= 9; major++)
+        WriteInstalledWidget(
+            catalogRoot, "dev.test.recovery", "dev.publisher.recovery",
+            "Recovery", [], [], version: $"{major}.0.0");
+    var permissive = new WidgetCatalog(catalogRoot, new WidgetCatalogOptions
+    {
+        MaximumVersionsPerWidget = 10,
+    });
+    await permissive.SetEnabledAsync("dev.test.recovery", true);
+    await File.WriteAllTextAsync(Path.Combine(
+        catalogRoot, "packages", "dev.test.recovery", "8.0.0", "manifest.json"),
+        "untrusted excess manifest");
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    var list = Snapshot(widget);
+    Assert.Contains("installed_widget_version_limit",
+        Text(list.Root, "installed.repair.failure").Text!);
+    Assert.Contains("dev.test.recovery · 8.0.0",
+        Button(list.Root, "installed.repair.item.0").Text!);
+    Assert.True(!Buttons(list.Root).Any(button => button.Text?.Contains("9.0.0") == true),
+        "Settings exposed the selected version as a recovery action.");
+
+    await Action(widget, "installed.repair.select.0");
+    var confirmation = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetRecovery, widget.CurrentPage);
+    Assert.Contains("dev.test.recovery", Text(
+        confirmation.Root, "installed.repair.confirm.id").Text!);
+    Assert.Contains("8.0.0", Text(
+        confirmation.Root, "installed.repair.confirm.version").Text!);
+    Assert.True(Buttons(confirmation.Root).Any(button =>
+        button.ActionId == "installed.repair.remove"),
+        "Recovery confirmation did not expose the exact removal action.");
+
+    await Action(widget, "installed.repair.remove");
+    var recovered = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
+    Assert.Contains("Recovery", Button(recovered.Root, "installed.item.0").Text!);
+    Assert.Contains("Removed inactive dev.test.recovery 8.0.0",
+        Text(recovered.Root, "settings.status").Text!);
+    Assert.True(!Directory.Exists(Path.Combine(
+            catalogRoot, "packages", "dev.test.recovery", "8.0.0")),
+        "Settings recovery retained the exact retired version.");
+    Assert.Valid(list);
+    Assert.Valid(confirmation);
+    Assert.Valid(recovered);
 }
 
 static async Task InstalledWidgetActivationReload()

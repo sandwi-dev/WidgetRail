@@ -133,6 +133,8 @@ public static partial class WidgetManifestValidator
     private static readonly HashSet<string> SupportedArchitectures = new(StringComparer.Ordinal) { "x64", "arm64" };
     private static readonly HashSet<string> SupportedBackgroundPolicies = new(StringComparer.Ordinal) { "none", "suspend" };
 
+    public static bool IsValidPackageIdentity(string? value) => IsPackageIdentity(value);
+
     public static IReadOnlyList<ManifestValidationError> Validate(WidgetManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
@@ -140,9 +142,9 @@ public static partial class WidgetManifestValidator
 
         if (manifest.ManifestVersion != ProtocolConstants.CurrentManifestVersion)
             Add("$.manifestVersion", "unsupported_version", $"Expected manifest version {ProtocolConstants.CurrentManifestVersion}.");
-        if (!IsPackageIdentity(manifest.Id))
+        if (!IsValidPackageIdentity(manifest.Id))
             Add("$.id", "invalid_id", "ID must be a reverse-DNS identifier using lowercase letters, digits, underscores and hyphens.");
-        if (!IsPackageIdentity(manifest.Publisher))
+        if (!IsValidPackageIdentity(manifest.Publisher))
             Add("$.publisher", "invalid_publisher", "Publisher must be a reverse-DNS identifier.");
         if (string.IsNullOrWhiteSpace(manifest.Name) || manifest.Name.Length > 80 ||
             ContainsUnsafeText(manifest.Name))

@@ -83,6 +83,31 @@ public sealed record WidgetUninstallResult(
     IReadOnlyList<Version> RemovedVersions,
     bool CleanupPending = false);
 
+/// <summary>
+/// A directory-name-only recovery candidate. No manifest or package content
+/// from this version was trusted to create this record.
+/// </summary>
+public sealed record WidgetCatalogRepairCandidate(
+    string Id,
+    Version Version,
+    bool WidgetEnabled,
+    bool Selected)
+{
+    public bool CanRemove => !Selected;
+}
+
+public sealed record WidgetCatalogHealthSnapshot(
+    string? FailureCode,
+    IReadOnlyList<WidgetCatalogRepairCandidate> Candidates)
+{
+    public bool IsWithinDirectoryLimits => FailureCode is null;
+}
+
+public sealed record WidgetVersionRemovalResult(
+    string Id,
+    Version Version,
+    bool CleanupPending = false);
+
 public sealed class WidgetPackageException(string code, string message, Exception? innerException = null)
     : Exception(message, innerException)
 {

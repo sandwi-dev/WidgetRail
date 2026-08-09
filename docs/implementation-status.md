@@ -643,6 +643,22 @@ not guess or enumerate
 provider-owned private-secret slots; cleanup of known slots remains a widget
 host-service responsibility.
 
+Quota failure no longer removes the cleanup control plane. `WidgetCatalog`
+publishes a separately bounded health projection from canonical ID/version
+directory names plus validated state, without parsing candidate manifests or
+loading code. It identifies ID, per-widget-version, and total-version quota
+breaches and marks the selected generation as protected, including when it is
+enabled. Settings presents only inactive, non-selected candidates behind an
+exact confirmation page;
+`gbar repair list|remove` provides the same workflow. Exact-version removal
+runs under the catalog operation lock, rejects reparse/path ambiguity, checks
+cancellation before the atomic staging move, and never exposes a force or
+caller-selected recursive deletion path. Normal discovery is re-run after
+repair and remains the only publication/launch authority.
+The bounded Release regression projects the maximum supported 512-version
+repair view in 326.382 ms with 1,711,440 managed bytes allocated on the current
+development machine (5 s and 32 MiB test budgets).
+
 Presentation/order-only changes preserve compatible workers while atomically
 swapping their validated presentation/quick-action metadata. A package,
 publisher, instance, executable, argument, declared-capability, or memory-policy
@@ -751,9 +767,9 @@ scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. Styling and platform settings/themes pass 23/23 and 15/15,
+polling. Settings passes 42/42; styling and platform settings/themes pass 23/23 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 50/50, including unrelated-directory scaffold failure-before-write and
+passes 51/51, including unrelated-directory scaffold failure-before-write and
 an explicit-SDK Release build, bounded data-only snapshot rendering, fail-closed DLL
 and scenario execution, bounded scenario-manifest discovery,
 authenticated candidate/active development readiness,
@@ -762,10 +778,10 @@ failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, per-package and aggregate
-catalog limits, immutable versions, rejection of a 1,025-directory package
+catalog limits, data-only exact-version recovery, immutable versions, rejection of a 1,025-directory package
 before pack output or installed-byte publication, and adversarial package cases. Catalog
-passes 32/32, including
-schema-1 state migration, exact active-version pins and disabled repair,
+passes 34/34, including
+schema-1 state migration, exact active-version pins and enabled-history repair,
 linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-

@@ -21,6 +21,7 @@ public enum SettingsPage
     InstalledWidgets,
     InstalledWidgetDetails,
     InstalledWidgetVersions,
+    InstalledWidgetRecovery,
     Permissions,
     PermissionDiagnostics,
     PackageCapabilities,
@@ -45,6 +46,7 @@ public sealed partial class SettingsWidget : Widget
     private ThemeCatalogSnapshot _themes;
     private PlatformDiagnosticsSnapshot _diagnostics = PlatformDiagnosticsSnapshot.Unavailable();
     private WidgetCatalogSnapshot _installedWidgets = new([]);
+    private WidgetCatalogHealthSnapshot _installedCatalogHealth = new(null, []);
     private IReadOnlyList<WidgetManifest> _builtInWidgets = [];
     private bool _installedWidgetCatalogValid = true;
     private string? _installedWidgetDiagnostic;
@@ -52,6 +54,7 @@ public sealed partial class SettingsWidget : Widget
     private int _installedVersionPage;
     private string? _selectedInstalledWidgetId;
     private string? _selectedBuiltInWidgetId;
+    private WidgetCatalogRepairCandidate? _selectedRepairCandidate;
     private SettingsPage _page;
     private int _activationLoadCount;
     private bool _settingsValid = true;
@@ -128,6 +131,7 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.InstalledWidgets => RenderInstalledWidgets(header, busy),
             SettingsPage.InstalledWidgetDetails => RenderInstalledWidgetDetails(header, busy),
             SettingsPage.InstalledWidgetVersions => RenderInstalledWidgetVersions(header, busy),
+            SettingsPage.InstalledWidgetRecovery => RenderInstalledWidgetRecovery(header, busy),
             SettingsPage.Permissions => RenderPermissionPackages(header, busy),
             SettingsPage.PermissionDiagnostics => RenderPermissionDiagnostics(header),
             SettingsPage.PackageCapabilities => RenderPackageCapabilities(header, busy),
@@ -180,6 +184,8 @@ public sealed partial class SettingsWidget : Widget
                 case "installed.versions.open": OpenInstalledWidgetVersions(); break;
                 case "installed.versions.previous-page": ChangeInstalledVersionPage(-1); break;
                 case "installed.versions.next-page": ChangeInstalledVersionPage(1); break;
+                case "installed.repair.remove": await RemoveSelectedRepairCandidateAsync(
+                    cancellationToken).ConfigureAwait(false); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
                     .ConfigureAwait(false); break;
                 case "capability.grant": await ChangeConsentAsync(
@@ -265,6 +271,8 @@ public sealed partial class SettingsWidget : Widget
                         SelectBuiltInWidget(index);
                     else if (TryIndexedAction(action.ActionId, "installed.version.select.", out index))
                         await SelectInstalledVersionAsync(index, cancellationToken).ConfigureAwait(false);
+                    else if (TryIndexedAction(action.ActionId, "installed.repair.select.", out index))
+                        SelectRepairCandidate(index);
                     else if (TryIndexedAction(action.ActionId, "permission.select.", out index))
                         SelectPermissionPackage(index);
                     else if (TryIndexedAction(action.ActionId, "capability.select.", out index))
@@ -775,6 +783,7 @@ public sealed partial class SettingsWidget : Widget
         SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
         SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
         SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,
+        SettingsPage.InstalledWidgetRecovery => SettingsPage.InstalledWidgets,
         SettingsPage.PermissionDiagnostics => SettingsPage.Permissions,
         SettingsPage.PackageCapabilities => PackageCapabilitiesReturnPage(),
         SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,

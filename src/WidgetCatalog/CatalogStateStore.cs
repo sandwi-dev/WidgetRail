@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GameBarAlternative.WidgetProtocol;
 
 namespace GameBarAlternative.WidgetCatalog;
 
@@ -174,8 +175,8 @@ internal sealed class CatalogStateStore
         var orders = new HashSet<int>();
         foreach (var entry in state.Widgets)
         {
-            if (string.IsNullOrWhiteSpace(entry.Id) || !ids.Add(entry.Id))
-                throw new JsonException("Widget state IDs must be non-empty and unique.");
+            if (!WidgetManifestValidator.IsValidPackageIdentity(entry.Id) || !ids.Add(entry.Id))
+                throw new JsonException("Widget state IDs must be canonical package IDs and unique.");
             if (entry.Order < 0 || !orders.Add(entry.Order))
                 throw new JsonException("Widget state order values must be non-negative and unique.");
             if (state.Version == 1 && entry.ActiveVersion is not null)

@@ -1586,6 +1586,23 @@ disabled-only review operations:
 `version rollback` selects an installed older version and also leaves the ID
 disabled. Never edit catalog JSON or installed directories by hand.
 
+If an older installation already exceeds a newer catalog quota, normal listing
+and launch validation fail closed. Recover without manual filesystem edits:
+
+```powershell
+& $gbar repair list
+& $gbar repair remove dev.example.clock 0.8.0
+& $gbar list
+```
+
+The repair projection uses only canonical package/version directory names and
+validated catalog state; it does not parse candidate manifests or load widget
+code. It protects the selected generation while allowing inactive history to
+be retired even when that selected version is enabled. Removal uses an exact
+atomic retirement under the catalog operation lock. Settings exposes
+the same candidates behind a separate confirmation page. There is deliberately
+no broad `--force` deletion option.
+
 For a real local-companion addon using this same staging/catalog workflow, run
 the [YT Music Community package helper](../samples/YtMusicWidget/README.md#build-and-tests).
 It produces only the manifest, entry DLL, and GBSS needed by `gbar pack`, then

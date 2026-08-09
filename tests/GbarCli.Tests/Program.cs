@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using GameBarAlternative.GbarCli;
 using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
@@ -95,6 +96,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced),
     ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
     ("Uninstall is explicit disabled-only and cleans every package version", UninstallWorkflow),
+    ("Catalog repair lists and removes only inactive excess versions", CatalogRepairWorkflow),
     ("Pack rejects invalid identity without publishing an archive", PackRejectsInvalidManifest),
     ("Pack rejects source reparse points", PackRejectsReparsePoints),
     ("Install rejects traversal archives through the CLI", InstallRejectsTraversal),
@@ -138,7 +140,7 @@ static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "list", "enable", "disable", "version" })
+    foreach (var command in new[] { "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "repair", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
     var version = await RunCli("version", "help");
     Assert.Equal(0, version.Code);
@@ -1090,6 +1092,62 @@ static async Task UninstallWorkflow()
     var missing = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
     Assert.Equal(1, missing.Code);
     Assert.Contains("is not installed", missing.Error);
+}
+
+static async Task CatalogRepairWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "repair-catalog");
+    var permissive = new WidgetCatalog(catalogRoot, new WidgetCatalogOptions
+    {
+        MaximumVersionsPerWidget = 10,
+    });
+    for (var major = 1; major <= 9; major++)
+    {
+        var package = await CreatePackedPackageAsync(
+            temp.Path, "dev.test.repair", $"{major}.0.0");
+        await permissive.InstallAsync(package);
+    }
+    await permissive.SetEnabledAsync("dev.test.repair", true);
+    await File.WriteAllTextAsync(Path.Combine(
+        catalogRoot, "packages", "dev.test.repair", "9.0.0", "manifest.json"),
+        "repair must not trust this manifest");
+
+    var normalList = await RunCli("list", "--catalog", catalogRoot);
+    Assert.Equal(1, normalList.Code);
+    Assert.Contains("installed_widget_version_limit", normalList.Error);
+    var repairList = await RunCli("repair", "list", "--catalog", catalogRoot);
+    Assert.Equal(0, repairList.Code);
+    Assert.Contains("Catalog directory quotas: exceeded (installed_widget_version_limit)",
+        repairList.Output);
+    Assert.Contains("enabled-selected-protected  dev.test.repair  1.0.0", repairList.Output);
+    Assert.Contains("removable  dev.test.repair  9.0.0", repairList.Output);
+
+    var selected = await RunCli(
+        "repair", "remove", "dev.test.repair", "1.0.0", "--catalog", catalogRoot);
+    Assert.Equal(1, selected.Code);
+    Assert.Contains("selected_version", selected.Error);
+    var removed = await RunCli(
+        "repair", "remove", "dev.test.repair", "9.0.0", "--catalog", catalogRoot);
+    Assert.Equal(0, removed.Code);
+    Assert.Contains("Removed inactive version dev.test.repair 9.0.0", removed.Output);
+    Assert.True(!Directory.Exists(Path.Combine(
+            catalogRoot, "packages", "dev.test.repair", "9.0.0")),
+        "CLI repair retained the exact retired version.");
+    var recovered = await RunCli("list", "--catalog", catalogRoot);
+    Assert.Equal(0, recovered.Code);
+    Assert.Contains("(8 versions)", recovered.Output);
+
+    var enabledHistory = await RunCli(
+        "repair", "remove", "dev.test.repair", "8.0.0", "--catalog", catalogRoot);
+    Assert.Equal(0, enabledHistory.Code);
+    Assert.True(!Directory.Exists(Path.Combine(
+            catalogRoot, "packages", "dev.test.repair", "8.0.0")),
+        "CLI repair retained inactive history for an enabled package.");
+    var activeOnly = await RunCli("list", "--catalog", catalogRoot);
+    Assert.Equal(0, activeOnly.Code);
+    Assert.Contains("enabled   dev.test.repair  1.0.0", activeOnly.Output);
+    Assert.Contains("(7 versions)", activeOnly.Output);
 }
 
 static async Task PackRejectsReparsePoints()

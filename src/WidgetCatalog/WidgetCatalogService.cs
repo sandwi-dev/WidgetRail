@@ -112,6 +112,111 @@ public sealed class WidgetCatalog
         return new WidgetCatalogSnapshot(widgets);
     }
 
+    /// <summary>
+    /// Produces a bounded control-plane projection from canonical package and
+    /// version directory names plus validated catalog state. Candidate package
+    /// manifests and executable content are never opened or trusted.
+    /// </summary>
+    public async Task<WidgetCatalogHealthSnapshot> InspectHealthAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var directories = DiscoverRepairDirectories(cancellationToken);
+        string? failureCode = null;
+        if (directories.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() >
+            _options.MaximumInstalledWidgetIds)
+            failureCode = "installed_widget_id_limit";
+        else if (directories.GroupBy(item => item.Id, StringComparer.Ordinal)
+                 .Any(group => group.Count() > _options.MaximumVersionsPerWidget))
+            failureCode = "installed_widget_version_limit";
+        else if (directories.Count > _options.MaximumInstalledVersions)
+            failureCode = "installed_version_limit";
+
+        var stateById = state.Widgets.ToDictionary(item => item.Id, StringComparer.Ordinal);
+        var candidates = directories
+            .GroupBy(item => item.Id, StringComparer.Ordinal)
+            .SelectMany(group =>
+            {
+                var ordered = group.OrderByDescending(item => item.Version).ToArray();
+                var hasState = stateById.TryGetValue(group.Key, out var saved);
+                var selected = hasState && saved!.ActiveVersion is not null
+                    ? Version.Parse(saved.ActiveVersion)
+                    : ordered[0].Version;
+                var enabled = hasState && saved!.Enabled;
+                return ordered.Select(item => new WidgetCatalogRepairCandidate(
+                    item.Id, item.Version, enabled, item.Version == selected));
+            })
+            .OrderBy(item => item.Id, StringComparer.Ordinal)
+            .ThenByDescending(item => item.Version)
+            .ToArray();
+        return new WidgetCatalogHealthSnapshot(failureCode, candidates);
+    }
+
+    /// <summary>
+    /// Retires exactly one inactive, non-selected version using only its
+    /// canonical directory identity. Cancellation is not observed after the
+    /// atomic move removes that version from discovery.
+    /// </summary>
+    public async Task<WidgetVersionRemovalResult> RemoveInactiveVersionAsync(
+        string widgetId,
+        Version version,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        ArgumentNullException.ThrowIfNull(version);
+        var canonicalVersion = version.ToString();
+
+        await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        var health = await InspectHealthAsync(cancellationToken).ConfigureAwait(false);
+        var candidate = health.Candidates.SingleOrDefault(item =>
+            item.Id == widgetId && item.Version == version)
+            ?? throw new KeyNotFoundException(
+                $"Widget '{widgetId}' version {canonicalVersion} is not installed.");
+        if (candidate.Selected)
+            throw new WidgetPackageException(
+                "selected_version",
+                $"Widget '{widgetId}' version {canonicalVersion} is selected and cannot be removed.");
+
+        var packageDirectory = Path.Combine(_packagesRoot, widgetId);
+        var versionDirectory = Path.Combine(packageDirectory, canonicalVersion);
+        if (!FileSystemSafety.IsWithin(_packagesRoot, packageDirectory) ||
+            !FileSystemSafety.IsWithin(packageDirectory, versionDirectory) ||
+            !Directory.Exists(versionDirectory) ||
+            !string.Equals(Path.GetFileName(packageDirectory), widgetId, StringComparison.Ordinal) ||
+            !string.Equals(Path.GetFileName(versionDirectory), canonicalVersion, StringComparison.Ordinal))
+            throw new WidgetPackageException(
+                "package_not_found",
+                $"Widget '{widgetId}' version {canonicalVersion} has no canonical package directory.");
+        FileSystemSafety.EnsureTreeContainsNoReparsePoints(
+            _root,
+            versionDirectory,
+            _options.MaximumInstalledEntries,
+            cancellationToken.ThrowIfCancellationRequested);
+
+        var stagingRoot = Path.Combine(_root, "staging");
+        Directory.CreateDirectory(stagingRoot);
+        FileSystemSafety.EnsureNoReparsePoints(_root, stagingRoot);
+        TryCleanupRetiredTrees();
+        cancellationToken.ThrowIfCancellationRequested();
+        var retiredDirectory = Path.Combine(
+            stagingRoot, $".uninstall-version-{Guid.NewGuid():N}");
+        Directory.Move(versionDirectory, retiredDirectory);
+
+        var cleanupPending = !await TryDeleteRetiredTreeAsync(retiredDirectory)
+            .ConfigureAwait(false);
+        try
+        {
+            if (Directory.Exists(packageDirectory) &&
+                !Directory.EnumerateFileSystemEntries(packageDirectory).Any())
+                Directory.Delete(packageDirectory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            cleanupPending = true;
+        }
+        return new WidgetVersionRemovalResult(widgetId, version, cleanupPending);
+    }
+
     public async Task SetEnabledAsync(string widgetId, bool enabled, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
@@ -308,7 +413,8 @@ public sealed class WidgetCatalog
                 if (!FileSystemSafety.IsWithin(stagingRoot, retired)) continue;
                 try
                 {
-                    FileSystemSafety.EnsureTreeContainsNoReparsePoints(stagingRoot, retired);
+                    FileSystemSafety.EnsureTreeContainsNoReparsePoints(
+                        stagingRoot, retired, _options.MaximumInstalledEntries);
                     Directory.Delete(retired, recursive: true);
                 }
                 catch (Exception exception) when (exception is IOException or
@@ -567,6 +673,59 @@ public sealed class WidgetCatalog
         return result.OrderBy(item => item.Id, StringComparer.Ordinal)
             .ThenByDescending(item => item.Version)
             .ToArray();
+    }
+
+    private IReadOnlyList<(string Id, Version Version)> DiscoverRepairDirectories(
+        CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(_packagesRoot)) return [];
+        var maximumIds = Math.Min(10_000, _options.MaximumInstalledWidgetIds + 32);
+        var maximumPerWidget = Math.Min(10_000, _options.MaximumVersionsPerWidget + 128);
+        var maximumVersions = Math.Min(10_000, _options.MaximumInstalledVersions + 512);
+        var started = _timeProvider.GetTimestamp();
+        void CheckBudget()
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_timeProvider.GetElapsedTime(started) > _options.MaximumDiscoveryDuration)
+                throw new WidgetPackageException(
+                    "installed_repair_time_limit",
+                    "Installed widget repair inspection exceeded its time limit.");
+        }
+
+        CheckBudget();
+        FileSystemSafety.EnsureNoReparsePoints(_root, _packagesRoot);
+        var result = new List<(string Id, Version Version)>();
+        foreach (var idDirectory in EnumerateBoundedDirectories(
+                     _packagesRoot, maximumIds, "installed_repair_limit",
+                     "Installed widget catalog exceeds the repair inspection limit."))
+        {
+            CheckBudget();
+            FileSystemSafety.EnsureNoReparsePoints(_root, idDirectory);
+            var id = Path.GetFileName(idDirectory);
+            if (!WidgetManifestValidator.IsValidPackageIdentity(id))
+                throw new WidgetPackageException(
+                    "invalid_catalog_entry",
+                    $"Installed widget ID directory is not canonical: {id}");
+            foreach (var versionDirectory in EnumerateBoundedDirectories(
+                         idDirectory, maximumPerWidget, "installed_repair_limit",
+                         "Installed widget version history exceeds the repair inspection limit."))
+            {
+                CheckBudget();
+                FileSystemSafety.EnsureNoReparsePoints(_root, versionDirectory);
+                if (result.Count == maximumVersions)
+                    throw new WidgetPackageException(
+                        "installed_repair_limit",
+                        "Installed widget catalog exceeds the repair inspection limit.");
+                var versionText = Path.GetFileName(versionDirectory);
+                if (!Version.TryParse(versionText, out var version) ||
+                    !string.Equals(version.ToString(), versionText, StringComparison.Ordinal))
+                    throw new WidgetPackageException(
+                        "invalid_catalog_entry",
+                        $"Installed widget version directory is not canonical: {versionText}");
+                result.Add((id, version));
+            }
+        }
+        return result;
     }
 
     private string[] EnumerateBoundedDirectories(

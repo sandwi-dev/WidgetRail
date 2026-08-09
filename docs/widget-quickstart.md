@@ -332,6 +332,16 @@ a newer version uses `version select`. If the catalog pins a version whose
 immutable directory is missing, discovery fails closed instead of silently
 running another version.
 
+If accumulated rollback versions exceed the catalog quota, open
+**Settings → Installed widgets → Catalog recovery**, choose an inactive,
+non-selected version, and confirm its exact removal. The CLI equivalent is
+`gbar repair list` followed by
+`gbar repair remove <widget-id> <version>`. Recovery reads bounded canonical
+directory names and catalog state only; it never executes or trusts candidate
+package contents, never removes the selected generation, and can retire inactive
+history while that selected version remains enabled. It has no force or
+caller-supplied recursive path.
+
 The MVP accepts only Pressed shortcuts. A and D-pad are reserved for focused
 activation and navigation. Dashboard quick actions are separate: the host owns
 A, B, Y, D-pad/analog, and Guide, while cards may expose X, bumpers, triggers,

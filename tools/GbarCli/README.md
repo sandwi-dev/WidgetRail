@@ -109,6 +109,16 @@ gbar theme list
   uninstall retries the bounded staging cleanup. It does not enumerate or
   purge provider-owned secrets; a widget must clear known secret slots through
   its public host service before uninstall when that behavior is desired.
+- `repair list` is the bounded, data-only recovery view for a catalog that
+  normal validation cannot load. It reads only canonical package/version
+  directory names and validated catalog state; it never parses a candidate
+  manifest or loads package code. Entries are labeled `removable`,
+  `selected-protected`, or `enabled-selected-protected`.
+- `repair remove <widget-id> <version>` atomically retires exactly one inactive,
+  non-selected canonical version, even when another selected version is enabled.
+  There is no `--force` path and no recursive
+  path supplied by the caller. Repeat until the reported quota is satisfied,
+  then use normal `list`/Settings validation again.
 - `version list <widget-id>` lists every immutable installed version and marks
   the active one. `version select <widget-id> <version>` pins any installed
   canonical dotted numeric version. `version rollback <widget-id>` selects the

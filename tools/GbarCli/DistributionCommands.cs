@@ -151,6 +151,78 @@ internal static class UninstallCommand
     }
 }
 
+internal static class RepairCommand
+{
+    private const string Usage =
+        "Usage: gbar repair <list|remove> [<widget-id> <version>] [--catalog <root>]";
+
+    public static async Task<int> RunAsync(
+        string[] args,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        var parsed = new CommandArguments(args, "--catalog");
+        if (parsed.Positionals.Count == 1 && parsed.Positionals[0] == "list")
+            return await ListAsync(parsed, output, cancellationToken);
+        if (parsed.Positionals.Count == 3 && parsed.Positionals[0] == "remove")
+            return await RemoveAsync(parsed, output, cancellationToken);
+        throw new CliUsageException(Usage);
+    }
+
+    private static async Task<int> ListAsync(
+        CommandArguments parsed,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        var catalog = new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog")));
+        var health = await catalog.InspectHealthAsync(cancellationToken);
+        await output.WriteLineAsync(health.IsWithinDirectoryLimits
+            ? "Catalog directory quotas: within limits (package contents not validated)."
+            : $"Catalog directory quotas: exceeded ({health.FailureCode}).");
+        if (health.Candidates.Count == 0)
+        {
+            await output.WriteLineAsync("No installed version directories found.");
+            return 0;
+        }
+        foreach (var candidate in health.Candidates)
+        {
+            var status = candidate.Selected
+                ? candidate.WidgetEnabled ? "enabled-selected-protected" : "selected-protected"
+                : "removable";
+            await output.WriteLineAsync($"{status}  {candidate.Id}  {candidate.Version}");
+        }
+        return 0;
+    }
+
+    private static async Task<int> RemoveAsync(
+        CommandArguments parsed,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        var versionText = parsed.Positionals[2];
+        if (!Version.TryParse(versionText, out var version) ||
+            !string.Equals(version.ToString(), versionText, StringComparison.Ordinal))
+            throw new CliUsageException("Repair version must use canonical dotted numeric notation. " + Usage);
+        var catalog = new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog")));
+        try
+        {
+            var removed = await catalog.RemoveInactiveVersionAsync(
+                parsed.Positionals[1], version, cancellationToken);
+            await output.WriteLineAsync(
+                $"Removed inactive version {removed.Id} {removed.Version} from the catalog.");
+            if (removed.CleanupPending)
+                await output.WriteLineAsync(
+                    "Version retirement is complete; locked staging files will be retried " +
+                    "during the next install, uninstall, or repair.");
+            return 0;
+        }
+        catch (KeyNotFoundException exception)
+        {
+            throw new CliOperationException(exception.Message, exception);
+        }
+    }
+}
+
 internal static class EnabledCommand
 {
     public static async Task<int> RunAsync(string[] args, TextWriter output, bool enabled)
