@@ -36,10 +36,18 @@ Publication diffs the last announced immutable tree against the newest tree and
 coalesces intervening renders behind one posted window message. The window
 thread raises UIA structure invalidation, logical-focus changes, and closed
 property changes for name, help text, enabled/selected state, RangeValue
-value/limits/step/read-only state, and physical screen bounds. DPI or window-
-origin changes also update bounds. Event planning and UIA calls run outside
-paint, and a real client-handler test covers structure, property, and focus
-delivery.
+value/limits/step/read-only state, and physical screen bounds. DPI, window-
+origin, and root-size changes update root and node bounds. Event planning and
+UIA calls run outside paint, and a real client-handler test covers structure,
+property, and focus delivery.
+
+Every provider captures one HWND binding generation. Before window destruction,
+the host disconnects UIA, clears message/action authority, and invalidates that
+generation; retained roots and fragments remain unavailable even if Windows
+reuses the same handle. Root focus and visibility are published by the window
+thread rather than queried with thread-local Win32 state from a free-threaded
+callback. Clearing or hiding the semantic tree does not synthesize a focus event
+on the custom root.
 
 While controller focus is on the dashboard/open-widget tray, the provider
 publishes the exact visible carousel window instead of inactive widget controls.

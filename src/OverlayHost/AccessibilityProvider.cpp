@@ -126,15 +126,41 @@ struct ProviderState final {
     HWND window{};
     UINT actionMessage{};
     bool eventMessagePending{};
+    bool windowFocused{};
+    bool windowVisible{};
+    std::uint64_t bindingGeneration{};
 
-    [[nodiscard]] std::shared_ptr<const PublishedTree> Snapshot() const noexcept {
+    [[nodiscard]] std::shared_ptr<const PublishedTree> Snapshot(
+        const std::uint64_t expectedBinding) const noexcept {
         std::scoped_lock lock(mutex);
-        return current;
+        return window && bindingGeneration == expectedBinding ? current : nullptr;
     }
 
-    [[nodiscard]] HRESULT Enqueue(ActionRequest request) noexcept {
+    [[nodiscard]] bool IsAttached(const std::uint64_t expectedBinding) const noexcept {
         std::scoped_lock lock(mutex);
-        if (!window || !actionMessage) return UIA_E_ELEMENTNOTAVAILABLE;
+        return window && bindingGeneration == expectedBinding;
+    }
+
+    [[nodiscard]] bool WindowFocused(const std::uint64_t expectedBinding) const noexcept {
+        std::scoped_lock lock(mutex);
+        return window && bindingGeneration == expectedBinding && windowFocused;
+    }
+
+    [[nodiscard]] bool WindowVisible(const std::uint64_t expectedBinding) const noexcept {
+        std::scoped_lock lock(mutex);
+        return window && bindingGeneration == expectedBinding && windowVisible;
+    }
+
+    [[nodiscard]] HWND WindowHandle(const std::uint64_t expectedBinding) const noexcept {
+        std::scoped_lock lock(mutex);
+        return window && bindingGeneration == expectedBinding ? window : nullptr;
+    }
+
+    [[nodiscard]] HRESULT Enqueue(
+        ActionRequest request, const std::uint64_t expectedBinding) noexcept {
+        std::scoped_lock lock(mutex);
+        if (!window || !actionMessage || bindingGeneration != expectedBinding)
+            return UIA_E_ELEMENTNOTAVAILABLE;
 
         // RangeValue is latest-wins per element. Focus also has only one useful
         // pending destination. Invoke remains lossless until the hard bound.
@@ -175,8 +201,10 @@ class Provider final : public RuntimeClass<
     ISelectionProvider> {
 public:
     Provider(std::shared_ptr<ProviderState> state,
-             std::optional<ElementIdentity> identity)
-        : state_(std::move(state)), identity_(std::move(identity)) {}
+             std::optional<ElementIdentity> identity,
+             const std::uint64_t bindingGeneration)
+        : state_(std::move(state)), identity_(std::move(identity)),
+          bindingGeneration_(bindingGeneration) {}
 
     IFACEMETHODIMP get_ProviderOptions(ProviderOptions* result) noexcept override {
         if (!result) return E_INVALIDARG;
@@ -189,7 +217,8 @@ public:
         const PATTERNID patternId, IUnknown** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
-        const auto published = state_->Snapshot();
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (identity_ && !node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!node) {
@@ -224,7 +253,8 @@ public:
         const PROPERTYID propertyId, VARIANT* result) noexcept override {
         if (!result) return E_INVALIDARG;
         VariantInit(result);
-        const auto published = state_->Snapshot();
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (identity_ && !node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!node) {
@@ -237,10 +267,10 @@ public:
             case UIA_IsContentElementPropertyId:
             case UIA_IsEnabledPropertyId: BoolVariant(true, result); break;
             case UIA_HasKeyboardFocusPropertyId:
-                BoolVariant(state_->window && ::GetFocus() == state_->window, result); break;
+                BoolVariant(state_->WindowFocused(bindingGeneration_), result); break;
             case UIA_IsKeyboardFocusablePropertyId: BoolVariant(false, result); break;
             case UIA_IsOffscreenPropertyId:
-                BoolVariant(!state_->window || !IsWindowVisible(state_->window), result); break;
+                BoolVariant(!state_->WindowVisible(bindingGeneration_), result); break;
             default: break;
             }
             return S_OK;
@@ -270,8 +300,10 @@ public:
         IRawElementProviderSimple** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
-        if (identity_ || !state_->window) return S_OK;
-        return UiaHostProviderFromHwnd(state_->window, result);
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (identity_) return S_OK;
+        const HWND window = state_->WindowHandle(bindingGeneration_);
+        return window ? UiaHostProviderFromHwnd(window, result) : UIA_E_ELEMENTNOTAVAILABLE;
     }
 
     IFACEMETHODIMP Navigate(
@@ -279,7 +311,8 @@ public:
         IRawElementProviderFragment** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
-        const auto published = state_->Snapshot();
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        const auto published = state_->Snapshot(bindingGeneration_);
         if (!published) return identity_ ? UIA_E_ELEMENTNOTAVAILABLE : S_OK;
 
         std::optional<ElementIdentity> target;
@@ -334,6 +367,7 @@ public:
     IFACEMETHODIMP GetRuntimeId(SAFEARRAY** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!identity_) return S_OK;
         const LONG values[] = {
             UiaAppendRuntimeId,
@@ -358,7 +392,8 @@ public:
     IFACEMETHODIMP get_BoundingRectangle(UiaRect* result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = {};
-        const auto published = state_->Snapshot();
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (identity_ && !node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node) *result = ScreenBounds(*node, published->transform);
@@ -372,22 +407,26 @@ public:
     IFACEMETHODIMP GetEmbeddedFragmentRoots(SAFEARRAY** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         return S_OK;
     }
 
     IFACEMETHODIMP SetFocus() noexcept override {
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!KeyboardFocusable(*node)) return UIA_E_NOTSUPPORTED;
-        return state_->Enqueue(RequestFor(*published, *node, ActionKind::Focus));
+        return state_->Enqueue(
+            RequestFor(*published, *node, ActionKind::Focus), bindingGeneration_);
     }
 
     IFACEMETHODIMP get_FragmentRoot(
         IRawElementProviderFragmentRoot** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
-        ComPtr<Provider> provider = Make<Provider>(state_, std::nullopt);
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        ComPtr<Provider> provider = Make<Provider>(
+            state_, std::nullopt, bindingGeneration_);
         return provider
             ? provider->QueryInterface(IID_PPV_ARGS(result))
             : E_OUTOFMEMORY;
@@ -398,7 +437,8 @@ public:
         IRawElementProviderFragment** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
-        const auto published = state_->Snapshot();
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        const auto published = state_->Snapshot(bindingGeneration_);
         if (!published) return S_OK;
         const Node* best{};
         double bestArea = std::numeric_limits<double>::max();
@@ -425,7 +465,8 @@ public:
     IFACEMETHODIMP GetFocus(IRawElementProviderFragment** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
-        const auto published = state_->Snapshot();
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        const auto published = state_->Snapshot(bindingGeneration_);
         if (!published || !published->tree.focusedNode ||
             *published->tree.focusedNode >= published->tree.nodes.size()) return S_OK;
         return CreateFragment(
@@ -434,18 +475,19 @@ public:
     }
 
     IFACEMETHODIMP Invoke() noexcept override {
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         if ((node->role != Role::Button && node->role != Role::ListItem) ||
             (node->actionId.empty() && node->hostAction == HostAction::None))
             return UIA_E_NOTSUPPORTED;
         if (!node->enabled) return UIA_E_ELEMENTNOTENABLED;
-        return state_->Enqueue(RequestFor(*published, *node, ActionKind::Invoke));
+        return state_->Enqueue(
+            RequestFor(*published, *node, ActionKind::Invoke), bindingGeneration_);
     }
 
     IFACEMETHODIMP SetValue(const double requested) noexcept override {
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node->role != Role::Slider || node->valueChangedActionId.empty())
@@ -461,7 +503,7 @@ public:
             node->rangeMinimum, node->rangeMaximum);
         auto request = RequestFor(*published, *node, ActionKind::SetValue);
         request.requestedValue = quantized;
-        return state_->Enqueue(std::move(request));
+        return state_->Enqueue(std::move(request), bindingGeneration_);
     }
 
     IFACEMETHODIMP get_Value(double* result) noexcept override {
@@ -470,7 +512,7 @@ public:
 
     IFACEMETHODIMP get_IsReadOnly(BOOL* result) noexcept override {
         if (!result) return E_INVALIDARG;
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         *result = node->role == Role::Slider && node->enabled &&
@@ -497,24 +539,27 @@ public:
     }
 
     IFACEMETHODIMP Select() noexcept override {
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node->role != Role::ListItem) return UIA_E_NOTSUPPORTED;
-        return state_->Enqueue(RequestFor(*published, *node, ActionKind::Focus));
+        return state_->Enqueue(
+            RequestFor(*published, *node, ActionKind::Focus), bindingGeneration_);
     }
 
     IFACEMETHODIMP AddToSelection() noexcept override {
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         return UIA_E_INVALIDOPERATION;
     }
 
     IFACEMETHODIMP RemoveFromSelection() noexcept override {
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         return UIA_E_INVALIDOPERATION;
     }
 
     IFACEMETHODIMP get_IsSelected(BOOL* result) noexcept override {
         if (!result) return E_INVALIDARG;
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node->role != Role::ListItem) return UIA_E_NOTSUPPORTED;
@@ -526,16 +571,19 @@ public:
         IRawElementProviderSimple** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!identity_) return UIA_E_NOTSUPPORTED;
-        ComPtr<Provider> root = Make<Provider>(state_, std::nullopt);
+        ComPtr<Provider> root = Make<Provider>(
+            state_, std::nullopt, bindingGeneration_);
         return root ? root->QueryInterface(IID_PPV_ARGS(result)) : E_OUTOFMEMORY;
     }
 
     IFACEMETHODIMP GetSelection(SAFEARRAY** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         if (identity_) return UIA_E_NOTSUPPORTED;
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         if (!published) return S_OK;
         const auto selected = std::find_if(
             published->tree.nodes.begin(), published->tree.nodes.end(),
@@ -568,16 +616,22 @@ public:
     IFACEMETHODIMP get_CanSelectMultiple(BOOL* result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = FALSE;
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         return identity_ ? UIA_E_NOTSUPPORTED : S_OK;
     }
 
     IFACEMETHODIMP get_IsSelectionRequired(BOOL* result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = TRUE;
+        if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         return identity_ ? UIA_E_NOTSUPPORTED : S_OK;
     }
 
 private:
+    [[nodiscard]] bool Available() const noexcept {
+        return state_->IsAttached(bindingGeneration_);
+    }
+
     [[nodiscard]] const Node* ResolveNode(
         const std::shared_ptr<const PublishedTree>& published) const noexcept {
         if (!identity_ || !published ||
@@ -626,7 +680,8 @@ private:
     HRESULT CreateFragment(
         std::optional<ElementIdentity> identity,
         IRawElementProviderFragment** result) const noexcept {
-        ComPtr<Provider> provider = Make<Provider>(state_, std::move(identity));
+        ComPtr<Provider> provider = Make<Provider>(
+            state_, std::move(identity), bindingGeneration_);
         return provider
             ? provider->QueryInterface(IID_PPV_ARGS(result))
             : E_OUTOFMEMORY;
@@ -635,7 +690,7 @@ private:
     template<typename Getter>
     HRESULT RangeNumber(double* result, Getter getter) const noexcept {
         if (!result) return E_INVALIDARG;
-        const auto published = state_->Snapshot();
+        const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node->role != Role::Slider && node->role != Role::Progress)
@@ -646,17 +701,55 @@ private:
 
     std::shared_ptr<ProviderState> state_;
     std::optional<ElementIdentity> identity_;
+    std::uint64_t bindingGeneration_{};
 };
 
 } // namespace
 
 ProviderHost::ProviderHost() : state_(std::make_shared<ProviderState>()) {}
-ProviderHost::~ProviderHost() = default;
+ProviderHost::~ProviderHost() { Detach(); }
 
 void ProviderHost::Bind(const HWND window, const UINT actionMessage) {
+    Detach();
     std::scoped_lock lock(state_->mutex);
+    ++state_->bindingGeneration;
     state_->window = window;
     state_->actionMessage = actionMessage;
+    state_->windowFocused = window && GetFocus() == window;
+    state_->windowVisible = window && IsWindowVisible(window);
+}
+
+void ProviderHost::Detach() noexcept {
+    ComPtr<IRawElementProviderSimple> root;
+    std::uint64_t binding{};
+    {
+        std::scoped_lock lock(state_->mutex);
+        if (!state_->window) return;
+        binding = state_->bindingGeneration;
+    }
+    if (SUCCEEDED(GetRootProvider(root.GetAddressOf())) && root)
+        (void)UiaDisconnectProvider(root.Get());
+    std::scoped_lock lock(state_->mutex);
+    if (state_->bindingGeneration != binding) return;
+    state_->window = nullptr;
+    state_->actionMessage = 0;
+    state_->windowFocused = false;
+    state_->windowVisible = false;
+    state_->eventMessagePending = false;
+    state_->current.reset();
+    state_->announced.reset();
+    state_->pending.clear();
+    ++state_->bindingGeneration;
+}
+
+void ProviderHost::SetWindowFocused(const bool focused) noexcept {
+    std::scoped_lock lock(state_->mutex);
+    if (state_->window) state_->windowFocused = focused;
+}
+
+void ProviderHost::SetWindowVisible(const bool visible) noexcept {
+    std::scoped_lock lock(state_->mutex);
+    if (state_->window) state_->windowVisible = visible;
 }
 
 void ProviderHost::Publish(Tree tree, const ScreenTransform transform) {
@@ -664,6 +757,7 @@ void ProviderHost::Publish(Tree tree, const ScreenTransform transform) {
         std::move(tree), transform,
     });
     std::scoped_lock lock(state_->mutex);
+    if (!state_->window) return;
     state_->current = std::move(published);
     if (!state_->eventMessagePending && state_->window && state_->actionMessage &&
         PostMessageW(state_->window, state_->actionMessage, 0, 0))
@@ -682,13 +776,26 @@ void ProviderHost::Clear() noexcept {
 LRESULT ProviderHost::HandleWmGetObject(const WPARAM wParam, const LPARAM lParam) {
     ComPtr<IRawElementProviderSimple> provider;
     if (FAILED(GetRootProvider(provider.GetAddressOf()))) return 0;
-    return UiaReturnRawElementProvider(state_->window, wParam, lParam, provider.Get());
+    HWND window{};
+    {
+        std::scoped_lock lock(state_->mutex);
+        window = state_->window;
+    }
+    return window
+        ? UiaReturnRawElementProvider(window, wParam, lParam, provider.Get())
+        : 0;
 }
 
 HRESULT ProviderHost::GetRootProvider(IRawElementProviderSimple** provider) const {
     if (!provider) return E_INVALIDARG;
     *provider = nullptr;
-    ComPtr<Provider> root = Make<Provider>(state_, std::nullopt);
+    std::uint64_t binding{};
+    {
+        std::scoped_lock lock(state_->mutex);
+        if (!state_->window) return UIA_E_ELEMENTNOTAVAILABLE;
+        binding = state_->bindingGeneration;
+    }
+    ComPtr<Provider> root = Make<Provider>(state_, std::nullopt, binding);
     return root
         ? root->QueryInterface(IID_PPV_ARGS(provider))
         : E_OUTOFMEMORY;
@@ -704,38 +811,62 @@ std::vector<ActionRequest> ProviderHost::TakeActions() noexcept {
 void ProviderHost::RaisePendingEvents() noexcept {
     std::shared_ptr<const PublishedTree> previous;
     std::shared_ptr<const PublishedTree> current;
+    std::uint64_t binding{};
     {
         std::scoped_lock lock(state_->mutex);
-        if (!state_->eventMessagePending) return;
+        if (!state_->eventMessagePending || !state_->window) return;
         state_->eventMessagePending = false;
         previous = state_->announced;
         current = state_->current;
         state_->announced = current;
+        binding = state_->bindingGeneration;
     }
     auto plan = PlanEvents(
         previous ? &previous->tree : nullptr,
         current ? &current->tree : nullptr);
     const bool transformChanged = previous && current &&
-        previous->tree.widgetId == current->tree.widgetId &&
-        previous->tree.runtimeGeneration == current->tree.runtimeGeneration &&
         (previous->transform.originX != current->transform.originX ||
          previous->transform.originY != current->transform.originY ||
-         previous->transform.pixelsPerDip != current->transform.pixelsPerDip);
+         previous->transform.pixelsPerDip != current->transform.pixelsPerDip ||
+         previous->transform.width != current->transform.width ||
+         previous->transform.height != current->transform.height);
+    const bool sameRuntime = previous && current &&
+        previous->tree.widgetId == current->tree.widgetId &&
+        previous->tree.runtimeGeneration == current->tree.runtimeGeneration;
     if (transformChanged) {
-        for (const auto& node : current->tree.nodes) {
-            const auto before = std::find_if(
-                previous->tree.nodes.begin(), previous->tree.nodes.end(),
-                [&](const Node& candidate) { return candidate.id == node.id; });
-            const bool alreadyPlanned = std::any_of(
-                plan.properties.begin(), plan.properties.end(),
-                [&](const PropertyChange& change) {
-                    return change.nodeId == node.id &&
-                        change.kind == PropertyKind::Bounds;
-                });
-            if (before != previous->tree.nodes.end() && !alreadyPlanned)
-                plan.properties.push_back({
-                    node.id, PropertyKind::Bounds, before->bounds, node.bounds,
-                });
+        plan.properties.push_back({
+            L"", PropertyKind::Bounds,
+            PropertyValue{declarative::Rect{
+                0, 0,
+                static_cast<float>(previous->transform.width /
+                                   previous->transform.pixelsPerDip),
+                static_cast<float>(previous->transform.height /
+                                   previous->transform.pixelsPerDip),
+            }},
+            PropertyValue{declarative::Rect{
+                0, 0,
+                static_cast<float>(current->transform.width /
+                                   current->transform.pixelsPerDip),
+                static_cast<float>(current->transform.height /
+                                   current->transform.pixelsPerDip),
+            }},
+        });
+        if (sameRuntime) {
+            for (const auto& node : current->tree.nodes) {
+                const auto before = std::find_if(
+                    previous->tree.nodes.begin(), previous->tree.nodes.end(),
+                    [&](const Node& candidate) { return candidate.id == node.id; });
+                const bool alreadyPlanned = std::any_of(
+                    plan.properties.begin(), plan.properties.end(),
+                    [&](const PropertyChange& change) {
+                        return change.nodeId == node.id &&
+                            change.kind == PropertyKind::Bounds;
+                    });
+                if (before != previous->tree.nodes.end() && !alreadyPlanned)
+                    plan.properties.push_back({
+                        node.id, PropertyKind::Bounds, before->bounds, node.bounds,
+                    });
+            }
         }
     }
     ComPtr<IRawElementProviderSimple> root;
@@ -752,14 +883,12 @@ void ProviderHost::RaisePendingEvents() noexcept {
                 current->tree.widgetId,
                 current->tree.runtimeGeneration,
                 std::wstring{nodeId},
-            });
+            }, binding);
         if (provider) (void)provider.As(&result);
         return result;
     };
-    if (plan.focusChanged) {
-        auto focused = plan.focusedNodeId
-            ? providerFor(*plan.focusedNodeId)
-            : root;
+    if (plan.focusChanged && plan.focusedNodeId) {
+        auto focused = providerFor(*plan.focusedNodeId);
         if (focused)
             (void)UiaRaiseAutomationEvent(
                 focused.Get(), UIA_AutomationFocusChangedEventId);
@@ -816,7 +945,7 @@ void ProviderHost::RaisePendingEvents() noexcept {
         return result;
     };
     for (const auto& change : plan.properties) {
-        auto provider = providerFor(change.nodeId);
+        auto provider = change.nodeId.empty() ? root : providerFor(change.nodeId);
         if (!provider) continue;
         VARIANT oldValue = variant(
             change.oldValue, previous ? &previous->transform : nullptr);

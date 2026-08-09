@@ -65,11 +65,15 @@ final-geometry projection. The provider now diffs the last announced immutable
 tree and coalesces structure, logical-focus, and closed property events behind
 one posted window message outside paint. It covers semantic names/help, enabled/
 selected state, RangeValue state, and DPI-aware physical bounds; a real UIA
-client-handler test receives all three event classes. Release coverage passes
-the 7-check planner and 88-check provider suites, the isolated native aggregate
-passes 24/24, and the canonical Debug build/test path is green. Dashboard title/
-status fragments, legacy MSAA, and packaged Narrator evidence remain open, so
-full screen-reader support is not yet claimed.
+client-handler test receives all three event classes. Each root/fragment is also
+bound to one HWND generation: explicit pre-destroy detach disconnects UIA,
+clears message/action authority, and keeps old providers unavailable across
+same-handle reuse. Root focus/visibility are UI-thread-published, focus loss does
+not target the custom root, and root plus node resize/DPI bounds are announced.
+Focused Release provider coverage passes 100 checks, the isolated Release
+native aggregate passes 24/24, and the canonical Debug build/test path is green.
+Dashboard title/status fragments, legacy MSAA, and packaged Narrator evidence
+remain open, so full screen-reader support is not yet claimed.
 
 The dashboard and open-widget tray now share one pure `ComputeTrayLayout`
 result across painting and pointer hit-testing. The bounded visible window,

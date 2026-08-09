@@ -37,6 +37,14 @@ LRESULT CALLBACK TestWindowProc(
         host->RaisePendingEvents();
         return 0;
     }
+    if (message == WM_APP + 43 && host) {
+        host->SetWindowFocused(true);
+        return 0;
+    }
+    if (message == WM_APP + 44 && host) {
+        host->SetWindowFocused(false);
+        return 0;
+    }
     if (message == WM_CLOSE) {
         DestroyWindow(window);
         return 0;
@@ -305,6 +313,24 @@ int main() {
           "root provider is available");
     Check(StringProperty(root.Get(), UIA_NamePropertyId) == L"Game Bar Alternative",
           "root provider has a stable accessible name");
+    SendMessageW(window, WM_APP + 43, 0, 0);
+    VARIANT rootFocus{};
+    BOOL clientRootFocused{};
+    Check(SUCCEEDED(root->GetPropertyValue(UIA_HasKeyboardFocusPropertyId, &rootFocus)) &&
+          V_VT(&rootFocus) == VT_BOOL && V_BOOL(&rootFocus) == VARIANT_TRUE,
+          "root focus reads UI-thread-published state from a client thread");
+    Check(SUCCEEDED(clientRoot->get_CurrentHasKeyboardFocus(&clientRootFocused)) &&
+          clientRootFocused,
+          "real UIA client reads published root focus without thread-local GetFocus");
+    VariantClear(&rootFocus);
+    SendMessageW(window, WM_APP + 44, 0, 0);
+    Check(SUCCEEDED(root->GetPropertyValue(UIA_HasKeyboardFocusPropertyId, &rootFocus)) &&
+          V_VT(&rootFocus) == VT_BOOL && V_BOOL(&rootFocus) == VARIANT_FALSE,
+          "root focus clears from UI-thread-published state");
+    Check(SUCCEEDED(clientRoot->get_CurrentHasKeyboardFocus(&clientRootFocused)) &&
+          !clientRootFocused,
+          "real UIA client observes published root focus loss");
+    VariantClear(&rootFocus);
 
     ComPtr<IRawElementProviderFragment> rootFragment;
     Check(SUCCEEDED(root.As(&rootFragment)), "root exposes fragment navigation");
@@ -492,10 +518,12 @@ int main() {
     Check(SUCCEEDED(client->AddFocusChangedEventHandler(
               nullptr, eventHandler.Get())) &&
           SUCCEEDED(client->AddPropertyChangedEventHandler(
-              clientRoot.Get(), TreeScope_Subtree, nullptr, eventHandler.Get(),
+              clientRoot.Get(), static_cast<TreeScope>(TreeScope_Element | TreeScope_Subtree),
+              nullptr, eventHandler.Get(),
               observedProperties)) &&
           SUCCEEDED(client->AddStructureChangedEventHandler(
-              clientRoot.Get(), TreeScope_Subtree, nullptr, eventHandler.Get())),
+              clientRoot.Get(), static_cast<TreeScope>(TreeScope_Element | TreeScope_Subtree),
+              nullptr, eventHandler.Get())),
           "real UIA client subscribes to focus, property, and structure events");
     SafeArrayDestroy(observedProperties);
     auto changedHostTree = HostTree();
@@ -530,13 +558,18 @@ int main() {
     SysFreeString(coalescedName);
     host.Publish(finalHostTree, {120, 240, 1.5, 600, 450});
     SendMessageW(window, WM_APP + 42, 0, 0);
-    Check(eventHandler->WaitForBoundsCount(2),
-          "transform-only publication updates every existing node bound");
+    Check(eventHandler->WaitForBoundsCount(3),
+          "transform-only publication updates root and every existing node bound");
     RECT transformedBounds{};
     Check(SUCCEEDED(clientTrayItem->get_CurrentBoundingRectangle(&transformedBounds)) &&
           transformedBounds.left == 150 && transformedBounds.top == 570 &&
           transformedBounds.right == 246 && transformedBounds.bottom == 666,
           "retained client element observes the transformed physical bounds");
+    RECT transformedRootBounds{};
+    Check(SUCCEEDED(clientRoot->get_CurrentBoundingRectangle(&transformedRootBounds)) &&
+          transformedRootBounds.left == 120 && transformedRootBounds.top == 240 &&
+          transformedRootBounds.right == 720 && transformedRootBounds.bottom == 690,
+          "real UIA client observes transformed root bounds");
     Check(SUCCEEDED(client->RemoveFocusChangedEventHandler(eventHandler.Get())) &&
           SUCCEEDED(client->RemovePropertyChangedEventHandler(
               clientRoot.Get(), eventHandler.Get())) &&
@@ -544,9 +577,34 @@ int main() {
               clientRoot.Get(), eventHandler.Get())),
           "real UIA client unsubscribes before the test window closes");
 
-    host.Clear();
+    host.Detach();
+    VARIANT detachedName{};
+    Check(root->GetPropertyValue(UIA_NamePropertyId, &detachedName) ==
+              UIA_E_ELEMENTNOTAVAILABLE,
+          "retained root is unavailable after explicit detach");
+    SAFEARRAY* detachedRuntimeId{};
+    Check(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE &&
+          buttonFragment->GetRuntimeId(&detachedRuntimeId) ==
+              UIA_E_ELEMENTNOTAVAILABLE && !detachedRuntimeId,
+          "retained fragment actions are unavailable after explicit detach");
+    ComPtr<IRawElementProviderSimple> detachedRoot;
+    Check(host.GetRootProvider(detachedRoot.GetAddressOf()) == UIA_E_ELEMENTNOTAVAILABLE &&
+          !detachedRoot,
+          "detached host cannot mint a new root provider");
+    host.Bind(window, WM_APP + 42);
+    host.Publish(Tree(L"generation-3", 12), {120, 240, 1.5, 600, 450});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    ComPtr<IRawElementProviderSimple> reboundRoot;
+    Check(SUCCEEDED(host.GetRootProvider(reboundRoot.GetAddressOf())) && reboundRoot &&
+          StringProperty(reboundRoot.Get(), UIA_NamePropertyId) == L"Game Bar Alternative",
+          "same-HWND rebind creates a new provider generation");
+    Check(root->GetPropertyValue(UIA_NamePropertyId, &detachedName) ==
+              UIA_E_ELEMENTNOTAVAILABLE &&
+          invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,
+          "old providers stay unavailable after same-HWND reuse");
+    host.Detach();
     Check(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,
-          "cleared provider tree rejects retained element references");
+          "second detach is idempotent and retained elements remain unavailable");
     PostMessageW(window, WM_CLOSE, 0, 0);
     windowThread.join();
     CoUninitialize();

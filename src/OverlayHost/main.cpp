@@ -1109,6 +1109,15 @@ private:
         case kAccessibilityActionMessage:
             HandleAccessibilityActions();
             return 0;
+        case WM_SETFOCUS:
+            accessibilityProvider_.SetWindowFocused(true);
+            return DefWindowProcW(window_, message, wParam, lParam);
+        case WM_KILLFOCUS:
+            accessibilityProvider_.SetWindowFocused(false);
+            return DefWindowProcW(window_, message, wParam, lParam);
+        case WM_SHOWWINDOW:
+            accessibilityProvider_.SetWindowVisible(wParam != FALSE);
+            return DefWindowProcW(window_, message, wParam, lParam);
         case WM_GETOBJECT:
             if (static_cast<LONG>(lParam) == UiaRootObjectId) {
                 if (!accessibilityActive_) {
@@ -1351,10 +1360,11 @@ private:
                 !PublishPerformanceCounters()) {
                 AppendDiagnostic(L"Performance runtime diagnostics could not be published");
             }
+            accessibilityProvider_.Detach();
             DestroyWindow(window_);
             return 0;
         case WM_DESTROY:
-            accessibilityProvider_.Clear();
+            accessibilityProvider_.Detach();
             PostQuitMessage(0);
             return 0;
         default:
@@ -1431,6 +1441,7 @@ private:
         }
         bridge_.Stop();
         if (window_) {
+            accessibilityProvider_.Detach();
             KillTimer(window_, kControllerTimer);
             KillTimer(window_, kGuideCompatibilityTimer);
             KillTimer(window_, kZOrderSettleTimer);

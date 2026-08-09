@@ -69,6 +69,9 @@ public:
     ProviderHost& operator=(const ProviderHost&) = delete;
 
     void Bind(HWND window, UINT actionMessage);
+    void Detach() noexcept;
+    void SetWindowFocused(bool focused) noexcept;
+    void SetWindowVisible(bool visible) noexcept;
     void Publish(Tree tree, ScreenTransform transform);
     void Clear() noexcept;
 
