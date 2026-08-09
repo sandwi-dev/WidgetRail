@@ -25,6 +25,7 @@ long long ComputeTraySemanticRevision(
     }
     if (dashboard) {
         hashText(dashboard->title);
+        hashText(dashboard->help);
         hashText(dashboard->status);
     }
     return static_cast<long long>(hash & 0x7fffffffffffffffULL);
@@ -41,7 +42,7 @@ Tree BuildTrayTree(
     tree.runtimeGeneration = L"host";
     tree.snapshotSequence = sequence;
     tree.activeInputScopeId = L"host.tray";
-    tree.nodes.reserve(layout.tiles.size() + (dashboard ? 2U : 0U));
+    tree.nodes.reserve(layout.tiles.size() + (dashboard ? 3U : 0U));
     if (dashboard && !dashboard->title.empty()) {
         Node title;
         title.id = L"host.dashboard.title";
@@ -68,6 +69,14 @@ Tree BuildTrayTree(
         const auto index = tree.nodes.size();
         tree.nodes.push_back(std::move(node));
         if (tree.nodes[index].focused) tree.focusedNode = index;
+    }
+    if (dashboard && !dashboard->help.empty()) {
+        Node help;
+        help.id = L"host.dashboard.help";
+        help.name = dashboard->help;
+        help.bounds = dashboard->helpBounds;
+        help.role = Role::Text;
+        tree.nodes.push_back(std::move(help));
     }
     if (dashboard && !dashboard->status.empty()) {
         Node status;

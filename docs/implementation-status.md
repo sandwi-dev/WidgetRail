@@ -76,13 +76,14 @@ bound to one HWND generation: explicit pre-destroy detach disconnects UIA,
 clears message/action authority, and keeps old providers unavailable across
 same-handle reuse. Root focus/visibility are UI-thread-published, focus loss does
 not target the custom root, and root plus node resize/DPI bounds are announced.
-The dashboard now exposes its exact painted title as a level-one heading and its
-current hint/action feedback as a polite status live region. Title, status, and
-catalog display names participate in the host projection revision, and a real
-UIA client observes the heading/live properties plus a status-change event.
+The dashboard now exposes its exact painted title as a level-one heading. Static
+controller guidance is readable non-live text, while transient action feedback
+replaces it with one polite status live region. Title, help, status, and catalog
+display names participate in the host projection revision, and a real UIA client
+observes the heading/live properties plus a status-change event.
 Focused Release coverage passes Slider Interaction 2086, renderer 4636,
-accessibility tree 15, projection cadence 10, host semantics 13, event planning
-8, and provider 109 checks. The isolated Release native aggregate passes 24/24,
+accessibility tree 15, projection cadence 10, host semantics 14, event planning
+10, and provider 111 checks. The isolated Release native aggregate passes 24/24,
 and the canonical Debug build/test path is green. Legacy MSAA and packaged
 Narrator evidence remain open, so full screen-reader support is not yet claimed.
 

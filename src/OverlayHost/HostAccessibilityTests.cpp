@@ -50,6 +50,7 @@ int main() {
     const gba::accessibility::DashboardSemantics dashboard{
         L"Reorder widgets", {24, 10, 192, 34},
         L"A Select  B Done", {24, 44, 192, 22},
+        L"", {24, 44, 192, 22},
     };
     const auto dashboardTree = gba::accessibility::BuildTrayTree(
         items, *layout, 2, 18, &dashboard);
@@ -60,22 +61,30 @@ int main() {
           "dashboard title is a level-one heading with exact host-owned text");
     Check(dashboardTree.nodes[0].bounds.x == dashboard.titleBounds.x &&
           dashboardTree.nodes[0].bounds.y == dashboard.titleBounds.y &&
-          dashboardTree.nodes[3].bounds.width == dashboard.statusBounds.width &&
-          dashboardTree.nodes[3].bounds.height == dashboard.statusBounds.height,
+          dashboardTree.nodes[3].bounds.width == dashboard.helpBounds.width &&
+          dashboardTree.nodes[3].bounds.height == dashboard.helpBounds.height,
           "dashboard semantic text uses the exact paint rectangles");
-    Check(dashboardTree.nodes[3].id == L"host.dashboard.status" &&
-          dashboardTree.nodes[3].name == dashboard.status &&
-          dashboardTree.nodes[3].role == gba::accessibility::Role::Status &&
-          dashboardTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Polite,
-          "dashboard hint and feedback are exposed as one polite status region");
+    Check(dashboardTree.nodes[3].id == L"host.dashboard.help" &&
+          dashboardTree.nodes[3].name == dashboard.help &&
+          dashboardTree.nodes[3].role == gba::accessibility::Role::Text &&
+          dashboardTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Off,
+          "routine dashboard guidance is discoverable without becoming live");
     Check(dashboardTree.focusedNode == 2 && dashboardTree.nodes[2].hostTargetId == L"performance",
           "non-focusable dashboard text does not disturb tray focus identity");
     const auto revision = gba::accessibility::ComputeTraySemanticRevision(items, &dashboard);
     auto changedDashboard = dashboard;
+    changedDashboard.help.clear();
     changedDashboard.status = L"Playback command failed";
     Check(revision != gba::accessibility::ComputeTraySemanticRevision(
               items, &changedDashboard),
           "dashboard status changes invalidate the host projection revision");
+    const auto statusTree = gba::accessibility::BuildTrayTree(
+        items, *layout, 2, 19, &changedDashboard);
+    Check(statusTree.nodes.size() == 4 &&
+          statusTree.nodes[3].id == L"host.dashboard.status" &&
+          statusTree.nodes[3].role == gba::accessibility::Role::Status &&
+          statusTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Polite,
+          "transient dashboard feedback replaces help with one polite status region");
     auto renamedItems = items;
     renamedItems[1].name = L"YouTube Music";
     Check(revision != gba::accessibility::ComputeTraySemanticRevision(

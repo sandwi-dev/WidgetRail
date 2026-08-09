@@ -3857,7 +3857,8 @@ private:
         return button;
     }
 
-    std::wstring DashboardHint(const float availableWidth) const {
+    std::optional<std::wstring> DashboardStatus() const {
+        const auto now = GetTickCount64();
         const auto selectedDescriptor = std::find_if(
             widgetDescriptors_.begin(), widgetDescriptors_.end(),
             [&](const gba::WidgetDescriptor& descriptor) {
@@ -3867,14 +3868,16 @@ private:
             if (const auto failure = actionFailureFeedback_.MessageFor(
                     selectedDescriptor->id,
                     selectedDescriptor->runtimeGeneration,
-                    GetTickCount64())) {
-                return std::wstring{*failure};
-            }
+                    now)) return std::wstring{*failure};
         }
-        if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty() &&
+        if (lastActionExpiresAt_ > now && !lastActionMessage_.empty() &&
             lastActionWidgetId_ == state_.selectedWidget()) {
             return lastActionMessage_;
         }
+        return std::nullopt;
+    }
+
+    std::wstring DashboardHint(const float availableWidth) const {
         std::vector<gba::ControllerGuideAction> quickActions;
         const auto* snapshot = SnapshotFor(state_.selectedWidget());
         if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
@@ -3907,19 +3910,26 @@ private:
         const std::wstring_view title = state_.reorderMode()
             ? L"Reorder widgets"
             : DisplayWidgetName(state_.selectedWidget());
-        const std::wstring hint = DashboardHint(contentRight - contentLeft);
+        const auto status = DashboardStatus();
+        const std::wstring help = DashboardHint(contentRight - contentLeft);
+        const std::wstring displayedHint = status ? *status : help;
+        const gba::declarative::Rect hintBounds{
+            contentLeft, hintTop, contentRight - contentLeft, hintBottom - hintTop,
+        };
         const gba::accessibility::DashboardSemantics dashboard{
             std::wstring{title},
             {contentLeft, titleTop, contentRight - contentLeft, titleBottom - titleTop},
-            hint,
-            {contentLeft, hintTop, contentRight - contentLeft, hintBottom - hintTop},
+            status ? std::wstring{} : help,
+            hintBounds,
+            status ? *status : std::wstring{},
+            hintBounds,
         };
         DrawTextLine(title, titleFormat_.Get(),
                      D2D1::RectF(contentLeft, titleTop, contentRight, titleBottom),
                      dashboardTextBrush_.Get());
         DrawIconStrip(width, height, nullptr, &dashboard);
 
-        DrawTextLine(hint, hintFormat_.Get(),
+        DrawTextLine(displayedHint, hintFormat_.Get(),
                      D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom),
                      dashboardSecondaryBrush_.Get());
     }
@@ -3998,7 +4008,11 @@ private:
             std::min(12.0F, geometry.footerHeight * 0.25F);
         if (textBottom <= textTop + 1.0F) return;
         if (state_.focusRegion() == gba::FocusRegion::Tray) {
-            DrawTextLine(DashboardHint(contentRight - contentLeft), hintFormat_.Get(),
+            const auto status = DashboardStatus();
+            const std::wstring footer = status
+                ? *status
+                : DashboardHint(contentRight - contentLeft);
+            DrawTextLine(footer, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
                          dashboardSecondaryBrush_.Get());
             return;

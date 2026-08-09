@@ -17,6 +17,8 @@ struct TrayItem final {
 struct DashboardSemantics final {
     std::wstring title;
     declarative::Rect titleBounds;
+    std::wstring help;
+    declarative::Rect helpBounds;
     std::wstring status;
     declarative::Rect statusBounds;
 };

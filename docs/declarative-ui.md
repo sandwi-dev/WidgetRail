@@ -49,10 +49,11 @@ UIA calls run outside paint, and a real client-handler test covers structure,
 property, live-region, and focus delivery.
 
 The dashboard projection also includes the exact painted title as a level-one
-heading and the current controller hint or action feedback as a polite status
-live region. Their text participates in the host semantic revision, so reorder,
-selection, feedback, and feedback-expiry paints publish the matching name and
-live-region event without making the text focusable.
+heading. Routine controller guidance is readable non-live text; only transient
+action feedback replaces it with a polite status live region. Their text
+participates in the host semantic revision, so feedback and feedback-expiry
+paints publish the matching structure/name and one meaningful live event without
+making either line focusable or announcing routine selection instructions.
 
 Every provider captures one HWND binding generation. Before window destruction,
 the host disconnects UIA, clears message/action authority, and invalidates that

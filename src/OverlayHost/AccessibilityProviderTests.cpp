@@ -90,8 +90,10 @@ public:
 
     IFACEMETHODIMP HandleAutomationEvent(
         IUIAutomationElement*, const EVENTID eventId) noexcept override {
-        if (eventId == UIA_LiveRegionChangedEventId && liveRegionEvent_)
-            SetEvent(liveRegionEvent_);
+        if (eventId == UIA_LiveRegionChangedEventId) {
+            ++liveRegionCount_;
+            if (liveRegionEvent_) SetEvent(liveRegionEvent_);
+        }
         return S_OK;
     }
 
@@ -149,6 +151,10 @@ public:
             WaitForSingleObject(liveRegionEvent_, 2000) == WAIT_OBJECT_0;
     }
 
+    [[nodiscard]] int LiveRegionCount() const noexcept {
+        return liveRegionCount_.load();
+    }
+
     [[nodiscard]] bool WaitForStructure() const noexcept {
         return structureEvent_ && WaitForSingleObject(structureEvent_, 2000) == WAIT_OBJECT_0;
     }
@@ -161,6 +167,7 @@ private:
     HANDLE liveRegionEvent_{};
     HANDLE structureEvent_{};
     std::atomic<int> boundsCount_{};
+    std::atomic<int> liveRegionCount_{};
     std::atomic<double> rangeValue_{};
 };
 
@@ -275,13 +282,12 @@ gba::accessibility::Tree HostTree(const bool includeDashboard = false) {
         heading.role = gba::accessibility::Role::Heading;
         heading.headingLevel = gba::accessibility::HeadingLevel::Level1;
         tree.nodes.push_back(heading);
-        gba::accessibility::Node status;
-        status.id = L"host.dashboard.status";
-        status.name = L"A Select  B Close";
-        status.bounds = {20, 44, 760, 22};
-        status.role = gba::accessibility::Role::Status;
-        status.liveSetting = gba::accessibility::LiveSetting::Polite;
-        tree.nodes.push_back(status);
+        gba::accessibility::Node help;
+        help.id = L"host.dashboard.help";
+        help.name = L"A Select  B Close";
+        help.bounds = {20, 44, 760, 22};
+        help.role = gba::accessibility::Role::Text;
+        tree.nodes.push_back(help);
     }
     return tree;
 }
@@ -596,6 +602,7 @@ int main() {
     changedHostTree.focusedNode = 3;
     auto finalHostTree = changedHostTree;
     finalHostTree.nodes[0].name = L"YouTube Music";
+    finalHostTree.nodes[2].name = L"A Select  B Close  Y Reorder";
     host.Publish(changedHostTree, {100, 200, 2, 800, 600});
     host.Publish(finalHostTree, {100, 200, 2, 800, 600});
     SendMessageW(window, WM_APP + 42, 0, 0);
@@ -610,6 +617,8 @@ int main() {
           std::wstring_view{coalescedName, SysStringLen(coalescedName)} == L"YouTube Music",
           "retained client element observes the newest coalesced publication");
     SysFreeString(coalescedName);
+    Check(eventHandler->LiveRegionCount() == 0,
+          "routine dashboard help changes do not raise a live-region event");
 
     const auto findByAutomationId = [&](const wchar_t* id) {
         VARIANT automationId{};
@@ -627,27 +636,40 @@ int main() {
         return element;
     };
     auto headingElement = findByAutomationId(L"host.dashboard.title");
-    auto statusElement = findByAutomationId(L"host.dashboard.status");
+    auto helpElement = findByAutomationId(L"host.dashboard.help");
     VARIANT headingLevel{};
-    VARIANT liveSetting{};
-    CONTROLTYPEID statusControlType{};
+    VARIANT helpLiveSetting{};
     Check(headingElement && SUCCEEDED(headingElement->GetCurrentPropertyValue(
               UIA_HeadingLevelPropertyId, &headingLevel)) &&
           V_VT(&headingLevel) == VT_I4 && V_I4(&headingLevel) == HeadingLevel1,
           "real UIA client reads the dashboard level-one heading");
+    Check(helpElement && SUCCEEDED(helpElement->GetCurrentPropertyValue(
+              UIA_LiveSettingPropertyId, &helpLiveSetting)) &&
+          V_VT(&helpLiveSetting) == VT_I4 && V_I4(&helpLiveSetting) == Off,
+          "real UIA client reads routine dashboard help as non-live text");
+    VariantClear(&headingLevel);
+    VariantClear(&helpLiveSetting);
+    gba::accessibility::Node status;
+    status.id = L"host.dashboard.status";
+    status.name = L"Playback command failed";
+    status.bounds = finalHostTree.nodes[2].bounds;
+    status.role = gba::accessibility::Role::Status;
+    status.liveSetting = gba::accessibility::LiveSetting::Polite;
+    finalHostTree.nodes[2] = status;
+    host.Publish(finalHostTree, {100, 200, 2, 800, 600});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    Check(eventHandler->WaitForLiveRegion(),
+          "real UIA client receives the dashboard live-region change");
+    auto statusElement = findByAutomationId(L"host.dashboard.status");
+    VARIANT liveSetting{};
+    CONTROLTYPEID statusControlType{};
     Check(statusElement && SUCCEEDED(statusElement->get_CurrentControlType(
               &statusControlType)) && statusControlType == UIA_StatusBarControlTypeId &&
           SUCCEEDED(statusElement->GetCurrentPropertyValue(
               UIA_LiveSettingPropertyId, &liveSetting)) &&
           V_VT(&liveSetting) == VT_I4 && V_I4(&liveSetting) == Polite,
-          "real UIA client reads the dashboard polite status fragment");
-    VariantClear(&headingLevel);
+          "real UIA client reads transient dashboard feedback as polite status");
     VariantClear(&liveSetting);
-    finalHostTree.nodes[2].name = L"Playback command failed";
-    host.Publish(finalHostTree, {100, 200, 2, 800, 600});
-    SendMessageW(window, WM_APP + 42, 0, 0);
-    Check(eventHandler->WaitForLiveRegion(),
-          "real UIA client receives the dashboard live-region change");
     BSTR liveStatus{};
     Check(SUCCEEDED(statusElement->get_CurrentName(&liveStatus)) &&
           std::wstring_view{liveStatus, SysStringLen(liveStatus)} ==

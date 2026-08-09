@@ -102,6 +102,24 @@ int main() {
           plan.liveRegionChangedNodeIds[0] == L"dashboard-status",
           "polite status-name changes request one live-region event");
 
+    auto staticHelp = before;
+    staticHelp.nodes[2].id = L"dashboard-help";
+    staticHelp.nodes[2].role = gba::accessibility::Role::Text;
+    staticHelp.nodes[2].liveSetting = gba::accessibility::LiveSetting::Off;
+    auto changedHelp = staticHelp;
+    changedHelp.nodes[2].name = L"A Select, B Close, Y Reorder";
+    plan = gba::accessibility::PlanEvents(&staticHelp, &changedHelp);
+    Check(plan.liveRegionChangedNodeIds.empty() &&
+          Has(plan, gba::accessibility::PropertyKind::Name),
+          "routine dashboard guidance updates without a live announcement");
+    auto insertedStatus = changedHelp;
+    insertedStatus.nodes.pop_back();
+    insertedStatus.nodes.push_back(after.nodes[2]);
+    plan = gba::accessibility::PlanEvents(&changedHelp, &insertedStatus);
+    Check(plan.structureChanged && plan.liveRegionChangedNodeIds.size() == 1 &&
+          plan.liveRegionChangedNodeIds[0] == L"dashboard-status",
+          "new transient feedback is announced once when it replaces static help");
+
     auto structural = after;
     structural.nodes.pop_back();
     structural.focusedNode.reset();

@@ -79,7 +79,12 @@ EventPlan PlanEvents(const Tree* previous, const Tree* current) {
         const auto before = std::find_if(
             previous->nodes.begin(), previous->nodes.end(),
             [&](const Node& candidate) { return candidate.id == after.id; });
-        if (before == previous->nodes.end() || before->role != after.role) continue;
+        if (before == previous->nodes.end()) {
+            if (after.liveSetting != LiveSetting::Off && !after.name.empty())
+                plan.liveRegionChangedNodeIds.push_back(after.id);
+            continue;
+        }
+        if (before->role != after.role) continue;
         AddIfChanged(plan, after.id, PropertyKind::Name, before->name, after.name);
         AddIfChanged(plan, after.id, PropertyKind::HelpText, before->value, after.value);
         AddIfChanged(plan, after.id, PropertyKind::Enabled, before->enabled, after.enabled);
