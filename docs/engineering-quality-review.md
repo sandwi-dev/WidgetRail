@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after all CLI author-code inspection paths became data-only, responsive focus reconciliation left the paint path, and package trust, aggregate residency, installed-tree byte bounds, and standalone scaffolding were audited<br>
+Last reassessed: 2026-08-09 after aggregate residency was committed, external scaffolding became fail-fast with an explicit SDK override, and the installed-package digest-to-launch boundary was audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -26,14 +26,17 @@ Settings worker remains available when application capacity is full. The new
 runtime tests directly exercise pre-launch denial and exact release across a
 crash/relaunch and cooperative stop, although this review did not execute them.
 
-The public authoring entry point is not yet a coherent shipped product.
-`gbar new widget` succeeds outside this checkout by emitting a reference to an
-unpublished placeholder SDK package and then instructs the author to build it.
-The current worktree fixes the generated DLL-render command and changes the
-starter to bounded idle unload, but it refers snapshot export to typed-fake
-tests the template does not generate. Repository-local tests exercise only the
-source-project-reference branch, so the broken standalone-repository path is
-still not visible to the gate.
+The public authoring entry point is not yet a coherent shipped product. The
+live worktree removes its misleading external success path: `gbar new widget`
+no longer emits an unpublished placeholder SDK reference. It resolves a real
+source project before creating output, accepts an explicit validated
+`--sdk-project`, and otherwise fails with no partial scaffold. A new temporary-
+directory case copies the template outside the checkout, proves rejection
+without an SDK, generates with the override, and builds the result. This is an
+honest contributor workflow, not yet a standalone community product: the
+generated repository still points back to the platform source tree, no SDK
+artifact is published, and the README refers snapshot export to typed-fake
+tests the template does not generate.
 
 The current worktree closes the remaining CLI author-code bypass: `gbar render`
 now accepts only bounded snapshot JSON, and DLL input fails closed before type
@@ -53,7 +56,10 @@ it labels Community packages unsigned, identifies the manifest publisher as
 unverified, shows the sealed digest, and binds enablement/consent language to
 those exact content bytes. It still cannot show a host-owned acquisition
 receipt, verified signer, rotation, or revocation because those models do not
-exist yet.
+exist yet. The deeper launch audit also found that the digest-derived identity
+is published before the generic worker later reopens mutable assembly and
+dependency paths; no verified-content lease currently binds those loaded bytes
+to that identity. This is now the highest-risk package-boundary finding.
 
 The current worktree now adds a system-wide application-worker admission
 envelope on top of the independent Jobs: eight workers and 512 MiB of declared
@@ -140,20 +146,22 @@ eligible-worker reclaim/override, critical-work leases, and multi-widget
 measurements remain open.
 
 The follow-up exact-byte audit confirmed that enablement and bridge publication
-both recompute the sealed tree digest, but found three mutable-file read paths
-that do not bind work to bytes actually consumed. Manifest and integrity
-metadata preflight one path handle and then call `ReadAllBytes` on another;
-the content-tree hasher accounts initial stream lengths but reads each stream to
-EOF without enforcing those limits. EQ-014 keeps this distinct from the sound
-digest/authority design.
+both recompute the sealed tree digest. Two stat-then-reopen metadata paths can
+still consume bytes beyond their validated limits. More importantly,
+verification returns a digest plus mutable path rather than a content lease:
+the worker later loads its entry assembly and dependencies by path under the
+previous digest-derived authority. The 175 ms watcher and stable-tamper
+retirement test detect change after the fact; they do not atomically bind the
+executed bytes to the verified authority. EQ-014 tracks both boundaries.
 
-The authoring rotation found that the generator is not a shipped external
-contract. The repository-local scaffold builds through a source
-`ProjectReference`, but an installed CLI outside the checkout emits an
-unavailable preview `PackageReference`. The current worktree corrects its stale
-DLL-render command and keep-alive default; it does not publish/resolve the SDK
-or provide the typed-fake snapshot exporter the README now references. EQ-015
-tracks the remaining versioned external-developer contract.
+The authoring rotation found that the generator is not yet a shipped external
+contract, but the live worktree implements the recommended honest interim
+boundary. It resolves the SDK before writing, adds `--sdk-project`, removes the
+unavailable preview `PackageReference`, and adds an external-directory build
+test. It still does not publish a cloneable SDK dependency, exercise a packaged
+CLI/template without `GBAR_TEMPLATE_ROOT`, or provide the typed-fake snapshot
+exporter the README references. EQ-015 tracks the remaining versioned external-
+developer contract.
 
 ## Verification snapshot
 
@@ -191,13 +199,15 @@ latency, or long-run churn.
 The unsigned-review Settings changes are committed, but their focused 41/41
 result remains implementation-reported and the prior full-verifier claim
 predates them.
-The residency-budget source and tests are uncommitted and were not executed by
-this review. The implementation agent reports 36/36 runtime and 40/40 bridge
-cases; the new direct lease cases were code-inspected, but no retained result
-was inspected.
-The scaffold README/residency changes are also uncommitted; the added CLI test
-checks idle-unload metadata only, not an outside-repository build or README
-command execution.
+The residency budget, runtime lease, scaffold residency default, and focused
+tests are committed in `7722763`. The implementation agent reports 36/36
+runtime and 40/40 bridge cases; the new direct lease cases were code-inspected,
+but no retained result was inspected.
+The live scaffold worktree now adds an outside-repository negative/override
+generation case and invokes `dotnet build` on the generated project. This
+review inspected but did not execute it. It still supplies the template through
+`GBAR_TEMPLATE_ROOT`, references the repository SDK project, and does not run
+the generated README's render/replay, validate, test, or package commands.
 
 ## Prioritized findings
 
@@ -243,7 +253,9 @@ work to `gbar dev` and reserve `gbar render` for bounded data.
 
 ### EQ-011 — P1 — Unsigned packages lack acquisition provenance and signed publisher identity
 
-**Status: Partially resolved in current HEAD. Honest digest-bound unsigned review is implemented; provenance and signed publisher trust remain open.**
+**Status: Partially resolved in current HEAD. Honest digest-bound unsigned
+review is implemented; exact verified-byte launch binding is tracked by
+EQ-014, while provenance and signed publisher trust remain open.**
 
 **Evidence.** `InstallCommand` requires `--sha256` for HTTPS/GitHub packages,
 the downloader applies bounded HTTPS/redirect/size/time rules, and installation
@@ -251,8 +263,11 @@ leaves remote packages disabled. `WidgetCatalogService` rejects updates while
 an ID is enabled, keeps versions immutable, and requires explicit version
 selection. `InstalledPackageIntegrity` seals the extracted content tree, while
 `InstalledWidgetAuthority.PublisherId` derives an `unsigned.<digest>` runtime
-authority so replacement bytes cannot inherit consent or secrets. These are
-strong integrity and containment properties.
+authority so a replacement observed during catalog validation receives a new
+identity instead of inheriting consent or secrets. These are strong integrity
+and containment foundations, but EQ-014 shows that a mutable path is reopened
+after verification, so the exact-byte property is not yet atomic through
+worker load.
 
 They do not establish author identity. `WidgetPackageInstaller` only verifies
 that a manifest ID falls within its manifest-declared publisher namespace. The
@@ -437,55 +452,49 @@ private working set, CPU, wakeups, handles, threads, GPU/game-frame impact, and
 latency. The controller performance surface and user override require packaged
 visual and interaction evidence.
 
-### EQ-015 — P1 — The generated widget is not a buildable standalone developer contract
+### EQ-015 — P1 — The generated widget lacks a published standalone SDK/test contract
 
-**Status: Partially implemented in the current worktree. Generated executable
-instructions and residency are improved; the installed/external build contract
-remains nonfunctional.**
+**Status: Partially implemented in the current worktree. Local-project SDK
+resolution is truthful and build-tested; published SDK and generated snapshot/
+test contracts remain open.**
 
-**Evidence.** `NewCommand.BuildSdkReference` searches parent directories for
-`src/WidgetSdk/WidgetSdk.csproj`. If it cannot find the source checkout, it
-silently emits `<PackageReference Include="GameBarAlternative.WidgetSdk"
-Version="0.1.0-preview.1" />`, returns success, and prints `Next: dotnet build`.
-The quickstart, authoring guide, publishing guide, troubleshooting guide, and
-CLI README all state that no supported public SDK package currently exists.
-There is no `--sdk-project` input or resolution check that could make the
-fallback honest.
+**Evidence.** `NewCommand` now resolves the source checkout or requires an
+explicit existing non-reparse `WidgetSdk.csproj` through `--sdk-project`. It
+does so before creating the output directory, escapes the relative MSBuild
+path, and fails with an actionable message rather than emitting the unpublished
+`GameBarAlternative.WidgetSdk` placeholder package. The help, CLI README,
+quickstart, authoring, publishing, and troubleshooting guides state the same
+temporary local-project contract.
 
 The current worktree corrects two immediate template defects. The generated
 README now uses `gbar dev` for executable integration and accurately says
 `gbar render` consumes snapshot JSON only. The manifest and Clock sample switch
 from permanent `keep-alive` to `unload-after-idle` at 300 seconds, and the CLI
-test asserts that residency metadata. However, the README tells authors to
-export fixtures from “this project's typed-fake tests” while the template
-contains no test project, exporter, or static snapshot, so its subsequent
-`gbar replay` path still has no generated input. The scaffold test runs under
-this source tree, asserts only the local `ProjectReference`, and never restores,
-builds, or executes README commands from an unrelated directory.
+test asserts that residency metadata. A new test copies the template under an
+unrelated temporary root, proves unresolved SDK discovery leaves no output
+directory, supplies the exact SDK project, and successfully runs a bounded
+Release build of the generated widget. However, the README tells authors to add
+a typed-fake snapshot exporter while the template contains no test project,
+exporter, or static snapshot, so its subsequent `gbar replay` path still has no
+generated input.
 
-**Why it matters.** A new author using a distributed CLI receives a successful
-scaffold followed by a guaranteed restore/build failure and obsolete preview
-instructions. Standalone GitHub repositories—the intended sharing unit—cannot
-consume the SDK through a supported dependency. Developers must discover the
-source layout, manually rewrite MSBuild, and invent a snapshot-export path,
-which is exactly the hacky framework-internals workflow this platform is meant
-to eliminate. It also makes the 15-minute starter success metric impossible to
-claim outside the product repository.
+**Why it matters.** The misleading successful-but-unbuildable scaffold is now
+removed. Standalone GitHub repositories—the intended sharing unit—still cannot
+consume the SDK through a supported published dependency, and developers must
+bring a platform checkout plus invent a snapshot-export path. That remains
+short of the promised 15-minute community starter experience.
 
-**Underlying problem.** The generator is tested as repository file templating,
-not as a versioned product spanning the CLI, template, SDK artifact, runtime
-contract, and copyable commands. The placeholder package reference masks a
-missing distribution dependency instead of making that prerequisite explicit,
-while generated documentation is outside the executable documentation checks.
+**Underlying problem.** The generator now treats local SDK resolution as a
+validated dependency, but the CLI, template, SDK/runtime package, generated
+tests, and copyable commands are not yet shipped as one versioned release set.
+Generated documentation also remains outside executable documentation checks.
 
 **Recommended direction.** Treat the CLI, template, SDK/runtime packages, and
 compatibility range as one release set. The production endpoint is a supported,
 immutable NuGet SDK/runtime release plus a template that pins a compatible
 version and can be restored from a clean machine without the platform source.
-Until that artifact exists, fail scaffolding outside a discoverable checkout
-with an actionable message, or require an explicit validated
-`--sdk-project <path>` development override; do not create a project known not
-to build.
+The current explicit local-project override is appropriate for contributors
+until that artifact exists; do not reintroduce a project known not to build.
 
 Keep the corrected `gbar dev` and idle-unload defaults. Add a real generated
 typed-fake test/exporter or a validated static snapshot so the documented
@@ -501,7 +510,11 @@ avoids a feed but produces opaque duplication and unsafe upgrade mechanics.
 An explicit local project override is useful for platform contributors, but it
 must not become the documented community distribution model.
 
-**Resolution evidence.** Run a release test from a temporary directory with no
+**Resolution evidence.** The implementation agent reports Release
+`GbarCli.Tests` at 49/49, including a failure-before-write case and an unrelated-
+directory explicit-SDK Release build. This review inspected the new case but
+did not execute it or inspect retained output. For full closure, run a release
+test from a temporary directory with no
 repository ancestor and no `GBAR_TEMPLATE_ROOT`: invoke the packaged CLI,
 scaffold, restore/build with only declared prerequisites, validate, run the
 generated deterministic tests/replay, package, and inspect the result. Execute
@@ -850,10 +863,11 @@ pre-existing output on DLL, option, and byte-bound failures. The ordinary valid
 snapshot path remains green. The deterministic stream seam exercises the
 resource invariant without scheduler-sensitive file-replacement sleeps.
 
-### EQ-014 — P2 — Installed-tree integrity reads are not bounded by consumed bytes
+### EQ-014 — P1 — Installed-package verification does not bind bounded verified bytes through launch
 
-**Status: Open. The digest is recomputed at the right authority boundaries,
-but mutable-file reads can exceed their validated resource limits.**
+**Status: Open. Stable tampering fails closed, but metadata reads are not all
+consumption-bounded and runtime authority can outlive the exact bytes that
+produced its digest.**
 
 **Evidence.** `WidgetCatalog.DiscoverInstalledVersions` runs before
 `SetEnabledAsync` mutates enabled state, and `BridgeCatalog.LoadWithInstalledAsync`
@@ -862,62 +876,88 @@ digest shown in Settings is not merely trusted catalog metadata.
 
 The byte-bound implementation is inconsistent with that strong design.
 `WidgetCatalogService` checks `new FileInfo(manifestPath).Length` and then calls
-`File.ReadAllBytes(manifestPath)` through a second open. `InstalledPackageIntegrity.Verify`
-does the same for the 4 KiB host metadata file. Its content-tree `Compute`
-method opens each content file, validates and totals `input.Length`, writes that
-initial length into the hash, and then reads until EOF without counting actual
-bytes or proving they equal the encoded length. The installer's archive
-extraction and `gbar pack` source capture already use authoritative
-consumed-byte counters, and `RenderCommand` just adopted a maximum-plus-one
-stream reader for the same invariant.
+`File.ReadAllBytes(manifestPath)` through a second open.
+`InstalledPackageIntegrity.Verify` does the same for the 4 KiB host metadata
+file. A replacement between those operations can therefore make the second
+open allocate and consume far more than the accepted size. The content-tree
+hasher is stronger than the previous review stated: every content stream uses
+`FileShare.Read`, which denies new write/delete handles on Windows while that
+stream is open. Its initial `Length` is therefore stable against an ordinary
+concurrent writer. It should still count consumed bytes and prove exact length
+for a self-contained, portable invariant, but the unsupported
+share-compatible-growth scenario is removed from this finding.
 
-An ordinary stable tamper is correctly rejected, and existing tests prove that
-the monitor retires a live worker. They do not cover path replacement between
-metadata preflight and open, or a share-compatible writer that grows a file
-after the verifier has observed its length. In those cases manifest/metadata
-reads can allocate beyond their ceiling, while the tree verifier can hash
-unbounded input or never reach EOF. It will normally reject the eventual digest
-if the writer stops; fail-closed identity does not make the intervening CPU,
-I/O, allocation, or liveness unbounded work acceptable.
+The higher-risk gap occurs after verification. `InstalledPackageIntegrity.Verify`
+returns a digest string and `DiscoverInstalledVersions` returns the package
+path. `InstalledWidgetAuthority` derives `unsigned.<digest>`, and
+`BridgeCatalog` uses that identity for the worker fingerprint, isolation key,
+and broker authority while passing `--package-root` and `--widget-assembly`
+paths to the generic worker. The installer moves the staged directory into the
+catalog but does not establish a host-owned immutable generation or retain
+open content handles. `WindowsAppContainer.GrantReadAndExecute` restricts the
+worker to read access; it does not remove the desktop user's inherited ability
+to modify the installed directory. `WidgetAssemblyLoader` later calls
+`LoadFromAssemblyPath` for the entrypoint and lazily resolved managed/native
+dependencies. Thus package bytes can change after the digest check and before
+or during load while authority still names the old digest.
 
-**Why it matters.** Settings discovery, enablement, catalog monitoring, and
-bridge publication all traverse the installed tree. A corrupted or concurrently
-modified package can therefore turn a bounded integrity check into host memory
-pressure, prolonged bridge reload, or process failure. The AppContainer receives
-only read access, so this is not a direct authority escalation by a running
-widget; it is a robustness flaw at the host-owned package boundary and weakens
-the product's stated bounded-input discipline.
+The catalog watcher is useful detection, not launch authorization. It waits
+175 ms before a complete reload, and the current tamper test starts the worker,
+modifies a file, explicitly reloads, then proves retirement. It does not mutate
+after verification but before process/assembly load, test a mutate-and-restore
+inside the debounce window, or prove that lazily loaded dependencies are the
+ones hashed for the active authority.
 
-**Underlying problem.** Limits are sometimes attached to pathname metadata or
-an initial stream observation rather than to one opened object and the bytes
-actually consumed from it. Similar code has been corrected independently in
-the CLI, but the catalog has no single internal primitive expressing bounded,
-stable file consumption for manifests, integrity metadata, and tree hashing.
+**Why it matters.** The platform explicitly promises that replacement bytes
+cannot inherit consent, configuration secrets, or update authority. A mutable
+path checked at catalog publication and reopened later cannot prove that
+promise. This is not currently a direct self-tamper vector for the
+capability-free AppContainer, which receives read-only access, so it is not a
+P0 claim. It is nevertheless a P1 trust-boundary defect before public package
+distribution: externally modified or accidentally changed bytes can be loaded
+under stale digest-derived authority, and oversized metadata can pressure the
+trusted catalog/Settings process before fail-closed logic runs.
 
-**Recommended direction.** Open each installed file once with restrictive
-sharing and make the read loop authoritative. Manifest and integrity metadata
-should read at most their limit plus one detection byte before deserialization.
-Tree hashing should enforce both the per-file and remaining aggregate ceilings
-on actual bytes, encode the actual accepted length, and reject a stream that
-ends early or yields one byte beyond the stable expected length. A small
-catalog-internal bounded-reader/digest primitive is justified because these
-three security-sensitive callers need identical semantics; do not broaden it
-into a generic public I/O abstraction.
+**Underlying problem.** Verification produces detached facts—manifest,
+digest, and paths—rather than an owned `VerifiedPackageLaunch` capability whose
+lifetime covers every byte the worker may load. Separately, two resource limits
+still belong to pathname observations instead of one opened object and its
+consumed bytes.
 
-**Tradeoff.** Restrictive sharing may transiently report an installed package
-unavailable while another process holds a write/delete handle. That is safer
-and easier to explain than reviewing moving bytes. Buffering every package file
-would simplify length stability but needlessly raises peak memory; bounded
-streaming with a small reusable buffer preserves the current footprint.
+**Recommended direction.** First, use one catalog-internal bounded reader for
+manifest and integrity metadata: one restrictively shared handle, a limit-plus-
+one loop, and deserialization only after exact bounded consumption. Keep the
+tree hasher streaming, enforce per-file/aggregate limits on actual bytes, and
+reject early EOF or any byte beyond its stable encoded length.
 
-**Resolution evidence.** Add deterministic stream-level regressions for
-misreported short length plus limit-plus-one content, early EOF, growth, and
-aggregate overflow, plus Windows path/handle tests using a pre-opened
-share-compatible writer rather than scheduler sleeps. Prove oversized manifest
-and integrity metadata fail with stable package error codes before allocation
-or state mutation; enablement remains disabled; bridge reload fails soft to
-trusted widgets; and no partial digest becomes a consent/runtime authority.
-Retain the existing stable-tamper and live-worker-retirement cases.
+Then make lazy launch acquire a supervisor-owned verified-content lease. One
+viable design is to enumerate and open every accepted package file with
+write/delete sharing denied, recompute the digest from those same handles,
+derive authority from that result, and retain the bounded handle set until the
+worker session ends so lazy managed/native dependency loads cannot see
+replacement files. A host-owned protected immutable generation copied or
+materialized from verified bytes is an alternative. Merely hashing again just
+before `Process.Start`, tightening a best-effort DACL, or relying on
+`FileSystemWatcher` still leaves a check-to-load gap. The catalog/supervisor
+should own the lease; the SDK and widget process should never provide it.
+
+**Tradeoff.** Holding every content handle costs up to the package entry limit
+per resident worker and can block legitimate uninstall/update until teardown;
+a protected generation costs disk I/O and storage instead. Locking only the
+entry assembly is cheaper but does not bind lazy managed dependencies, native
+libraries, or package assets. Choose and measure an explicit bounded model
+rather than preserving a cheap but non-atomic trust claim.
+
+**Resolution evidence.** Add deterministic replacement tests for oversized
+manifest and integrity metadata between preflight and consumption, proving
+stable package errors before allocation or state mutation. Add a launch seam
+that pauses after catalog verification: replacement before `Process.Start`
+must prevent admission under the old digest, and mutation/reversion within the
+watcher debounce must not execute. Exercise a dependency resolved after
+entrypoint load, exact authority derivation from the launch lease, and lease
+release on failed connection, crash, restart, disable/remove, and shutdown.
+Retain stable-tamper/live-worker-retirement coverage, and report the handle,
+startup, and disk cost at the maximum supported entry count.
 
 ### EQ-008 — P2 — Focus persistence was scheduled from the steady paint path
 
@@ -996,26 +1036,28 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD honestly labels unsigned content | Consumed-byte-bounded installed-tree verification; clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD honestly labels unsigned content | Consumption-bounded metadata plus verified-content launch lease; clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
 | SDK lifecycle/coordination | Latest-wins currency now covers YT Music success and failure commits | Broader advanced-widget adoption and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest migration removes manual lifetime machinery and rejects stale failure commits | Real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Capable but still highly complex | Credential-free full-state visuals, live auth/playback gates, structural migration |
-| CLI author workflow | Data inspection is non-executable; worktree scaffold uses `gbar dev` and idle unload, but external generation still references an unpublished SDK and has no generated snapshot exporter | Versioned public SDK/template release, clean-directory scaffold/build/README proof, isolated scenario execution, native preview, provenance/signing, and automated CI |
+| CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency or generated snapshot exporter | Versioned public SDK/template release, packaged clean-directory scaffold/build/README proof, isolated scenario execution, native preview, provenance/signing, and automated CI |
 | Performance | Per-worker Jobs plus worktree aggregate admission and runtime-owned process leases; one local single-worker baseline | Direct lease fault-injection proof, ownership/reclamation UI, multi-widget/churn matrix, clean immutable GPU/ETW regression gate |
 | Documentation | Extensive and now internally current, but copyable examples are not executable evidence | Compile-test canonical snippets and reduce ledger/status duplication |
 
 ## Recommended next three actions
 
-1. **Prove the runtime process lease before merging the budget.** Add direct
-   denial/failure/live-pipe/restart/stop/disposal lifecycle tests, retain their
-   results, then expose per-widget ownership and remediation.
-2. **Ship a truthful external widget scaffold.** Publish a versioned supported
+1. **Bind package authority to the bytes actually loaded.** Replace both
+   stat-then-reopen metadata reads with bounded single-handle consumption, add
+   a supervisor-owned verified-content launch lease or protected generation,
+   and prove replacement between verification and lazy load cannot execute
+   under the old digest.
+2. **Finish the residency budget as a product contract.** Extend direct
+   failure/live-pipe/disable/shutdown accounting, retain the results, then add a
+   typed persistent refusal plus per-widget ownership and remediation.
+3. **Ship a truthful external widget scaffold.** Publish a versioned supported
    SDK/template set, generate a real snapshot fixture/exporter, and prove the
    full build/run/test/package path from an unrelated clean directory.
-3. **Finish package provenance before public distribution.** Retain the honest
-   unsigned/digest UI, add a bounded host-owned acquisition receipt and version
-   capability delta, then define the signed publisher/update/revocation path.
 
 The next review should first reassess these three items, then rotate into the
 `OverlayApp` ownership seam and advanced-widget composition.

@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, and data-only inspection are implemented; a buildable standalone scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` contract, and standalone-scaffold, package-trust, aggregate-residency, and installed-tree byte-bound audits<br>
+Reassessed: 2026-08-09 against current HEAD/live worktree after aggregate residency, fail-fast external SDK resolution, and the installed-package digest-to-launch audit<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -83,17 +83,18 @@ command that turns widget/scenario code into a snapshot. Authors must currently
 add an author-controlled typed-fake test to persist `SnapshotJson` or use the
 interactive overlay path.
 
-The scaffold is currently a repository-contributor convenience, not a
-standalone community authoring product. Inside this checkout, `gbar new widget`
-finds `WidgetSdk.csproj` and emits a working source reference. Outside it, the
-same successful command emits an unpublished `0.1.0-preview.1` package
-reference and tells the author to build. The generated README has also drifted:
-the current worktree replaces its rejected DLL render command with `gbar dev`
-and teaches bounded idle unload rather than keep-alive. Until a matching
-versioned SDK/template release exists, however, the CLI should fail early or
-require an explicit local SDK path rather than generating a knowingly broken
-project. Its new snapshot guidance also needs an actual generated typed-fake
-test/exporter; the template currently refers to one but creates none.
+The scaffold is now an honest repository-contributor path, not yet a standalone
+community authoring product. Inside this checkout, `gbar new widget` discovers
+`WidgetSdk.csproj`; elsewhere it requires an explicit validated `--sdk-project`
+and fails before writing when none is available. A focused unrelated-directory
+test builds that explicit local-project result. The generated README also uses
+`gbar dev` instead of rejected DLL rendering and teaches bounded idle unload.
+That fail-fast/override behavior is the correct interim contract until a
+matching versioned SDK/template release exists. It is still not a cloneable
+standalone dependency, and the new snapshot guidance needs an actual generated
+typed-fake test/exporter; the template currently refers to one but creates
+none. The implementation agent reports 49/49 CLI cases; this review inspected
+the new external build case but did not execute it or inspect retained output.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -325,14 +326,15 @@ bounded integer state, and direct invalidation. A human author can understand
 that code without framework internals. The failure is the surrounding product
 contract, not the C# example.
 
-The same `gbar new widget` command has two materially different outcomes. Under
-this repository it discovers `WidgetSdk.csproj` and generates a working
-`ProjectReference`. Anywhere else it silently references unpublished
-`GameBarAlternative.WidgetSdk` version `0.1.0-preview.1`, reports success, and
-prints a build command that cannot restore through the supported workflow.
-There is no explicit SDK path/version option. Tests execute only below this
-repository and assert the local-reference branch, so they cannot prove the
-distributed CLI experience.
+`gbar new widget` now resolves one explicit dependency contract. Under this
+repository it discovers `WidgetSdk.csproj`; elsewhere `--sdk-project` must name
+an existing non-reparse `WidgetSdk.csproj`. Resolution and MSBuild path escaping
+happen before output creation, and no unpublished package fallback remains. A
+focused test copies templates beneath an unrelated temporary root, proves the
+missing-SDK case leaves no target directory, supplies the exact SDK project,
+and successfully completes the generated project's Release build. It injects
+`GBAR_TEMPLATE_ROOT` and points back to the checkout SDK, so it proves the
+interim source override rather than a packaged CLI/feed or cloneable repository.
 
 The original generated README was internally incomplete: it asked `gbar render`
 to execute a DLL and then replayed the nonexistent output. The worktree now
@@ -340,15 +342,15 @@ uses the correct `gbar dev` path and explains that render is data-only. It still
 supplies a replay file but no typed-fake snapshot-export test or static
 snapshot, leaving the advertised deterministic replay loop incomplete.
 
-The framework should treat CLI, template, SDK package, compatibility contract,
-and generated README as one versioned deliverable. Before a public SDK exists,
-external scaffolding should fail early or require an explicit validated local
-SDK path. The production milestone is a clean-directory test that uses only the
-released CLI/feed, builds the generated project, executes every README command,
-validates and packages it, and leaves a standalone repository that another
-developer can clone and build. The generated source is already a credible human
-starter; publishing and testing the complete dependency/tooling loop is what
-turns it into a platform authoring experience.
+The framework should still treat CLI, template, SDK package, compatibility
+contract, and generated README as one versioned deliverable. The current
+explicit local-SDK path is truthful contributor tooling, not the production
+distribution model. The production milestone is a clean-directory test that
+uses only the released CLI/feed, builds the generated project, executes every
+README command, validates and packages it, and leaves a standalone repository
+that another developer can clone and build. The generated source is already a
+credible human starter; publishing and testing the complete dependency/tooling
+loop is what turns it into a platform authoring experience.
 
 ## Reassessment of GitHub sharing and package trust
 
@@ -359,8 +361,10 @@ exact SHA-256 pin. The CLI maps the shorthand to one named release asset,
 applies bounded HTTPS/redirect/size/time rules, validates the locked bytes, and
 installs the immutable version disabled. Updates cannot be published while the
 widget is enabled, selecting a version remains a separate disabled-only action,
-and replacement content receives a new digest-derived runtime authority instead
-of inheriting consent or secrets. These are strong foundations.
+and replacement content observed by catalog validation receives a new digest-
+derived runtime authority instead of inheriting consent or secrets. These are
+strong foundations; the later verified-byte-to-worker-load gap described below
+means `immutable` is not yet an atomic runtime guarantee.
 
 The workflow still asks too much of both authors and users. Authors have no
 supported public SDK package/template feed or signing command. They must arrange
@@ -374,15 +378,25 @@ the catalog does not retain a host-owned acquisition receipt.
 
 The exact-byte contract is rechecked at meaningful boundaries: catalog
 discovery recomputes the sealed content tree before enablement, and the bridge
-does so again before publishing runtime authority. One implementation detail
-still needs hardening before authors can rely on that workflow as fully
-resource-bounded. Installed manifest and integrity-metadata reads preflight
-pathname length before a separate unbounded `ReadAllBytes`, while the tree
-hasher totals initial stream lengths but reads to EOF without counting consumed
-bytes. Stable tampering fails closed, but concurrent growth/replacement can do
-work beyond the documented package ceilings. The catalog should reuse the
-maximum-plus-one, single-handle invariant now applied by `gbar render`, with
-deterministic growing/misreported-stream tests.
+does so again before publishing runtime authority. Two gaps still prevent
+authors from relying on that as an end-to-end exact-byte guarantee. Installed
+manifest and integrity-metadata reads preflight pathname length before a
+separate unbounded `ReadAllBytes`; both need the maximum-plus-one,
+single-handle invariant now used by `gbar render`. The tree hasher already opens
+content with write/delete sharing denied on Windows, so ordinary growth during
+one open stream is not the primary issue, although explicit consumed-byte and
+exact-length checks would make the invariant portable and auditable.
+
+More importantly, verification returns a digest and mutable package path. The
+bridge derives unsigned runtime authority from that digest, while the worker
+later loads the entry assembly and lazy dependencies by path. The 175 ms
+catalog watcher can retire a changed worker after detection, but it does not
+bind the loaded bytes to the verified digest. Public distribution needs a
+host-owned verified-content lease or protected immutable generation acquired
+at lazy launch and retained through the worker session. A test must pause after
+verification, replace content before launch, and prove the old authority can
+never execute it; a mutate-and-restore inside the watcher debounce must fail as
+well.
 
 The next author workflow should preserve the safe mechanics while reducing this
 trust ceremony. `gbar pack`/future `gbar publish` should emit one canonical
@@ -1042,8 +1056,8 @@ and fail-closed scenario selection with contract and safety tests.
    refusal state, per-widget resource visibility/remediation, optional reclaim
    only for unload-eligible workers, and bounded temporary critical-work
    leases.
-2. Make installed-tree verification authoritative over consumed bytes, add an
-   honest unsigned acquisition receipt, then publisher signing,
+2. Bind bounded installed-tree verification to the exact bytes loaded by each
+   worker session, add an honest unsigned acquisition receipt, then publisher signing,
    rotation/revocation, signed update metadata, and verified/unverified package
    states before public community distribution.
 3. Publish a language-neutral runtime and snapshot wire specification.
@@ -1084,10 +1098,11 @@ The improvements should be evaluated against measurable author outcomes:
 - Every generated README command is exercised by the release gate; the
   scaffold restores/builds through the supported SDK artifact and never emits
   an unavailable placeholder dependency or a rejected execution mode.
-- A GitHub-hosted widget can be packaged and acquired by exact immutable bytes;
-  before public distribution, Settings clearly distinguishes unsigned from
-  verified publishers, shows a bounded source/digest receipt and version
-  capability changes, and rejects invalid or revoked signatures.
+- A GitHub-hosted widget can be packaged and acquired by exact immutable bytes,
+  and every worker session loads only content held by the matching verified
+  digest authority; before public distribution, Settings clearly distinguishes
+  unsigned from verified publishers, shows a bounded source/digest receipt and
+  version capability changes, and rejects invalid or revoked signatures.
 - A long session has an enforced aggregate resident-process/memory envelope;
   ordinary scaffolded widgets unload after a documented idle bound, genuinely
   retained work uses an explicit bounded lease, and Settings attributes current
