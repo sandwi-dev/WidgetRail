@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded navigation, stable-ID scopes, protocol-v13 responsive focus persistence, one responsive navigation recipe, data-only snapshot inspection, and bounded scenario-manifest listing implemented; isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, and data-only inspection are implemented; a buildable standalone scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against the current worktree after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` scenario contract, and unsigned package-trust plus aggregate worker-residency audits<br>
+Reassessed: 2026-08-09 against current HEAD after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` contract, and standalone-scaffold, package-trust, aggregate-residency, and installed-tree byte-bound audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -82,6 +82,18 @@ The broader tradeoff is an explicit tooling gap: there is no headless isolated
 command that turns widget/scenario code into a snapshot. Authors must currently
 add an author-controlled typed-fake test to persist `SnapshotJson` or use the
 interactive overlay path.
+
+The scaffold is currently a repository-contributor convenience, not a
+standalone community authoring product. Inside this checkout, `gbar new widget`
+finds `WidgetSdk.csproj` and emits a working source reference. Outside it, the
+same successful command emits an unpublished `0.1.0-preview.1` package
+reference and tells the author to build. The generated README has also drifted:
+the current worktree replaces its rejected DLL render command with `gbar dev`
+and teaches bounded idle unload rather than keep-alive. Until a matching
+versioned SDK/template release exists, however, the CLI should fail early or
+require an explicit local SDK path rather than generating a knowingly broken
+project. Its new snapshot guidance also needs an actual generated typed-fake
+test/exporter; the template currently refers to one but creates none.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -305,6 +317,39 @@ capture. Canonical documentation snippets should generate fixtures through the
 same public test/scenario API instead of embedding one-off serialization code
 in every sample.
 
+## Reassessment of standalone repository scaffolding
+
+The generated source itself is readable and appropriately small: one `Widget`
+subclass, stable semantic IDs, a three-button focus graph, typed shortcuts, a
+bounded integer state, and direct invalidation. A human author can understand
+that code without framework internals. The failure is the surrounding product
+contract, not the C# example.
+
+The same `gbar new widget` command has two materially different outcomes. Under
+this repository it discovers `WidgetSdk.csproj` and generates a working
+`ProjectReference`. Anywhere else it silently references unpublished
+`GameBarAlternative.WidgetSdk` version `0.1.0-preview.1`, reports success, and
+prints a build command that cannot restore through the supported workflow.
+There is no explicit SDK path/version option. Tests execute only below this
+repository and assert the local-reference branch, so they cannot prove the
+distributed CLI experience.
+
+The original generated README was internally incomplete: it asked `gbar render`
+to execute a DLL and then replayed the nonexistent output. The worktree now
+uses the correct `gbar dev` path and explains that render is data-only. It still
+supplies a replay file but no typed-fake snapshot-export test or static
+snapshot, leaving the advertised deterministic replay loop incomplete.
+
+The framework should treat CLI, template, SDK package, compatibility contract,
+and generated README as one versioned deliverable. Before a public SDK exists,
+external scaffolding should fail early or require an explicit validated local
+SDK path. The production milestone is a clean-directory test that uses only the
+released CLI/feed, builds the generated project, executes every README command,
+validates and packages it, and leaves a standalone repository that another
+developer can clone and build. The generated source is already a credible human
+starter; publishing and testing the complete dependency/tooling loop is what
+turns it into a platform authoring experience.
+
 ## Reassessment of GitHub sharing and package trust
 
 The current workflow is a credible developer-preview distribution path, not a
@@ -320,12 +365,24 @@ of inheriting consent or secrets. These are strong foundations.
 The workflow still asks too much of both authors and users. Authors have no
 supported public SDK package/template feed or signing command. They must arrange
 an independent authenticated channel for the digest and explain why a GitHub
-release plus a matching hash does not prove authorship. The current Settings
-worktree now gives users an honest **Unsigned · publisher unverified** state,
+release plus a matching hash does not prove authorship. Current HEAD now gives
+Settings users an honest **Unsigned · publisher unverified** state,
 the full sealed content digest, **Enable unsigned widget** copy, digest prefixes
 for version selection, and digest-bound permission language. It still cannot
 show the acquisition source, a verified signer, or a version capability delta;
 the catalog does not retain a host-owned acquisition receipt.
+
+The exact-byte contract is rechecked at meaningful boundaries: catalog
+discovery recomputes the sealed content tree before enablement, and the bridge
+does so again before publishing runtime authority. One implementation detail
+still needs hardening before authors can rely on that workflow as fully
+resource-bounded. Installed manifest and integrity-metadata reads preflight
+pathname length before a separate unbounded `ReadAllBytes`, while the tree
+hasher totals initial stream lengths but reads to EOF without counting consumed
+bytes. Stable tampering fails closed, but concurrent growth/replacement can do
+work beyond the documented package ceilings. The catalog should reuse the
+maximum-plus-one, single-handle invariant now applied by `gbar render`, with
+deterministic growing/misreported-stream tests.
 
 The next author workflow should preserve the safe mechanics while reducing this
 trust ceremony. `gbar pack`/future `gbar publish` should emit one canonical
@@ -342,28 +399,49 @@ must not imply that AppContainer containment verifies the author.
 ## Reassessment of residency defaults and ecosystem cost
 
 The framework makes an individual worker's resource request explicit and
-enforces it with a one-process Job, but it does not yet make the safe choice
-easy at ecosystem scale. A catalog may expose 256 widgets, and each widget
-first used under the default `keep-alive` policy can remain a separate resident
-process. The bridge reports the running count but owns no aggregate admission
-budget. Settings exposes the declared residency as text, not measured cost or
-a user override. Existing performance evidence covers one selected worker, not
-the accumulation pattern a community widget platform creates.
+enforces it with a one-process Job. The current worktree now also reserves a
+default application envelope of eight workers and 512 MiB of summed declared
+Job limits before lazy launch. One exact trusted Settings worker is separately
+bounded/accounted so a full application budget cannot hide the control plane.
+This is a substantial improvement, but Settings still exposes neither
+per-widget measured cost nor budget ownership/remediation, and existing
+performance evidence covers one selected worker rather than ecosystem-scale
+accumulation.
 
-This is partly an authoring-design problem. The controller-widget template and
-Clock sample explicitly choose `keep-alive`, even though most simple widgets
-have no continuous Background obligation. `suspend-when-hidden` stops
-presentation/capability work cooperatively but still retains the process; only
-bounded idle unload constrains long-session process accumulation. Conversely,
-Spotify currently needs keep-alive to preserve one temporary authorization
-operation, demonstrating that residency is too coarse a substitute for a
+The current worktree also repairs the ordinary authoring default. The
+controller-widget template and Clock sample now choose five-minute
+`unload-after-idle` and teach reconstruction from durable state. The protocol
+retains `keep-alive` as its compatibility default, while authors must choose it
+explicitly when continuous Background state is a real requirement. Conversely,
+Spotify still needs keep-alive to preserve one temporary authorization
+operation, demonstrating that residency remains too coarse a substitute for a
 bounded critical-work lease.
 
-The recommended path is to keep residency explicit while adding host-owned
-aggregate admission. New ordinary templates should choose a modest bounded
-idle-unload policy and teach persistence/restart behavior; `keep-alive` should
-require a documented reason and surface its continuing cost during package
-review. The runtime should offer a bounded, lifecycle-visible lease for rare
+The host-owned admission now has exact lifetime ownership: the runtime acquires
+a lease immediately before process creation and releases it only when that
+exact process exits or its pipe/process/Job session is detached. Direct runtime
+tests now cover pre-launch denial plus exact release across crash/relaunch and
+cooperative stop; current bridge tests cover normal crash, timeout, and idle
+unload. Remaining fault injection includes connection/protocol/companion
+failure, live-process pipe disconnect, disable/removal, catalog replacement,
+and bridge shutdown. The remaining product path is to make the user contract
+complete.
+
+Today a capacity refusal is flattened to generic `request_failed` plus message,
+and the native client drops the code. An open widget without a snapshot can
+therefore remain on `Starting isolated ...`: its four-second failure text is
+used by the tray hint, not the in-widget footer. Settings remains reachable and
+shows aggregate application worker and declared-memory totals, but it lists
+worker identities only for recorded failures; a pre-launch capacity denial is
+correctly not recorded as one. Authors and users consequently cannot tell who
+owns the budget or reach the relevant unload/disable action from the refusal.
+This needs a typed, bounded admission result, a persistent controller-facing
+error state, and Settings attribution of each reservation and its residency and
+remediation eligibility.
+
+`keep-alive` should surface its
+continuing cost during package review. The runtime should offer a bounded,
+lifecycle-visible lease for rare
 temporary work that genuinely must survive Background, or move that work into
 the responsible broker. A supervisor budget may reclaim only widgets that
 explicitly opted into unloading; it should never silently reinterpret
@@ -945,24 +1023,27 @@ and the SDK Gallery production-style migration.
 Completed foundation: strict bounded scenario manifests, assembly-free listing,
 and fail-closed scenario selection with contract and safety tests.
 
-1. Move scenario assembly execution into a dedicated production-equivalent
+1. Publish a matching versioned SDK/template set and prove `gbar new` through
+   build, supported preview, replay, validation, and packaging from a clean
+   directory outside this repository.
+2. Move scenario assembly execution into a dedicated production-equivalent
    AppContainer/Job/IPC process boundary.
-2. Real-widget scenarios with typed fake services, lifecycle, and actions.
-3. Viewport-aware native preview, capture, and controller replay.
-4. Fluent deterministic test harness.
-5. Compile-test the canonical copyable guide and quickstart examples against
+3. Real-widget scenarios with typed fake services, lifecycle, and actions.
+4. Viewport-aware native preview, capture, and controller replay.
+5. Fluent deterministic test harness.
+6. Compile-test the canonical copyable guide and quickstart examples against
    the public SDK; the corrected glyph and protocol-matrix regressions
    demonstrate why prose-only checks are insufficient.
-6. Complexity-tiered templates.
-7. Publish the SDK and templates so authors do not require a repository-local
-   project reference.
+7. Complexity-tiered templates.
 
 ### Phase 4: broaden the ecosystem carefully
 
-1. Add supervisor-owned aggregate resident-process/memory admission, an
-   unload-eligible default template, per-widget resource visibility, and
-   bounded temporary critical-work leases.
-2. Add an honest unsigned acquisition receipt, then publisher signing,
+1. Finish supervisor-owned aggregate residency with a typed controller-facing
+   refusal state, per-widget resource visibility/remediation, optional reclaim
+   only for unload-eligible workers, and bounded temporary critical-work
+   leases.
+2. Make installed-tree verification authoritative over consumed bytes, add an
+   honest unsigned acquisition receipt, then publisher signing,
    rotation/revocation, signed update metadata, and verified/unverified package
    states before public community distribution.
 3. Publish a language-neutral runtime and snapshot wire specification.
@@ -976,7 +1057,9 @@ and fail-closed scenario selection with contract and safety tests.
 
 The improvements should be evaluated against measurable author outcomes:
 
-- A C# developer can scaffold and run a basic widget in 15 minutes.
+- A C# developer can scaffold and run a basic widget in 15 minutes from an
+  unrelated empty directory using only released prerequisites, without a
+  platform source checkout or manual project-file repair.
 - A one-capability data widget requires no author-created `SemaphoreSlim`,
   `CancellationTokenSource`, or unobserved `Task` field.
 - Latest-wins work cannot commit success, retry status, authorization state, or
@@ -998,6 +1081,9 @@ The improvements should be evaluated against measurable author outcomes:
   listed without loading code, but semantic execution remains unavailable until
   the isolated preview worker exists. Real-widget interaction and native visual
   capture also remain open.
+- Every generated README command is exercised by the release gate; the
+  scaffold restores/builds through the supported SDK artifact and never emits
+  an unavailable placeholder dependency or a rejected execution mode.
 - A GitHub-hosted widget can be packaged and acquired by exact immutable bytes;
   before public distribution, Settings clearly distinguishes unsigned from
   verified publishers, shows a bounded source/digest receipt and version

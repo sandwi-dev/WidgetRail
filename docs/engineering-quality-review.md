@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after all CLI author-code inspection paths became data-only, responsive focus reconciliation left the paint path, and the unsigned package-trust and aggregate worker-residency boundaries were audited<br>
+Last reassessed: 2026-08-09 after all CLI author-code inspection paths became data-only, responsive focus reconciliation left the paint path, and package trust, aggregate residency, installed-tree byte bounds, and standalone scaffolding were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -19,11 +19,21 @@ separated from targets; and the recent SDK work is replacing repeated task,
 cancellation, paging, state, navigation, and command plumbing with explicit
 public abstractions.
 
-The strongest concrete improvement since the previous audit is that all CLI
-inspection paths are now data-only. `gbar render` rejects DLL input before type
-resolution or output handling, while `gbar preview` lists bounded declarations
-without resolving the provider assembly and fails selected execution closed
-until a forcibly terminable isolated worker exists.
+The strongest concrete improvement since the previous audit is the exact
+runtime-owned worker lease. Aggregate count and declared-memory admission no
+longer depends on a pipe-derived `IsRunning` sample, and one separately bounded
+Settings worker remains available when application capacity is full. The new
+runtime tests directly exercise pre-launch denial and exact release across a
+crash/relaunch and cooperative stop, although this review did not execute them.
+
+The public authoring entry point is not yet a coherent shipped product.
+`gbar new widget` succeeds outside this checkout by emitting a reference to an
+unpublished placeholder SDK package and then instructs the author to build it.
+The current worktree fixes the generated DLL-render command and changes the
+starter to bounded idle unload, but it refers snapshot export to typed-fake
+tests the template does not generate. Repository-local tests exercise only the
+source-project-reference branch, so the broken standalone-repository path is
+still not visible to the gate.
 
 The current worktree closes the remaining CLI author-code bypass: `gbar render`
 now accepts only bounded snapshot JSON, and DLL input fails closed before type
@@ -38,20 +48,24 @@ Release verifier all pass on the current worktree; this review did not rerun
 them or inspect a retained machine-readable result.
 
 A separate public-distribution blocker is the incomplete publisher/provenance
-model. The current Settings worktree now makes the immediate decision honest:
+model. Current HEAD now makes the immediate Settings decision honest:
 it labels Community packages unsigned, identifies the manifest publisher as
 unverified, shows the sealed digest, and binds enablement/consent language to
 those exact content bytes. It still cannot show a host-owned acquisition
 receipt, verified signer, rotation, or revocation because those models do not
 exist yet.
 
-The lightweight-while-gaming requirement also lacks a system-wide worker
-envelope. Each worker has a strong independent Job memory/process limit, but a
-catalog may contain 256 widgets and every first-used `keep-alive` worker can
-remain resident. The bridge has no aggregate resident-count or memory admission
-budget, and the product has neither the promised per-widget resource surface
-nor a user residency override. The one retained local baseline exercises a
-single selected worker, so it cannot characterize the ecosystem-scale cost.
+The current worktree now adds a system-wide application-worker admission
+envelope on top of the independent Jobs: eight workers and 512 MiB of declared
+Job limits by default, plus one separately accounted trusted Settings control
+plane. The follow-up correctly moves reservation lifetime into an exact runtime
+process lease instead of sampling pipe-based `IsRunning`, and adds narrow direct
+runtime lease tests. EQ-013 remains partial because that evidence is
+implementation-reported and does not cover several fault paths, while capacity
+refusal is still flattened to a generic bridge error and can leave the native
+panel saying `Starting isolated ...` without an in-widget explanation or
+controller remediation. No bounded critical-work lease exists, and the
+retained baseline still exercises only one selected worker.
 
 The YT Music operation-lane migration removes a substantial amount of manual
 lifecycle machinery. The current worktree also closes its stale-failure gap:
@@ -109,14 +123,37 @@ content digest, binds consent copy to that digest, and says **Enable unsigned
 widget**. Host-owned acquisition receipts, signatures, signer rotation, and
 revocation remain open under EQ-011.
 
-The performance rotation found that the existing worker bound is local rather
-than global. `BridgeCatalog` accepts as many as 256 widgets, each may request
-16–256 MiB, and `WidgetBridgeServer` lazily retains one independently Job-bound
-client per accessed widget. `keep-alive` is the default and has no inferred
-eviction. This is internally consistent, but without supervisor admission,
-aggregate telemetry, or a user override it permits a session's resident process
-footprint to grow with every keep-alive widget used. EQ-013 records the design
-and proof needed before community-scale performance claims are credible.
+The implementation agent has advanced EQ-013. `WidgetProcessClient` now acquires
+a host-owned residency lease immediately before process creation and disposes
+it when that exact process exits or its pipe/process/Job session is detached.
+`WorkerResidencyBudget` defaults to 8/512 MiB, refuses application overcommit,
+and keeps one exact trusted Settings worker separately accounted so capacity
+pressure cannot remove the control plane. Focused tests cover concurrent N+1
+admission, count and memory refusal, one natural crash, and Settings admission.
+Direct runtime tests now prove pre-launch admission denial and exact lease
+release across a natural crash/relaunch and cooperative stop. Bridge tests cover
+timeout and idle-unload release/reacquisition. Failed connection,
+invalid-protocol/snapshot, companion failure, a disconnected pipe while its
+process remains live, disable/removal, catalog replacement, and shutdown still
+lack direct lease accounting proof. Per-widget UI/remediation,
+eligible-worker reclaim/override, critical-work leases, and multi-widget
+measurements remain open.
+
+The follow-up exact-byte audit confirmed that enablement and bridge publication
+both recompute the sealed tree digest, but found three mutable-file read paths
+that do not bind work to bytes actually consumed. Manifest and integrity
+metadata preflight one path handle and then call `ReadAllBytes` on another;
+the content-tree hasher accounts initial stream lengths but reads each stream to
+EOF without enforcing those limits. EQ-014 keeps this distinct from the sound
+digest/authority design.
+
+The authoring rotation found that the generator is not a shipped external
+contract. The repository-local scaffold builds through a source
+`ProjectReference`, but an installed CLI outside the checkout emits an
+unavailable preview `PackageReference`. The current worktree corrects its stale
+DLL-render command and keep-alive default; it does not publish/resolve the SDK
+or provide the typed-fake snapshot exporter the README now references. EQ-015
+tracks the remaining versioned external-developer contract.
 
 ## Verification snapshot
 
@@ -134,7 +171,7 @@ are:
 | Declarative Renderer | 4,632 checks passed |
 | Widget bridge catalog | passed |
 | OverlayHost Release target | built successfully |
-| Full `scripts/Verify.ps1 -Configuration Release` | passed end to end in 279.8 seconds |
+| Full `scripts/Verify.ps1 -Configuration Release` | passed end to end in 275.1 seconds |
 
 The implementation agent reports that the full verifier additionally exercised
 the managed, protocol, capability,
@@ -151,6 +188,16 @@ The retained performance baseline is one dirty-worktree run with one selected
 Settings worker and only 31 observations per state; it does not measure
 multi-widget accumulation, scheduler wakeups, GPU/game-frame impact, controller
 latency, or long-run churn.
+The unsigned-review Settings changes are committed, but their focused 41/41
+result remains implementation-reported and the prior full-verifier claim
+predates them.
+The residency-budget source and tests are uncommitted and were not executed by
+this review. The implementation agent reports 36/36 runtime and 40/40 bridge
+cases; the new direct lease cases were code-inspected, but no retained result
+was inspected.
+The scaffold README/residency changes are also uncommitted; the added CLI test
+checks idle-unload metadata only, not an outside-repository build or README
+command execution.
 
 ## Prioritized findings
 
@@ -196,7 +243,7 @@ work to `gbar dev` and reserve `gbar render` for bounded data.
 
 ### EQ-011 — P1 — Unsigned packages lack acquisition provenance and signed publisher identity
 
-**Status: Partially resolved. Honest digest-bound unsigned review is implemented; provenance and signed publisher trust remain open.**
+**Status: Partially resolved in current HEAD. Honest digest-bound unsigned review is implemented; provenance and signed publisher trust remain open.**
 
 **Evidence.** `InstallCommand` requires `--sha256` for HTTPS/GitHub packages,
 the downloader applies bounded HTTPS/redirect/size/time rules, and installation
@@ -209,7 +256,7 @@ strong integrity and containment properties.
 
 They do not establish author identity. `WidgetPackageInstaller` only verifies
 that a manifest ID falls within its manifest-declared publisher namespace. The
-current worktree corrects the immediate UX: `InstalledWidgetsSection` renders
+current HEAD corrects the immediate UX: `InstalledWidgetsSection` renders
 **Trust: Unsigned · publisher unverified**, labels the publisher as a manifest
 claim, shows the full `InstalledWidgetVersion.ContentDigest`, and uses **Enable
 unsigned widget** with exact-byte/capability review copy. Version rows add a
@@ -272,31 +319,56 @@ and offline cases. An end-to-end release must demonstrate that a compromised or
 replacement package cannot inherit enablement, consent, configuration secrets,
 or update authority merely by reusing the manifest publisher and package ID.
 
-### EQ-013 — P1 — Per-worker containment does not bound aggregate resident cost
+### EQ-013 — P1 — Aggregate worker residency needs a verified process-lease and refusal contract
 
-**Status: Open; the single-worker bounds are strong, but the supervisor has no
-system-wide residency budget.**
+**Status: Architecturally implemented with focused direct coverage in the
+current worktree; retained execution evidence, an actionable controller
+refusal path, critical-work leases, and ecosystem-scale proof remain open.**
 
-**Evidence.** `BridgeCatalog.Load` accepts up to 256 configured widgets and
-allows each manifest to request 16–256 MiB. `WidgetBridgeServer` owns a
-`ConcurrentDictionary<string, ClientRegistration>` and lazily creates one
-`WidgetProcessClient` with one independent memory-bounded Job for each accessed
-widget. `RunningWorkerCount` reports the result but is not consulted by an
-admission policy. Under the documented default `keep-alive` residency, a
-launched Background process has no inferred eviction; there is no aggregate
-resident-count, committed-memory, or working-set ceiling and no Settings user
-override. The scaffold template and simple Clock sample both select
-`keep-alive`, while Spotify needs it to preserve its current in-flight OAuth
-implementation.
+**Implementation evidence.** The new `WorkerResidencyBudget` owns one locked,
+reference-identity reservation table. Application workers default to a maximum
+of eight registrations and 512 MiB summed from their declared per-Job limits;
+bounded bridge arguments may configure 1–256 workers and 16–16,384 MiB. One
+exact trusted Settings identity bypasses the application ceiling but is
+separately limited and reported as a single control-plane reservation, making
+the total default envelope application budget plus at most one 16–256 MiB
+Settings Job.
 
-The Jobs correctly limit each process tree, but the maximum catalog and
-per-worker ceilings compose to a theoretical 64 GiB policy envelope. That is
-not a claim that workers reserve or will consume 64 GiB; it demonstrates that
-the current limits do not express a useful product-wide bound. Current bridge
-tests assert only zero/one running-worker transitions. The retained performance
-baseline samples one selected Settings worker, and `performance.md` explicitly
-lists multi-widget cost, long-run memory, wakeups, GPU/game impact, and the
-per-widget performance UI as missing evidence.
+The runtime now owns reservation lifetime rather than the bridge sampling
+process state. `WidgetProcessOptions.ProcessLeaseFactory` is invoked inside the
+serialized lifecycle gate immediately before session resource creation. The
+returned lease is released by `OnProcessExited` only after actual process exit,
+or exchanged once and disposed by `DisposeSessionAsync` after pipe, process,
+and Job detachment. This no longer treats a disconnected pipe as released
+capacity and makes the exit/disposal race idempotent. Admission failure has a
+distinct exception and cleans up the inert session. Aggregate totals appear in
+bridge diagnostics. The controller scaffold and Clock sample now select five-
+minute idle unload.
+
+Focused tests prove concurrent N+1 count admission, declared-memory refusal,
+bounded option parsing, normal-crash release, request-timeout release,
+idle-unload release and reacquisition, and access to Settings under exhausted
+application capacity. Direct runtime cases prove that admission denial remains
+pre-launch and does not publish a worker failure, then inject a lease and prove
+one acquisition/release for a natural crash, restart, and cooperative stop.
+The implementation agent reports 36/36 runtime and 40/40 bridge cases; this
+review did not execute them or inspect a retained result.
+
+The refusal is not yet a usable UI contract. `WidgetBridgeServer.RunAsync`
+maps every non-cancellation request exception, including
+`WidgetProcessAdmissionException`, to `BridgeError("request_failed", message)`.
+The native `SafeBridgeError` discards even that generic code and retains only a
+bounded message. `SyncWidgetActivity` writes lifecycle failure to the diagnostic
+log; `RefreshWidgetSnapshot` stores a four-second `lastActionMessage_`, but
+`DrawWidgetFooter` shows that message only while focus is in the tray. An open
+widget with no snapshot therefore continues rendering `Starting isolated ...`
+rather than a persistent capacity state. Settings keeps the control plane
+reachable and shows aggregate worker/memory totals in the Bridge summary, but
+its worker section renders names only for recorded failures. Because admission
+denial is deliberately not a worker failure, it identifies neither the denied
+widget nor the resident owners. Installed community widgets can be disabled on
+a separate details page; built-in widgets explicitly cannot, and neither route
+is connected to the capacity refusal.
 
 **Why it matters.** A user exploring community widgets can accumulate resident
 .NET processes during a gaming session even when every individual package
@@ -306,22 +378,26 @@ Per-widget containment prevents one process tree from escaping its ceiling; it
 does not protect the game's system-wide resource headroom or make the product's
 “lightweight” promise true at ecosystem scale.
 
-**Underlying problem.** Semantic residency and resource admission are treated
-as the same decision. A manifest says whether its state may survive Background,
-but no host-owned supervisor decides how many such promises the machine can
-honor concurrently. Resource requests are validated individually, while
-measured usage, catalog scale, user preference, and temporary critical work do
-not meet in one ownership boundary.
+**Underlying problem.** Admission and exact process-session ownership now meet
+in the host-owned supervisor/runtime boundary, but typed admission reason,
+presentation state, resource attribution, and recovery action do not cross that
+boundary together. Measured usage, per-widget user remediation, preference,
+and temporary critical work therefore remain disconnected pieces rather than a
+complete product contract.
 
-**Recommended direction.** Give the bridge/runtime supervisor an explicit,
-configurable aggregate resident-worker budget covering process count and
-accounted Job memory, with observable reasons for admission and refusal. Keep
-manifest residency semantics deterministic: never silently terminate a
-`keep-alive` worker because of an opaque heuristic. When capacity is
-unavailable, reclaim only explicitly unload-eligible least-recent workers, or
-refuse/defer a new launch and let Settings explain which resident widgets own
-the budget. Disabling, removal, crash exhaustion, and catalog replacement must
-release accounting exactly once.
+**Recommended direction.** Preserve the explicit conservative count, summed
+Job-limit admission, and process-session lease. Extend direct fault injection
+across the remaining terminal paths. When capacity is unavailable,
+reclaim only explicitly unload-eligible least-recent workers, or retain the
+current refusal and let Settings explain which resident widgets own the budget.
+Give admission failures a stable safe protocol code and bounded structured
+details (count versus declared-memory pressure, current/maximum totals, and the
+requested widget), not a message that native code must parse. The host should
+render a persistent error state with Retry and Open resource management actions.
+Settings should attribute reservations to sanitized widget names, declared Job
+limits, residency policy, and unload/disable eligibility, then release or
+disable only through the supervisor/catalog owners. Never silently reinterpret
+`keep-alive`.
 
 Make the least-cost authoring path explicit as well. Ordinary scaffolded
 widgets should use a bounded idle-unload policy unless they declare and explain
@@ -340,17 +416,101 @@ choice actionable. Cached snapshots, durable private state, bounded temporary
 leases, author-declared idle eligibility, and user pinning/overrides provide
 more predictable control than memory-pressure eviction.
 
-**Resolution evidence.** Deterministic supervisor tests should launch several
-workers concurrently and prove admission at the exact process/memory boundary,
-race-safe refusal, reclaim of only eligible workers, foreground protection,
-and exact release after unload/disable/remove/crash/catalog replacement. Tests
-must prove `keep-alive` is never silently evicted and that temporary leases
-expire on success, failure, cancellation, and bridge shutdown. Retained clean
+**Resolution evidence.** The implementation agent reports Release
+`WidgetRuntime.Tests` at 36/36 and `WidgetBridge.Tests` at 40/40. Extend the
+current supervisor/runtime tests with
+invalid-snapshot, failed-connection, companion-
+failure, disable/remove, restart, catalog-replacement, cancellation, and bridge-
+shutdown accounting. Delay process exit in failure fixtures so release cannot
+accidentally pass through timing. Prove each session reserves/releases exactly
+once, Settings remains reachable, and `keep-alive` is never silently evicted.
+Add a native contract test for opening a widget against a full count and memory
+budget: the panel must leave its starting state, preserve a typed reason, offer
+a controller-reachable recovery path, and retry successfully after an eligible
+owner is released. Add Settings rendering/action tests that attribute every
+reservation, distinguish non-reclaimable owners, and do not rely on a denied
+launch appearing in the worker-failure list.
+Retained clean
 measurements should compare 1, 8, and a higher bounded number of mixed-policy
 widgets across launch, Background, reopen, and long churn, including aggregate
 private working set, CPU, wakeups, handles, threads, GPU/game-frame impact, and
 latency. The controller performance surface and user override require packaged
 visual and interaction evidence.
+
+### EQ-015 — P1 — The generated widget is not a buildable standalone developer contract
+
+**Status: Partially implemented in the current worktree. Generated executable
+instructions and residency are improved; the installed/external build contract
+remains nonfunctional.**
+
+**Evidence.** `NewCommand.BuildSdkReference` searches parent directories for
+`src/WidgetSdk/WidgetSdk.csproj`. If it cannot find the source checkout, it
+silently emits `<PackageReference Include="GameBarAlternative.WidgetSdk"
+Version="0.1.0-preview.1" />`, returns success, and prints `Next: dotnet build`.
+The quickstart, authoring guide, publishing guide, troubleshooting guide, and
+CLI README all state that no supported public SDK package currently exists.
+There is no `--sdk-project` input or resolution check that could make the
+fallback honest.
+
+The current worktree corrects two immediate template defects. The generated
+README now uses `gbar dev` for executable integration and accurately says
+`gbar render` consumes snapshot JSON only. The manifest and Clock sample switch
+from permanent `keep-alive` to `unload-after-idle` at 300 seconds, and the CLI
+test asserts that residency metadata. However, the README tells authors to
+export fixtures from “this project's typed-fake tests” while the template
+contains no test project, exporter, or static snapshot, so its subsequent
+`gbar replay` path still has no generated input. The scaffold test runs under
+this source tree, asserts only the local `ProjectReference`, and never restores,
+builds, or executes README commands from an unrelated directory.
+
+**Why it matters.** A new author using a distributed CLI receives a successful
+scaffold followed by a guaranteed restore/build failure and obsolete preview
+instructions. Standalone GitHub repositories—the intended sharing unit—cannot
+consume the SDK through a supported dependency. Developers must discover the
+source layout, manually rewrite MSBuild, and invent a snapshot-export path,
+which is exactly the hacky framework-internals workflow this platform is meant
+to eliminate. It also makes the 15-minute starter success metric impossible to
+claim outside the product repository.
+
+**Underlying problem.** The generator is tested as repository file templating,
+not as a versioned product spanning the CLI, template, SDK artifact, runtime
+contract, and copyable commands. The placeholder package reference masks a
+missing distribution dependency instead of making that prerequisite explicit,
+while generated documentation is outside the executable documentation checks.
+
+**Recommended direction.** Treat the CLI, template, SDK/runtime packages, and
+compatibility range as one release set. The production endpoint is a supported,
+immutable NuGet SDK/runtime release plus a template that pins a compatible
+version and can be restored from a clean machine without the platform source.
+Until that artifact exists, fail scaffolding outside a discoverable checkout
+with an actionable message, or require an explicit validated
+`--sdk-project <path>` development override; do not create a project known not
+to build.
+
+Keep the corrected `gbar dev` and idle-unload defaults. Add a real generated
+typed-fake test/exporter or a validated static snapshot so the documented
+data-only render/replay path is executable until the isolated scenario worker
+exists. Keep advanced focus/shortcut examples, but make the first README path
+the smallest complete build-run-test-package loop.
+
+**Tradeoff.** Failing outside the checkout temporarily exposes an unfinished
+product instead of appearing convenient, but it prevents hours of misleading
+restore troubleshooting. Publishing packages creates versioning, symbol/source,
+provenance, and support obligations; vendoring SDK binaries into each scaffold
+avoids a feed but produces opaque duplication and unsafe upgrade mechanics.
+An explicit local project override is useful for platform contributors, but it
+must not become the documented community distribution model.
+
+**Resolution evidence.** Run a release test from a temporary directory with no
+repository ancestor and no `GBAR_TEMPLATE_ROOT`: invoke the packaged CLI,
+scaffold, restore/build with only declared prerequisites, validate, run the
+generated deterministic tests/replay, package, and inspect the result. Execute
+or mechanically verify every command in the generated README, including the
+data-only snapshot handoff. Add a negative test proving an unavailable SDK
+fails during scaffolding with no partial directory rather than later in
+`dotnet restore`. Verify the emitted package/template versions match the host
+compatibility contract, and retain an external sample repository or immutable
+CI artifact as the public proof.
 
 ### EQ-002 — P1 — Responsive focus identity required an explicit contract
 
@@ -690,6 +850,75 @@ pre-existing output on DLL, option, and byte-bound failures. The ordinary valid
 snapshot path remains green. The deterministic stream seam exercises the
 resource invariant without scheduler-sensitive file-replacement sleeps.
 
+### EQ-014 — P2 — Installed-tree integrity reads are not bounded by consumed bytes
+
+**Status: Open. The digest is recomputed at the right authority boundaries,
+but mutable-file reads can exceed their validated resource limits.**
+
+**Evidence.** `WidgetCatalog.DiscoverInstalledVersions` runs before
+`SetEnabledAsync` mutates enabled state, and `BridgeCatalog.LoadWithInstalledAsync`
+runs it again before publishing runtime authority. That correctly ensures the
+digest shown in Settings is not merely trusted catalog metadata.
+
+The byte-bound implementation is inconsistent with that strong design.
+`WidgetCatalogService` checks `new FileInfo(manifestPath).Length` and then calls
+`File.ReadAllBytes(manifestPath)` through a second open. `InstalledPackageIntegrity.Verify`
+does the same for the 4 KiB host metadata file. Its content-tree `Compute`
+method opens each content file, validates and totals `input.Length`, writes that
+initial length into the hash, and then reads until EOF without counting actual
+bytes or proving they equal the encoded length. The installer's archive
+extraction and `gbar pack` source capture already use authoritative
+consumed-byte counters, and `RenderCommand` just adopted a maximum-plus-one
+stream reader for the same invariant.
+
+An ordinary stable tamper is correctly rejected, and existing tests prove that
+the monitor retires a live worker. They do not cover path replacement between
+metadata preflight and open, or a share-compatible writer that grows a file
+after the verifier has observed its length. In those cases manifest/metadata
+reads can allocate beyond their ceiling, while the tree verifier can hash
+unbounded input or never reach EOF. It will normally reject the eventual digest
+if the writer stops; fail-closed identity does not make the intervening CPU,
+I/O, allocation, or liveness unbounded work acceptable.
+
+**Why it matters.** Settings discovery, enablement, catalog monitoring, and
+bridge publication all traverse the installed tree. A corrupted or concurrently
+modified package can therefore turn a bounded integrity check into host memory
+pressure, prolonged bridge reload, or process failure. The AppContainer receives
+only read access, so this is not a direct authority escalation by a running
+widget; it is a robustness flaw at the host-owned package boundary and weakens
+the product's stated bounded-input discipline.
+
+**Underlying problem.** Limits are sometimes attached to pathname metadata or
+an initial stream observation rather than to one opened object and the bytes
+actually consumed from it. Similar code has been corrected independently in
+the CLI, but the catalog has no single internal primitive expressing bounded,
+stable file consumption for manifests, integrity metadata, and tree hashing.
+
+**Recommended direction.** Open each installed file once with restrictive
+sharing and make the read loop authoritative. Manifest and integrity metadata
+should read at most their limit plus one detection byte before deserialization.
+Tree hashing should enforce both the per-file and remaining aggregate ceilings
+on actual bytes, encode the actual accepted length, and reject a stream that
+ends early or yields one byte beyond the stable expected length. A small
+catalog-internal bounded-reader/digest primitive is justified because these
+three security-sensitive callers need identical semantics; do not broaden it
+into a generic public I/O abstraction.
+
+**Tradeoff.** Restrictive sharing may transiently report an installed package
+unavailable while another process holds a write/delete handle. That is safer
+and easier to explain than reviewing moving bytes. Buffering every package file
+would simplify length stability but needlessly raises peak memory; bounded
+streaming with a small reusable buffer preserves the current footprint.
+
+**Resolution evidence.** Add deterministic stream-level regressions for
+misreported short length plus limit-plus-one content, early EOF, growth, and
+aggregate overflow, plus Windows path/handle tests using a pre-opened
+share-compatible writer rather than scheduler sleeps. Prove oversized manifest
+and integrity metadata fail with stable package error codes before allocation
+or state mutation; enablement remains disabled; bridge reload fails soft to
+trusted widgets; and no partial digest becomes a consent/runtime authority.
+Retain the existing stable-tamper and live-worker-retirement cases.
+
 ### EQ-008 — P2 — Focus persistence was scheduled from the steady paint path
 
 **Status: Architecturally resolved in the current worktree; targeted performance and scheduling verification remain.**
@@ -767,26 +996,26 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current Settings worktree honestly labels unsigned content | Clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD honestly labels unsigned content | Consumed-byte-bounded installed-tree verification; clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
 | SDK lifecycle/coordination | Latest-wins currency now covers YT Music success and failure commits | Broader advanced-widget adoption and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest migration removes manual lifetime machinery and rejects stale failure commits | Real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Capable but still highly complex | Credential-free full-state visuals, live auth/playback gates, structural migration |
-| CLI author workflow | Data inspection is non-executable; scenario execution fails closed; GitHub acquisition is pinned and bounded | Isolated scenario execution, persisted provenance, publisher signing, native/interactive preview, and automated clean CI |
-| Performance | Strong per-worker bounds, but no aggregate resident-worker envelope; one local single-worker baseline | Supervisor admission/reclamation policy, multi-widget/churn matrix, per-widget resource UI, clean immutable GPU/ETW regression gate |
+| CLI author workflow | Data inspection is non-executable; worktree scaffold uses `gbar dev` and idle unload, but external generation still references an unpublished SDK and has no generated snapshot exporter | Versioned public SDK/template release, clean-directory scaffold/build/README proof, isolated scenario execution, native preview, provenance/signing, and automated CI |
+| Performance | Per-worker Jobs plus worktree aggregate admission and runtime-owned process leases; one local single-worker baseline | Direct lease fault-injection proof, ownership/reclamation UI, multi-widget/churn matrix, clean immutable GPU/ETW regression gate |
 | Documentation | Extensive and now internally current, but copyable examples are not executable evidence | Compile-test canonical snippets and reduce ledger/status duplication |
 
 ## Recommended next three actions
 
-1. **Finish package provenance before public distribution.** Retain the honest
+1. **Prove the runtime process lease before merging the budget.** Add direct
+   denial/failure/live-pipe/restart/stop/disposal lifecycle tests, retain their
+   results, then expose per-widget ownership and remediation.
+2. **Ship a truthful external widget scaffold.** Publish a versioned supported
+   SDK/template set, generate a real snapshot fixture/exporter, and prove the
+   full build/run/test/package path from an unrelated clean directory.
+3. **Finish package provenance before public distribution.** Retain the honest
    unsigned/digest UI, add a bounded host-owned acquisition receipt and version
    capability delta, then define the signed publisher/update/revocation path.
-2. **Bound aggregate worker residency.** Add supervisor-owned process/memory
-   admission and explicit eligible-worker reclamation, expose ownership to the
-   user, and measure mixed-policy 1/8/many-widget sessions and churn.
-3. **Add a bounded retained-results gate.** Turn the broad local verifier into
-   reproducible Windows CI with per-step/overall timeouts and retained managed,
-   native, documentation, and package evidence.
 
 The next review should first reassess these three items, then rotate into the
 `OverlayApp` ownership seam and advanced-widget composition.
