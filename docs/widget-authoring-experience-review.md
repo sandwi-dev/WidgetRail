@@ -71,13 +71,17 @@ can move behind an isolated, forcibly terminable process boundary. Semantic
 snapshot execution, interaction, viewport rendering, capture, fake-service
 lifecycle support, and template integration remain open.
 
-`gbar render` is now also strictly data-only. It bounds and validates an
-existing snapshot but rejects DLL input before resolving a type or touching an
-output path. This closes the full-trust author-code escape and makes `gbar dev`
-the only executable CLI integration path. The tradeoff is an explicit tooling
-gap: there is no headless isolated command that turns widget/scenario code into
-a snapshot. Authors must currently add an author-controlled typed-fake test to
-persist `SnapshotJson` or use the interactive overlay path.
+`gbar render` is now also strictly data-only. It rejects DLL input before
+resolving a type or touching an output path, closing the full-trust author-code
+escape and making `gbar dev` the only executable CLI integration path. An
+initial path-level 4 MiB preflight was racy; the current source now reads one
+restrictively shared stream through a ceiling-plus-one detector and rejects
+legacy assembly-only options for JSON. A deterministic misreported-length test
+covers the consumed-byte bound, and the focused Release CLI suite passes 48/48.
+The broader tradeoff is an explicit tooling gap: there is no headless isolated
+command that turns widget/scenario code into a snapshot. Authors must currently
+add an author-controlled typed-fake test to persist `SnapshotJson` or use the
+interactive overlay path.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and

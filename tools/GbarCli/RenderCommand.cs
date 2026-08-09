@@ -63,16 +63,43 @@ internal static class RenderCommand
             BufferSize = 64 * 1024,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
         });
-        var length = stream.Length;
-        if (length is <= 0 or > MaximumSnapshotBytes)
+        return await ReadSnapshotAsync(stream).ConfigureAwait(false);
+    }
+
+    internal static async Task<ViewSnapshot> ReadSnapshotAsync(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanRead)
+            throw new ArgumentException("Snapshot input stream must be readable.", nameof(stream));
+        if (stream.CanSeek && stream.Length is <= 0 or > MaximumSnapshotBytes)
             throw new CliOperationException(
                 $"Snapshot input must be between 1 and {MaximumSnapshotBytes} bytes.");
 
-        var payload = new byte[(int)length];
-        await stream.ReadExactlyAsync(payload).ConfigureAwait(false);
+        var initialCapacity = stream.CanSeek
+            ? (int)Math.Clamp(stream.Length, 0, MaximumSnapshotBytes)
+            : 0;
+        using var payload = new MemoryStream(initialCapacity);
+        var chunk = new byte[64 * 1024];
+        while (payload.Length <= MaximumSnapshotBytes)
+        {
+            var remainingThroughDetectionByte =
+                MaximumSnapshotBytes + 1L - payload.Length;
+            var read = await stream.ReadAsync(
+                chunk.AsMemory(0, (int)Math.Min(chunk.Length, remainingThroughDetectionByte)))
+                .ConfigureAwait(false);
+            if (read == 0) break;
+            payload.Write(chunk, 0, read);
+        }
+
+        if (payload.Length is <= 0 or > MaximumSnapshotBytes)
+            throw new CliOperationException(
+                $"Snapshot input must be between 1 and {MaximumSnapshotBytes} bytes.");
         try
         {
-            return SnapshotJson.Deserialize(payload);
+            if (!payload.TryGetBuffer(out var segment))
+                throw new InvalidOperationException("Snapshot buffer was unavailable.");
+            return SnapshotJson.Deserialize(
+                segment.AsSpan(0, checked((int)payload.Length)));
         }
         catch (Exception exception) when (exception is JsonException or ProtocolValidationException)
         {

@@ -849,15 +849,33 @@ static async Task RenderFailsClosed()
     Assert.DoesNotContain("untrusted-widget.dll", assembly.Error);
     Assert.Equal("preserve-existing-output", await File.ReadAllTextAsync(destination));
 
+    var validPath = Path.Combine(temp.Path, "valid.json");
+    await File.WriteAllBytesAsync(validPath, SnapshotJson.Serialize(BuildSnapshot()));
+    var obsoleteOptions = await RunCli(
+        "render", validPath, "--type", "Legacy.Widget", "--output", destination);
+    Assert.Equal(2, obsoleteOptions.Code);
+    Assert.Contains("--type and --instance are unavailable", obsoleteOptions.Error);
+    Assert.Equal("preserve-existing-output", await File.ReadAllTextAsync(destination));
+
     var oversizedPath = Path.Combine(temp.Path, "oversized.json");
     await File.WriteAllBytesAsync(
         oversizedPath,
         new byte[RenderCommand.MaximumSnapshotBytes + 1]);
-    var oversized = await RunCli("render", oversizedPath);
+    var oversized = await RunCli("render", oversizedPath, "--output", destination);
     Assert.Equal(1, oversized.Code);
     Assert.Contains(
         $"between 1 and {RenderCommand.MaximumSnapshotBytes} bytes",
         oversized.Error);
+    Assert.Equal("preserve-existing-output", await File.ReadAllTextAsync(destination));
+
+    await using var growing = new MisreportedReadStream(
+        actualLength: RenderCommand.MaximumSnapshotBytes + 1L,
+        reportedLength: 1);
+    var growth = await Assert.ThrowsAsync<CliOperationException>(
+        () => RenderCommand.ReadSnapshotAsync(growing));
+    Assert.Contains(
+        $"between 1 and {RenderCommand.MaximumSnapshotBytes} bytes",
+        growth.Message);
 }
 
 static Task ReplayFocusAndActions()
@@ -1551,6 +1569,56 @@ file sealed class RepeatingReadStream : Stream
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
+file sealed class MisreportedReadStream : Stream
+{
+    private readonly long _actualLength;
+    private readonly long _reportedLength;
+    private long _remaining;
+
+    internal MisreportedReadStream(long actualLength, long reportedLength)
+    {
+        _actualLength = actualLength;
+        _reportedLength = reportedLength;
+        _remaining = actualLength;
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => true;
+    public override bool CanWrite => false;
+    public override long Length => _reportedLength;
+    public override long Position
+    {
+        get => _actualLength - _remaining;
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var read = (int)Math.Min(count, _remaining);
+        Array.Fill(buffer, (byte)0x5A, offset, read);
+        _remaining -= read;
+        return read;
+    }
+
+    public override ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var read = (int)Math.Min(buffer.Length, _remaining);
+        buffer.Span[..read].Fill(0x5A);
+        _remaining -= read;
+        return ValueTask.FromResult(read);
+    }
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) =>
+        throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
 }
 
 file sealed class BlockingReadStream : Stream

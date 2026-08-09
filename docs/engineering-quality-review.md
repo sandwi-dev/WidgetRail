@@ -65,6 +65,10 @@ before resolving the declared DLL; and the CLI help, authoring guide,
 quickstart, documentation index, and focused tests now describe this fail-
 closed boundary. `gbar render` also removed its reflection/load-context path,
 making every CLI semantic-inspection path data-only. This resolves EQ-001.
+The first snapshot-ceiling revision checked `FileInfo.Length` before reopening
+the path for `ReadAllBytesAsync`. The current source corrected that review
+finding with one restrictively shared stream and a limit-plus-one read over the
+bytes actually consumed; EQ-012 records the verified closure.
 
 The responsive implementation now gives each shell destination a bounded
 `focusPersistenceId` shared only by its compact and rail presentations.
@@ -551,6 +555,38 @@ examples against the public SDK in the documentation gate, and add a negative
 regression proving an unknown enum member fails that gate. The corrected glyph,
 protocol matrix, and focus-persistence wording are meaningful improvements, but
 prose inspection alone is not closure evidence.
+
+### EQ-012 — P2 — Data-only rendering must enforce its byte ceiling on consumed bytes
+
+**Status: Resolved in the current worktree; focused Release verification passes.**
+
+**Implementation.** The first `RenderCommand` revision checked path metadata
+and then reopened the file, which did not bind the limit to the bytes consumed.
+The correction opens one read-only `FileStream` with `FileShare.Read` and passes
+that exact handle to a bounded reader. A seekable preflight can reject an
+obviously invalid file early, but the authoritative loop independently reads at
+most 4 MiB plus one detection byte. A stream that reports one byte and produces
+more than the limit therefore fails before deserialization. Only the captured
+bounded buffer reaches `SnapshotJson.Deserialize`; there is no second path
+open. Legacy `--type` and `--instance` options now return a usage error for JSON
+input while DLL input retains its fixed isolation diagnostic.
+
+**Why it matters.** The resource contract now belongs to one opened input
+object rather than mutable pathname metadata. Concurrent replacement cannot
+swap the consumed file on Windows, and misleading or non-seekable length
+metadata cannot bypass the actual-byte ceiling.
+
+**Tradeoff.** An actively written snapshot may fail to open until its producer
+publishes it. Deterministic failure is preferable to inspecting moving bytes.
+The bounded reader remains local to `RenderCommand`; no speculative shared
+input abstraction was introduced.
+
+**Resolution evidence.** Release `GbarCli.Tests` passes 48/48. The render case
+covers a static limit-plus-one file, a custom stream that reports one byte but
+produces 4 MiB plus one, rejection of obsolete JSON options, and unchanged
+pre-existing output on DLL, option, and byte-bound failures. The ordinary valid
+snapshot path remains green. The deterministic stream seam exercises the
+resource invariant without scheduler-sensitive file-replacement sleeps.
 
 ### EQ-008 — P2 — Focus persistence was scheduled from the steady paint path
 
