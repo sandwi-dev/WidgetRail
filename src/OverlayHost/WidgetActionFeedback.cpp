@@ -67,4 +67,47 @@ bool WidgetActionFeedbackStore::Clear() noexcept {
     return changed;
 }
 
+WidgetActionFeedbackTransition WidgetActionFeedbackController::Hide() noexcept {
+    visible_ = false;
+    (void)store_.Clear();
+    return {};
+}
+
+WidgetActionFeedbackTransition WidgetActionFeedbackController::Publish(
+    const std::wstring_view widgetId,
+    const std::wstring_view runtimeGeneration,
+    std::wstring message,
+    const std::uint64_t now,
+    const std::uint64_t duration) {
+    if (!visible_) return {};
+    return Transition(store_.Publish(
+        widgetId, runtimeGeneration, std::move(message), now, duration));
+}
+
+WidgetActionFeedbackTransition WidgetActionFeedbackController::Expire(
+    const std::uint64_t now) noexcept {
+    return Transition(store_.Expire(now));
+}
+
+WidgetActionFeedbackTransition WidgetActionFeedbackController::Forget(
+    const std::wstring_view widgetId) noexcept {
+    return Transition(store_.Forget(widgetId));
+}
+
+std::optional<std::wstring_view> WidgetActionFeedbackController::MessageFor(
+    const std::wstring_view widgetId,
+    const std::wstring_view runtimeGeneration,
+    const std::uint64_t now) const noexcept {
+    return visible_ ? store_.MessageFor(widgetId, runtimeGeneration, now) : std::nullopt;
+}
+
+std::optional<std::uint64_t> WidgetActionFeedbackController::NextExpiry() const noexcept {
+    return visible_ ? store_.NextExpiry() : std::nullopt;
+}
+
+WidgetActionFeedbackTransition WidgetActionFeedbackController::Transition(
+    const bool changed) const noexcept {
+    return {visible_ && changed, NextExpiry()};
+}
+
 } // namespace gba

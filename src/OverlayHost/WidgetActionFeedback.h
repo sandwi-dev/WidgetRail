@@ -67,4 +67,38 @@ private:
         TransparentStringEqual> entries_;
 };
 
+struct WidgetActionFeedbackTransition final {
+    bool shouldInvalidate{};
+    std::optional<std::uint64_t> nextExpiry;
+};
+
+/// Pure host-orchestration seam. Time is injected by the caller and timer work
+/// is returned as a deadline, so bridge pumps, timer failure fallback, catalog
+/// replacement, and hide/show behavior are deterministic without an HWND.
+class WidgetActionFeedbackController final {
+public:
+    void Show() noexcept { visible_ = true; }
+    [[nodiscard]] WidgetActionFeedbackTransition Hide() noexcept;
+    [[nodiscard]] WidgetActionFeedbackTransition Publish(
+        std::wstring_view widgetId,
+        std::wstring_view runtimeGeneration,
+        std::wstring message,
+        std::uint64_t now,
+        std::uint64_t duration);
+    [[nodiscard]] WidgetActionFeedbackTransition Expire(std::uint64_t now) noexcept;
+    [[nodiscard]] WidgetActionFeedbackTransition Forget(std::wstring_view widgetId) noexcept;
+    [[nodiscard]] std::optional<std::wstring_view> MessageFor(
+        std::wstring_view widgetId,
+        std::wstring_view runtimeGeneration,
+        std::uint64_t now) const noexcept;
+    [[nodiscard]] std::optional<std::uint64_t> NextExpiry() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept { return store_.size(); }
+
+private:
+    [[nodiscard]] WidgetActionFeedbackTransition Transition(bool changed) const noexcept;
+
+    bool visible_{};
+    WidgetActionFeedbackStore store_;
+};
+
 } // namespace gba

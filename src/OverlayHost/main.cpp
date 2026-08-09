@@ -1122,7 +1122,8 @@ private:
                 // The dedicated deadline timer owns normal expiry. This cheap
                 // state check also closes the race if Win32 timer creation is
                 // temporarily unavailable; it never repaints unless state changed.
-                bool actionFeedbackChanged = actionFailureFeedback_.Expire(now);
+                bool actionFeedbackChanged =
+                    actionFailureFeedback_.Expire(now).shouldInvalidate;
                 if (overlayTransition_.active()) {
                     AdvanceOverlayTransition(now);
                 }
@@ -1189,7 +1190,7 @@ private:
                         std::wstring(DisplayWidgetName(failure.widgetId)) +
                             L" action failed; try again",
                         now,
-                        4000) || actionFeedbackChanged;
+                        4000).shouldInvalidate || actionFeedbackChanged;
                     AppendDiagnostic(
                         L"Widget action failed: widget=" + failure.widgetId +
                         L" action=" + failure.actionId +
@@ -1261,7 +1262,7 @@ private:
                 }
             } else if (wParam == kActionFeedbackTimer) {
                 KillTimer(window_, kActionFeedbackTimer);
-                if (actionFailureFeedback_.Expire(GetTickCount64())) {
+                if (actionFailureFeedback_.Expire(GetTickCount64()).shouldInvalidate) {
                     InvalidateRect(window_, nullptr, FALSE);
                 }
                 ScheduleActionFeedbackExpiry();
@@ -1790,7 +1791,8 @@ private:
         bool actionFeedbackRemoved = false;
         for (const auto& id : gba::ChangedWidgetRuntimeIds(
                  previousDescriptors, widgetDescriptors_)) {
-            actionFeedbackRemoved = actionFailureFeedback_.Forget(id) || actionFeedbackRemoved;
+            actionFeedbackRemoved = actionFailureFeedback_.Forget(id).shouldInvalidate ||
+                actionFeedbackRemoved;
             focusMemory_.Forget(id);
             const auto previous = std::find_if(
                 previousDescriptors.begin(), previousDescriptors.end(),
@@ -2115,6 +2117,7 @@ private:
             // reliability comes from the visible GameInput lease, not a
             // repeated foreground-steal loop.
             (void)AcquireOverlayForegroundInput();
+            actionFailureFeedback_.Show();
             SetTimer(window_, kControllerTimer, 16, nullptr);
             PrimeControllerState();
         }
@@ -2124,7 +2127,7 @@ private:
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
         KillTimer(window_, kActionFeedbackTimer);
-        (void)actionFailureFeedback_.Clear();
+        (void)actionFailureFeedback_.Hide();
         visibleControllerReadLease_ = false;
         lastControllerReadPath_ = gba::input::ControllerReadPath::None;
         lastControllerForegroundExclusive_.reset();
@@ -4052,7 +4055,7 @@ private:
     std::wstring lastActionMessage_;
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
-    gba::WidgetActionFeedbackStore actionFailureFeedback_;
+    gba::WidgetActionFeedbackController actionFailureFeedback_;
     ULONGLONG lastGuideDispatchAt_{};
     ULONGLONG sliderReconcileAt_{};
     std::wstring focusedElementId_;
