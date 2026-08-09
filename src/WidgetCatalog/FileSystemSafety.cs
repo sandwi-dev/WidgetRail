@@ -38,7 +38,8 @@ internal static class FileSystemSafety
     public static void EnsureTreeContainsNoReparsePoints(
         string root,
         string directory,
-        int maximumEntries = int.MaxValue)
+        int maximumEntries = int.MaxValue,
+        Action? checkpoint = null)
     {
         if (maximumEntries < 1)
             throw new ArgumentOutOfRangeException(nameof(maximumEntries));
@@ -48,9 +49,11 @@ internal static class FileSystemSafety
         var entryCount = 0;
         while (pending.Count != 0)
         {
+            checkpoint?.Invoke();
             var current = pending.Pop();
             foreach (var entry in Directory.EnumerateFileSystemEntries(current))
             {
+                checkpoint?.Invoke();
                 if (entryCount == maximumEntries)
                     throw new WidgetPackageException(
                         "integrity_limit",

@@ -663,8 +663,9 @@ disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 content-tree sealing/tamper rejection, consumed-byte manifest/integrity limits,
 misreported and changing-length rejection, verified manifest-byte capture,
-prospective ID/version/file/byte refusal, bounded discovery time, unexpected-
-entry rejection, plus content-bound unsigned authority.
+prospective ID/version/file/byte refusal, per-entry/per-64-KiB cancellation and
+deadline checks, unexpected-entry rejection, plus content-bound unsigned
+authority.
 Bridge
 passes 40/40, including aggregate count/declared-memory admission, exact crash/
 timeout/idle-unload release, Settings control-plane access, race-safe refusal,

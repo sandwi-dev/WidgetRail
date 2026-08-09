@@ -4,25 +4,37 @@ namespace GameBarAlternative.WidgetCatalog;
 
 internal static class BoundedFileReader
 {
-    internal static byte[] ReadAll(Stream input, int maximumBytes)
+    internal static byte[] ReadAll(
+        Stream input,
+        int maximumBytes,
+        Action? checkpoint = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (!input.CanRead) throw new ArgumentException("Input stream is not readable.", nameof(input));
         if (maximumBytes < 1) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
         var initialLength = input.CanSeek ? input.Length : (long?)null;
-        return ReadCore(input, maximumBytes, initialLength);
+        return ReadCore(input, maximumBytes, initialLength, checkpoint);
     }
 
-    internal static byte[] ReadExact(Stream input, long expectedLength, int maximumBytes)
+    internal static byte[] ReadExact(
+        Stream input,
+        long expectedLength,
+        int maximumBytes,
+        Action? checkpoint = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (!input.CanRead) throw new ArgumentException("Input stream is not readable.", nameof(input));
         if (maximumBytes < 1) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
-        return ReadCore(input, maximumBytes, expectedLength);
+        return ReadCore(input, maximumBytes, expectedLength, checkpoint);
     }
 
-    private static byte[] ReadCore(Stream input, int maximumBytes, long? initialLength)
+    private static byte[] ReadCore(
+        Stream input,
+        int maximumBytes,
+        long? initialLength,
+        Action? checkpoint)
     {
+        checkpoint?.Invoke();
         if (initialLength is < 0 or > int.MaxValue)
             throw new InvalidDataException("Input length is invalid.");
         if (initialLength > maximumBytes)
@@ -36,6 +48,7 @@ internal static class BoundedFileReader
             var total = 0;
             while (true)
             {
+                checkpoint?.Invoke();
                 var remainingWithSentinel = (long)maximumBytes - total + 1;
                 var read = input.Read(buffer, 0, (int)Math.Min(buffer.Length, remainingWithSentinel));
                 if (read == 0) break;
@@ -44,6 +57,7 @@ internal static class BoundedFileReader
                     throw new InvalidDataException("Input exceeds its byte limit.");
                 output.Write(buffer, 0, read);
             }
+            checkpoint?.Invoke();
             if (initialLength is { } expected &&
                 (total != expected || (input.CanSeek && input.Length != expected)))
                 throw new InvalidDataException("Input length changed while it was read.");
@@ -60,7 +74,8 @@ internal static class BoundedFileReader
         Stream input,
         long expectedLength,
         byte[] buffer,
-        IncrementalHash? contentHash = null)
+        IncrementalHash? contentHash = null,
+        Action? checkpoint = null)
     {
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(input);
@@ -72,6 +87,7 @@ internal static class BoundedFileReader
         long consumed = 0;
         while (consumed < expectedLength)
         {
+            checkpoint?.Invoke();
             var read = input.Read(buffer, 0, (int)Math.Min(buffer.Length, expectedLength - consumed));
             if (read == 0)
                 throw new InvalidDataException("Input ended before its encoded length.");
@@ -79,6 +95,7 @@ internal static class BoundedFileReader
             contentHash?.AppendData(buffer, 0, read);
             consumed += read;
         }
+        checkpoint?.Invoke();
         if (input.Read(buffer, 0, 1) != 0)
             throw new InvalidDataException("Input exceeded its encoded length.");
         if (input.CanSeek && input.Length != expectedLength)

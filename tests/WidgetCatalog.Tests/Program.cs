@@ -761,6 +761,23 @@ static Task IntegrityHashingRequiresExactLength()
         [0x10], reportedLength: 1, lengthAfterRead: 2);
     _ = Assert.Throws<InvalidDataException>(() =>
         BoundedFileReader.AppendExact(hash, changing, expectedLength: 1, buffer));
+
+    using var interruptedHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    using var interrupted = new NonSeekableReadStream(new byte[128 * 1024]);
+    using var cancellation = new CancellationTokenSource();
+    var checkpoints = 0;
+    _ = Assert.Throws<OperationCanceledException>(() =>
+        BoundedFileReader.AppendExact(
+            interruptedHash,
+            interrupted,
+            expectedLength: 128 * 1024,
+            buffer: new byte[64 * 1024],
+            checkpoint: () =>
+            {
+                if (++checkpoints == 2) cancellation.Cancel();
+                cancellation.Token.ThrowIfCancellationRequested();
+            }));
+    Assert.Equal(2, checkpoints);
     return Task.CompletedTask;
 }
 

@@ -145,8 +145,10 @@ planned. A structurally valid package is not necessarily trustworthy.
 - Complete installed-catalog discovery is host-bounded by default to 256 IDs,
   eight versions per ID, 512 versions total, 32,768 content/metadata file
   entries, 2 GiB of content plus a 4 KiB metadata reservation per version, and
-  a 30-second elapsed-work budget checked between bounded package operations.
-  Incoming installs are checked prospectively before publication;
+  a 30-second elapsed-work budget. Cancellation/deadline checkpoints run per
+  recursive entry and before each at-most-64-KiB file read; they cannot preempt
+  a synchronous filesystem read already blocked in the kernel. Incoming
+  installs are checked prospectively before publication;
   unexpected ID/version-layer entries and limit excess fail closed. Manifests
   cannot raise these ceilings. This bounds verification work but does not yet
   provide the Settings cleanup/remediation UX or maximum-catalog performance

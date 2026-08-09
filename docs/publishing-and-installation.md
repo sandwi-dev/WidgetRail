@@ -266,8 +266,10 @@ The default host policy bounds the complete installed catalog, not only each
 archive: 256 widget IDs, eight versions per ID, 512 versions total, 32,768
 content-file/integrity-metadata entries, 2 GiB of content plus a conservative
 4 KiB integrity-metadata reservation per version, and a 30-second elapsed-work
-budget checked between bounded package operations. Cancellation is checked at
-the same boundaries. Installation
+budget. Cancellation/deadline checkpoints run during recursive entry inspection
+and before each bounded file read (at most 64 KiB), as well as between versions.
+A synchronous Windows filesystem read already blocked in the kernel cannot be
+preempted by that token. Installation
 reserves the incoming package against those same ceilings before publication;
 a refusal removes staging and cannot leave the new version discoverable.
 Unexpected files at the ID/version directory layers fail discovery closed.

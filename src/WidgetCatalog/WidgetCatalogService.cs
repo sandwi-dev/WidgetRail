@@ -515,7 +515,7 @@ public sealed class WidgetCatalog
                     throw new WidgetPackageException("missing_manifest", $"Installed widget is missing manifest.json: {versionDirectory}");
                 FileSystemSafety.EnsureNoReparsePoints(_root, manifestPath);
                 var verification = InstalledPackageIntegrity.Verify(
-                    _root, versionDirectory, _options);
+                    _root, versionDirectory, _options, CheckBudget);
                 try
                 {
                     aggregateEntries = checked(aggregateEntries + verification.EntryCount);

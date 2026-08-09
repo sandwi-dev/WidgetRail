@@ -54,9 +54,11 @@ internal static class InstalledPackageIntegrity
     internal static InstalledPackageVerification Verify(
         string catalogRoot,
         string packageRoot,
-        WidgetCatalogOptions options)
+        WidgetCatalogOptions options,
+        Action? checkpoint = null)
     {
-        var manifestBytes = ReadManifest(catalogRoot, packageRoot, options);
+        checkpoint?.Invoke();
+        var manifestBytes = ReadManifest(catalogRoot, packageRoot, options, checkpoint);
         WidgetManifest manifest;
         try
         {
@@ -83,7 +85,8 @@ internal static class InstalledPackageIntegrity
             using var input = new FileStream(
                 path, FileMode.Open, FileAccess.Read, FileShare.Read,
                 MaximumMetadataBytes, FileOptions.SequentialScan);
-            var bytes = BoundedFileReader.ReadAll(input, MaximumMetadataBytes);
+            var bytes = BoundedFileReader.ReadAll(
+                input, MaximumMetadataBytes, checkpoint);
             if (bytes.Length == 0)
                 throw new JsonException("Integrity metadata size is invalid.");
             document = JsonSerializer.Deserialize<IntegrityDocument>(
@@ -107,7 +110,7 @@ internal static class InstalledPackageIntegrity
         var gbssDigests = new Dictionary<string, string>(StringComparer.Ordinal);
         var actualText = Compute(
             catalogRoot, packageRoot, options, manifestBytes, gbssDigests,
-            out var entryCount, out var totalBytes);
+            out var entryCount, out var totalBytes, checkpoint);
         _ = TryDecodeDigest(actualText, out var actual);
         var matches = CryptographicOperations.FixedTimeEquals(expected, actual);
         CryptographicOperations.ZeroMemory(expected);
@@ -131,20 +134,25 @@ internal static class InstalledPackageIntegrity
         byte[]? capturedManifestBytes,
         IDictionary<string, string>? gbssDigests,
         out int entryCount,
-        out long totalBytes)
+        out long totalBytes,
+        Action? checkpoint = null)
     {
         FileSystemSafety.EnsureTreeContainsNoReparsePoints(
-            catalogRoot, packageRoot, options.MaximumInstalledEntries);
+            catalogRoot, packageRoot, options.MaximumInstalledEntries, checkpoint);
         var files = Directory.EnumerateFiles(packageRoot, "*", SearchOption.AllDirectories)
             .Where(path => !string.Equals(
                 Path.GetRelativePath(packageRoot, path),
                 MetadataFileName,
                 StringComparison.OrdinalIgnoreCase))
-            .Select(path => new
+            .Select(path =>
             {
-                FullPath = path,
-                RelativePath = Path.GetRelativePath(packageRoot, path)
-                    .Replace(Path.DirectorySeparatorChar, '/'),
+                checkpoint?.Invoke();
+                return new
+                {
+                    FullPath = path,
+                    RelativePath = Path.GetRelativePath(packageRoot, path)
+                        .Replace(Path.DirectorySeparatorChar, '/'),
+                };
             })
             .Take(checked(options.MaximumArchiveEntries + 1))
             .ToArray();
@@ -163,6 +171,7 @@ internal static class InstalledPackageIntegrity
         {
             foreach (var file in files)
             {
+                checkpoint?.Invoke();
                 if (file.RelativePath.Length is < 1 ||
                     file.RelativePath.Length > options.MaximumPathLength ||
                     file.RelativePath != file.RelativePath.Normalize(NormalizationForm.FormC))
@@ -207,7 +216,7 @@ internal static class InstalledPackageIntegrity
                 try
                 {
                     BoundedFileReader.AppendExact(
-                        hash, input!, expectedLength, buffer, fileHash);
+                        hash, input!, expectedLength, buffer, fileHash, checkpoint);
                 }
                 catch (InvalidDataException exception)
                 {
@@ -237,7 +246,8 @@ internal static class InstalledPackageIntegrity
     private static byte[] ReadManifest(
         string catalogRoot,
         string packageRoot,
-        WidgetCatalogOptions options)
+        WidgetCatalogOptions options,
+        Action? checkpoint)
     {
         var path = Path.Combine(packageRoot, "manifest.json");
         if (!File.Exists(path))
@@ -252,7 +262,8 @@ internal static class InstalledPackageIntegrity
             return BoundedFileReader.ReadExact(
                 input,
                 input.Length,
-                (int)Math.Min(options.MaximumEntryBytes, 1024L * 1024));
+                (int)Math.Min(options.MaximumEntryBytes, 1024L * 1024),
+                checkpoint);
         }
         catch (InvalidDataException exception)
         {
