@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after committed digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget SDK adoption, and retained visual/performance evidence were audited<br>
+Last reassessed: 2026-08-09 after committed digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget SDK adoption, retained visual/performance evidence, and test-orchestration/documentation drift were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -19,13 +19,21 @@ separated from targets; and the recent SDK work is replacing repeated task,
 cancellation, paging, state, navigation, and command plumbing with explicit
 public abstractions.
 
-The strongest concrete improvement since the previous audit is the verified
-package-evidence contract. Committed work bounds manifest/metadata consumption,
+The strongest concrete improvement since the previous audit is commit
+`b2d6f95`'s aggregate installed-catalog policy. It caps IDs, versions, entries,
+accounted bytes, and detected elapsed discovery work and prospectively rejects
+installs before publication. Catalog 29/29, Bridge 40/40, Settings 41/41, and
+the 49-file documentation contract passed with inspected output. Its control-
+plane recovery and interruptible-deadline contract remain incomplete, so
+EQ-016 is only partially implemented.
+
+The earlier verified package-evidence contract remains a strong foundation.
+Committed work bounds manifest/metadata consumption,
 rejects short/extra/changed tree input, and parses the exact manifest bytes
 included in the digest. Current HEAD also emits an exact GBSS path/
 SHA-256 inventory and requires every host-compiled entry/import to match it after
-one bounded strict-UTF-8 read. The implementation agent reports catalog 28/28
-and Styling 23/23; this review code-inspected but did not execute them. This
+one bounded strict-UTF-8 read. The implementation agent reports Styling 23/23;
+this review code-inspected but did not execute it. This
 closes the resource, manifest-pairing, and style-consumption subproblems while
 leaving executable/dependency/asset launch authority open.
 
@@ -48,10 +56,13 @@ path through the production AppContainer worker boundary. Current HEAD
 also resolves the prior responsive-focus
 identity risk by separating focus persistence from action and source-element
 routing. It also moves reconciliation out of steady paint and onto relevant
-state transitions. The implementation agent reports that focused managed and
-native Release tests, the OverlayHost Release build, and the repository-wide
-Release verifier all pass on current HEAD; this review did not rerun
-them or inspect a retained machine-readable result.
+state transitions. The implementation agent reports that affected focused
+managed and native Release tests and the OverlayHost Release build pass on
+current HEAD. The last reported complete repository-wide Release verifier ran
+before the final GBSS inventory narrowing and typed-diagnostic commit; affected
+focused suites were rerun afterward. This review did not rerun them or inspect
+a retained machine-readable result, so the broader current-HEAD claim remains
+unproven.
 
 A separate public-distribution blocker is the incomplete publisher/provenance
 model. Current HEAD now makes the immediate Settings decision honest:
@@ -98,6 +109,16 @@ tested `WidgetSessionCoordinator` above `WidgetBridgeClient`, not another pure
 helper or a broad UI rewrite. Besides reducing change coupling, this is the
 natural owner for the typed persistent capacity/startup failures still missing
 from the product UX.
+
+The test-architecture rotation also makes the evidence gap concrete. All 33
+managed test projects are custom executable harnesses with a `Program.cs`; none
+references `Microsoft.NET.Test.Sdk`. That choice is not itself a quality defect,
+but the current aggregate runner treats each as an unbounded console command
+and retains neither per-case results nor source/toolchain provenance. It cannot
+distinguish a hung case from a hung suite, and documentation can continue to
+say the “current” full gate is green after a later focused-only milestone. The
+right correction is a thin bounded orchestration and result contract shared by
+local and CI runs, not a mandatory rewrite of every behavioral test.
 
 ## Changes since the previous audit
 
@@ -204,6 +225,15 @@ routing CLI file validation through the bounded reader. Installed digest/change
 failures still collapse to a generic bridge style warning; that cross-layer
 integrity-state gap remains tracked by EQ-014.
 
+Commit `b2d6f95` materially advances EQ-016. It adds explicit
+ID/version/entry/byte/time options, bounded N+1 directory enumeration, checked
+verified totals, and prospective install refusal. The implementation agent
+reports Catalog 29/29, Bridge 40/40, Settings 41/41, and the 49-file
+documentation contract with inspected output. Full
+closure still needs cancellation/deadline checks inside file hashing, a
+Settings/CLI repair route that works when full discovery is over limit,
+active-only publication inventory ownership, and maximum-scale measurements.
+
 ## Verification snapshot
 
 Implementation-reported bounded local Release results on current HEAD
@@ -216,14 +246,14 @@ are:
 | Settings Widget | 41/41 passed |
 | SDK Gallery | 6/6 passed |
 | YT Music | 48/48 passed |
-| Widget Catalog | 28/28 passed |
+| Widget Catalog | 29/29 passed on commit `b2d6f95` |
 | Widget Styling | 23/23 passed on current HEAD |
 | Platform Settings | 15/15 implementation-reported on the typed-diagnostic milestone |
 | Focus Navigation | 41 checks passed |
 | Declarative Renderer | 4,632 checks passed |
-| Widget bridge catalog | passed |
+| Widget bridge catalog | 40/40 passed on commit `b2d6f95` |
 | OverlayHost Release target | built successfully |
-| Documentation contract | 49 Markdown files passed on the typed-diagnostic milestone |
+| Documentation contract | 49 Markdown files passed on commit `b2d6f95` |
 | Full `scripts/Verify.ps1 -Configuration Release` | passed in 283.5 seconds before GBSS-only narrowing and typed diagnostics; affected focused suites are green |
 
 The typed-diagnostic milestone is committed. Styling 23/23, CLI 49/49, and the
@@ -748,21 +778,33 @@ polling regions of `main.cpp`; reduced line count alone is not closure.
 
 **Evidence.** The repository has strong `Directory.Build.props` defaults and a
 large `scripts/Verify.ps1`, but no checked-in `.github/workflows` pipeline.
-`Verify.ps1` invokes many `dotnet run`, native build, and process smoke commands
-directly; `Invoke-Checked` validates exit codes but supplies no per-step or
-overall timeout. The console-style test executables also have no standard test
-runner timeout or structured result artifact. Documentation frequently cites a
-green full Release gate, but current HEAD has no immutable
-CI run associated with it.
+All 33 managed test projects are executable projects with custom `Program.cs`
+harnesses; none references `Microsoft.NET.Test.Sdk`. `Verify.ps1` invokes those
+programs, native build, and process smoke commands sequentially;
+`Invoke-Checked` validates exit codes but supplies no per-step or overall
+timeout. A case that never returns can therefore hold the entire aggregate
+indefinitely. The harnesses print locally useful `PASS` lines and totals, but
+produce no standard per-case result artifact, duration history, or common
+timeout/failure record.
 
-`docs/implementation-status.md` now upgrades several focused counts and states
-that the current milestone passed the full Release verifier end to end. The
-registered managed case totals are consistent with those counts, but there is
-still no checked-in workflow, per-step timeout, structured result bundle, or
-immutable run reference. The available default Community package artifacts are
-older than the source manifests, so they cannot substantiate current packaged
-behavior. This is not evidence that the local runs failed; it is evidence that
-their result cannot be independently audited or reproduced from the repository.
+The aggregate also records no commit, dirty-state inventory, SDK/toolchain
+identity, command manifest, or exact package hashes. No retained TRX, JUnit,
+XML, SARIF, or aggregate verification result was found outside build outputs.
+Documentation frequently cites a green full Release gate, but current HEAD has
+no immutable CI run associated with it.
+
+`docs/implementation-status.md` states that “the current milestone” passed the
+full Release verifier end to end, while the more precise review snapshot records
+that the 283.5-second full run predates the final GBSS inventory narrowing and
+typed-diagnostic commit. Affected focused suites were reported green afterward,
+but the status/roadmap claims contain no run revision or dirty-state marker that
+would let a reader distinguish those scopes. The registered managed case totals
+are consistent with the focused counts, but there is still no checked-in
+workflow, per-step timeout, structured result bundle, or immutable run
+reference. The available default Community package artifacts are older than
+the source manifests, so they cannot substantiate current packaged behavior.
+This is not evidence that the local runs failed; it is evidence that their
+result cannot be independently audited or reproduced from the repository.
 
 **Why it matters.** A senior team needs reproducible evidence that does not
 depend on one long local agent session. An indefinitely hung test prevents a
@@ -774,12 +816,16 @@ same standard.
 **Underlying problem.** Verification breadth grew faster than verification
 orchestration and evidence publication.
 
-**Recommended direction.** Add a Windows GitHub Actions workflow with a
-bounded managed lane and native lane. Give every command and the complete job a
-timeout; upload machine-readable test/build logs and key package hashes. Keep
-hardware, live-auth, real-controller, and physical-display checks as explicit
-manual release gates rather than pretending hosted CI can cover them. Refactor
-`Verify.ps1` so the same bounded command manifest drives local and CI runs.
+**Recommended direction.** Define one checked-in command manifest with stable
+suite IDs, commands, expected result adapters, per-step limits, lane ownership,
+and artifact policy. Make a thin runner enforce subprocess-tree and overall
+timeouts, stream console logs, emit JUnit/TRX-compatible per-suite/per-case
+records, and write a manifest containing commit, dirty-state hash, OS, pinned
+SDK/compiler versions, elapsed time, and package digests. Drive both
+`Verify.ps1` and a Windows GitHub Actions managed/native lane from that same
+manifest. Keep hardware, live-auth, real-controller, and physical-display
+checks as explicit manual release gates rather than pretending hosted CI can
+cover them.
 
 **Tradeoff.** Migrating every custom executable test to a third-party framework
 is not required immediately. A thin runner can add subprocess timeouts and
@@ -788,10 +834,12 @@ separate permissions or self-hosted evidence; isolate those rather than
 dropping the entire gate.
 
 **Resolution evidence.** A clean commit must produce a repeatable Windows CI
-run with bounded durations, managed and native results, documentation-link
-validation, deterministic package checks, and retained logs. A deliberately
-hung fixture must be terminated and reported as a failed test without hanging
-the job.
+run and equivalent local bundle with bounded durations, managed and native
+results, documentation-link validation, deterministic package checks, exact
+source/toolchain provenance, and retained logs. A deliberately hung case and a
+child-process leak must be terminated and reported against their stable suite/
+case IDs without hanging the next suite or job. A later focused-only milestone
+must not leave documentation claiming that its HEAD passed the full aggregate.
 
 ### EQ-010 — P1 — Superseded YT Music reconciliation could commit stale failure state
 
@@ -980,9 +1028,12 @@ Gallery distinguishes protocol-v13 focus persistence from action routing, and
 the authoring guide now consistently describes additive snapshot versions 1
 through 13. `tests/Documentation.Tests/Program.cs` still checks relative links
 and selected headings/phrases without compiling fenced C# examples or
-validating referenced public symbols. The NavigationShell and starter API
-examples are presented as copyable entry points, so link-only validation
-remains insufficient.
+validating referenced public symbols. The repository currently contains 70 C#
+fences and 138 C#/PowerShell/JSON executable-looking fences across README and
+`docs`; not every fragment should compile independently, but none is designated
+as a canonical executable consumer by the documentation gate. The
+NavigationShell and starter API examples are presented as copyable entry
+points, so link-and-phrase validation remains insufficient.
 
 **Why it matters.** Documentation is the primary SDK interface for a new widget
 author. A first example that fails to compile makes the framework look
@@ -1219,30 +1270,63 @@ disable/remove, and shutdown.
 Retain stable-tamper/live-worker-retirement coverage, and report the handle,
 startup, and disk cost at the maximum supported entry count.
 
-### EQ-016 — P2 — Installed catalog work is bounded per version but unbounded in aggregate
+### EQ-016 — P2 — Aggregate catalog bounds lack a recoverable control-plane contract
 
-**Status: Open. The implementation was narrowed to retain GBSS hashes only,
-reducing its incremental cost; the pre-existing aggregate discovery gap remains.**
+**Status: Partially implemented in commit `b2d6f95`. Cardinality and byte
+budgets plus prospective install rejection are present; interruptible time
+enforcement, cleanup UX, active-only inventory ownership, and maximum-scale
+evidence remain open.**
 
-**Evidence.** `WidgetCatalogOptions` bounds one archive/version to 512 entries
-and 64 MiB by default. `DiscoverInstalledVersions` nevertheless enumerates
-every ID directory and every version directory with no maximum package IDs,
-versions per ID, total versions, catalog files, bytes hashed, or elapsed work.
-It verifies and materializes the complete list before catalog state groups or
-selects active versions. The committed integrity change additionally builds and
-freezes a GBSS-relative-path/SHA-256 dictionary for every discovered version
-and retains it on each `InstalledWidgetVersion`, even though only an enabled
-active version needs it. It deliberately does not retain hashes for assemblies,
-assets, or other package files. `BridgeCatalog` applies its
-256-widget limit only after `CatalogService.DiscoverAsync` has completed, so the
-limit does not bound enumeration, hashing, allocation, or malformed-version
-handling. Settings also consumes the full discovery result.
+**Implementation evidence.** `WidgetCatalogOptions` now supplies defaults of
+256 IDs, eight versions per ID, 512 total versions, 32,768 installed entries,
+2 GiB accounted installed bytes, and a 30-second detected elapsed-work budget
+checked around each version, while
+retaining the per-version 512-entry/64 MiB bounds. Discovery caps top-level and
+per-ID directory enumeration at N+1 before sorting, refuses a total-version
+tail before verifying it, and accumulates verified entry/byte counts with
+checked arithmetic. Each installed version conservatively accounts one
+integrity metadata entry and its maximum 4 KiB rather than trusting current
+metadata length. Installation runs under the existing operation lock and uses
+the verified installed totals plus archive inspection to reject a prospective
+ID, version, entry, or byte overflow before package publication.
 
-At default limits, one version can still contribute 512 retained GBSS path/hash
-entries and require hashing 64 MiB. Repeated legitimate installs keep old versions for
-rollback, and there is no catalog-wide quota preventing those individually
-valid versions from multiplying startup/reload work. This review found no N+1
-aggregate-bound test or cold-discovery measurement.
+One new custom test case covers invalid option relationships, direct ID N+1,
+prospective ID/per-ID-version/total-version/entry/byte refusal, an unexpected
+root file, and a deterministic elapsed-time failure. It also asserts selected
+install rejections do not create the incoming package directory. The
+expanded Catalog suite passed 29/29 with inspected output. Its exact tree case
+configures `MaximumInstalledEntries = 4`; the installed version already has
+four filesystem entries (`manifest.json`, `.gbar-integrity.json`, the payload
+directory, and the entrypoint), so adding one empty directory is the fifth and
+correctly produces `integrity_limit`. Bridge 40/40, Settings 41/41, and the
+49-file documentation contract also pass.
+
+The elapsed limit is currently detection between coarse units, not an
+interruptible deadline. `CheckBudget` runs around each version, but
+`InstalledPackageIntegrity.Verify` and `BoundedFileReader.AppendExact` receive
+neither the cancellation token nor the deadline. Directory traversal and as
+much as one 64 MiB version hash can therefore complete after the budget or
+cancellation is exceeded, and a blocked synchronous filesystem read has no
+runner-owned escape. Aggregate entry/byte refusal likewise occurs after the
+version that crosses the limit has been enumerated and hashed. Per-version
+bounds make that overshoot finite, but the option name must not imply a hard
+wall-clock guarantee yet.
+
+Recovery is the larger product gap. `SettingsWidget.ReloadInstalledWidgetsAsync`
+catches the new codes, clears its projection, and shows only “Installed widget
+catalog unavailable (<code>)”. `WidgetCatalog.UninstallAsync` itself begins
+with full `DiscoverAsync`, and `gbar uninstall` has no independent repair path.
+An existing catalog that exceeds new defaults after upgrade/configuration
+change, or gains an unexpected entry outside the normal installer, therefore
+blocks both the Settings version list and the supported removal command. The
+only available recovery is manual filesystem surgery—the outcome this finding
+was intended to avoid.
+
+Discovery also still verifies and materializes every accepted version and
+freezes a GBSS-relative-path/SHA-256 dictionary on each
+`InstalledWidgetVersion`, although only an enabled active version needs that
+publication inventory. The hard quotas bound this cost, but no cold/reload
+time or peak-memory evidence exists at their defaults.
 
 **Why it matters.** Catalog reload happens on the product's control path while
 the overlay is in use. A large but individually valid catalog can cause long
@@ -1251,19 +1335,27 @@ user is gaming. Public sharing makes version accumulation normal rather than
 an adversarial edge. Per-package safety claims therefore do not establish the
 product's lightweight aggregate behavior.
 
-**Underlying problem.** Resource budgets belong to the complete catalog
-operation, not only each artifact. The catalog currently combines discovery,
-security verification, active-version selection, UI listing, and publication
-evidence in one eager materialization. The new inventory is valuable security
-evidence but is retained at the broadest scope instead of the active consumer
-scope.
+**Underlying problem.** Resource budgets and recovery belong to the complete
+catalog operation, not only each artifact. The catalog still combines health
+inspection, security verification, active-version selection, cleanup authority,
+UI listing, and publication evidence in one all-or-nothing materialization.
+Hard failure is safe for publication, but it cannot also be the only route to
+the control plane that repairs that failure.
 
-**Recommended direction.** Define explicit product limits for installed IDs,
-versions per ID, total versions, total enumerated entries, and bytes hashed per
-discovery, and enforce compatible quotas in `gbar install` before the atomic
-move. Keep failure deterministic and give Settings/CLI an actionable cleanup
-path rather than allowing an over-limit tree to make all Community widgets
-silently disappear.
+**Recommended direction.** Keep the new product quotas and pre-publication
+installer accounting. Thread cancellation/deadline checks into tree enumeration
+and each bounded file-read loop, and name the remaining non-preemptible local
+filesystem limitation honestly. Retain an overall watchdog in the future
+bounded command/process runner rather than promising that a cancellation token
+can interrupt every Windows filesystem stall.
+
+Add a separately bounded catalog-health/repair projection that can identify
+safe package ID/version directory candidates and their coarse counts without
+publishing or trusting their manifests. Settings and CLI should use it to name
+the breached limit and remove a specifically selected disabled package/version
+under the existing operation lock and path/reparse safeguards, even when full
+discovery fails. Do not add a broad `--force` recursive delete or treat
+unverified manifest identity as deletion authority.
 
 Separate lightweight version listing from publication evidence. Retain the
 manifest/digest needed for review, but acquire and hold the full path/hash
@@ -1280,13 +1372,15 @@ digest cache is faster but is not authoritative without an immutable generation
 or a file-identity/change-journal contract. Prefer bounded on-demand work and a
 clear cleanup UX over an unverifiable cache.
 
-**Resolution evidence.** Add N+1 cases for IDs, versions per ID, total versions,
-aggregate files, and aggregate bytes, proving rejection occurs before hashing
-or retaining the over-limit tail. Prove Settings remains reachable and names
-the versions that must be removed, and that the bridge does not verify disabled
-inactive inventories merely to enforce its 256-widget cap. Record cold and
-reload time plus peak memory at the supported maximum, with several rollback
-versions per ID, and retain the result as a release budget.
+**Resolution evidence.** Preserve N+1 cases for IDs, versions per ID, total
+versions, aggregate files, and aggregate bytes, and add direct-discovery entry/
+byte overflow plus cancellation/deadline tests inside a multi-file hash. Prove
+an over-limit legacy/external tree leaves Settings and CLI able to identify and
+remove a chosen safe package/version without manual deletion, after which full
+discovery recovers. Prove the bridge does not retain disabled inactive GBSS
+inventories merely to enforce its widget cap. Record cold and reload time plus
+peak memory at the supported maximum, with several rollback versions per ID,
+and retain the result as a release budget tied to the exact quota values.
 
 ### EQ-017 — P2 — GBSS file-source failures collapse into a false “missing” diagnostic
 
@@ -1366,7 +1460,7 @@ state matrix or visual regression verdict.**
 `artifacts/evidence/auth-free/final-schema-v2-20260808-final/manifest.json`
 honestly identifies a standalone widget-body harness, exact source/tool hashes,
 and excluded pass criteria. It records a dirty source tree with 44 entries at
-revision `f3ac48c`; the implementation HEAD at reassessment is `0d4eb80`. Its
+revision `f3ac48c`; the implementation HEAD at reassessment is `b2d6f95`. Its
 Spotify package is 0.1.6,
 while the current manifest is 0.2.10. The 12 captures cover Games & Apps and
 Spotify's initial/setup states only. Settings failed to start in the harness,
@@ -1503,7 +1597,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
 | Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded catalog metadata, paired manifest policy, exact GBSS path/hash inventory, and digest-bound styles | Session launch lease for executable/dependency/assets; changing/insertion-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
-| Installed catalog scale | Each version is entry/byte bounded, but all IDs/versions are eagerly hashed and current HEAD retains every version's GBSS inventory | Aggregate ID/version/file/byte/time limits, active-only inventory ownership, cleanup UX, and maximum-catalog cold/reload memory measurements |
+| Installed catalog scale | Commit `b2d6f95` adds aggregate ID/version/entry/byte quotas and prospective install refusal, but accepted versions are still eagerly hashed and over-limit discovery blocks supported cleanup | Interruptible per-read deadline/cancellation, bounded Settings/CLI repair path, active-only inventory ownership, and maximum-catalog cold/reload memory measurements |
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
@@ -1513,7 +1607,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Performance | Per-worker Jobs plus current-HEAD aggregate admission and runtime-owned process leases; one dirty single-Settings-worker baseline sits at the Hidden CPU diagnostic edge | Direct lease fault-injection proof, ownership/remediation UI, repeated 1/8/many-widget churn, clean GPU/ETW noise-qualified regression gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
-| Documentation | Extensive and now internally current, but copyable examples are not executable evidence | Compile-test canonical snippets and reduce ledger/status duplication |
+| Documentation | Extensive, but its green contract checks links/headings while 70 C# fences have no designated executable consumer; full-gate wording also lacks run provenance | Compile-test canonical snippets, bind status claims to exact result manifests, and reduce ledger/status duplication |
 
 ## Recommended next three actions
 
@@ -1527,11 +1621,13 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    `WidgetSessionCoordinator`, extend residency fault-path accounting, and
    surface capacity/startup/protocol failures as persistent typed per-widget
    states with retry and resource-management actions.
-3. **Ship a truthful external widget scaffold.** Publish a versioned supported
-   SDK/template set, generate a real snapshot fixture/exporter, and prove the
-   full build/run/test/package path from an unrelated clean directory.
+3. **Make the quality gate bounded and auditable.** Drive local and Windows CI
+   lanes from one command manifest, terminate hung process trees, retain
+   structured results plus exact source/toolchain/package provenance, and bind
+   every “current full gate” documentation claim to that result. Then use it to
+   prove the versioned external SDK/template and clean-directory scaffold.
 
-The next review should first reassess these three items, then rotate into test-
-architecture credibility and public-documentation/API drift. Revisit visual,
-performance, or advanced-widget composition when a new fixture, retained
-baseline, or widget migration lands.
+The next review should first reassess these three items, then rotate into the
+installed-package launch/session boundary or advanced-widget composition if
+implementation changes land. Revisit visual or performance proof when a new
+fixture or retained baseline appears.

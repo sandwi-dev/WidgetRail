@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget adoption, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget adoption, retained visual/performance evidence, and test-orchestration/documentation drift audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -213,16 +213,23 @@ The SDK already provides important low-level safety mechanisms:
   low-level responsive/presentation contracts already required by advanced
   widgets.
 
-Implementation status reports current-worktree Release results of Widget SDK
-84/84, Gbar CLI 48/48, SDK Gallery 6/6, YT Music 48/48, Focus Navigation 41
-checks, Declarative Renderer 4,632 checks, and a green full aggregate. Static
-inspection confirms that the four managed programs register those case totals,
-and focused YT source coverage includes cancellation-ignoring stale ordinary
-and authorization failures plus lifecycle exit. This review cycle did not
-independently execute those suites or inspect a retained result bundle.
+Implementation status reports focused current-HEAD Release results including
+Widget SDK 84/84, Gbar CLI 49/49, SDK Gallery 6/6, YT Music 48/48, Focus
+Navigation 41 checks, and Declarative Renderer 4,632 checks. Static inspection
+confirms the relevant managed programs register those case totals, and focused
+YT source coverage includes cancellation-ignoring stale ordinary and
+authorization failures plus lifecycle exit. The last reported complete
+283.5-second aggregate predates the final GBSS inventory narrowing and typed-
+diagnostic commit; affected focused suites were reported green afterward. This
+review cycle did not independently execute those suites or inspect a retained
+result bundle.
 Disabled and busy destinations intentionally remain focusable while activation
 is suppressed; renderer and focus-test source encode that contract. The
-repository still lacks retained structured results or an immutable CI run, and
+repository's 33 managed test projects are all custom executable harnesses with
+no standard test SDK, aggregate subprocess timeout, or structured result
+adapter. That is workable for focused local development but does not produce a
+versioned external-SDK quality signal. The repository still lacks retained
+structured results or an immutable CI run, and
 available default packages are one source version behind for YT Music and SDK
 Gallery, so they are not current packaged evidence. Real controller, companion,
 physical-display and performance-trace evidence remain pending. This review did
@@ -496,18 +503,23 @@ show capability/authority changes before enabling an update. Until that exists,
 documentation must keep calling GitHub sharing unsigned developer preview and
 must not imply that AppContainer containment verifies the author.
 
-The multi-version workflow is also not aggregate-bounded. Each installed
-version is individually limited, but discovery eagerly verifies every ID and
-version and current HEAD can retain up to 512 GBSS path/hash entries per
-version (hashes for assemblies/assets are deliberately not retained). The
-bridge's 256-widget cap is enforced only after that work.
-Authors are explicitly encouraged to keep old versions for rollback, so this
-is a normal ecosystem scaling concern, not merely hostile filesystem input.
-Before calling installation effortless, define visible limits and cleanup,
-keep full publication/launch inventories scoped to enabled active versions,
-and measure discovery with several rollback versions per package. A user should
-never need to delete catalog directories manually to restore Settings or
-overlay startup.
+Commit `b2d6f95` aggregate-bounds the multi-version workflow: defaults cap
+IDs, versions per ID, total versions, installed entries, accounted bytes, and
+elapsed discovery, while install prospectively refuses a new package that would
+cross a count or byte quota. This is a meaningful ecosystem safeguard. The
+elapsed check runs only between whole-version verification units, however, and
+accepted versions are still eagerly hashed and can retain up to 512 GBSS path/
+hash entries each (assembly/asset hashes are deliberately not retained).
+
+The author/user recovery path remains incomplete. Settings collapses any limit
+failure to an empty “catalog unavailable” surface, while `gbar uninstall`
+begins with the same full discovery that just failed. An older catalog that
+exceeds new defaults, a configured-limit reduction, or an unexpected external
+entry can therefore require manual directory deletion. Before calling
+installation effortless, expose the breached quota and a bounded path-safe
+cleanup projection, keep publication/launch inventories scoped to enabled
+active versions, and measure discovery with several rollback versions per
+package.
 
 ## Reassessment of residency defaults and ecosystem cost
 
@@ -1042,9 +1054,11 @@ The newly expanded public guide and quickstart make both NavigationShell and
 scenario preview much easier to discover, but their copyable examples are not
 compiled by `Documentation.Tests`. The invalid quickstart glyph and stale
 focus/action wording are corrected, and the guide now lists the additive
-protocol-v1–v13 feature matrix. Canonical end-to-end snippets should still be
-compile-tested against the same SDK reference an external widget uses so
-documentation cannot remain green while recommended code drifts.
+protocol-v1–v13 feature matrix. The repository has 70 C# fences, while the
+documentation suite validates links and selected headings/phrases only.
+Canonical end-to-end snippets should still be compile-tested against the same
+SDK reference an external widget uses so documentation cannot remain green
+while recommended code drifts.
 
 ### 10. Higher-level test harness
 
@@ -1064,6 +1078,12 @@ await WidgetScenario.For(new SpotifyWidget(), services)
 The harness should provide deterministic operation completion, virtual time,
 route navigation, focus assertions, lifecycle leak detection, and standard
 capability states such as unavailable, denied, revoked, stale, and delayed.
+It should also integrate with the platform's bounded verification runner:
+stable scenario/case IDs, per-case and process-tree timeouts, structured
+results, captured diagnostics, and exact SDK/template provenance. The current
+33 custom executable test projects prove many useful contracts, but their plain
+console totals are not a portable third-party test protocol and should not be
+copied into every generated widget.
 
 ### 11. Templates organized by complexity
 
@@ -1222,6 +1242,9 @@ The improvements should be evaluated against measurable author outcomes:
 - Every generated README command is exercised by the release gate; the
   scaffold restores/builds through the supported SDK artifact and never emits
   an unavailable placeholder dependency or a rejected execution mode.
+- Canonical copyable documentation examples compile against the exact released
+  SDK, and a public widget test/scenario run produces stable structured results
+  with bounded execution rather than only process exit and console totals.
 - `gbar validate` distinguishes missing, oversized, changing, invalidly encoded,
   and integrity-mismatched GBSS sources with bounded path-safe diagnostics
   instead of reporting every file-provider rejection as `missing_import`.
@@ -1232,6 +1255,9 @@ The improvements should be evaluated against measurable author outcomes:
   Settings clearly distinguishes unsigned from verified publishers, shows a
   bounded source/digest receipt and version capability changes, and rejects
   invalid or revoked signatures.
+- Installed ID/version/file/byte quotas prevent normal package acquisition from
+  making catalog cost unbounded, and an over-limit legacy or externally changed
+  tree remains repairable from Settings/CLI without manual filesystem deletion.
 - A long session has an enforced aggregate resident-process/memory envelope;
   ordinary scaffolded widgets unload after a documented idle bound, genuinely
   retained work uses an explicit bounded lease, and Settings attributes current
@@ -1262,6 +1288,9 @@ Suggested baseline metrics for each migrated widget:
   explicit, lifecycle-bound, and accounted within the host-wide worker budget.
 - **A service-specific UI framework.** Spotify should use general media,
   navigation, resource, and command patterns.
+- **A custom test runner per generated widget.** Preserve the repository's
+  useful deterministic fakes, but expose one bounded result/timeout contract so
+  authors do not have to invent orchestration and CI parsing.
 - **Magic string replacement without validation.** ID helpers and action maps
   should improve diagnostics, not conceal routing.
 - **Premature language expansion.** Another SDK would duplicate current
