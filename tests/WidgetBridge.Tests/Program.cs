@@ -57,6 +57,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
     ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
+    ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
     ("Worker residency budget refuses count overcommit and releases failures", WorkerResidencyCountIsBounded),
     ("Worker residency budget accounts declared memory and preserves Settings access", WorkerResidencyMemoryIsBounded),
@@ -1550,6 +1551,30 @@ static async Task WorkerFailureIsSurfaced()
     Assert.Equal(BridgeMessageTypes.Widgets, widgets.Type);
 }
 
+static async Task ActionFailureIsGenerationOwned()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    var response = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest("test-widget", new WidgetActionEvent("fail", "button")));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, response.Type);
+
+    var failure = await harness.Client.ReadEventAsync(BridgeMessageTypes.Failure);
+    Assert.Equal("test-widget", failure.Payload.GetProperty("widgetId").GetString());
+    Assert.True(!string.IsNullOrWhiteSpace(
+        failure.Payload.GetProperty("runtimeGeneration").GetString()),
+        "Action failure omitted its worker generation.");
+    Assert.Equal("controllerActionFailed", failure.Payload.GetProperty("reason").GetString());
+    Assert.Equal("fail", failure.Payload.GetProperty("actionId").GetString());
+    Assert.Equal("button", failure.Payload.GetProperty("sourceElementId").GetString());
+    Assert.True(!failure.Payload.GetProperty("canRestart").GetBoolean(),
+        "An action failure incorrectly offered a worker restart.");
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+}
+
 static async Task WorkerResidencyCountIsBounded()
 {
     await using var harness = await BridgeHarness.StartBudgetAsync(
@@ -1680,6 +1705,8 @@ file sealed class BridgeTestWidget : Widget
         }
         else if (action.ActionId == "hang")
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        else if (action.ActionId == "fail")
+            throw new InvalidOperationException("intentional bridge action failure");
         else if (action.ActionId == "ordered.first")
         {
             await Task.Delay(TimeSpan.FromMilliseconds(150), cancellationToken);

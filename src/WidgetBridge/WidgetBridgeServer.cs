@@ -609,6 +609,7 @@ public sealed class WidgetBridgeServer(
                         : CreateCompanionFactory(configured),
             });
         var registration = new ClientRegistration(configured, client);
+        var runtimeGeneration = configured.PublicDescriptor().RuntimeGeneration;
         client.Invalidated += (_, revision) =>
         {
             if (IsCurrent(registration) && registration.MayPublishInvalidation) _ = SendEventAsync(
@@ -622,6 +623,7 @@ public sealed class WidgetBridgeServer(
                 new
                 {
                     widgetId = configured.Id,
+                    runtimeGeneration,
                     // Protocol v1 retains the legacy reason value even though
                     // every action ingress now shares this failure surface.
                     reason = "controllerActionFailed",

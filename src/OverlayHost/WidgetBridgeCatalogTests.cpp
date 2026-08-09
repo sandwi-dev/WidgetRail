@@ -295,6 +295,43 @@ int main() {
     assert(!error.empty());
 
     error.clear();
+    const auto actionFailure = gba::testing::ParseWidgetActionFailureEvent(R"json({
+        "protocolVersion":1,
+        "type":"widget-failed",
+        "requestId":0,
+        "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"Provider command failed","canRestart":false}
+    })json", error);
+    assert(actionFailure && error.empty());
+    assert(actionFailure->widgetId == L"music");
+    assert(actionFailure->runtimeGeneration == L"runtime-2");
+    assert(actionFailure->actionId == L"playback.next");
+    assert(actionFailure->sourceElementId == L"player.next");
+
+    gba::WidgetActionFailureQueue actionFailures;
+    for (int index = 0; index <= 16; ++index) {
+        assert(actionFailures.Push({
+            L"music", L"runtime-2", L"action-" + std::to_wstring(index), L"source"}));
+    }
+    assert(actionFailures.size() == gba::WidgetActionFailureQueue::MaximumFailures);
+    const auto pendingFailures = actionFailures.Take();
+    assert(pendingFailures.front().actionId == L"action-1");
+    assert(pendingFailures.back().actionId == L"action-16");
+
+    error.clear();
+    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+        "protocolVersion":1,"type":"widget-failed","requestId":0,
+        "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"secret\u000aresponse","canRestart":false}
+    })json", error));
+    assert(!error.empty());
+
+    error.clear();
+    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+        "protocolVersion":1,"type":"widget-failed","requestId":0,
+        "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"failed","canRestart":true}
+    })json", error));
+    assert(!error.empty());
+
+    error.clear();
     const auto appearance = gba::testing::ParsePlatformAppearance(ValidAppearance, error);
     assert(appearance && error.empty());
     assert(appearance->revision == 7);

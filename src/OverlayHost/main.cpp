@@ -1165,6 +1165,27 @@ private:
                         renderedSnapshotSequences_.erase(invalidatedWidget);
                     }
                 }
+                for (const auto& failure : bridge_.TakeActionFailures()) {
+                    const auto descriptor = std::find_if(
+                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                        [&](const gba::WidgetDescriptor& candidate) {
+                            return candidate.id == failure.widgetId;
+                        });
+                    if (descriptor == widgetDescriptors_.end() ||
+                        descriptor->runtimeGeneration != failure.runtimeGeneration) {
+                        AppendDiagnostic(
+                            L"Dropped stale widget action failure for " + failure.widgetId);
+                        continue;
+                    }
+                    lastActionMessage_ = std::wstring(DisplayWidgetName(failure.widgetId)) +
+                        L" action failed; try again";
+                    lastActionExpiresAt_ = GetTickCount64() + 4000;
+                    AppendDiagnostic(
+                        L"Widget action failed: widget=" + failure.widgetId +
+                        L" action=" + failure.actionId +
+                        L" source=" + failure.sourceElementId);
+                    InvalidateRect(window_, nullptr, FALSE);
+                }
                 for (const auto& effect : bridge_.TakeHostEffects()) {
                     const auto descriptor = std::find_if(
                         widgetDescriptors_.begin(), widgetDescriptors_.end(),

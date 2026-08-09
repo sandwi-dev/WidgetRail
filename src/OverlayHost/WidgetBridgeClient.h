@@ -55,6 +55,27 @@ private:
     std::unordered_set<std::wstring> known_;
 };
 
+struct WidgetActionFailure final {
+    std::wstring widgetId;
+    std::wstring runtimeGeneration;
+    std::wstring actionId;
+    std::wstring sourceElementId;
+};
+
+/// Bounded FIFO for post-admission action failures. Runtime generation is
+/// retained so the UI cannot apply a delayed event to a replacement worker.
+class WidgetActionFailureQueue final {
+public:
+    static constexpr std::size_t MaximumFailures = 16;
+
+    [[nodiscard]] bool Push(WidgetActionFailure failure);
+    [[nodiscard]] std::vector<WidgetActionFailure> Take() noexcept;
+    [[nodiscard]] std::size_t size() const noexcept { return queued_.size(); }
+
+private:
+    std::vector<WidgetActionFailure> queued_;
+};
+
 enum class WidgetHostEffectKind {
     CloseOverlayAfterAppLaunch,
 };
@@ -288,6 +309,7 @@ public:
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
     [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
+    [[nodiscard]] std::vector<WidgetActionFailure> TakeActionFailures() noexcept;
     [[nodiscard]] std::vector<WidgetHostEffect> TakeHostEffects() noexcept;
 
 private:
@@ -306,6 +328,7 @@ private:
     std::wstring lastError_;
     long long nextRequestId_{};
     WidgetInvalidationQueue invalidations_;
+    WidgetActionFailureQueue actionFailures_;
     WidgetHostEffectQueue hostEffects_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
@@ -325,6 +348,9 @@ namespace gba::testing {
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetHostEffect> ParseWidgetHostEffectEvent(
+    std::string_view eventUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<WidgetActionFailure> ParseWidgetActionFailureEvent(
     std::string_view eventUtf8,
     std::wstring& error);
 }
