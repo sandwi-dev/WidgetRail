@@ -3273,6 +3273,10 @@ private:
         const auto* focused = gba::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, activeScope);
         if (!focused) return;
+        // Resolve the current Scroll edge before an explicit or geometric move
+        // can leave that Scroll and make its pagination action undiscoverable.
+        if (DispatchScrollPagination(widgetId, *snapshot, navigationDirection))
+            return;
         const std::wstring* target = nullptr;
         if (direction == L"up") target = &focused->focusUp;
         else if (direction == L"down") target = &focused->focusDown;
@@ -3306,8 +3310,6 @@ private:
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
-        if (DispatchScrollPagination(widgetId, *snapshot, navigationDirection))
-            return;
         if (gba::input::ShouldTransferFocusToTray(
                 navigationDirection,
                 activeScope == gba::input::RootInputScope(*snapshot),

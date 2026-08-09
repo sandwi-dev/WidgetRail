@@ -237,9 +237,10 @@ rejected before publication.
 
 Protocol v11 optionally adds host-owned focus-edge actions through
 `ScrollElement.Paginate(nearStartActionId, nearEndActionId, threshold)`. After
-controller focus moves into the first/last threshold direct child in the
-matching direction, the host sends the configured action with the Scroll ID as
-its source. It does not fetch, cache, or append widget data and does not add a
+controller focus moves into, or attempts to leave from, the first/last threshold
+direct child in the matching direction, the host sends the configured action
+with the Scroll ID as its source. The edge check happens before focus can leave
+the Scroll. It does not fetch, cache, or append widget data and does not add a
 visible **Load more** control.
 
 For bounded offset-based provider data, use the public
@@ -248,8 +249,9 @@ guide](widget-authoring-guide.md#bounded-offset-paged-resources). Its
 `Paginate(scroll)` and `TryHandlePagination(...)` helpers bind this same v11
 contract while the SDK owns page state, invalidation, Latest coordination,
 bounded LRU caching, and entering-edge focus. It is an SDK state helper, not a
-new declarative node. Cursor and append/infinite-feed resources are not part of
-the current API.
+new declarative node. A replacement page's changed entering-edge focus request
+outranks ordinal fallback from the prior page. Cursor and append/infinite-feed
+resources are not part of the current API.
 
 ## Per-view surface hints
 

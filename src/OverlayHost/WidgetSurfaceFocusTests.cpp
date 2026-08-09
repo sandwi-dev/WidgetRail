@@ -183,6 +183,18 @@ int main() {
     Check(memory.Restore(L"audio", churned) == L"session.voice.mute",
           "removed focused app falls to the nearest controller row by tree position");
 
+    auto previousPage = SessionList({
+        L"session.page.12", L"session.page.13", L"session.page.14",
+    });
+    previousPage.initialFocusId = L"session.page.14";
+    memory.Remember(L"paged", previousPage, L"session.page.12");
+    auto replacementPage = SessionList({
+        L"session.page.0", L"session.page.1", L"session.page.2",
+    });
+    replacementPage.initialFocusId = L"session.page.2";
+    Check(memory.Restore(L"paged", replacementPage) == L"session.page.2",
+          "a replacement page entering-edge request outranks stale ordinal memory");
+
     std::cout << "WidgetSurfaceFocusTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

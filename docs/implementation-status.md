@@ -101,9 +101,11 @@ UIA ListItems with required single selection and Invoke. The immutable host tree
 retains selected/focused/enabled state and a monotonically increasing host
 sequence. Select and Invoke queue a closed `ActivateTrayItem` action with a
 stable widget target; the UI thread rejects stale trees, exits reorder mode, and
-uses the existing tray state machine. The real UIA-client suite discovers the
-ListItem and obtains SelectionItem, while direct provider coverage verifies the
-typed queued authority. Dashboard title/status nodes remain open.
+uses one direct stable-ID tray state transition. The real UIA-client suite
+discovers the ListItem and obtains SelectionItem, while direct provider coverage
+verifies the typed queued authority. The dashboard also publishes its heading,
+static help, and transient live status; composite open-widget Back/Close/footer
+semantics remain open.
 
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
@@ -523,7 +525,12 @@ themes also use non-shrinking fixed regions, a thin native Slider
  track inside the 44-DIP target, and lighter typography/radii/spacing. Pressed
  Up from the tray now enters the visible widget. Scroll focus-follow snaps the
  first and last focusable descendants to the true extent boundaries. The
- controller guide is density-aware and no-wrap, the widget viewport has a
+ host resolves focus-edge pagination against the current row before an ordinary
+ move can leave its Scroll, and a changed replacement-page focus request
+ outranks stale ordinal focus memory. Focused Release coverage passes 21 widget-
+ surface focus checks, 41 focus-navigation checks, and Spotify 31/31; packaged
+ reverse-pagination controller evidence remains open. The controller guide is
+ density-aware and no-wrap, the widget viewport has a
  host-owned rounded clip, and size-changing widget swaps commit one synchronous
  complete repaint after a no-redraw move to avoid an intermediate black frame.
  These

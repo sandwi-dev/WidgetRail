@@ -25,10 +25,11 @@ public:
         const WidgetSnapshot& snapshot,
         std::wstring_view focusedElementId);
 
-    /// Returns remembered focus, then valid initial focus, then the first
-    /// navigable Button or Slider in tree order. Disabled/busy controls retain
-    /// focus but suppress actions. An empty string is valid for focusless
-    /// surfaces whose container-level shortcuts still accept input.
+    /// A changed valid initial focus is an explicit snapshot request and wins
+    /// over prior memory. Otherwise returns exact remembered focus, its nearest
+    /// ordinal fallback, valid initial focus, then the first navigable control.
+    /// Disabled/busy controls retain focus but suppress actions. An empty string
+    /// is valid for focusless surfaces whose container-level shortcuts accept input.
     [[nodiscard]] std::wstring Restore(
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot) const;
@@ -40,6 +41,7 @@ private:
     struct Entry final {
         std::wstring elementId;
         std::size_t ordinal{};
+        std::wstring initialFocusId;
     };
 
     [[nodiscard]] static std::wstring Key(

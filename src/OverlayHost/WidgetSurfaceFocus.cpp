@@ -89,6 +89,7 @@ void WidgetSurfaceFocusMemory::Remember(
         entries_[Key(widgetId, scope)] = {
             std::wstring(focusedElementId),
             static_cast<std::size_t>(position - focusNodes.begin()),
+            snapshot.initialFocusId,
         };
     }
 }
@@ -98,6 +99,12 @@ std::wstring WidgetSurfaceFocusMemory::Restore(
     const WidgetSnapshot& snapshot) const {
     const auto scope = std::wstring_view(snapshot.activeInputScopeId);
     const auto memory = entries_.find(Key(widgetId, scope));
+    if (memory != entries_.end() &&
+        memory->second.initialFocusId != snapshot.initialFocusId &&
+        !snapshot.initialFocusId.empty() &&
+        IsEnabledFocusNode(FindNodeInInputScope(snapshot, snapshot.initialFocusId, scope))) {
+        return snapshot.initialFocusId;
+    }
     if (memory != entries_.end() &&
         IsEnabledFocusNode(FindNodeInInputScope(snapshot, memory->second.elementId, scope))) {
         return memory->second.elementId;
