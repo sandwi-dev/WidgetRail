@@ -731,7 +731,13 @@ over implementation commits `6c5f932`, `7d33ce1`, and `7d92dcd`; it records a
 clean source tree, zero stderr, and no output truncation. The subsequent native
 per-widget failure-feedback slice passes its 279-check deterministic target and
 the canonical Release native build/test script, including the full OverlayHost
-link and all existing state-machine suites.
+link and all existing state-machine suites. First-Party Conformance 6/6 now also
+runs Spotify's real installed and bundled package through the generic
+AppContainer worker, reaches a broker-backed ready snapshot without credentials,
+admits `spotify.next` through the production action queue, and observes the
+typed simulated broker command. The existing YT Music acceptance route already
+proves direct and controller-resolved playback commands through its installed
+generic worker; live accounts and browser authorization remain separate gates.
 
 PlatformBroker focused coverage passes
 48/48 and includes closed isolated-

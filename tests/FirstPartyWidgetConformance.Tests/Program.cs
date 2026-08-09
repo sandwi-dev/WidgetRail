@@ -52,7 +52,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
     ("Bundled catalog rejects unsafe and ambiguous package sources", BundledCatalogRejectsUnsafeSources),
     ("Real first-party packages merge through the community catalog path", InstalledPackagesMerge),
-    ("All first-party packages run through generic AppContainer worker and broker", PackagesRunIsolated),
+    ("First-party and advanced sample packages run through generic AppContainer worker and broker", PackagesRunIsolated),
     ("Exact maximum directory package packs installs and runs isolated", MaximumDirectoryPackageRunsIsolated),
     ("YT Music community package completes isolated install lifecycle recovery and removal", () => YtMusicCommunityPackageRunsIsolated()),
 };
@@ -79,7 +79,7 @@ static async Task BundledCatalogUsesManifests()
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
     var catalog = BridgeCatalog.Load(deployment.BundledCatalogPath);
     Assert.SequenceEqual(
-        new[] { "media-sessions", "games-apps", "audio-mixer", "network-controls" },
+        new[] { "media-sessions", "games-apps", "audio-mixer", "network-controls", "spotify" },
         catalog.Widgets.Select(widget => widget.Id));
 
     foreach (var package in deployment.Packages)
@@ -186,7 +186,7 @@ static async Task InstalledPackagesMerge()
         deployment.WorkerHostPath);
     Assert.True(load.InstalledCatalogValid, "Installed first-party catalog was rejected.");
     Assert.Equal(0, load.Warnings.Count);
-    Assert.Equal(5, load.Catalog.Widgets.Count);
+    Assert.Equal(6, load.Catalog.Widgets.Count);
     var installedSnapshot = await new WidgetCatalog(deployment.InstalledCatalogRoot)
         .DiscoverAsync();
 
@@ -818,7 +818,10 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         });
 
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
-        var initial = await WaitForSnapshotAsync(client, package.ExpectedText);
+        var expectedInitialText = package.Manifest.Id == "org.gbar.samples.spotify"
+            ? "Client ID required"
+            : package.ExpectedText;
+        var initial = await WaitForSnapshotAsync(client, expectedInitialText);
         await ExportSnapshotAsync(package, configured, "initial", initial);
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
 
@@ -1046,7 +1049,8 @@ static async Task RunCatalogAsync(
         try
         {
             var configured = catalog.GetConfigured(widgetId(package));
-            var backend = CreateBackend();
+            var backend = CreateBackend(
+                spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify");
             using var consentRoot = new TemporaryDirectory("gba-firstparty-consent");
             var consent = new ConsentStore(consentRoot.Path);
             var identity = new BrokerWidgetIdentity(
@@ -1144,6 +1148,10 @@ static async Task ExerciseControlAsync(
             actionId = "media.toggle";
             calls = () => backend.MediaControlCalls;
             break;
+        case "org.gbar.samples.spotify":
+            actionId = "spotify.next";
+            calls = () => backend.SpotifyPlaybackControlCalls;
+            break;
         default:
             throw new InvalidOperationException(
                 $"No conformance control is defined for {package.Manifest.Id}.");
@@ -1156,9 +1164,15 @@ static async Task ExerciseControlAsync(
     var before = calls();
     await client.SendActionAsync(new WidgetActionEvent(actionId, source!.Id));
     await WaitUntilAsync(() => calls() > before);
+    if (package.Manifest.Id == "org.gbar.samples.spotify")
+    {
+        Assert.Equal(
+            SpotifyPlaybackOperation.Next,
+            backend.LastSpotifyPlaybackCommand?.Operation);
+    }
 }
 
-static SimulatedPlatformBrokerBackend CreateBackend()
+static SimulatedPlatformBrokerBackend CreateBackend(bool spotifyReady = false)
 {
     var backend = new SimulatedPlatformBrokerBackend
     {
@@ -1177,6 +1191,38 @@ static SimulatedPlatformBrokerBackend CreateBackend()
         WifiRadio = new WifiRadioSummary(WifiRadioState.On, true),
         BluetoothRadioState = BluetoothRadioState.On,
     };
+    if (spotifyReady)
+    {
+        var scopes = new[]
+        {
+            SpotifyAuthorizationScope.PlaybackStateRead,
+            SpotifyAuthorizationScope.PlaybackStateControl,
+            SpotifyAuthorizationScope.LocalPlayback,
+            SpotifyAuthorizationScope.PlaylistsRead,
+        };
+        backend.SpotifyConfiguration = new(
+            true, "http://127.0.0.1:43827/callback/");
+        backend.SpotifyAuthorization = new(
+            SpotifyAuthorizationState.Connected, scopes, scopes, null);
+        backend.SpotifyPlayback = new(
+            true,
+            true,
+            12_000,
+            180_000,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            SpotifyRepeatState.Off,
+            false,
+            new SpotifyPlaybackItemSummary(
+                SpotifyPlaybackItemType.Track,
+                "Conformance Spotify Song",
+                "Conformance Artist",
+                "Conformance Context",
+                null,
+                "spotify:track:conformance"),
+            new SpotifyPlaybackDisallowedActions(
+                false, false, false, false, false, false, false, false),
+            "Spotify");
+    }
     backend.SetAudioSessions(
         [new AudioSessionSummary("audio-one", "Conformance Game", 0.63, false, true)]);
     backend.SetAudioDevices(
@@ -1345,15 +1391,14 @@ file sealed class Deployment : IDisposable
                     typeof(AudioMixerWidget), "Conformance Game"),
                 new PackageSpec("network-controls", "src/FirstPartyWidgets/NetworkControlsWidget", "NetworkControls", WidgetGlyph.Wifi,
                     typeof(NetworkControlsWidget), "Conformance Wi-Fi"),
+                new PackageSpec("spotify", "samples/SpotifyWidget", "Spotify",
+                    WidgetGlyph.Music, typeof(SpotifyWidget), "Conformance Spotify Song"),
             };
             if (includeEvidencePackages)
             {
                 packageSpecs.Add(new PackageSpec(
                     "settings", "src/FirstPartyWidgets/SettingsWidget", "Settings",
                     WidgetGlyph.Settings, typeof(SettingsWidget), "Overlay"));
-                packageSpecs.Add(new PackageSpec(
-                    "spotify", "samples/SpotifyWidget", "Spotify",
-                    WidgetGlyph.Music, typeof(SpotifyWidget), "Client ID required"));
             }
             var fixtures = new List<PackageFixture>();
             foreach (var spec in packageSpecs)
