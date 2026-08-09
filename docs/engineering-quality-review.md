@@ -26,21 +26,24 @@ descendants on success or timeout, and pump completion has its own deadline.
 The same commit provides manifest-driven local/Windows lanes, capped streams and
 cases, test-project coverage, clean-only release eligibility, exact selected
 native compiler/SDK/tool hashes, and SHA-pinned workflow actions. Focused dirty
-evidence passes and is correctly rejected for release use. A clean full managed/
-native result and immutable hosted artifact remain open. Package-artifact
+evidence passes and is correctly rejected for release use. Clean all-lane result
+`20260809T141527Z-8946c731` now also passes all 41 steps and 755 JUnit cases in
+313.016 seconds for exact clean commit `dc6b092`; the bundle is correctly marked
+release-evidence eligible. An immutable hosted artifact remains open. Package-artifact
 traversal and hashing now run in a 30-second Job with file, entry, per-file, total-
 byte, output, and nested-reparse ceilings. Every provenance command now consumes
 the shared remaining `OverallTimeoutSeconds`, and native discovery/hash work runs
 through the same bounded launcher. The package helper now requires its root below
 the evidence root, rejects a root reparse point, and has per-file, total-byte,
-entry, root-junction, reduced-budget, and exhaustion fixtures. A clean full
-managed/native run and immutable hosted artifact remain.
+entry, root-junction, reduced-budget, and exhaustion fixtures. Immutable hosted
+execution remains to prove the checked-in workflow rather than only the local
+runner.
 The strongest recent committed improvement
 remains `b2d6f95`'s aggregate installed-catalog policy. It caps IDs, versions, entries,
 accounted bytes, and detected elapsed discovery work and prospectively rejects
 installs before publication. The implementation agent reports Catalog 29/29,
-Bridge 40/40, Settings 41/41, and the 49-file documentation contract green;
-this review did not rerun them or inspect a retained result. Follow-up commit
+Bridge 40/40, Settings 41/41, and the 49-file documentation contract green; the
+clean all-lane bundle now retains those passing steps. Follow-up commit
 `1c1f8bb` adds cancellation/deadline checkpoints per recursive entry and before
 each at-most-64-KiB read. Control-plane recovery, active-only inventory
 ownership, and maximum-scale evidence remain incomplete, so EQ-016 is only
@@ -51,8 +54,8 @@ Committed work bounds manifest/metadata consumption,
 rejects short/extra/changed tree input, and parses the exact manifest bytes
 included in the digest. Current HEAD also emits an exact GBSS path/
 SHA-256 inventory and requires every host-compiled entry/import to match it after
-one bounded strict-UTF-8 read. The implementation agent reports Styling 23/23;
-this review code-inspected but did not execute it. This
+one bounded strict-UTF-8 read. The clean all-lane bundle retains Styling 23/23.
+This
 closes the resource, manifest-pairing, and style-consumption subproblems while
 leaving executable/dependency/asset launch authority open.
 
@@ -66,7 +69,8 @@ without an SDK, generates with the override, and builds the result. This is an
 honest contributor workflow, not yet a standalone community product: the
 generated repository still points back to the platform source tree, no SDK
 artifact is published, and the README refers snapshot export to typed-fake
-tests the template does not generate.
+tests the template does not generate. The roughly 200-declaration public SDK
+surface also has no package metadata or API-compatibility baseline yet.
 
 Current HEAD closes the remaining CLI author-code bypass: `gbar render`
 now accepts only bounded snapshot JSON, and DLL input fails closed before type
@@ -75,13 +79,9 @@ path through the production AppContainer worker boundary. Current HEAD
 also resolves the prior responsive-focus
 identity risk by separating focus persistence from action and source-element
 routing. It also moves reconciliation out of steady paint and onto relevant
-state transitions. The implementation agent reports that affected focused
-managed and native Release tests and the OverlayHost Release build pass on
-current HEAD. The last reported complete repository-wide Release verifier ran
-before the final GBSS inventory narrowing and typed-diagnostic commit; affected
-focused suites were rerun afterward. This review did not rerun them or inspect
-a retained machine-readable result, so the broader current-HEAD claim remains
-unproven.
+state transitions. The clean all-lane bundle retains the affected managed cases,
+41 Focus Navigation checks, 20 Widget Surface Focus checks, the native catalog/
+renderer suites, and the OverlayHost Release build for exact commit `dc6b092`.
 
 A separate public-distribution blocker is the incomplete publisher/provenance
 model. Current HEAD now makes the immediate Settings decision honest:
@@ -147,8 +147,9 @@ reliable local-gate foundation. A supervised handshake closes the command's pre-
 assignment escape window, tree and pump teardown are bounded, exact selected
 Visual Studio/MSVC/SDK/tool identity is retained, workflow actions are SHA-
 pinned, local/hosted retention policy is documented, and package provenance has
-process/resource/root-containment caps under the shared deadline. EQ-004 remains
-open for a retained clean full run and immutable hosted execution proof.
+process/resource/root-containment caps under the shared deadline. The retained
+clean all-lane result closes the local execution portion of EQ-004; immutable
+hosted execution proof remains open.
 
 ## Changes since the previous audit
 
@@ -164,6 +165,17 @@ runner self-test, WidgetTicker, and Documentation in 15.396 seconds. It exercise
 the bounded package/helper quota and root-junction cases plus shared-deadline/
 native-provenance work and is intentionally not release evidence because its
 source tree was dirty; it names pre-amend `442250f` rather than current HEAD.
+
+The later clean all-lane run `20260809T141527Z-8946c731` is the first retained
+release-eligible result for the new runner. It passed all 41 manifest steps and
+755 JUnit cases with zero failures, errors, or skips in 313.016 seconds against
+exact commit `dc6b092`. The bundle contains 41 JUnit files, per-step command and
+stdout/stderr records, 29 Community package digests, MSVC 14.51.36231 and
+compiler 19.51.36248.0 plus its hash, Windows SDK 10.0.26100.0 for both native
+paths, and the manifest-tool version/hash. This review did not launch the run;
+it inspected the retained aggregate, per-step statuses, JUnit totals, native
+build/smoke artifacts, and provenance. No referenced hosted workflow execution
+was found.
 
 The security rotation re-inspected the installed-package launch chain. It is
 unchanged since the earlier audit: `BridgeCatalog` still reduces verified
@@ -192,10 +204,10 @@ MSVC directory, compiler version/hash, overlay/InputProbe Windows SDK versions,
 manifest-tool version/hash, and GitHub runner-image identifiers. Self-tests cover
 success, nonzero exit, high output, ordinary and detached descendant trees,
 case limits, JUnit conversion, reduced shared budgets, and typed fail-before-
-launch exhaustion. This review did not execute the full gate.
-The focused result above records 29 package digests, MSVC 14.51.36231, compiler
+launch exhaustion. The focused result above records 29 package digests, MSVC 14.51.36231, compiler
 19.51.36248.0 plus its SHA-256, Windows SDK 10.0.26100.0 for both native paths,
-and the manifest-tool version/hash. This review did not execute the full gate.
+and the manifest-tool version/hash; the later clean result retains the same
+fields while covering every manifest step.
 
 The package-provenance follow-up moves recursive discovery and hashing into the
 same Job-backed runner with a 30-second timeout. `Get-PackageProvenance.ps1`
@@ -350,7 +362,7 @@ are:
 | Widget bridge catalog | 40/40 passed on commit `b2d6f95` |
 | OverlayHost Release target | built successfully |
 | Documentation contract | 49 Markdown files passed on commit `b2d6f95` |
-| Full `scripts/Verify.ps1 -Configuration Release` | passed in 283.5 seconds before GBSS-only narrowing and typed diagnostics; affected focused suites are green |
+| Full bounded all-lane gate | clean release-eligible run `20260809T141527Z-8946c731` passed 41/41 steps and 755 JUnit cases in 313.016 seconds for commit `dc6b092` |
 
 The typed-diagnostic milestone is committed. Styling 23/23, CLI 49/49, and the
 49-file documentation contract were run and their output inspected around the
@@ -358,14 +370,14 @@ final API-shape change; Platform Settings 15/15 and Bridge 40/40 were reported
 green earlier in the same milestone. The previous full-verifier run predates
 this commit, so it is not retained end-to-end evidence for current HEAD.
 
-The implementation agent reports that the full verifier additionally exercised
-the managed, protocol, capability,
+The retained clean all-lane result exercises the managed, protocol, capability,
 documentation, packaging-conformance, native input/layout/rendering, hidden
-OverlayHost smoke, and InputProbe paths. Current HEAD can now write machine-
-readable local results. One dirty focused result exercises the latest runner
-self-test, but it is clean-ineligible and names the prior commit; no clean full
-result or immutable CI link exists, and this review did not independently
-execute the commands, so EQ-004 remains only partially implemented.
+OverlayHost smoke, and InputProbe paths. It binds those results to exact clean
+commit `dc6b092`, the manifest digest, package digests, and selected native
+toolchain, and is explicitly release-evidence eligible. This review inspected
+the aggregate result, all per-step statuses, and the 41 JUnit files rather than
+launching the commands. EQ-004's local runner/evidence portion is implemented;
+only referenced immutable hosted execution remains open.
 This milestone did not verify a real controller, real YTMDesktop2 companion,
 Spotify authentication, physical mixed-DPI display, or PresentMon/ETW trace.
 This review visually inspected the retained Spotify setup, accessible setup,
@@ -408,13 +420,16 @@ rejection of one late-added import. The implementation agent
 also inspected a green 283.5-second full Release gate, then reran Catalog 28/28,
 Styling 23/23, and Bridge 40/40 after narrowing retained hashes to GBSS only.
 The cases do not include a catalog-to-bridge race seam, aggregate installed-
-version limits, or retained full-verifier output tied to current HEAD.
+version limits, or a verified package launch lease. The newer clean all-lane
+bundle now retains current-commit full-verifier output but does not add those
+missing package-boundary tests.
 
 ## Prioritized findings
 
 ### EQ-001 — P0 — CLI inspection executed author code outside the production sandbox
 
-**Status: Implemented in current HEAD; focused Release verification is reported, retained evidence is pending.**
+**Status: Implemented in current HEAD; the clean all-lane bundle retains the
+relevant 49/49 CLI cases.**
 
 **Implementation.** `gbar render` now accepts only `.json` snapshots. It checks
 the file length against the 4 MiB absolute transport ceiling before allocation,
@@ -441,8 +456,10 @@ fixtures for deterministic render/replay, while `gbar dev` covers executable
 integration today. This is an intentional workflow gap rather than a full-trust
 escape hatch.
 
-**Resolution evidence.** The implementation agent reports that Release
-`GbarCli.Tests` passes 48/48. Source inspection confirms that the render
+**Resolution evidence.** Clean result `20260809T141527Z-8946c731` retains a
+49/49 `GbarCli.Tests` JUnit result, including named cases for rejecting assembly
+rendering/unbounded snapshots and fail-closed scenario execution. Source
+inspection confirms that the render
 regression supplies an existing invalid DLL, a type name, instance, and
 pre-existing output sentinel; it receives only the fixed isolation diagnostic,
 does not leak assembly/type details, and leaves output unchanged. A second case
@@ -699,6 +716,17 @@ a typed-fake snapshot exporter while the template contains no test project,
 exporter, or static snapshot, so its subsequent `gbar replay` path still has no
 generated input.
 
+The dependency itself is also not ready to be governed as a public platform
+contract. `WidgetSdk.csproj` has target-framework, nullable, implicit-using, and
+warnings-as-errors settings plus a source `ProjectReference` to
+`WidgetProtocol`; it has no package identity/version/description/repository
+metadata, generated package/documentation settings, package validation, or
+checked-in API-compatibility baseline. A textual inventory finds about 201
+public class/record/interface/enum/struct declaration lines in `src/WidgetSdk`.
+That count is not a quality score, but it makes accidental pre-release API
+expansion and later breaking changes expensive unless the supported surface is
+deliberately versioned before publication.
+
 **Why it matters.** The misleading successful-but-unbuildable scaffold is now
 removed. Standalone GitHub repositories—the intended sharing unit—still cannot
 consume the SDK through a supported published dependency, and developers must
@@ -707,8 +735,9 @@ short of the promised 15-minute community starter experience.
 
 **Underlying problem.** The generator now treats local SDK resolution as a
 validated dependency, but the CLI, template, SDK/runtime package, generated
-tests, and copyable commands are not yet shipped as one versioned release set.
-Generated documentation also remains outside executable documentation checks.
+tests, API-compatibility baseline, and copyable commands are not yet shipped as
+one versioned release set. Generated documentation also remains outside
+executable documentation checks.
 
 **Recommended direction.** Treat the CLI, template, SDK/runtime packages, and
 compatibility range as one release set. The production endpoint is a supported,
@@ -716,6 +745,10 @@ immutable NuGet SDK/runtime release plus a template that pins a compatible
 version and can be restored from a clean machine without the platform source.
 The current explicit local-project override is appropriate for contributors
 until that artifact exists; do not reintroduce a project known not to build.
+Define the intended author-facing API before the first package: enable package
+validation against a checked-in baseline, generate XML documentation and symbol/
+source metadata, and classify intentional breaks through the same host-API/
+template compatibility policy rather than silently growing a 200-type surface.
 
 Keep the corrected `gbar dev` and idle-unload defaults. Add a real generated
 typed-fake test/exporter or a validated static snapshot so the documented
@@ -750,11 +783,15 @@ data-only snapshot handoff. Add a negative test proving an unavailable SDK
 fails during scaffolding with no partial directory rather than later in
 `dotnet restore`. Verify the emitted package/template versions match the host
 compatibility contract, and retain an external sample repository or immutable
-CI artifact as the public proof.
+CI artifact as the public proof. Pack the SDK and protocol dependencies, compare
+their public surface to the approved baseline, and prove an intentional breaking
+change requires an explicit compatibility/version update while an accidental
+one fails the gate.
 
 ### EQ-002 — P1 — Responsive focus identity required an explicit contract
 
-**Status: Implemented in current HEAD; local verification is reported, retained independent evidence is pending.**
+**Status: Implemented in current HEAD; managed and native coverage is retained
+in the clean all-lane bundle.**
 
 **Implementation.** Protocol v13 adds an optional bounded
 `focusPersistenceId` only to focusable nodes. SDK focusable elements expose
@@ -783,12 +820,13 @@ focus persistence as separate contracts. The changed managed tests cover
 distinct destinations sharing one action without sharing persistence,
 compact/expanded preservation, v13 negotiation, and legacy omission. Native
 tests cover ambiguous-key rejection and action-only non-equivalence. The
-implementation agent reports 84/84 managed Widget SDK cases and 41 native
-focus checks. It also reports that `WidgetBridgeCatalogTests` passes the native
-v13 parser round trip, `DeclarativeRendererTests` passes 4,632 checks, the
-OverlayHost Release target builds, and the repository-wide verifier passes.
-Source inspection supports the intended contracts; retained independent run
-evidence is still absent.
+clean result `20260809T141527Z-8946c731` retains 84/84 managed Widget SDK cases,
+including named focus-persistence/navigation-shell cases. Its native build log
+retains 41 Focus Navigation checks, 20 Widget Surface Focus checks, passing
+`WidgetBridgeCatalogTests`, 4,632 Declarative Renderer checks, and the OverlayHost
+Release build. Source inspection and the retained clean run now support the
+intended automated contracts; physical mixed-DPI/controller behavior remains a
+separate manual gate.
 
 ### EQ-003 — P1 — `OverlayApp` is a central ownership and change-risk hotspot
 
@@ -879,7 +917,7 @@ text. Finally, show that the next bridge lifecycle/catalog feature changes the
 coordinator and focused tests without editing unrelated drawing or controller
 polling regions of `main.cpp`; reduced line count alone is not closure.
 
-### EQ-004 — P1 — Clean full managed/native and hosted evidence remain
+### EQ-004 — P1 — Immutable hosted execution evidence remains
 
 **Status: Implemented in commit `4450cfa`; bounded local/CI
 orchestration, gated Job ownership, capped output/case extraction and pump
@@ -887,8 +925,8 @@ completion, honest clean-evidence eligibility, exact selected native-toolchain
 provenance, SHA-pinned actions, documented retention, and individually bounded
 Community-artifact provenance share the aggregate deadline. Package root,
 per-file, aggregate-byte, traversal-entry, reduced-budget, and exhaustion edges
-have focused tests. Clean full execution and immutable hosted evidence remain
-open.**
+have focused tests. A clean release-eligible all-lane local result is retained;
+immutable hosted execution remains open.**
 
 **Evidence.** The repository has strong `Directory.Build.props` defaults. All
 33 managed test projects are executable projects with custom `Program.cs`
@@ -951,35 +989,36 @@ implicitly; CI retention is 30 days. Native provenance records the exact
 selected Visual Studio installation and MSVC version, compiler version/hash,
 the separately selected OverlayHost/InputProbe Windows SDK versions, and the
 manifest-tool version/hash. It also records GitHub runner-image identifiers when
-available. Workflow actions are pinned to immutable commit SHAs. Retained dirty
-result `20260809T141114Z-628dd67c` passed the final runner self-test,
-WidgetTicker, and Documentation in 15.396 seconds and contains the exact
-toolchain fields. It names pre-amend `442250f` and is correctly clean-ineligible.
-No clean full result is
-present, and the committed workflow has not produced a referenced immutable run
-associated with current HEAD.
+available. Workflow actions are pinned to immutable commit SHAs. Retained clean
+result `20260809T141527Z-8946c731` passed all 41 steps and 755 JUnit cases with
+zero failures, errors, or skips in 313.016 seconds for exact commit `dc6b092`.
+Its clean status and `releaseEvidenceEligible: true` close the local full-run
+requirement; it retains 29 package digests plus the exact toolchain fields. The
+committed workflow has not produced a referenced immutable run associated with
+that commit.
 
-`docs/implementation-status.md` now correctly states that the 283.5-second legacy
-full run predates current HEAD and that a current clean managed/native bundle is
-pending. Its revision, dirty-status, and selected-toolchain metadata description
-now matches the implementation; dirty runs are explicitly ineligible instead of
-being presented as reproducible source evidence. The available default
+`docs/implementation-status.md` now binds its aggregate-green claim to clean run
+`20260809T141527Z-8946c731`, exact commit `dc6b092`, and the retained result's
+counts and provenance. The available default
 Community package artifacts are also older than the source
 manifests, so they cannot substantiate current packaged behavior.
 
 **Why it matters.** A senior team needs reproducible evidence that does not
 depend on one long local agent session. A gate advertised as aggregate-bounded
-now shares one tested remaining deadline and contains its provenance root. It
-becomes release evidence only when a clean full run is retained and referenced.
+now shares one tested remaining deadline, contains its provenance root, and has
+one clean full local result. Hosted execution is still required to prove that a
+fresh contributor/CI environment follows the checked-in workflow rather than a
+long-lived developer machine's state.
 
 **Underlying problem.** Verification breadth grew faster than verification
 orchestration and evidence publication. The runner now owns command execution,
-deadlines, package caps, and root containment. The remaining gap is execution and
-publication of a clean full result.
+deadlines, package caps, and root containment. The remaining gap is immutable
+hosted execution and publication for the same reviewed commit.
 
-**Recommended direction.** Keep the new manifest/module split and package caps.
-Execute the clean full local gate, retain the checked-in Windows managed/native
-workflow artifact, and bind status claims to its commit/result. Keep hardware,
+**Recommended direction.** Keep the new manifest/module split, package caps,
+and clean local bundle. Execute the checked-in Windows managed/native workflow
+for the same commit, retain its immutable artifact/link, and bind status claims
+to that result. Keep hardware,
 live-auth, real-controller, and physical-display
 checks as explicit manual release gates rather than pretending hosted CI can
 cover them.
@@ -994,8 +1033,10 @@ for a forensic local bundle but can be expensive; the current 2 GiB/30-second
 limits make that policy explicit. A release gate may later digest only manifest-
 selected/current artifacts if measurement shows the broader inventory is wasteful.
 
-**Resolution evidence.** A clean commit must produce a repeatable Windows CI
-run and equivalent local bundle with bounded durations, managed and native
+**Resolution evidence.** The equivalent clean local bundle now satisfies the
+bounded duration, managed/native result, provenance, and retained-log portion.
+A clean commit must still produce a repeatable Windows CI
+run with managed and native
 results, documentation-link validation, deterministic package checks, exact
 source/toolchain provenance, and retained logs. A deliberately hung case and a
 child-process leak—including a parent that exits immediately while its inheriting
@@ -1007,7 +1048,7 @@ exercise the post-teardown deadline. The high-output and case-limit fixtures
 must stay within their budgets and expose truncation metadata, the clean native
 bundle must retain its compiler/SDK and immutable action revisions, and hostile
 provenance fixtures must retain the implemented entry/total/root refusals and
-add sequential preflight exhaustion within the public 60-second minimum. A later focused-only milestone
+shared-deadline reduction/exhaustion checks. A later focused-only milestone
 must not leave documentation claiming that its HEAD passed the full aggregate.
 
 ### EQ-010 — P1 — Superseded YT Music reconciliation could commit stale failure state
@@ -1786,11 +1827,11 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
-| CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency or generated snapshot exporter | Versioned public SDK/template release, packaged clean-directory scaffold/build/README proof, isolated scenario execution, native preview, provenance/signing, and automated CI |
+| CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency, generated snapshot exporter, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Versioned public SDK/template release with package/API validation, packaged clean-directory scaffold/build/README proof, isolated scenario execution, native preview, provenance/signing, and automated CI |
 | Performance | Per-worker Jobs plus current-HEAD aggregate admission and runtime-owned process leases; one dirty single-Settings-worker baseline sits at the Hidden CPU diagnostic edge | Direct lease fault-injection proof, ownership/remediation UI, repeated 1/8/many-widget churn, clean GPU/ETW noise-qualified regression gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
-| Verification gate | Commit `4450cfa` adds a complete 41-step manifest, gated Job ownership, capped output/case/pump completion, one tested shared preflight/step deadline, managed/native lanes, logs, JUnit, JSON results, clean-only release eligibility, exact selected-toolchain provenance, SHA-pinned actions, documented retention, and package file/entry/byte/root bounds | Retain a clean full managed/native run and immutable hosted artifact |
+| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092` with exact selected-toolchain/package provenance | Run the checked-in Windows workflow for the same commit and retain an immutable hosted artifact/link |
 | Documentation | Extensive, but its green contract checks links/headings while 70 C# fences have no designated executable consumer; full-gate wording also lacks run provenance | Compile-test canonical snippets, bind status claims to exact result manifests, and reduce ledger/status duplication |
 
 ## Recommended next three actions
@@ -1807,9 +1848,10 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    states with deliberate stale-last-good behavior, disabled/qualified stale
    controls, retry, and resource-management actions.
 3. **Finish and publish the quality gate.** Preserve the new manifest/module
-   split and process/output/package/deadline bounds. Run the checked-in Windows
-   CI and local full gate, retain a clean result,
-   and bind every “current full gate” claim to that result before using
+   split, process/output/package/deadline bounds, and clean all-lane local bundle.
+   Run the checked-in Windows CI for the same commit, retain its immutable
+   managed/native artifacts, and bind every “current full gate” claim to those
+   results before using
    it to prove the external SDK/template and clean-directory scaffold.
 
 The next review should first reassess these three items, then rotate into the

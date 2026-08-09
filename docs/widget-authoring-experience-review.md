@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget adoption, retained visual/performance evidence, and test-orchestration/documentation drift audits<br>
+Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -80,9 +80,10 @@ escape and making `gbar dev` the only executable CLI integration path. An
 initial path-level 4 MiB preflight was racy; the current source now reads one
 restrictively shared stream through a ceiling-plus-one detector and rejects
 legacy assembly-only options for JSON. A deterministic misreported-length test
-covers the consumed-byte bound. The implementation agent reports the focused
-Release CLI suite at 49/49 after adding the external scaffold case; this review
-did not execute it or inspect retained output.
+covers the consumed-byte bound. Clean all-lane result
+`20260809T141527Z-8946c731` now retains the passing CLI step as part of 41/41
+manifest steps and 755 JUnit cases for exact commit `dc6b092`; this review
+inspected the retained result rather than launching it.
 The broader tradeoff is an explicit tooling gap: there is no headless isolated
 command that turns widget/scenario code into a snapshot. Authors must currently
 add an author-controlled typed-fake test to persist `SnapshotJson` or use the
@@ -99,7 +100,9 @@ matching versioned SDK/template release exists. It is still not a cloneable
 standalone dependency, and the new snapshot guidance needs an actual generated
 typed-fake test/exporter; the template currently refers to one but creates
 none. The implementation agent reports 49/49 CLI cases; this review inspected
-the new external build case but did not execute it or inspect retained output.
+the new external build case, and the clean all-lane bundle now retains its
+passing CLI result. That case still points back to the checkout SDK and does not
+prove a published standalone dependency.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -213,16 +216,17 @@ The SDK already provides important low-level safety mechanisms:
   low-level responsive/presentation contracts already required by advanced
   widgets.
 
-Implementation status reports focused current-HEAD Release results including
+Implementation status records focused Release results including
 Widget SDK 84/84, Gbar CLI 49/49, SDK Gallery 6/6, YT Music 48/48, Focus
 Navigation 41 checks, and Declarative Renderer 4,632 checks. Static inspection
 confirms the relevant managed programs register those case totals, and focused
 YT source coverage includes cancellation-ignoring stale ordinary and
-authorization failures plus lifecycle exit. The last reported complete
-283.5-second aggregate predates the final GBSS inventory narrowing and typed-
-diagnostic commit; affected focused suites were reported green afterward. This
-review cycle did not independently execute those suites or inspect a retained
-result bundle.
+authorization failures plus lifecycle exit. Clean all-lane result
+`20260809T141527Z-8946c731` passed all 41 manifest steps and 755 JUnit-adapted
+cases with zero failures, errors, or skips in 313.016 seconds for exact clean
+commit `dc6b092`. Its retained bundle includes per-step logs/JUnit, 29 package
+digests, exact selected native-toolchain provenance, zero stderr, and no stream
+truncation.
 Disabled and busy destinations intentionally remain focusable while activation
 is suppressed; renderer and focus-test source encode that contract. The
 repository's 33 managed test projects are all custom executable harnesses with
@@ -230,9 +234,8 @@ no standard test SDK. Current HEAD's internal runner now supplies a
 41-step inventory, aggregate/per-step deadlines, capped output/case extraction,
 JUnit and JSON adapters, and clean-only release eligibility. That is a strong
 repository quality foundation, but it is not a versioned external-author test
-product. The latest dirty focused result exercises the cap/eligibility self-test,
-but its provenance names the prior commit and rejects release eligibility; there
-is still no clean immutable CI run. The available default packages
+product. The clean local result is release-evidence eligible, but there is still
+no referenced immutable hosted workflow run. The available default packages
 are one source version behind for YT Music and SDK
 Gallery, so they are not current packaged evidence. Real controller, companion,
 physical-display and performance-trace evidence remain pending. This review did
@@ -429,6 +432,18 @@ README command, validates and packages it, and leaves a standalone repository
 that another developer can clone and build. The generated source is already a
 credible human starter; publishing and testing the complete dependency/tooling
 loop is what turns it into a platform authoring experience.
+
+Publication also needs an explicit API-governance boundary. `WidgetSdk.csproj`
+currently contains only build-language settings and a source `ProjectReference`
+to `WidgetProtocol`; it has no package metadata, documentation/symbol/source
+settings, package validation, or checked-in public-API baseline. A textual
+inventory finds about 201 public class/record/interface/enum/struct declaration
+lines in `src/WidgetSdk`. That breadth reflects real platform capability, but a
+new developer needs a small documented supported surface and predictable SemVer,
+not every currently public declaration becoming an accidental forever-contract.
+Before the first package, classify the intended author API, baseline it with
+package/API compatibility validation, and require intentional host/API breaks to
+update the compatibility range and migration notes.
 
 ## Reassessment of GitHub sharing and package trust
 
@@ -1118,15 +1133,16 @@ committed runner is a useful platform foundation: it introduces a stable
 41-step manifest, managed/native local and Windows lanes, 4 MiB per-stream and
 10,000-case defaults, truncation metadata, test-project inventory checks, clean-
 only release eligibility, logs, JUnit, JSON provenance, and 30-day CI retention.
-Its latest retained focused result exercises those cap/eligibility changes but
-is dirty, clean-ineligible, and names a pre-amend commit. Current HEAD gates the
+Its clean all-lane result `20260809T141527Z-8946c731` passes all 41 steps and 755
+JUnit cases in 313.016 seconds for exact clean commit `dc6b092`, with release
+eligibility and exact package/toolchain provenance. Current HEAD gates the
 real command on an event signaled only after a kill-on-close Job and both pumps
 are active, bounds combined pump completion, records selected compiler/SDK/tool
 identity, and SHA-pins workflow actions. Community-artifact provenance now has
 entry/file/byte/output and 30-second process ceilings under the shared remaining
 deadline; root containment plus per-file/total-byte/entry quota fixtures are
 implemented, and the shared-time helper proves reduced budgets plus typed fail-
-before-launch exhaustion. A clean full workflow result remains absent. These are internal
+before-launch exhaustion. Immutable hosted workflow execution remains absent. These are internal
 gate issues, not a protocol every widget repository should inherit. The 33
 custom executable test projects prove many useful contracts, but their `PASS`-
 line adapter and `verification-steps.json` should remain repository compatibility
@@ -1226,7 +1242,8 @@ and the SDK Gallery production-style migration.
 Completed foundation: strict bounded scenario manifests, assembly-free listing,
 and fail-closed scenario selection with contract and safety tests.
 
-1. Publish a matching versioned SDK/template set and prove `gbar new` through
+1. Publish a matching versioned SDK/template set with an intentional checked-in
+   public-API/package-validation baseline, and prove `gbar new` through
    build, supported preview, replay, validation, and packaging from a clean
    directory outside this repository.
 2. Move scenario assembly execution into a dedicated production-equivalent
