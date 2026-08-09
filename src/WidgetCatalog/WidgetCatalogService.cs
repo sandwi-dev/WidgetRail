@@ -474,11 +474,14 @@ public sealed class WidgetCatalog
                 WidgetManifest manifest;
                 try
                 {
-                    if (new FileInfo(manifestPath).Length > Math.Min(_options.MaximumEntryBytes, 1024 * 1024))
-                        throw new WidgetPackageException("invalid_manifest", $"Installed manifest is too large: {manifestPath}");
-                    manifest = ManifestJson.Deserialize(File.ReadAllBytes(manifestPath));
+                    using var input = new FileStream(
+                        manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        64 * 1024, FileOptions.SequentialScan);
+                    var bytes = BoundedFileReader.ReadAll(
+                        input, (int)Math.Min(_options.MaximumEntryBytes, 1024L * 1024));
+                    manifest = ManifestJson.Deserialize(bytes);
                 }
-                catch (JsonException exception)
+                catch (Exception exception) when (exception is JsonException or InvalidDataException)
                 {
                     throw new WidgetPackageException("invalid_manifest", $"Installed manifest is invalid: {manifestPath}", exception);
                 }

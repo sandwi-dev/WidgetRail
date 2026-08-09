@@ -61,14 +61,17 @@ internal static class InstalledPackageIntegrity
         IntegrityDocument document;
         try
         {
-            var info = new FileInfo(path);
-            if (info.Length is < 1 or > MaximumMetadataBytes)
+            using var input = new FileStream(
+                path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                MaximumMetadataBytes, FileOptions.SequentialScan);
+            var bytes = BoundedFileReader.ReadAll(input, MaximumMetadataBytes);
+            if (bytes.Length == 0)
                 throw new JsonException("Integrity metadata size is invalid.");
             document = JsonSerializer.Deserialize<IntegrityDocument>(
-                File.ReadAllBytes(path), JsonOptions)
+                bytes, JsonOptions)
                 ?? throw new JsonException("Integrity metadata was null.");
         }
-        catch (JsonException exception)
+        catch (Exception exception) when (exception is JsonException or InvalidDataException)
         {
             throw new WidgetPackageException(
                 "invalid_integrity_metadata",
@@ -139,20 +142,26 @@ internal static class InstalledPackageIntegrity
                 using var input = new FileStream(
                     file.FullPath, FileMode.Open, FileAccess.Read, FileShare.Read,
                     buffer.Length, FileOptions.SequentialScan);
-                if (input.Length < 0 || input.Length > options.MaximumEntryBytes)
+                var expectedLength = input.Length;
+                if (expectedLength < 0 || expectedLength > options.MaximumEntryBytes)
                     throw new WidgetPackageException(
                         "integrity_limit", "Installed widget file exceeds package limits.");
-                totalBytes = checked(totalBytes + input.Length);
+                totalBytes = checked(totalBytes + expectedLength);
                 if (totalBytes > options.MaximumTotalBytes)
                     throw new WidgetPackageException(
                         "integrity_limit", "Installed widget exceeds package limits.");
-                BinaryPrimitives.WriteInt64BigEndian(integer, input.Length);
+                BinaryPrimitives.WriteInt64BigEndian(integer, expectedLength);
                 hash.AppendData(integer);
-                while (true)
+                try
                 {
-                    var read = input.Read(buffer, 0, buffer.Length);
-                    if (read == 0) break;
-                    hash.AppendData(buffer, 0, read);
+                    BoundedFileReader.AppendExact(hash, input, expectedLength, buffer);
+                }
+                catch (InvalidDataException exception)
+                {
+                    throw new WidgetPackageException(
+                        "package_tampered",
+                        "Installed widget content changed while its digest was computed.",
+                        exception);
                 }
             }
             return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();

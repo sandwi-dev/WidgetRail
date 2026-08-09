@@ -262,6 +262,15 @@ state or package integrity publishes a trusted-only revision, removes Community
 registrations, and retires their workers; unsupported styles/capabilities on an
 individual package fail soft with bounded diagnostics.
 
+Installed manifest and host-owned integrity metadata are each read from one
+restrictively shared handle with a consumed-byte ceiling. Content-tree hashing
+uses one captured length per file and rejects early EOF, extra bytes, or a
+changed seekable length. These checks prevent a size preflight from authorizing
+more bytes than the catalog consumes. They do not yet make the later worker
+load atomic with verification: the catalog still returns a digest and mutable
+package path rather than retaining a verified-content lease through the worker
+session.
+
 After CLI installation, open Settings → Installed widgets. The paginated
 controller surface shows package ID, publisher, active/installed versions,
 runtime, host-API range, architectures, compatibility result/reason, and

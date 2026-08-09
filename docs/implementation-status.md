@@ -148,7 +148,8 @@ Up/Down navigation.
   publisher/package-scoped public widget configuration under `widget-config`,
   with unambiguous owning-namespace resolution for unsigned runtime authorities.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, host-sealed content-
-  tree integrity, immutable versions, schema-1 state migration, fail-closed
+  tree integrity with single-handle bounded metadata reads and exact-length
+  file hashing, immutable versions, schema-1 state migration, fail-closed
   exact version pins, discovery,
   enablement, and pin-preserving order persistence. Enabled compatible packages
   join complete validated live bridge revisions and remain lazy until first use.
@@ -651,12 +652,14 @@ failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, catalog limits, immutable
-versions, and adversarial package cases. Catalog passes 23/23, including
+versions, and adversarial package cases. Catalog passes 27/27, including
 schema-1 state migration, exact active-version pins and disabled repair,
 linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
-content-tree sealing/tamper rejection plus content-bound unsigned authority.
+content-tree sealing/tamper rejection, consumed-byte manifest/integrity limits,
+misreported and changing-length rejection, plus content-bound unsigned
+authority.
 Bridge
 passes 40/40, including aggregate count/declared-memory admission, exact crash/
 timeout/idle-unload release, Settings control-plane access, race-safe refusal,

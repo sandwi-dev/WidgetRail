@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
@@ -26,9 +27,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing entrypoint assemblies are rejected", MissingEntrypointIsRejected),
     ("Tampered installed directory identity is rejected", TamperedInstallIsRejected),
     ("Tampered installed content fails closed", TamperedContentFailsClosed),
+    ("Installed manifest and integrity metadata enforce consumed-byte bounds", InstalledMetadataBoundsFailClosed),
     ("Package cannot supply host integrity metadata", ReservedIntegrityPathIsRejected),
     ("Host compatibility is deterministic across API and architecture", HostCompatibility),
     ("Unsigned authority is stable only for one exact content tree", UnsignedAuthorityIsContentBound),
+    ("Bounded reads reject bytes beyond a reported length", BoundedReadsRejectMisreportedLengths),
+    ("Integrity hashing rejects early EOF and trailing bytes", IntegrityHashingRequiresExactLength),
 };
 
 var failures = new List<string>();
@@ -468,6 +472,31 @@ static async Task TamperedContentFailsClosed()
     Assert.Equal("invalid_integrity_metadata", metadata.Code);
 }
 
+static async Task InstalledMetadataBoundsFailClosed()
+{
+    using var manifestTemp = new TemporaryDirectory();
+    var manifestCatalog = new WidgetCatalog(Path.Combine(manifestTemp.Path, "catalog"));
+    var manifestInstalled = await manifestCatalog.InstallAsync(
+        CreatePackage(manifestTemp.Path, "dev.test.manifest-bound", "dev.test", "1.0.0"));
+    await File.WriteAllBytesAsync(
+        Path.Combine(manifestInstalled.InstallPath, "manifest.json"),
+        new byte[(1024 * 1024) + 1]);
+    var manifest = await Assert.ThrowsAsync<WidgetPackageException>(
+        () => manifestCatalog.DiscoverAsync());
+    Assert.Equal("invalid_manifest", manifest.Code);
+
+    using var metadataTemp = new TemporaryDirectory();
+    var metadataCatalog = new WidgetCatalog(Path.Combine(metadataTemp.Path, "catalog"));
+    var metadataInstalled = await metadataCatalog.InstallAsync(
+        CreatePackage(metadataTemp.Path, "dev.test.metadata-bound", "dev.test", "1.0.0"));
+    await File.WriteAllBytesAsync(
+        Path.Combine(metadataInstalled.InstallPath, ".gbar-integrity.json"),
+        new byte[(4 * 1024) + 1]);
+    var metadata = await Assert.ThrowsAsync<WidgetPackageException>(
+        () => metadataCatalog.DiscoverAsync());
+    Assert.Equal("invalid_integrity_metadata", metadata.Code);
+}
+
 static async Task ReservedIntegrityPathIsRejected()
 {
     using var temp = new TemporaryDirectory();
@@ -539,6 +568,50 @@ static async Task UnsignedAuthorityIsContentBound()
         "Unsigned authority trusted the self-asserted publisher label directly.");
 }
 
+static Task BoundedReadsRejectMisreportedLengths()
+{
+    using var exact = new MisreportedLengthStream([0x10, 0x20], reportedLength: 2);
+    Assert.SequenceEqual(new byte[] { 0x10, 0x20 }, BoundedFileReader.ReadAll(exact, maximumBytes: 2));
+
+    using var excess = new MisreportedLengthStream([0x10, 0x20], reportedLength: 1);
+    _ = Assert.Throws<InvalidDataException>(() => BoundedFileReader.ReadAll(excess, maximumBytes: 1));
+
+    using var truncated = new MisreportedLengthStream([0x10], reportedLength: 2);
+    _ = Assert.Throws<InvalidDataException>(() => BoundedFileReader.ReadAll(truncated, maximumBytes: 2));
+
+    using var changing = new MisreportedLengthStream(
+        [0x10], reportedLength: 1, lengthAfterRead: 2);
+    _ = Assert.Throws<InvalidDataException>(() => BoundedFileReader.ReadAll(changing, maximumBytes: 2));
+
+    using var nonSeekable = new NonSeekableReadStream([0x10, 0x20]);
+    _ = Assert.Throws<InvalidDataException>(() =>
+        BoundedFileReader.ReadAll(nonSeekable, maximumBytes: 1));
+
+    using var empty = new MisreportedLengthStream([], reportedLength: 0);
+    Assert.Equal(0, BoundedFileReader.ReadAll(empty, maximumBytes: int.MaxValue).Length);
+    return Task.CompletedTask;
+}
+
+static Task IntegrityHashingRequiresExactLength()
+{
+    using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    var buffer = new byte[4];
+
+    using var excess = new MisreportedLengthStream([0x10, 0x20], reportedLength: 1);
+    _ = Assert.Throws<InvalidDataException>(() =>
+        BoundedFileReader.AppendExact(hash, excess, expectedLength: 1, buffer));
+
+    using var truncated = new MisreportedLengthStream([0x10], reportedLength: 2);
+    _ = Assert.Throws<InvalidDataException>(() =>
+        BoundedFileReader.AppendExact(hash, truncated, expectedLength: 2, buffer));
+
+    using var changing = new MisreportedLengthStream(
+        [0x10], reportedLength: 1, lengthAfterRead: 2);
+    _ = Assert.Throws<InvalidDataException>(() =>
+        BoundedFileReader.AppendExact(hash, changing, expectedLength: 1, buffer));
+    return Task.CompletedTask;
+}
+
 static string CreatePackage(
     string root,
     string id,
@@ -590,6 +663,70 @@ file sealed class TemporaryDirectory : IDisposable
     }
 }
 
+file sealed class MisreportedLengthStream(
+    byte[] content,
+    long reportedLength,
+    long? lengthAfterRead = null) : Stream
+{
+    private int _position;
+
+    public override bool CanRead => true;
+    public override bool CanSeek => true;
+    public override bool CanWrite => false;
+    public override long Length =>
+        _position > 0 && lengthAfterRead is { } changed ? changed : reportedLength;
+    public override long Position
+    {
+        get => _position;
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var available = content.Length - _position;
+        if (available <= 0) return 0;
+        var read = Math.Min(available, count);
+        Array.Copy(content, _position, buffer, offset, read);
+        _position += read;
+        return read;
+    }
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
+file sealed class NonSeekableReadStream(byte[] content) : Stream
+{
+    private int _position;
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var available = content.Length - _position;
+        if (available <= 0) return 0;
+        var read = Math.Min(available, count);
+        Array.Copy(content, _position, buffer, offset, read);
+        _position += read;
+        return read;
+    }
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
 file static class Assert
 {
     public static void True(bool condition, string message)
@@ -607,6 +744,13 @@ file static class Assert
     {
         if (!expected.SequenceEqual(actual))
             throw new InvalidOperationException($"Expected [{string.Join(", ", expected)}], got [{string.Join(", ", actual)}].");
+    }
+
+    public static T Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T exception) { return exception; }
+        throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
     public static async Task<T> ThrowsAsync<T>(Func<Task> action) where T : Exception

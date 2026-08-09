@@ -39,7 +39,8 @@ planned. A structurally valid package is not necessarily trustworthy.
   same asserted package ID and version—receive a different profile and cannot
   inherit broker consent, private secrets, or private widget state. The launch
   passes a small allowlisted environment, grants
-  read/execute only to the generic runtime and exact immutable package roots,
+  read/execute only to the generic runtime and exact version-addressed package
+  roots,
   verifies the resulting token's SID/integrity/zero-capability shape before
   resume, and has no desktop-token fallback. Failure to create or verify any
   isolation component prevents the worker from running.
@@ -100,7 +101,11 @@ planned. A structurally valid package is not necessarily trustworthy.
 - Installed versions are immutable and staged before atomic move. The installer
   writes host-owned integrity metadata after extraction; packages cannot
   provide that reserved path. Catalog discovery recomputes the bounded content-
-  tree digest and rejects missing, malformed, or mismatched metadata.
+  tree digest and rejects missing, malformed, or mismatched metadata. Manifest
+  and integrity JSON limits apply to bytes consumed from one restrictively
+  shared handle, not a separate path-length preflight. Tree hashing records one
+  initial length per file, consumes exactly that many bytes, and rejects early
+  EOF, trailing bytes, or a changed seekable length.
 - Remote acquisition accepts only credential-free, fragment-free HTTPS URLs on
   port 443, revalidates up to five HTTPS redirects, rejects obvious localhost
   and private/loopback/link-local address literals, and applies connection,
@@ -113,10 +118,13 @@ planned. A structurally valid package is not necessarily trustworthy.
   rejected while the ID is enabled; installation, active-version selection,
   review, and enablement remain separate decisions. Remote installation also
   requires an exact independently obtained SHA-256 pin.
-- Installed package versions are immutable. Active-version selection and
-  rollback require the widget to be disabled, leave it disabled, and persist an
-  exact schema-2 pin. A missing pinned version fails catalog discovery closed
-  rather than selecting different code.
+- Installed package versions are version-addressed and never overwritten by the
+  installer. The current-user-owned files can still be changed outside the
+  installer; stable tampering is detected, but verification and later worker
+  load are not yet one atomic held-handle operation. Active-version selection
+  and rollback require the widget to be disabled, leave it disabled, and
+  persist an exact schema-2 pin. A missing pinned version fails catalog
+  discovery closed rather than selecting different code.
 - Only enabled, host-compatible installed packages using the closed capability
   vocabulary are joined. The bridge watches the trusted catalog file plus the
   installed catalog state/package tree, coalesces notifications, and publishes
