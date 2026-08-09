@@ -34,6 +34,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private Process? _process;
     private WindowsWorkerJob? _windowsJob;
     private IDisposable? _processLease;
+    private IWidgetProcessContentLease? _contentLease;
     private CancellationTokenSource? _sessionCancellation;
     private Task? _readerTask;
     private IWidgetProcessCompanionSession? _companion;
@@ -332,6 +333,27 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             if (_options.ProcessLeaseFactory is { } leaseFactory)
                 _processLease = leaseFactory() ?? throw new WidgetProcessAdmissionException(
                     "Worker process admission returned no lease.");
+            if (_options.ContentLeaseFactory is { } contentLeaseFactory)
+            {
+                using var contentTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken);
+                contentTimeout.CancelAfter(_options.ContentLeaseTimeout);
+                try
+                {
+                    _contentLease = contentLeaseFactory(contentTimeout.Token) ??
+                        throw new WidgetProcessAdmissionException(
+                            "Worker content admission returned no lease.");
+                    contentTimeout.Token.ThrowIfCancellationRequested();
+                    ValidateContentLease(_contentLease);
+                }
+                catch (OperationCanceledException) when (
+                    !cancellationToken.IsCancellationRequested &&
+                    contentTimeout.IsCancellationRequested)
+                {
+                    throw new WidgetProcessAdmissionException(
+                        "Worker content admission exceeded its time limit.");
+                }
+            }
             _stopping = false;
             Interlocked.Exchange(ref _failureReported, 0);
             var currentSession = Interlocked.Increment(ref _sessionId);
@@ -344,8 +366,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 var executableDirectory = Path.GetDirectoryName(
                     Path.GetFullPath(_options.ExecutablePath))
                     ?? throw new WidgetProcessException("Worker executable directory is unavailable.");
+                if (_contentLease is not null && _contentLease.AuthorityRoots.Any(root =>
+                        IsWithinOrEqual(executableDirectory, root) ||
+                        IsWithinOrEqual(root, executableDirectory)))
+                    throw new WidgetProcessAdmissionException(
+                        "Worker content authority overlaps the trusted runtime directory.");
                 appContainer.GrantReadAndExecute(
                     new[] { executableDirectory }.Concat(_options.ReadOnlyPaths));
+                if (_contentLease is not null)
+                    appContainer.ReplaceReadAndExecuteGrant(
+                        _contentLease.AuthorityRoots,
+                        _contentLease.ReadOnlyDirectories,
+                        _contentLease.ReadOnlyFiles);
             }
             var pipeSuffix = $"gba-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
             var pipeName = pipeSuffix;
@@ -450,6 +482,12 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     throw new WidgetProtocolViolationException(
                         $"Expected lifecycle acknowledgement, received '{lifecycleResponse.Type}'.");
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            TerminateWorker();
+            await DisposeSessionAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
         }
         catch (WidgetProcessAdmissionException)
         {
@@ -558,7 +596,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private void OnProcessExited(int session)
     {
         if (session != Volatile.Read(ref _sessionId) || _stopping) return;
-        ReleaseProcessLease();
+        ReleaseSessionLeases();
         ReportFailure(WidgetFailureReason.ProcessExited, null);
         FailPending(new WidgetProcessException("Widget worker exited unexpectedly."));
         ClearPendingDashboardGestures();
@@ -616,6 +654,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         var process = _process;
         var windowsJob = _windowsJob;
         var processLease = Interlocked.Exchange(ref _processLease, null);
+        var contentLease = Interlocked.Exchange(ref _contentLease, null);
         var companion = _companion;
         var companionTask = _companionTask;
 
@@ -634,6 +673,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         pipe?.Dispose();
         process?.Dispose();
         windowsJob?.Dispose();
+        try { contentLease?.Dispose(); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
         try { processLease?.Dispose(); }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
 
@@ -666,12 +707,71 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         sessionCancellation?.Dispose();
     }
 
-    private void ReleaseProcessLease()
+    private void ReleaseSessionLeases()
     {
+        var contentLease = Interlocked.Exchange(ref _contentLease, null);
+        try { contentLease?.Dispose(); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
         var lease = Interlocked.Exchange(ref _processLease, null);
         try { lease?.Dispose(); }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
     }
+
+    private static void ValidateContentLease(IWidgetProcessContentLease lease)
+    {
+        if (lease.AuthorityRoots is null || lease.ReadOnlyDirectories is null ||
+            lease.ReadOnlyFiles is null || lease.AuthorityRoots.Count is < 1 or > 8 ||
+            lease.ReadOnlyDirectories.Count is < 1 or > 1_024 ||
+            lease.ReadOnlyFiles.Count is < 1 or > 1_024)
+            throw new WidgetProcessAdmissionException(
+                "Worker content admission returned invalid authority bounds.");
+
+        var roots = lease.AuthorityRoots
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (roots.Length != lease.AuthorityRoots.Count ||
+            roots.Any(root => !Directory.Exists(root) || IsReparsePoint(root)))
+            throw new WidgetProcessAdmissionException(
+                "Worker content admission returned an invalid authority root.");
+
+        ValidateExactPaths(lease.ReadOnlyDirectories, roots, expectDirectory: true);
+        ValidateExactPaths(lease.ReadOnlyFiles, roots, expectDirectory: false);
+    }
+
+    private static void ValidateExactPaths(
+        IReadOnlyList<string> paths,
+        IReadOnlyList<string> roots,
+        bool expectDirectory)
+    {
+        var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in paths)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                throw new WidgetProcessAdmissionException(
+                    "Worker content admission returned a blank path.");
+            var fullPath = Path.GetFullPath(value);
+            if (!distinct.Add(fullPath) ||
+                !roots.Any(root => IsWithinOrEqual(root, fullPath)) ||
+                (expectDirectory ? !Directory.Exists(fullPath) : !File.Exists(fullPath)) ||
+                IsReparsePoint(fullPath))
+                throw new WidgetProcessAdmissionException(
+                    "Worker content admission returned an invalid exact path.");
+        }
+    }
+
+    private static bool IsWithinOrEqual(string root, string path)
+    {
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        var normalizedPath = Path.GetFullPath(path);
+        return string.Equals(normalizedRoot, normalizedPath, StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith(
+                normalizedRoot + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsReparsePoint(string path) =>
+        (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 
     private static async Task ObserveCompanionCleanupAsync(Task task)
     {

@@ -118,6 +118,67 @@ internal sealed class WindowsAppContainer : IDisposable
         }
     }
 
+    /// <summary>
+    /// Replaces any prior inheriting grant on a content root with direct grants
+    /// for the verified directory and file set. Later files therefore do not
+    /// inherit this AppContainer's authority.
+    /// </summary>
+    internal void ReplaceReadAndExecuteGrant(
+        IEnumerable<string> authorityRoots,
+        IEnumerable<string> directories,
+        IEnumerable<string> files)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        foreach (var value in authorityRoots
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!Directory.Exists(value))
+                throw new DirectoryNotFoundException(
+                    "An AppContainer content-authority root was not found.");
+            var directory = new DirectoryInfo(value);
+            var security = directory.GetAccessControl(AccessControlSections.Access);
+            security.PurgeAccessRules(_identity);
+            directory.SetAccessControl(security);
+        }
+
+        foreach (var value in directories
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!Directory.Exists(value))
+                throw new DirectoryNotFoundException(
+                    "An AppContainer verified directory was not found.");
+            var directory = new DirectoryInfo(value);
+            var security = directory.GetAccessControl(AccessControlSections.Access);
+            security.PurgeAccessRules(_identity);
+            security.AddAccessRule(new FileSystemAccessRule(
+                _identity,
+                FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+                InheritanceFlags.None,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+            directory.SetAccessControl(security);
+        }
+
+        foreach (var value in files
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(value))
+                throw new FileNotFoundException(
+                    "An AppContainer verified file was not found.", value);
+            var file = new FileInfo(value);
+            var security = file.GetAccessControl(AccessControlSections.Access);
+            security.PurgeAccessRules(_identity);
+            security.AddAccessRule(new FileSystemAccessRule(
+                _identity,
+                FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+                AccessControlType.Allow));
+            file.SetAccessControl(security);
+        }
+    }
+
     public NamedPipeServerStream CreatePipe(string pipeName, int bufferSize)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

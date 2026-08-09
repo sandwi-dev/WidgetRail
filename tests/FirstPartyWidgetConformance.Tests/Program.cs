@@ -201,7 +201,12 @@ static async Task InstalledPackagesMerge()
             InstalledWidgetAuthority.PublisherId(installedVersion),
             configured.PublisherId);
         Assert.SequenceEqual(package.DeclaredCapabilities, configured.DeclaredCapabilities);
-        AssertWorkerArguments(configured, configured.ReadOnlyPaths.Single(), package.Manifest);
+        Assert.Equal(0, configured.ReadOnlyPaths.Count);
+        Assert.True(configured.ContentLeaseFactory is not null,
+            $"Installed {package.Manifest.Name} omitted exact launch authority.");
+        using var contentLease = configured.ContentLeaseFactory!(CancellationToken.None);
+        AssertWorkerArguments(
+            configured, contentLease.AuthorityRoots.Single(), package.Manifest);
         AssertResidency(package.Manifest, configured.ResidencyPolicy);
     }
     var community = deployment.YtMusicPackage ??
@@ -381,6 +386,7 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = source.IsolationKey,
         ReadOnlyPaths = source.ReadOnlyPaths,
+        ContentLeaseFactory = source.ContentLeaseFactory,
         CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
             source.PackageId,
             source.PublisherId,
@@ -720,6 +726,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
             IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
             IsolationKey = configured.IsolationKey,
             ReadOnlyPaths = configured.ReadOnlyPaths,
+            ContentLeaseFactory = configured.ContentLeaseFactory,
             CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
                 configured.PackageId,
                 configured.PublisherId,
@@ -980,6 +987,7 @@ static async Task RunCatalogAsync(
                 IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
                 IsolationKey = configured.IsolationKey,
                 ReadOnlyPaths = configured.ReadOnlyPaths,
+                ContentLeaseFactory = configured.ContentLeaseFactory,
                 CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
                     configured.PackageId,
                     configured.PublisherId,

@@ -43,6 +43,18 @@ public interface IWidgetProcessCompanionSession : IAsyncDisposable
 }
 
 /// <summary>
+/// Host-only authority for the exact content exposed to one isolated worker
+/// session. Implementations retain their byte and namespace locks until the
+/// runtime disposes the lease after process teardown.
+/// </summary>
+internal interface IWidgetProcessContentLease : IDisposable
+{
+    IReadOnlyList<string> AuthorityRoots { get; }
+    IReadOnlyList<string> ReadOnlyDirectories { get; }
+    IReadOnlyList<string> ReadOnlyFiles { get; }
+}
+
+/// <summary>
 /// Trusted launch context supplied by the runtime to a host-owned companion
 /// factory. Community workers receive a per-platform AppContainer SID and the
 /// exact SID needed to ACL its host-created plain named-pipe endpoint.
@@ -83,6 +95,14 @@ public sealed record WidgetProcessOptions
     /// </summary>
     public Func<IDisposable>? ProcessLeaseFactory { get; init; }
     /// <summary>
+    /// Trusted host factory invoked after residency admission and before any
+    /// AppContainer authority or worker process is created. The lease is held
+    /// for the exact process session and reacquired on every restart.
+    /// </summary>
+    internal Func<CancellationToken, IWidgetProcessContentLease>?
+        ContentLeaseFactory { get; init; }
+    internal TimeSpan ContentLeaseTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    /// <summary>
     /// Host-owned isolation decision. Package manifests and worker arguments
     /// never control this value.
     /// </summary>
@@ -122,6 +142,8 @@ public sealed record WidgetProcessOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumMessageBytes));
         if (MaximumRestartAttempts is < 0 or > 10)
             throw new ArgumentOutOfRangeException(nameof(MaximumRestartAttempts));
+        if (ContentLeaseTimeout <= TimeSpan.Zero || ContentLeaseTimeout > TimeSpan.FromMinutes(1))
+            throw new ArgumentOutOfRangeException(nameof(ContentLeaseTimeout));
         if (MemoryLimitBytes is < 16L * 1024 * 1024 or > 512L * 1024 * 1024)
             throw new ArgumentOutOfRangeException(nameof(MemoryLimitBytes));
         if (Arguments.Any(argument => argument is null))
@@ -148,6 +170,12 @@ public sealed record WidgetProcessOptions
         if (IsolationPolicy == WidgetWorkerIsolationPolicy.HostTrustedJobOnly && ReadOnlyPaths.Count != 0)
             throw new ArgumentException(
                 "Read-only paths apply only to AppContainer workers.", nameof(ReadOnlyPaths));
+        if (ContentLeaseFactory is not null &&
+            (IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer ||
+             ReadOnlyPaths.Count != 0))
+            throw new ArgumentException(
+                "Content leases require an AppContainer with no broad read-only roots.",
+                nameof(ContentLeaseFactory));
     }
 }
 

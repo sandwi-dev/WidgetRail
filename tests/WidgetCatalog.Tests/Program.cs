@@ -33,6 +33,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Host compatibility is deterministic across API and architecture", HostCompatibility),
     ("Unsigned authority is stable only for one exact content tree", UnsignedAuthorityIsContentBound),
     ("Integrity verification parses the manifest bytes it hashed", VerificationReturnsHashedManifest),
+    ("Launch leases pin verified bytes until session release", LaunchLeasePinsVerifiedBytes),
+    ("Launch leases reject pre-start mutation and late namespace insertion", LaunchLeaseRejectsRaces),
+    ("Maximum package launch lease stays within its startup budget", MaximumLaunchLeaseIsBounded),
     ("Bounded reads reject bytes beyond a reported length", BoundedReadsRejectMisreportedLengths),
     ("Integrity hashing rejects early EOF and trailing bytes", IntegrityHashingRequiresExactLength),
 };
@@ -718,6 +721,98 @@ static async Task VerificationReturnsHashedManifest()
     Assert.Equal(installed.Manifest.Id, verification.Manifest.Id);
     var tampered = await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.DiscoverAsync());
     Assert.Equal("invalid_manifest", tampered.Code);
+}
+
+static async Task LaunchLeasePinsVerifiedBytes()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var catalog = new WidgetCatalog(root);
+    await catalog.InstallAsync(CreatePackage(
+        temp.Path,
+        "dev.test.launch-lease",
+        "dev.test",
+        "1.0.0",
+        extras: [new ExtraEntry("assets/state.txt", "verified asset")]));
+    var installed = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+    Assert.Equal(3, installed.VerifiedFiles.Count);
+    Assert.True(installed.VerifiedFiles.Values.All(file => file.Sha256.Length == 64),
+        "Discovery did not retain the complete verified file inventory.");
+
+    var entrypoint = Path.Combine(installed.InstallPath, "payload", "Widget.dll");
+    using (var lease = InstalledPackageLaunchLease.Acquire(root, installed))
+    {
+        Assert.Equal(installed.ContentDigest, lease.ContentDigest);
+        Assert.Equal(installed.VerifiedFiles.Count, lease.ReadOnlyFiles.Count);
+        Assert.True(lease.ReadOnlyDirectories.Contains(installed.InstallPath,
+                StringComparer.OrdinalIgnoreCase),
+            "Launch authority omitted the package-root traversal grant.");
+        if (OperatingSystem.IsWindows())
+        {
+            _ = Assert.Throws<IOException>(() => File.WriteAllText(entrypoint, "changed"));
+            _ = Assert.Throws<IOException>(() => File.Delete(entrypoint));
+        }
+    }
+
+    await File.WriteAllTextAsync(entrypoint, "released");
+    Assert.Equal("released", await File.ReadAllTextAsync(entrypoint));
+}
+
+static async Task LaunchLeaseRejectsRaces()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var catalog = new WidgetCatalog(root);
+    await catalog.InstallAsync(CreatePackage(
+        temp.Path,
+        "dev.test.launch-race",
+        "dev.test",
+        "1.0.0",
+        extras: [new ExtraEntry("assets/state.txt", "verified asset")]));
+    var installed = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+
+    var latePath = Path.Combine(installed.InstallPath, "payload", "LateDependency.dll");
+    var insertion = Assert.Throws<WidgetPackageException>(() =>
+        InstalledPackageLaunchLease.Acquire(
+            root,
+            installed,
+            beforeFinalInventoryCheck: () => File.WriteAllText(latePath, "late")));
+    Assert.Equal("package_launch_integrity", insertion.Code);
+
+    File.Delete(latePath);
+    await File.WriteAllTextAsync(
+        Path.Combine(installed.InstallPath, "assets", "state.txt"),
+        "mutated asset");
+    var mutation = Assert.Throws<WidgetPackageException>(() =>
+        InstalledPackageLaunchLease.Acquire(root, installed));
+    Assert.Equal("package_launch_integrity", mutation.Code);
+}
+
+static async Task MaximumLaunchLeaseIsBounded()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var catalog = new WidgetCatalog(root);
+    var extras = Enumerable.Range(0, 510)
+        .Select(index => new ExtraEntry($"assets/entry-{index:000}.txt", "x"))
+        .ToArray();
+    await catalog.InstallAsync(CreatePackage(
+        temp.Path,
+        "dev.test.maximum-launch",
+        "dev.test",
+        "1.0.0",
+        extras));
+    var installed = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+    Assert.Equal(512, installed.VerifiedFiles.Count);
+
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    using var lease = InstalledPackageLaunchLease.Acquire(root, installed);
+    stopwatch.Stop();
+    Assert.Equal(512, lease.ReadOnlyFiles.Count);
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+        $"Maximum launch lease acquisition exceeded five seconds ({stopwatch.Elapsed.TotalMilliseconds:0} ms).");
+    Console.WriteLine(
+        $"METRIC package_launch_lease files=512 milliseconds={stopwatch.Elapsed.TotalMilliseconds:F3}");
 }
 
 static Task BoundedReadsRejectMisreportedLengths()

@@ -27,14 +27,14 @@ flowchart LR
 | Component | Implemented responsibility |
 | --- | --- |
 | `src/OverlayHost` | Per-Monitor-V2 Win32/Direct2D panel/backdrop shell, active-monitor/work-area/DPI retargeting, responsive logical viewport, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus plus explicit protocol-v13 cross-presentation focus persistence, dashboard/reorder state, last-widget persistence, managed-bridge client, live catalog/appearance revisions, and generic reference-widget rendering. |
-| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, last-good no-poll catalog monitoring with semantic revisions, trusted host selection of mandatory community AppContainer policy, worker preservation/retirement, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
-| `src/WidgetRuntime` | Lazy worker process client/server, stable host-derived AppContainer profiles for installed/community packages, explicit read/execute grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch Job Object memory/process/UI/cleanup policy. |
+| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, last-good no-poll catalog monitoring with semantic revisions, trusted host selection of mandatory community AppContainer policy, per-session verified-content lease handoff, worker preservation/retirement, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
+| `src/WidgetRuntime` | Lazy worker process client/server, host-derived content-generation AppContainer profiles for installed/community packages, exact non-inheriting verified-file grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch content/residency leases plus Job Object memory/process/UI/cleanup policy. |
 | `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies inside the mandatory AppContainer, connects an authenticated broker client when declared, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network/Bluetooth/recent-activity/app-library/media services/DTOs. |
 | `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, last-good reload, and bounded publisher/package-scoped public widget configuration. The bridge/native shell consume live appearance revisions; credentials never belong in `widget-config`. |
-| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, immutable extraction, discovery, enablement/order persistence, schema-1 migration, and fail-closed exact active-version pins. The bridge consumes enabled compatible packages through complete validated live revisions. |
+| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, version-addressed no-overwrite extraction, full verified path/length/hash inventories, session-scoped byte-pinning launch leases, discovery, enablement/order persistence, schema-1 migration, and fail-closed exact active-version pins. The bridge consumes enabled compatible packages through complete validated live revisions. |
 | `src/PlatformBroker` | Version-1 audio/network/Bluetooth/recent-activity/app-library/media/companion capability contracts plus the separate host-granted private-state service; nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for master/per-session volume/mute, sanitized default-device visibility, and current default-microphone volume/mute. It does not switch default devices or capture audio samples. |
 | `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse state, explicit nearby scans, opaque saved/open connection, and software-radio control. It does not handle credentials/profile XML or query current SSID/signal automatically. |
@@ -119,10 +119,23 @@ content tree and the host derives a separate unsigned authority ID from that
 verified digest rather than manifest publisher text. Different bytes cannot
 inherit profiles, consent, or private secrets even if their asserted ID/version
 text is unchanged; rollback to the exact verified bytes restores that authority.
-Before resume,
-the runtime grants its exact SID read/execute access to the generic executable
-and immutable package roots, creates a small allowlisted environment, and
-verifies the process is Low integrity with the expected
+Every lazy start or restart first reacquires the published package digest and
+complete relative-path/length/hash inventory under a five-second content-
+acquisition deadline. The catalog holds read-only handles that deny write/delete replacement
+for every verified file through the exact worker session. The runtime removes
+any legacy inheriting package-root grant and gives the AppContainer SID direct,
+non-inheriting read/execute access only to the verified files and the directories
+needed to traverse to them. Changed bytes and namespace entries present during
+admission fail before process creation; entries inserted later inherit no worker
+authority. The AppContainer identity includes the verified content digest, so a
+new content generation cannot inherit direct grants left on an older root. The
+lease is released only after the pipe, process, and Job are detached, and every
+crash, restart, intentional unload, disable, or shutdown must reacquire it. Exact
+ACL application and the subsequent handshake do not yet share that five-second
+deadline; the roadmap retains one aggregate start-admission budget as open work.
+
+Before resume, the runtime separately grants access to the generic executable,
+creates a small allowlisted environment, and verifies the process is Low integrity with the expected
 AppContainer SID and zero capability SIDs. With no network capability, OS work
 continues through the trusted typed broker. Random global main and broker pipes
 ACL only the desktop host and that SID, allow Low-integrity access, verify the
@@ -224,7 +237,7 @@ then deterministic geometry from the last render.
   signature verification. Supported capability declarations receive the authenticated
   broker path; unknown IDs cause that package to be skipped.
 - Mandatory capability-free AppContainer launch for installed/community
-  workers, Job Object memory/process/UI/cleanup policy, PID-bound typed
+  workers, exact session-scoped verified-content authority, Job Object memory/process/UI/cleanup policy, PID-bound typed
   capability IPC, consent UI, and prompt fail-closed revocation are implemented
   and tested. Publisher signatures/package revocation, CPU quotas, disk/profile
   quotas and cleanup, security audit/history, migration of trusted built-ins,

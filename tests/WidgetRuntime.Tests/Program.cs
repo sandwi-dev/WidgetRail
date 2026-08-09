@@ -25,11 +25,19 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
     ("Process admission failures stay pre-launch and are not worker failures", ProcessAdmissionFailsBeforeLaunch),
     ("Process residency leases follow exact worker sessions", ProcessLeaseFollowsSession),
+    ("Content admission failures release residency before launch", ContentAdmissionFailsBeforeLaunch),
+    ("Content admission has a bounded pre-launch deadline", ContentAdmissionTimeoutIsBounded),
+    ("Caller cancellation remains cancellation during content admission", ContentAdmissionHonorsCallerCancellation),
+    ("Verified content cannot overlap the trusted runtime grant", ContentAuthorityCannotOverlapRuntime),
+    ("Verified content leases follow exact worker sessions", ContentLeaseFollowsSession),
     ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
     ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
     ("Windows Job Object kill-on-close cleans up its process", WindowsJobCleansUpProcess),
     ("Windows worker Job Object allows only one active process", WindowsJobIsSingleProcess),
     ("Community workers have package-specific AppContainer authority", AppContainerIsolation),
+    ("AppContainer content authority excludes late unverified files", ExactContentAuthority),
+    ("Content-generation identities do not inherit stale root grants", StaleContentRootIsIsolated),
+    ("Maximum exact content grant stays within the activation budget", MaximumExactContentGrantIsBounded),
     ("Lifecycle callbacks and lifetime tokens follow exact transition order", LifecycleContract),
     ("Runtime-owned lifecycle states cannot be host targets", InvalidLifecycleTargets),
     ("Widget activation transitions are idempotent and cancel their lifetime", ActivationTransitions),
@@ -224,6 +232,138 @@ static async Task ProcessLeaseFollowsSession()
     Assert.Equal(2, released);
 }
 
+static async Task ContentAdmissionFailsBeforeLaunch()
+{
+    var residencyAcquired = 0;
+    var residencyReleased = 0;
+    await using var client = CreateClient(
+        processLeaseFactory: () =>
+        {
+            Interlocked.Increment(ref residencyAcquired);
+            return new CallbackDisposable(() => Interlocked.Increment(ref residencyReleased));
+        },
+        contentLeaseFactory: _ => throw new WidgetProcessAdmissionException(
+            "test content changed"),
+        contentIsolationKey: $"runtime-content-refusal-{Guid.NewGuid():N}");
+    var failures = 0;
+    client.Failed += (_, _) => failures++;
+
+    var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+        () => client.GetSnapshotAsync());
+    Assert.True(exception.Message.Contains("content changed", StringComparison.Ordinal),
+        "Content admission refusal lost its stable host diagnostic.");
+    Assert.Equal(1, residencyAcquired);
+    Assert.Equal(1, residencyReleased);
+    Assert.Equal(0, client.Starts);
+    Assert.Equal(0, failures);
+}
+
+static async Task ContentAdmissionTimeoutIsBounded()
+{
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    await using var client = CreateClient(
+        contentLeaseFactory: cancellationToken =>
+        {
+            cancellationToken.WaitHandle.WaitOne();
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Unreachable content-admission branch.");
+        },
+        contentIsolationKey: $"runtime-content-timeout-{Guid.NewGuid():N}",
+        contentLeaseTimeout: TimeSpan.FromMilliseconds(100));
+
+    var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+        () => client.GetSnapshotAsync());
+    stopwatch.Stop();
+    Assert.True(exception.Message.Contains("time limit", StringComparison.Ordinal),
+        "Content timeout lost its stable admission diagnostic.");
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+        $"Content admission timeout was not bounded ({stopwatch.Elapsed.TotalMilliseconds:0} ms).");
+    Assert.Equal(0, client.Starts);
+}
+
+static async Task ContentLeaseFollowsSession()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temp = new TemporaryDirectory();
+    var verified = Path.Combine(temp.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var acquired = 0;
+    var released = 0;
+    await using var client = CreateClient(
+        maximumRestarts: 1,
+        contentLeaseFactory: _ =>
+        {
+            Interlocked.Increment(ref acquired);
+            return new TestContentLease(
+                temp.Path,
+                [temp.Path],
+                [verified],
+                () => Interlocked.Increment(ref released));
+        },
+        contentIsolationKey: $"runtime-content-lifecycle-{Guid.NewGuid():N}");
+
+    _ = await client.GetSnapshotAsync();
+    Assert.Equal(1, acquired);
+    Assert.Equal(0, released);
+    await Assert.ThrowsAnyAsync(() =>
+        client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+    await WaitUntilAsync(() => Volatile.Read(ref released) == 1, TimeSpan.FromSeconds(3));
+
+    _ = await client.GetSnapshotAsync();
+    Assert.Equal(2, acquired);
+    Assert.Equal(1, released);
+    await client.StopAsync();
+    Assert.Equal(2, released);
+}
+
+static async Task ContentAuthorityCannotOverlapRuntime()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var executable = Environment.ProcessPath ??
+        throw new InvalidOperationException("Test process path is unavailable.");
+    var executableDirectory = Path.GetDirectoryName(executable) ??
+        throw new InvalidOperationException("Test process directory is unavailable.");
+    var released = 0;
+    await using var client = CreateClient(
+        contentLeaseFactory: _ => new TestContentLease(
+            executableDirectory,
+            [executableDirectory],
+            [executable],
+            () => Interlocked.Increment(ref released)),
+        contentIsolationKey: $"runtime-content-overlap-{Guid.NewGuid():N}");
+
+    var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+        () => client.GetSnapshotAsync());
+    Assert.True(exception.Message.Contains("overlaps", StringComparison.Ordinal),
+        "Overlapping content authority lost its stable admission diagnostic.");
+    Assert.Equal(0, client.Starts);
+    Assert.Equal(1, released);
+}
+
+static async Task ContentAdmissionHonorsCallerCancellation()
+{
+    var residencyReleased = 0;
+    await using var client = CreateClient(
+        processLeaseFactory: () => new CallbackDisposable(
+            () => Interlocked.Increment(ref residencyReleased)),
+        contentLeaseFactory: cancellationToken =>
+        {
+            cancellationToken.WaitHandle.WaitOne();
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("Unreachable content-admission branch.");
+        },
+        contentIsolationKey: $"runtime-content-cancel-{Guid.NewGuid():N}");
+    var failures = 0;
+    client.Failed += (_, _) => failures++;
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+    _ = await Assert.ThrowsAsync<OperationCanceledException>(
+        () => client.GetSnapshotAsync(cancellation.Token));
+    Assert.Equal(1, residencyReleased);
+    Assert.Equal(0, client.Starts);
+    Assert.Equal(0, failures);
+}
+
 static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
 {
     var deadline = DateTime.UtcNow + timeout;
@@ -378,6 +518,116 @@ static async Task AppContainerIsolation()
     }
 }
 
+static async Task ExactContentAuthority()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temp = new TemporaryDirectory();
+    var verified = Path.Combine(temp.Path, "verified.txt");
+    var late = Path.Combine(temp.Path, "late.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    await File.WriteAllTextAsync(late, "must-not-be-readable");
+    var isolationKey = $"runtime-exact-content-{Guid.NewGuid():N}";
+    using (var priorProfile = WindowsAppContainer.OpenOrCreate(isolationKey))
+        priorProfile.GrantReadAndExecute([temp.Path]);
+    var listener = new TcpListener(IPAddress.Loopback, 0);
+    listener.Start();
+    var released = 0;
+    try
+    {
+        await using var client = CreateIsolatedClient(
+            isolationKey,
+            temp.Path,
+            verified,
+            late,
+            null,
+            ((IPEndPoint)listener.LocalEndpoint).Port,
+            "GBA_EXACT_CONTENT_UNUSED",
+            _ => new TestContentLease(
+                temp.Path,
+                [temp.Path],
+                [verified],
+                () => Interlocked.Increment(ref released)));
+        var snapshot = await client.GetSnapshotAsync();
+        Assert.Equal("verified", Find(snapshot.Root, "probe-readable").Text);
+        Assert.Equal("denied", Find(snapshot.Root, "probe-denied-read").Text);
+        Assert.Equal("denied", Find(snapshot.Root, "probe-package-write").Text);
+        await client.StopAsync();
+        Assert.Equal(1, released);
+    }
+    finally
+    {
+        listener.Stop();
+    }
+}
+
+static async Task MaximumExactContentGrantIsBounded()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temp = new TemporaryDirectory();
+    var files = new string[512];
+    for (var index = 0; index < files.Length; index++)
+    {
+        files[index] = Path.Combine(temp.Path, $"entry-{index:000}.txt");
+        await File.WriteAllTextAsync(files[index], "x");
+    }
+    await using var client = CreateClient(
+        contentLeaseFactory: _ => new TestContentLease(
+            temp.Path,
+            [temp.Path],
+            files,
+            () => { }),
+        contentIsolationKey: $"runtime-content-maximum-{Guid.NewGuid():N}");
+
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    _ = await client.GetSnapshotAsync();
+    stopwatch.Stop();
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10),
+        $"Maximum exact content grant exceeded ten seconds ({stopwatch.Elapsed.TotalMilliseconds:0} ms).");
+    Console.WriteLine(
+        $"METRIC appcontainer_exact_grant files=512 milliseconds={stopwatch.Elapsed.TotalMilliseconds:F3}");
+}
+
+static async Task StaleContentRootIsIsolated()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var current = new TemporaryDirectory();
+    using var stale = new TemporaryDirectory();
+    var verified = Path.Combine(current.Path, "verified.txt");
+    var staleFile = Path.Combine(stale.Path, "stale.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    await File.WriteAllTextAsync(staleFile, "must-not-be-readable");
+    var staleIsolationKey = $"runtime-stale-content-{Guid.NewGuid():N}";
+    var currentIsolationKey = $"runtime-current-content-{Guid.NewGuid():N}";
+    using (var staleProfile = WindowsAppContainer.OpenOrCreate(staleIsolationKey))
+        staleProfile.GrantReadAndExecute([stale.Path]);
+
+    var listener = new TcpListener(IPAddress.Loopback, 0);
+    listener.Start();
+    try
+    {
+        await using var client = CreateIsolatedClient(
+            currentIsolationKey,
+            current.Path,
+            verified,
+            staleFile,
+            null,
+            ((IPEndPoint)listener.LocalEndpoint).Port,
+            "GBA_STALE_CONTENT_UNUSED",
+            _ => new TestContentLease(
+                current.Path,
+                [current.Path],
+                [verified],
+                () => { }));
+        var snapshot = await client.GetSnapshotAsync();
+        Assert.Equal("verified", Find(snapshot.Root, "probe-readable").Text);
+        Assert.Equal("denied", Find(snapshot.Root, "probe-denied-read").Text);
+    }
+    finally
+    {
+        listener.Stop();
+    }
+}
+
 static void AssertIsolationProbe(ViewSnapshot snapshot, string expectedContent)
 {
     Assert.Equal("true", Find(snapshot.Root, "probe-appcontainer").Text);
@@ -399,7 +649,8 @@ static WidgetProcessClient CreateIsolatedClient(
     string deniedPath,
     string? otherProfilePath,
     int networkPort,
-    string secretName)
+    string secretName,
+    Func<CancellationToken, IWidgetProcessContentLease>? contentLeaseFactory = null)
 {
     var arguments = new List<string>
     {
@@ -427,7 +678,8 @@ static WidgetProcessClient CreateIsolatedClient(
         MemoryLimitBytes = 96L * 1024 * 1024,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = isolationKey,
-        ReadOnlyPaths = [packageRoot],
+        ReadOnlyPaths = contentLeaseFactory is null ? [packageRoot] : [],
+        ContentLeaseFactory = contentLeaseFactory,
     });
 }
 
@@ -1189,6 +1441,9 @@ static WidgetProcessClient CreateClient(
     long memoryLimitBytes = 64L * 1024 * 1024,
     Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>? companionFactory = null,
     Func<IDisposable>? processLeaseFactory = null,
+    Func<CancellationToken, IWidgetProcessContentLease>? contentLeaseFactory = null,
+    string? contentIsolationKey = null,
+    TimeSpan? contentLeaseTimeout = null,
     TimeProvider? timeProvider = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
@@ -1204,6 +1459,14 @@ static WidgetProcessClient CreateClient(
         MemoryLimitBytes = memoryLimitBytes,
         CompanionSessionFactory = companionFactory,
         ProcessLeaseFactory = processLeaseFactory,
+        ContentLeaseFactory = contentLeaseFactory,
+        ContentLeaseTimeout = contentLeaseTimeout ?? TimeSpan.FromSeconds(5),
+        IsolationPolicy = contentLeaseFactory is null
+            ? WidgetWorkerIsolationPolicy.HostTrustedJobOnly
+            : WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = contentLeaseFactory is null
+            ? null
+            : contentIsolationKey ?? $"runtime-content-{Guid.NewGuid():N}",
     };
     return timeProvider is null
         ? new WidgetProcessClient(options)
@@ -1932,4 +2195,19 @@ file sealed class CallbackDisposable(Action callback) : IDisposable
     private Action? _callback = callback;
 
     public void Dispose() => Interlocked.Exchange(ref _callback, null)?.Invoke();
+}
+
+file sealed class TestContentLease(
+    string authorityRoot,
+    IReadOnlyList<string> readOnlyDirectories,
+    IReadOnlyList<string> readOnlyFiles,
+    Action release) : IWidgetProcessContentLease
+{
+    private Action? _release = release;
+
+    public IReadOnlyList<string> AuthorityRoots { get; } = [authorityRoot];
+    public IReadOnlyList<string> ReadOnlyDirectories { get; } = readOnlyDirectories;
+    public IReadOnlyList<string> ReadOnlyFiles { get; } = readOnlyFiles;
+
+    public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
 }

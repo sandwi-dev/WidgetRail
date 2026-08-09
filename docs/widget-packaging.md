@@ -242,13 +242,41 @@ signer authority that is stable across authenticated updates. Neither
 `manifest.json`, catalog state, worker arguments, nor widget protocol messages
 can select or weaken the isolation policy.
 
-Before a package worker runs, the Windows runtime opens or creates that exact
-capability-free profile, grants its SID read/execute access to the generic
-worker runtime and selected immutable package root, supplies a stripped
-environment, and launches at Low integrity. Token SID, integrity, and zero-
-capability state are verified before resume. The Job Object
+Before a package worker runs, the catalog reacquires the exact published
+content-tree digest and complete relative-path/length/SHA-256 inventory. It
+retains read-only handles that deny write/delete replacement for every verified
+file through that worker session. Content revalidation has a five-second
+cooperative deadline and fails before process creation if any byte, length,
+path, or namespace entry has changed. Exact ACL application and the subsequent
+worker handshake do not yet share one aggregate enforced start deadline.
+
+The Windows runtime then opens or creates the digest-specific capability-free
+profile, removes any legacy inheriting grant on the package root, and grants its
+SID direct non-inheriting read/execute access only to the verified files and
+their traversal directories. A dependency, native library, style, or asset
+inserted after verification receives no worker authority. The profile identity
+includes the verified content digest, so a later content generation cannot
+inherit direct grants left on an older root. The runtime separately
+grants the generic worker executable, supplies a stripped environment, and
+launches at Low integrity. Token SID, integrity, and zero-capability state are
+verified before resume. The Job Object
 also enforces the trusted memory ceiling, one active process, kill-on-close,
 die-on-unhandled-exception, and basic UI restrictions.
+
+The content lease follows the exact process session and is reacquired after a
+crash, intentional unload, or restart. Disable/removal, failed connection, and
+shutdown release it only after process/pipe/Job teardown. This can temporarily
+block a same-user write or uninstall while a worker is alive; that is deliberate
+byte authority, not a claim that the current-user package directory is generally
+OS-immutable.
+
+The bounded maximum-inventory fixtures use 512 verified files. Current local
+Release evidence records 315.294 ms to reacquire/hash/pin that inventory and
+372.060 ms to apply exact AppContainer grants and complete lazy activation. The
+focused tests reject content acquisition above five seconds and the maximum-
+grant fixture above ten seconds, but those separate ceilings are not one
+production start-admission budget. These are one-machine regression
+measurements, not cross-hardware startup targets.
 
 The random global main and optional broker pipes allow only the desktop host
 and exact AppContainer SID, carry a Low mandatory label, accept one local
@@ -285,8 +313,9 @@ be announced again and a later open/list can catch up. An ordinary open-time
 failure does not start a retry loop. A new bridge session resets revision
 tracking, and stale lists cannot replace newer state. Bridge-side revision
 numbering also resets when the bridge process restarts. Host-sealed content-tree
-verification provides local installed-byte integrity, but the watcher, digest,
-and semantic comparison do not prove publisher identity or benign behavior.
+verification plus the per-session launch lease binds the bytes exposed to a
+running worker. The watcher, digest, and lease still do not prove publisher
+identity or benign behavior.
 
 ## Remote acquisition
 

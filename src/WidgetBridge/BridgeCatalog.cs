@@ -5,6 +5,7 @@ using System.Text;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetStyling;
 using CatalogService = GameBarAlternative.WidgetCatalog.WidgetCatalog;
 
@@ -52,6 +53,9 @@ internal sealed record ConfiguredWidget
     public string? IsolationKey { get; init; }
     [JsonIgnore]
     public IReadOnlyList<string> ReadOnlyPaths { get; init; } = [];
+    [JsonIgnore]
+    public Func<CancellationToken, IWidgetProcessContentLease>?
+        ContentLeaseFactory { get; init; }
     /// <summary>Trusted host policy; worker manifests and IPC cannot override it.</summary>
     public int MemoryLimitMb { get; init; } = 64;
     /// <summary>
@@ -355,7 +359,11 @@ public sealed class BridgeCatalog
                 DeclaredCapabilities = declaredCapabilities,
                 RequiresAppContainer = true,
                 IsolationKey = CommunityIsolationKey(authorityPublisherId, manifest.Id),
-                ReadOnlyPaths = [packageRoot],
+                ReadOnlyPaths = [],
+                ContentLeaseFactory = cancellationToken => AcquireInstalledContentLease(
+                    installedRoot,
+                    widget.ActiveVersion,
+                    cancellationToken),
                 StyleFile = styleFile,
                 // Community manifests describe expected usage but do not set
                 // enforcement policy. The trusted host owns this fixed cap.
@@ -410,6 +418,9 @@ public sealed class BridgeCatalog
             .. source.DeclaredCapabilities,
             source.RequiresAppContainer ? "appcontainer-required" : "host-trusted-job-only",
             source.IsolationKey ?? string.Empty,
+            source.ContentLeaseFactory is null
+                ? "broad-read-authority"
+                : "verified-content-lease-v1",
             .. source.ReadOnlyPaths,
             source.MemoryLimitMb.ToString(System.Globalization.CultureInfo.InvariantCulture),
             source.ResidencyPolicy.SchemaVersion.ToString(
@@ -638,6 +649,30 @@ public sealed class BridgeCatalog
         return allowDirectory || Path.HasExtension(path);
     }
 
+    private static IWidgetProcessContentLease AcquireInstalledContentLease(
+        string installedCatalogRoot,
+        InstalledWidgetVersion version,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new BridgeContentLease(InstalledPackageLaunchLease.Acquire(
+                installedCatalogRoot,
+                version,
+                cancellationToken.ThrowIfCancellationRequested));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is WidgetPackageException or IOException or UnauthorizedAccessException)
+        {
+            throw new WidgetProcessAdmissionException(
+                "Installed widget content changed before its worker could start.");
+        }
+    }
+
     private static bool IsWithin(string root, string path)
     {
         var relative = Path.GetRelativePath(root, path);
@@ -701,6 +736,17 @@ public sealed class BridgeCatalog
     }
 
     private sealed record CompiledWidgetStyle(GbssPackageResult Package, GbssTheme? Theme);
+
+    private sealed class BridgeContentLease(InstalledPackageLaunchLease lease)
+        : IWidgetProcessContentLease
+    {
+        public IReadOnlyList<string> AuthorityRoots { get; } = [lease.PackageRoot];
+        public IReadOnlyList<string> ReadOnlyDirectories { get; } =
+            lease.ReadOnlyDirectories;
+        public IReadOnlyList<string> ReadOnlyFiles { get; } = lease.ReadOnlyFiles;
+
+        public void Dispose() => lease.Dispose();
+    }
 
     private static string SafeDiagnostic(string value)
     {

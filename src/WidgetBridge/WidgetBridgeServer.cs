@@ -408,6 +408,7 @@ public sealed class WidgetBridgeServer(
                     configured.Id,
                     configured.MemoryLimitMb,
                     IsTrustedSettings(configured)),
+                ContentLeaseFactory = configured.ContentLeaseFactory,
                 IsolationPolicy = configured.RequiresAppContainer
                     ? WidgetWorkerIsolationPolicy.RequireAppContainer
                     : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,

@@ -27,13 +27,15 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
+    ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
+    ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),
     ("Installed widget residency policies reach the generic supervisor", InstalledResidencyPolicyIsCarried),
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Bridge alone synthesizes private state authority for capability-free workers", PrivateStateAuthorityIsHostSynthesized),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
-    ("Installed package tamper retires the live worker and cannot relaunch it", InstalledPackageTamperRetiresLiveWorker),
+    ("Live installed bytes are pinned and post-release tamper cannot relaunch", InstalledPackageTamperRetiresLiveWorker),
     ("Catalog monitor closes the startup notification window", CatalogMonitorStartupCatchUp),
     ("Catalog reconciliation preserves compatible workers and retires changed workers", CatalogReconciliationPreservesCompatibleWorkers),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
@@ -341,7 +343,17 @@ static async Task InstalledWidgetsJoinCatalog()
             installed.PublisherId,
             StringComparison.Ordinal),
         "Installed authority trusted the manifest publisher label directly.");
-    Assert.SequenceEqual([installed.WorkerArguments[1]], installed.ReadOnlyPaths);
+    Assert.Equal(0, installed.ReadOnlyPaths.Count);
+    Assert.True(installed.ContentLeaseFactory is not null,
+        "Installed workers retained a broad package-root grant instead of an exact launch lease.");
+    using (var contentLease = installed.ContentLeaseFactory!(CancellationToken.None))
+    {
+        Assert.SequenceEqual([installed.WorkerArguments[1]], contentLease.AuthorityRoots);
+        Assert.Equal(installedVersion.VerifiedFiles.Count, contentLease.ReadOnlyFiles.Count);
+        Assert.True(contentLease.ReadOnlyDirectories.Contains(
+                installed.WorkerArguments[1], StringComparer.OrdinalIgnoreCase),
+            "The exact content lease omitted package-root traversal authority.");
+    }
     Assert.SequenceEqual(
         ["--package-root", installed.WorkerArguments[1], "--widget-assembly",
          installed.WorkerArguments[3], "--widget-type", "Example.EnabledWidget"],
@@ -351,6 +363,67 @@ static async Task InstalledWidgetsJoinCatalog()
     Assert.True(Path.IsPathFullyQualified(installed.WorkerArguments[3]),
         "Installed assembly path must be canonical before worker launch.");
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, installed.ResidencyPolicy.Mode);
+}
+
+static async Task InstalledLaunchAdmissionRejectsRace()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-launch-race");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.launch-race", enabled: true);
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    var configured = load.Catalog.GetConfigured("dev.example.launch-race");
+    Assert.True(configured.ContentLeaseFactory is not null,
+        "Installed descriptor omitted its launch-admission factory.");
+
+    var lateDependency = Path.Combine(
+        configured.WorkerArguments[1], "payload", "LateDependency.dll");
+    await File.WriteAllBytesAsync(lateDependency, [0x4d, 0x5a]);
+    var exception = Assert.Throws<WidgetProcessAdmissionException>(() =>
+        configured.ContentLeaseFactory!(CancellationToken.None));
+    Assert.True(exception.Message.Contains("content changed", StringComparison.Ordinal),
+        "Launch admission lost its stable sanitized integrity diagnostic.");
+    Assert.True(!exception.Message.Contains(temporary.Path, StringComparison.OrdinalIgnoreCase),
+        "Launch admission exposed a host package path.");
+}
+
+static async Task InstalledContentGenerationIsIsolated()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-content-generation");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.content-generation",
+        enabled: true,
+        version: "1.0.0");
+    var firstLoad = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    var first = firstLoad.Catalog.GetConfigured("dev.example.content-generation");
+
+    await catalog.SetEnabledAsync("dev.example.content-generation", false);
+    await InstallWidgetAsync(
+        catalog,
+        temporary.Path,
+        "dev.example.content-generation",
+        enabled: false,
+        version: "1.1.0");
+    await catalog.SetActiveVersionAsync(
+        "dev.example.content-generation", new Version(1, 1, 0));
+    await catalog.SetEnabledAsync("dev.example.content-generation", true);
+    var secondLoad = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    var second = secondLoad.Catalog.GetConfigured("dev.example.content-generation");
+
+    Assert.True(!string.Equals(first.IsolationKey, second.IsolationKey, StringComparison.Ordinal),
+        "A new verified content generation reused the prior AppContainer identity.");
+    Assert.True(first.ContentLeaseFactory is not null && second.ContentLeaseFactory is not null,
+        "Content-generation descriptors omitted exact launch admission.");
 }
 
 static async Task InstalledResidencyPolicyIsCarried()
@@ -603,17 +676,38 @@ static async Task InstalledPackageTamperRetiresLiveWorker()
         Assert.Equal(BridgeMessageTypes.Acknowledged, started.Type);
         Assert.Equal(1, server.RunningWorkerCount);
 
-        await File.AppendAllTextAsync(
-            Path.Combine(installed.InstallPath, "payload", "Widget.dll"), "tampered");
+        var entrypoint = Path.Combine(installed.InstallPath, "payload", "Widget.dll");
+        _ = await Assert.ThrowsAsync<IOException>(() =>
+            File.AppendAllTextAsync(entrypoint, "tampered"));
+        Assert.Equal(1, server.RunningWorkerCount);
+
+        await catalog.SetEnabledAsync("dev.example.tamper", false);
+        var disabled = await monitor.ReloadNowAsync();
+        Assert.True(disabled.Published, "Disable did not retire installed authority.");
+        Assert.SequenceEqual(["test-widget"],
+            disabled.Current.Widgets.Select(widget => widget.Id));
+        await WaitUntilAsync(() =>
+        {
+            if (server.RunningWorkerCount != 0) return false;
+            try
+            {
+                File.AppendAllText(entrypoint, "tampered");
+                return true;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }, TimeSpan.FromSeconds(3));
+
         var failedClosed = await monitor.ReloadNowAsync();
-        Assert.True(failedClosed.Published, "Tampered package did not publish trusted-only state.");
         Assert.False(failedClosed.RetainedLastGood, "Tampered package retained stale authority.");
         Assert.SequenceEqual(["test-widget"],
             failedClosed.Current.Widgets.Select(widget => widget.Id));
         Assert.Equal(0, server.RunningWorkerCount);
 
         var changed = await client.ReadEventAsync(BridgeMessageTypes.CatalogChanged);
-        Assert.Equal(failedClosed.Revision, changed.Payload.GetProperty("revision").GetInt64());
+        Assert.Equal(disabled.Revision, changed.Payload.GetProperty("revision").GetInt64());
         var listed = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.SequenceEqual(["test-widget"], listed.Payload.GetProperty("widgets")
             .EnumerateArray().Select(widget => widget.GetProperty("id").GetString()!));
@@ -715,15 +809,16 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     string styleSource = "button { color: #abcdef; }",
     IReadOnlyList<string>? permissions = null,
     WidgetResidencyPolicy? residencyPolicy = null,
-    WidgetGlyph icon = WidgetGlyph.Connection)
+    WidgetGlyph icon = WidgetGlyph.Connection,
+    string version = "1.0.0")
 {
-    var packagePath = Path.Combine(packageDirectory, $"{id}.gbarwidget");
+    var packagePath = Path.Combine(packageDirectory, $"{id}-{version}.gbarwidget");
     var manifest = new WidgetManifest
     {
         Id = id,
         Publisher = "dev.example",
         Name = id.EndsWith("enabled", StringComparison.Ordinal) ? "Enabled Widget" : "Test Widget",
-        Version = "1.0.0",
+        Version = version,
         HostApi = new HostApiRange("1.0", 1),
         Entrypoint = new WidgetEntrypoint(
             "dotnet-worker", "payload/Widget.dll", "Example.EnabledWidget"),

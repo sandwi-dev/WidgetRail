@@ -557,6 +557,8 @@ public sealed class WidgetCatalog
                     manifest.Id, version, versionDirectory, manifest, verification.ContentDigest)
                 {
                     VerifiedGbssDigests = verification.GbssDigests,
+                    VerifiedFiles = verification.VerifiedFiles,
+                    VerificationOptions = _options,
                     VerifiedEntryCount = verification.EntryCount,
                     VerifiedTotalBytes = verification.TotalBytes,
                 });

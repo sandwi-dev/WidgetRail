@@ -52,6 +52,9 @@ public sealed record InstalledWidgetVersion(
 {
     internal IReadOnlyDictionary<string, string> VerifiedGbssDigests { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
+    internal IReadOnlyDictionary<string, VerifiedPackageFile> VerifiedFiles { get; init; } =
+        new Dictionary<string, VerifiedPackageFile>(StringComparer.Ordinal);
+    internal WidgetCatalogOptions VerificationOptions { get; init; } = new();
     internal int VerifiedEntryCount { get; init; }
     internal long VerifiedTotalBytes { get; init; }
 }

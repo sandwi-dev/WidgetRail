@@ -107,7 +107,7 @@ Up/Down navigation.
   pre-process host-owned residency leases, timeouts, failure reporting, and
   limited restart. Installed/community workers
   require stable host-derived capability-free Low-integrity AppContainers,
-  stripped environments, explicit read/execute roots, PID-bound isolated
+  stripped environments, exact non-inheriting verified-file grants, PID-bound isolated
   pipes, and pre-launch Job Object memory/process/UI/cleanup
   containment. Public custom workers use
   `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
@@ -119,7 +119,7 @@ Up/Down navigation.
   worker retirement, worker forwarding, quick actions, controller input,
   host-owned mandatory community isolation selection, PID/identity/declaration-
   bound broker companions, single-use exact-operation dashboard gesture
-  authority, aggregate resident-worker/count admission with a separate Settings
+  authority, per-session verified-content lease handoff, aggregate resident-worker/count admission with a separate Settings
   control-plane slot, invalidation/failure events, no-poll platform-appearance revisions,
   globally layered widget themes, bounded shell appearance, and computed GBSS
   styles.
@@ -151,7 +151,9 @@ Up/Down navigation.
   with unambiguous owning-namespace resolution for unsigned runtime authorities.
 - `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, host-sealed content-
   tree integrity with single-handle bounded metadata reads and exact-length
-  file hashing plus manifest bytes captured from the verified tree,
+  file hashing plus manifest bytes captured from the verified tree, complete
+  relative-path/length/SHA-256 inventories, and bounded per-session launch
+  leases that pin every verified file against write/delete replacement,
   version-addressed installs, schema-1 state migration, fail-closed
   exact version pins, discovery,
   enablement, and pin-preserving order persistence. Enabled compatible packages
@@ -629,9 +631,11 @@ settings/themes, catalog, bridge, the generic worker host, broker, the real
 first-party-package conformance path, and Windows providers/reference widgets.
 The runtime covers suspended pre-containment
 launch, memory/process/UI limits, kill-on-close, restart cleanup, and mandatory
-community AppContainer authority, bounded intentional unload, and private
-two-clock dashboard-gesture propagation. Its focused Release harness passes
-36/36;
+community AppContainer authority, exact grant replacement, content-generation
+isolation, trusted-runtime/content-root overlap refusal, caller-preserving
+content-admission cancellation, timeouts and session release, bounded intentional
+unload, and private two-clock dashboard-gesture propagation. Its focused Release
+harness passes 44/44;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
@@ -656,25 +660,33 @@ list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, per-package and aggregate
 catalog limits, immutable versions, and adversarial package cases. Catalog
-passes 29/29, including
+passes 32/32, including
 schema-1 state migration, exact active-version pins and disabled repair,
 linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 content-tree sealing/tamper rejection, consumed-byte manifest/integrity limits,
 misreported and changing-length rejection, verified manifest-byte capture,
+session byte pinning, pre-start mutation and late-insertion refusal,
 prospective ID/version/file/byte refusal, per-entry/per-64-KiB cancellation and
 deadline checks, unexpected-entry rejection, plus content-bound unsigned
 authority.
+The maximum-inventory fixtures retain 512 verified files: current local Release
+evidence acquires and hashes the pinned-file lease in 315.294 ms and applies the
+exact AppContainer grants plus lazy activation in 372.060 ms. Focused tests use
+separate five-second content-acquisition and ten-second maximum-grant ceilings;
+one aggregate production start deadline plus repeated clean/hosted measurements
+remain open.
 Bridge
-passes 40/40, including aggregate count/declared-memory admission, exact crash/
+passes 42/42, including aggregate count/declared-memory admission, exact crash/
 timeout/idle-unload release, Settings control-plane access, race-safe refusal,
 semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
 gesture derivation, including trusted-only publication and worker retirement
-when installed state/integrity fails. PlatformBroker focused coverage passes
+when installed state/integrity fails, pre-launch content-race rejection, and
+live-byte pinning until asynchronous worker teardown completes. PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
@@ -815,7 +827,13 @@ with C++ installed:
 - Mandatory capability-free AppContainer isolation is implemented for every
   installed/community worker. YT Music now uses that path with exact-loopback
   and write-only private-secret broker services; Settings is the only temporary
-  trusted Job-only worker. Publisher
+  trusted Job-only worker. Every installed worker start/restart reacquires and
+  pins the complete verified path/length/hash inventory, and the AppContainer
+  receives only exact non-inheriting file/traversal grants. Changed bytes and
+  pre-admission insertions fail before launch; later insertions do not receive
+  worker authority. Each verified content generation receives a distinct
+  AppContainer identity, so a later version cannot inherit an older root grant.
+  Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The
   narrow Core Audio and Windows network backends still need broader hardware/
@@ -830,8 +848,9 @@ with C++ installed:
   permissions and the narrowly bounded dashboard gesture exception for one
   exact control operation.
   Community AppContainers have zero OS capabilities/network authority and no
-  general desktop token; direct resource access is limited to explicit
-  read/execute runtime/package grants. OS capability APIs remain brokered.
+  general desktop token; direct resource access is limited to the generic
+  runtime plus exact session-verified package files. OS capability APIs remain
+  brokered.
 - `gbar render` accepts only bounded data-only snapshots; DLL input and selected
   scenario execution fail closed. Executable integration uses the isolated
   `gbar dev` AppContainer path until a dedicated scenario worker exists.
