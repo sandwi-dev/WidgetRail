@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against current HEAD `6fc9e01` after verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -99,10 +99,14 @@ That fail-fast/override behavior is the correct interim contract until a
 matching versioned SDK/template release exists. It is still not a cloneable
 standalone dependency, and the new snapshot guidance needs an actual generated
 typed-fake test/exporter; the template currently refers to one but creates
-none. The implementation agent reports 49/49 CLI cases; this review inspected
-the new external build case, and the clean all-lane bundle now retains its
-passing CLI result. That case still points back to the checkout SDK and does not
-prove a published standalone dependency.
+none. It also lacks a complete package path: the manifest expects
+`payload/<WidgetName>.dll`, ordinary build writes under `bin`, validation does
+not check that file, and the template never stages it for `gbar pack`. The
+implementation agent reports 49/49 CLI cases; this review inspected the new
+external build case, and the clean all-lane bundle now retains its passing CLI
+result. That case still points back to the checkout SDK, executes only the
+build, and proves neither a published dependency nor the advertised package
+workflow.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -129,6 +133,60 @@ custom-provider exceptions as sanitized
 fatal conditions. Add real CLI/import coverage beyond invalid encoding, and
 route installed digest/change rejection to typed catalog integrity status
 rather than only “invalid styles.”
+
+Commit `d2e49a9` makes a major platform-internal authoring improvement:
+catalog discovery now captures path, length, and SHA-256 evidence for every
+package file, and each installed-worker start reacquires a host-owned content
+lease that pins those bytes and grants the AppContainer only direct,
+non-inheriting access to the verified directory/file set. Authors still declare
+an entrypoint and package ordinary dependencies/assets; they do not compute
+hashes, manage ACLs, or write loader guards. That is the right ergonomic
+boundary. A new runtime test already runs a real AppContainer worker, replaces a
+prior broad grant for the same SID on the current root, and proves a verified
+text file remains readable while a late file is denied. Treat the complete
+workflow as provisional until current-commit execution is retained and the
+remaining adversarial cases pass. The first-party
+conformance harness now routes five real installed packages through the exact
+lease, including YT Music suspend, restart, force reload, update, and removal.
+The latest runtime follow-up also rejects content authority overlapping the
+trusted generic-worker directory and preserves caller cancellation during
+content acquisition. Those are useful host-side refinements.
+It should next prove adversarial late/replaced managed dependencies, native
+libraries, and assets rather than only positive widget startup. The existing
+digest-bound identity and new production-token case already prevent a later
+content generation from reading the prior root. Persistent ACLs still need an
+alternate-group-ACE policy and explicit partial-application handling.
+The lease currently checks, opens, inventories, and ACLs directory paths in
+separate pathname operations without recording file IDs or opening descendants
+relative to authenticated directory handles. A concurrent directory rename or
+junction swap therefore remains an unproven path-to-object boundary. Authors
+must not receive new path/handle APIs to solve it; the host needs protected
+generations or handle-identity enforcement behind the existing lease.
+These are host obligations, not new SDK concepts or manifest fields.
+
+The launch path is not yet performance-complete. The documented five-second
+admission deadline covers content revalidation, but exact AppContainer ACL
+application happens afterward with no shared deadline. A new 512-file test
+accepts any complete startup below ten seconds and does not retain the measured
+phase timings. Authors should not have to learn an undocumented “keep your
+package tiny or the overlay may freeze” rule. The platform should enforce one
+start budget, expose a typed package/start failure, and publish measured package
+entry guidance; if per-file ACL mutation cannot meet the product budget, the
+host should change its protected-generation design or documented file limit
+rather than pushing ACL/performance workarounds into widget repositories.
+This is also a host-liveness issue: the native bridge client currently performs
+synchronous, untimed reads from overlay UI paths, so a stalled managed start can
+prevent the overlay from painting an error or accepting its close/navigation
+controls.
+
+Commit `6fc9e01` closes the deterministic package-shape mismatch. Package
+inspection and installed-tree verification compute the same canonical
+package-root/implicit-directory set and reject more than 1,024 directories
+before extraction/publication or launch. Bridge coverage keeps that catalog
+limit aligned with the runtime outer guard, the public packaging guide publishes
+it, and a within-file-limit deep-path fixture proves early refusal. Maximum
+accepted deep-shape activation timing remains part of the broader start-budget
+work; authors no longer discover the hard limit only on first open.
 
 ## Evidence from the repository
 
@@ -415,6 +473,17 @@ state, and writes the exact `snapshot.json` named by the README. Authors can
 then see and copy the supported credential-free state/testing pattern instead
 of being told to design it themselves.
 
+The source-to-package path has a second concrete break. The generated manifest
+declares `payload/<WidgetName>.dll`, but the generated README's `dotnet build`
+writes beneath `bin`; `gbar validate .` checks manifest and GBSS semantics, not
+entrypoint existence. `gbar dev` succeeds because it privately builds a
+temporary package generation at the declared payload path. It does not publish
+that generation, and the template creates no release staging step. As a result,
+the CLI README's later `gbar pack <generated-source>` command correctly fails
+with `missing_entrypoint`. A new author gets a green build and validation before
+discovering that development and distribution use different, undocumented
+artifact flows.
+
 That test should be a sibling project generated with the widget, or created by
 an explicit `gbar test init` command. It should use a normal portable
 `dotnet test` adapter or a published minimal Widget SDK test runner, include one fake-
@@ -432,6 +501,15 @@ README command, validates and packages it, and leaves a standalone repository
 that another developer can clone and build. The generated source is already a
 credible human starter; publishing and testing the complete dependency/tooling
 loop is what turns it into a platform authoring experience.
+
+Make one bounded source-to-package operation own Release build, dependency
+publication, style/asset staging, complete-package validation, and deterministic
+packing using the same generation semantics as `gbar dev` without launching the
+overlay. Keep raw directory packing as the low-level deterministic primitive.
+The generated README and CI should use the higher-level operation, and a single
+external-repository test should execute build, validate, generated snapshot
+tests/replay, package, inspect, install-disabled, and isolated launch from the
+result. This is tooling composition, not another widget SDK abstraction.
 
 Publication also needs an explicit API-governance boundary. `WidgetSdk.csproj`
 currently contains only build-language settings and a source `ProjectReference`
@@ -496,36 +574,29 @@ selection now comes from the verified inventory, and every entry/import is
 read through one consumed-byte-bounded handle, decoded as strict UTF-8, and
 matched to its exact per-file digest before parsing. Modified or late-added
 style sources cannot compile under the package authority. Styling Release
-coverage is implementation-reported at 23/23. The 175 ms
-catalog watcher can retire a changed worker after detection, but it does not
-bind loaded executable bytes to the verified digest. Public distribution needs
-a host-owned verified-content lease or
-protected immutable generation acquired at lazy launch and retained through
-the worker session. Tests must cover a pause after verification followed by
-replacement before worker launch and mutate-and-restore inside the watcher
-debounce.
+coverage is implementation-reported at 23/23. The launch path now extends that
+authority to every package file: each lazy start/restart reacquires the exact
+digest and path/length/hash inventory, pins verified bytes, and applies direct
+non-inheriting AppContainer grants for only that inventory. The lease remains
+host-owned and follows the worker session. Public distribution still needs
+adversarial managed/native/asset loader cases, an alternate-group-ACE policy,
+and one enforced aggregate start deadline.
 
-The current handoff shows why this must remain platform-owned rather than an
-author convention. Catalog discovery ultimately becomes the generic worker path
-plus `--package-root`, `--widget-assembly`, and `--widget-type` strings. The
-runtime's existing `ProcessLeaseFactory` reserves worker count and declared
-memory, but it does not carry the verified digest, manifest, or path inventory.
-The author should receive neither raw verification handles nor a new API to
-recheck their own package. The host needs a separate typed content-authority
-lease, or one supervisor-owned session object that explicitly composes content
-authority with residency admission.
+The implementation shows why this remains platform-owned rather than an author
+convention. Catalog discovery still supplies the generic worker path plus
+`--package-root`, `--widget-assembly`, and `--widget-type` strings, while an
+internal `ContentLeaseFactory` carries exact verified authority separately from
+`ProcessLeaseFactory` residency accounting. Authors receive neither raw
+verification handles nor an API to recheck their own package.
 
-The lease must bind package namespace as well as the bytes already present.
-Holding existing file handles does not by itself prevent a previously missing
-dependency, native library, or asset from appearing later. The
-current assembly loader accepts any contained non-reparse path returned by its
-dependency resolver; it has no verified relative-path inventory. A senior
-platform contract should publish manifest plus compiled presentation from one
-short-lived verified snapshot, then reacquire the same digest and exact path
-set in a launch lease retained for the worker session. Resolution must reject
-new names outside that inventory, or the worker must receive a protected
-generation whose namespace cannot change. This also avoids retaining hundreds
-of handles for every dormant installed version.
+The lease binds namespace as well as existing bytes. Verified files receive
+direct read/execute grants, required directories receive direct traversal grants,
+and neither grant inherits to a later name. Changed or inserted entries present
+during admission fail before launch; an entry inserted later has no worker
+authority. Each content digest receives a distinct AppContainer identity, and a
+production-token test proves the new generation cannot read the prior granted
+root. The remaining authority question is whether inherited or group-token ACEs
+could bypass those direct grants on an unusually permissive catalog root.
 
 The next author workflow should preserve the safe mechanics while reducing this
 trust ceremony. `gbar pack`/future `gbar publish` should emit one canonical
@@ -546,8 +617,9 @@ cross a count or byte quota. This is a meaningful ecosystem safeguard. The
 `1c1f8bb` follow-up threads elapsed/cancellation checkpoints through recursive
 tree enumeration and each at-most-64-KiB bounded hash read. A process-level
 watchdog is still required for an already blocked Windows filesystem call.
-Accepted versions are also still eagerly hashed and can retain up to 512 GBSS
-path/hash entries each (assembly/asset hashes are deliberately not retained).
+Accepted versions are also still eagerly hashed and temporarily retain up to 512
+complete file path/length/hash entries each during discovery; bridge runtime
+closures retain only enabled active generations.
 
 The author/user recovery path remains incomplete. Settings collapses any limit
 failure to an empty “catalog unavailable” surface, while `gbar uninstall`
@@ -580,12 +652,28 @@ Spotify still needs keep-alive to preserve one temporary authorization
 operation, demonstrating that residency remains too coarse a substitute for a
 bounded critical-work lease.
 
+The recurring-work audit confirms that residency and polling are not currently
+conflated inside the advanced widgets. `WidgetTicker` accepts only 250 ms through
+one hour, runs callbacks serially, and requires the active-lifetime token.
+YT Music uses that helper for progress and provider polling and awaits both loops
+on deactivation. Spotify's manual adaptive poll and progress ticker likewise use
+the active lifetime and are awaited on deactivation; its widget-lifetime task is
+limited to the already-authorized browser flow that must survive the overlay
+moving to Background. Thus Spotify's `keep-alive` policy wastes potential
+resident memory, but source inspection does not show its ordinary polling loop
+continuing in Background. Preserve that distinction in documentation and
+measurements so authors are not encouraged to solve temporary continuation by
+moving all work to widget lifetime.
+
 The host-owned admission now has exact lifetime ownership: the runtime acquires
 a lease immediately before process creation and releases it only when that
 exact process exits or its pipe/process/Job session is detached. Direct runtime
 tests now cover pre-launch denial plus exact release across crash/relaunch and
 cooperative stop; current bridge tests cover normal crash, timeout, and idle
-unload. Remaining fault injection includes connection/protocol/companion
+unload. Clean all-lane result `20260809T141527Z-8946c731` retains the relevant
+36/36 runtime and 40/40 bridge cases, including named pre-launch refusal, exact
+lease, suspend, and idle-unload cases. Remaining fault injection includes
+connection/protocol/companion
 failure, live-process pipe disconnect, disable/removal, catalog replacement,
 and bridge shutdown. The remaining product path is to make the user contract
 complete.
@@ -601,6 +689,14 @@ owns the budget or reach the relevant unload/disable action from the refusal.
 This needs a typed, bounded admission result, a persistent controller-facing
 error state, and Settings attribution of each reservation and its residency and
 remediation eligibility.
+
+Commit `d2e49a9`'s exact-content launch work makes this contract more urgent. ACL
+application occurs outside the documented admission timeout, and the native
+host then waits synchronously without a request deadline. A stalled start can
+therefore freeze the overlay before it can display any of those typed states.
+Bridge requests need async, cancelable, deadline-owned host coordination;
+authors should not be asked to compensate with smaller packages, manual startup
+screens, or widget-specific retry loops.
 
 The native-host audit identifies why this product state has no durable owner.
 `OverlayApp` directly combines bridge transport, descriptor/snapshot caches,
@@ -622,6 +718,14 @@ denial, offline data, and provider retry; they should not add host-startup,
 capacity, protocol, or process-crash screens to every widget. The platform must
 qualify or disable stale controls and provide one persistent controller-facing
 retry/remediation path.
+
+The hidden host still has one separate performance debt that authors cannot
+fix: when GameInput device tracking is unavailable, the legacy Guide adapter
+polls all four XInput slots on a 25 ms timer so Guide can reopen the overlay.
+That belongs to the native host's compatibility policy and measurement gate,
+not a new widget lifecycle knob. The platform should adapt empty/connected-slot
+cadence and prove wakeup versus Guide-latency behavior on legacy hardware while
+keeping widget-facing active-lifetime semantics unchanged.
 
 `keep-alive` should surface its
 continuing cost during package review. The runtime should offer a bounded,
@@ -1264,10 +1368,16 @@ and fail-closed scenario selection with contract and safety tests.
    aggregate residency with typed persistent failure/refusal states, per-widget
    resource visibility/remediation, optional reclaim only for unload-eligible
    workers, and bounded temporary critical-work leases.
-2. Bind bounded installed-tree verification to the exact manifest, GBSS/import,
-   assembly, dependency, and asset bytes and relative-path inventory consumed
-   by each worker session; reject late additions, then add an honest unsigned
-   acquisition receipt and publisher signing,
+2. Finish and prove the committed host-owned package content lease: retain exact
+   manifest, GBSS/import, assembly, dependency, and asset bytes plus namespace
+   authority for each worker session; retain stale-generation-root denial and
+   reject replacement, alternate group grants, directory rename/reparse substitution, and late additions
+   under the production AppContainer token; bind ACL targets to the objects
+   authenticated by the lease;
+   put revalidation, authority application, process creation, and hello under
+   one enforced user-visible start budget without blocking unrelated bridge
+   work; clean up persistent ACL grants on every failure/teardown path. Then add an
+   honest unsigned acquisition receipt and publisher signing,
    rotation/revocation, signed update metadata, and verified/unverified package
    states before public community distribution.
 3. Publish a language-neutral runtime and snapshot wire specification.
@@ -1316,8 +1426,12 @@ The improvements should be evaluated against measurable author outcomes:
   instead of reporting every file-provider rejection as `missing_import`.
 - A GitHub-hosted widget can be packaged and acquired by exact pinned bytes,
   and every host-side compiler and worker session consumes only content held by
-  the matching verified digest and path inventory; replacement and late-added
-  package files cannot inherit that authority. Before public distribution,
+  the matching verified digest and path inventory; replacement, stale
+  previously granted paths, alternate AppContainer-group grants, and late-added
+  package files cannot inherit that authority. Authors never manage those
+  hashes, handles, ACLs, or launch leases, and every supported package size
+  starts within one enforced and measured host budget while unrelated widgets
+  and Settings remain responsive. Before public distribution,
   Settings clearly distinguishes unsigned from verified publishers, shows a
   bounded source/digest receipt and version capability changes, and rejects
   invalid or revoked signatures.
