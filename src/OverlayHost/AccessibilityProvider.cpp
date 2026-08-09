@@ -76,11 +76,30 @@ int ControlType(const Role role) noexcept {
     case Role::Button: return UIA_ButtonControlTypeId;
     case Role::Slider: return UIA_SliderControlTypeId;
     case Role::Text: return UIA_TextControlTypeId;
+    case Role::Heading: return UIA_TextControlTypeId;
+    case Role::Status: return UIA_StatusBarControlTypeId;
     case Role::Image: return UIA_ImageControlTypeId;
     case Role::Progress: return UIA_ProgressBarControlTypeId;
     case Role::ListItem: return UIA_ListItemControlTypeId;
     }
     return UIA_CustomControlTypeId;
+}
+
+int HeadingLevelValue(const HeadingLevel level) noexcept {
+    switch (level) {
+    case HeadingLevel::Level1: return HeadingLevel1;
+    case HeadingLevel::None: return HeadingLevel_None;
+    }
+    return HeadingLevel_None;
+}
+
+int LiveSettingValue(const LiveSetting setting) noexcept {
+    switch (setting) {
+    case LiveSetting::Polite: return ::Polite;
+    case LiveSetting::Assertive: return ::Assertive;
+    case LiveSetting::Off: return ::Off;
+    }
+    return ::Off;
 }
 
 bool KeyboardFocusable(const Node& node) noexcept {
@@ -291,6 +310,10 @@ public:
         case UIA_IsOffscreenPropertyId: BoolVariant(false, result); break;
         case UIA_SelectionItemIsSelectedPropertyId:
             BoolVariant(node->selected, result); break;
+        case UIA_HeadingLevelPropertyId:
+            IntVariant(HeadingLevelValue(node->headingLevel), result); break;
+        case UIA_LiveSettingPropertyId:
+            IntVariant(LiveSettingValue(node->liveSetting), result); break;
         default: break;
         }
         return S_OK;
@@ -893,7 +916,6 @@ void ProviderHost::RaisePendingEvents() noexcept {
             (void)UiaRaiseAutomationEvent(
                 focused.Get(), UIA_AutomationFocusChangedEventId);
     }
-
     const auto propertyId = [](const PropertyKind kind) -> PROPERTYID {
         switch (kind) {
         case PropertyKind::Name: return UIA_NamePropertyId;
@@ -906,11 +928,14 @@ void ProviderHost::RaisePendingEvents() noexcept {
         case PropertyKind::RangeSmallChange: return UIA_RangeValueSmallChangePropertyId;
         case PropertyKind::RangeLargeChange: return UIA_RangeValueLargeChangePropertyId;
         case PropertyKind::RangeReadOnly: return UIA_RangeValueIsReadOnlyPropertyId;
+        case PropertyKind::HeadingLevel: return UIA_HeadingLevelPropertyId;
+        case PropertyKind::LiveSetting: return UIA_LiveSettingPropertyId;
         case PropertyKind::Bounds: return UIA_BoundingRectanglePropertyId;
         }
         return 0;
     };
-    const auto variant = [](const PropertyValue& value, const ScreenTransform* transform) {
+    const auto variant = [](const PropertyValue& value, const PropertyKind kind,
+                            const ScreenTransform* transform) {
         VARIANT result{};
         std::visit([&](const auto& item) {
             using Value = std::decay_t<decltype(item)>;
@@ -924,6 +949,15 @@ void ProviderHost::RaisePendingEvents() noexcept {
             } else if constexpr (std::is_same_v<Value, double>) {
                 V_VT(&result) = VT_R8;
                 V_R8(&result) = item;
+            } else if constexpr (std::is_same_v<Value, int>) {
+                V_VT(&result) = VT_I4;
+                if (kind == PropertyKind::HeadingLevel) {
+                    V_I4(&result) = HeadingLevelValue(static_cast<HeadingLevel>(item));
+                } else if (kind == PropertyKind::LiveSetting) {
+                    V_I4(&result) = LiveSettingValue(static_cast<LiveSetting>(item));
+                } else {
+                    V_I4(&result) = item;
+                }
             } else {
                 SAFEARRAY* array = SafeArrayCreateVector(VT_R8, 0, 4);
                 if (!array) return;
@@ -948,13 +982,21 @@ void ProviderHost::RaisePendingEvents() noexcept {
         auto provider = change.nodeId.empty() ? root : providerFor(change.nodeId);
         if (!provider) continue;
         VARIANT oldValue = variant(
-            change.oldValue, previous ? &previous->transform : nullptr);
+            change.oldValue, change.kind,
+            previous ? &previous->transform : nullptr);
         VARIANT newValue = variant(
-            change.newValue, current ? &current->transform : nullptr);
+            change.newValue, change.kind,
+            current ? &current->transform : nullptr);
         (void)UiaRaiseAutomationPropertyChangedEvent(
             provider.Get(), propertyId(change.kind), oldValue, newValue);
         VariantClear(&oldValue);
         VariantClear(&newValue);
+    }
+    for (const auto& nodeId : plan.liveRegionChangedNodeIds) {
+        auto liveRegion = providerFor(nodeId);
+        if (liveRegion)
+            (void)UiaRaiseAutomationEvent(
+                liveRegion.Get(), UIA_LiveRegionChangedEventId);
     }
 }
 

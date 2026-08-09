@@ -15,9 +15,22 @@ enum class Role {
     Button,
     Slider,
     Text,
+    Heading,
+    Status,
     Image,
     Progress,
     ListItem,
+};
+
+enum class HeadingLevel {
+    None,
+    Level1,
+};
+
+enum class LiveSetting {
+    Off,
+    Polite,
+    Assertive,
 };
 
 enum class HostAction {
@@ -34,6 +47,8 @@ struct Node final {
     std::wstring hostTargetId;
     declarative::Rect bounds;
     Role role{Role::Text};
+    HeadingLevel headingLevel{HeadingLevel::None};
+    LiveSetting liveSetting{LiveSetting::Off};
     HostAction hostAction{HostAction::None};
     std::optional<std::size_t> parent;
     std::vector<std::size_t> children;

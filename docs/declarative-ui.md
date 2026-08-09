@@ -46,7 +46,13 @@ property changes for name, help text, enabled/selected state, RangeValue
 value/limits/step/read-only state, and physical screen bounds. DPI, window-
 origin, and root-size changes update root and node bounds. Event planning and
 UIA calls run outside paint, and a real client-handler test covers structure,
-property, and focus delivery.
+property, live-region, and focus delivery.
+
+The dashboard projection also includes the exact painted title as a level-one
+heading and the current controller hint or action feedback as a polite status
+live region. Their text participates in the host semantic revision, so reorder,
+selection, feedback, and feedback-expiry paints publish the matching name and
+live-region event without making the text focusable.
 
 Every provider captures one HWND binding generation. Before window destruction,
 the host disconnects UIA, clears message/action authority, and invalidates that

@@ -47,6 +47,41 @@ int main() {
           tree.nodes[0].bounds.height == layout->tiles[0].bounds.height,
           "accessibility uses the exact shared paint/hit-test rectangle");
 
+    const gba::accessibility::DashboardSemantics dashboard{
+        L"Reorder widgets", {24, 10, 192, 34},
+        L"A Select  B Done", {24, 44, 192, 22},
+    };
+    const auto dashboardTree = gba::accessibility::BuildTrayTree(
+        items, *layout, 2, 18, &dashboard);
+    Check(dashboardTree.nodes.size() == 4 &&
+          dashboardTree.nodes[0].id == L"host.dashboard.title" &&
+          dashboardTree.nodes[0].role == gba::accessibility::Role::Heading &&
+          dashboardTree.nodes[0].headingLevel == gba::accessibility::HeadingLevel::Level1,
+          "dashboard title is a level-one heading with exact host-owned text");
+    Check(dashboardTree.nodes[0].bounds.x == dashboard.titleBounds.x &&
+          dashboardTree.nodes[0].bounds.y == dashboard.titleBounds.y &&
+          dashboardTree.nodes[3].bounds.width == dashboard.statusBounds.width &&
+          dashboardTree.nodes[3].bounds.height == dashboard.statusBounds.height,
+          "dashboard semantic text uses the exact paint rectangles");
+    Check(dashboardTree.nodes[3].id == L"host.dashboard.status" &&
+          dashboardTree.nodes[3].name == dashboard.status &&
+          dashboardTree.nodes[3].role == gba::accessibility::Role::Status &&
+          dashboardTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Polite,
+          "dashboard hint and feedback are exposed as one polite status region");
+    Check(dashboardTree.focusedNode == 2 && dashboardTree.nodes[2].hostTargetId == L"performance",
+          "non-focusable dashboard text does not disturb tray focus identity");
+    const auto revision = gba::accessibility::ComputeTraySemanticRevision(items, &dashboard);
+    auto changedDashboard = dashboard;
+    changedDashboard.status = L"Playback command failed";
+    Check(revision != gba::accessibility::ComputeTraySemanticRevision(
+              items, &changedDashboard),
+          "dashboard status changes invalidate the host projection revision");
+    auto renamedItems = items;
+    renamedItems[1].name = L"YouTube Music";
+    Check(revision != gba::accessibility::ComputeTraySemanticRevision(
+              renamedItems, &dashboard),
+          "catalog display-name changes invalidate the host projection revision");
+
     std::cout << "HostAccessibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

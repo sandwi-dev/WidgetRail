@@ -84,6 +84,14 @@ EventPlan PlanEvents(const Tree* previous, const Tree* current) {
         AddIfChanged(plan, after.id, PropertyKind::HelpText, before->value, after.value);
         AddIfChanged(plan, after.id, PropertyKind::Enabled, before->enabled, after.enabled);
         AddIfChanged(plan, after.id, PropertyKind::Selected, before->selected, after.selected);
+        AddIfChanged(
+            plan, after.id, PropertyKind::HeadingLevel,
+            static_cast<int>(before->headingLevel), static_cast<int>(after.headingLevel));
+        AddIfChanged(
+            plan, after.id, PropertyKind::LiveSetting,
+            static_cast<int>(before->liveSetting), static_cast<int>(after.liveSetting));
+        if (before->name != after.name && after.liveSetting != LiveSetting::Off)
+            plan.liveRegionChangedNodeIds.push_back(after.id);
         if (after.role == Role::Slider || after.role == Role::Progress) {
             AddIfChanged(
                 plan, after.id, PropertyKind::RangeValue,

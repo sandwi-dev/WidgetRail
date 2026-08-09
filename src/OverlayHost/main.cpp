@@ -2921,19 +2921,18 @@ private:
     void PublishTrayAccessibility(
         const gba::shell::TrayLayout& layout,
         const float width,
-        const float height) {
+        const float height,
+        const gba::accessibility::DashboardSemantics* dashboard = nullptr) {
         if (!accessibilityActive_ || state_.focusRegion() != gba::FocusRegion::Tray)
             return;
-        std::uint64_t orderHash = 1469598103934665603ULL;
         std::vector<gba::accessibility::TrayItem> items;
         items.reserve(state_.order().size());
         for (const auto& widgetId : state_.order()) {
-            for (const wchar_t codeUnit : widgetId) {
-                orderHash ^= static_cast<std::uint16_t>(codeUnit);
-                orderHash *= 1099511628211ULL;
-            }
-            items.push_back({widgetId, std::wstring{DisplayWidgetName(widgetId)}});
+            const std::wstring name{DisplayWidgetName(widgetId)};
+            items.push_back({widgetId, name});
         }
+        const auto semanticRevision =
+            gba::accessibility::ComputeTraySemanticRevision(items, dashboard);
         const auto policy = appearanceState_.current()
             ? CurrentAccessibilityPolicy()
             : gba::NativeAccessibilityPolicy{};
@@ -2942,7 +2941,7 @@ private:
             L"host",
             L"host.tray",
             std::wstring{state_.selectedWidget()},
-            static_cast<long long>(orderHash & 0x7fffffffffffffffULL),
+            semanticRevision,
             0,
             appearanceState_.current() ? appearanceState_.current()->revision : 0,
             layout.stripBounds.x,
@@ -2959,7 +2958,7 @@ private:
         };
         if (!accessibilityProjection_.ShouldCollect(key)) return;
         accessibilityTree_ = gba::accessibility::BuildTrayTree(
-            items, layout, state_.selectedSlot(), ++hostAccessibilitySequence_);
+            items, layout, state_.selectedSlot(), ++hostAccessibilitySequence_, dashboard);
         if (PublishAccessibilityTree(key.pixelsPerDip))
             accessibilityProjection_.Published(key);
     }
@@ -3783,7 +3782,8 @@ private:
     void DrawIconStrip(
         const float width,
         const float height,
-        const gba::OverlaySurfaceGeometry* surfaceGeometry = nullptr) {
+        const gba::OverlaySurfaceGeometry* surfaceGeometry = nullptr,
+        const gba::accessibility::DashboardSemantics* dashboard = nullptr) {
         const auto layout = gba::shell::ComputeTrayLayout(
             width, height, state_.order().size(), state_.selectedSlot(),
             surfaceGeometry
@@ -3838,7 +3838,7 @@ private:
                     : trayItemTextBrush_.Get(),
                 2.35F);
         }
-        PublishTrayAccessibility(*layout, width, height);
+        PublishTrayAccessibility(*layout, width, height, dashboard);
     }
 
     static std::wstring_view DisplayButton(const std::wstring_view button) {
@@ -3907,12 +3907,18 @@ private:
         const std::wstring_view title = state_.reorderMode()
             ? L"Reorder widgets"
             : DisplayWidgetName(state_.selectedWidget());
+        const std::wstring hint = DashboardHint(contentRight - contentLeft);
+        const gba::accessibility::DashboardSemantics dashboard{
+            std::wstring{title},
+            {contentLeft, titleTop, contentRight - contentLeft, titleBottom - titleTop},
+            hint,
+            {contentLeft, hintTop, contentRight - contentLeft, hintBottom - hintTop},
+        };
         DrawTextLine(title, titleFormat_.Get(),
                      D2D1::RectF(contentLeft, titleTop, contentRight, titleBottom),
                      dashboardTextBrush_.Get());
-        DrawIconStrip(width, height);
+        DrawIconStrip(width, height, nullptr, &dashboard);
 
-        const std::wstring hint = DashboardHint(contentRight - contentLeft);
         DrawTextLine(hint, hintFormat_.Get(),
                      D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom),
                      dashboardSecondaryBrush_.Get());

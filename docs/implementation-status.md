@@ -70,17 +70,21 @@ announced immutable tree and coalesces structure, logical-focus, and closed
 property events behind one posted window message outside paint. It covers
 semantic names/help, enabled/
 selected state, RangeValue state, and DPI-aware physical bounds; a real UIA
-client-handler test receives all three event classes. Each root/fragment is also
+client-handler test receives structure, focus, property, and live-region
+signals. Each root/fragment is also
 bound to one HWND generation: explicit pre-destroy detach disconnects UIA,
 clears message/action authority, and keeps old providers unavailable across
 same-handle reuse. Root focus/visibility are UI-thread-published, focus loss does
 not target the custom root, and root plus node resize/DPI bounds are announced.
+The dashboard now exposes its exact painted title as a level-one heading and its
+current hint/action feedback as a polite status live region. Title, status, and
+catalog display names participate in the host projection revision, and a real
+UIA client observes the heading/live properties plus a status-change event.
 Focused Release coverage passes Slider Interaction 2086, renderer 4636,
-accessibility tree 15, projection cadence 10, and provider 105 checks. The
-isolated Release native
-aggregate passes 24/24, and the canonical Debug build/test path is green.
-Dashboard title/status fragments, legacy MSAA, and packaged Narrator evidence
-remain open, so full screen-reader support is not yet claimed.
+accessibility tree 15, projection cadence 10, host semantics 13, event planning
+8, and provider 109 checks. The isolated Release native aggregate passes 24/24,
+and the canonical Debug build/test path is green. Legacy MSAA and packaged
+Narrator evidence remain open, so full screen-reader support is not yet claimed.
 
 The dashboard and open-widget tray now share one pure `ComputeTrayLayout`
 result across painting and pointer hit-testing. The bounded visible window,

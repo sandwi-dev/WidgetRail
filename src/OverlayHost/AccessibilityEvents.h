@@ -20,10 +20,12 @@ enum class PropertyKind {
     RangeSmallChange,
     RangeLargeChange,
     RangeReadOnly,
+    HeadingLevel,
+    LiveSetting,
     Bounds,
 };
 
-using PropertyValue = std::variant<std::wstring, bool, double, declarative::Rect>;
+using PropertyValue = std::variant<std::wstring, bool, double, int, declarative::Rect>;
 
 struct PropertyChange final {
     std::wstring nodeId;
@@ -36,6 +38,7 @@ struct EventPlan final {
     bool structureChanged{};
     bool focusChanged{};
     std::optional<std::wstring> focusedNodeId;
+    std::vector<std::wstring> liveRegionChangedNodeIds;
     std::vector<PropertyChange> properties;
 };
 

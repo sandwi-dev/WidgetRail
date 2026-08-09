@@ -38,6 +38,12 @@ gba::accessibility::Tree Tree() {
     second.rangeValue = 10;
     second.valueChangedActionId = L"seek";
     tree.nodes.push_back(second);
+    gba::accessibility::Node status;
+    status.id = L"dashboard-status";
+    status.name = L"Ready";
+    status.role = gba::accessibility::Role::Status;
+    status.liveSetting = gba::accessibility::LiveSetting::Polite;
+    tree.nodes.push_back(status);
     return tree;
 }
 
@@ -78,8 +84,9 @@ int main() {
     after.nodes[1].rangeMaximum = 240;
     after.nodes[1].rangeStep = 10;
     after.nodes[1].valueChangedActionId.clear();
+    after.nodes[2].name = L"Playback failed";
     plan = gba::accessibility::PlanEvents(&focused, &after);
-    Check(plan.structureChanged && !plan.focusChanged && plan.properties.size() == 10 &&
+    Check(plan.structureChanged && !plan.focusChanged && plan.properties.size() == 11 &&
           Has(plan, gba::accessibility::PropertyKind::Name) &&
           Has(plan, gba::accessibility::PropertyKind::HelpText) &&
           Has(plan, gba::accessibility::PropertyKind::Enabled) &&
@@ -91,6 +98,9 @@ int main() {
           Has(plan, gba::accessibility::PropertyKind::RangeReadOnly) &&
           Has(plan, gba::accessibility::PropertyKind::Bounds),
           "closed semantic and range-pattern changes are classified exactly");
+    Check(plan.liveRegionChangedNodeIds.size() == 1 &&
+          plan.liveRegionChangedNodeIds[0] == L"dashboard-status",
+          "polite status-name changes request one live-region event");
 
     auto structural = after;
     structural.nodes.pop_back();

@@ -66,6 +66,7 @@ void Check(const bool condition, const char* message) {
 
 class ClientEventHandler final : public RuntimeClass<
     RuntimeClassFlags<ClassicCom>,
+    IUIAutomationEventHandler,
     IUIAutomationFocusChangedEventHandler,
     IUIAutomationPropertyChangedEventHandler,
     IUIAutomationStructureChangedEventHandler> {
@@ -75,6 +76,7 @@ public:
           propertyEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
           boundsEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
           rangeEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
+          liveRegionEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
           structureEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
 
     ~ClientEventHandler() override {
@@ -82,7 +84,15 @@ public:
         if (propertyEvent_) CloseHandle(propertyEvent_);
         if (boundsEvent_) CloseHandle(boundsEvent_);
         if (rangeEvent_) CloseHandle(rangeEvent_);
+        if (liveRegionEvent_) CloseHandle(liveRegionEvent_);
         if (structureEvent_) CloseHandle(structureEvent_);
+    }
+
+    IFACEMETHODIMP HandleAutomationEvent(
+        IUIAutomationElement*, const EVENTID eventId) noexcept override {
+        if (eventId == UIA_LiveRegionChangedEventId && liveRegionEvent_)
+            SetEvent(liveRegionEvent_);
+        return S_OK;
     }
 
     IFACEMETHODIMP HandleFocusChangedEvent(IUIAutomationElement*) noexcept override {
@@ -134,6 +144,11 @@ public:
             std::abs(rangeValue_.load() - expected) < 1e-9;
     }
 
+    [[nodiscard]] bool WaitForLiveRegion() const noexcept {
+        return liveRegionEvent_ &&
+            WaitForSingleObject(liveRegionEvent_, 2000) == WAIT_OBJECT_0;
+    }
+
     [[nodiscard]] bool WaitForStructure() const noexcept {
         return structureEvent_ && WaitForSingleObject(structureEvent_, 2000) == WAIT_OBJECT_0;
     }
@@ -143,6 +158,7 @@ private:
     HANDLE propertyEvent_{};
     HANDLE boundsEvent_{};
     HANDLE rangeEvent_{};
+    HANDLE liveRegionEvent_{};
     HANDLE structureEvent_{};
     std::atomic<int> boundsCount_{};
     std::atomic<double> rangeValue_{};
@@ -234,7 +250,7 @@ gba::WidgetSnapshot Snapshot() {
     return snapshot;
 }
 
-gba::accessibility::Tree HostTree() {
+gba::accessibility::Tree HostTree(const bool includeDashboard = false) {
     gba::accessibility::Tree tree;
     tree.widgetId = L"host.tray";
     tree.runtimeGeneration = L"host";
@@ -251,6 +267,22 @@ gba::accessibility::Tree HostTree() {
     music.focused = true;
     tree.nodes.push_back(music);
     tree.focusedNode = 0;
+    if (includeDashboard) {
+        gba::accessibility::Node heading;
+        heading.id = L"host.dashboard.title";
+        heading.name = L"YT Music";
+        heading.bounds = {20, 10, 760, 34};
+        heading.role = gba::accessibility::Role::Heading;
+        heading.headingLevel = gba::accessibility::HeadingLevel::Level1;
+        tree.nodes.push_back(heading);
+        gba::accessibility::Node status;
+        status.id = L"host.dashboard.status";
+        status.name = L"A Select  B Close";
+        status.bounds = {20, 44, 760, 22};
+        status.role = gba::accessibility::Role::Status;
+        status.liveSetting = gba::accessibility::LiveSetting::Polite;
+        tree.nodes.push_back(status);
+    }
     return tree;
 }
 
@@ -539,12 +571,16 @@ int main() {
               clientRoot.Get(), static_cast<TreeScope>(TreeScope_Element | TreeScope_Subtree),
               nullptr, eventHandler.Get(),
               observedProperties)) &&
+          SUCCEEDED(client->AddAutomationEventHandler(
+              UIA_LiveRegionChangedEventId, clientRoot.Get(),
+              static_cast<TreeScope>(TreeScope_Element | TreeScope_Subtree),
+              nullptr, eventHandler.Get())) &&
           SUCCEEDED(client->AddStructureChangedEventHandler(
               clientRoot.Get(), static_cast<TreeScope>(TreeScope_Element | TreeScope_Subtree),
               nullptr, eventHandler.Get())),
-          "real UIA client subscribes to focus, property, and structure events");
+          "real UIA client subscribes to focus, property, live-region, and structure events");
     SafeArrayDestroy(observedProperties);
-    auto changedHostTree = HostTree();
+    auto changedHostTree = HostTree(true);
     changedHostTree.nodes[0].selected = false;
     changedHostTree.nodes[0].focused = false;
     gba::accessibility::Node settings;
@@ -557,7 +593,7 @@ int main() {
     settings.selected = true;
     settings.focused = true;
     changedHostTree.nodes.push_back(settings);
-    changedHostTree.focusedNode = 1;
+    changedHostTree.focusedNode = 3;
     auto finalHostTree = changedHostTree;
     finalHostTree.nodes[0].name = L"YouTube Music";
     host.Publish(changedHostTree, {100, 200, 2, 800, 600});
@@ -574,9 +610,53 @@ int main() {
           std::wstring_view{coalescedName, SysStringLen(coalescedName)} == L"YouTube Music",
           "retained client element observes the newest coalesced publication");
     SysFreeString(coalescedName);
+
+    const auto findByAutomationId = [&](const wchar_t* id) {
+        VARIANT automationId{};
+        V_VT(&automationId) = VT_BSTR;
+        V_BSTR(&automationId) = SysAllocString(id);
+        ComPtr<IUIAutomationCondition> condition;
+        ComPtr<IUIAutomationElement> element;
+        if (SUCCEEDED(client->CreatePropertyCondition(
+                UIA_AutomationIdPropertyId, automationId,
+                condition.GetAddressOf())) && condition) {
+            (void)clientRoot->FindFirst(
+                TreeScope_Descendants, condition.Get(), element.GetAddressOf());
+        }
+        VariantClear(&automationId);
+        return element;
+    };
+    auto headingElement = findByAutomationId(L"host.dashboard.title");
+    auto statusElement = findByAutomationId(L"host.dashboard.status");
+    VARIANT headingLevel{};
+    VARIANT liveSetting{};
+    CONTROLTYPEID statusControlType{};
+    Check(headingElement && SUCCEEDED(headingElement->GetCurrentPropertyValue(
+              UIA_HeadingLevelPropertyId, &headingLevel)) &&
+          V_VT(&headingLevel) == VT_I4 && V_I4(&headingLevel) == HeadingLevel1,
+          "real UIA client reads the dashboard level-one heading");
+    Check(statusElement && SUCCEEDED(statusElement->get_CurrentControlType(
+              &statusControlType)) && statusControlType == UIA_StatusBarControlTypeId &&
+          SUCCEEDED(statusElement->GetCurrentPropertyValue(
+              UIA_LiveSettingPropertyId, &liveSetting)) &&
+          V_VT(&liveSetting) == VT_I4 && V_I4(&liveSetting) == Polite,
+          "real UIA client reads the dashboard polite status fragment");
+    VariantClear(&headingLevel);
+    VariantClear(&liveSetting);
+    finalHostTree.nodes[2].name = L"Playback command failed";
+    host.Publish(finalHostTree, {100, 200, 2, 800, 600});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    Check(eventHandler->WaitForLiveRegion(),
+          "real UIA client receives the dashboard live-region change");
+    BSTR liveStatus{};
+    Check(SUCCEEDED(statusElement->get_CurrentName(&liveStatus)) &&
+          std::wstring_view{liveStatus, SysStringLen(liveStatus)} ==
+              L"Playback command failed",
+          "retained status element exposes the newest host feedback");
+    SysFreeString(liveStatus);
     host.Publish(finalHostTree, {120, 240, 1.5, 600, 450});
     SendMessageW(window, WM_APP + 42, 0, 0);
-    Check(eventHandler->WaitForBoundsCount(3),
+    Check(eventHandler->WaitForBoundsCount(5),
           "transform-only publication updates root and every existing node bound");
     RECT transformedBounds{};
     Check(SUCCEEDED(clientTrayItem->get_CurrentBoundingRectangle(&transformedBounds)) &&
@@ -624,6 +704,8 @@ int main() {
     Check(SUCCEEDED(client->RemoveFocusChangedEventHandler(eventHandler.Get())) &&
           SUCCEEDED(client->RemovePropertyChangedEventHandler(
               clientRoot.Get(), eventHandler.Get())) &&
+          SUCCEEDED(client->RemoveAutomationEventHandler(
+              UIA_LiveRegionChangedEventId, clientRoot.Get(), eventHandler.Get())) &&
           SUCCEEDED(client->RemoveStructureChangedEventHandler(
               clientRoot.Get(), eventHandler.Get())),
           "real UIA client unsubscribes before the test window closes");
