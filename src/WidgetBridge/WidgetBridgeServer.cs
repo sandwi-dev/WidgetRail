@@ -1037,6 +1037,8 @@ public sealed class WidgetBridgeServer(
             throw new BridgeProtocolException("Focused element ID is too long.");
         if (input.RequestedValue is { } requested && !double.IsFinite(requested))
             throw new BridgeProtocolException("Requested controller value must be finite.");
+        if (!Enum.IsDefined(input.Origin))
+            throw new BridgeProtocolException("Controller input origin is invalid.");
         if (input.Context == ControllerInputContext.DashboardQuickAction &&
             (input.Sequence <= 0 || input.SnapshotSequence <= 0))
             throw new BridgeProtocolException(
@@ -1065,7 +1067,9 @@ public sealed class WidgetBridgeServer(
         var quickAction = snapshot.QuickActions.SingleOrDefault(
             action => action.Button == input.Button) ?? throw new BridgeProtocolException(
                 "Dashboard button is not exposed by the cached snapshot.");
-        if (input.Phase != ControllerEventPhase.Pressed || quickAction.Capability is null)
+        if (input.Phase != ControllerEventPhase.Pressed ||
+            input.Origin != ControllerInputOrigin.PhysicalController ||
+            quickAction.Capability is null)
         {
             registration.AcceptDashboardInputSequence(input.Sequence);
             return null;

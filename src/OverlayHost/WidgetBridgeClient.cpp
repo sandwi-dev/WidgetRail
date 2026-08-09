@@ -1363,13 +1363,24 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const long long sequence,
     const long long monotonicTimestampMicroseconds,
     const std::wstring_view phase,
-    const std::optional<double> requestedValue) {
+    const std::optional<double> requestedValue,
+    const ControllerInputOrigin origin) {
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         JsonObject input;
         input.Insert(L"button", JsonValue::CreateStringValue(winrt::hstring(button)));
         input.Insert(L"phase", JsonValue::CreateStringValue(winrt::hstring(phase)));
         input.Insert(L"context", JsonValue::CreateStringValue(winrt::hstring(context)));
+        switch (origin) {
+        case ControllerInputOrigin::PhysicalController:
+            break;
+        case ControllerInputOrigin::AccessibilityAutomation:
+            input.Insert(L"origin", JsonValue::CreateStringValue(L"accessibilityAutomation"));
+            break;
+        default:
+            Fail(L"Invalid controller input origin.");
+            return std::nullopt;
+        }
         if (!focusedElementId.empty()) {
             input.Insert(L"focusedElementId",
                          JsonValue::CreateStringValue(winrt::hstring(focusedElementId)));

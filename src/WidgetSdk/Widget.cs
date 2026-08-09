@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using GameBarAlternative.WidgetProtocol;
 
 namespace GameBarAlternative.WidgetSdk;
@@ -230,6 +231,17 @@ public enum ControllerInputContext
 }
 
 /// <summary>
+/// Identifies the trusted host ingress that produced semantic controller input.
+/// Accessibility automation may invoke ordinary actions but is never proof of
+/// a physical dashboard gesture for capability admission.
+/// </summary>
+public enum ControllerInputOrigin
+{
+    PhysicalController = 0,
+    AccessibilityAutomation = 1,
+}
+
+/// <summary>
 /// Raw semantic controller input routed to a widget. The host retains the
 /// Guide button and dashboard navigation buttons rather than sending them.
 /// </summary>
@@ -242,7 +254,9 @@ public sealed record ControllerInputEvent(
     long MonotonicTimestampMicroseconds = 0,
     string? ActiveInputScopeId = null,
     long SnapshotSequence = 0,
-    double? RequestedValue = null);
+    double? RequestedValue = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    ControllerInputOrigin Origin = ControllerInputOrigin.PhysicalController);
 
 public sealed record WidgetInvalidatedEventArgs(long Revision);
 
@@ -571,6 +585,7 @@ public abstract partial class Widget
     {
         ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
+        if (!Enum.IsDefined(input.Origin)) return ValueTask.FromResult(false);
         var snapshot = Volatile.Read(ref _latestSnapshot);
         if (snapshot is null) return ValueTask.FromResult(false);
 
@@ -581,6 +596,9 @@ public abstract partial class Widget
                 return ValueTask.FromResult(false);
             var quickAction = snapshot.QuickActions.FirstOrDefault(action => action.Button == input.Button);
             if (quickAction is null) return ValueTask.FromResult(false);
+            var gestureContext = input.Origin == ControllerInputOrigin.PhysicalController
+                ? new WidgetCapabilityGestureContext(input.Sequence, input.SnapshotSequence)
+                : null;
             return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
                 quickAction.ActionId,
                 "dashboard-card",
@@ -588,8 +606,7 @@ public abstract partial class Widget
                 input.Phase,
                 input.Sequence,
                 input.MonotonicTimestampMicroseconds),
-                new WidgetCapabilityGestureContext(
-                    input.Sequence, input.SnapshotSequence)));
+                gestureContext));
         }
 
         if (input.Context == ControllerInputContext.OpenWidget)

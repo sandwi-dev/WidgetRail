@@ -201,6 +201,14 @@ state are revoked on lifecycle change, consent loss, expiry, worker replacement,
 or shutdown. Direct actions, open-widget actions, subscriptions, and background
 tasks do not receive dashboard authority.
 
+The semantic input contract distinguishes `PhysicalController` from
+`AccessibilityAutomation`. Only the physical origin can mint a dormant
+dashboard reservation. Windows UI Automation Invoke/RangeValue may route a
+revalidated ordinary open-widget action, but it is not evidence of physical
+presence and cannot use the Visible-state gesture exception. The bridge omits
+authority for automation origin, the SDK omits its private gesture context, and
+the runtime rejects any mismatched reservation before transport.
+
 ### Installed application library
 
 The app-library read and launch capabilities are deliberately separate. A

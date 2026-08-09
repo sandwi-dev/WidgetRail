@@ -2900,9 +2900,10 @@ private:
                 continue;
             }
 
-            // UIA patterns are explicit accessibility user gestures. Enter
-            // the widget's interactive lifecycle before routing them, while
-            // retaining the same generation/snapshot authority checks above.
+            // UIA patterns are accessibility automation, not proof of a
+            // physical controller gesture. Enter the widget's interactive
+            // lifecycle for ordinary action routing while retaining the same
+            // generation/snapshot checks and explicit origin below.
             if (state_.focusRegion() == gba::FocusRegion::Tray)
                 Dispatch(gba::Command::Activate);
             if (state_.surface() != gba::Surface::Widget ||
@@ -2913,7 +2914,8 @@ private:
                 request.widgetId, resolved->protocolButton, L"openWidget", resolved->nodeId,
                 snapshot->activeInputScopeId, snapshot->sequence,
                 ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000),
-                L"pressed", resolved->requestedValue);
+                L"pressed", resolved->requestedValue,
+                gba::ControllerInputOrigin::AccessibilityAutomation);
             if (!handled) {
                 AppendDiagnostic(L"Accessibility action transport failed for " + request.widgetId);
             } else if (*handled) {
@@ -3535,7 +3537,7 @@ private:
                 phase == gba::input::NavigationEventPhase::Repeated
                     ? std::wstring_view{L"repeated"}
                     : std::wstring_view{L"pressed"},
-                requestedValue);
+                requestedValue, gba::ControllerInputOrigin::PhysicalController);
             lastActionWidgetId_ = widget;
             if (!handled) {
                 if (pressedInteraction_.Cancel(protocolButton))

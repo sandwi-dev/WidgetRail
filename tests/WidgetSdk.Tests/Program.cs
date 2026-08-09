@@ -2884,7 +2884,25 @@ static async Task DashboardInputResolves()
     Assert.Equal(9L, widget.LastGestureContext?.InputSequence);
     Assert.Equal(1L, widget.LastGestureContext?.SnapshotSequence);
     await widget.OnActionAsync(new WidgetActionEvent("direct", "test"));
+    Assert.Equal("direct", (await widget.NextActionAsync()).ActionId);
     Assert.Equal<WidgetCapabilityGestureContext?>(null, widget.LastGestureContext);
+
+    handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.X,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.DashboardQuickAction,
+        Sequence: 10,
+        SnapshotSequence: 1,
+        Origin: ControllerInputOrigin.AccessibilityAutomation));
+    Assert.True(handled, "Expected accessibility automation to resolve the ordinary action.");
+    Assert.Equal("quick-refresh", (await widget.NextActionAsync()).ActionId);
+    Assert.Equal<WidgetCapabilityGestureContext?>(null, widget.LastGestureContext);
+    Assert.True(!await widget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.X,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.DashboardQuickAction,
+        SnapshotSequence: 1,
+        Origin: (ControllerInputOrigin)99)), "Unknown origins must fail closed.");
 }
 
 static async Task FocusedShortcutResolves()

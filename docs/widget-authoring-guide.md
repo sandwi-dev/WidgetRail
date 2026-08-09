@@ -660,9 +660,12 @@ once. Disabled or Busy controls remain discoverable but cannot invoke.
 Provider calls never enter widget code directly. Invoke, SetValue, and SetFocus
 are queued asynchronously, and the host rechecks the exact runtime generation,
 snapshot sequence, scope, node, action, and enabled state on its window thread.
-Invoke and SetValue are treated as explicit accessibility user gestures only
-for the currently visible widget; they enter its Interactive lifecycle and use
-the same typed controller-action and capability-admission path as local input.
+Invoke and SetValue carry the explicit `AccessibilityAutomation` origin. They
+may enter the visible widget's Interactive lifecycle and use its ordinary typed
+action path after exact revalidation, but they are not proof of a physical
+controller press and never receive the Visible-state dashboard gesture
+exception. Declaration, consent, lifecycle, payload, and provider checks still
+apply to every capability call.
 Your next immutable render is authoritative; do not depend on synchronous state
 mutation during an accessibility request. Keep labels concise, supply a human
 readable Slider value, and keep IDs stable for the lifetime of one logical
@@ -682,9 +685,11 @@ closed host Back/Close commands, exact visible quiet footer help or polite
 transient feedback, and visible tray ListItems while controller focus changes
 between widget and tray. The dashboard publishes a level-one title heading,
 non-live controller help, and polite transient action feedback. The desktop-
-automation gesture-authority decision, typed choice semantics, legacy MSAA, and
-packaged Narrator evidence remain pending. Semantic snapshot tests therefore
-remain required for widget acceptance.
+automation/AppContainer smoke evidence, collision-proof host identities,
+nested-scope Back, typed choice semantics, legacy MSAA, and packaged Narrator
+evidence remain pending. The gesture-origin policy itself is explicit and
+defense-in-depth enforced. Semantic snapshot tests therefore remain required
+for widget acceptance.
 
 Every node ID must be unique in the snapshot, at most 128 characters, and use
 only ASCII letters, digits, `.`, `-`, and `_`. Do not derive IDs from list

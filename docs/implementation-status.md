@@ -78,6 +78,15 @@ same-handle reuse. A real client retains original and rebound roots through an
 actual `DestroyWindow` and observes element-unavailable results. Root focus/
 visibility are UI-thread-published, focus loss does not target the custom root,
 and root plus node resize/DPI bounds are announced.
+UIA Invoke/RangeValue input now crosses native host, bridge, runtime, and SDK
+with an explicit `AccessibilityAutomation` origin. Physical controller remains
+the omitted compatibility default. The bridge accepts revalidated automation as
+an ordinary action but never mints dashboard gesture authority for it; the
+runtime rejects any mismatched authority reservation, and the SDK does not enter
+its private gesture context. Focused Release results are WidgetSdk 84/84,
+WidgetRuntime 49/49, and WidgetBridge 46/46. Packaged AppContainer/UIA evidence
+remains a ship-gate item rather than an inferred OS-boundary claim. The
+canonical Release host build and native suites are green for this change.
 The dashboard now exposes its exact painted title as a level-one heading. Static
 controller guidance is readable non-live text, while transient action feedback
 replaces it with one polite status live region. Title, help, status, and catalog

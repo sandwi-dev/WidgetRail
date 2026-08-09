@@ -22,9 +22,12 @@ intercept, remap, or suppress it.
 
 The protocol names the contexts `DashboardQuickAction` and `OpenWidget`.
 Events carry button, phase, optional focused element ID, input sequence,
-monotonic timestamp, active input-scope ID, and rendered snapshot sequence. The
-MVP host emits only `Pressed`; snapshot validation rejects `Released` or
-`Repeated` shortcut bindings until those phases are transported end to end.
+monotonic timestamp, active input-scope ID, rendered snapshot sequence, and a
+closed origin: `PhysicalController` or `AccessibilityAutomation`. The default
+physical origin is omitted on the wire, so legacy payloads retain their prior
+meaning; automation is always explicit and requires a matching strict transport
+peer. The MVP host emits only `Pressed`; snapshot validation rejects `Released`
+or `Repeated` shortcut bindings until those phases are transported end to end.
 
 ### Desktop test fallbacks
 
@@ -82,6 +85,17 @@ capability/operation/sequence, replay, stale snapshots, lifecycle change, worker
 replacement, missing declaration, or missing consent all fail closed. No read
 access, subscription, background work, or lifecycle promotion is created by
 this gesture.
+
+Only `PhysicalController` input can create that reservation or enter the SDK's
+private gesture context. UI Automation Invoke and RangeValue requests are
+tagged `AccessibilityAutomation`: after the host revalidates the exact visible
+widget, generation, snapshot, scope, node, action, and enabled state, they may
+route an ordinary `OpenWidget` action, but they never qualify for the Visible-
+state dashboard exception. The bridge returns no gesture authority for an
+automation-origin dashboard event, and the runtime independently rejects any
+authority paired with that origin. Interactive lifecycle capability rules still
+apply after the user-facing widget surface is open; origin is not a substitute
+for declaration, consent, lifecycle, payload, or provider validation.
 
 The bridge rejects attempts to forward dashboard A, B, Y, or D-pad as raw widget
 input even if a malformed native client requests it.
@@ -168,9 +182,9 @@ Selecting another tray item moves the prior panel to `Background`, publishes
 the new panel as `Visible`, and swaps it in without an A press. Background
 widgets reject every action ingress without starting work.
 
-Capability authority is intentionally narrower than admission. Only trusted
-snapshot-bound controller input can attach one exact dashboard gesture, and
-that authority starts when its queued action executes. The bridge's legacy
+Capability authority is intentionally narrower than admission. Only trusted,
+snapshot-bound physical-controller input can attach one exact dashboard
+gesture, and that authority starts when its queued action executes. The bridge's legacy
 catalog `QuickAction` command has no snapshot/gesture metadata and therefore
 never grants capability authority; capability-backed dashboard controls must
 use `ControllerInput`.

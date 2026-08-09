@@ -180,6 +180,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
+        if (!Enum.IsDefined(input.Origin))
+            throw new ArgumentOutOfRangeException(
+                nameof(input), input.Origin, "Controller input origin is invalid.");
         ObjectDisposedException.ThrowIf(_disposed, this);
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
         var authorityMayRemain = false;
@@ -873,6 +876,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         WidgetDashboardGestureAuthority authority)
     {
         if (input.Context != ControllerInputContext.DashboardQuickAction ||
+            input.Origin != ControllerInputOrigin.PhysicalController ||
             input.Sequence != authority.InputSequence ||
             input.SnapshotSequence != authority.SnapshotSequence ||
             authority.InputSequence <= 0 || authority.SnapshotSequence <= 0 ||

@@ -50,6 +50,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Raw controller input resolves only after a rendered snapshot", ControllerInputUsesLatestSnapshot),
     ("Rapid dashboard actions acknowledge quickly and execute in order", RapidDashboardActionsAreQueued),
     ("Dashboard authority is granted through the exact worker companion and revoked when unhandled", DashboardAuthorityUsesCompanion),
+    ("Accessibility automation cannot reserve dashboard gesture authority", AccessibilityAutomationCannotReserveAuthority),
     ("Slow queued dashboard work starts each authority lifetime only when its action executes", SlowDashboardQueueActivatesJustInTime),
     ("Dormant dashboard reservations expire on a host-owned monotonic clock", DormantDashboardReservationExpires),
     ("Custom async dashboard handlers can activate authority without blocking the pipe reader", CustomDashboardHandlerActivatesWithoutDeadlock),
@@ -1048,6 +1049,58 @@ static async Task DashboardAuthorityUsesCompanion()
             SnapshotSequence: snapshot.Sequence),
         rejected), "An unhandled dashboard button must reject its authority.");
     Assert.SequenceEqual(new long[] { 11 }, companion.RevokedInputSequences);
+}
+
+static async Task AccessibilityAutomationCannotReserveAuthority()
+{
+    var companion = new ProbeCompanionSession();
+    await using var client = CreateClient(companionFactory: _ => companion);
+    var snapshot = await client.GetSnapshotAsync();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var input = new ControllerInputEvent(
+        ControllerButton.X,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.DashboardQuickAction,
+        Sequence: 12,
+        SnapshotSequence: snapshot.Sequence,
+        Origin: ControllerInputOrigin.AccessibilityAutomation);
+    var authority = new WidgetDashboardGestureAuthority(
+        WidgetMediaCapabilities.Control.CapabilityId,
+        WidgetMediaCapabilities.Control.OperationId,
+        input.Sequence,
+        input.SnapshotSequence,
+        TimeSpan.FromSeconds(2));
+
+    await Assert.ThrowsAsync<WidgetProcessException>(async () =>
+        await client.SendControllerInputAsync(input, authority));
+    Assert.Equal(0, companion.GrantedAuthorities.Count);
+    Assert.Equal(0, companion.RevokedInputSequences.Count);
+
+    var serializedPhysical = RuntimeJson.ToElement(input with
+    {
+        Origin = ControllerInputOrigin.PhysicalController,
+    });
+    Assert.True(!serializedPhysical.TryGetProperty("origin", out _),
+        "The default physical origin must remain absent for older runtime peers.");
+    var serializedAutomation = RuntimeJson.ToElement(input);
+    Assert.Equal("accessibilityAutomation",
+        serializedAutomation.GetProperty("origin").GetString());
+    using var legacyJson = JsonDocument.Parse("""
+        {
+          "button": "x",
+          "phase": "pressed",
+          "context": "dashboardQuickAction",
+          "sequence": 13,
+          "snapshotSequence": 1
+        }
+        """);
+    Assert.Equal(ControllerInputOrigin.PhysicalController,
+        RuntimeJson.FromElement<ControllerInputEvent>(legacyJson.RootElement).Origin);
+    await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+        await client.SendControllerInputAsync(input with { Origin = (ControllerInputOrigin)99 }));
+
+    Assert.True(await client.SendControllerInputAsync(input),
+        "Accessibility automation should still admit the ordinary action without authority.");
 }
 
 static async Task SlowDashboardQueueActivatesJustInTime()

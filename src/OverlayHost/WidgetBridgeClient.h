@@ -80,6 +80,11 @@ enum class WidgetHostEffectKind {
     CloseOverlayAfterAppLaunch,
 };
 
+enum class ControllerInputOrigin {
+    PhysicalController,
+    AccessibilityAutomation,
+};
+
 /// A trusted, one-shot host effect emitted only after the platform broker has
 /// completed the corresponding privileged operation. Widget snapshots and
 /// worker action acknowledgements cannot create this value.
@@ -299,7 +304,8 @@ public:
         long long sequence,
         long long monotonicTimestampMicroseconds,
         std::wstring_view phase = L"pressed",
-        std::optional<double> requestedValue = std::nullopt);
+        std::optional<double> requestedValue = std::nullopt,
+        ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController);
     [[nodiscard]] std::optional<bool> SendAction(
         std::wstring_view widgetId,
         std::wstring_view actionId,

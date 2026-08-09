@@ -1385,6 +1385,22 @@ static async Task SnapshotAndQuickAction()
     Assert.Equal("test-widget", invalidation.Payload.GetProperty("widgetId").GetString());
     Assert.Equal(1L, invalidation.Payload.GetProperty("revision").GetInt64());
 
+    var automation = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
+            ControllerButton.LeftBumper,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 8,
+            SnapshotSequence: snapshot.Sequence,
+            Origin: ControllerInputOrigin.AccessibilityAutomation)));
+    Assert.Equal(BridgeMessageTypes.ControllerInputResult, automation.Type);
+    Assert.True(automation.Payload.GetProperty("handled").GetBoolean(),
+        "Capability-bearing accessibility input should remain an ordinary action.");
+    var automationInvalidation = await harness.Client.ReadEventAsync(
+        BridgeMessageTypes.Invalidation);
+    Assert.Equal(2L, automationInvalidation.Payload.GetProperty("revision").GetInt64());
+
     var replay = await harness.Client.RequestAsync(
         BridgeMessageTypes.ControllerInput,
         new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
@@ -1400,7 +1416,7 @@ static async Task SnapshotAndQuickAction()
             ControllerButton.X,
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
-            Sequence: 8,
+            Sequence: 9,
             SnapshotSequence: snapshot.Sequence + 1)));
     Assert.Equal(BridgeMessageTypes.Error, stale.Type);
 
@@ -1422,7 +1438,7 @@ static async Task SnapshotAndQuickAction()
     Assert.True(shortcut.Payload.GetProperty("handled").GetBoolean(),
         "Expected focused shortcut to be handled.");
     var secondInvalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
-    Assert.Equal(2L, secondInvalidation.Payload.GetProperty("revision").GetInt64());
+    Assert.Equal(3L, secondInvalidation.Payload.GetProperty("revision").GetInt64());
 
     var sliderChange = await harness.Client.RequestAsync(
         BridgeMessageTypes.ControllerInput,
@@ -1438,12 +1454,13 @@ static async Task SnapshotAndQuickAction()
     Assert.True(sliderChange.Payload.GetProperty("handled").GetBoolean(),
         "Expected absolute Slider target to cross the bridge.");
     var sliderInvalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
-    Assert.Equal(3L, sliderInvalidation.Payload.GetProperty("revision").GetInt64());
+    Assert.Equal(4L, sliderInvalidation.Payload.GetProperty("revision").GetInt64());
     var updatedResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
     var updated = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         updatedResponse.Payload.GetProperty("snapshot").GetRawText()));
     Assert.Equal(0.6D, FindNode(updated.Root, "volume").Value);
+    Assert.Equal("physical,automation,physical", FindNode(updated.Root, "busy-button").Text);
 }
 
 static ViewNode FindNode(ViewNode node, string id)
@@ -1486,6 +1503,16 @@ static async Task DashboardButtonsStayHostOwned()
                 ControllerInputContext.DashboardQuickAction)));
         Assert.Equal(BridgeMessageTypes.Error, response.Type);
     }
+    var invalidOrigin = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 1,
+            SnapshotSequence: 1,
+            Origin: (ControllerInputOrigin)99)));
+    Assert.Equal(BridgeMessageTypes.Error, invalidOrigin.Type);
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 }
 
@@ -1673,6 +1700,8 @@ file sealed class BridgeTestWidget : Widget
 {
     private double _volume = 0.5;
     private string _actionOrder = "none";
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, string>
+        _inputOrigins = new();
 
     public override WidgetView Render() => new(
         UI.Stack("root",
@@ -1686,13 +1715,39 @@ file sealed class BridgeTestWidget : Widget
             UI.Slider(_volume, 0, 1, 0.1, "volume.changed", "volume",
                 "Volume", $"{_volume:P0}")),
         "button",
-        [new WidgetQuickAction(ControllerButton.X, "refresh", "Refresh")]);
+        [
+            new WidgetQuickAction(ControllerButton.X, "refresh", "Refresh"),
+            // This capability is deliberately absent from the test catalog.
+            // Automation must route as an ordinary action without reaching
+            // declaration validation or creating gesture authority.
+            new WidgetQuickAction(
+                ControllerButton.LeftBumper,
+                "refresh",
+                "Automation refresh",
+                new WidgetQuickActionCapability(
+                    WidgetMediaCapabilities.Control.CapabilityId,
+                    WidgetMediaCapabilities.Control.OperationId)),
+        ]);
+
+    public override ValueTask<bool> OnControllerInputAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        _inputOrigins[input.Sequence] = input.Origin == ControllerInputOrigin.PhysicalController
+            ? "physical"
+            : "automation";
+        return base.OnControllerInputAsync(input, cancellationToken);
+    }
 
     public override async ValueTask OnActionAsync(
         WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         if (action.ActionId == "refresh")
+        {
+            var origin = _inputOrigins.GetValueOrDefault(action.Sequence, "unknown");
+            _actionOrder = _actionOrder == "none" ? origin : $"{_actionOrder},{origin}";
             Invalidate();
+        }
         else if (action is { ActionId: "volume.changed", RequestedValue: { } requested })
         {
             _volume = requested;
