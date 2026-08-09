@@ -617,11 +617,14 @@ packages are the canonical templates for event-driven system-control widgets.
   Documentation 1/1, and First-Party Conformance 6/6 for documentation commit
   `b2956ab` over implementation `4f903b0`; it is not a complete all-manifest
   run. The managed bridge now bounds correlated work to 16 requests, preserves
-  same-widget receive order, lets unrelated listing and Stop bypass a
+  same-widget receive order, lets a pipelined listing and Stop bypass a
   cooperative stalled admission, rejects duplicate active IDs, and returns
-  `bridge_busy` on saturation. Cancellation-ignoring ACL work, bounded drain,
-  native off-UI-thread I/O, one aggregate start deadline, and the alternate-
-  group-ACE policy remain open.
+  `bridge_busy` on saturation. Clean retained selected run
+  `20260809T161934Z-5d0bee6a` passes Bridge 45/45, Documentation 1/1, and First-
+  Party Conformance 6/6 for commit `fdcf253`. The shipping native client cannot
+  yet issue that pipelined recovery work while its synchronous read blocks;
+  cancellation-ignoring ACL work, bounded drain, native off-UI-thread I/O, one
+  aggregate start deadline, and the alternate-group-ACE policy remain open.
 - Publisher signing/revocation and a signed update channel, mandatory before
   public community distribution but intentionally sequenced after local
   product-completion gates

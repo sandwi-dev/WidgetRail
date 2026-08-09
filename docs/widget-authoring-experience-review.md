@@ -306,6 +306,14 @@ safe completion model from the public hook alone, and equivalent controller and
 direct invocations can behave differently. This is a framework contract gap,
 not domain complexity.
 
+Commit `d4291be` does not close this gap. Its bounded bridge dispatcher preserves
+receive order between same-widget requests, but direct `Action` and
+`QuickAction` still occupy that request until `OnActionAsync` completes. The
+shipping native client is also synchronous and cannot use the dispatcher's
+pipelining capability while a request is blocked. Bridge request scheduling and
+widget action admission are separate contracts; authors still need the unified
+runtime-owned action path described below.
+
 Implementation status records focused Release results including
 Widget SDK 84/84, Gbar CLI 49/49, SDK Gallery 6/6, YT Music 48/48, Focus
 Navigation 41 checks, and Declarative Renderer 4,632 checks. Static inspection

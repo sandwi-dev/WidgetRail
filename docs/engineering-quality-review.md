@@ -100,11 +100,13 @@ outside that deadline. The new maximum test permits a 512-file startup to take
 almost ten seconds. The current clean selected bundle retains one-machine
 measurements of 360.426 ms for the 512-file exact AppContainer grant path and
 325.283 ms for the 512-file package launch lease; neither is a production
-budget or a deep 1,024-directory case. Because bridge requests are
-dispatched serially and the native client performs synchronous untimed
-`ReadFile` calls from `OverlayApp`, a slow or blocked ACL operation can stall the
-managed control plane and freeze the overlay UI before the worker connect timeout
-begins. EQ-020 requires one enforced start-admission budget, cancellable
+budget or a deep 1,024-directory case. Commit `d4291be` now permits bounded
+managed request concurrency, but the only production client still sends one
+request and performs synchronous untimed `ReadFile` calls from `OverlayApp`.
+A slow or blocked ACL operation can therefore still freeze the overlay before
+the worker connect timeout begins; the native host cannot issue the unrelated
+request that the new raw pipelining fixture demonstrates. EQ-020 requires one
+enforced start-admission budget, cancellable
 off-UI-thread bridge I/O, transactional authority cleanup, and responsiveness
 evidence.
 
@@ -131,6 +133,15 @@ own detached command task and gate. The same logical action can therefore be
 safe through controller ingress and terminate the worker through direct
 ingress. EQ-021 requires one admission/acknowledgement contract rather than a
 larger timeout or more author-owned task plumbing.
+
+The bridge-concurrency code also needs one ownership pass before more request
+types or an asynchronous native client are added. `WidgetBridgeServer.RunAsync`
+now owns capacity, active-ID uniqueness, per-widget receive-order tails, task
+tracking, fatal-error propagation, Stop, and drain through six interacting
+mutable mechanisms, while `ClientRegistration.OperationGate` separately
+serializes widget work. EQ-022 recommends a narrow internal request dispatcher
+with deterministic tests; this is not a request for a generic framework or a
+line-count refactor.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -240,20 +251,40 @@ Commit `d4291be` moves ordinary request execution off the sole pipe-read loop,
 admits at most 16 requests, preserves framed writes, explicitly chains same-
 widget requests in receive order, rejects excess work with `bridge_busy`, fails
 duplicate active request IDs closed, and tracks/drains requests on session exit.
-Focused Release output was inspected: Bridge passes 45/45, Documentation checks
-49 Markdown files, and First-Party Conformance passes 6/6 through the real
-AppContainer path. The new cases block a cancellation-aware admission and prove
+Clean retained selected run `20260809T161934Z-5d0bee6a` executes the Bridge
+harness at 45/45, Documentation at 1/1, and First-Party Conformance at 6/6 in
+75.643 seconds for exact commit `fdcf253`. Its manifest records a clean tree,
+`releaseEvidenceEligible: true`, and zero stderr/truncation. The three new cases
+block a cancellation-aware admission and prove
 an unrelated catalog response, the seventeenth-request saturation error, Stop
 acknowledgement, cancellation/resource release, pipelined same-widget ordering,
-response correlation, and duplicate-ID refusal. This closes the cooperative
-managed head-of-line subproblem, not EQ-020: the real ACL path is synchronous,
-up to 16 cancellation-ignoring operations can still be stranded, and shutdown
-drain has no separate deadline.
+response correlation, and duplicate-ID refusal. They close only the cooperative
+managed head-of-line subproblem: the real ACL path is
+synchronous, up to 16 cancellation-ignoring operations can still be stranded,
+and shutdown drain has no separate deadline.
+
+The production native client is also not the pipelined client exercised by the
+new fixture. Every `WidgetBridgeClient` method writes one request, synchronously
+reads frames until its response arrives, and rejects a different non-event
+request ID; `OverlayApp` calls those methods from window-message and presentation
+paths. The managed scheduler therefore creates protocol capacity that the
+shipping caller cannot use to keep B/Guide/Close, catalog recovery, or another
+widget responsive during a blocked request. A future asynchronous client will
+need one read owner plus a correlation table; concurrent calls to the current
+methods would race pipe reads and treat valid out-of-order responses as protocol
+failures.
 
 The same cycle rotates into advanced-widget action dispatch. Static tracing
 from native/bridge ingress through worker acknowledgement and the public
 loopback timeout establishes the new EQ-021 finding; `d4291be` does not change
 that synchronous direct-action acknowledgement contract.
+
+The code-quality rotation adds EQ-022. `RunAsync` now combines transport/session
+ownership with admission capacity, duplicate-ID state, per-widget task tails,
+completion continuations, fatal-error arbitration, and drain. The three
+integration-style cases are valuable, but they do not give the scheduler a
+deterministic, cross-platform test surface for every completion and cleanup
+path.
 
 Commit `e7b4e6b` is documentation-only. It correctly carries retained run
 `20260809T152831Z-67b77c73`'s 325.283 ms launch-lease and 360.426 ms exact-grant
@@ -348,11 +379,11 @@ deadline, before the three-second worker connect timer exists. The current clean
 selected run retains 360.426 ms for the 512-file exact-grant path and 325.283 ms
 for the separate launch-lease path, while the test asserts only that startup
 stays below ten seconds; that threshold is not one production start budget.
-Since the bridge awaits this work in its
-serial request loop and the native client waits with synchronous untimed
-`ReadFile` calls from the UI path, EQ-020 records the unenforced latency claim,
-native overlay freeze, control-plane availability, and partial-ACL rollback
-requirements.
+The managed bridge can now dispatch another pipelined request while this work
+runs, but the native client waits with synchronous untimed `ReadFile` calls from
+the UI path and does not pipeline. EQ-020 therefore still records the unenforced
+latency claim, native overlay freeze, production control-plane availability, and
+partial-ACL rollback requirements.
 
 Follow-up `6fc9e01` closes the deterministic acceptance mismatch. The installer
 counts canonical implicit ancestor directories before extraction, installed-tree
@@ -810,11 +841,12 @@ is connected to the capacity refusal.
 
 EQ-020 makes the same missing ownership a liveness problem, not only a
 rendering problem. The native bridge client performs synchronous, untimed pipe
-reads on `OverlayApp` paths while the managed bridge serially awaits each
-request, including worker admission. If package authority or startup stalls,
-the host cannot transition to a typed refusal state because its UI thread is
-blocked. Bridge I/O and request deadlines therefore need to move behind the
-coordinator before persistent failure UI can be considered complete.
+reads on `OverlayApp` paths and cannot consume the managed bridge's new
+concurrent-request capability. If package authority or startup stalls, the host
+cannot transition to a typed refusal state or send an unrelated recovery request
+because its UI thread is blocked. Bridge I/O and request deadlines therefore
+need to move behind the coordinator before persistent failure UI can be
+considered complete.
 
 The same missing state owner appears after a successful render. On a later
 `GetSnapshot` failure, `OverlayApp::RefreshWidgetSnapshot` reports transient copy
@@ -1257,7 +1289,11 @@ that commit.
 
 `docs/implementation-status.md` now binds its aggregate-green claim to clean run
 `20260809T141527Z-8946c731`, exact commit `dc6b092`, and the retained result's
-counts and provenance. The available default
+counts and provenance. Clean selected result
+`20260809T161934Z-5d0bee6a` now binds Bridge 45/45, Documentation 1/1, and First-
+Party Conformance 6/6 to exact commit `fdcf253`, with clean release-eligible
+provenance and zero stderr/truncation. It is three explicitly selected steps,
+not a current complete all-manifest gate. The available default
 Community package artifacts are also older than the source
 manifests, so they cannot substantiate current packaged behavior.
 
@@ -1827,10 +1863,10 @@ host-side factory test is not closure.
 ### EQ-020 — P1 — Exact-content startup can block the native UI outside every request deadline
 
 **Status: Open against implementation HEAD `d4291be`; the file inventory and
-managed request dispatcher are bounded and cooperative managed head-of-line
-blocking is resolved, but security-authority application,
-shutdown drain, native pipe I/O, and the user-visible start operation do not
-share an enforced deadline.**
+managed request dispatcher are bounded, and clean retained focused cases prove
+cooperative managed head-of-line behavior. Production-client adoption,
+security-authority application, shutdown drain,
+native pipe I/O, and one user-visible start deadline remain open.**
 
 **Evidence.** `WidgetProcessClient.EnsureConnectedAsync` creates
 `ContentLeaseTimeout` only around `ContentLeaseFactory` and
@@ -1887,17 +1923,26 @@ Commit `d4291be` changes `WidgetBridgeServer.RunAsync` so it no longer awaits
 ordinary requests in the sole pipe-read loop. It dispatches through 16 non-
 waiting slots, tracks active IDs/tasks, preserves the framed write gate, chains
 same-widget requests in receive order, fails duplicate active IDs closed, and
-returns `bridge_busy` after saturation. Focused Release Bridge output passes
-45/45. `StalledAdmissionKeepsControlPlaneResponsive` proves an unrelated
-catalog response, seventeenth-request saturation, Stop acknowledgement,
-cooperative cancellation, and residency release; the pipelined-order and
-duplicate-ID cases prove correlation-safe FIFO mutation and fail-closed ID
-ownership. This is a useful partial fix, not a deadline: each task can still
+returns `bridge_busy` after saturation. Clean retained selected run
+`20260809T161934Z-5d0bee6a` passes the Bridge harness 45/45 for commit `fdcf253`.
+`StalledAdmissionKeepsControlPlaneResponsive` proves an unrelated catalog
+response, seventeenth-request saturation, Stop
+acknowledgement, cooperative cancellation, and residency release; the
+pipelined-order and duplicate-ID cases cover correlation-aware FIFO mutation and
+fail-closed ID ownership. This is a useful partial fix, not a deadline: each task can still
 block inside the synchronous ACL path, all 16 slots can be stranded, and final
 cleanup performs an unbounded `Task.WhenAll` after cancellation. A native caller
 timing out still cannot cancel the Windows ACL call or restore partially applied
 persistent grants. The tests do not cover the real ACL call or a cancellation-
 ignoring drain.
+
+More importantly, `WidgetBridgeClient` cannot consume this concurrency safely.
+It has no single asynchronous read owner or pending-request table; every method
+writes and then performs its own blocking read loop, rejecting a different
+non-event request ID. The shipping `OverlayApp` therefore cannot pipeline the
+unrelated catalog or Stop request used by the managed test while its UI thread
+is blocked on admission. Treat `d4291be` as server/protocol groundwork, not
+product-level control-plane responsiveness.
 
 The native caller does not in fact have a request timeout. `WidgetBridgeClient`
 uses synchronous `WriteFile` and `ReadFile` loops in `WriteFrame`/`ReadFrame`;
@@ -1909,15 +1954,16 @@ block inside `ReadFile`: it cannot repaint a failure, accept B/Guide/Retry, or
 drive its own shutdown. Correlated request IDs are already on the wire, but the
 client still treats the pipe as a synchronous call stack.
 
-**Why it matters.** A package within documented limits can make opening one
-widget freeze both the managed control plane and the native overlay thread
-before a worker process exists. That is an availability and gaming-performance
-defect: Close/Guide/Retry cannot respond, Settings/recovery cannot answer, the
-user receives no bounded typed failure, and repeated ACL writes can consume
-seconds on the foreground interaction path. A test ceiling of ten seconds is
-not a professional overlay startup target. An installable package that is
-structurally impossible to launch also turns an internal authority bound into an
-undocumented author trap.
+**Why it matters.** A package within documented limits can still freeze the
+native overlay thread before a worker process exists. One such request consumes
+one managed slot; sixteen can deny ordinary requests, and shutdown can wait
+forever for cancellation-ignoring work. In the shipping host, Close/Guide/Retry
+cannot respond and Settings/recovery cannot send a bypass request because the
+sole caller is blocked. The user receives no bounded typed failure, and repeated
+ACL writes can consume seconds on the foreground interaction path. A test
+ceiling of ten seconds is not a professional overlay startup target. An
+installable package that is structurally impossible to launch also turns an
+internal authority bound into an undocumented author trap.
 
 **Underlying problem.** Content verification, namespace-authority mutation,
 process creation, and handshake do not share one host-owned start-admission
@@ -1975,12 +2021,12 @@ disable during admission, caller cancellation, and shutdown. Update the public
 five-second claim only when the enforced full boundary—not one factory and one
 ten-second stopwatch assertion—matches the evidence.
 
-The bounded dispatcher now proves an unrelated catalog request, Stop
-acknowledgement, seventeenth-request `bridge_busy`, duplicate active-ID refusal,
-same-widget ordering, correlation-safe pipelined responses, and cooperative
-resource release. Remaining dispatcher evidence is a separate drain deadline
-for cancellation-ignoring work plus zero request/slot/task leakage on that
-forced-abandon path.
+The retained bounded-dispatcher cases cover
+an unrelated catalog request, Stop acknowledgement, seventeenth-request
+`bridge_busy`, duplicate active-ID refusal, same-widget ordering, pipelined
+correlation, and cooperative resource release. Remaining dispatcher evidence is
+a separate drain deadline for cancellation-ignoring work plus zero
+request/slot/task leakage on that forced-abandon path.
 
 Retain the exact 1,024-directory public pack/install/enable/launch case, the
 atomic 1,025-directory refusal, and the bridge assertion that catalog and
@@ -1996,7 +2042,7 @@ catalog event/request while one widget start is pending.
 
 ### EQ-021 — P1 — Action acknowledgement depends on ingress and can terminate a healthy worker
 
-**Status: Open against implementation baseline `4f903b0`; controller input has
+**Status: Open against implementation HEAD `d4291be`; controller input has
 bounded admission semantics, while direct actions synchronously inherit provider
 latency.**
 
@@ -2079,6 +2125,78 @@ gesture authority begins only for the dequeued matching action. Update the
 public action example and acknowledgement prose, then migrate YT Music and
 remove Spotify's redundant command task/gate only after the shared contract is
 proven.
+
+### EQ-022 — P2 — Bridge scheduling policy is embedded in the transport session
+
+**Status: Open in implementation HEAD `d4291be`; the new policy is bounded and
+documented, but its ownership and deterministic verification surface are not yet
+cohesive.**
+
+**Evidence.** `WidgetBridgeServer.RunAsync` now owns a 16-slot
+`SemaphoreSlim`, `activeRequestIds`, `requestTasks`, a lock-protected
+`widgetRequestTails` dictionary, a shared `fatalRequestException`, and
+`ContinueWith` cleanup in addition to pipe acceptance, handshake, event
+subscriptions, the read loop, Stop, and client disposal. `DispatchRequestAsync`
+waits on the raw per-widget predecessor, while each `ClientRegistration` also
+has an `OperationGate` that serializes the typed widget operation. Ordering is
+therefore expressed twice at different layers.
+
+`RequestWidgetId` reads a `widgetId` string from the unvalidated `JsonElement`
+to choose the scheduling key, and `HandleRequestAsync` later deserializes the
+same payload into its message-specific DTO. The naming rules currently match,
+but adding a widget-scoped message now requires maintainers to remember the
+implicit raw-property convention or silently lose receive-order chaining.
+
+The new tests are pipe-level integration fixtures. Two require Windows because
+they simulate admission through a `ConfiguredWidget`; the ordering case uses a
+real worker and a 150 ms `Thread.Sleep`. They exercise valuable paths, but there
+is no direct deterministic seam for different-widget parallelism, failure before
+and after handler admission, cancellation while waiting on a predecessor,
+capacity release on every outcome, fairness, or forced drain when work ignores
+cancellation.
+
+**Why it matters.** This is the bridge's concurrency kernel. A missed cleanup
+can leak one of only 16 slots, a missed request classification can reorder state,
+and an exception path can strand a task tail or turn a request error into a
+session failure. Keeping those invariants interleaved with pipe/session code
+makes review and extension disproportionately risky—especially when the native
+client is later made asynchronous and begins exercising real concurrency.
+
+**Underlying problem.** Admission, ordering, execution, completion, and drain
+are a lifecycle-owned policy but are represented as local collections and
+continuations inside the transport loop. `OperationGate` then supplies a second
+implicit serialization policy after admission. The code has bounded data
+structures, but no single type states or enforces the scheduler contract.
+
+**Recommended direction.** Extract one narrow internal
+`BridgeRequestDispatcher`, not a generic task framework. Give it a typed
+`BridgeRequestKey` produced once during strict request decoding, containing the
+request ID and optional widget ID. The dispatcher should own global and
+per-widget admission bounds, duplicate-ID refusal, FIFO tails, completion
+cleanup, fatal transport cancellation, and a separately bounded drain. It
+should execute an injected request handler and return an explicit admission
+result; `RunAsync` should remain responsible for reading validated envelopes,
+the reserved Stop lane, and writing the resulting reply/event.
+
+Decide whether `OperationGate` remains the authoritative widget-state mutex or
+whether receive-order execution makes some uses redundant. Do not leave two
+undocumented ordering layers. Preserve the write gate until there is exactly one
+outbound frame owner.
+
+**Tradeoff.** A separate dispatcher adds a type and an internal request-key
+model. That cost is justified only because it removes mutable concurrency state
+from the session loop and makes the invariants directly testable; a generic
+queue abstraction or callback-heavy facade would be worse than the current
+explicit code.
+
+**Resolution evidence.** Add cross-platform, no-sleep tests with injected
+manually completed handlers for global/per-widget capacity, duplicate IDs,
+same-widget FIFO, different-widget parallelism, malformed/unknown request
+classification, handler success/failure/cancellation, predecessor failure,
+session cancellation, and a cancellation-ignoring drain deadline. After every
+case assert zero active IDs, slots, tails, and tasks. Retain the named-pipe tests
+as framing/integration proof, then add the production asynchronous native-client
+test required by EQ-020.
 
 ### EQ-016 — P2 — Aggregate catalog bounds lack a recoverable control-plane contract
 
@@ -2473,14 +2591,15 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
 | Action dispatch | Controller input has bounded immediate admission, but direct Action/QuickAction waits for `OnActionAsync` under a two-second worker timeout even though provider calls may validly take 10–40 seconds | Unify every user-action ingress behind one typed bounded admission queue; prove slow/hung commands, saturation, cancellation, failure reporting, and gesture authority without worker restart |
+| Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy, but the concurrency kernel remains embedded in `RunAsync`, its new 45-case count lacks retained output, and the shipping native client cannot pipeline | One narrow typed dispatcher with deterministic no-sleep invariant tests, retained integration output, a bounded forced drain, and one asynchronous native read owner/correlation table |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
 | CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
-| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 while focused 45/45 coverage proves cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, native bridge reads synchronously block the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | One enforced full start budget with phase timings, cancellation-ignoring drain proof, and cancellable off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
+| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 with clean retained 45/45 proof for cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget with cancellation-ignoring drain proof and cancellable correlation-safe off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
-| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092`; clean seven-step run `20260809T152831Z-67b77c73` covers `6fc9e01`; clean release-eligible three-step run `20260809T155221Z-ae6e5d8d` covers the exact edge in `4f903b0` through clean docs commit `b2956ab` | Run the complete checked-in Windows workflow for the current implementation commit and retain an immutable hosted artifact/link |
+| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092`; clean seven-step run `20260809T152831Z-67b77c73` covers `6fc9e01`; clean three-step run `20260809T155221Z-ae6e5d8d` covers the exact edge in `4f903b0`; clean release-eligible three-step run `20260809T161934Z-5d0bee6a` covers Bridge 45/45, Documentation 1/1, and First-Party Conformance 6/6 for `fdcf253` | Run the complete checked-in Windows workflow for the current implementation commit and retain an immutable hosted artifact/link |
 | Documentation | Extensive, but its green contract checks links/headings while 70 C# fences have no designated executable consumer; `plugin-platform.md` claims the starter scaffolds a test/replay workflow although it generates no test or snapshot exporter | Compile-test canonical snippets, make overview claims derive from generated-template end-to-end tests, bind status claims to exact result manifests, and reduce ledger/status duplication |
 
 ## Recommended next three actions
@@ -2494,9 +2613,10 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    shape bound and the committed exact accepted/refused cases in a clean bundle.
    Put revalidation, ACL authority,
    process creation, and hello under one enforced start budget; keep unrelated
-   bridge requests responsive, move cancellable correlated pipe I/O off the
-   native UI thread, and make grant cleanup/rollback explicit on every failure
-   and teardown path.
+   bridge requests responsive, extract the bounded request scheduler behind a
+   typed deterministic seam, move one-owner cancellable correlated pipe I/O off
+   the native UI thread, and make grant cleanup/rollback explicit on every
+   failure and teardown path.
 2. **Unify action admission before migrating another advanced widget.** Route
    direct Action, QuickAction, pagination/value changes, and controller-resolved
    actions through one bounded runtime-owned queue with typed admission,
@@ -2507,9 +2627,10 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    into the wrong lifetime.
 3. **Finish and publish the quality gate.** Preserve the new manifest/module
    split, process/output/package/deadline bounds, and clean all-lane local bundle.
-   Run the checked-in Windows CI for the same commit, retain its immutable
-   managed/native artifacts, and bind every “current full gate” claim to those
-   results before using
+   Clean selected run `20260809T161934Z-5d0bee6a` now retains Bridge 45/45 for
+   `fdcf253`; next run the complete checked-in Windows CI for the current commit,
+   retain its immutable managed/native artifacts, and bind every “current full
+   gate” claim to those results before using
    it to prove the external SDK/template and clean-directory scaffold.
 
 The next review should first reassess these three items, then rotate into the

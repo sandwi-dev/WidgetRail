@@ -701,10 +701,14 @@ trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
 gesture derivation, including trusted-only publication and worker retirement
 when installed state/integrity fails, pre-launch content-race rejection, and
-live-byte pinning until asynchronous worker teardown completes. The dispatcher
-does not hard-bound cancellation-ignoring Windows ACL calls or its final drain,
-and native bridge reads remain synchronous; those are still release-blocking
-startup/availability work. PlatformBroker focused coverage passes
+live-byte pinning until asynchronous worker teardown completes. Clean retained
+selected run `20260809T161934Z-5d0bee6a` passes Bridge 45/45, Documentation 1/1,
+and First-Party Conformance 6/6 in 75.643 seconds for commit `fdcf253`; its
+provenance records a clean tree, release eligibility, and zero stderr or output
+truncation. The dispatcher does not hard-bound cancellation-ignoring Windows ACL
+calls or its final drain, and the shipping native client cannot pipeline while
+its synchronous read blocks the UI; those are still release-blocking startup/
+availability work. PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
