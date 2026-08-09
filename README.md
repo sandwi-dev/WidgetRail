@@ -56,14 +56,24 @@ limitations.
 Managed verification is immediately available:
 
 ```powershell
-.\scripts\Verify.ps1 -Configuration Release -SkipNative
+.\scripts\Verify.ps1 -Configuration Release -Lane managed
 ```
+
+`-SkipNative` remains a compatibility alias for `-Lane managed`. Every step is
+defined in `scripts/verification-steps.json`, has a process-tree timeout, and
+writes stdout, stderr, JUnit-compatible results, revision/dirty-state/toolchain
+provenance, and package hashes under `artifacts/verification/<run-id>`.
 
 The complete verification command requires Visual Studio's Desktop development with C++ workload:
 
 ```powershell
 .\scripts\Verify.ps1 -Configuration Release
 ```
+
+Use `-StepId <stable-id>` for a focused local run. The checked-in Windows
+workflow runs managed and native lanes independently and retains the same
+evidence bundle even when a lane fails. Hardware, live-auth, real-controller,
+and physical-display gates remain explicit manual release evidence.
 
 ## Documentation
 

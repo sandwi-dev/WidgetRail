@@ -5,7 +5,7 @@
 From the repository root:
 
 ```powershell
-.\scripts\Verify.ps1 -Configuration Release -SkipNative
+.\scripts\Verify.ps1 -Configuration Release -Lane managed
 ```
 
 For native verification, install Visual Studio's Desktop development with C++
@@ -16,6 +16,29 @@ workload and run:
 ```
 
 Do not claim a native pass when using `-SkipNative`.
+`-SkipNative` remains an alias for `-Lane managed`. A complete run writes
+`verification-result.json`, per-step stdout/stderr logs, and JUnit-compatible
+XML below `artifacts/verification/<run-id>`. Each command has a manifest-owned
+timeout and the aggregate has an independent overall timeout. To reproduce one
+failure without silently changing its command, use its stable ID:
+
+```powershell
+.\scripts\Verify.ps1 -Configuration Release -Lane managed -StepId widget-catalog-tests
+```
+
+A `timed_out` result means the runner terminated that process tree. A Windows
+filesystem or driver call that never returns can still require the independent
+GitHub job timeout or an external local watchdog.
+
+GitHub retains each lane's bundle for 30 days. Local bundles are ignored by Git
+and intentionally are not deleted automatically; keep a run while it supports a
+review or release record, then remove only that exact run directory after any
+needed evidence has been copied.
+
+Community-package provenance is also bounded: it skips reparse points, traverses
+at most 4,096 entries, hashes at most 256 `.gbarwidget` files of at most 72 MiB
+each and 2 GiB total, and runs in its own 30-second supervised process. Exceeding
+any bound fails the gate instead of silently omitting evidence.
 
 ## `gbar` is not found
 

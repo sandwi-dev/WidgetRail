@@ -2,175 +2,232 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
-    [switch]$SkipNative
+    [switch]$SkipNative,
+    [ValidateSet('all', 'managed', 'native')]
+    [string]$Lane = 'all',
+    [string[]]$StepId = @(),
+    [ValidateRange(60, 7200)]
+    [int]$OverallTimeoutSeconds = 1800,
+    [string]$OutputRoot
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$stepManifestPath = Join-Path $PSScriptRoot 'verification-steps.json'
+Import-Module (Join-Path $PSScriptRoot 'VerificationRunner.psm1') -Force
 
-function Invoke-Checked {
-    param(
-        [Parameter(Mandatory)]
-        [scriptblock]$Command,
-        [Parameter(Mandatory)]
-        [string]$Description
-    )
+function Get-CommandText([string]$file, [string[]]$arguments) {
+    (@($file) + $arguments | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    }) -join ' '
+}
 
-    Write-Host "`n== $Description =="
-    & $Command
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Description failed with exit code $LASTEXITCODE."
+function Invoke-ProvenanceCommand(
+    [string]$id,
+    [string]$file,
+    [string[]]$arguments,
+    [int]$maximumOutputBytes,
+    [string]$workingDirectory,
+    [string]$outputDirectory,
+    [ValidateRange(1, 120)][int]$timeoutSeconds = 10
+) {
+    $result = Invoke-BoundedVerificationProcess -Id "provenance-$id" -Description "Capture $id provenance" `
+        -FilePath $file -ArgumentList $arguments -WorkingDirectory $workingDirectory `
+        -TimeoutSeconds $timeoutSeconds -OutputDirectory $outputDirectory `
+        -MaximumOutputBytes $maximumOutputBytes -SuppressReplay
+    if ($result.status -ne 'passed') {
+        throw "Unable to capture $id provenance; inspect $($result.stderrLog)."
+    }
+    [pscustomobject]@{
+        text = ([IO.File]::ReadAllText((Join-Path $outputDirectory $result.stdoutLog))).Trim()
+        truncated = $result.stdoutTruncated
+        stdoutLog = $result.stdoutLog
+        stderrLog = $result.stderrLog
     }
 }
 
 Push-Location $repositoryRoot
+$runStopwatch = [Diagnostics.Stopwatch]::StartNew()
+$startedUtc = [DateTimeOffset]::UtcNow
+$results = [Collections.Generic.List[object]]::new()
+$runStatus = 'passed'
+$failureMessage = $null
+$runDirectory = $null
+$provenance = $null
 try {
-    Write-Host "`n== Validate bounded performance harness helpers =="
-    & 'scripts\Measure-OverlayPerformance.ps1' -SelfTest
-
-    Invoke-Checked -Description 'Build widget protocol, SDK, sample, and tests' -Command {
-        dotnet build 'tests\WidgetSdk.Tests\WidgetSdk.Tests.csproj' --configuration $Configuration --nologo
+    if ($SkipNative -and $Lane -eq 'native') {
+        throw '-SkipNative cannot be combined with -Lane native.'
     }
-    Invoke-Checked -Description 'Run widget SDK contract tests' -Command {
-        dotnet run --project 'tests\WidgetSdk.Tests\WidgetSdk.Tests.csproj' --configuration $Configuration --no-build
+    if ($SkipNative) { $Lane = 'managed' }
+    $manifestFile = Get-Item -LiteralPath $stepManifestPath
+    if ($manifestFile.Length -gt 262144) {
+        throw 'Verification step manifest exceeds 256 KiB.'
     }
-    Invoke-Checked -Description 'Build and test YT Music widget' -Command {
-        dotnet run --project 'tests\YtMusicWidget.Tests\YtMusicWidget.Tests.csproj' --configuration $Configuration
+    $manifestBytes = [IO.File]::ReadAllBytes($stepManifestPath)
+    $manifest = [Text.Encoding]::UTF8.GetString($manifestBytes) | ConvertFrom-Json
+    if ($manifest.schemaVersion -ne 1 -or $null -eq $manifest.steps) {
+        throw 'Verification step manifest schema is invalid.'
     }
-    Invoke-Checked -Description 'Build and test isolated widget runtime' -Command {
-        dotnet run --project 'tests\WidgetRuntime.Tests\WidgetRuntime.Tests.csproj' --configuration $Configuration
+    if ($manifest.maximumOutputBytesPerStream -lt 4096 -or
+        $manifest.maximumOutputBytesPerStream -gt 67108864 -or
+        $manifest.maximumCasesPerStep -lt 1 -or $manifest.maximumCasesPerStep -gt 10000) {
+        throw 'Verification output limits are invalid.'
     }
-    Invoke-Checked -Description 'Build and test generic installed-widget worker host' -Command {
-        dotnet run --project 'tests\WidgetWorkerHost.Tests\WidgetWorkerHost.Tests.csproj' --configuration $Configuration
+    $allSteps = @($manifest.steps)
+    if ($allSteps.Count -lt 1 -or $allSteps.Count -gt 128) {
+        throw 'Verification step manifest must contain between 1 and 128 steps.'
     }
-    Invoke-Checked -Description 'Build and test widget developer CLI' -Command {
-        dotnet run --project 'tests\GbarCli.Tests\GbarCli.Tests.csproj' --configuration $Configuration
+    $ids = @($allSteps | ForEach-Object { $_.id })
+    if ($ids.Count -ne @($ids | Sort-Object -Unique).Count) {
+        throw 'Verification step IDs must be unique.'
     }
-    Invoke-Checked -Description 'Build and test shared GBSS engine' -Command {
-        dotnet run --project 'tests\WidgetStyling.Tests\WidgetStyling.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test platform settings and themes' -Command {
-        dotnet run --project 'tests\PlatformSettings.Tests\PlatformSettings.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test package-scoped widget configuration' -Command {
-        dotnet run --project 'tests\WidgetConfiguration.Tests\WidgetConfiguration.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test capability broker contracts' -Command {
-        dotnet run --project 'tests\PlatformBroker.Tests\PlatformBroker.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test Windows Core Audio provider' -Command {
-        dotnet run --project 'tests\WindowsAudioProvider.Tests\WindowsAudioProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test Windows network provider' -Command {
-        dotnet run --project 'tests\WindowsNetworkProvider.Tests\WindowsNetworkProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test Windows Bluetooth provider' -Command {
-        dotnet run --project 'tests\WindowsBluetoothProvider.Tests\WindowsBluetoothProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test Windows foreground activity provider' -Command {
-        dotnet run --project 'tests\WindowsActivityProvider.Tests\WindowsActivityProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test Windows app-library provider' -Command {
-        dotnet run --project 'tests\WindowsAppLibraryProvider.Tests\WindowsAppLibraryProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test constrained loopback and private-secret provider' -Command {
-        dotnet run --project 'tests\WindowsCommunityProvider.Tests\WindowsCommunityProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test Windows media-session provider' -Command {
-        dotnet run --project 'tests\WindowsMediaProvider.Tests\WindowsMediaProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test trusted Spotify OAuth and Web API provider' -Command {
-        dotnet run --project 'tests\WindowsSpotifyProvider.Tests\WindowsSpotifyProvider.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test trusted Spotify Web Playback host' -Command {
-        dotnet run --project 'tests\SpotifyPlaybackHost.Tests\SpotifyPlaybackHost.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test trusted Spotify playback process client' -Command {
-        dotnet run --project 'tests\SpotifyPlaybackClient.Tests\SpotifyPlaybackClient.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test Spotify community widget' -Command {
-        dotnet run --project 'tests\SpotifyWidget.Tests\SpotifyWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test public SDK Gallery community widget' -Command {
-        dotnet run --project 'tests\SdkGalleryWidget.Tests\SdkGalleryWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test first-party Audio Mixer widget' -Command {
-        dotnet run --project 'tests\AudioMixerWidget.Tests\AudioMixerWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test first-party Network Controls widget' -Command {
-        dotnet run --project 'tests\NetworkControlsWidget.Tests\NetworkControlsWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test retired Recent Apps reference widget' -Command {
-        dotnet run --project 'tests\RecentAppsWidget.Tests\RecentAppsWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test first-party Games & Apps widget' -Command {
-        dotnet run --project 'tests\GamesAppsWidget.Tests\GamesAppsWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test first-party Now Playing widget' -Command {
-        dotnet run --project 'tests\MediaSessionsWidget.Tests\MediaSessionsWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test first-party Settings widget' -Command {
-        dotnet run --project 'tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build and test private platform diagnostics transport' -Command {
-        dotnet run --project 'tests\PlatformDiagnostics.Tests\PlatformDiagnostics.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Build first-party Settings isolated worker' -Command {
-        dotnet build 'src\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj' --configuration $Configuration --nologo
-    }
-    Invoke-Checked -Description 'Build and test widget package catalog' -Command {
-        dotnet run --project 'tests\WidgetCatalog.Tests\WidgetCatalog.Tests.csproj' --configuration $Configuration
-    }
-    Invoke-Checked -Description 'Validate developer documentation contracts and local links' -Command {
-        dotnet run --project 'tests\Documentation.Tests\Documentation.Tests.csproj' --configuration $Configuration
-    }
-
-    if (Test-Path -LiteralPath 'tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj') {
-        Invoke-Checked -Description 'Build and test native widget bridge' -Command {
-            dotnet run --project 'tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj' --configuration $Configuration
+    foreach ($step in $allSteps) {
+        if ([string]::IsNullOrWhiteSpace($step.id) -or $step.id -notmatch '^[a-z0-9-]{1,80}$' -or
+            [string]::IsNullOrWhiteSpace($step.description) -or
+            $step.description.Length -gt 256 -or
+            $step.lane -notin @('managed', 'native') -or
+            [string]::IsNullOrWhiteSpace($step.file) -or
+            $step.file.Length -gt 1024 -or
+            @($step.arguments).Count -gt 32 -or
+            @($step.arguments | Where-Object { ([string]$_).Length -gt 4096 }).Count -ne 0 -or
+            $step.timeoutSeconds -lt 1 -or $step.timeoutSeconds -gt 1800) {
+            throw "Verification step '$($step.id)' is invalid."
         }
     }
-    Invoke-Checked -Description 'Prove first-party widgets use the community AppContainer path' -Command {
-        dotnet run --project 'tests\FirstPartyWidgetConformance.Tests\FirstPartyWidgetConformance.Tests.csproj' --configuration $Configuration
+    if ($StepId.Count -ne 0) {
+        $unknown = @($StepId | Where-Object { $_ -notin $ids })
+        if ($unknown.Count -ne 0) { throw "Unknown verification step ID: $($unknown[0])" }
+    }
+    $eligibleSteps = @($allSteps | Where-Object {
+        ($StepId.Count -eq 0 -or $_.id -in $StepId) -and
+        ($Lane -eq 'all' -or $_.lane -eq $Lane)
+    })
+    if ($eligibleSteps.Count -eq 0) {
+        throw 'No verification steps match the selected IDs and lane.'
     }
 
-    if ($SkipNative) {
-        Write-Host "`nNative verification skipped by request."
-        return
+    $runId = $startedUtc.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
+    if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+        $OutputRoot = Join-Path $repositoryRoot 'artifacts\verification'
+    }
+    $runDirectory = Join-Path ([IO.Path]::GetFullPath($OutputRoot)) $runId
+    New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
+
+    $gitStatus = Invoke-ProvenanceCommand -Id git-status -File git `
+        -Arguments @('status', '--porcelain=v1', '--untracked-files=all') `
+        -MaximumOutputBytes $manifest.maximumOutputBytesPerStream `
+        -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+        -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+    $gitCommit = Invoke-ProvenanceCommand -Id git-commit -File git `
+        -Arguments @('rev-parse', 'HEAD') -MaximumOutputBytes 4096 `
+        -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+        -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+    $dotnetVersion = Invoke-ProvenanceCommand -Id dotnet-version -File dotnet `
+        -Arguments @('--version') -MaximumOutputBytes 4096 `
+        -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+        -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+    $dirtyText = $gitStatus.text
+    $dirtyBytes = [Text.Encoding]::UTF8.GetBytes($dirtyText)
+    $packageRoot = Join-Path $repositoryRoot 'artifacts\community-addons'
+    $packageProvenance = Invoke-ProvenanceCommand -Id package-artifacts -File pwsh `
+        -Arguments @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'Get-PackageProvenance.ps1'),
+            '-Root', $packageRoot, '-RelativeTo', $repositoryRoot) `
+        -MaximumOutputBytes $manifest.maximumOutputBytesPerStream `
+        -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+        -TimeoutSeconds (Get-RemainingVerificationTimeout 30 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+    if ($packageProvenance.truncated) {
+        throw 'Package provenance output exceeded its configured limit.'
+    }
+    $artifactDigests = if ([string]::IsNullOrWhiteSpace($packageProvenance.text)) { @() } else {
+        @($packageProvenance.text | ConvertFrom-Json)
+    }
+    $nativeToolchainResult = Invoke-ProvenanceCommand -Id native-toolchain -File pwsh `
+        -Arguments @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'Get-NativeToolchainProvenance.ps1')) `
+        -MaximumOutputBytes 65536 -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
+        -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+    if ($nativeToolchainResult.truncated) {
+        throw 'Native toolchain provenance output exceeded its configured limit.'
+    }
+    $nativeToolchain = $nativeToolchainResult.text | ConvertFrom-Json
+    $provenance = [ordered]@{
+        schemaVersion = 1
+        runId = $runId
+        configuration = $Configuration
+        lane = $Lane
+        selectedStepIds = @($StepId)
+        startedUtc = $startedUtc.ToString('O')
+        repositoryCommit = $gitCommit.text
+        repositoryDirty = -not [string]::IsNullOrEmpty($dirtyText)
+        dirtyStatusSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($dirtyBytes)).ToLowerInvariant()
+        dirtyStatusTruncated = $gitStatus.truncated
+        releaseEvidenceEligible = [string]::IsNullOrEmpty($dirtyText) -and -not $gitStatus.truncated
+        stepManifestSha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($manifestBytes)).ToLowerInvariant()
+        os = [Environment]::OSVersion.VersionString
+        processArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+        githubRunnerImage = [ordered]@{ os = $env:ImageOS; version = $env:ImageVersion }
+        powershellVersion = $PSVersionTable.PSVersion.ToString()
+        dotnetVersion = $dotnetVersion.text
+        nativeToolchain = $nativeToolchain
+        provenanceCommandLogs = @(@(
+            $gitStatus.stdoutLog, $gitStatus.stderrLog,
+            $gitCommit.stdoutLog, $gitCommit.stderrLog,
+            $dotnetVersion.stdoutLog, $dotnetVersion.stderrLog,
+            $packageProvenance.stdoutLog, $packageProvenance.stderrLog,
+            $nativeToolchainResult.stdoutLog, $nativeToolchainResult.stderrLog))
+        artifactDigests = $artifactDigests
     }
 
-    Invoke-Checked -Description 'Build native overlay and run state-machine tests' -Command {
-        & 'src\OverlayHost\build.ps1' -Configuration $Configuration
-    }
-    Invoke-Checked -Description 'Smoke-test hidden overlay initialization' -Command {
-        $overlayPath = Resolve-Path "src\OverlayHost\out\$Configuration\OverlayHost.exe"
-        $startupError = Join-Path $env:LOCALAPPDATA 'GameBarAlternative\startup-error.log'
-        $overlayProcess = Start-Process -FilePath $overlayPath -ArgumentList '--hidden' -WindowStyle Hidden -PassThru
-        try {
-            $overlayProcess.WaitForExit(1000) | Out-Null
-            $overlayProcess.Refresh()
-            if ($overlayProcess.HasExited) {
-                throw "OverlayHost exited during initialization with code $($overlayProcess.ExitCode)."
-            }
-            if (Test-Path -LiteralPath $startupError) {
-                throw "OverlayHost reported a startup failure: $(Get-Content -LiteralPath $startupError -Raw)"
-            }
-            Write-Host 'OverlayHost initialized and remained resident while hidden.'
+    foreach ($step in $allSteps) {
+        if ($StepId.Count -ne 0 -and $step.id -notin $StepId) { continue }
+        if ($Lane -ne 'all' -and $step.lane -ne $Lane) { continue }
+        if ($null -ne $step.PSObject.Properties['optionalPath'] -and
+            -not (Test-Path -LiteralPath (Join-Path $repositoryRoot $step.optionalPath))) { continue }
+        $timeout = Get-RemainingVerificationTimeout ([int]$step.timeoutSeconds) `
+            $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds
+        $file = ([string]$step.file).Replace('{configuration}', $Configuration)
+        $arguments = @($step.arguments | ForEach-Object { ([string]$_).Replace('{configuration}', $Configuration) })
+        Write-Host "`n== $($step.description) [$($step.id), ${timeout}s] =="
+        Write-Host (Get-CommandText $file $arguments)
+        $result = Invoke-BoundedVerificationProcess -Id $step.id -Description $step.description `
+            -FilePath $file -ArgumentList $arguments -WorkingDirectory $repositoryRoot `
+            -TimeoutSeconds $timeout -OutputDirectory $runDirectory `
+            -MaximumOutputBytes $manifest.maximumOutputBytesPerStream
+        $junitName = "$($step.id).junit.xml"
+        Write-VerificationJUnit -Result $result `
+            -StdoutPath (Join-Path $runDirectory $result.stdoutLog) `
+            -StderrPath (Join-Path $runDirectory $result.stderrLog) `
+            -OutputPath (Join-Path $runDirectory $junitName) `
+            -MaximumCases $manifest.maximumCasesPerStep
+        $result | Add-Member -NotePropertyName junit -NotePropertyValue $junitName
+        $results.Add($result)
+        if ($result.status -ne 'passed') {
+            throw "Verification step '$($step.id)' $($result.status)."
         }
-        finally {
-            if (-not $overlayProcess.HasExited) {
-                Stop-Process -Id $overlayProcess.Id
-                $overlayProcess.WaitForExit()
-            }
-        }
-    }
-    Invoke-Checked -Description 'Build controller input probe' -Command {
-        & 'tools\InputProbe\build.ps1' -Configuration $Configuration
-    }
-    Invoke-Checked -Description 'Smoke-test controller input probe command line' -Command {
-        & "tools\InputProbe\build\$Configuration\InputProbe.exe" --help
     }
 }
+catch {
+    $runStatus = 'failed'
+    $failureMessage = $_.Exception.Message
+    throw
+}
 finally {
+    $runStopwatch.Stop()
+    if ($null -ne $runDirectory) {
+        $summary = [ordered]@{
+            provenance = $provenance
+            status = $runStatus
+            failure = $failureMessage
+            finishedUtc = [DateTimeOffset]::UtcNow.ToString('O')
+            durationMilliseconds = [Math]::Round($runStopwatch.Elapsed.TotalMilliseconds, 3)
+            steps = @($results)
+        }
+        $resultPath = Join-Path $runDirectory 'verification-result.json'
+        [IO.File]::WriteAllText(
+            $resultPath,
+            ($summary | ConvertTo-Json -Depth 12),
+            [Text.UTF8Encoding]::new($false))
+        Write-Host "`nVerification result: $resultPath"
+    }
     Pop-Location
 }

@@ -711,9 +711,16 @@ privacy/explicit state, optimistic command reconciliation, opaque identity,
 native churn, cancellation, bounded failure, owner-thread disposal, responsive
 GBSS, and privacy-safe real Windows read smoke.
 
-The current milestone passed `scripts/Verify.ps1 -Configuration Release` end to
-end, including every managed suite, documentation contract,
-native Release aggregate, hidden OverlayHost smoke, and InputProbe build/smoke.
+The last complete legacy `scripts/Verify.ps1 -Configuration Release` run
+predates the current HEAD. The current runner now uses a checked-in 41-step
+manifest (including the previously omitted WidgetTicker suite), enforces per-
+step process-tree and overall timeouts, and retains stdout/stderr, JUnit-
+compatible results, exact revision plus dirty-state/status-digest and toolchain
+metadata, manifest hash, and
+Community package digests. Focused end-to-end runner evidence covers its timeout
+self-test, WidgetTicker's five lifecycle/resource cases, and the 49-file
+Documentation contract; a current clean-HEAD full managed/native CI bundle is
+still pending and must not be inferred from the earlier aggregate.
 Focused native Release suites report Declarative Layout 245 checks, Native Icons 206,
 Declarative Motion 39, Overlay Targeting 42, Controller Navigation 81, Pressed
 Interaction 29, Slider Interaction 2,082, Focus Navigation 41, Widget Surface
@@ -732,7 +739,7 @@ remain evidence gaps.
 Run managed verification:
 
 ```powershell
-.\scripts\Verify.ps1 -Configuration Release -SkipNative
+.\scripts\Verify.ps1 -Configuration Release -Lane managed
 ```
 
 Run the complete Windows verification with Visual Studio Desktop development
