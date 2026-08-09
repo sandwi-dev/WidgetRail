@@ -422,6 +422,21 @@ static async Task LimitsAreEnforced()
     });
     Assert.Equal("entry_too_large",
         (await Assert.ThrowsAsync<WidgetPackageException>(() => sizeCatalog.CreateInstaller().ValidateAsync(sizePackage))).Code);
+
+    var directoryShape = CreatePackage(
+        temp.Path,
+        "dev.test.directory-shape",
+        "dev.test",
+        "1.0.0",
+        extras: Enumerable.Range(0, 256)
+            .Select(index => new ExtraEntry(
+                $"assets-{index:000}/one/two/three/entry.txt", "x"))
+            .ToArray());
+    var directoryException = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        new WidgetCatalog(Path.Combine(temp.Path, "directory-catalog"))
+            .CreateInstaller()
+            .ValidateAsync(directoryShape));
+    Assert.Equal("too_many_launch_directories", directoryException.Code);
 }
 
 static async Task AggregateCatalogLimits()

@@ -48,6 +48,8 @@ icons use the closed semantic glyph set.
 The prototype defaults are:
 
 - At most 512 archive entries
+- At most 1,024 distinct package-root/implicit directories needed to reach
+  regular files under exact worker authority
 - At most 16 MiB expanded per entry
 - At most 64 MiB expanded across the package
 - At most 240 UTF-16 characters per relative path
@@ -271,7 +273,7 @@ byte authority, not a claim that the current-user package directory is generally
 OS-immutable.
 
 The bounded maximum-inventory fixtures use 512 verified files. Current local
-Release evidence records 315.294 ms to reacquire/hash/pin that inventory and
+Release evidence records 321.978 ms to reacquire/hash/pin that inventory and
 372.060 ms to apply exact AppContainer grants and complete lazy activation. The
 focused tests reject content acquisition above five seconds and the maximum-
 grant fixture above ten seconds, but those separate ceilings are not one

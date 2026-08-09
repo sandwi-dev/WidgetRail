@@ -346,6 +346,9 @@ static async Task InstalledWidgetsJoinCatalog()
     Assert.Equal(0, installed.ReadOnlyPaths.Count);
     Assert.True(installed.ContentLeaseFactory is not null,
         "Installed workers retained a broad package-root grant instead of an exact launch lease.");
+    Assert.Equal(
+        InstalledPackageLaunchLease.MaximumReadOnlyDirectories,
+        WidgetProcessContentLimits.MaximumDirectories);
     using (var contentLease = installed.ContentLeaseFactory!(CancellationToken.None))
     {
         Assert.SequenceEqual([installed.WorkerArguments[1]], contentLease.AuthorityRoots);

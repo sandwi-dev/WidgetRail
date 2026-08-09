@@ -669,10 +669,11 @@ content-tree sealing/tamper rejection, consumed-byte manifest/integrity limits,
 misreported and changing-length rejection, verified manifest-byte capture,
 session byte pinning, pre-start mutation and late-insertion refusal,
 prospective ID/version/file/byte refusal, per-entry/per-64-KiB cancellation and
-deadline checks, unexpected-entry rejection, plus content-bound unsigned
-authority.
+deadline checks, pre-extraction refusal when implicit file paths would require
+more than 1,024 exact authority directories, unexpected-entry rejection, plus
+content-bound unsigned authority.
 The maximum-inventory fixtures retain 512 verified files: current local Release
-evidence acquires and hashes the pinned-file lease in 315.294 ms and applies the
+evidence acquires and hashes the pinned-file lease in 321.978 ms and applies the
 exact AppContainer grants plus lazy activation in 372.060 ms. Focused tests use
 separate five-second content-acquisition and ten-second maximum-grant ceilings;
 one aggregate production start deadline plus repeated clean/hosted measurements

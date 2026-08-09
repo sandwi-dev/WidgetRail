@@ -54,6 +54,12 @@ internal interface IWidgetProcessContentLease : IDisposable
     IReadOnlyList<string> ReadOnlyFiles { get; }
 }
 
+internal static class WidgetProcessContentLimits
+{
+    internal const int MaximumDirectories = 1_024;
+    internal const int MaximumFiles = 1_024;
+}
+
 /// <summary>
 /// Trusted launch context supplied by the runtime to a host-owned companion
 /// factory. Community workers receive a per-platform AppContainer SID and the

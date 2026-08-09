@@ -14,6 +14,7 @@ namespace GameBarAlternative.WidgetCatalog;
 /// </summary>
 internal sealed class InstalledPackageLaunchLease : IDisposable
 {
+    internal const int MaximumReadOnlyDirectories = 1_024;
     private const uint GenericRead = 0x80000000;
     private const uint OpenExisting = 3;
     private const uint FileFlagBackupSemantics = 0x02000000;
@@ -66,6 +67,7 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
             .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
             .ToArray();
         ValidateExpectedInventory(expected, version.VerificationOptions);
+        ValidateDirectoryBudget(expected.Select(file => file.RelativePath));
         FileSystemSafety.EnsureTreeContainsNoReparsePoints(
             fullCatalogRoot,
             packageRoot,
@@ -247,6 +249,26 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
             .OrderBy(path => path.Count(ch => ch == Path.DirectorySeparatorChar))
             .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    internal static void ValidateDirectoryBudget(IEnumerable<string> relativePaths)
+    {
+        var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            string.Empty,
+        };
+        foreach (var relativePath in relativePaths)
+        {
+            var segments = relativePath.Split('/');
+            for (var index = 1; index < segments.Length; index++)
+            {
+                directories.Add(string.Join('/', segments.Take(index)));
+                if (directories.Count > MaximumReadOnlyDirectories)
+                    throw new WidgetPackageException(
+                        "too_many_launch_directories",
+                        $"Package requires more than {MaximumReadOnlyDirectories} verified-content directories.");
+            }
+        }
     }
 
     private static string Resolve(string packageRoot, string relativePath)

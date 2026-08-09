@@ -163,6 +163,8 @@ internal static class InstalledPackageIntegrity
             throw new WidgetPackageException(
                 "integrity_limit", "Installed widget file count is outside package limits.");
         files = files.OrderBy(file => file.RelativePath, StringComparer.Ordinal).ToArray();
+        InstalledPackageLaunchLease.ValidateDirectoryBudget(
+            files.Select(file => file.RelativePath));
         entryCount = files.Length;
 
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

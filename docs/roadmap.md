@@ -606,7 +606,7 @@ packages are the canonical templates for event-driven system-control widgets.
   reacquires the exact digest and complete path/length/hash inventory, pins the
   verified files for the session, and replaces recursive package-root ACLs with
   exact non-inheriting AppContainer grants. A 512-file Release fixture records
-  315.294 ms lease acquisition and 372.060 ms exact-grant activation on the
+  321.978 ms lease acquisition and 372.060 ms exact-grant activation on the
   current local machine; retain repeated clean/hosted measurements and packaged
   abuse evidence before public community distribution. Content generations use
   distinct AppContainer identities so later versions cannot inherit stale root

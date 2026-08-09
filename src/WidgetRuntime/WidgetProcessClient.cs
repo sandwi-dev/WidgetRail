@@ -721,8 +721,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     {
         if (lease.AuthorityRoots is null || lease.ReadOnlyDirectories is null ||
             lease.ReadOnlyFiles is null || lease.AuthorityRoots.Count is < 1 or > 8 ||
-            lease.ReadOnlyDirectories.Count is < 1 or > 1_024 ||
-            lease.ReadOnlyFiles.Count is < 1 or > 1_024)
+            lease.ReadOnlyDirectories.Count is < 1 or
+                > WidgetProcessContentLimits.MaximumDirectories ||
+            lease.ReadOnlyFiles.Count is < 1 or > WidgetProcessContentLimits.MaximumFiles)
             throw new WidgetProcessAdmissionException(
                 "Worker content admission returned invalid authority bounds.");
 

@@ -196,6 +196,9 @@ public sealed class WidgetPackageInstaller
             RegisterPath(path, isDirectory, knownPaths);
             entries.Add(new PlannedEntry(entry, path, isDirectory));
         }
+        InstalledPackageLaunchLease.ValidateDirectoryBudget(
+            entries.Where(entry => !entry.IsDirectory)
+                .Select(entry => entry.RelativePath));
 
         var manifestEntry = entries.SingleOrDefault(item =>
             string.Equals(item.RelativePath, "manifest.json", StringComparison.Ordinal) && !item.IsDirectory);
