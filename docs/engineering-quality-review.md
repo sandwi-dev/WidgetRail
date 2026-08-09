@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against implementation baseline `4f903b0` after committed exact-directory-boundary evidence, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
+Last reassessed: 2026-08-09 against documentation baseline `b2956ab` and implementation baseline `4f903b0` after committed exact-directory-boundary evidence, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -111,11 +111,14 @@ evidence.
 Commit `4f903b0` materially closes that exact-edge
 test gap without pretending it closes the deadline. A 258-file package requiring exactly 1,024
 authority directories completes public pack/install/enable and renders a real
-first-party widget through the production AppContainer path; packing records
-255.038 ms and activation through first validated render 2,521.831 ms. A paired
+first-party widget through the production AppContainer path. A paired
 1,025-directory CLI fixture proves pack leaves no output and install publishes
-no bytes. CLI 50/50 and First-Party Conformance 6/6 are implementation-reported
-focused green; clean retained evidence is pending.
+no bytes. Clean retained selected run `20260809T155221Z-ae6e5d8d` passes CLI
+50/50, Documentation 1/1, and First-Party Conformance 6/6, recording 376.140 ms
+packing and 2,528.883 ms through first validated render. It is release-evidence
+eligible for clean documentation commit `b2956ab` over implementation
+`4f903b0`, with zero stderr or output truncation. Its three explicitly selected
+steps do not update unrelated verification lanes.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -232,10 +235,12 @@ Commit `4f903b0` lands those two implementation test files. Code inspection show
 an exact 1,024-directory/258-file package carried through public pack, install,
 enable, lease-count validation, and a real AppContainer first render, plus an
 exact 1,025-directory CLI refusal that asserts no archive or installed package
-publication. The implementation agent reports CLI 50/50 and First-Party
-Conformance 6/6 with 255.038 ms packing and 2,521.831 ms through first validated
-render. This review did not execute the committed tests, and no release-eligible
-retained bundle contains them yet.
+publication. Clean retained selected result `20260809T155221Z-ae6e5d8d` passes
+57/57 cases across CLI, Documentation, and First-Party Conformance in 95.533
+seconds for clean documentation commit `b2956ab` over implementation `4f903b0`.
+It records 376.140 ms packing and 2,528.883 ms through first validated render,
+with zero stderr or output truncation, and is release-evidence eligible. Its
+three explicitly selected steps are not a complete all-manifest run.
 
 The verification follow-up is committed as `4450cfa`. The runner starts a small
 handshake launcher, assigns it to a kill-on-close Windows Job, starts both capped
@@ -523,6 +528,7 @@ are:
 | Documentation contract | 49 Markdown files passed on commit `b2d6f95` |
 | Full bounded all-lane gate | clean release-eligible run `20260809T141527Z-8946c731` passed 41/41 steps and 755 JUnit cases in 313.016 seconds for commit `dc6b092` |
 | Current launch/package focused gate | clean release-eligible run `20260809T152831Z-67b77c73` passed 182 cases across seven explicitly selected steps for docs-only commit `6bd60d3` over implementation baseline `6fc9e01`; it is not a complete all-manifest run |
+| Exact directory-edge focused gate | clean release-eligible selected run `20260809T155221Z-ae6e5d8d` passed CLI 50/50, Documentation 1/1, and First-Party Conformance 6/6 in 95.533 seconds for documentation commit `b2956ab` over implementation `4f903b0`; zero stderr/truncation, but not a complete all-manifest run |
 
 The typed-diagnostic milestone is committed. Styling 23/23, CLI 49/49, and the
 49-file documentation contract were run and their output inspected around the
@@ -531,6 +537,9 @@ green earlier in the same milestone. The complete 41-step verifier run predates
 the current implementation. The new seven-step retained run provides current
 evidence for the launch/package path, but not current native-overlay, SDK,
 advanced-widget, provider, Settings, or renderer evidence.
+The later clean three-step retained run covers the new exact accepted/refused
+edge and is release-evidence eligible, but its narrow selection does not update
+any unrelated lane.
 
 The retained clean all-lane result exercises the managed, protocol, capability,
 documentation, packaging-conformance, native input/layout/rendering, hidden
@@ -1819,10 +1828,12 @@ The exact-edge test's activation stopwatch begins immediately before the
 `Visible` lifecycle request and stops after the expected snapshot is received
 and validated. That is a useful user-observable interval, but it does not
 separate lease hashing, ACL application, process creation, pipe connection,
-worker initialization, and render. Its one 2,521.831 ms local sample is not
-retained, repeated, or tied to a declared hardware profile. Keep the ten-second
-assertion as a catastrophic regression ceiling if it remains stable, but use a
-separate repeatable measurement lane for phase timings and p50/p95/max claims.
+worker initialization, and render. Clean retained selected run
+`20260809T155221Z-ae6e5d8d` records 2,528.883 ms for that interval and 376.140 ms
+for packing. The run is neither repeated nor tied to a declared hardware
+profile. Keep the ten-second assertion as a catastrophic regression ceiling if
+it remains stable, but use a separate repeatable measurement lane for phase
+timings and p50/p95/max claims.
 
 Commit `6fc9e01` resolves the deterministic directory-count mismatch. Package
 inspection now refuses more than 1,024 package-root/implicit directories with
@@ -1831,12 +1842,13 @@ launch defend the same bound, and bridge coverage asserts the catalog and
 runtime constants remain equal. The focused negative package needs 1,025
 directories while remaining under 512 files. The follow-up now carries an exact
 1,024-directory accepted package through public pack, install, enable, content
-admission, ACL application, and real first-party launch. It records 255.038 ms
-packing and 2,521.831 ms through first validated render; the paired over-limit
+admission, ACL application, and real first-party launch. Clean retained selected
+run `20260809T155221Z-ae6e5d8d` records 376.140 ms packing and 2,528.883 ms
+through first validated render; the paired over-limit
 CLI case proves no pack output or installed bytes are published. This closes the
-shape-edge behavior in committed, implementation-reported focused runs. Clean
-retained evidence is still required; even then it does not close the
-missing aggregate deadline or representative p50/p95/max evidence.
+shape-edge behavior in committed tests and clean release-eligible selected
+evidence. It does not close the missing aggregate deadline or representative
+p50/p95/max evidence.
 
 `WidgetBridgeServer.RunAsync` also awaits each request directly in its single
 read/dispatch loop. A slow first snapshot or lifecycle request remains inside
@@ -2329,10 +2341,10 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
 | CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
-| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, and focused exact-edge proof records 255.038 ms packing plus 2,521.831 ms through first render at 1,024 directories; exact ACL application remains outside the five-second deadline, native bridge reads synchronously block the UI, and these one-machine ceilings are not a production budget; hidden Guide fallback still polls at 25 ms | One enforced full start budget with phase timings and cancellable off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
+| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, and clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render at 1,024 directories; exact ACL application remains outside the five-second deadline, native bridge reads synchronously block the UI, and this one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | One enforced full start budget with phase timings and cancellable off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
-| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092`; current clean run `20260809T152831Z-67b77c73` retains 182 cases for seven selected launch/package steps over `6fc9e01`, not the full manifest | Run the complete checked-in Windows workflow for the current implementation commit and retain an immutable hosted artifact/link |
+| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092`; clean seven-step run `20260809T152831Z-67b77c73` covers `6fc9e01`; clean release-eligible three-step run `20260809T155221Z-ae6e5d8d` covers the exact edge in `4f903b0` through clean docs commit `b2956ab` | Run the complete checked-in Windows workflow for the current implementation commit and retain an immutable hosted artifact/link |
 | Documentation | Extensive, but its green contract checks links/headings while 70 C# fences have no designated executable consumer; `plugin-platform.md` claims the starter scaffolds a test/replay workflow although it generates no test or snapshot exporter | Compile-test canonical snippets, make overview claims derive from generated-template end-to-end tests, bind status claims to exact result manifests, and reduce ledger/status duplication |
 
 ## Recommended next three actions

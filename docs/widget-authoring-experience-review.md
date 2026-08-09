@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against implementation baseline `4f903b0` after committed exact-directory-boundary evidence, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against documentation baseline `b2956ab` and implementation baseline `4f903b0` after committed exact-directory-boundary evidence, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -193,15 +193,19 @@ it, and a within-file-limit deep-path fixture proves early refusal. Commit
 `4f903b0` materially closes the remaining local edge proof:
 an exactly 1,024-directory,
 258-file package uses public pack/install/enable and renders a real first-party
-widget through the production AppContainer path. Packing records 255.038 ms and
-activation through first validated render 2,521.831 ms. The paired 1,025-
+widget through the production AppContainer path. The paired 1,025-
 directory CLI case leaves no pack output and publishes no installed bytes.
 Authors no longer discover the hard limit only on first open.
 Clean selected run `20260809T152831Z-67b77c73` retains the negative admission
 path through Catalog 32/32, Bridge 42/42, and CLI 49/49. The new focused CLI
-50/50 and First-Party Conformance 6/6 results are implementation-reported and
-add the accepted and atomic-rejection edge cases; clean retained evidence for
-those additions remains next.
+50/50 and First-Party Conformance 6/6 results add the accepted and atomic-
+rejection edge cases. Clean retained selected run
+`20260809T155221Z-ae6e5d8d` independently passes those suites plus the
+documentation contract (57/57 cases total) in 95.533 seconds and records
+376.140 ms packing plus 2,528.883 ms through first validated render. It is
+release-evidence eligible for clean documentation commit `b2956ab` over
+implementation `4f903b0`, with zero stderr/truncation. Its three selected steps
+do not update unrelated verification lanes.
 
 ## Evidence from the repository
 

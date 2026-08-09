@@ -683,9 +683,12 @@ one aggregate production start deadline plus repeated clean/hosted measurements
 remain open.
 The exact accepted namespace edge is also exercised through the public
 pack/install/enable path and a real first-party AppContainer worker: 1,024
-authority directories and 258 verified files pack in 255.038 ms and activate/
-render in 2,521.831 ms on the current machine. This is a focused measurement,
-not a production startup budget.
+authority directories and 258 verified files pack in 376.140 ms and reach a
+first validated render in 2,528.883 ms on the current machine. Clean retained
+selected run `20260809T155221Z-ae6e5d8d` passed CLI 50/50, Documentation 1/1,
+and First-Party Conformance 6/6 for documentation commit `b2956ab` over
+implementation `4f903b0`. This is a focused one-machine measurement, not a
+production startup budget or a complete all-manifest verification run.
 Bridge
 passes 42/42, including aggregate count/declared-memory admission, exact crash/
 timeout/idle-unload release, Settings control-plane access, race-safe refusal,

@@ -284,11 +284,14 @@ measurements, not cross-hardware startup targets.
 A focused exact-shape fixture uses the public `gbar pack`, `install`, and
 `enable` workflow for 258 verified files reached through exactly 1,024 authority
 directories, then renders a real first-party widget in its AppContainer. On the
-current machine packing takes 255.038 ms and activation through first validated
-render takes 2,521.831 ms. A paired 1,025-directory case proves `gbar pack`
-leaves no output and `gbar install` publishes no package bytes. The measured
-edge remains under a ten-second regression ceiling; it is not the missing
-aggregate production start deadline.
+current machine packing takes 376.140 ms and activation through first validated
+render takes 2,528.883 ms. Clean retained selected run
+`20260809T155221Z-ae6e5d8d` passed CLI 50/50, Documentation 1/1, and First-Party
+Conformance 6/6 for documentation commit `b2956ab` over implementation
+`4f903b0`. A paired 1,025-directory case proves `gbar pack` leaves no output and
+`gbar install` publishes no package bytes. The measured edge remains under a
+ten-second regression ceiling; this selected run is neither a complete
+all-manifest gate nor the missing aggregate production start deadline.
 
 The random global main and optional broker pipes allow only the desktop host
 and exact AppContainer SID, carry a Low mandatory label, accept one local

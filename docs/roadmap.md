@@ -611,9 +611,12 @@ packages are the canonical templates for event-driven system-control widgets.
   abuse evidence before public community distribution. Content generations use
   distinct AppContainer identities so later versions cannot inherit stale root
   grants. The exact 1,024-directory public pack/install/enable/launch edge now
-  records 255.038 ms packing and 2,521.831 ms through first render, while 1,025
-  directories fail before output/publication. An aggregate start deadline and
-  alternate-group-ACE policy remain open.
+  records 376.140 ms packing and 2,528.883 ms through first validated render in
+  clean retained selected run `20260809T155221Z-ae6e5d8d`, while 1,025
+  directories fail before output/publication. The run covers CLI 50/50,
+  Documentation 1/1, and First-Party Conformance 6/6 for documentation commit
+  `b2956ab` over implementation `4f903b0`; it is not a complete all-manifest
+  run. An aggregate start deadline and alternate-group-ACE policy remain open.
 - Publisher signing/revocation and a signed update channel, mandatory before
   public community distribution but intentionally sequenced after local
   product-completion gates
