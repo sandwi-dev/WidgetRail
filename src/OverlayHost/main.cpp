@@ -288,7 +288,16 @@ public:
     // The dashboard is catalog-owned. Persisted IDs are reconciled only after
     // the bridge supplies runnable worker descriptors, so an unavailable
     // bridge cannot expose inert native placeholder tiles.
-    OverlayApp() : state_(LoadPersistentState(), {}) {}
+    OverlayApp()
+        : state_(LoadPersistentState(), {}),
+          actionFailureFeedback_({
+              [] { return GetTickCount64(); },
+              [this](const std::optional<std::uint64_t> deadline) {
+                  ScheduleActionFeedbackExpiry(deadline);
+              },
+              [this] {
+                  if (window_) InvalidateRect(window_, nullptr, FALSE);
+              }}) {}
     ~OverlayApp() { Shutdown(); }
 
     [[nodiscard]] const std::wstring& initializationError() const noexcept {
@@ -1153,8 +1162,7 @@ private:
                 // The dedicated deadline timer owns normal expiry. This cheap
                 // state check also closes the race if Win32 timer creation is
                 // temporarily unavailable; it never repaints unless state changed.
-                bool actionFeedbackChanged =
-                    actionFailureFeedback_.Expire(now).shouldInvalidate;
+                actionFailureFeedback_.OnControllerTimer();
                 if (overlayTransition_.active()) {
                     AdvanceOverlayTransition(now);
                 }
@@ -1203,33 +1211,27 @@ private:
                         renderedSnapshotSequences_.erase(invalidatedWidget);
                     }
                 }
-                for (const auto& failure : bridge_.TakeActionFailures()) {
-                    const auto descriptor = std::find_if(
-                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                        [&](const gba::WidgetDescriptor& candidate) {
-                            return candidate.id == failure.widgetId;
-                        });
-                    if (descriptor == widgetDescriptors_.end() ||
-                        descriptor->runtimeGeneration != failure.runtimeGeneration) {
+                const auto actionFailures = bridge_.TakeActionFailures();
+                const auto actionFeedback =
+                    actionFailureFeedback_.PublishBridgeFailures(actionFailures);
+                for (std::size_t index = 0; index < actionFeedback.count; ++index) {
+                    const auto& failure = actionFailures[index];
+                    const auto outcome = actionFeedback.OutcomeAt(index);
+                    if (outcome == gba::WidgetActionFeedbackOutcome::Stale) {
                         AppendDiagnostic(
                             L"Dropped stale widget action failure for " + failure.widgetId);
                         continue;
                     }
-                    actionFeedbackChanged = actionFailureFeedback_.Publish(
-                        failure.widgetId,
-                        failure.runtimeGeneration,
-                        std::wstring(DisplayWidgetName(failure.widgetId)) +
-                            L" action failed; try again",
-                        now,
-                        4000).shouldInvalidate || actionFeedbackChanged;
+                    if (outcome == gba::WidgetActionFeedbackOutcome::Refused) {
+                        AppendDiagnostic(
+                            L"Dropped widget action feedback at the bounded presentation seam for " +
+                            failure.widgetId);
+                        continue;
+                    }
                     AppendDiagnostic(
                         L"Widget action failed: widget=" + failure.widgetId +
                         L" action=" + failure.actionId +
                         L" source=" + failure.sourceElementId);
-                }
-                if (actionFeedbackChanged) {
-                    ScheduleActionFeedbackExpiry();
-                    InvalidateRect(window_, nullptr, FALSE);
                 }
                 for (const auto& effect : bridge_.TakeHostEffects()) {
                     const auto descriptor = std::find_if(
@@ -1293,10 +1295,7 @@ private:
                 }
             } else if (wParam == kActionFeedbackTimer) {
                 KillTimer(window_, kActionFeedbackTimer);
-                if (actionFailureFeedback_.Expire(GetTickCount64()).shouldInvalidate) {
-                    InvalidateRect(window_, nullptr, FALSE);
-                }
-                ScheduleActionFeedbackExpiry();
+                actionFailureFeedback_.OnDeadlineTimer();
             }
             return 0;
         case WM_ACTIVATEAPP:
@@ -1440,6 +1439,7 @@ private:
             lifecycleBridgeWidget_.clear();
             lifecycleBridgeState_.reset();
         }
+        actionFailureFeedback_.Stop();
         bridge_.Stop();
         if (window_) {
             accessibilityProvider_.Detach();
@@ -1819,6 +1819,9 @@ private:
             return false;
         }
         auto previousDescriptors = std::exchange(widgetDescriptors_, std::move(*descriptors));
+        if (!actionFailureFeedback_.ReconcileCatalog(widgetDescriptors_)) {
+            AppendDiagnostic(L"Widget action feedback rejected an invalid catalog projection");
+        }
         const auto runtimeChanged = [&](const std::wstring_view id) {
             const auto before = std::find_if(
                 previousDescriptors.begin(), previousDescriptors.end(),
@@ -1846,11 +1849,8 @@ private:
         // Runtime identity owns focus memory independently of snapshot cache
         // residency. Clear every replaced/removed runtime even when its
         // offscreen snapshot was evicted earlier.
-        bool actionFeedbackRemoved = false;
         for (const auto& id : gba::ChangedWidgetRuntimeIds(
                  previousDescriptors, widgetDescriptors_)) {
-            actionFeedbackRemoved = actionFailureFeedback_.Forget(id).shouldInvalidate ||
-                actionFeedbackRemoved;
             focusMemory_.Forget(id);
             const auto previous = std::find_if(
                 previousDescriptors.begin(), previousDescriptors.end(),
@@ -1865,10 +1865,6 @@ private:
                 declarativeRenderer_->ForgetWidgetState(previous->instanceId);
                 sliderInteraction_.ForgetWidget(previous->instanceId);
             }
-        }
-        if (actionFeedbackRemoved) {
-            ScheduleActionFeedbackExpiry();
-            InvalidateRect(window_, nullptr, FALSE);
         }
         std::erase_if(widgetSnapshots_, [&](const auto& entry) {
             const auto descriptor = std::find_if(
@@ -2184,8 +2180,7 @@ private:
 
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
-        KillTimer(window_, kActionFeedbackTimer);
-        (void)actionFailureFeedback_.Hide();
+        actionFailureFeedback_.Hide();
         ClearAccessibilityTree();
         visibleControllerReadLease_ = false;
         lastControllerReadPath_ = gba::input::ControllerReadPath::None;
@@ -2212,10 +2207,9 @@ private:
         }
     }
 
-    void ScheduleActionFeedbackExpiry() {
+    void ScheduleActionFeedbackExpiry(
+        const std::optional<std::uint64_t> next) {
         KillTimer(window_, kActionFeedbackTimer);
-        if (state_.surface() == gba::Surface::Hidden) return;
-        const auto next = actionFailureFeedback_.NextExpiry();
         if (!next) return;
         const auto now = GetTickCount64();
         const auto remaining = *next <= now ? 1ULL : *next - now;
@@ -3980,17 +3974,10 @@ private:
 
     std::optional<std::wstring> DashboardStatus() const {
         const auto now = GetTickCount64();
-        const auto selectedDescriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [&](const gba::WidgetDescriptor& descriptor) {
-                return descriptor.id == state_.selectedWidget();
-            });
-        if (selectedDescriptor != widgetDescriptors_.end()) {
-            if (const auto failure = actionFailureFeedback_.MessageFor(
-                    selectedDescriptor->id,
-                    selectedDescriptor->runtimeGeneration,
-                    now)) return std::wstring{*failure};
-        }
+        if (const auto failure = actionFailureFeedback_.MessageForSurface(
+                gba::WidgetActionFeedbackSurface::Dashboard,
+                state_.selectedWidget(),
+                state_.activeWidget())) return std::wstring{*failure};
         if (lastActionExpiresAt_ > now && !lastActionMessage_.empty() &&
             lastActionWidgetId_ == state_.selectedWidget()) {
             return lastActionMessage_;
@@ -4073,20 +4060,12 @@ private:
     }
 
     std::optional<std::wstring> OpenWidgetStatus() const {
-        const auto activeDescriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [&](const gba::WidgetDescriptor& descriptor) {
-                return descriptor.id == state_.activeWidget();
-            });
-        if (activeDescriptor != widgetDescriptors_.end()) {
-            if (const auto failure = actionFailureFeedback_.MessageFor(
-                    activeDescriptor->id,
-                    activeDescriptor->runtimeGeneration,
-                    GetTickCount64())) {
-                return std::wstring{*failure};
-            }
-        }
-        if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty() &&
+        const auto now = GetTickCount64();
+        if (const auto failure = actionFailureFeedback_.MessageForSurface(
+                gba::WidgetActionFeedbackSurface::OpenWidget,
+                state_.selectedWidget(),
+                state_.activeWidget())) return std::wstring{*failure};
+        if (lastActionExpiresAt_ > now && !lastActionMessage_.empty() &&
             lastActionWidgetId_ == state_.activeWidget()) {
             return lastActionMessage_;
         }
@@ -4483,7 +4462,7 @@ private:
     std::wstring lastActionMessage_;
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
-    gba::WidgetActionFeedbackController actionFailureFeedback_;
+    gba::WidgetActionFeedbackHost actionFailureFeedback_;
     gba::accessibility::Tree accessibilityTree_;
     gba::accessibility::Tree widgetAccessibilityTree_;
     gba::accessibility::OpenWidgetSemantics openWidgetAccessibility_;

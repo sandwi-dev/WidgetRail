@@ -46,6 +46,14 @@ state. The controller accepts caller-supplied monotonic time and returns the nex
 deadline plus whether visible state changed. A dedicated timer removes expired
 copy and requests one repaint, with the already-active controller timer providing
 a no-extra-repaint fallback if Win32 cannot create that timer.
+A thin native host adapter now owns the bounded catalog identity projection,
+consumes one complete bridge failure drain as one transition, selects exact
+dashboard/open-widget feedback, and applies timer/invalidation callbacks once
+per batch. Catalog replacement/removal, hide/show, and Stop use the same seam;
+the renderer, HWND, and bridge transport remain outside it. Its deterministic
+Release target feeds two widgets through one pump, proves offscreen isolation,
+one-shot expiry and controller-timer fallback, rejects a late prior generation,
+and prevents feedback resurrection after hide or Stop.
 
 The renderer can retain bounded visible semantic geometry on demand, and a
 pure native accessibility-tree builder combines it with exact runtime/snapshot
@@ -849,9 +857,16 @@ Clean release-eligible all-lane run `20260809T171327Z-7e90ff88` passes 41/41
 steps in 323.958 seconds for action-admission documentation commit `689a933`
 over implementation commits `6c5f932`, `7d33ce1`, and `7d92dcd`; it records a
 clean source tree, zero stderr, and no output truncation. The subsequent native
-per-widget failure-feedback slice passes its 283-check deterministic target and
-the canonical Release native build/test script, including the full OverlayHost
-link and all existing state-machine suites. First-Party Conformance 6/6 now also
+per-widget failure-feedback slice now passes its 305-check deterministic target,
+including the host pump/surface/timer/catalog/hide-stop composition seam, and the
+Release OverlayHost target links successfully. The prior canonical Release
+native build/test script also covers the full host and existing state-machine
+suites. All-lane run `20260809T225934Z-a39ac018` passes 41/41 steps in
+350.377 seconds, including the 305-check target, full native build, hidden-host
+smoke test, and documentation contract. Its provenance records dirty base commit
+`023ea46` and `releaseEvidenceEligible: false` because this milestone and the two
+reviewer-owned ledgers were uncommitted; it is integration evidence, not a clean
+immutable release bundle. First-Party Conformance 6/6 now also
 runs Spotify's real installed and bundled package through the generic
 AppContainer worker, reaches a broker-backed ready snapshot without credentials,
 admits `spotify.next` through the production action queue, and observes the

@@ -1,14 +1,20 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace gba {
+
+struct WidgetActionFailure;
+struct WidgetDescriptor;
 
 /// Bounded, generation-owned presentation state for asynchronous widget action
 /// failures. The bridge queue preserves delivery order; this store preserves the
@@ -99,6 +105,81 @@ private:
 
     bool visible_{};
     WidgetActionFeedbackStore store_;
+};
+
+enum class WidgetActionFeedbackSurface {
+    Dashboard,
+    OpenWidget,
+};
+
+enum class WidgetActionFeedbackOutcome {
+    Published,
+    Stale,
+    Refused,
+};
+
+struct WidgetActionFeedbackBatchResult final {
+    static constexpr std::size_t MaximumFailures = 16;
+
+    std::array<WidgetActionFeedbackOutcome, MaximumFailures> outcomes{};
+    std::size_t count{};
+
+    [[nodiscard]] WidgetActionFeedbackOutcome OutcomeAt(
+        const std::size_t index) const noexcept {
+        return index < count ? outcomes[index] : WidgetActionFeedbackOutcome::Refused;
+    }
+};
+
+struct WidgetActionFeedbackHostCallbacks final {
+    std::function<std::uint64_t()> now;
+    std::function<void(std::optional<std::uint64_t>)> scheduleExpiry;
+    std::function<void()> invalidate;
+};
+
+/// Thin composition boundary used by OverlayApp. It owns only the bounded
+/// catalog identity needed to validate bridge failures and select feedback for
+/// dashboard/open-widget surfaces. Win32 timer and repaint work stay in the
+/// caller through explicit callbacks.
+class WidgetActionFeedbackHost final {
+public:
+    static constexpr std::uint64_t DisplayDurationMilliseconds = 4000;
+
+    explicit WidgetActionFeedbackHost(WidgetActionFeedbackHostCallbacks callbacks);
+
+    void Show();
+    void Hide();
+    void Stop();
+
+    /// Atomically replaces the catalog projection. A removed or replaced
+    /// runtime loses its feedback before the new projection becomes visible.
+    [[nodiscard]] bool ReconcileCatalog(const std::vector<WidgetDescriptor>& descriptors);
+
+    /// Applies one already-bounded bridge drain and emits at most one repaint
+    /// request and one timer schedule for the complete batch.
+    [[nodiscard]] WidgetActionFeedbackBatchResult PublishBridgeFailures(
+        const std::vector<WidgetActionFailure>& failures);
+
+    void OnDeadlineTimer();
+    void OnControllerTimer();
+
+    [[nodiscard]] std::optional<std::wstring_view> MessageForSurface(
+        WidgetActionFeedbackSurface surface,
+        std::wstring_view dashboardWidgetId,
+        std::wstring_view openWidgetId) const;
+    [[nodiscard]] std::size_t size() const noexcept { return controller_.size(); }
+
+private:
+    struct CatalogEntry final {
+        std::wstring name;
+        std::wstring runtimeGeneration;
+    };
+
+    void ExpireNow();
+    void Apply(bool shouldInvalidate);
+
+    WidgetActionFeedbackHostCallbacks callbacks_;
+    WidgetActionFeedbackController controller_;
+    std::map<std::wstring, CatalogEntry, std::less<>> catalog_;
 };
 
 } // namespace gba

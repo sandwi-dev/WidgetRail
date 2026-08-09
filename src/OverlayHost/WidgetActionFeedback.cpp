@@ -1,7 +1,10 @@
 #include "WidgetActionFeedback.h"
 
+#include "WidgetBridgeClient.h"
+
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 namespace gba {
 
@@ -108,6 +111,126 @@ std::optional<std::uint64_t> WidgetActionFeedbackController::NextExpiry() const 
 WidgetActionFeedbackTransition WidgetActionFeedbackController::Transition(
     const bool changed) const noexcept {
     return {visible_ && changed, NextExpiry()};
+}
+
+WidgetActionFeedbackHost::WidgetActionFeedbackHost(
+    WidgetActionFeedbackHostCallbacks callbacks)
+    : callbacks_(std::move(callbacks)) {}
+
+void WidgetActionFeedbackHost::Show() {
+    controller_.Show();
+    Apply(false);
+}
+
+void WidgetActionFeedbackHost::Hide() {
+    (void)controller_.Hide();
+    Apply(false);
+}
+
+void WidgetActionFeedbackHost::Stop() {
+    (void)controller_.Hide();
+    catalog_.clear();
+    Apply(false);
+}
+
+bool WidgetActionFeedbackHost::ReconcileCatalog(
+    const std::vector<WidgetDescriptor>& descriptors) {
+    if (descriptors.size() > WidgetActionFeedbackStore::MaximumWidgets) return false;
+
+    std::map<std::wstring, CatalogEntry, std::less<>> next;
+    for (const auto& descriptor : descriptors) {
+        if (descriptor.id.empty() || descriptor.name.empty() ||
+            descriptor.runtimeGeneration.empty()) {
+            return false;
+        }
+        if (!next.emplace(
+                descriptor.id,
+                CatalogEntry{descriptor.name, descriptor.runtimeGeneration}).second) {
+            return false;
+        }
+    }
+
+    bool changed = false;
+    for (const auto& [widgetId, entry] : catalog_) {
+        const auto replacement = next.find(widgetId);
+        if (replacement == next.end() ||
+            replacement->second.runtimeGeneration != entry.runtimeGeneration) {
+            changed = controller_.Forget(widgetId).shouldInvalidate || changed;
+        }
+    }
+    catalog_ = std::move(next);
+    Apply(changed);
+    return true;
+}
+
+WidgetActionFeedbackBatchResult WidgetActionFeedbackHost::PublishBridgeFailures(
+    const std::vector<WidgetActionFailure>& failures) {
+    static_assert(
+        WidgetActionFeedbackBatchResult::MaximumFailures ==
+        WidgetActionFailureQueue::MaximumFailures);
+
+    WidgetActionFeedbackBatchResult result;
+    result.count = std::min(
+        failures.size(), WidgetActionFeedbackBatchResult::MaximumFailures);
+    const auto now = callbacks_.now ? callbacks_.now() : 0;
+    bool changed = false;
+    for (std::size_t index = 0; index < result.count; ++index) {
+        const auto& failure = failures[index];
+        const auto descriptor = catalog_.find(failure.widgetId);
+        if (descriptor == catalog_.end() ||
+            descriptor->second.runtimeGeneration != failure.runtimeGeneration) {
+            result.outcomes[index] = WidgetActionFeedbackOutcome::Stale;
+            continue;
+        }
+        const auto transition = controller_.Publish(
+            failure.widgetId,
+            failure.runtimeGeneration,
+            descriptor->second.name + L" action failed; try again",
+            now,
+            DisplayDurationMilliseconds);
+        if (!transition.shouldInvalidate) {
+            result.outcomes[index] = WidgetActionFeedbackOutcome::Refused;
+            continue;
+        }
+        result.outcomes[index] = WidgetActionFeedbackOutcome::Published;
+        changed = true;
+    }
+    Apply(changed);
+    return result;
+}
+
+void WidgetActionFeedbackHost::OnDeadlineTimer() {
+    ExpireNow();
+}
+
+void WidgetActionFeedbackHost::OnControllerTimer() {
+    ExpireNow();
+}
+
+std::optional<std::wstring_view> WidgetActionFeedbackHost::MessageForSurface(
+    const WidgetActionFeedbackSurface surface,
+    const std::wstring_view dashboardWidgetId,
+    const std::wstring_view openWidgetId) const {
+    const auto widgetId = surface == WidgetActionFeedbackSurface::Dashboard
+        ? dashboardWidgetId
+        : openWidgetId;
+    const auto descriptor = catalog_.find(widgetId);
+    if (descriptor == catalog_.end()) return std::nullopt;
+    const auto now = callbacks_.now ? callbacks_.now() : 0;
+    return controller_.MessageFor(
+        widgetId, descriptor->second.runtimeGeneration, now);
+}
+
+void WidgetActionFeedbackHost::ExpireNow() {
+    const auto now = callbacks_.now ? callbacks_.now() : 0;
+    Apply(controller_.Expire(now).shouldInvalidate);
+}
+
+void WidgetActionFeedbackHost::Apply(const bool shouldInvalidate) {
+    if (callbacks_.scheduleExpiry) {
+        callbacks_.scheduleExpiry(controller_.NextExpiry());
+    }
+    if (shouldInvalidate && callbacks_.invalidate) callbacks_.invalidate();
 }
 
 } // namespace gba

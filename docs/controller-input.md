@@ -188,6 +188,14 @@ before `OnDeactivatedAsync`. A later failure is reported by
 `Widget.ActionFailed` and `WidgetProcessClient.ActionFailed`; the former
 `ControllerActionFailed` events remain compatibility aliases. Failure does not
 crash the worker or retroactively change admission.
+The native host presents a late failure as fixed generic copy for four seconds;
+worker exception text never crosses this boundary. Feedback is keyed by widget
+ID and runtime generation, so a failure appears only on that widget's dashboard
+or open-widget surface. A failure for another widget cannot overwrite it, and
+catalog replacement, removal, overlay hide, or host stop retires it. Each
+bounded bridge drain schedules the earliest expiry and requests at most one
+repaint; the controller timer performs the same idempotent expiry as a fallback
+if the dedicated Win32 timer cannot be registered.
 The host therefore publishes `Visible` for the panel selected while the tray
 owns focus and `Interactive` only while that panel's controls own focus.
 Selecting another tray item moves the prior panel to `Background`, publishes
