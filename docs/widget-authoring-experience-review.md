@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, stable-ID scopes, protocol-v13 responsive focus persistence, one responsive navigation recipe, data-only snapshot inspection, and bounded scenario-manifest listing implemented; isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against the current worktree after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` scenario contract, and an unsigned GitHub distribution/trust audit<br>
+Reassessed: 2026-08-09 against the current worktree after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` scenario contract, and unsigned package-trust plus aggregate worker-residency audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -320,12 +320,12 @@ of inheriting consent or secrets. These are strong foundations.
 The workflow still asks too much of both authors and users. Authors have no
 supported public SDK package/template feed or signing command. They must arrange
 an independent authenticated channel for the digest and explain why a GitHub
-release plus a matching hash does not prove authorship. Users then see the
-manifest's self-asserted publisher label in Settings beside **Enable reviewed
-widget**, but not an **Unsigned / publisher unverified** state, the package
-digest, the acquisition source, a signer, or a version capability delta. The
-catalog already carries the sealed content digest, but the controller review UI
-does not expose it and does not retain a host-owned acquisition receipt.
+release plus a matching hash does not prove authorship. The current Settings
+worktree now gives users an honest **Unsigned · publisher unverified** state,
+the full sealed content digest, **Enable unsigned widget** copy, digest prefixes
+for version selection, and digest-bound permission language. It still cannot
+show the acquisition source, a verified signer, or a version capability delta;
+the catalog does not retain a host-owned acquisition receipt.
 
 The next author workflow should preserve the safe mechanics while reducing this
 trust ceremony. `gbar pack`/future `gbar publish` should emit one canonical
@@ -338,6 +338,43 @@ verified signer, unknown signer, invalid signature, and revoked signer, and
 show capability/authority changes before enabling an update. Until that exists,
 documentation must keep calling GitHub sharing unsigned developer preview and
 must not imply that AppContainer containment verifies the author.
+
+## Reassessment of residency defaults and ecosystem cost
+
+The framework makes an individual worker's resource request explicit and
+enforces it with a one-process Job, but it does not yet make the safe choice
+easy at ecosystem scale. A catalog may expose 256 widgets, and each widget
+first used under the default `keep-alive` policy can remain a separate resident
+process. The bridge reports the running count but owns no aggregate admission
+budget. Settings exposes the declared residency as text, not measured cost or
+a user override. Existing performance evidence covers one selected worker, not
+the accumulation pattern a community widget platform creates.
+
+This is partly an authoring-design problem. The controller-widget template and
+Clock sample explicitly choose `keep-alive`, even though most simple widgets
+have no continuous Background obligation. `suspend-when-hidden` stops
+presentation/capability work cooperatively but still retains the process; only
+bounded idle unload constrains long-session process accumulation. Conversely,
+Spotify currently needs keep-alive to preserve one temporary authorization
+operation, demonstrating that residency is too coarse a substitute for a
+bounded critical-work lease.
+
+The recommended path is to keep residency explicit while adding host-owned
+aggregate admission. New ordinary templates should choose a modest bounded
+idle-unload policy and teach persistence/restart behavior; `keep-alive` should
+require a documented reason and surface its continuing cost during package
+review. The runtime should offer a bounded, lifecycle-visible lease for rare
+temporary work that genuinely must survive Background, or move that work into
+the responsible broker. A supervisor budget may reclaim only widgets that
+explicitly opted into unloading; it should never silently reinterpret
+`keep-alive`. When pinned workers exhaust the budget, the author/user needs a
+clear refusal and remediation path rather than hidden overcommit.
+
+This keeps a simple widget simple while ensuring that “works in isolation” is
+not the only performance standard. Author documentation and conformance tests
+should include restart-from-durable-state, idle unload/reopen, denial at the
+aggregate boundary, and measured multi-widget cost alongside the current
+single-worker manifest checks.
 
 ## Reconciliation of earlier framework-gap findings
 
@@ -922,14 +959,17 @@ and fail-closed scenario selection with contract and safety tests.
 
 ### Phase 4: broaden the ecosystem carefully
 
-1. Add an honest unsigned acquisition receipt, then publisher signing,
+1. Add supervisor-owned aggregate resident-process/memory admission, an
+   unload-eligible default template, per-widget resource visibility, and
+   bounded temporary critical-work leases.
+2. Add an honest unsigned acquisition receipt, then publisher signing,
    rotation/revocation, signed update metadata, and verified/unverified package
    states before public community distribution.
-2. Publish a language-neutral runtime and snapshot wire specification.
-3. Add conformance fixtures and golden messages independent of C# types.
-4. Evaluate a second worker runtime only after author demand and resource
+3. Publish a language-neutral runtime and snapshot wire specification.
+4. Add conformance fixtures and golden messages independent of C# types.
+5. Evaluate a second worker runtime only after author demand and resource
    measurements justify it.
-5. Define a separate reviewed provider-development path; do not grant ordinary
+6. Define a separate reviewed provider-development path; do not grant ordinary
    widgets ambient network, token, or operating-system authority.
 
 ## Success metrics
@@ -962,6 +1002,10 @@ The improvements should be evaluated against measurable author outcomes:
   before public distribution, Settings clearly distinguishes unsigned from
   verified publishers, shows a bounded source/digest receipt and version
   capability changes, and rejects invalid or revoked signatures.
+- A long session has an enforced aggregate resident-process/memory envelope;
+  ordinary scaffolded widgets unload after a documented idle bound, genuinely
+  retained work uses an explicit bounded lease, and Settings attributes current
+  resource ownership before asking the user to resolve capacity pressure.
 - Advanced samples contain substantially more domain/rendering code than
   lifecycle and concurrency plumbing.
 - Deactivation, stale responses, command rollback, focus restoration, and task
@@ -983,7 +1027,7 @@ Suggested baseline metrics for each migrated widget:
 
 - **A giant framework base class.** Prefer small composable helpers.
 - **Implicit polling or residency.** Every source of continuing work must remain
-  explicit and lifecycle-bound.
+  explicit, lifecycle-bound, and accounted within the host-wide worker budget.
 - **A service-specific UI framework.** Spotify should use general media,
   navigation, resource, and command patterns.
 - **Magic string replacement without validation.** ID helpers and action maps

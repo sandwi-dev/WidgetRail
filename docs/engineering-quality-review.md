@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after all CLI author-code inspection paths became data-only, responsive focus reconciliation left the paint path, and the unsigned GitHub distribution/review boundary was audited<br>
+Last reassessed: 2026-08-09 after all CLI author-code inspection paths became data-only, responsive focus reconciliation left the paint path, and the unsigned package-trust and aggregate worker-residency boundaries were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -37,12 +37,21 @@ native Release tests, the OverlayHost Release build, and the repository-wide
 Release verifier all pass on the current worktree; this review did not rerun
 them or inspect a retained machine-readable result.
 
-A separate public-distribution blocker is the unsigned package review surface.
-The acquisition and runtime boundaries preserve exact bytes and prevent a new
-content digest from inheriting old consent, but Settings presents a manifest's
-self-asserted publisher label as an identity the user has reviewed. It does not
-show that the package is unsigned, its sealed digest, its acquisition source,
-or a verified signer because no signed publisher/update model exists yet.
+A separate public-distribution blocker is the incomplete publisher/provenance
+model. The current Settings worktree now makes the immediate decision honest:
+it labels Community packages unsigned, identifies the manifest publisher as
+unverified, shows the sealed digest, and binds enablement/consent language to
+those exact content bytes. It still cannot show a host-owned acquisition
+receipt, verified signer, rotation, or revocation because those models do not
+exist yet.
+
+The lightweight-while-gaming requirement also lacks a system-wide worker
+envelope. Each worker has a strong independent Job memory/process limit, but a
+catalog may contain 256 widgets and every first-used `keep-alive` worker can
+remain resident. The bridge has no aggregate resident-count or memory admission
+budget, and the product has neither the promised per-widget resource surface
+nor a user residency override. The one retained local baseline exercises a
+single selected worker, so it cannot characterize the ecosystem-scale cost.
 
 The YT Music operation-lane migration removes a substantial amount of manual
 lifecycle machinery. The current worktree also closes its stale-failure gap:
@@ -94,12 +103,20 @@ replacement admission. Cancellation-ignoring fake requests cover superseded
 ordinary and authorization failures plus lifecycle-exit authorization failure.
 
 The package/distribution audit found strong byte-integrity mechanics but an
-incomplete human trust decision. Remote installs require an exact SHA-256 pin,
-remain disabled, and publish immutable versions; the runtime derives unsigned
-authority from the sealed content tree. However, the Settings review screen
-shows the manifest's unverified publisher claim beside **Enable reviewed
-widget**, without an unsigned label, digest, acquisition receipt, signature, or
-signer. EQ-011 separates that product-security gap from sandbox containment.
+incomplete publisher/provenance model. Settings now makes the present unsigned
+decision honest: it labels the publisher unverified, shows the full sealed
+content digest, binds consent copy to that digest, and says **Enable unsigned
+widget**. Host-owned acquisition receipts, signatures, signer rotation, and
+revocation remain open under EQ-011.
+
+The performance rotation found that the existing worker bound is local rather
+than global. `BridgeCatalog` accepts as many as 256 widgets, each may request
+16–256 MiB, and `WidgetBridgeServer` lazily retains one independently Job-bound
+client per accessed widget. `keep-alive` is the default and has no inferred
+eviction. This is internally consistent, but without supervisor admission,
+aggregate telemetry, or a user override it permits a session's resident process
+footprint to grow with every keep-alive widget used. EQ-013 records the design
+and proof needed before community-scale performance claims are credible.
 
 ## Verification snapshot
 
@@ -110,6 +127,7 @@ are:
 | --- | ---: |
 | Widget SDK | 84/84 passed |
 | Gbar CLI | 48/48 passed |
+| Settings Widget | 41/41 passed |
 | SDK Gallery | 6/6 passed |
 | YT Music | 48/48 passed |
 | Focus Navigation | 41 checks passed |
@@ -129,6 +147,10 @@ Spotify authentication, physical mixed-DPI display, representative visual
 capture, or PresentMon/ETW trace. Available default package artifacts also
 predate the updated YT Music and SDK Gallery source manifests and are not
 current packaged evidence.
+The retained performance baseline is one dirty-worktree run with one selected
+Settings worker and only 31 observations per state; it does not measure
+multi-widget accumulation, scheduler wakeups, GPU/game-frame impact, controller
+latency, or long-run churn.
 
 ## Prioritized findings
 
@@ -172,9 +194,9 @@ closed, and no snapshot output is written. CLI help, quickstart, authoring,
 publishing, security, troubleshooting, and sample docs now direct executable
 work to `gbar dev` and reserve `gbar render` for bounded data.
 
-### EQ-011 — P1 — The package review UI cannot substantiate the identity it asks users to trust
+### EQ-011 — P1 — Unsigned packages lack acquisition provenance and signed publisher identity
 
-**Status: Open; current unsigned flow is appropriate only for local/developer-preview distribution.**
+**Status: Partially resolved. Honest digest-bound unsigned review is implemented; provenance and signed publisher trust remain open.**
 
 **Evidence.** `InstallCommand` requires `--sha256` for HTTPS/GitHub packages,
 the downloader applies bounded HTTPS/redirect/size/time rules, and installation
@@ -186,18 +208,16 @@ authority so replacement bytes cannot inherit consent or secrets. These are
 strong integrity and containment properties.
 
 They do not establish author identity. `WidgetPackageInstaller` only verifies
-that a manifest ID falls within its manifest-declared publisher namespace.
-`InstalledWidgetsSection` nevertheless displays `Publisher: <manifest claim>`,
-labels the action **Enable reviewed widget**, and says enabling confirms review
-of “this identity.” It does not identify the package as unsigned or show the
-available `InstalledWidgetVersion.ContentDigest`. `CatalogModels` retains no
-host-owned acquisition source or signed provenance receipt, and version rows
-show only version/direction/compatibility. Focused Settings tests assert the
-publisher claim and **Enable reviewed widget** copy, but do not require an
-unsigned warning, digest/source, signer, or capability delta. The public docs
-correctly say the publisher is a claim and that the digest must arrive through
-an independently authenticated channel; that warning is not present at the
-actual activation decision.
+that a manifest ID falls within its manifest-declared publisher namespace. The
+current worktree corrects the immediate UX: `InstalledWidgetsSection` renders
+**Trust: Unsigned · publisher unverified**, labels the publisher as a manifest
+claim, shows the full `InstalledWidgetVersion.ContentDigest`, and uses **Enable
+unsigned widget** with exact-byte/capability review copy. Version rows add a
+digest prefix, require selection while disabled, and return to full details
+before enablement. Permission and confirmation pages repeat the trust state and
+full digest; consent remains bound to the digest-derived authority. The catalog
+still retains no host-owned acquisition source or signed provenance receipt,
+and there is no signature or signer state.
 
 **Why it matters.** AppContainer and broker isolation reduce the consequences
 of malicious code but do not make an arbitrary publisher safe. A user cannot
@@ -208,18 +228,15 @@ ecosystem and makes later incident response or revocation impossible to explain
 from installed state.
 
 **Underlying problem.** Byte integrity, runtime authority, acquisition
-provenance, publisher identity, and user trust are separate concepts, but the
-catalog/UI model exposes only manifest identity plus the executable version.
-The safer digest-derived authority is deliberately internal and is not turned
-into a reviewable installation receipt. Signing/revocation is deferred without
-a smaller honest unsigned-review contract in the meantime.
+provenance, publisher identity, and user trust are separate concepts. The UI now
+exposes the honest unsigned byte-identity contract, but the catalog still lacks
+a host-owned acquisition receipt and any signed publisher/update model.
 
-**Recommended direction.** First make the current state explicit: persist a
-bounded host-owned acquisition receipt outside package-controlled content
+**Recommended direction.** Persist a bounded host-owned acquisition receipt
+outside package-controlled content
 (local vs canonical GitHub coordinates or a sanitized HTTPS origin/path,
 never credentials, query data, or a full local path; plus transferred SHA-256,
-install time, and sealed content-tree digest), show **Unsigned / publisher unverified** before
-enablement, and present the exact digest plus declared-capability differences
+install time, and sealed content-tree digest). Add an explicit capability delta
 for version changes. Do not imply that a manifest namespace or GitHub owner is
 a verified identity.
 
@@ -241,14 +258,99 @@ moderation ownership; self-managed signing is easier to bootstrap but needs a
 clear key-verification and rotation experience. Neither should delay fixing the
 misleading unsigned enablement copy.
 
-**Resolution evidence.** Tests should prove that unsigned packages are never
-rendered as verified, the activation screen shows the exact sealed/transferred
-digests and bounded source receipt, and version review shows identity,
-capability, and authority changes before enablement. Signed fixtures must cover
+**Resolution evidence.** The implementation agent reports that Release
+`SettingsWidget.Tests` passes 41/41; this review did not rerun it or inspect a
+retained result. Source inspection shows focused
+cases prove Community packages are never rendered as verified, details and
+permission pages show the exact sealed digest, activation says unsigned and
+does not claim publisher identity, version rows distinguish digest prefixes,
+and grant confirmation states that consent is digest-bound. Remaining closure
+requires a bounded source/transferred-digest receipt plus capability deltas.
+Signed fixtures must cover
 valid, unknown, wrong-namespace, modified, expired, rotated, revoked, downgrade,
 and offline cases. An end-to-end release must demonstrate that a compromised or
 replacement package cannot inherit enablement, consent, configuration secrets,
 or update authority merely by reusing the manifest publisher and package ID.
+
+### EQ-013 — P1 — Per-worker containment does not bound aggregate resident cost
+
+**Status: Open; the single-worker bounds are strong, but the supervisor has no
+system-wide residency budget.**
+
+**Evidence.** `BridgeCatalog.Load` accepts up to 256 configured widgets and
+allows each manifest to request 16–256 MiB. `WidgetBridgeServer` owns a
+`ConcurrentDictionary<string, ClientRegistration>` and lazily creates one
+`WidgetProcessClient` with one independent memory-bounded Job for each accessed
+widget. `RunningWorkerCount` reports the result but is not consulted by an
+admission policy. Under the documented default `keep-alive` residency, a
+launched Background process has no inferred eviction; there is no aggregate
+resident-count, committed-memory, or working-set ceiling and no Settings user
+override. The scaffold template and simple Clock sample both select
+`keep-alive`, while Spotify needs it to preserve its current in-flight OAuth
+implementation.
+
+The Jobs correctly limit each process tree, but the maximum catalog and
+per-worker ceilings compose to a theoretical 64 GiB policy envelope. That is
+not a claim that workers reserve or will consume 64 GiB; it demonstrates that
+the current limits do not express a useful product-wide bound. Current bridge
+tests assert only zero/one running-worker transitions. The retained performance
+baseline samples one selected Settings worker, and `performance.md` explicitly
+lists multi-widget cost, long-run memory, wakeups, GPU/game impact, and the
+per-widget performance UI as missing evidence.
+
+**Why it matters.** A user exploring community widgets can accumulate resident
+.NET processes during a gaming session even when every individual package
+obeys its manifest and Job limit. The resulting memory, scheduler, handle, and
+background-service cost grows with widgets used rather than widgets visible.
+Per-widget containment prevents one process tree from escaping its ceiling; it
+does not protect the game's system-wide resource headroom or make the product's
+“lightweight” promise true at ecosystem scale.
+
+**Underlying problem.** Semantic residency and resource admission are treated
+as the same decision. A manifest says whether its state may survive Background,
+but no host-owned supervisor decides how many such promises the machine can
+honor concurrently. Resource requests are validated individually, while
+measured usage, catalog scale, user preference, and temporary critical work do
+not meet in one ownership boundary.
+
+**Recommended direction.** Give the bridge/runtime supervisor an explicit,
+configurable aggregate resident-worker budget covering process count and
+accounted Job memory, with observable reasons for admission and refusal. Keep
+manifest residency semantics deterministic: never silently terminate a
+`keep-alive` worker because of an opaque heuristic. When capacity is
+unavailable, reclaim only explicitly unload-eligible least-recent workers, or
+refuse/defer a new launch and let Settings explain which resident widgets own
+the budget. Disabling, removal, crash exhaustion, and catalog replacement must
+release accounting exactly once.
+
+Make the least-cost authoring path explicit as well. Ordinary scaffolded
+widgets should use a bounded idle-unload policy unless they declare and explain
+a genuine Background continuity requirement. Settings should expose measured
+CPU, working/private memory, wakeups, crash count, and network activity plus a
+user-controlled residency override where safe. Spotify's long authorization
+flow should eventually use a bounded, visible critical-work lease or a broker-
+owned continuation rather than making the process permanently resident to
+protect one temporary operation.
+
+**Tradeoff.** Aggressive unloading increases cold-start latency, discards
+unpersisted in-memory state, and can break legitimate explicitly retained
+work. A hard global cap can also deny a foreground launch if every resident is
+pinned. That is preferable to hidden overcommit only when the UI makes the
+choice actionable. Cached snapshots, durable private state, bounded temporary
+leases, author-declared idle eligibility, and user pinning/overrides provide
+more predictable control than memory-pressure eviction.
+
+**Resolution evidence.** Deterministic supervisor tests should launch several
+workers concurrently and prove admission at the exact process/memory boundary,
+race-safe refusal, reclaim of only eligible workers, foreground protection,
+and exact release after unload/disable/remove/crash/catalog replacement. Tests
+must prove `keep-alive` is never silently evicted and that temporary leases
+expire on success, failure, cancellation, and bridge shutdown. Retained clean
+measurements should compare 1, 8, and a higher bounded number of mixed-policy
+widgets across launch, Background, reopen, and long churn, including aggregate
+private working set, CPU, wakeups, handles, threads, GPU/game-frame impact, and
+latency. The controller performance surface and user override require packaged
+visual and interaction evidence.
 
 ### EQ-002 — P1 — Responsive focus identity required an explicit contract
 
@@ -665,26 +767,26 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority | Clean packaged abuse/run evidence; honest unsigned review receipt; signed publisher/update/revocation model |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current Settings worktree honestly labels unsigned content | Clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
 | SDK lifecycle/coordination | Latest-wins currency now covers YT Music success and failure commits | Broader advanced-widget adoption and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest migration removes manual lifetime machinery and rejects stale failure commits | Real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Capable but still highly complex | Credential-free full-state visuals, live auth/playback gates, structural migration |
 | CLI author workflow | Data inspection is non-executable; scenario execution fails closed; GitHub acquisition is pinned and bounded | Isolated scenario execution, persisted provenance, publisher signing, native/interactive preview, and automated clean CI |
-| Performance | Honest targets and one local baseline | Clean immutable run, GPU/ETW evidence, current-build regression gate |
+| Performance | Strong per-worker bounds, but no aggregate resident-worker envelope; one local single-worker baseline | Supervisor admission/reclamation policy, multi-widget/churn matrix, per-widget resource UI, clean immutable GPU/ETW regression gate |
 | Documentation | Extensive and now internally current, but copyable examples are not executable evidence | Compile-test canonical snippets and reduce ledger/status duplication |
 
 ## Recommended next three actions
 
-1. **Make package trust honest before public distribution.** Expose an unsigned
-   acquisition/digest receipt now, remove the implication that a manifest claim
-   is verified identity, and define the signed publisher/update/revocation path.
-2. **Add a bounded retained-results gate.** Turn the broad local verifier into
+1. **Finish package provenance before public distribution.** Retain the honest
+   unsigned/digest UI, add a bounded host-owned acquisition receipt and version
+   capability delta, then define the signed publisher/update/revocation path.
+2. **Bound aggregate worker residency.** Add supervisor-owned process/memory
+   admission and explicit eligible-worker reclamation, expose ownership to the
+   user, and measure mixed-policy 1/8/many-widget sessions and churn.
+3. **Add a bounded retained-results gate.** Turn the broad local verifier into
    reproducible Windows CI with per-step/overall timeouts and retained managed,
    native, documentation, and package evidence.
-3. **Reduce the `OverlayApp` ownership hotspot.** Extract one cohesive,
-   independently tested widget-session/focus state machine without duplicating
-   transitional state or introducing a generic event bus.
 
 The next review should first reassess these three items, then rotate into the
-advanced-widget ownership seams and measured runtime/resource budgets.
+`OverlayApp` ownership seam and advanced-widget composition.
