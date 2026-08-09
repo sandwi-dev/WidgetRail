@@ -19,6 +19,7 @@
 #include "WidgetLifecycle.h"
 #include "WidgetSurfaceFocus.h"
 #include "SliderInteraction.h"
+#include "TrayLayout.h"
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -2334,51 +2335,17 @@ private:
         const float width,
         const float height,
         const gba::OverlaySurfaceGeometry* surfaceGeometry) const {
-        if (state_.order().empty() || width <= 0.0F || height <= 0.0F) {
-            return std::nullopt;
-        }
-        constexpr float preferredTileSize = 64.0F;
-        constexpr float gap = 14.0F;
-        const float stripTop = surfaceGeometry
-            ? surfaceGeometry->trayY
-            : std::max(0.0F, height - 112.0F);
-        const float stripBottom = surfaceGeometry
-            ? surfaceGeometry->trayY + surfaceGeometry->trayHeight
-            : std::max(stripTop, height - 14.0F);
-        const float stripHeight = stripBottom - stripTop;
-        if (stripHeight <= 0.0F) return std::nullopt;
-        const float verticalPadding = std::min(
-            16.0F, std::max(0.0F, (stripHeight - preferredTileSize) * 0.5F));
-        const float horizontalPadding = std::min(14.0F, width * 0.15F);
-        const float tileSize = std::max(
-            1.0F, std::min({preferredTileSize,
-                            width - horizontalPadding * 2.0F,
-                            stripHeight - verticalPadding * 2.0F}));
-        const float stripPadding = std::min(
-            14.0F, std::max(0.0F, (width - tileSize) * 0.5F));
-        const auto maximumVisible = static_cast<std::size_t>(std::max(
-            1.0F, std::floor((width - horizontalPadding * 2.0F + gap) /
-                             (preferredTileSize + gap))));
-        const std::size_t visibleCount = std::min(state_.order().size(), maximumVisible);
-        const std::size_t half = visibleCount / 2;
-        const std::size_t maximumFirst = state_.order().size() - visibleCount;
-        const std::size_t firstSlot = std::min(
-            state_.selectedSlot() > half ? state_.selectedSlot() - half : 0U,
-            maximumFirst);
-        const float stripWidth = tileSize * static_cast<float>(visibleCount) +
-                                 gap * static_cast<float>(visibleCount - 1) +
-                                 stripPadding * 2.0F;
-        const float stripLeft = (width - stripWidth) * 0.5F;
-        const float tileTop = stripTop + verticalPadding;
-        for (std::size_t visibleIndex = 0; visibleIndex < visibleCount; ++visibleIndex) {
-            const float tileLeft = stripLeft + stripPadding +
-                static_cast<float>(visibleIndex) * (tileSize + gap);
-            if (x >= tileLeft && x < tileLeft + tileSize &&
-                y >= tileTop && y < tileTop + tileSize) {
-                return firstSlot + visibleIndex;
-            }
-        }
-        return std::nullopt;
+        const auto layout = gba::shell::ComputeTrayLayout(
+            width, height, state_.order().size(), state_.selectedSlot(),
+            surfaceGeometry
+                ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
+                    surfaceGeometry->trayY,
+                    surfaceGeometry->trayY + surfaceGeometry->trayHeight,
+                }}
+                : std::nullopt);
+        if (!layout) return std::nullopt;
+        const auto* hit = gba::shell::HitTestTray(*layout, x, y);
+        return hit ? std::optional<std::size_t>{hit->slot} : std::nullopt;
     }
 
     void HandlePointerActivation(const float clientX, const float clientY) {
@@ -3724,49 +3691,29 @@ private:
         const float width,
         const float height,
         const gba::OverlaySurfaceGeometry* surfaceGeometry = nullptr) {
-        if (state_.order().empty() || width <= 0.0F || height <= 0.0F) return;
-        constexpr float preferredTileSize = 64.0F;
-        constexpr float gap = 14.0F;
-        const float stripTop = surfaceGeometry
-            ? surfaceGeometry->trayY
-            : std::max(0.0F, height - 112.0F);
-        const float stripBottom = surfaceGeometry
-            ? surfaceGeometry->trayY + surfaceGeometry->trayHeight
-            : std::max(stripTop, height - 14.0F);
-        const float stripHeight = stripBottom - stripTop;
-        if (stripHeight <= 0.0F) return;
-        const float verticalPadding = std::min(
-            16.0F, std::max(0.0F, (stripHeight - preferredTileSize) * 0.5F));
-        const float horizontalPadding = std::min(14.0F, width * 0.15F);
-        const float tileSize = std::max(
-            1.0F, std::min({preferredTileSize,
-                            width - horizontalPadding * 2.0F,
-                            stripHeight - verticalPadding * 2.0F}));
-        const float stripPadding = std::min(
-            14.0F, std::max(0.0F, (width - tileSize) * 0.5F));
-        const auto maximumVisible = static_cast<std::size_t>(std::max(
-            1.0F, std::floor((width - horizontalPadding * 2.0F + gap) /
-                             (preferredTileSize + gap))));
-        const std::size_t visibleCount = std::min(state_.order().size(), maximumVisible);
-        const std::size_t half = visibleCount / 2;
-        const std::size_t maximumFirst = state_.order().size() - visibleCount;
-        const std::size_t firstSlot = std::min(
-            state_.selectedSlot() > half ? state_.selectedSlot() - half : 0U,
-            maximumFirst);
-        const float stripWidth = tileSize * static_cast<float>(visibleCount) +
-                                 gap * static_cast<float>(visibleCount - 1) +
-                                 stripPadding * 2.0F;
-        const float stripLeft = (width - stripWidth) / 2.0F;
+        const auto layout = gba::shell::ComputeTrayLayout(
+            width, height, state_.order().size(), state_.selectedSlot(),
+            surfaceGeometry
+                ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
+                    surfaceGeometry->trayY,
+                    surfaceGeometry->trayY + surfaceGeometry->trayHeight,
+                }}
+                : std::nullopt);
+        if (!layout) return;
+        const auto& stripBounds = layout->stripBounds;
         const D2D1_ROUNDED_RECT strip{
-            D2D1::RectF(stripLeft, stripTop, stripLeft + stripWidth, stripBottom),
+            D2D1::RectF(
+                stripBounds.x, stripBounds.y,
+                stripBounds.x + stripBounds.width,
+                stripBounds.y + stripBounds.height),
             trayCornerRadius_, trayCornerRadius_};
         renderTarget_->FillRoundedRectangle(strip, backgroundBrush_.Get());
 
-        for (std::size_t visibleIndex = 0; visibleIndex < visibleCount; ++visibleIndex) {
-            const std::size_t slot = firstSlot + visibleIndex;
-            const float x = stripLeft + stripPadding +
-                            static_cast<float>(visibleIndex) * (tileSize + gap);
-            const float top = stripTop + verticalPadding;
+        for (const auto& tileLayout : layout->tiles) {
+            const std::size_t slot = tileLayout.slot;
+            const float x = tileLayout.bounds.x;
+            const float top = tileLayout.bounds.y;
+            const float tileSize = tileLayout.bounds.width;
             const D2D1_ROUNDED_RECT tile{
                 D2D1::RectF(x, top, x + tileSize, top + tileSize),
                 trayItemCornerRadius_, trayItemCornerRadius_};

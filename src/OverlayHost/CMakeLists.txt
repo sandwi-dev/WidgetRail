@@ -37,6 +37,7 @@ add_executable(OverlayHost WIN32
     WidgetActionFeedback.cpp
     AccessibilityTree.cpp
     AccessibilityProvider.cpp
+    TrayLayout.cpp
 )
 
 target_compile_features(OverlayHost PRIVATE cxx_std_20)
@@ -200,6 +201,12 @@ if(GBA_BUILD_TESTS)
     target_compile_definitions(AccessibilityProviderTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(AccessibilityProviderTests PRIVATE user32 ole32 oleaut32 uiautomationcore)
     add_test(NAME AccessibilityProviderTests COMMAND AccessibilityProviderTests)
+
+    add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
+    target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)
+    target_compile_options(TrayLayoutTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(TrayLayoutTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME TrayLayoutTests COMMAND TrayLayoutTests)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp

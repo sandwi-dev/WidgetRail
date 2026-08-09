@@ -65,6 +65,14 @@ final-geometry projection. Dashboard tile fragments, dynamic UIA events, legacy 
 and packaged Narrator evidence remain open, so full screen-reader support is
 not yet claimed.
 
+The dashboard and open-widget tray now share one pure `ComputeTrayLayout`
+result across painting and pointer hit-testing. The bounded visible window,
+selected-slot centering, embedded tray band, below-preferred fallback, and edge
+hit policy have focused native coverage. This removes the prior duplicated
+geometry formulas and gives the pending host UIA fragment tree the same final
+tile rectangles as pixels and pointer input; dashboard semantics themselves
+remain open.
+
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
 overlay. Both windows are topmost only while visible. Ordinary controller reads
