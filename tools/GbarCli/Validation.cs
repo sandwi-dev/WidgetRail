@@ -42,7 +42,7 @@ internal static class ValidateCommand
         foreach (var file in files)
         {
             if (Path.GetExtension(file).Equals(".gbss", StringComparison.OrdinalIgnoreCase))
-                diagnostics.AddRange(GbssValidator.Validate(file, await File.ReadAllTextAsync(file)));
+                diagnostics.AddRange(GbssValidator.ValidateFile(file));
             else if (Path.GetFileName(file).Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
                 diagnostics.AddRange(await ValidateManifestAsync(file));
             else
@@ -83,6 +83,16 @@ internal static class ValidateCommand
 /// <summary>Compatibility adapter for callers of the original CLI-local validator.</summary>
 public static class GbssValidator
 {
+    public static IReadOnlyList<ToolDiagnostic> ValidateFile(string file)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(file);
+        var fullFile = Path.GetFullPath(file);
+        var root = Path.GetDirectoryName(fullFile)!;
+        var entry = Path.GetFileName(fullFile);
+        return Diagnostics(root, GbssPackageLoader.Load(
+            entry, new GbssFileSourceProvider(root)));
+    }
+
     public static IReadOnlyList<ToolDiagnostic> Validate(string file, string source)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(file);
@@ -91,6 +101,13 @@ public static class GbssValidator
         var root = Path.GetDirectoryName(fullFile)!;
         var entry = Path.GetFileName(fullFile);
         var package = GbssPackageLoader.Load(entry, new EntrySourceProvider(root, entry, source));
+        return Diagnostics(root, package);
+    }
+
+    private static IReadOnlyList<ToolDiagnostic> Diagnostics(
+        string root,
+        GbssPackageResult package)
+    {
         var compiled = GbssThemeCompiler.Compile(package);
         return compiled.Diagnostics
             .Select(item => new ToolDiagnostic(
@@ -107,14 +124,9 @@ public static class GbssValidator
     {
         private readonly GbssFileSourceProvider _files = new(root);
 
-        public bool TryRead(string packageRelativePath, out string content)
-        {
-            if (string.Equals(packageRelativePath, entry, StringComparison.Ordinal))
-            {
-                content = source;
-                return true;
-            }
-            return _files.TryRead(packageRelativePath, out content);
-        }
+        public GbssSourceReadResult Read(string packageRelativePath) =>
+            string.Equals(packageRelativePath, entry, StringComparison.Ordinal)
+                ? GbssSourceReadResult.FromSource(source)
+                : _files.Read(packageRelativePath);
     }
 }

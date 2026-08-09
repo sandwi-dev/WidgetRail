@@ -159,6 +159,10 @@ static void UnsafeImports()
 
 static void VerifiedFileSources()
 {
+    Assert.Equal(0, typeof(GbssSourceReadResult).GetConstructors().Length);
+    _ = Assert.Throws<ArgumentOutOfRangeException>(() =>
+        GbssSourceReadResult.Failure(GbssSourceReadStatus.Success));
+
     using var temporary = new TemporaryDirectory();
     var styles = Path.Combine(temporary.Path, "styles");
     Directory.CreateDirectory(styles);
@@ -173,9 +177,11 @@ static void VerifiedFileSources()
         {
             ["styles/default.gbss"] = digest,
         });
-    Assert.True(verified.TryRead("styles/default.gbss", out var source),
+    var verifiedRead = verified.Read("styles/default.gbss");
+    Assert.Equal(GbssSourceReadStatus.Success, verifiedRead.Status);
+    Assert.True(verifiedRead.Source is not null,
         "Exact verified GBSS was rejected.");
-    Assert.Equal("button { color: #123456; }", source);
+    Assert.Equal("button { color: #123456; }", verifiedRead.Source!);
 
     var mismatched = new GbssFileSourceProvider(
         temporary.Path,
@@ -183,8 +189,9 @@ static void VerifiedFileSources()
         {
             ["styles/default.gbss"] = new string('0', 64),
         });
-    Assert.True(!mismatched.TryRead("styles/default.gbss", out _),
-        "Modified GBSS was accepted under another digest.");
+    Assert.Equal(
+        GbssSourceReadStatus.DigestMismatch,
+        mismatched.Read("styles/default.gbss").Status);
 
     var importedBytes = Encoding.UTF8.GetBytes("button { opacity: 0.5; }");
     var entryWithImportBytes = Encoding.UTF8.GetBytes("@import \"tokens.gbss\";");
@@ -213,23 +220,61 @@ static void VerifiedFileSources()
     var lateImport = GbssPackageLoader.Load(
         "styles/default.gbss",
         new GbssFileSourceProvider(temporary.Path, inventory));
-    Assert.HasCode(lateImport.Diagnostics, "missing_import");
+    Assert.HasCode(lateImport.Diagnostics, "digest_mismatch");
+
+    var bomBytes = new byte[] { 0xef, 0xbb, 0xbf }
+        .Concat(Encoding.UTF8.GetBytes("button { color: #abcdef; }")).ToArray();
+    File.WriteAllBytes(path, bomBytes);
+    Assert.Equal(
+        "button { color: #abcdef; }",
+        new GbssFileSourceProvider(temporary.Path).Read("styles/default.gbss").Source!);
 
     File.WriteAllBytes(path, [0xff]);
-    Assert.True(!new GbssFileSourceProvider(temporary.Path).TryRead("styles/default.gbss", out _),
-        "Invalid UTF-8 GBSS was decoded with replacement characters.");
+    Assert.Equal(
+        GbssSourceReadStatus.InvalidEncoding,
+        new GbssFileSourceProvider(temporary.Path).Read("styles/default.gbss").Status);
 
     File.WriteAllBytes(path, new byte[(int)GbssLimits.MaximumSourceBytes + 1]);
-    Assert.True(!new GbssFileSourceProvider(temporary.Path).TryRead("styles/default.gbss", out _),
-        "A ceiling-plus-one GBSS source was consumed.");
+    Assert.Equal(
+        GbssSourceReadStatus.TooLarge,
+        new GbssFileSourceProvider(temporary.Path).Read("styles/default.gbss").Status);
 
     using var misleading = new MisreportedLengthStream(
         new byte[(int)GbssLimits.MaximumSourceBytes + 1], reportedLength: 1);
-    _ = Assert.Throws<InvalidDataException>(() => GbssFileSourceProvider.ReadBounded(misleading));
+    Assert.Equal(
+        GbssSourceReadStatus.TooLarge,
+        Assert.Throws<GbssSourceReadException>(() =>
+            GbssFileSourceProvider.ReadBounded(misleading)).Status);
 
     using var changing = new MisreportedLengthStream(
         [0x20], reportedLength: 1, lengthAfterRead: 2);
-    _ = Assert.Throws<InvalidDataException>(() => GbssFileSourceProvider.ReadBounded(changing));
+    Assert.Equal(
+        GbssSourceReadStatus.ChangedDuringRead,
+        Assert.Throws<GbssSourceReadException>(() =>
+            GbssFileSourceProvider.ReadBounded(changing)).Status);
+
+    foreach (var (status, code) in new[]
+    {
+        (GbssSourceReadStatus.Missing, "missing_import"),
+        (GbssSourceReadStatus.UnsafePath, "unsafe_import"),
+        (GbssSourceReadStatus.TooLarge, "source_too_large"),
+        (GbssSourceReadStatus.ChangedDuringRead, "source_changed"),
+        (GbssSourceReadStatus.InvalidEncoding, "invalid_encoding"),
+        (GbssSourceReadStatus.DigestMismatch, "digest_mismatch"),
+        (GbssSourceReadStatus.IoUnavailable, "source_unavailable"),
+    })
+        Assert.HasCode(
+            GbssPackageLoader.Load(
+                "styles/default.gbss", new ResultProvider(GbssSourceReadResult.Failure(status)))
+                .Diagnostics,
+            code);
+
+    var throwing = GbssPackageLoader.Load(
+        "styles/default.gbss", new ThrowingProvider());
+    Assert.HasCode(throwing.Diagnostics, "source_unavailable");
+    Assert.True(
+        throwing.Diagnostics.All(item => !item.Message.Contains("provider-secret", StringComparison.Ordinal)),
+        "A provider exception escaped into a GBSS diagnostic.");
 }
 
 static void Variables()
@@ -622,7 +667,21 @@ static string Describe(IEnumerable<GbssDiagnostic> diagnostics) => string.Join(E
 
 file sealed class DictionaryProvider(IReadOnlyDictionary<string, string> files) : IGbssSourceProvider
 {
-    public bool TryRead(string packageRelativePath, out string source) => files.TryGetValue(packageRelativePath, out source!);
+    public GbssSourceReadResult Read(string packageRelativePath) =>
+        files.TryGetValue(packageRelativePath, out var source)
+            ? GbssSourceReadResult.FromSource(source)
+            : GbssSourceReadResult.Failure(GbssSourceReadStatus.Missing);
+}
+
+file sealed class ResultProvider(GbssSourceReadResult result) : IGbssSourceProvider
+{
+    public GbssSourceReadResult Read(string packageRelativePath) => result;
+}
+
+file sealed class ThrowingProvider : IGbssSourceProvider
+{
+    public GbssSourceReadResult Read(string packageRelativePath) =>
+        throw new InvalidOperationException("provider-secret");
 }
 
 file sealed class TemporaryDirectory : IDisposable

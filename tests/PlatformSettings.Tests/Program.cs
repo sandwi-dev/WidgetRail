@@ -437,7 +437,7 @@ static Task ThemeSourceSafety()
     }
     var loaded = Catalog(temp.Path).Load("dev.example.link", "1.0.0");
     Assert.True(!loaded.IsValid, "Reparse-backed theme source unexpectedly loaded.");
-    Assert.HasCode(loaded.Diagnostics, "missing_import");
+    Assert.HasCode(loaded.Diagnostics, "unsafe_import");
     return Task.CompletedTask;
 }
 

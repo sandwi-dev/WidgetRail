@@ -382,16 +382,10 @@ public sealed class ThemeCatalog
 
     private sealed class EmbeddedThemeSourceProvider(string path, string source) : IGbssSourceProvider
     {
-        public bool TryRead(string packageRelativePath, out string value)
-        {
-            if (string.Equals(packageRelativePath, path, StringComparison.Ordinal))
-            {
-                value = source;
-                return true;
-            }
-            value = string.Empty;
-            return false;
-        }
+        public GbssSourceReadResult Read(string packageRelativePath) =>
+            string.Equals(packageRelativePath, path, StringComparison.Ordinal)
+                ? GbssSourceReadResult.FromSource(source)
+                : GbssSourceReadResult.Failure(GbssSourceReadStatus.Missing);
     }
 
     private static ThemeLoadResult Invalid(string id, string code, string message) =>

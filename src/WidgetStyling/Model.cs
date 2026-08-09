@@ -15,6 +15,44 @@ public static class GbssLimits
     public const int MaximumExpandedValueCharacters = 16_384;
 }
 
+public enum GbssSourceReadStatus
+{
+    Success,
+    Missing,
+    UnsafePath,
+    TooLarge,
+    ChangedDuringRead,
+    InvalidEncoding,
+    DigestMismatch,
+    IoUnavailable,
+}
+
+public sealed record GbssSourceReadResult
+{
+    private GbssSourceReadResult(GbssSourceReadStatus status, string? source = null)
+    {
+        Status = status;
+        Source = source;
+    }
+
+    public GbssSourceReadStatus Status { get; }
+
+    public string? Source { get; }
+
+    public static GbssSourceReadResult FromSource(string source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return new(GbssSourceReadStatus.Success, source);
+    }
+
+    public static GbssSourceReadResult Failure(GbssSourceReadStatus status)
+    {
+        if (status == GbssSourceReadStatus.Success || !Enum.IsDefined(status))
+            throw new ArgumentOutOfRangeException(nameof(status));
+        return new(status);
+    }
+}
+
 public enum GbssDiagnosticSeverity
 {
     Warning,

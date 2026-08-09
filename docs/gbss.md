@@ -103,6 +103,12 @@ GBSS never evaluates browser content. It rejects URLs and URI schemes, `expressi
 
 Diagnostics provide source, one-based line/column, severity, stable code, and a
 readable message. The compiler publishes a `GbssTheme` only for a valid result.
+`IGbssSourceProvider.Read` returns a closed `GbssSourceReadResult`, not a
+boolean or raw exception. The loader maps missing, unsafe, oversized, changing,
+invalid UTF-8, digest-mismatched, and unavailable sources to the stable
+`missing_import`, `unsafe_import`, `source_too_large`, `source_changed`,
+`invalid_encoding`, `digest_mismatch`, and `source_unavailable` codes. Messages
+never include provider exception text or an absolute provider path.
 The managed `PlatformSettings` foundation adds explicit platform, widget, and
 user layers; higher layer priority wins before specificity. Its explicit reload
 manager atomically publishes only a complete valid snapshot and retains the

@@ -137,7 +137,8 @@ Up/Down navigation.
   optional broker channel, attaches typed host services before creation, then
   serves the standard isolated snapshot/action/lifecycle protocol.
 - `WidgetStyling`: single-handle consumed-byte bounds, strict UTF-8 GBSS
-  decoding, optional exact per-file SHA-256 inventories, safe package-relative
+  decoding, optional exact per-file SHA-256 inventories, closed typed source-
+  failure results with stable sanitized diagnostics, safe package-relative
   imports, variables, explicit trusted cascade layers, typed allowlisted values,
   independent top/right/bottom/left border width/color overrides, and
   diagnostics. The built-in theme provides bounded `.gbar-code-text` wrapping

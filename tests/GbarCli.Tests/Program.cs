@@ -483,6 +483,11 @@ static async Task ValidateRejectsUnsafeGbss()
     Assert.Equal(1, result.Code);
     Assert.Contains("unknown_property", result.Error);
     Assert.Contains("unsafe_value", result.Error);
+
+    await File.WriteAllBytesAsync(path, [0xff]);
+    var invalidEncoding = await RunCli("validate", path);
+    Assert.Equal(1, invalidEncoding.Code);
+    Assert.Contains("invalid_encoding", invalidEncoding.Error);
 }
 
 static async Task ValidateRejectsManifest()
