@@ -654,15 +654,17 @@ last-good retention/restart, complete bounded source/package watching, cleanup
 failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
-packaging/inspection, pinned-GitHub installation, catalog limits, immutable
-versions, and adversarial package cases. Catalog passes 28/28, including
+packaging/inspection, pinned-GitHub installation, per-package and aggregate
+catalog limits, immutable versions, and adversarial package cases. Catalog
+passes 29/29, including
 schema-1 state migration, exact active-version pins and disabled repair,
 linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 content-tree sealing/tamper rejection, consumed-byte manifest/integrity limits,
 misreported and changing-length rejection, verified manifest-byte capture,
-plus content-bound unsigned authority.
+prospective ID/version/file/byte refusal, bounded discovery time, unexpected-
+entry rejection, plus content-bound unsigned authority.
 Bridge
 passes 40/40, including aggregate count/declared-memory admission, exact crash/
 timeout/idle-unload release, Settings control-plane access, race-safe refusal,

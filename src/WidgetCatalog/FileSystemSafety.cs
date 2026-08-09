@@ -35,16 +35,27 @@ internal static class FileSystemSafety
                normalizedCandidate.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    public static void EnsureTreeContainsNoReparsePoints(string root, string directory)
+    public static void EnsureTreeContainsNoReparsePoints(
+        string root,
+        string directory,
+        int maximumEntries = int.MaxValue)
     {
+        if (maximumEntries < 1)
+            throw new ArgumentOutOfRangeException(nameof(maximumEntries));
         EnsureNoReparsePoints(root, directory);
         var pending = new Stack<string>();
         pending.Push(directory);
+        var entryCount = 0;
         while (pending.Count != 0)
         {
             var current = pending.Pop();
             foreach (var entry in Directory.EnumerateFileSystemEntries(current))
             {
+                if (entryCount == maximumEntries)
+                    throw new WidgetPackageException(
+                        "integrity_limit",
+                        "Installed widget tree exceeds its filesystem-entry limit.");
+                checked { ++entryCount; }
                 var attributes = File.GetAttributes(entry);
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                     throw new WidgetPackageException("reparse_point", $"Reparse points are not allowed in catalog trees: {entry}");

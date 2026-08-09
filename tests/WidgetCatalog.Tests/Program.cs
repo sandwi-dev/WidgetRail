@@ -23,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Case-colliding directory prefixes are rejected", DirectoryCaseCollisionIsRejected),
     ("Unix symlink entries are rejected", SymlinkIsRejected),
     ("Entry count and expanded size limits are enforced", LimitsAreEnforced),
+    ("Aggregate installed catalog limits reject work before publication", AggregateCatalogLimits),
     ("Publisher and package identity are enforced", IdentityIsEnforced),
     ("Missing entrypoint assemblies are rejected", MissingEntrypointIsRejected),
     ("Tampered installed directory identity is rejected", TamperedInstallIsRejected),
@@ -420,6 +421,125 @@ static async Task LimitsAreEnforced()
         (await Assert.ThrowsAsync<WidgetPackageException>(() => sizeCatalog.CreateInstaller().ValidateAsync(sizePackage))).Code);
 }
 
+static async Task AggregateCatalogLimits()
+{
+    using var temp = new TemporaryDirectory();
+
+    _ = Assert.Throws<ArgumentOutOfRangeException>(() => new WidgetCatalog(
+        Path.Combine(temp.Path, "invalid-options"),
+        AggregateOptions(maximumArchiveEntries: 2, maximumInstalledEntries: 2)));
+
+    var directRoot = Path.Combine(temp.Path, "direct-id-catalog");
+    Directory.CreateDirectory(Path.Combine(directRoot, "packages", "dev.test.direct-a"));
+    Directory.CreateDirectory(Path.Combine(directRoot, "packages", "dev.test.direct-b"));
+    var directIdCatalog = new WidgetCatalog(
+        directRoot, AggregateOptions(maximumIds: 1));
+    Assert.Equal(
+        "installed_widget_id_limit",
+        (await Assert.ThrowsAsync<WidgetPackageException>(() =>
+            directIdCatalog.DiscoverAsync())).Code);
+
+    var idRoot = Path.Combine(temp.Path, "id-catalog");
+    var idCatalog = new WidgetCatalog(idRoot, AggregateOptions(maximumIds: 1));
+    await idCatalog.InstallAsync(CreatePackage(temp.Path, "dev.test.id-a", "dev.test", "1.0.0"));
+    var idLimit = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        idCatalog.InstallAsync(CreatePackage(temp.Path, "dev.test.id-b", "dev.test", "1.0.0")));
+    Assert.Equal("installed_widget_id_limit", idLimit.Code);
+    Assert.True(!Directory.Exists(Path.Combine(idRoot, "packages", "dev.test.id-b")),
+        "An ID-limit rejection published the incoming package.");
+
+    var perWidgetRoot = Path.Combine(temp.Path, "per-widget-catalog");
+    var perWidget = new WidgetCatalog(
+        perWidgetRoot, AggregateOptions(maximumVersionsPerWidget: 1));
+    await perWidget.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.versioned", "dev.test", "1.0.0"));
+    var perWidgetLimit = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        perWidget.InstallAsync(CreatePackage(
+            temp.Path, "dev.test.versioned", "dev.test", "2.0.0")));
+    Assert.Equal("installed_widget_version_limit", perWidgetLimit.Code);
+    Assert.True(!Directory.Exists(Path.Combine(
+            perWidgetRoot, "packages", "dev.test.versioned", "2.0.0")),
+        "A per-widget version-limit rejection published the incoming package.");
+
+    var versionRoot = Path.Combine(temp.Path, "version-catalog");
+    var versionCatalog = new WidgetCatalog(
+        versionRoot, AggregateOptions(maximumVersions: 1));
+    await versionCatalog.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.total-a", "dev.test", "1.0.0"));
+    var versionLimit = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        versionCatalog.InstallAsync(CreatePackage(
+            temp.Path, "dev.test.total-b", "dev.test", "1.0.0")));
+    Assert.Equal("installed_version_limit", versionLimit.Code);
+
+    var entryRoot = Path.Combine(temp.Path, "entry-catalog");
+    var entryCatalog = new WidgetCatalog(entryRoot, AggregateOptions(
+        maximumArchiveEntries: 2,
+        maximumInstalledEntries: 4));
+    await entryCatalog.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.entry-a", "dev.test", "1.0.0"));
+    var entryLimit = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        entryCatalog.InstallAsync(CreatePackage(
+            temp.Path, "dev.test.entry-b", "dev.test", "1.0.0")));
+    Assert.Equal("installed_entry_limit", entryLimit.Code);
+    Directory.CreateDirectory(Path.Combine(
+        entryRoot, "packages", "dev.test.entry-a", "1.0.0", "unexpected-directory"));
+    Assert.Equal(
+        "integrity_limit",
+        (await Assert.ThrowsAsync<WidgetPackageException>(() =>
+            entryCatalog.DiscoverAsync())).Code);
+
+    var byteA = CreatePackage(temp.Path, "dev.test.byte-a", "dev.test", "1.0.0");
+    var byteB = CreatePackage(temp.Path, "dev.test.byte-b", "dev.test", "1.0.0");
+    var inspection = await new WidgetCatalog(Path.Combine(temp.Path, "inspection"))
+        .CreateInstaller().ValidateAsync(byteA);
+    var byteRoot = Path.Combine(temp.Path, "byte-catalog");
+    var byteCatalog = new WidgetCatalog(byteRoot, AggregateOptions(
+        maximumEntryBytes: inspection.TotalUncompressedBytes,
+        maximumTotalBytes: inspection.TotalUncompressedBytes,
+        maximumInstalledBytes: inspection.TotalUncompressedBytes +
+                               InstalledPackageIntegrity.MaximumMetadataBytes));
+    await byteCatalog.InstallAsync(byteA);
+    var byteLimit = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        byteCatalog.InstallAsync(byteB));
+    Assert.Equal("installed_byte_limit", byteLimit.Code);
+
+    var unexpected = Path.Combine(versionRoot, "packages", "unexpected.txt");
+    await File.WriteAllTextAsync(unexpected, "not a package directory");
+    Assert.Equal(
+        "invalid_catalog_entry",
+        (await Assert.ThrowsAsync<WidgetPackageException>(() => versionCatalog.DiscoverAsync())).Code);
+
+    var timedCatalog = new WidgetCatalog(
+        perWidgetRoot,
+        AggregateOptions(maximumDiscoveryDuration: TimeSpan.FromSeconds(1)),
+        new AdvancingTimeProvider(TimeSpan.FromSeconds(2)));
+    Assert.Equal(
+        "installed_discovery_time_limit",
+        (await Assert.ThrowsAsync<WidgetPackageException>(() => timedCatalog.DiscoverAsync())).Code);
+}
+
+static WidgetCatalogOptions AggregateOptions(
+    int maximumIds = 8,
+    int maximumVersionsPerWidget = 8,
+    int maximumVersions = 16,
+    int maximumArchiveEntries = 8,
+    int maximumInstalledEntries = 64,
+    long maximumEntryBytes = 4 * 1024,
+    long maximumTotalBytes = 8 * 1024,
+    long maximumInstalledBytes = 64 * 1024,
+    TimeSpan? maximumDiscoveryDuration = null) => new()
+{
+    MaximumArchiveEntries = maximumArchiveEntries,
+    MaximumEntryBytes = maximumEntryBytes,
+    MaximumTotalBytes = maximumTotalBytes,
+    MaximumInstalledWidgetIds = maximumIds,
+    MaximumVersionsPerWidget = maximumVersionsPerWidget,
+    MaximumInstalledVersions = maximumVersions,
+    MaximumInstalledEntries = maximumInstalledEntries,
+    MaximumInstalledBytes = maximumInstalledBytes,
+    MaximumDiscoveryDuration = maximumDiscoveryDuration ?? TimeSpan.FromSeconds(30),
+};
+
 static async Task IdentityIsEnforced()
 {
     using var temp = new TemporaryDirectory();
@@ -693,6 +813,16 @@ file sealed class TemporaryDirectory : IDisposable
     {
         if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
     }
+}
+
+file sealed class AdvancingTimeProvider(TimeSpan step) : TimeProvider
+{
+    private long _timestamp;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    public override long GetTimestamp() =>
+        Interlocked.Add(ref _timestamp, step.Ticks);
 }
 
 file sealed class MisreportedLengthStream(

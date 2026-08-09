@@ -8,6 +8,12 @@ public sealed record WidgetCatalogOptions
     public long MaximumEntryBytes { get; init; } = 16 * 1024 * 1024;
     public long MaximumTotalBytes { get; init; } = 64 * 1024 * 1024;
     public int MaximumPathLength { get; init; } = 240;
+    public int MaximumInstalledWidgetIds { get; init; } = 256;
+    public int MaximumVersionsPerWidget { get; init; } = 8;
+    public int MaximumInstalledVersions { get; init; } = 512;
+    public int MaximumInstalledEntries { get; init; } = 32_768;
+    public long MaximumInstalledBytes { get; init; } = 2L * 1024 * 1024 * 1024;
+    public TimeSpan MaximumDiscoveryDuration { get; init; } = TimeSpan.FromSeconds(30);
 
     internal void Validate()
     {
@@ -19,6 +25,21 @@ public sealed record WidgetCatalogOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumTotalBytes));
         if (MaximumPathLength is < 32 or > 1_024)
             throw new ArgumentOutOfRangeException(nameof(MaximumPathLength));
+        if (MaximumInstalledWidgetIds is < 1 or > 10_000)
+            throw new ArgumentOutOfRangeException(nameof(MaximumInstalledWidgetIds));
+        if (MaximumVersionsPerWidget is < 1 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(MaximumVersionsPerWidget));
+        if (MaximumInstalledVersions is < 1 or > 10_000)
+            throw new ArgumentOutOfRangeException(nameof(MaximumInstalledVersions));
+        if (MaximumInstalledEntries < checked(MaximumArchiveEntries + 1) ||
+            MaximumInstalledEntries > 1_000_000)
+            throw new ArgumentOutOfRangeException(nameof(MaximumInstalledEntries));
+        if (MaximumInstalledBytes < MaximumTotalBytes ||
+            MaximumInstalledBytes > 256L * 1024 * 1024 * 1024)
+            throw new ArgumentOutOfRangeException(nameof(MaximumInstalledBytes));
+        if (MaximumDiscoveryDuration < TimeSpan.FromSeconds(1) ||
+            MaximumDiscoveryDuration > TimeSpan.FromMinutes(5))
+            throw new ArgumentOutOfRangeException(nameof(MaximumDiscoveryDuration));
     }
 }
 
@@ -31,6 +52,8 @@ public sealed record InstalledWidgetVersion(
 {
     internal IReadOnlyDictionary<string, string> VerifiedGbssDigests { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
+    internal int VerifiedEntryCount { get; init; }
+    internal long VerifiedTotalBytes { get; init; }
 }
 
 public sealed record CatalogWidget(

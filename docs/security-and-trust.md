@@ -142,6 +142,16 @@ planned. A structurally valid package is not necessarily trustworthy.
   inventory produced with the sealed tree digest; modified or late-added style
   files cannot compile under that authority.
   Reload/list does not launch a worker.
+- Complete installed-catalog discovery is host-bounded by default to 256 IDs,
+  eight versions per ID, 512 versions total, 32,768 content/metadata file
+  entries, 2 GiB of content plus a 4 KiB metadata reservation per version, and
+  a 30-second elapsed-work budget checked between bounded package operations.
+  Incoming installs are checked prospectively before publication;
+  unexpected ID/version-layer entries and limit excess fail closed. Manifests
+  cannot raise these ceilings. This bounds verification work but does not yet
+  provide the Settings cleanup/remediation UX or maximum-catalog performance
+  evidence. Recursive tree inspection and per-version filename collection also
+  stop at their ceilings before sorting or hashing.
 - The generic worker host rejects entrypoint/dependency path escape and reparse
   points, requires a public concrete SDK `Widget` type with a usable public
   constructor, and returns path-free errors for rejected assembly/type cases.

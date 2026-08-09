@@ -262,6 +262,23 @@ state or package integrity publishes a trusted-only revision, removes Community
 registrations, and retires their workers; unsupported styles/capabilities on an
 individual package fail soft with bounded diagnostics.
 
+The default host policy bounds the complete installed catalog, not only each
+archive: 256 widget IDs, eight versions per ID, 512 versions total, 32,768
+content-file/integrity-metadata entries, 2 GiB of content plus a conservative
+4 KiB integrity-metadata reservation per version, and a 30-second elapsed-work
+budget checked between bounded package operations. Cancellation is checked at
+the same boundaries. Installation
+reserves the incoming package against those same ceilings before publication;
+a refusal removes staging and cannot leave the new version discoverable.
+Unexpected files at the ID/version directory layers fail discovery closed.
+These are supervisor policy defaults, not manifest-controlled resource
+requests. Disable and uninstall unused versions/IDs before retrying a refused
+install; a Settings remediation flow and measured maximum-catalog baseline
+remain product work.
+Recursive reparse inspection stops at the catalog entry ceiling, and each
+version's filename collector stops at its archive limit plus one before sorting
+or hashing, so a tampered tree cannot force an unbounded preflight allocation.
+
 Installed manifest and host-owned integrity metadata are each read from one
 restrictively shared handle with a consumed-byte ceiling. Content-tree hashing
 uses one captured length per file and rejects early EOF, extra bytes, or a

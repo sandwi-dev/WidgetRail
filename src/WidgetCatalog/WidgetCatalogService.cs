@@ -10,14 +10,25 @@ public sealed class WidgetCatalog
     private readonly CatalogStateStore _stateStore;
     private readonly CatalogOperationLock _operationLock;
     private readonly WidgetCatalogOptions _options;
+    private readonly TimeProvider _timeProvider;
 
     public WidgetCatalog(string currentUserRoot, WidgetCatalogOptions? options = null)
+        : this(currentUserRoot, options, TimeProvider.System)
+    {
+    }
+
+    internal WidgetCatalog(
+        string currentUserRoot,
+        WidgetCatalogOptions? options,
+        TimeProvider timeProvider)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(currentUserRoot);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         _root = Path.GetFullPath(currentUserRoot);
         _packagesRoot = Path.Combine(_root, "packages");
         _options = options ?? new WidgetCatalogOptions();
         _options.Validate();
+        _timeProvider = timeProvider;
         _stateStore = new CatalogStateStore(_root);
         _operationLock = new CatalogOperationLock(_root);
     }
@@ -52,7 +63,7 @@ public sealed class WidgetCatalog
 
     public async Task<WidgetCatalogSnapshot> DiscoverAsync(CancellationToken cancellationToken = default)
     {
-        var versions = DiscoverInstalledVersions();
+        var versions = DiscoverInstalledVersions(cancellationToken);
         var state = await _stateStore.LoadAsync(cancellationToken);
         foreach (var pinned in state.Widgets.Where(entry => entry.ActiveVersion is not null))
         {
@@ -357,10 +368,12 @@ public sealed class WidgetCatalog
         WidgetPackageInspection inspection,
         CancellationToken cancellationToken)
     {
-        var installed = DiscoverInstalledVersions()
+        var allInstalled = DiscoverInstalledVersions(cancellationToken);
+        var installed = allInstalled
             .Where(version => version.Id == inspection.Id)
             .OrderByDescending(version => version.Version)
             .ToArray();
+        EnforceProspectiveInstallLimits(allInstalled, installed, inspection);
         var reviewedVersion = installed.FirstOrDefault()?.Version.ToString();
         var incomingVersion = inspection.Version.ToString();
 
@@ -455,17 +468,47 @@ public sealed class WidgetCatalog
         }, cancellationToken);
     }
 
-    private IReadOnlyList<InstalledWidgetVersion> DiscoverInstalledVersions()
+    private IReadOnlyList<InstalledWidgetVersion> DiscoverInstalledVersions(
+        CancellationToken cancellationToken = default)
     {
         if (!Directory.Exists(_packagesRoot)) return [];
+        var started = _timeProvider.GetTimestamp();
+        void CheckBudget()
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_timeProvider.GetElapsedTime(started) > _options.MaximumDiscoveryDuration)
+                throw new WidgetPackageException(
+                    "installed_discovery_time_limit",
+                    "Installed widget discovery exceeded its time limit.");
+        }
+
+        CheckBudget();
         FileSystemSafety.EnsureNoReparsePoints(_root, _packagesRoot);
         var result = new List<InstalledWidgetVersion>();
-        foreach (var idDirectory in Directory.EnumerateDirectories(_packagesRoot).Order(StringComparer.Ordinal))
+        long aggregateBytes = 0;
+        var aggregateEntries = 0;
+        var idDirectories = EnumerateBoundedDirectories(
+            _packagesRoot,
+            _options.MaximumInstalledWidgetIds,
+            "installed_widget_id_limit",
+            "Installed widget ID count exceeds the catalog limit.");
+        foreach (var idDirectory in idDirectories)
         {
+            CheckBudget();
             FileSystemSafety.EnsureNoReparsePoints(_root, idDirectory);
             var directoryId = Path.GetFileName(idDirectory);
-            foreach (var versionDirectory in Directory.EnumerateDirectories(idDirectory).Order(StringComparer.Ordinal))
+            var versionDirectories = EnumerateBoundedDirectories(
+                idDirectory,
+                _options.MaximumVersionsPerWidget,
+                "installed_widget_version_limit",
+                "Installed widget version count exceeds the per-widget limit.");
+            foreach (var versionDirectory in versionDirectories)
             {
+                CheckBudget();
+                if (result.Count == _options.MaximumInstalledVersions)
+                    throw new WidgetPackageException(
+                        "installed_version_limit",
+                        "Installed widget version count exceeds the catalog limit.");
                 FileSystemSafety.EnsureNoReparsePoints(_root, versionDirectory);
                 var manifestPath = Path.Combine(versionDirectory, "manifest.json");
                 if (!File.Exists(manifestPath))
@@ -473,6 +516,27 @@ public sealed class WidgetCatalog
                 FileSystemSafety.EnsureNoReparsePoints(_root, manifestPath);
                 var verification = InstalledPackageIntegrity.Verify(
                     _root, versionDirectory, _options);
+                try
+                {
+                    aggregateEntries = checked(aggregateEntries + verification.EntryCount);
+                    aggregateBytes = checked(aggregateBytes + verification.TotalBytes);
+                }
+                catch (OverflowException exception)
+                {
+                    throw new WidgetPackageException(
+                        "installed_catalog_limit",
+                        "Installed widget catalog accounting overflowed its limits.",
+                        exception);
+                }
+                if (aggregateEntries > _options.MaximumInstalledEntries)
+                    throw new WidgetPackageException(
+                        "installed_entry_limit",
+                        "Installed widget file count exceeds the catalog limit.");
+                if (aggregateBytes > _options.MaximumInstalledBytes)
+                    throw new WidgetPackageException(
+                        "installed_byte_limit",
+                        "Installed widget bytes exceed the catalog limit.");
+                CheckBudget();
                 var manifest = verification.Manifest;
                 var errors = WidgetManifestValidator.Validate(manifest);
                 if (errors.Count != 0)
@@ -493,11 +557,77 @@ public sealed class WidgetCatalog
                     manifest.Id, version, versionDirectory, manifest, verification.ContentDigest)
                 {
                     VerifiedGbssDigests = verification.GbssDigests,
+                    VerifiedEntryCount = verification.EntryCount,
+                    VerifiedTotalBytes = verification.TotalBytes,
                 });
             }
         }
         return result.OrderBy(item => item.Id, StringComparer.Ordinal)
             .ThenByDescending(item => item.Version)
             .ToArray();
+    }
+
+    private string[] EnumerateBoundedDirectories(
+        string directory,
+        int maximum,
+        string limitCode,
+        string limitMessage)
+    {
+        var entries = Directory.EnumerateFileSystemEntries(directory)
+            .Take(checked(maximum + 1))
+            .ToArray();
+        if (entries.Length > maximum)
+            throw new WidgetPackageException(limitCode, limitMessage);
+        if (entries.Any(path => !Directory.Exists(path)))
+            throw new WidgetPackageException(
+                "invalid_catalog_entry",
+                "Installed widget catalog contains an unexpected filesystem entry.");
+        return entries.Order(StringComparer.Ordinal).ToArray();
+    }
+
+    private void EnforceProspectiveInstallLimits(
+        IReadOnlyList<InstalledWidgetVersion> allInstalled,
+        IReadOnlyList<InstalledWidgetVersion> sameId,
+        WidgetPackageInspection inspection)
+    {
+        if (sameId.Any(version => version.Version == inspection.Version)) return;
+        if (sameId.Count == 0 &&
+            allInstalled.Select(version => version.Id).Distinct(StringComparer.Ordinal).Count() ==
+            _options.MaximumInstalledWidgetIds)
+            throw new WidgetPackageException(
+                "installed_widget_id_limit",
+                "Installing this package would exceed the installed widget ID limit.");
+        if (sameId.Count == _options.MaximumVersionsPerWidget)
+            throw new WidgetPackageException(
+                "installed_widget_version_limit",
+                "Installing this package would exceed the per-widget version limit.");
+        if (allInstalled.Count == _options.MaximumInstalledVersions)
+            throw new WidgetPackageException(
+                "installed_version_limit",
+                "Installing this package would exceed the installed version limit.");
+
+        try
+        {
+            var entries = checked(allInstalled.Sum(version => version.VerifiedEntryCount) +
+                                  inspection.EntryCount + 1);
+            if (entries > _options.MaximumInstalledEntries)
+                throw new WidgetPackageException(
+                    "installed_entry_limit",
+                    "Installing this package would exceed the installed file limit.");
+            var bytes = checked(allInstalled.Sum(version => version.VerifiedTotalBytes) +
+                                inspection.TotalUncompressedBytes +
+                                InstalledPackageIntegrity.MaximumMetadataBytes);
+            if (bytes > _options.MaximumInstalledBytes)
+                throw new WidgetPackageException(
+                    "installed_byte_limit",
+                    "Installing this package would exceed the installed byte limit.");
+        }
+        catch (OverflowException exception)
+        {
+            throw new WidgetPackageException(
+                "installed_catalog_limit",
+                "Installed widget catalog accounting overflowed its limits.",
+                exception);
+        }
     }
 }

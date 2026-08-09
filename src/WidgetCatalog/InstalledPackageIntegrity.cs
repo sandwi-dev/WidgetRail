@@ -17,7 +17,7 @@ internal static class InstalledPackageIntegrity
 {
     internal const string MetadataFileName = ".gbar-integrity.json";
     internal const string Algorithm = "sha256-content-tree-v1";
-    private const int MaximumMetadataBytes = 4 * 1024;
+    internal const int MaximumMetadataBytes = 4 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -34,7 +34,8 @@ internal static class InstalledPackageIntegrity
     {
         var digest = Compute(
             catalogRoot, packageRoot, options,
-            capturedManifestBytes: null, gbssDigests: null);
+            capturedManifestBytes: null, gbssDigests: null,
+            entryCount: out _, totalBytes: out _);
         var path = Path.Combine(packageRoot, MetadataFileName);
         if (File.Exists(path) || Directory.Exists(path))
             throw new WidgetPackageException(
@@ -105,7 +106,8 @@ internal static class InstalledPackageIntegrity
 
         var gbssDigests = new Dictionary<string, string>(StringComparer.Ordinal);
         var actualText = Compute(
-            catalogRoot, packageRoot, options, manifestBytes, gbssDigests);
+            catalogRoot, packageRoot, options, manifestBytes, gbssDigests,
+            out var entryCount, out var totalBytes);
         _ = TryDecodeDigest(actualText, out var actual);
         var matches = CryptographicOperations.FixedTimeEquals(expected, actual);
         CryptographicOperations.ZeroMemory(expected);
@@ -117,7 +119,9 @@ internal static class InstalledPackageIntegrity
         return new InstalledPackageVerification(
             actualText,
             manifest,
-            gbssDigests.ToFrozenDictionary(StringComparer.Ordinal));
+            gbssDigests.ToFrozenDictionary(StringComparer.Ordinal),
+            checked(entryCount + 1),
+            checked(totalBytes + MaximumMetadataBytes));
     }
 
     private static string Compute(
@@ -125,9 +129,12 @@ internal static class InstalledPackageIntegrity
         string packageRoot,
         WidgetCatalogOptions options,
         byte[]? capturedManifestBytes,
-        IDictionary<string, string>? gbssDigests)
+        IDictionary<string, string>? gbssDigests,
+        out int entryCount,
+        out long totalBytes)
     {
-        FileSystemSafety.EnsureTreeContainsNoReparsePoints(catalogRoot, packageRoot);
+        FileSystemSafety.EnsureTreeContainsNoReparsePoints(
+            catalogRoot, packageRoot, options.MaximumInstalledEntries);
         var files = Directory.EnumerateFiles(packageRoot, "*", SearchOption.AllDirectories)
             .Where(path => !string.Equals(
                 Path.GetRelativePath(packageRoot, path),
@@ -139,17 +146,19 @@ internal static class InstalledPackageIntegrity
                 RelativePath = Path.GetRelativePath(packageRoot, path)
                     .Replace(Path.DirectorySeparatorChar, '/'),
             })
-            .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
+            .Take(checked(options.MaximumArchiveEntries + 1))
             .ToArray();
         if (files.Length < 2 || files.Length > options.MaximumArchiveEntries)
             throw new WidgetPackageException(
                 "integrity_limit", "Installed widget file count is outside package limits.");
+        files = files.OrderBy(file => file.RelativePath, StringComparer.Ordinal).ToArray();
+        entryCount = files.Length;
 
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(StrictUtf8.GetBytes(Algorithm));
         Span<byte> integer = stackalloc byte[sizeof(long)];
         var buffer = new byte[64 * 1024];
-        long totalBytes = 0;
+        totalBytes = 0;
         try
         {
             foreach (var file in files)
@@ -277,4 +286,6 @@ internal static class InstalledPackageIntegrity
 internal sealed record InstalledPackageVerification(
     string ContentDigest,
     WidgetManifest Manifest,
-    IReadOnlyDictionary<string, string> GbssDigests);
+    IReadOnlyDictionary<string, string> GbssDigests,
+    int EntryCount,
+    long TotalBytes);

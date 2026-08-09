@@ -598,6 +598,10 @@ packages are the canonical templates for event-driven system-control widgets.
 
 ## Phase 4: ecosystem
 
+- Aggregate installed-catalog admission is implemented with host-owned ID,
+  version, file, byte, and discovery-time ceilings plus pre-publication refusal.
+  Add controller-first cleanup/remediation and retain a maximum-catalog cold/
+  reload memory-and-time baseline before ecosystem release.
 - Verified package namespace and launch lease (or protected generation), so
   signed/digest-addressed authority covers every assembly, lazy dependency,
   native library, style, and asset actually consumed; mandatory before public

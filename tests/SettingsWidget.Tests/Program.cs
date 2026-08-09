@@ -1286,12 +1286,20 @@ static async Task TruncatedPermissionCatalogSuppressesClassification()
             $"dev.publisher.widget{index:D3}", $"Widget {index:D3}",
             [PlatformCapabilities.AudioSessionsReadV1], []);
     }
+    var catalogOptions = new WidgetCatalogOptions
+    {
+        MaximumInstalledWidgetIds = 300,
+    };
     var omittedId = "dev.test.widget256";
     await consent.SetDecisionAsync(new(omittedId,
-            InstalledAuthority(catalogRoot, omittedId), "test"),
+            InstalledAuthority(catalogRoot, omittedId, options: catalogOptions), "test"),
         PlatformCapabilities.AudioSessionsReadV1, ConsentDecision.Grant);
 
-    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    var widget = CreateWithPermissions(
+        temp.Path,
+        catalogRoot,
+        consent,
+        catalogOptions: catalogOptions);
     await Activate(widget);
     await Action(widget, "open.permissions");
     var packages = Snapshot(widget);
@@ -1433,9 +1441,10 @@ static async Task FirstPartyIsNotAutoGranted()
 static string InstalledAuthority(
     string catalogRoot,
     string packageId,
-    string version = "1.0.0")
+    string version = "1.0.0",
+    WidgetCatalogOptions? options = null)
 {
-    var installed = new WidgetCatalog(catalogRoot).DiscoverAsync()
+    var installed = new WidgetCatalog(catalogRoot, options).DiscoverAsync()
         .GetAwaiter().GetResult().Widgets
         .Single(widget => widget.Id == packageId).Versions
         .Single(item => string.Equals(
@@ -1508,13 +1517,14 @@ static SettingsWidget CreateWithPermissions(
     string settingsRoot,
     string catalogRoot,
     ConsentStore consentStore,
-    string? bundledWidgetRoot = null)
+    string? bundledWidgetRoot = null,
+    WidgetCatalogOptions? catalogOptions = null)
 {
     var paths = new PlatformSettingsPaths(settingsRoot);
     return new SettingsWidget(
         new PlatformSettingsStore(paths),
         new ThemeCatalog(paths),
-        new WidgetCatalog(catalogRoot),
+        new WidgetCatalog(catalogRoot, catalogOptions),
         consentStore,
         bundledWidgetRoot: bundledWidgetRoot);
 }
