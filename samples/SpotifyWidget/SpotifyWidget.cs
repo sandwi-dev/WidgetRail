@@ -63,7 +63,6 @@ public sealed class SpotifyWidget : Widget
     ];
 
     private readonly object _gate = new();
-    private readonly SemaphoreSlim _actionGate = new(1, 1);
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly TimeProvider _timeProvider;
     private SpotifyWidgetViewState _viewState = SpotifyWidgetViewState.Initial;
@@ -92,8 +91,6 @@ public sealed class SpotifyWidget : Widget
     private long _activeGeneration;
     private Task? _pollTask;
     private Task? _progressTask;
-    private readonly object _backgroundOperationGate = new();
-    private Task? _commandOperationTask;
     private readonly object _authorizationGate = new();
     private Task? _authorizationTask;
 
@@ -236,9 +233,7 @@ public sealed class SpotifyWidget : Widget
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         Interlocked.Increment(ref _activeGeneration);
-        Task? commandOperation;
-        lock (_backgroundOperationGate) commandOperation = _commandOperationTask;
-        var tasks = new[] { _pollTask, _progressTask, commandOperation }
+        var tasks = new[] { _pollTask, _progressTask }
             .Where(task => task is not null).Cast<Task>().ToArray();
         _pollTask = null;
         _progressTask = null;
@@ -250,9 +245,7 @@ public sealed class SpotifyWidget : Widget
     {
         Task? authorization;
         lock (_authorizationGate) authorization = _authorizationTask;
-        Task? commandOperation;
-        lock (_backgroundOperationGate) commandOperation = _commandOperationTask;
-        var tasks = new[] { authorization, commandOperation }
+        var tasks = new[] { authorization }
             .Where(task => task is not null).Cast<Task>().ToArray();
         if (tasks.Length == 0) return;
         try
@@ -273,13 +266,13 @@ public sealed class SpotifyWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    public override ValueTask OnActionAsync(
+    public override async ValueTask OnActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
-        if (TryHandlePageAction(action)) return ValueTask.CompletedTask;
+        if (TryHandlePageAction(action)) return;
 
         switch (action.ActionId)
         {
@@ -298,44 +291,53 @@ public sealed class SpotifyWidget : Widget
             case "spotify.setup.done":
                 lock (_gate) _showSetup = false;
                 Invalidate();
-                if (IsActive) StartCommandOperation(CheckConfigurationAsync);
+                if (IsActive)
+                    await RunCommandOperationAsync(CheckConfigurationAsync, cancellationToken)
+                        .ConfigureAwait(false);
                 break;
             case "spotify.connect":
             case "spotify.connect.features":
                 StartAuthorization();
                 break;
             case "spotify.disconnect":
-                StartCommandOperation(DisconnectAsync);
+                await RunCommandOperationAsync(DisconnectAsync, cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case "spotify.retry":
             case "spotify.refresh":
-                StartCommandOperation(RefreshAsync);
+                await RunCommandOperationAsync(RefreshAsync, cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case "spotify.play-toggle":
-                StartCommandOperation(token => ExecuteAsync(
-                    ResolveToggleOperation(), null, token));
+                await RunCommandOperationAsync(token => ExecuteAsync(
+                    ResolveToggleOperation(), null, token), cancellationToken).ConfigureAwait(false);
                 break;
             case "spotify.previous":
-                StartCommandOperation(token => ExecuteAsync(
-                    WidgetSpotifyPlaybackOperation.Previous, null, token));
+                await RunCommandOperationAsync(token => ExecuteAsync(
+                    WidgetSpotifyPlaybackOperation.Previous, null, token), cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case "spotify.next":
-                StartCommandOperation(token => ExecuteAsync(
-                    WidgetSpotifyPlaybackOperation.Next, null, token));
+                await RunCommandOperationAsync(token => ExecuteAsync(
+                    WidgetSpotifyPlaybackOperation.Next, null, token), cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case "spotify.shuffle":
-                StartCommandOperation(token => ExecuteAsync(
-                    WidgetSpotifyPlaybackOperation.SetShuffle, null, token));
+                await RunCommandOperationAsync(token => ExecuteAsync(
+                    WidgetSpotifyPlaybackOperation.SetShuffle, null, token), cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case "spotify.repeat":
-                StartCommandOperation(token => ExecuteAsync(
-                    WidgetSpotifyPlaybackOperation.SetRepeat, null, token));
+                await RunCommandOperationAsync(token => ExecuteAsync(
+                    WidgetSpotifyPlaybackOperation.SetRepeat, null, token), cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case "spotify.seek":
                 if (action.RequestedValue is { } requested && double.IsFinite(requested))
-                    StartCommandOperation(token => ExecuteAsync(
+                    await RunCommandOperationAsync(token => ExecuteAsync(
                         WidgetSpotifyPlaybackOperation.Seek,
-                        Math.Max(0, (long)Math.Round(requested)), token));
+                        Math.Max(0, (long)Math.Round(requested)), token), cancellationToken)
+                        .ConfigureAwait(false);
                 break;
             case "spotify.nav.player":
                 CancelPageOperation();
@@ -358,29 +360,36 @@ public sealed class SpotifyWidget : Widget
             case "spotify.page.noop":
                 break;
             case "spotify.local.start":
-                StartCommandOperation(token => ControlLocalPlaybackAsync(
+                await RunCommandOperationAsync(token => ControlLocalPlaybackAsync(
                     new(WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
-                        ContinuePlaying: true), token));
+                        ContinuePlaying: true), token), cancellationToken).ConfigureAwait(false);
                 break;
             case "spotify.local.stop":
-                StartCommandOperation(token => ControlLocalPlaybackAsync(
-                    new(WidgetSpotifyLocalPlaybackOperation.Stop), token));
+                await RunCommandOperationAsync(token => ControlLocalPlaybackAsync(
+                    new(WidgetSpotifyLocalPlaybackOperation.Stop), token), cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             default:
                 if (TryParseIndexedAction(action.ActionId, "spotify.device.select.",
                         out var deviceIndex))
-                    StartCommandOperation(token => SelectDeviceAsync(deviceIndex, token));
+                    await RunCommandOperationAsync(
+                        token => SelectDeviceAsync(deviceIndex, token), cancellationToken)
+                        .ConfigureAwait(false);
                 else if (TryParseIndexedAction(action.ActionId, "spotify.queue.play.",
                              out var queueIndex))
-                    StartCommandOperation(token => PlayQueueItemAsync(queueIndex, token));
+                    await RunCommandOperationAsync(
+                        token => PlayQueueItemAsync(queueIndex, token), cancellationToken)
+                        .ConfigureAwait(false);
                 else if (TryParseIndexedAction(action.ActionId, "spotify.playlist.track.",
                              out var trackIndex))
-                    StartCommandOperation(token => PlayPlaylistTrackAsync(trackIndex, token));
+                    await RunCommandOperationAsync(
+                        token => PlayPlaylistTrackAsync(trackIndex, token), cancellationToken)
+                        .ConfigureAwait(false);
                 else if (action.ActionId == "spotify.playlist.play")
-                    StartCommandOperation(PlayPlaylistAsync);
+                    await RunCommandOperationAsync(PlayPlaylistAsync, cancellationToken)
+                        .ConfigureAwait(false);
                 break;
         }
-        return ValueTask.CompletedTask;
     }
 
     private async Task CheckConfigurationAsync(CancellationToken cancellationToken)
@@ -447,30 +456,13 @@ public sealed class SpotifyWidget : Widget
         return true;
     }
 
-    private void StartCommandOperation(Func<CancellationToken, Task> operation)
-    {
-        lock (_backgroundOperationGate)
-        {
-            if (_commandOperationTask is { IsCompleted: false }) return;
-            _commandOperationTask = RunCommandOperationAsync(operation, ActiveCancellationToken);
-        }
-    }
-
     private async Task RunCommandOperationAsync(
         Func<CancellationToken, Task> operation,
         CancellationToken cancellationToken)
     {
         try
         {
-            await _actionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                await operation(cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                _actionGate.Release();
-            }
+            await operation(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception)

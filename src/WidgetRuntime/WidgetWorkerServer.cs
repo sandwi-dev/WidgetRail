@@ -74,7 +74,7 @@ public sealed class WidgetWorkerServer
             throw new WidgetProtocolViolationException("Host did not accept the worker handshake.");
 
         _widget.Invalidated += OnInvalidated;
-        _widget.ControllerActionFailed += OnControllerActionFailed;
+        _widget.ActionFailed += OnActionFailed;
         try
         {
             await _widget.InitializeAsync(cancellationToken).ConfigureAwait(false);
@@ -234,7 +234,7 @@ public sealed class WidgetWorkerServer
                 // Destruction is bounded so a faulty widget cannot hang worker shutdown.
             }
             _widget.Invalidated -= OnInvalidated;
-            _widget.ControllerActionFailed -= OnControllerActionFailed;
+            _widget.ActionFailed -= OnActionFailed;
             foreach (var activation in _dashboardGestureActivations.Values)
                 activation.TrySetResult(false);
             _dashboardGestureActivations.Clear();
@@ -316,8 +316,12 @@ public sealed class WidgetWorkerServer
         case MessageTypes.Action:
             var action = RuntimeJson.FromElement<WidgetActionEvent>(request.Payload);
             ValidateAction(action);
-            await _widget.OnActionAsync(action, cancellationToken).ConfigureAwait(false);
-            await ReplyAsync(MessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
+            var admission = _widget.AdmitAction(action);
+            await ReplyAsync(
+                    MessageTypes.Acknowledged,
+                    request.RequestId,
+                    new ActionAdmissionPayload(admission),
+                    cancellationToken)
                 .ConfigureAwait(false);
             break;
         case MessageTypes.ControllerInput:
@@ -345,12 +349,12 @@ public sealed class WidgetWorkerServer
         _ = SendInvalidationAsync(args.Revision);
     }
 
-    private void OnControllerActionFailed(object? sender, WidgetControllerActionFailedEventArgs args)
+    private void OnActionFailed(object? sender, WidgetActionFailedEventArgs args)
     {
-        _ = SendControllerActionFailureAsync(args);
+        _ = SendActionFailureAsync(args);
     }
 
-    private async Task SendControllerActionFailureAsync(WidgetControllerActionFailedEventArgs args)
+    private async Task SendActionFailureAsync(WidgetActionFailedEventArgs args)
     {
         try
         {

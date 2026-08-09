@@ -42,6 +42,7 @@ internal sealed record RuntimeEnvelope
 internal sealed record HelloPayload(string WidgetInstanceId);
 internal sealed record WidgetLifecyclePayload(WidgetLifecycleState State);
 internal sealed record InvalidationPayload(long Revision);
+internal sealed record ActionAdmissionPayload(WidgetOperationAdmission Admission);
 internal sealed record ControllerActionFailurePayload(
     string ActionId,
     string SourceElementId,

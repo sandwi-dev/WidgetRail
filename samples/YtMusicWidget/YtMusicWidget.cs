@@ -38,7 +38,9 @@ public class YtMusicWidget : Widget
         new(ControllerButton.RightBumper, "next", "Next track", LoopbackControlAuthority()),
     ];
     private IYtMusicClient? _client;
-    private readonly SemaphoreSlim _actionGate = new(1, 1);
+    // Auto-connect starts from activation rather than action admission, so it
+    // shares this narrow connection-workflow gate with explicit connect/pair.
+    private readonly SemaphoreSlim _connectionGate = new(1, 1);
     private readonly SemaphoreSlim _clientGate = new(1, 1);
     private readonly object _stateLock = new();
     private readonly TimeProvider _timeProvider;
@@ -287,7 +289,7 @@ public class YtMusicWidget : Widget
         var entered = false;
         try
         {
-            await _actionGate.WaitAsync(activeLifetime).ConfigureAwait(false);
+            await _connectionGate.WaitAsync(activeLifetime).ConfigureAwait(false);
             entered = true;
             if (ConnectionState == YtMusicWidgetConnectionState.Disconnected)
                 await ConnectAsync(activeLifetime).ConfigureAwait(false);
@@ -302,7 +304,7 @@ public class YtMusicWidget : Widget
         }
         finally
         {
-            if (entered) _actionGate.Release();
+            if (entered) _connectionGate.Release();
         }
     }
 
@@ -335,46 +337,53 @@ public class YtMusicWidget : Widget
     public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
-        await _actionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        switch (action.ActionId)
+        {
+            case ConnectAction:
+                await RunConnectionActionAsync(ConnectAsync, cancellationToken).ConfigureAwait(false);
+                break;
+            case PairAction:
+                await RunConnectionActionAsync(PairAsync, cancellationToken).ConfigureAwait(false);
+                break;
+            case RefreshAction:
+                await RefreshAsync("Refreshing now playing…", cancellationToken).ConfigureAwait(false);
+                break;
+            case "toggle-playback":
+                await RunCommandAsync(YtMusicCommand.TogglePlayback, "Toggling playback…", cancellationToken).ConfigureAwait(false);
+                break;
+            case "previous":
+                await RunCommandAsync(YtMusicCommand.Previous, "Previous track…", cancellationToken).ConfigureAwait(false);
+                break;
+            case "next":
+                await RunCommandAsync(YtMusicCommand.Next, "Next track…", cancellationToken).ConfigureAwait(false);
+                break;
+            case "like":
+                await RunCommandAsync(YtMusicCommand.Like, "Updating like…", cancellationToken).ConfigureAwait(false);
+                break;
+            case "dislike":
+                await RunCommandAsync(YtMusicCommand.Dislike, "Updating dislike…", cancellationToken).ConfigureAwait(false);
+                break;
+            case "shuffle":
+                await RunCommandAsync(YtMusicCommand.Shuffle, "Toggling shuffle…", cancellationToken).ConfigureAwait(false);
+                break;
+            case "repeat":
+                await RunCommandAsync(YtMusicCommand.Repeat, "Changing repeat mode…", cancellationToken).ConfigureAwait(false);
+                break;
+        }
+    }
+
+    private async Task RunConnectionActionAsync(
+        Func<CancellationToken, Task> action,
+        CancellationToken cancellationToken)
+    {
+        await _connectionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            switch (action.ActionId)
-            {
-                case ConnectAction:
-                    await ConnectAsync(cancellationToken).ConfigureAwait(false);
-                    break;
-                case PairAction:
-                    await PairAsync(cancellationToken).ConfigureAwait(false);
-                    break;
-                case RefreshAction:
-                    await RefreshAsync("Refreshing now playing…", cancellationToken).ConfigureAwait(false);
-                    break;
-                case "toggle-playback":
-                    await RunCommandAsync(YtMusicCommand.TogglePlayback, "Toggling playback…", cancellationToken).ConfigureAwait(false);
-                    break;
-                case "previous":
-                    await RunCommandAsync(YtMusicCommand.Previous, "Previous track…", cancellationToken).ConfigureAwait(false);
-                    break;
-                case "next":
-                    await RunCommandAsync(YtMusicCommand.Next, "Next track…", cancellationToken).ConfigureAwait(false);
-                    break;
-                case "like":
-                    await RunCommandAsync(YtMusicCommand.Like, "Updating like…", cancellationToken).ConfigureAwait(false);
-                    break;
-                case "dislike":
-                    await RunCommandAsync(YtMusicCommand.Dislike, "Updating dislike…", cancellationToken).ConfigureAwait(false);
-                    break;
-                case "shuffle":
-                    await RunCommandAsync(YtMusicCommand.Shuffle, "Toggling shuffle…", cancellationToken).ConfigureAwait(false);
-                    break;
-                case "repeat":
-                    await RunCommandAsync(YtMusicCommand.Repeat, "Changing repeat mode…", cancellationToken).ConfigureAwait(false);
-                    break;
-            }
+            await action(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            _actionGate.Release();
+            _connectionGate.Release();
         }
     }
 

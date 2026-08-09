@@ -1,27 +1,40 @@
 namespace GameBarAlternative.WidgetSdk;
 
-public sealed record WidgetControllerActionFailedEventArgs(
+public record WidgetActionFailedEventArgs(
     WidgetActionEvent Action,
     Exception Exception);
 
+/// <summary>Compatibility event payload for the former controller-only queue.</summary>
+public sealed record WidgetControllerActionFailedEventArgs(
+    WidgetActionEvent Action,
+    Exception Exception) : WidgetActionFailedEventArgs(Action, Exception);
+
 public abstract partial class Widget
 {
-    public const int ControllerActionQueueCapacity = 16;
+    public const int ActionQueueCapacity = 16;
+    public const int ControllerActionQueueCapacity = ActionQueueCapacity;
 
-    private sealed class ControllerQueueState(CancellationToken lifetime)
+    private sealed class ActionQueueState(CancellationToken lifetime)
     {
         public CancellationToken Lifetime { get; } = lifetime;
-        public LinkedList<QueuedControllerAction> Pending { get; } = [];
+        public LinkedList<QueuedAction> Pending { get; } = [];
         public SemaphoreSlim Available { get; } = new(0);
+        public TaskCompletionSource Completion { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private sealed record QueuedControllerAction(
+    private sealed record QueuedAction(
         WidgetActionEvent Action,
         WidgetCapabilityGestureContext? GestureContext);
 
-    private readonly object _controllerQueueLock = new();
-    private readonly SemaphoreSlim _controllerActionGate = new(1, 1);
-    private ControllerQueueState? _controllerQueue;
+    private readonly object _actionQueueLock = new();
+    private ActionQueueState? _actionQueue;
+
+    /// <summary>
+    /// Raised when an accepted action later fails. Admission acknowledgement is
+    /// intentionally decoupled from action completion.
+    /// </summary>
+    public event EventHandler<WidgetActionFailedEventArgs>? ActionFailed;
 
     /// <summary>
     /// Raised when an accepted controller action later fails. Controller input
@@ -34,41 +47,52 @@ public abstract partial class Widget
     /// of absolute changes for the same slider is latest-wins coalesced; a
     /// button or different slider is an ordering boundary and is never crossed.
     /// </summary>
-    private bool TryQueueControllerAction(
+    internal WidgetOperationAdmission AdmitAction(
         WidgetActionEvent action,
         WidgetCapabilityGestureContext? gestureContext = null)
     {
-        if (!IsActive) return false;
+        ArgumentNullException.ThrowIfNull(action);
+        if (!IsActive) return WidgetOperationAdmission.RejectedInactive;
         var lifetime = ActiveCancellationToken;
-        if (lifetime.IsCancellationRequested) return false;
+        if (lifetime.IsCancellationRequested) return WidgetOperationAdmission.RejectedInactive;
 
-        ControllerQueueState queue;
-        lock (_controllerQueueLock)
+        ActionQueueState queue;
+        lock (_actionQueueLock)
         {
-            if (!IsActive || lifetime.IsCancellationRequested) return false;
-            if (_controllerQueue is null || _controllerQueue.Lifetime != lifetime)
+            if (!IsActive || lifetime.IsCancellationRequested)
+                return WidgetOperationAdmission.RejectedInactive;
+            if (_actionQueue is null || _actionQueue.Lifetime != lifetime)
             {
-                queue = new ControllerQueueState(lifetime);
-                _controllerQueue = queue;
-                _ = ConsumeControllerActionsAsync(queue);
+                queue = new ActionQueueState(lifetime);
+                _actionQueue = queue;
+                _ = ConsumeActionsAsync(queue);
             }
             else
             {
-                queue = _controllerQueue;
+                queue = _actionQueue;
             }
 
             if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
                 CanCoalesceSliderChange(tail.Value.Action, action))
             {
                 tail.Value = new(action, gestureContext);
-                return true;
+                return WidgetOperationAdmission.Replaced;
             }
-            if (queue.Pending.Count >= ControllerActionQueueCapacity) return false;
-            queue.Pending.AddLast(new QueuedControllerAction(action, gestureContext));
+            if (queue.Pending.Count >= ActionQueueCapacity)
+                return WidgetOperationAdmission.RejectedCapacity;
+            queue.Pending.AddLast(new QueuedAction(action, gestureContext));
             queue.Available.Release();
-            return true;
+            return WidgetOperationAdmission.Enqueued;
         }
     }
+
+    private bool TryQueueControllerAction(
+        WidgetActionEvent action,
+        WidgetCapabilityGestureContext? gestureContext = null) =>
+        IsAccepted(AdmitAction(action, gestureContext));
+
+    private static bool IsAccepted(WidgetOperationAdmission admission) => admission is not (
+        WidgetOperationAdmission.RejectedInactive or WidgetOperationAdmission.RejectedCapacity);
 
     private static bool CanCoalesceSliderChange(
         WidgetActionEvent previous,
@@ -78,22 +102,21 @@ public abstract partial class Widget
         string.Equals(previous.SourceElementId, current.SourceElementId, StringComparison.Ordinal) &&
         string.Equals(previous.InputScopeId, current.InputScopeId, StringComparison.Ordinal);
 
-    private async Task ConsumeControllerActionsAsync(ControllerQueueState queue)
+    private async Task ConsumeActionsAsync(ActionQueueState queue)
     {
         try
         {
             while (true)
             {
                 await queue.Available.WaitAsync(queue.Lifetime).ConfigureAwait(false);
-                QueuedControllerAction? queued;
-                lock (_controllerQueueLock)
+                QueuedAction? queued;
+                lock (_actionQueueLock)
                 {
                     if (queue.Pending.First is not { } first) continue;
                     queued = first.Value;
                     queue.Pending.RemoveFirst();
                 }
 
-                await _controllerActionGate.WaitAsync(queue.Lifetime).ConfigureAwait(false);
                 using var invocation = WidgetCapabilityInvocationContext.Enter(
                     queued.GestureContext);
                 try
@@ -106,33 +129,55 @@ public abstract partial class Widget
                 }
                 catch (Exception exception)
                 {
-                    ReportControllerActionFailure(queued.Action, exception);
-                }
-                finally
-                {
-                    _controllerActionGate.Release();
+                    ReportActionFailure(queued.Action, exception);
                 }
             }
         }
         catch (OperationCanceledException) when (queue.Lifetime.IsCancellationRequested)
         {
-            lock (_controllerQueueLock)
+        }
+        finally
+        {
+            lock (_actionQueueLock)
             {
                 queue.Pending.Clear();
+                if (ReferenceEquals(_actionQueue, queue)) _actionQueue = null;
             }
+            queue.Available.Dispose();
+            queue.Completion.TrySetResult();
         }
     }
 
-    private void ReportControllerActionFailure(WidgetActionEvent action, Exception exception)
+    private async Task DrainActionQueueAsync(
+        CancellationToken lifetime,
+        CancellationToken cancellationToken)
     {
-        var args = new WidgetControllerActionFailedEventArgs(action, exception);
-        var handlers = ControllerActionFailed?.GetInvocationList();
+        Task? completion = null;
+        lock (_actionQueueLock)
+        {
+            if (_actionQueue?.Lifetime == lifetime) completion = _actionQueue.Completion.Task;
+        }
+        if (completion is not null)
+            await completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private void ReportActionFailure(WidgetActionEvent action, Exception exception)
+    {
+        InvokeFailureHandlers(ActionFailed, new WidgetActionFailedEventArgs(action, exception));
+        InvokeFailureHandlers(
+            ControllerActionFailed,
+            new WidgetControllerActionFailedEventArgs(action, exception));
+    }
+
+    private void InvokeFailureHandlers<T>(EventHandler<T>? handler, T args)
+    {
+        var handlers = handler?.GetInvocationList();
         if (handlers is null) return;
         foreach (var candidate in handlers)
         {
             try
             {
-                ((EventHandler<WidgetControllerActionFailedEventArgs>)candidate)(this, args);
+                ((EventHandler<T>)candidate)(this, args);
             }
             catch
             {

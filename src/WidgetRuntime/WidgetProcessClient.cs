@@ -62,6 +62,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     }
 
     public event EventHandler<long>? Invalidated;
+    public event EventHandler<WidgetActionFailure>? ActionFailed;
     public event EventHandler<WidgetControllerActionFailure>? ControllerActionFailed;
     public event EventHandler<WidgetFailure>? Failed;
 
@@ -134,12 +135,32 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             active ? WidgetLifecycleState.Interactive : WidgetLifecycleState.Background,
             cancellationToken);
 
-    public async Task SendActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Admits an action to the worker's active-lifetime queue. The returned
+    /// status describes admission, not action completion.
+    /// </summary>
+    public async Task<WidgetOperationAdmission> AdmitActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
         var response = await RequestAsync(MessageTypes.Action, action, cancellationToken).ConfigureAwait(false);
         if (response.Type != MessageTypes.Acknowledged)
             throw new WidgetProtocolViolationException($"Expected acknowledgement, received '{response.Type}'.");
+        return ParseActionAdmission(response.Payload);
+    }
+
+    /// <summary>
+    /// Compatibility wrapper which throws when the active action queue rejects
+    /// admission. Successful return does not mean the action has completed.
+    /// </summary>
+    public async Task SendActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
+    {
+        var admission = await AdmitActionAsync(action, cancellationToken).ConfigureAwait(false);
+        if (admission == WidgetOperationAdmission.RejectedInactive)
+            throw new WidgetProcessException("Worker rejected the action because the widget is inactive.");
+        if (admission == WidgetOperationAdmission.RejectedCapacity)
+            throw new WidgetProcessException("Worker rejected the action because its action queue is full.");
     }
 
     public async Task<bool> SendControllerInputAsync(
@@ -547,8 +568,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     if (message.RequestId != 0)
                         throw new WidgetProtocolViolationException("Notifications cannot have request IDs.");
                     var payload = RuntimeJson.FromElement<ControllerActionFailurePayload>(message.Payload);
+                    var actionFailure = new WidgetActionFailure(
+                        payload.ActionId, payload.SourceElementId, payload.Message);
+                    ActionFailed?.Invoke(this, actionFailure);
                     ControllerActionFailed?.Invoke(this, new WidgetControllerActionFailure(
-                        payload.ActionId, payload.SourceElementId, payload.Message));
+                        actionFailure.ActionId, actionFailure.SourceElementId, actionFailure.Message));
                     continue;
                 }
 
@@ -591,6 +615,27 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 FailPending(exception);
             }
         }
+    }
+
+    internal static WidgetOperationAdmission ParseActionAdmission(JsonElement payload)
+    {
+        if (payload.ValueKind == JsonValueKind.Object &&
+            !payload.TryGetProperty("admission", out _))
+        {
+            if (!payload.EnumerateObject().Any()) return WidgetOperationAdmission.Enqueued;
+            throw new WidgetProtocolViolationException(
+                "Worker returned an action acknowledgement without admission.");
+        }
+
+        var admission = RuntimeJson.FromElement<ActionAdmissionPayload>(payload).Admission;
+        if (admission is not (
+            WidgetOperationAdmission.Enqueued or
+            WidgetOperationAdmission.Replaced or
+            WidgetOperationAdmission.RejectedInactive or
+            WidgetOperationAdmission.RejectedCapacity))
+            throw new WidgetProtocolViolationException(
+                $"Worker returned invalid action admission '{admission}'.");
+        return admission;
     }
 
     private void OnProcessExited(int session)

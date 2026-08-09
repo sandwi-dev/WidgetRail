@@ -149,19 +149,31 @@ scope. If none exists, the surface is intentionally focusless. Container
 shortcuts still work there, which lets a focusless notice or modal bind B to
 dismiss itself without exposing a fake button.
 
-Resolved dashboard and open-widget actions enter the same FIFO bounded to 16
-pending items (plus the single action currently executing) and acknowledge immediately;
-the acknowledgement means accepted, not completed. One action runs at a time,
-so rapid LB/RB presses retain order even when an action performs network I/O.
-A full queue returns `handled = false` without waiting. Deactivation cancels the
-running action and drops queued actions. A later action failure is reported by
-`Widget.ControllerActionFailed` and the runtime client's corresponding event;
-it does not crash the worker or retroactively change the acknowledgement.
+Direct host actions, catalog quick actions, and resolved dashboard/open-widget
+actions enter the same FIFO bounded to 16 pending items plus the single action
+currently executing. `WidgetProcessClient.AdmitActionAsync` returns `Enqueued`,
+`Replaced`, `RejectedInactive`, or `RejectedCapacity`; acknowledgement means
+accepted, not completed. `SendActionAsync` remains a compatibility wrapper and
+throws for either rejection. One action runs at a time, so direct input and
+rapid LB/RB presses retain their shared order even during network I/O. A full
+controller queue returns `handled = false` without waiting. Deactivation
+cancels the running action, drops queued actions, and drains cooperative work
+before `OnDeactivatedAsync`. A later failure is reported by
+`Widget.ActionFailed` and `WidgetProcessClient.ActionFailed`; the former
+`ControllerActionFailed` events remain compatibility aliases. Failure does not
+crash the worker or retroactively change admission.
 The host therefore publishes `Visible` for the panel selected while the tray
 owns focus and `Interactive` only while that panel's controls own focus.
 Selecting another tray item moves the prior panel to `Background`, publishes
 the new panel as `Visible`, and swaps it in without an A press. Background
-widgets reject controller-action admission without starting work.
+widgets reject every action ingress without starting work.
+
+Capability authority is intentionally narrower than admission. Only trusted
+snapshot-bound controller input can attach one exact dashboard gesture, and
+that authority starts when its queued action executes. The bridge's legacy
+catalog `QuickAction` command has no snapshot/gesture metadata and therefore
+never grants capability authority; capability-backed dashboard controls must
+use `ControllerInput`.
 
 Slider value changes use the same queue but carry a validated, quantized
 **absolute** `RequestedValue`. A contiguous pending tail coalesces latest-wins

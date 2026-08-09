@@ -1645,10 +1645,23 @@ For widget-visible failures, publish a small stable status, preserve controller
 focus, and recover from an explicit action or bounded lifecycle restart. Never
 render exception text, tokens, paths, SSIDs, session identifiers, or API bodies.
 
-An action acknowledgement means it entered the bounded queue, not that its I/O
-completed. Later failures are surfaced by the host/runtime
-`ControllerActionFailed` event and must also produce safe widget state. Worker
-restarts are bounded and lazy.
+An action acknowledgement means it entered the active-lifetime bounded queue,
+not that its I/O completed. Direct, quick, and controller-resolved actions share
+the same serial order and cancellation. `AdmitActionAsync` exposes typed
+`Enqueued`, slider-tail `Replaced`, `RejectedInactive`, and
+`RejectedCapacity` results; `SendActionAsync` remains a compatibility wrapper
+that throws on rejection. Later failures are surfaced by the host/runtime
+`ActionFailed` event and must also produce safe widget state. The former
+`ControllerActionFailed` name remains a compatibility alias. Worker restarts
+are bounded and lazy.
+
+Migration rule: do not detach ordinary provider commands merely to return from
+`OnActionAsync` quickly. Await the command with the supplied token; the runtime
+acknowledges admission first, observes failures, preserves FIFO order, and
+drains cooperative work on deactivation. Retain a separate task only for a
+different, explicit lifetime such as an already-authorized browser OAuth flow.
+Protocol version 1 is unchanged: old empty action acknowledgements are treated
+as `Enqueued`, and legacy failure notification names remain readable.
 
 Before filing or closing a bug, check the [known-issues ledger](known-issues.md)
 and preserve its acceptance criteria. Do not treat a green narrow unit test as

@@ -204,10 +204,16 @@ public sealed record WidgetFailure(
     bool CanRestart);
 
 /// <summary>
-/// An action was accepted from the controller queue, then failed asynchronously.
+/// An action was admitted by the runtime queue, then failed asynchronously.
 /// This does not crash or restart the widget worker.
 /// </summary>
-public sealed record WidgetControllerActionFailure(
+public record WidgetActionFailure(
     string ActionId,
     string SourceElementId,
     string Message);
+
+/// <summary>Compatibility payload for the former controller-only failure event.</summary>
+public sealed record WidgetControllerActionFailure(
+    string ActionId,
+    string SourceElementId,
+    string Message) : WidgetActionFailure(ActionId, SourceElementId, Message);

@@ -441,6 +441,9 @@ public abstract partial class Widget
             endingLifetimes.Add(_widgetLifetime.Token);
             await _operations.DrainLifetimesAsync(endingLifetimes, shutdownToken)
                 .ConfigureAwait(false);
+            if (activeLifetime is not null)
+                await DrainActionQueueAsync(activeLifetime.Token, shutdownToken)
+                    .ConfigureAwait(false);
 
             try
             {
@@ -516,6 +519,9 @@ public abstract partial class Widget
                 endingLifetimes.Add(endedActiveLifetime.Token);
             await _operations.DrainLifetimesAsync(endingLifetimes, transitionToken)
                 .ConfigureAwait(false);
+            if (endedActiveLifetime is not null)
+                await DrainActionQueueAsync(endedActiveLifetime.Token, transitionToken)
+                    .ConfigureAwait(false);
             await OnLifecycleStateChangedAsync(previous, current, currentStateLifetime.Token)
                 .ConfigureAwait(false);
             if (!wasVisible && isVisible)

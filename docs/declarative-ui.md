@@ -736,6 +736,28 @@ Handle actions in `OnActionAsync`. After changing anything visible, call the
 protected `Invalidate()` method. The host receives a monotonically increasing
 revision and requests a new snapshot.
 
+Ordinary slow provider work should be awaited directly. Every host action
+ingress first enters one bounded active-lifetime FIFO, so the host acknowledges
+admission without waiting for this method to finish:
+
+```csharp
+public override async ValueTask OnActionAsync(
+    WidgetActionEvent action,
+    CancellationToken cancellationToken = default)
+{
+    if (action.ActionId != "refresh") return;
+    var next = await HostServices.Media.GetSessionsAsync(cancellationToken);
+    lock (_gate) _sessions = next;
+    Invalidate();
+}
+```
+
+Do not create a detached action task or private action semaphore just to keep
+input responsive. The runtime owns serial ordering, a 16-pending-item bound,
+coalescing for compatible slider tails, cancellation and drain on Background,
+and later failure observation. A separate retained task is appropriate only
+when its documented lifetime differs from the active action lifetime.
+
 Lifecycle is explicit and is not the same as worker process lifetime. The
 host-authoritative states are `Created`, `Background`, `Visible`,
 `Interactive`, and `Destroying`. The current native host publishes `Visible`

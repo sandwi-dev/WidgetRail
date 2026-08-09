@@ -42,7 +42,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Runtime-owned lifecycle states cannot be host targets", InvalidLifecycleTargets),
     ("Widget activation transitions are idempotent and cancel their lifetime", ActivationTransitions),
     ("Worker remains inactive until explicit activity transport", ActivityTransport),
+    ("Action admission preserves protocol-v1 empty acknowledgements", LegacyActionAdmissionCompatibility),
     ("Actions deliver invalidation notifications", ActionsInvalidate),
+    ("Direct and controller actions share one ordered queue", DirectAndControllerActionsShareQueue),
+    ("Direct action admission is bounded and lifecycle-owned", DirectActionAdmissionIsBounded),
+    ("Direct action failures are observable without crashing", DirectActionFailuresAreObservable),
     ("Raw controller input resolves only after a rendered snapshot", ControllerInputUsesLatestSnapshot),
     ("Rapid dashboard actions acknowledge quickly and execute in order", RapidDashboardActionsAreQueued),
     ("Dashboard authority is granted through the exact worker companion and revoked when unhandled", DashboardAuthorityUsesCompanion),
@@ -61,7 +65,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Intentional idle unload destroys resources without consuming crash budget", IntentionalUnloadIsReusable),
     ("A crashed nonexistent session cannot gain an intentional-resume exemption", CrashedSessionIsNotIntentionalUnload),
     ("Non-completing companion disposal cannot hold worker teardown", CompanionDisposalIsBounded),
-    ("Request timeout terminates a hung worker", HungWorkerTimesOut),
+    ("Hung actions acknowledge promptly and cancel without restart", HungActionAdmissionIsPrompt),
     ("Worker protocol diagnostics expose only the first validation path and code", ProtocolValidationDiagnosticIsStructural),
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
     ("Worker destruction is bounded when widget cleanup hangs", DestroyIsBounded),
@@ -221,8 +225,8 @@ static async Task ProcessLeaseFollowsSession()
     _ = await client.GetSnapshotAsync();
     Assert.Equal(1, acquired);
     Assert.Equal(0, released);
-    await Assert.ThrowsAnyAsync(() =>
-        client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    await SendCrashingActionAsync(client);
     await WaitUntilAsync(() => Volatile.Read(ref released) == 1, TimeSpan.FromSeconds(3));
 
     _ = await client.GetSnapshotAsync();
@@ -305,8 +309,8 @@ static async Task ContentLeaseFollowsSession()
     _ = await client.GetSnapshotAsync();
     Assert.Equal(1, acquired);
     Assert.Equal(0, released);
-    await Assert.ThrowsAnyAsync(() =>
-        client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    await SendCrashingActionAsync(client);
     await WaitUntilAsync(() => Volatile.Read(ref released) == 1, TimeSpan.FromSeconds(3));
 
     _ = await client.GetSnapshotAsync();
@@ -372,6 +376,20 @@ static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
         if (DateTime.UtcNow >= deadline)
             throw new TimeoutException("Condition was not reached before the timeout.");
         await Task.Delay(25);
+    }
+}
+
+static async Task SendCrashingActionAsync(WidgetProcessClient client)
+{
+    try
+    {
+        await client.SendActionAsync(new WidgetActionEvent("crash", "button"));
+    }
+    catch (WidgetProcessException)
+    {
+        // The deliberate Environment.Exit probe may win the race with its
+        // action-admission acknowledgement. The worker failure is asserted by
+        // each caller independently.
     }
 }
 
@@ -804,13 +822,102 @@ static async Task ActivityTransport()
     Assert.Equal("inactive", Find((await client.GetSnapshotAsync()).Root, "activity").Text);
 }
 
+static Task LegacyActionAdmissionCompatibility()
+{
+    Assert.Equal(WidgetOperationAdmission.Enqueued,
+        WidgetProcessClient.ParseActionAdmission(RuntimeJson.ToElement(new { })));
+    Assert.Throws<WidgetProtocolViolationException>(() =>
+        WidgetProcessClient.ParseActionAdmission(RuntimeJson.ToElement(
+            new ActionAdmissionPayload(WidgetOperationAdmission.Completed))));
+    Assert.Throws<WidgetProtocolViolationException>(() =>
+        WidgetProcessClient.ParseActionAdmission(RuntimeJson.ToElement(new { unexpected = true })));
+    return Task.CompletedTask;
+}
+
 static async Task ActionsInvalidate()
 {
     await using var client = CreateClient();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
     var invalidated = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
     client.Invalidated += (_, revision) => invalidated.TrySetResult(revision);
     await client.SendActionAsync(new WidgetActionEvent("invalidate", "button"));
     Assert.Equal(1L, await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+}
+
+static async Task DirectAndControllerActionsShareQueue()
+{
+    await using var client = CreateClient();
+    var snapshot = await client.GetSnapshotAsync();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var invalidations = System.Threading.Channels.Channel.CreateUnbounded<long>();
+    client.Invalidated += (_, revision) => invalidations.Writer.TryWrite(revision);
+
+    Assert.Equal(WidgetOperationAdmission.Enqueued,
+        await client.AdmitActionAsync(new WidgetActionEvent(
+            "invalidate", "direct", ControllerButton.X, Sequence: 1)));
+    Assert.True(await client.SendControllerInputAsync(OpenInput(
+        snapshot, ControllerButton.RightBumper, "button", inputSequence: 2)),
+        "Controller action was not admitted behind the direct action.");
+
+    _ = await invalidations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+    _ = await invalidations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+    Assert.Equal("1,2", Find(
+        (await client.GetSnapshotAsync()).Root, "controller-history").Text);
+}
+
+static async Task DirectActionAdmissionIsBounded()
+{
+    await using var client = CreateClient();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var blockingStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.Invalidated += (_, _) => blockingStarted.TrySetResult();
+    Assert.Equal(WidgetOperationAdmission.Enqueued,
+        await client.AdmitActionAsync(new WidgetActionEvent("queued-block", "direct")));
+    await blockingStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    Assert.Equal(WidgetOperationAdmission.Enqueued,
+        await client.AdmitActionAsync(new WidgetActionEvent(
+            "volume.changed", "volume", RequestedValue: 0.1, InputScopeId: "root")));
+    Assert.Equal(WidgetOperationAdmission.Replaced,
+        await client.AdmitActionAsync(new WidgetActionEvent(
+            "volume.changed", "volume", RequestedValue: 0.2, InputScopeId: "root")));
+
+    for (var sequence = 1; sequence < Widget.ActionQueueCapacity; sequence++)
+    {
+        Assert.Equal(WidgetOperationAdmission.Enqueued,
+            await client.AdmitActionAsync(new WidgetActionEvent(
+                "invalidate", "direct", Sequence: sequence)));
+    }
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    Assert.Equal(WidgetOperationAdmission.RejectedCapacity,
+        await client.AdmitActionAsync(new WidgetActionEvent("invalidate", "overflow")));
+    stopwatch.Stop();
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1),
+        $"Saturated admission blocked for {stopwatch.Elapsed.TotalMilliseconds:0} ms.");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    Assert.Equal(WidgetOperationAdmission.RejectedInactive,
+        await client.AdmitActionAsync(new WidgetActionEvent("invalidate", "inactive")));
+    Assert.True(client.IsRunning, "Queue cancellation restarted or terminated the worker.");
+    Assert.Equal(1, client.Starts);
+}
+
+static async Task DirectActionFailuresAreObservable()
+{
+    await using var client = CreateClient();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var failed = new TaskCompletionSource<WidgetActionFailure>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.ActionFailed += (_, failure) => failed.TrySetResult(failure);
+
+    Assert.Equal(WidgetOperationAdmission.Enqueued,
+        await client.AdmitActionAsync(new WidgetActionEvent("queued-fail", "direct")));
+    var failure = await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal("queued-fail", failure.ActionId);
+    Assert.True(failure.Message.Contains("intentional", StringComparison.Ordinal),
+        "Failure should retain bounded diagnostic context.");
+    Assert.True(client.IsRunning, "An action failure must not crash the worker.");
 }
 
 static async Task ControllerInputUsesLatestSnapshot()
@@ -1245,11 +1352,11 @@ static async Task CrashRecovery()
 {
     await using var client = CreateClient(maximumRestarts: 1);
     _ = await client.GetSnapshotAsync();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
     var firstProcess = client.WorkerProcessId;
     var failed = new TaskCompletionSource<WidgetFailure>(TaskCreationOptions.RunContinuationsAsynchronously);
     client.Failed += (_, failure) => failed.TrySetResult(failure);
-    await Assert.ThrowsAnyAsync(() =>
-        client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+    await SendCrashingActionAsync(client);
     var failure = await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
     Assert.True(failure.CanRestart, "One restart should remain after first crash.");
     var recovered = await client.GetSnapshotAsync();
@@ -1282,8 +1389,11 @@ static async Task CompanionSessionsFollowWorkerRestarts()
             new[] { WidgetLifecycleState.Visible },
             sessions[0].LifecycleStates);
 
-        await Assert.ThrowsAnyAsync(() =>
-            client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+        var failed = new TaskCompletionSource<WidgetFailure>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.Failed += (_, failure) => failed.TrySetResult(failure);
+        await SendCrashingActionAsync(client);
+        _ = await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
         _ = await client.GetSnapshotAsync();
 
         Assert.Equal(2, sessions.Count);
@@ -1345,13 +1455,15 @@ static async Task CrashedSessionIsNotIntentionalUnload()
 {
     await using var client = CreateClient(maximumRestarts: 0);
     _ = await client.GetSnapshotAsync();
-    await Assert.ThrowsAnyAsync(() =>
-        client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    await SendCrashingActionAsync(client);
+    await WaitUntilAsync(() => !client.IsRunning, TimeSpan.FromSeconds(2));
     Assert.True(!client.IsRunning, "Crash probe worker unexpectedly remained live.");
 
     // A residency timer can observe the crash only after its delay. Treating
     // this no-session cleanup as an intentional unload would incorrectly let
     // the next launch bypass the zero-restart policy.
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
     await client.UnloadAsync();
     await Assert.ThrowsAsync<WidgetProcessException>(() => client.GetSnapshotAsync());
     Assert.Equal(1, client.Starts);
@@ -1386,13 +1498,19 @@ static async Task CompanionEndpointPrecedesLaunch()
     Assert.Equal("runtime.test", snapshot.WidgetInstanceId);
 }
 
-static async Task HungWorkerTimesOut()
+static async Task HungActionAdmissionIsPrompt()
 {
     await using var client = CreateClient(requestTimeout: TimeSpan.FromMilliseconds(250));
-    _ = await client.GetSnapshotAsync();
-    var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
-        client.SendActionAsync(new WidgetActionEvent("hang", "button")));
-    Assert.True(exception.Message.Contains("exceeded", StringComparison.Ordinal), "Expected timeout details.");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    await client.SendActionAsync(new WidgetActionEvent("hang", "button"));
+    stopwatch.Stop();
+    Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1),
+        $"Action admission blocked for {stopwatch.Elapsed.TotalMilliseconds:0} ms.");
+    Assert.True(client.IsRunning, "A slow action terminated the worker.");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    Assert.True(client.IsRunning, "Cooperative action cancellation restarted the worker.");
+    Assert.Equal(1, client.Starts);
 }
 
 static async Task MalformedSnapshotIsRejected()
@@ -1550,6 +1668,7 @@ file sealed class TestWidget : Widget
         }
         else if (action.ActionId == "queued-block")
         {
+            Invalidate();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         }
         else if (action.ActionId == "nested")

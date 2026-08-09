@@ -318,9 +318,11 @@ public sealed class WidgetBridgeServer(
         case BridgeMessageTypes.Action:
             var actionRequest = BridgeJson.FromElement<BridgeActionRequest>(request.Payload);
             var actionRegistration = GetClient(actionRequest.WidgetId);
-            await WithResidentClientAsync(actionRegistration, cancellationToken,
-                client => client.SendActionAsync(actionRequest.Action, cancellationToken)).ConfigureAwait(false);
-            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
+            var actionAdmission = await AdmitResidentActionAsync(
+                    actionRegistration, actionRequest.Action, cancellationToken)
+                .ConfigureAwait(false);
+            await ReplyActionAdmissionAsync(
+                    request.RequestId, actionAdmission, cancellationToken)
                 .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.ControllerInput:
@@ -344,15 +346,17 @@ public sealed class WidgetBridgeServer(
             var quickAction = configured.QuickActions.SingleOrDefault(
                 action => string.Equals(action.Id, quickRequest.QuickActionId, StringComparison.Ordinal))
                 ?? throw new BridgeProtocolException($"Unknown quick action '{quickRequest.QuickActionId}'.");
-            await WithResidentClientAsync(quickRegistration, cancellationToken,
-                client => client.SendActionAsync(new WidgetActionEvent(
+            var quickAdmission = await AdmitResidentActionAsync(
+                quickRegistration,
+                new WidgetActionEvent(
                     quickAction.ActionId,
                     quickAction.SourceElementId,
                     quickAction.ControllerButton,
                     ControllerEventPhase.Pressed,
                     quickRequest.Sequence,
-                    quickRequest.MonotonicTimestampMicroseconds), cancellationToken)).ConfigureAwait(false);
-            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
+                    quickRequest.MonotonicTimestampMicroseconds),
+                cancellationToken).ConfigureAwait(false);
+            await ReplyActionAdmissionAsync(request.RequestId, quickAdmission, cancellationToken)
                 .ConfigureAwait(false);
             break;
         default:
@@ -441,6 +445,57 @@ public sealed class WidgetBridgeServer(
         {
             registration.OperationGate.Release();
         }
+    }
+
+    private async Task<WidgetOperationAdmission> AdmitResidentActionAsync(
+        ClientRegistration registration,
+        WidgetActionEvent action,
+        CancellationToken cancellationToken)
+    {
+        await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (registration.HostLifecycle == WidgetLifecycleState.Background)
+                return WidgetOperationAdmission.RejectedInactive;
+            registration.CancelIdleUnload();
+            var admission = await registration.Client.AdmitActionAsync(action, cancellationToken)
+                .ConfigureAwait(false);
+            ScheduleIdleUnload(registration);
+            return admission;
+        }
+        finally
+        {
+            registration.OperationGate.Release();
+        }
+    }
+
+    private async Task ReplyActionAdmissionAsync(
+        long requestId,
+        WidgetOperationAdmission admission,
+        CancellationToken cancellationToken)
+    {
+        var (type, payload) = admission switch
+        {
+            WidgetOperationAdmission.RejectedInactive => (
+                BridgeMessageTypes.Error,
+                BridgeJson.ToElement(new BridgeError(
+                    "action_inactive", "The widget is not active."))),
+            WidgetOperationAdmission.RejectedCapacity => (
+                BridgeMessageTypes.Error,
+                BridgeJson.ToElement(new BridgeError(
+                    "action_saturated", "The widget action queue is full."))),
+            WidgetOperationAdmission.Enqueued or WidgetOperationAdmission.Replaced => (
+                BridgeMessageTypes.Acknowledged,
+                BridgeJson.ToElement(new { admission })),
+            _ => throw new BridgeProtocolException(
+                $"Worker returned invalid action admission '{admission}'."),
+        };
+        await SendAsync(new BridgeEnvelope
+        {
+            Type = type,
+            RequestId = requestId,
+            Payload = payload,
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private static void DemandInteractionAllowed(ClientRegistration registration)
@@ -560,13 +615,15 @@ public sealed class WidgetBridgeServer(
                 BridgeMessageTypes.Invalidation,
                 new BridgeInvalidation(configured.Id, revision));
         };
-        client.ControllerActionFailed += (_, failure) =>
+        client.ActionFailed += (_, failure) =>
         {
             if (IsCurrent(registration)) _ = SendEventAsync(
                 BridgeMessageTypes.Failure,
                 new
                 {
                     widgetId = configured.Id,
+                    // Protocol v1 retains the legacy reason value even though
+                    // every action ingress now shares this failure surface.
                     reason = "controllerActionFailed",
                     failure.ActionId,
                     failure.SourceElementId,

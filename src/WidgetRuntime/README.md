@@ -84,13 +84,22 @@ without inventing a focus target. The runtime never searches a parent/sibling
 scope. A is reserved for focused button activation, D-pad is host focus
 navigation, and the MVP accepts only `Pressed` shortcut bindings.
 
-Resolved dashboard and open-widget actions enter the same FIFO with at most 16
-pending items plus one currently executing action, and acknowledge when
-accepted, before potentially network-backed action work completes. One action
-runs at a time, preserving rapid input order. Saturation or `Background` state
-returns unhandled immediately; entering Background cancels current work and
-drops pending items. Post-acknowledgement failures raise
-`WidgetProcessClient.ControllerActionFailed` without crashing the worker.
+Direct, quick, dashboard, and open-widget actions enter the same FIFO with at
+most 16 pending items plus one currently executing action.
+`AdmitActionAsync` returns typed admission before potentially network-backed
+work completes; `SendActionAsync` is the compatibility wrapper. One action runs
+at a time, preserving cross-ingress order. Saturation or `Background` rejects
+immediately; entering Background cancels current work, drops pending items, and
+drains cooperative execution before deactivation completes. Later failures
+raise `WidgetProcessClient.ActionFailed` without crashing the worker.
+`ControllerActionFailed`, the `controller-action-failed` notification type, and
+empty protocol-v1 acknowledgement payloads remain accepted compatibility
+surfaces. The bridge also retains its protocol-v1 `controllerActionFailed`
+reason string while routing failures from every ingress through it.
+
+Only snapshot-correlated `ControllerInput` can carry dashboard gesture
+authority. The legacy catalog `QuickAction` request is admitted to the same
+queue but is deliberately non-authorizing.
 
 Lifecycle state is host-authoritative and separate from process lifetime:
 
