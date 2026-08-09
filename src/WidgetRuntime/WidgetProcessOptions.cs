@@ -108,6 +108,7 @@ public sealed record WidgetProcessOptions
     internal Func<CancellationToken, IWidgetProcessContentLease>?
         ContentLeaseFactory { get; init; }
     internal TimeSpan ContentLeaseTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    internal IAppContainerAuthorityOperations? ContentAuthorityOperations { get; init; }
     /// <summary>
     /// Host-owned isolation decision. Package manifests and worker arguments
     /// never control this value.
@@ -182,10 +183,20 @@ public sealed record WidgetProcessOptions
             throw new ArgumentException(
                 "Content leases require an AppContainer with no broad read-only roots.",
                 nameof(ContentLeaseFactory));
+        if (ContentAuthorityOperations is not null && ContentLeaseFactory is null)
+            throw new ArgumentException(
+                "Content authority operations require a content lease.",
+                nameof(ContentAuthorityOperations));
     }
 }
 
-public sealed class WidgetProcessAdmissionException(string message) : Exception(message);
+public sealed class WidgetProcessAdmissionException : Exception
+{
+    public WidgetProcessAdmissionException(string message) : base(message) { }
+
+    internal WidgetProcessAdmissionException(string message, Exception innerException)
+        : base(message, innerException) { }
+}
 
 public enum WidgetFailureReason
 {

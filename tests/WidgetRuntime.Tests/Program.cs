@@ -29,6 +29,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Content admission has a bounded pre-launch deadline", ContentAdmissionTimeoutIsBounded),
     ("Caller cancellation remains cancellation during content admission", ContentAdmissionHonorsCallerCancellation),
     ("Verified content cannot overlap the trusted runtime grant", ContentAuthorityCannotOverlapRuntime),
+    ("Content authority transactions restore every attempted DACL", ContentAuthorityTransactionRollsBack),
+    ("Complete content authority rollback fails before launch without quarantine", ContentAuthorityRollbackIsRecoverable),
+    ("Incomplete content authority rollback quarantines the generation before launch", ContentAuthorityRollbackQuarantinesGeneration),
     ("Verified content leases follow exact worker sessions", ContentLeaseFollowsSession),
     ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
     ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
@@ -345,6 +348,132 @@ static async Task ContentAuthorityCannotOverlapRuntime()
         "Overlapping content authority lost its stable admission diagnostic.");
     Assert.Equal(0, client.Starts);
     Assert.Equal(1, released);
+}
+
+static Task ContentAuthorityTransactionRollsBack()
+{
+    var targets = new[]
+    {
+        new AppContainerAuthorityTarget("root", AppContainerAuthorityTargetKind.AuthorityRoot),
+        new AppContainerAuthorityTarget("directory", AppContainerAuthorityTargetKind.VerifiedDirectory),
+        new AppContainerAuthorityTarget("file", AppContainerAuthorityTargetKind.VerifiedFile),
+    };
+    var operations = new TestAuthorityOperations(failApplyAt: 2);
+    var failure = Assert.Throws<IOException>(
+        () => AppContainerAuthorityTransaction.Apply(targets, operations));
+    Assert.True(failure.Message.Contains("apply 2", StringComparison.Ordinal),
+        "Transaction did not preserve the original apply failure.");
+    Assert.SequenceEqual(targets.Reverse(), operations.RestoreOrder);
+    foreach (var target in targets)
+        Assert.Equal(TestAuthorityOperations.Original(target), operations.StateFor(target));
+
+    var rollbackFailureOperations = new TestAuthorityOperations(
+        failApplyAt: 2,
+        failRestoreKinds: [AppContainerAuthorityTargetKind.VerifiedDirectory]);
+    var rollbackFailure = Assert.Throws<AppContainerAuthorityRollbackException>(
+        () => AppContainerAuthorityTransaction.Apply(targets, rollbackFailureOperations));
+    Assert.True(rollbackFailure.ApplyFailure is IOException,
+        "Rollback failure lost its initiating apply error.");
+    Assert.Equal(1, rollbackFailure.RollbackFailures.Count);
+    Assert.SequenceEqual(targets.Reverse(), rollbackFailureOperations.RestoreOrder);
+    Assert.Equal(
+        TestAuthorityOperations.Granted(targets[1]),
+        rollbackFailureOperations.StateFor(targets[1]));
+    Assert.Equal(
+        TestAuthorityOperations.Original(targets[0]),
+        rollbackFailureOperations.StateFor(targets[0]));
+    return Task.CompletedTask;
+}
+
+static async Task ContentAuthorityRollbackIsRecoverable()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temp = new TemporaryDirectory();
+    var verified = Path.Combine(temp.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var isolationKey = $"runtime-content-recoverable-{Guid.NewGuid():N}";
+    var released = 0;
+    await using (var client = CreateClient(
+        contentLeaseFactory: _ => new TestContentLease(
+            temp.Path,
+            [temp.Path],
+            [verified],
+            () => Interlocked.Increment(ref released)),
+        contentIsolationKey: isolationKey,
+        contentAuthorityOperations: new TestAuthorityOperations(failApplyAt: 1)))
+    {
+        var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+            () => client.GetSnapshotAsync());
+        Assert.Equal("Worker content authority could not be established.", exception.Message);
+        Assert.True(exception.InnerException is IOException,
+            "Recoverable authority failure lost its host diagnostic cause.");
+        Assert.Equal(0, client.Starts);
+    }
+    Assert.Equal(1, released);
+
+    WindowsAppContainer.ForgetInMemoryQuarantineForTesting(isolationKey);
+    using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
+    Assert.True(!string.IsNullOrWhiteSpace(container.Sid),
+        "Complete rollback incorrectly persisted a generation quarantine.");
+}
+
+static async Task ContentAuthorityRollbackQuarantinesGeneration()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temp = new TemporaryDirectory();
+    var verified = Path.Combine(temp.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var isolationKey = $"runtime-content-quarantine-{Guid.NewGuid():N}";
+    var released = 0;
+    var operations = new TestAuthorityOperations(
+        failApplyAt: 1,
+        failRestoreKinds: [AppContainerAuthorityTargetKind.AuthorityRoot]);
+    await using (var client = CreateClient(
+        contentLeaseFactory: _ => new TestContentLease(
+            temp.Path,
+            [temp.Path],
+            [verified],
+            () => Interlocked.Increment(ref released)),
+        contentIsolationKey: isolationKey,
+        contentAuthorityOperations: operations))
+    {
+        var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+            () => client.GetSnapshotAsync());
+        Assert.Equal(
+            "Worker content authority is quarantined after rollback failure.",
+            exception.Message);
+        Assert.True(exception.InnerException is AppContainerAuthorityRollbackException,
+            "Quarantine admission did not retain the host diagnostic cause.");
+        Assert.Equal(0, client.Starts);
+    }
+    Assert.Equal(1, released);
+    Assert.SequenceEqual(
+        new[]
+        {
+            new AppContainerAuthorityTarget(
+                temp.Path, AppContainerAuthorityTargetKind.VerifiedDirectory),
+            new AppContainerAuthorityTarget(
+                temp.Path, AppContainerAuthorityTargetKind.AuthorityRoot),
+        },
+        operations.RestoreOrder);
+
+    WindowsAppContainer.ForgetInMemoryQuarantineForTesting(isolationKey);
+    var secondRelease = 0;
+    await using var quarantinedClient = CreateClient(
+        contentLeaseFactory: _ => new TestContentLease(
+            temp.Path,
+            [temp.Path],
+            [verified],
+            () => Interlocked.Increment(ref secondRelease)),
+        contentIsolationKey: isolationKey,
+        contentAuthorityOperations: new TestAuthorityOperations());
+    var quarantined = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+        () => quarantinedClient.GetSnapshotAsync());
+    Assert.Equal(
+        "Worker content authority is quarantined after rollback failure.",
+        quarantined.Message);
+    Assert.Equal(0, quarantinedClient.Starts);
+    Assert.Equal(1, secondRelease);
 }
 
 static async Task ContentAdmissionHonorsCallerCancellation()
@@ -1658,6 +1787,7 @@ static WidgetProcessClient CreateClient(
     Func<CancellationToken, IWidgetProcessContentLease>? contentLeaseFactory = null,
     string? contentIsolationKey = null,
     TimeSpan? contentLeaseTimeout = null,
+    IAppContainerAuthorityOperations? contentAuthorityOperations = null,
     TimeProvider? timeProvider = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
@@ -1675,6 +1805,7 @@ static WidgetProcessClient CreateClient(
         ProcessLeaseFactory = processLeaseFactory,
         ContentLeaseFactory = contentLeaseFactory,
         ContentLeaseTimeout = contentLeaseTimeout ?? TimeSpan.FromSeconds(5),
+        ContentAuthorityOperations = contentAuthorityOperations,
         IsolationPolicy = contentLeaseFactory is null
             ? WidgetWorkerIsolationPolicy.HostTrustedJobOnly
             : WidgetWorkerIsolationPolicy.RequireAppContainer,
@@ -2489,4 +2620,48 @@ file sealed class TestContentLease(
     public IReadOnlyList<string> ReadOnlyFiles { get; } = readOnlyFiles;
 
     public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
+}
+
+file sealed class TestAuthorityOperations(
+    int? failApplyAt = null,
+    AppContainerAuthorityTargetKind[]? failRestoreKinds = null)
+    : IAppContainerAuthorityOperations
+{
+    private readonly Dictionary<AppContainerAuthorityTarget, string> _states = [];
+    private int _applyIndex;
+
+    public List<AppContainerAuthorityTarget> RestoreOrder { get; } = [];
+
+    public AppContainerAuthoritySnapshot Capture(AppContainerAuthorityTarget target)
+    {
+        if (!_states.TryGetValue(target, out var descriptor))
+        {
+            descriptor = Original(target);
+            _states.Add(target, descriptor);
+        }
+        return new AppContainerAuthoritySnapshot(target, descriptor);
+    }
+
+    public void Apply(AppContainerAuthoritySnapshot snapshot)
+    {
+        var index = _applyIndex++;
+        _states[snapshot.Target] = Granted(snapshot.Target);
+        if (index == failApplyAt) throw new IOException($"apply {index} failed");
+    }
+
+    public void Restore(AppContainerAuthoritySnapshot snapshot)
+    {
+        RestoreOrder.Add(snapshot.Target);
+        if (failRestoreKinds?.Contains(snapshot.Target.Kind) == true)
+            throw new IOException($"restore {snapshot.Target.Kind} failed");
+        _states[snapshot.Target] = snapshot.AccessDescriptor;
+    }
+
+    public string StateFor(AppContainerAuthorityTarget target) => _states[target];
+
+    public static string Original(AppContainerAuthorityTarget target) =>
+        $"original:{target.Kind}:{target.Path}";
+
+    public static string Granted(AppContainerAuthorityTarget target) =>
+        $"granted:{target.Kind}:{target.Path}";
 }

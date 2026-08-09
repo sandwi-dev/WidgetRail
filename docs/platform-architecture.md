@@ -143,7 +143,21 @@ needed to traverse to them. Changed bytes and namespace entries present during
 admission fail before process creation; entries inserted later inherit no worker
 authority. The AppContainer identity includes the verified content digest, so a
 new content generation cannot inherit direct grants left on an older root. The
-lease is released only after the pipe, process, and Job are detached, and every
+runtime applies these content DACL changes as a transaction before creating a
+pipe or process. It captures the access DACL for every attempted root,
+traversal directory, and file, including the target whose update fails, then
+restores all attempted targets in reverse order. A complete rollback returns a
+stable retryable admission failure. If any restore fails, the runtime writes a
+fixed quarantine marker inside the digest-specific AppContainer profile and
+refuses that content generation on later starts, including after a bridge
+restart; no worker is launched on either failure path. The marker is persisted
+synchronously after a detected rollback failure, but does not make a
+host-process crash during that narrow publication window atomic.
+
+Content authority is still applied by pathname rather than by a verified
+file-ID/handle-bound ACL operation. Auditing alternate inherited or group ACEs
+as additional authority also remains open. The lease is released only after
+the pipe, process, and Job are detached, and every
 crash, restart, intentional unload, disable, or shutdown must reacquire it. Exact
 ACL application and the subsequent handshake do not yet share that five-second
 deadline; the roadmap retains one aggregate start-admission budget as open work.

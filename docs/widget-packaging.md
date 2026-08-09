@@ -258,7 +258,20 @@ SID direct non-inheriting read/execute access only to the verified files and
 their traversal directories. A dependency, native library, style, or asset
 inserted after verification receives no worker authority. The profile identity
 includes the verified content digest, so a later content generation cannot
-inherit direct grants left on an older root. The runtime separately
+inherit direct grants left on an older root. The runtime applies the content
+DACLs transactionally before any worker pipe or process is
+created: it snapshots every attempted root, directory, and file DACL and, on an
+update failure, restores them in reverse order including the failing target. A
+complete restore reports a stable retryable admission failure. If a restore is
+incomplete, a fixed marker in that digest-specific profile quarantines the
+content generation across later starts and bridge restarts; no worker launches
+on either failure path. Marker persistence is synchronous after the rollback
+failure, but cannot make a host crash during that narrow publication window
+atomic. ACL application is still pathname-based rather than bound to the
+verified object identity, and alternate inherited or group ACE auditing remains
+open.
+
+The runtime separately
 grants the generic worker executable, supplies a stripped environment, and
 launches at Low integrity. Token SID, integrity, and zero-capability state are
 verified before resume. The Job Object

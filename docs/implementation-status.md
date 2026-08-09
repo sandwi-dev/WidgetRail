@@ -220,7 +220,9 @@ Up/Down navigation.
   residency leases, timeouts, asynchronous action/process failure reporting,
   and limited restart. Installed/community workers
   require stable host-derived capability-free Low-integrity AppContainers,
-  stripped environments, exact non-inheriting verified-file grants, PID-bound isolated
+  stripped environments, transactionally applied exact non-inheriting
+  verified-file grants, reverse-order DACL rollback with digest-profile
+  quarantine after an incomplete restore, PID-bound isolated
   pipes, and pre-launch Job Object memory/process/UI/cleanup
   containment. Public custom workers use
   `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
@@ -778,7 +780,12 @@ community AppContainer authority, exact grant replacement, content-generation
 isolation, trusted-runtime/content-root overlap refusal, caller-preserving
 content-admission cancellation, timeouts and session release, bounded intentional
 unload, and private two-clock dashboard-gesture propagation. Its focused Release
-harness passes 44/44;
+harness passes 52/52. The authority fixtures prove reverse restoration of every
+attempted root/directory/file DACL including the failing target, retry without
+quarantine after a complete rollback, and restart-visible digest-generation
+quarantine after an incomplete rollback; all failure paths reject before
+process launch and release the content lease. The bounded 512-file exact-grant
+fixture completes in 373.211 ms on the current machine;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
@@ -893,6 +900,16 @@ While it held the lease, a second real `Verify.ps1` invocation exited in one
 second before its requested step and reported the owner's PID, run ID,
 configuration, and start time; the primary run completed without shared-output
 contention.
+
+Transactional content-authority all-lane run
+`20260809T234957Z-6afea078` passes 41/41 steps in 367.615 seconds, including
+WidgetRuntime 52/52, the full native build, hidden-host smoke test, and
+documentation contract. Schema-v2 provenance records identical start/end
+commit `7c8a5b8`, an unchanged dirty-status fingerprint, 29 final package
+digests, and `repositoryStateStable: true`. It is integration evidence rather
+than a release-eligible bundle because the milestone and reviewer-owned ledgers
+were dirty at both boundaries; the retained result reports exactly
+`starting_worktree_dirty` and `finished_worktree_dirty`.
 
 PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
@@ -1043,6 +1060,13 @@ with C++ installed:
   pre-admission insertions fail before launch; later insertions do not receive
   worker authority. Each verified content generation receives a distinct
   AppContainer identity, so a later version cannot inherit an older root grant.
+  Content DACL updates snapshot every attempted target and roll back in reverse
+  before process creation. Complete rollback remains retryable; incomplete
+  rollback durably quarantines that digest-specific profile before rejecting
+  subsequent starts. This does not yet bind ACL mutation to the verified file
+  object identity, audit alternate inherited/group authority, make quarantine
+  publication crash-atomic, or place ACL application and handshake under one
+  aggregate start deadline.
   Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The
