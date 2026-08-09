@@ -1251,6 +1251,7 @@ private:
                 // the new client geometry atomically.
                 DiscardGraphicsResources();
             }
+            (void)ReconcileResponsiveFocusPersistence();
             return 0;
         case WM_DPICHANGED:
             QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::Dpi);
@@ -1487,6 +1488,7 @@ private:
             state_.surface() != gba::Surface::Hidden,
             priorExtent,
             DesiredPresentationExtentDip()));
+        (void)ReconcileResponsiveFocusPersistence();
     }
 
     const gba::WidgetComputedStyle& ShellComputedStyle(
@@ -2226,6 +2228,7 @@ private:
         const bool isVisible = state_.surface() != gba::Surface::Hidden;
         ApplyPresentation(gba::DecideOverlayPresentation(
             wasVisible, isVisible, priorExtent, DesiredPresentationExtentDip()));
+        (void)ReconcileResponsiveFocusPersistence();
     }
 
     [[nodiscard]] std::optional<std::size_t> HitTraySlot(
@@ -2711,6 +2714,53 @@ private:
         focusedElementId_ = snapshot
             ? focusMemory_.Restore(widgetId, *snapshot)
             : std::wstring{};
+        (void)ReconcileResponsiveFocusPersistence();
+    }
+
+    bool ReconcileResponsiveFocusPersistence() {
+        if (!window_ || state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget) {
+            return false;
+        }
+        const std::wstring widget{state_.activeWidget()};
+        const auto* snapshot = SnapshotFor(widget);
+        if (!snapshot || focusedElementId_.empty()) return false;
+
+        RECT client{};
+        if (!GetClientRect(window_, &client)) return false;
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            client.right - client.left,
+            client.bottom - client.top,
+            dpi,
+            interfaceScale);
+        if (!metrics) return false;
+        const auto widgetSurface = DesiredWidgetSurfaceTarget();
+        const auto geometry = gba::ComputeOverlaySurfaceGeometry(
+            metrics->viewportWidthDip,
+            metrics->viewportHeightDip,
+            IsBridgeWidget(widget) ? widgetSurface.panelWidthDip : 720.0F);
+        if (!geometry) return false;
+
+        const auto target = gba::input::ResolveResponsiveFocusPersistenceTarget(
+            *snapshot,
+            focusedElementId_,
+            snapshot->activeInputScopeId,
+            gba::IsCompactResponsiveSurface({
+                geometry->panelWidth,
+                geometry->panelHeight,
+            }));
+        if (!target || *target == focusedElementId_) return false;
+
+        sliderInteraction_.DeactivateAll();
+        (void)pressedInteraction_.Clear();
+        focusedElementId_ = *target;
+        focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+        InvalidateRect(window_, nullptr, FALSE);
+        return true;
     }
 
     static gba::input::SliderInputDescriptor SliderDescriptor(

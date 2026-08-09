@@ -23,7 +23,11 @@ foreach (var (name, run) in tests)
     }
     catch (Exception exception)
     {
-        failures.Add($"FAIL {name}: {exception}");
+        var detail = exception is ProtocolValidationException protocol
+            ? string.Join(Environment.NewLine,
+                protocol.Errors.Select(error => $"{error.Path}: {error.Code}: {error.Message}"))
+            : exception.ToString();
+        failures.Add($"FAIL {name}: {detail}");
         Console.Error.WriteLine(failures[^1]);
     }
 }
@@ -35,8 +39,8 @@ static async Task PageCoverage()
 {
     var widget = new SdkGalleryWidget();
     var overview = Snapshot(widget, 1);
-    Assert.Equal(ProtocolConstants.ResponsiveGridVersion, overview.ProtocolVersion);
-    Assert.Equal("gallery.tab.overview", overview.InitialFocusId);
+    Assert.Equal(ProtocolConstants.FocusPersistenceVersion, overview.ProtocolVersion);
+    Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
     Assert.Equal(320d, overview.Surface.MinimumWidth);
@@ -45,6 +49,18 @@ static async Task PageCoverage()
     Assert.ContainsClass(overview, "gbar-empty-state");
     Assert.ContainsClass(overview, "gbar-icon-button");
     Assert.ContainsClass(overview, "gbar-badge");
+    Assert.ContainsClass(overview, "gbar-navigation-shell");
+    var compactNavigation = Find(overview, "gallery.shell.compact");
+    var expandedNavigation = Find(overview, "gallery.shell.rail");
+    Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
+    Assert.Equal(ResponsiveVisibility.ExpandedOnly, expandedNavigation.VisibleWhen);
+    Assert.Equal(1, Nodes(overview.Root).Count(node => node.Id == "gallery.page-scroll"));
+    Assert.Equal(4, compactNavigation.Children.Count);
+    Assert.Equal(4, expandedNavigation.Children.Count);
+    Assert.Equal("gallery.tab.overview",
+        compactNavigation.Children.Single(node => node.IsSelected == true).ActionId);
+    Assert.Equal("gallery.tab.overview",
+        expandedNavigation.Children.Single(node => node.IsSelected == true).ActionId);
     Assert.Equal(1, overview.QuickActions.Count);
     Assert.Equal(ControllerButton.X, overview.QuickActions[0].Button);
     Assert.Equal(null, overview.QuickActions[0].Capability);
@@ -148,7 +164,7 @@ static async Task ToastDoesNotTakeFocus()
     Assert.Equal(null, toast.ActionId);
     Assert.Equal(null, toast.Focus);
     Assert.Equal(0, toast.Shortcuts.Count);
-    Assert.Equal("gallery.tab.overview", snapshot.InitialFocusId);
+    Assert.Equal("gallery.refresh", snapshot.InitialFocusId);
     await WidgetTestHost.DestroyAsync(widget);
 }
 
@@ -159,6 +175,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("org.gbar.samples.sdk-gallery", manifest.Id);
     Assert.Equal("org.gbar.samples", manifest.Publisher);
+    Assert.Equal("0.1.2", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -204,9 +221,8 @@ static Task StyleContract()
     var grid = compiled.Theme.Resolve(new GbssElement(
         "grid", StyleClasses: new HashSet<string>(["gbar-responsive-grid"])))!;
     Assert.Equal("100%", grid.Get("width")?.Text);
-    var tab = compiled.Theme.Resolve(new GbssElement(
-        "button", StyleClasses: new HashSet<string>(["gbar-segmented-tabs__tab"])))!;
-    Assert.Equal("52px", tab.Get("min-width")?.Text);
+    Assert.False(source.Contains("gbar-navigation-shell", StringComparison.Ordinal),
+        "The sample must inherit the platform navigation recipe instead of rebuilding it.");
     Assert.True(source.Contains("var(--surface)", StringComparison.Ordinal));
     Assert.True(source.Contains(":pressed", StringComparison.Ordinal));
     Assert.False(source.Contains("font-family:", StringComparison.OrdinalIgnoreCase));

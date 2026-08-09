@@ -54,9 +54,26 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.ResponsiveVisibilityVersion);
             if (ContainsGlyph(Root, WidgetGlyph.RepeatOne))
                 required = Math.Max(required, ProtocolConstants.RepeatOneGlyphVersion);
+            if (ContainsFocusPersistence(Root))
+                required = Math.Max(required, ProtocolConstants.FocusPersistenceVersion);
             return required;
         }
     }
+
+    private static bool ContainsFocusPersistence(WidgetElement element) => element switch
+    {
+        ResponsiveBranchElement branch => ContainsFocusPersistence(branch.Child),
+        ButtonElement button => button.FocusPersistenceId is not null,
+        SliderElement slider => slider.FocusPersistenceId is not null,
+        ScrubberElement scrubber => scrubber.FocusPersistenceId is not null,
+        ActionSurfaceElement actionSurface => actionSurface.FocusPersistenceId is not null ||
+            actionSurface.Children.Any(ContainsFocusPersistence),
+        StackElement stack => stack.Children.Any(ContainsFocusPersistence),
+        RowElement row => row.Children.Any(ContainsFocusPersistence),
+        ScrollElement scroll => scroll.Children.Any(ContainsFocusPersistence),
+        GridElement grid => grid.Children.Any(ContainsFocusPersistence),
+        _ => false,
+    };
 
     private static bool ContainsGlyph(WidgetElement element, WidgetGlyph glyph) => element switch
     {

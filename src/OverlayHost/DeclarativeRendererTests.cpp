@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <string_view>
 #include <utility>
@@ -342,6 +343,165 @@ void ResponsiveVisibilityExcludesInactiveSubtrees() {
     Check(footerReducedContent.focusRects.contains(L"expanded.action") &&
           !footerReducedContent.focusRects.contains(L"compact.action"),
           "responsive branches use the pre-footer surface rather than the reduced content viewport");
+}
+
+void ResponsiveNavigationShellFitsBoundedSurfaces() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"navigation-shell.instance";
+    snapshot.activeInputScopeId = L"navigation-shell.scope";
+    snapshot.root = Node(L"navigation-shell", L"stack");
+    snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+    snapshot.root.baseStyle = {
+        {L"gap", LengthList(L"10px")},
+        {L"min-width", Length(0)},
+        {L"min-height", Length(0)},
+        {L"overflow", Keyword(L"clip")},
+    };
+
+    auto compact = Node(L"navigation-shell.compact", L"row");
+    compact.visibleWhen = L"compactOnly";
+    compact.baseStyle = {
+        {L"min-width", Length(0)},
+        {L"min-height", Length(50)},
+        {L"flex-shrink", Number(0)},
+        {L"gap", LengthList(L"2px")},
+        {L"padding", LengthList(L"3px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+
+    auto rail = Node(L"navigation-shell.rail", L"stack");
+    rail.visibleWhen = L"expandedOnly";
+    rail.baseStyle = {
+        {L"width", Length(156)},
+        {L"min-height", Length(0)},
+        {L"flex-shrink", Number(0)},
+        {L"gap", LengthList(L"4px")},
+        {L"padding", LengthList(L"8px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+
+    constexpr std::wstring_view labels[] = {
+        L"Overview", L"Controls", L"Tiles", L"Utilities",
+    };
+    for (std::size_t index = 0; index < std::size(labels); ++index) {
+        const auto action = L"navigation-shell.destination-" + std::to_wstring(index);
+        const auto compactId = L"navigation-shell.compact-" + std::to_wstring(index);
+        auto compactItem = Node(compactId.c_str(), L"button");
+        compactItem.text = labels[index];
+        compactItem.accessibilityLabel = labels[index];
+        compactItem.actionId = action;
+        compactItem.focusPersistenceId =
+            L"navigation-shell.focus-" + std::to_wstring(index);
+        compactItem.baseStyle = {
+            {L"min-width", Length(0)},
+            {L"min-height", Length(44)},
+            {L"flex-grow", Number(1)},
+            {L"flex-shrink", Number(1)},
+            {L"padding", LengthList(L"9px 10px")},
+            {L"max-lines", Number(1)},
+            {L"text-overflow", Keyword(L"ellipsis")},
+        };
+        compact.children.push_back(std::move(compactItem));
+
+        const auto railId = L"navigation-shell.rail-" + std::to_wstring(index);
+        auto railItem = Node(railId.c_str(), L"button");
+        railItem.text = labels[index];
+        railItem.accessibilityLabel = labels[index];
+        railItem.actionId = action;
+        railItem.focusPersistenceId =
+            L"navigation-shell.focus-" + std::to_wstring(index);
+        railItem.baseStyle = {
+            {L"width", Length(140)},
+            {L"min-width", Length(0)},
+            {L"min-height", Length(44)},
+            {L"flex-shrink", Number(0)},
+            {L"padding", LengthList(L"9px 11px")},
+            {L"max-lines", Number(1)},
+            {L"text-overflow", Keyword(L"ellipsis")},
+        };
+        rail.children.push_back(std::move(railItem));
+    }
+
+    auto content = Node(L"navigation-shell.content", L"stack");
+    content.baseStyle = {
+        {L"min-width", Length(0)},
+        {L"min-height", Length(0)},
+        {L"flex-grow", Number(1)},
+        {L"flex-shrink", Number(1)},
+        {L"overflow", Keyword(L"clip")},
+    };
+    auto contentAction = Node(L"navigation-shell.content-action", L"button");
+    contentAction.text = L"Shared content action with responsive text";
+    contentAction.accessibilityLabel = contentAction.text;
+    contentAction.actionId = L"content.open";
+    contentAction.baseStyle = {
+        {L"min-width", Length(0)},
+        {L"min-height", Length(44)},
+        {L"padding", LengthList(L"10px 14px")},
+        {L"max-lines", Number(2)},
+    };
+    content.children = {contentAction};
+
+    auto body = Node(L"navigation-shell.body", L"row");
+    body.baseStyle = {
+        {L"min-width", Length(0)},
+        {L"min-height", Length(0)},
+        {L"flex-grow", Number(1)},
+        {L"flex-shrink", Number(1)},
+        {L"gap", LengthList(L"10px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+    body.children = {rail, content};
+    snapshot.root.children = {compact, body};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    struct Scenario final {
+        Size viewport;
+        float textScale;
+        bool compact;
+    };
+    constexpr Scenario scenarios[] = {
+        {{320.0F, 280.0F}, 1.0F, true},
+        {{760.0F, 540.0F}, 1.0F, true},
+        {{960.0F, 540.0F}, 1.0F, false},
+        {{960.0F, 540.0F}, 1.5F, false},
+    };
+    for (const auto& scenario : scenarios) {
+        gba::DeclarativeRenderOptions options;
+        options.responsiveViewport = scenario.viewport;
+        options.accessibility.textScale = scenario.textScale;
+        const auto focused = scenario.compact
+            ? L"navigation-shell.compact-1"
+            : L"navigation-shell.rail-1";
+        const auto result = renderer.Render(
+            nullptr, snapshot, focused,
+            {0.0F, 0.0F, scenario.viewport.width, scenario.viewport.height},
+            options);
+        const auto activePrefix = scenario.compact
+            ? std::wstring_view{L"navigation-shell.compact-"}
+            : std::wstring_view{L"navigation-shell.rail-"};
+        const auto inactivePrefix = scenario.compact
+            ? std::wstring_view{L"navigation-shell.rail-"}
+            : std::wstring_view{L"navigation-shell.compact-"};
+        for (std::size_t index = 0; index < std::size(labels); ++index) {
+            const auto active = std::wstring(activePrefix) + std::to_wstring(index);
+            const auto inactive = std::wstring(inactivePrefix) + std::to_wstring(index);
+            Check(result.focusRects.contains(active),
+                "active responsive navigation item remains visible");
+            Check(result.focusRects.at(active).height >= 44.0F,
+                "responsive navigation retains a 44-DIP controller target");
+            Check(!result.focusRects.contains(inactive) &&
+                  !result.focusScopes.contains(inactive),
+                "inactive navigation presentation owns no focus or accessibility target");
+        }
+        Check(result.focusRects.contains(L"navigation-shell.content-action"),
+            "one shared content subtree remains visible in both responsive modes");
+        const auto& focusRect = result.focusRects.at(focused);
+        Check(focusRect.x >= 0.0F && focusRect.y >= 0.0F &&
+              focusRect.x + focusRect.width <= scenario.viewport.width + 0.01F &&
+              focusRect.y + focusRect.height <= scenario.viewport.height + 0.01F,
+            "responsive navigation focus remains inside the bounded viewport");
+    }
 }
 
 void SliderPlanningAndAccessibilityTargets() {
@@ -2172,6 +2332,7 @@ int main() {
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();
     ResponsiveVisibilityExcludesInactiveSubtrees();
+    ResponsiveNavigationShellFitsBoundedSurfaces();
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
     ResponsiveGridFlowsThroughNativePlanning();

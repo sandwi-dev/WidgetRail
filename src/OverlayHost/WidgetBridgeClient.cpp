@@ -468,6 +468,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.accessibilityValue = OptionalString(source, L"accessibilityValue");
     node.actionId = OptionalString(source, L"actionId");
     node.valueChangedActionId = OptionalString(source, L"valueChangedActionId");
+    node.focusPersistenceId = OptionalString(source, L"focusPersistenceId");
     node.sliderInteractionMode = OptionalString(source, L"sliderInteractionMode");
     if (!node.sliderInteractionMode.empty() &&
         node.sliderInteractionMode != L"direct" &&

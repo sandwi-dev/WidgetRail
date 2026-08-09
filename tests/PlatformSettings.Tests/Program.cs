@@ -258,6 +258,21 @@ static Task ThemeDiscovery()
     Assert.Equal("50px", segmentedTabs.Get("min-height")!.Text);
     Assert.Equal("0", segmentedTabs.Get("flex-shrink")!.Text);
     Assert.Equal("1px", segmentedTabs.Get("border-width")!.Text);
+    var navigationRail = compiled.Theme.Resolve(new GbssElement(
+        "stack",
+        null,
+        new HashSet<string>(["gbar-navigation-shell__rail"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("156px", navigationRail.Get("width")!.Text);
+    Assert.Equal("0", navigationRail.Get("flex-shrink")!.Text);
+    Assert.Equal("clip", navigationRail.Get("overflow")!.Text);
+    var navigationItem = compiled.Theme.Resolve(new GbssElement(
+        "button",
+        null,
+        new HashSet<string>(["gbar-navigation-shell__compact-item"]),
+        new HashSet<GbssPseudoState>()));
+    Assert.Equal("44px", navigationItem.Get("min-height")!.Text);
+    Assert.Equal("0", navigationItem.Get("min-width")!.Text);
     var settingsRowAction = compiled.Theme.Resolve(new GbssElement(
         "button",
         null,

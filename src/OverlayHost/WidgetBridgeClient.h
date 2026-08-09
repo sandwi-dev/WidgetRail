@@ -116,6 +116,9 @@ struct WidgetNode final {
     std::wstring accessibilityValue;
     std::wstring actionId;
     std::wstring valueChangedActionId;
+    // Optional protocol-v13 identity for mutually exclusive presentations of
+    // one logical focus destination. It is never an action-routing key.
+    std::wstring focusPersistenceId;
     std::wstring sliderInteractionMode;
     std::wstring imageSource;
     std::wstring imageFit;

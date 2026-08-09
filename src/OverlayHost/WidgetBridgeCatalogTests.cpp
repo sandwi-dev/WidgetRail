@@ -90,7 +90,7 @@ int main() {
                 "id": "root",
                 "kind": "stack",
                 "children": [
-                    {"id":"play","kind":"button","text":"Play","actionId":"play"},
+                    {"id":"play","kind":"button","text":"Play","actionId":"play","focusPersistenceId":"transport.play"},
                     {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact","visibleWhen":"compactOnly"},
                     {
                         "id":"album","kind":"actionSurface","actionId":"open-album",
@@ -130,6 +130,7 @@ int main() {
     assert(styledButton.focusedStyle.at(L"scale").number == 1.05);
     assert(styledButton.pressedStyle.at(L"scale").number == 0.97);
     const auto& loadingIndicator = styledSnapshot->root.children[1];
+    assert(styledSnapshot->root.children[0].focusPersistenceId == L"transport.play");
     (void)loadingIndicator;
     assert(loadingIndicator.kind == L"loadingIndicator");
     assert(loadingIndicator.accessibilityLabel == L"Loading music");

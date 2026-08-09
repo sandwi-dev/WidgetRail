@@ -9,6 +9,7 @@
 
 namespace gba {
 struct WidgetNode;
+struct WidgetSnapshot;
 }
 
 namespace gba::input {
@@ -53,12 +54,22 @@ struct ScrollPaginationAction final {
     std::wstring_view id,
     const RenderResult& renderResult) noexcept;
 
+/// Resolves one explicit protocol-v13 focus identity before paint when a
+/// responsive branch hides the preferred presentation. Omitted identities,
+/// cross-scope matches, and ambiguous active matches fail closed.
+[[nodiscard]] std::optional<std::wstring> ResolveResponsiveFocusPersistenceTarget(
+    const WidgetSnapshot& snapshot,
+    std::wstring_view preferredId,
+    std::wstring_view activeScopeId,
+    bool compactMode);
+
 /// Keeps controller focus attached to geometry that is actually visible after
 /// responsive layout. The preferred target wins when it remains visible or
 /// can be revealed by a semantic scroll container and is enabled in the active
-/// input scope; otherwise the first visible target in
-/// deterministic render/tree order is returned. A surface with no visible
-/// controls has no resolved target.
+/// input scope; otherwise the first visible target in deterministic render/tree
+/// order is returned. Explicit cross-presentation persistence is resolved from
+/// the immutable snapshot before paint. A surface with no visible controls has
+/// no resolved target.
 [[nodiscard]] std::optional<std::wstring> ResolveVisibleFocusTarget(
     std::wstring_view preferredId,
     std::wstring_view activeScopeId,

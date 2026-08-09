@@ -237,6 +237,27 @@ not assume the worker knows which branch is active. Initial focus must have a
 valid active fallback. Prefer ordinary Row wrapping or `ResponsiveGrid` when
 the same semantic children only need a different arrangement.
 
+### Explicit responsive focus persistence (protocol v13)
+
+When two mutually exclusive responsive controls represent the same logical
+focus destination, give them distinct element IDs and one shared bounded focus
+identity:
+
+```csharp
+var compactPlay = UI.Button("Play", "transport.toggle", "compact.play")
+    .PersistFocusAs("transport.play");
+var expandedPlay = UI.Button("Play", "transport.toggle", "expanded.play")
+    .PersistFocusAs("transport.play");
+```
+
+The host uses `focusPersistenceId` only when the prior presentation becomes
+responsive-inactive and exactly one active control in the same input scope has
+the same key. Ambiguous and cross-scope matches fail closed. Never use an action
+ID as this key: action IDs describe routing and may legitimately be shared by
+unrelated controls that distinguish `SourceElementId`. `UI.NavigationShell`
+authors these persistence IDs automatically. Snapshots that omit the field keep
+their earlier protocol version and exact-ID then deterministic fallback behavior.
+
 ### Responsive row wrapping
 
 GBSS can reflow a semantic Row without publishing a different widget tree:

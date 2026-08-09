@@ -123,6 +123,8 @@ public sealed record ActionSurfaceElement : WidgetElement
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
     public bool? IsBusy { get; init; }
+    /// <inheritdoc cref="ButtonElement.FocusPersistenceId"/>
+    public string? FocusPersistenceId { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
 
@@ -154,6 +156,11 @@ public sealed record ActionSurfaceElement : WidgetElement
     {
         IsBusy = busy ? true : null,
     };
+    public ActionSurfaceElement PersistFocusAs(string id)
+    {
+        StableIdentifier.Validate(id, nameof(id));
+        return this with { FocusPersistenceId = id };
+    }
     public ActionSurfaceElement Shortcut(
         ControllerButton button,
         ControllerEventPhase phase = ControllerEventPhase.Pressed,
@@ -176,6 +183,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         IsDisabled = IsDisabled,
         IsSelected = IsSelected,
         IsBusy = IsBusy,
+        FocusPersistenceId = FocusPersistenceId,
         Focus = FocusNeighbors,
         Shortcuts = Shortcuts,
         StyleClasses = StyleClasses,

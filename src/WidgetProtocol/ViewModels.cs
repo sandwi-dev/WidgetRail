@@ -247,6 +247,12 @@ public sealed record ViewNode
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
     public bool? IsBusy { get; init; }
+    /// <summary>
+    /// Optional protocol-v13 identity shared only by mutually exclusive
+    /// presentations of one logical focus destination. It does not identify an
+    /// action and must not be used for dispatch or domain routing.
+    /// </summary>
+    public string? FocusPersistenceId { get; init; }
     public FocusNeighbors? Focus { get; init; }
     /// <summary>
     /// Starts a nested controller input surface. Only stack, row, scroll, and grid containers

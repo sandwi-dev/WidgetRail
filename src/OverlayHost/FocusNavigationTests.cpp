@@ -30,6 +30,7 @@ void Add(gba::RenderResult& result, std::wstring id, gba::declarative::Rect rect
 int main() {
     using gba::input::FindGeometricFocusTarget;
     using gba::input::NavigationDirection;
+    using gba::input::ResolveResponsiveFocusPersistenceTarget;
     using gba::input::ResolveVisibleFocusTarget;
     gba::RenderResult result;
     Add(result, L"play", {100, 50, 60, 60});
@@ -95,6 +96,52 @@ int main() {
     Add(focuslessRoot, L"first-visible", {0, 0, 160, 44});
     Check(ResolveVisibleFocusTarget({}, L"root", focuslessRoot) == L"first-visible",
           "focusless responsive recovery selects the first visible root target");
+
+    gba::WidgetSnapshot responsiveSnapshot;
+    responsiveSnapshot.activeInputScopeId = L"root";
+    responsiveSnapshot.root.id = L"root";
+    responsiveSnapshot.root.kind = L"stack";
+    gba::WidgetNode compact;
+    compact.id = L"compact";
+    compact.kind = L"row";
+    compact.visibleWhen = L"compactOnly";
+    compact.children = {
+        gba::WidgetNode{.id = L"compact-home", .kind = L"button",
+            .actionId = L"shared-action", .focusPersistenceId = L"nav.home"},
+        gba::WidgetNode{.id = L"compact-library", .kind = L"button",
+            .actionId = L"shared-action", .focusPersistenceId = L"nav.library"},
+    };
+    gba::WidgetNode rail;
+    rail.id = L"rail";
+    rail.kind = L"stack";
+    rail.visibleWhen = L"expandedOnly";
+    rail.children = {
+        gba::WidgetNode{.id = L"rail-home", .kind = L"button",
+            .actionId = L"shared-action", .focusPersistenceId = L"nav.home"},
+        gba::WidgetNode{.id = L"rail-library", .kind = L"button",
+            .actionId = L"shared-action", .focusPersistenceId = L"nav.library"},
+    };
+    responsiveSnapshot.root.children = {compact, rail};
+    Check(ResolveResponsiveFocusPersistenceTarget(
+              responsiveSnapshot, L"compact-library", L"root", false) ==
+              L"rail-library",
+          "expanded presentation preserves the explicit logical destination");
+    Check(ResolveResponsiveFocusPersistenceTarget(
+              responsiveSnapshot, L"rail-home", L"root", true) ==
+              L"compact-home",
+          "compact presentation preserves the explicit logical destination");
+
+    auto sharedActionOnly = responsiveSnapshot;
+    sharedActionOnly.root.children[1].children[1].focusPersistenceId = L"nav.other";
+    Check(!ResolveResponsiveFocusPersistenceTarget(
+              sharedActionOnly, L"compact-library", L"root", false),
+          "a shared action ID is never treated as focus equivalence");
+
+    auto ambiguousPersistence = responsiveSnapshot;
+    ambiguousPersistence.root.children[1].children[0].focusPersistenceId = L"nav.library";
+    Check(!ResolveResponsiveFocusPersistenceTarget(
+              ambiguousPersistence, L"compact-library", L"root", false),
+          "ambiguous explicit focus persistence fails closed");
 
     gba::RenderResult twoColumnGrid;
     Add(twoColumnGrid, L"grid-0", {0, 0, 100, 44});

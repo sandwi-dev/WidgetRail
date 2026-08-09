@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 12;
+    public const int CurrentVersion = 13;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -17,6 +17,7 @@ public static class ProtocolConstants
     public const int SliderActivationVersion = 10;
     public const int ScrollPaginationVersion = 11;
     public const int RepeatOneGlyphVersion = 12;
+    public const int FocusPersistenceVersion = 13;
     public const int MaximumScrollPaginationThreshold = 8;
     public const double MinimumSurfaceWidth = 240;
     public const double MaximumSurfaceWidth = 1_600;

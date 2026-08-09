@@ -321,6 +321,115 @@ slider:focused {
   border-color: var(--border);
 }
 
+.gbar-navigation-shell {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 10px;
+  overflow: clip;
+}
+.gbar-navigation-shell__compact {
+  width: 100%;
+  min-width: 0;
+  min-height: 50px;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-subtle);
+  border-color: var(--border);
+  border-width: 1px;
+  corner-radius: 10px;
+  overflow: clip;
+}
+.gbar-navigation-shell__compact-item {
+  min-width: 0;
+  min-height: 44px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 7px;
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+.gbar-navigation-shell__body {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 10px;
+  align: stretch;
+  overflow: clip;
+}
+.gbar-navigation-shell__rail {
+  width: 156px;
+  min-height: 0;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 8px;
+  background: var(--surface-subtle);
+  border-color: var(--border);
+  border-width: 1px;
+  corner-radius: 10px;
+  overflow: clip;
+}
+.gbar-navigation-shell__rail-item {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  flex-shrink: 0;
+  justify: start;
+  gap: 9px;
+  padding: 9px 11px;
+  background: transparent;
+  color: var(--text-muted);
+  border-color: transparent;
+  border-width: 1px;
+  corner-radius: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+.gbar-navigation-shell__compact-item:focused,
+.gbar-navigation-shell__rail-item:focused {
+  color: var(--text);
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.gbar-navigation-shell__compact-item:pressed,
+.gbar-navigation-shell__rail-item:pressed { opacity: 0.72; }
+.gbar-navigation-shell__item--selected {
+  background: var(--surface-active);
+  color: var(--text);
+  border-color: var(--border);
+}
+.gbar-navigation-shell__persistent {
+  width: 320px;
+  min-width: 240px;
+  max-width: 360px;
+  min-height: 0;
+  flex-shrink: 1;
+  overflow: clip;
+}
+.gbar-navigation-shell__content {
+  min-width: 0;
+  min-height: 0;
+  flex-grow: 1;
+  flex-shrink: 1;
+  overflow: clip;
+}
+
 .gbar-switch {
   min-height: 44px;
   padding: 10px 14px;

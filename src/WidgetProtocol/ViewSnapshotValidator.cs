@@ -194,6 +194,17 @@ public static class ViewSnapshotValidator
             CheckString(node.AccessibilityValue, $"{path}.accessibilityValue");
             CheckString(node.ActionId, $"{path}.actionId");
             CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId");
+            if (node.FocusPersistenceId is not null)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.FocusPersistenceVersion)
+                    Add($"{path}.focusPersistenceId", "feature_requires_version",
+                        $"Focus persistence requires protocol version {ProtocolConstants.FocusPersistenceVersion} or later.");
+                CheckIdentifier(node.FocusPersistenceId,
+                    $"{path}.focusPersistenceId", "focus persistence ID");
+                if (!node.IsFocusable)
+                    Add($"{path}.focusPersistenceId", "focus_persistence_on_non_focusable_node",
+                        "Only focusable nodes may declare focus persistence.");
+            }
             if (node.Kind is not (ViewNodeKind.Image or ViewNodeKind.Button) ||
                 node.ImageSource is null)
                 CheckString(node.ImageSource, $"{path}.imageSource");
@@ -561,7 +572,8 @@ public static class ViewSnapshotValidator
             if (child.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
                 ViewNodeKind.ActionSurface or ViewNodeKind.Scroll ||
                 child.ActionId is not null || child.ValueChangedActionId is not null ||
-                child.Focus is not null || child.InputScopeId is not null ||
+                child.FocusPersistenceId is not null || child.Focus is not null ||
+                child.InputScopeId is not null ||
                 (child.Shortcuts?.Count ?? 0) != 0 ||
                 child.IsDisabled is not null || child.IsSelected is not null || child.IsBusy is not null)
             {

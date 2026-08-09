@@ -214,6 +214,11 @@ public sealed record ButtonElement : WidgetElement
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
     public bool? IsBusy { get; init; }
+    /// <summary>
+    /// Optional identity shared by mutually exclusive presentations of this
+    /// same logical focus destination. It is never used for action dispatch.
+    /// </summary>
+    public string? FocusPersistenceId { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
 
@@ -224,6 +229,11 @@ public sealed record ButtonElement : WidgetElement
     public ButtonElement Disabled(bool disabled = true) => this with { IsDisabled = disabled ? true : null };
     public ButtonElement Selected(bool selected = true) => this with { IsSelected = selected ? true : null };
     public ButtonElement Busy(bool busy = true) => this with { IsBusy = busy ? true : null };
+    public ButtonElement PersistFocusAs(string id)
+    {
+        StableIdentifier.Validate(id, nameof(id));
+        return this with { FocusPersistenceId = id };
+    }
     /// <summary>
     /// Selects a host-rendered semantic icon. Widgets cannot provide arbitrary
     /// vector paths, fonts, or executable drawing code.
@@ -272,6 +282,7 @@ public sealed record ButtonElement : WidgetElement
         IsDisabled = IsDisabled,
         IsSelected = IsSelected,
         IsBusy = IsBusy,
+        FocusPersistenceId = FocusPersistenceId,
         Focus = FocusNeighbors,
         Shortcuts = Shortcuts,
         StyleClasses = StyleClasses,
@@ -343,6 +354,8 @@ public sealed record SliderElement : WidgetElement
     public SliderInteractionMode? ControllerInteractionMode { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsBusy { get; init; }
+    /// <inheritdoc cref="ButtonElement.FocusPersistenceId"/>
+    public string? FocusPersistenceId { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
 
     public SliderElement FocusUp(string id) => this with
@@ -369,6 +382,11 @@ public sealed record SliderElement : WidgetElement
     {
         IsBusy = busy ? true : null,
     };
+    public SliderElement PersistFocusAs(string id)
+    {
+        StableIdentifier.Validate(id, nameof(id));
+        return this with { FocusPersistenceId = id };
+    }
     public SliderElement Activate(string actionId) => this with
     {
         ActivationActionId = RequireId(actionId),
@@ -400,6 +418,7 @@ public sealed record SliderElement : WidgetElement
         AccessibilityValue = AccessibilityValue,
         IsDisabled = IsDisabled,
         IsBusy = IsBusy,
+        FocusPersistenceId = FocusPersistenceId,
         Focus = FocusNeighbors,
         StyleClasses = StyleClasses,
     };

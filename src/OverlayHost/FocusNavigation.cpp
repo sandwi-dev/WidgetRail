@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <tuple>
+#include <vector>
 
 namespace gba::input {
 namespace {
@@ -25,6 +26,17 @@ bool ContainsWidgetNode(
     return std::ranges::any_of(node.children, [&](const WidgetNode& child) {
         return ContainsWidgetNode(child, nodeId);
     });
+}
+
+bool IsFocusableNode(const WidgetNode& node) noexcept {
+    return node.kind == L"button" || node.kind == L"slider" ||
+        node.kind == L"actionSurface";
+}
+
+bool IsResponsiveVisible(const WidgetNode& node, const bool compactMode) noexcept {
+    return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
+        (compactMode && node.visibleWhen == L"compactOnly") ||
+        (!compactMode && node.visibleWhen == L"expandedOnly");
 }
 
 } // namespace
@@ -97,6 +109,61 @@ bool IsEnabledFocusTarget(
         [id](const RenderHitRegion& item) { return item.nodeId == id; });
     return renderResult.focusRects.contains(id) &&
         region != renderResult.hitRegions.end() && region->enabled;
+}
+
+std::optional<std::wstring> ResolveResponsiveFocusPersistenceTarget(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view preferredId,
+    const std::wstring_view activeScopeId,
+    const bool compactMode) {
+    if (preferredId.empty() || activeScopeId.empty()) return std::nullopt;
+
+    struct Candidate final {
+        const WidgetNode* node{};
+        std::wstring_view scope;
+    };
+    const WidgetNode* preferred{};
+    std::wstring_view preferredScope;
+    bool preferredVisible{};
+    std::vector<Candidate> visibleCandidates;
+    const auto visit = [&](const auto& self,
+                           const WidgetNode& node,
+                           const std::wstring_view inheritedScope,
+                           const bool ancestorsVisible) -> void {
+        const std::wstring_view scope = node.inputScopeId.empty()
+            ? inheritedScope
+            : std::wstring_view(node.inputScopeId);
+        const bool visible = ancestorsVisible && IsResponsiveVisible(node, compactMode);
+        if (node.id == preferredId) {
+            preferred = &node;
+            preferredScope = scope;
+            preferredVisible = visible;
+        }
+        if (visible && scope == activeScopeId && IsFocusableNode(node) &&
+            !node.focusPersistenceId.empty()) {
+            visibleCandidates.push_back({&node, scope});
+        }
+        for (const auto& child : node.children) self(self, child, scope, visible);
+    };
+    const std::wstring_view rootScope = snapshot.root.inputScopeId.empty()
+        ? std::wstring_view(snapshot.root.id)
+        : std::wstring_view(snapshot.root.inputScopeId);
+    visit(visit, snapshot.root, rootScope, true);
+
+    if (!preferred || preferredVisible || preferredScope != activeScopeId ||
+        preferred->focusPersistenceId.empty()) {
+        return std::nullopt;
+    }
+    std::optional<std::wstring> equivalent;
+    for (const auto& candidate : visibleCandidates) {
+        if (candidate.node->id == preferredId ||
+            candidate.node->focusPersistenceId != preferred->focusPersistenceId) {
+            continue;
+        }
+        if (equivalent) return std::nullopt;
+        equivalent = candidate.node->id;
+    }
+    return equivalent;
 }
 
 std::optional<std::wstring> ResolveVisibleFocusTarget(

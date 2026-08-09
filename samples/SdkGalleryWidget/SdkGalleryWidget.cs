@@ -14,6 +14,13 @@ public readonly record struct GalleryRoute(GalleryPage Page, GalleryModal Modal)
 public sealed class SdkGalleryWidget : Widget
 {
     private static readonly WidgetIdScope Ids = WidgetIds.Scope("gallery");
+    private static readonly NavigationShellDestination[] Destinations =
+    [
+        new("gallery.tab.overview", "Overview", "gallery.tab.overview", WidgetGlyph.Play),
+        new("gallery.tab.controls", "Controls", "gallery.tab.controls", WidgetGlyph.Settings),
+        new("gallery.tab.tiles", "Tiles", "gallery.tab.tiles", WidgetGlyph.Connection),
+        new("gallery.tab.utilities", "Utilities", "gallery.tab.utilities", WidgetGlyph.Warning),
+    ];
     private readonly WidgetNavigator<GalleryRoute> _navigation;
     private bool _compactMode = true;
     private string _density = "Comfortable";
@@ -36,12 +43,17 @@ public sealed class SdkGalleryWidget : Widget
     public override WidgetView Render()
     {
         var navigation = _navigation.Value;
+        WidgetElement body = navigation.Route.Modal == GalleryModal.None
+            ? UI.NavigationShell(
+                "gallery.shell",
+                TabId(navigation.Route.Page),
+                ContentEntryFocus(navigation),
+                PageContent(navigation.Route.Page),
+                Destinations)
+            : ModalContent(navigation);
         var root = UI.Stack("gallery.root",
             Header(),
-            Tabs(navigation.Route.Page),
-            navigation.Route.Modal == GalleryModal.None
-                ? PageContent(navigation.Route.Page)
-                : ModalContent(navigation))
+            body)
             .Classes("gallery-root");
 
         if (navigation.Route.Modal == GalleryModal.None)
@@ -169,14 +181,6 @@ public sealed class SdkGalleryWidget : Widget
         description: "Public components, real focus behavior, zero privileged APIs.",
         trailing: UI.StatusBadge("Public SDK", StatusTone.Success, "gallery.header.status"))
         .AddClasses("gallery-header");
-
-    private RowElement Tabs(GalleryPage page) => UI.SegmentedTabs(
-        "gallery.tabs",
-        TabId(page),
-        new SegmentedTab("gallery.tab.overview", "Overview", "gallery.tab.overview"),
-        new SegmentedTab("gallery.tab.controls", "Controls", "gallery.tab.controls"),
-        new SegmentedTab("gallery.tab.tiles", "Tiles", "gallery.tab.tiles"),
-        new SegmentedTab("gallery.tab.utilities", "Utilities", "gallery.tab.utilities"));
 
     private ScrollElement PageContent(GalleryPage page) => UI.VerticalScroll(
         "gallery.page-scroll",
@@ -334,11 +338,20 @@ public sealed class SdkGalleryWidget : Widget
         });
 
     private string InitialFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
-        navigation.InitialFocusId ?? navigation.Route.Modal switch
+        navigation.InitialFocusId ?? ContentEntryFocus(navigation);
+
+    private string ContentEntryFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
+        navigation.Route.Modal switch
         {
             GalleryModal.Picker => $"gallery.density.{_density.ToLowerInvariant()}",
             GalleryModal.ActionSheet => "gallery.sheet.pin",
-            _ => TabId(navigation.Route.Page),
+            _ => navigation.Route.Page switch
+            {
+                GalleryPage.Overview => "gallery.refresh",
+                GalleryPage.Controls => "gallery.controls.compact.action",
+                GalleryPage.Tiles => "gallery.media",
+                _ => "gallery.utilities.toast-button",
+            },
         };
 
     private void SetPage(GalleryPage page, string sourceFocusId) =>

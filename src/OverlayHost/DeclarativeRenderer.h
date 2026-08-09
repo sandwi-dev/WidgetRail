@@ -108,6 +108,11 @@ struct DeclarativeRenderOptions final {
     std::wstring pressedElementId;
 };
 
+[[nodiscard]] constexpr bool IsCompactResponsiveSurface(
+    const declarative::Size surface) noexcept {
+    return surface.width < 960.0F || surface.height < 540.0F;
+}
+
 /// Resolves the exact bridge-computed state used for a native paint. Pressed
 /// is intentionally layered on focused because controller activation always
 /// belongs to the focused actionable element.

@@ -56,6 +56,12 @@ and accessibility. Keep the root unconditional and give mutually exclusive
 branches distinct stable IDs; use ordinary responsive Grid/Row wrapping when
 the content hierarchy itself does not need to change.
 
+Focusable buttons, sliders, scrubbers, and action surfaces can opt into
+protocol-v13 responsive focus continuity with `.PersistFocusAs(id)`. Share that
+ID only across mutually exclusive presentations of one logical destination;
+action IDs remain independent routing intent. `UI.NavigationShell` generates
+the keys automatically for its compact and expanded controls.
+
 Use `UI.CodeText(text, id, accessibilityLabel?)` for bounded diagnostics or
 commands. It emits one nonfocusable Text node with `.gbar-code-text`, preserves
 whitespace, and caps content/accessibility text at 4,096 characters. It does

@@ -104,6 +104,8 @@ public sealed record ScrubberElement : WidgetElement
     public SliderInteractionMode? ControllerInteractionMode { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsBusy { get; init; }
+    /// <inheritdoc cref="ButtonElement.FocusPersistenceId"/>
+    public string? FocusPersistenceId { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
 
     /// <summary>The stable focus ID owned by the nested Slider.</summary>
@@ -138,6 +140,11 @@ public sealed record ScrubberElement : WidgetElement
     {
         IsBusy = busy ? true : null,
     };
+    public ScrubberElement PersistFocusAs(string id)
+    {
+        StableIdentifier.Validate(id, nameof(id));
+        return this with { FocusPersistenceId = id };
+    }
 
     public ScrubberElement Activate(string actionId) => this with
     {
@@ -174,6 +181,7 @@ public sealed record ScrubberElement : WidgetElement
         {
             IsDisabled = IsDisabled,
             IsBusy = IsBusy,
+            FocusPersistenceId = FocusPersistenceId,
             ControllerInteractionMode = ControllerInteractionMode,
             FocusNeighbors = FocusNeighbors,
             StyleClasses = ["gbar-scrubber__slider"],

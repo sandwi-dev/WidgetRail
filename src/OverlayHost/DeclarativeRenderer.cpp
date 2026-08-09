@@ -1713,8 +1713,7 @@ RenderResult DeclarativeRenderer::Render(
     pass.viewport = viewport;
     const auto responsiveViewport = options.responsiveViewport.value_or(
         Size{viewport.width, viewport.height});
-    pass.compactMode = responsiveViewport.width < 960.0F ||
-        responsiveViewport.height < 540.0F;
+    pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
     pass.options = options;
     if (!FiniteRect(viewport) || viewport.width < 0.0F || viewport.height < 0.0F) {
         pass.Add({}, L"invalid_viewport", L"Viewport must contain finite non-negative geometry.",
