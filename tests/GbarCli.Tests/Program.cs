@@ -87,6 +87,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dev Job Object reclaims persistent child and grandchild processes", DevJobReclaimsDescendants),
     ("Dev retains last good and cleans its process tree on cancellation", DevRetainsAndCleans),
     ("Render previews a valid snapshot", RenderSnapshot),
+    ("Scenario manifests are bounded and execution fails closed", ScenarioPreviewTests.Run),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
     ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
@@ -134,7 +135,7 @@ static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "new", "validate", "dev", "render", "replay", "pack", "install", "uninstall", "list", "enable", "disable", "version" })
+    foreach (var command in new[] { "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
     var version = await RunCli("version", "help");
     Assert.Equal(0, version.Code);
@@ -819,7 +820,11 @@ static async Task RenderSnapshot()
     var result = await RunCli("render", snapshotPath);
     Assert.Equal(0, result.Code);
     Assert.Contains("Widget test.instance", result.Output);
+    Assert.Contains("Active input scope: root", result.Output);
     Assert.Contains("▶ Button #apply", result.Output);
+    Assert.Contains("focusPersistence=transport.apply", result.Output);
+    Assert.Contains("a11y=\"Apply\"", result.Output);
+    Assert.Contains("focus=[left:lower,right:raise]", result.Output);
     Assert.Contains("RightBumper:raise", result.Output);
 }
 
@@ -1372,7 +1377,9 @@ static ViewSnapshot BuildSnapshot() => new WidgetView(
         UI.Button("Lower", "lower", "lower")
             .FocusRight("apply")
             .Shortcut(ControllerButton.LeftBumper),
-        UI.Button("Apply", "apply", "apply")
+        (UI.Button("Apply", "apply", "apply")
+            with { AccessibilityLabel = "Apply" })
+            .PersistFocusAs("transport.apply")
             .FocusLeft("lower")
             .FocusRight("raise")
             .Shortcut(ControllerButton.X),

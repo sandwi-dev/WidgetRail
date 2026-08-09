@@ -31,6 +31,7 @@ public static class CliApplication
                 "new" => await NewCommand.RunAsync(args[1..], output),
                 "validate" => await ValidateCommand.RunAsync(args[1..], output, error),
                 "dev" => await DevCommand.RunAsync(args[1..], output, error, cancellationToken),
+                "preview" => await ScenarioPreviewCommand.RunAsync(args[1..], output, cancellationToken),
                 "render" => await RenderCommand.RunAsync(args[1..], output),
                 "replay" => await ReplayCommand.RunAsync(args[1..], output),
                 "pack" => await PackCommand.RunAsync(args[1..], output),
@@ -89,6 +90,7 @@ public static class CliApplication
           gbar new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>]
           gbar validate <widget-directory|manifest.json|style.gbss>
           gbar dev <widget-directory|widget.csproj|file.gbarwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>]
+          gbar preview <widget-directory|gbar.scenarios.json> [--scenario <name>] [--output <snapshot.json>] [--instance <id>]
           gbar render <snapshot.json>
           gbar render <widget.dll> --type <Namespace.Widget> [--output <snapshot.json>] [--instance <id>]
           gbar replay <snapshot.json> <input-replay.json>
