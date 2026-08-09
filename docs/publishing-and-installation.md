@@ -32,8 +32,11 @@ channel.
 
 The SDK does not yet have a supported public NuGet release. External widget
 repositories must currently reference a checked-out SDK project or vendor a
-specific compatible SDK build. Do not advertise the placeholder preview
-package reference emitted outside this repository as an available package.
+specific compatible SDK build. `gbar new widget --sdk-project
+C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj` creates that
+explicit local-project contract. Without a discovered or supplied project, the
+command fails before writing; it no longer emits the unpublished placeholder
+package reference.
 
 ## `.gbarwidget` packages
 

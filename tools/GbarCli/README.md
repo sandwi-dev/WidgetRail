@@ -37,8 +37,10 @@ gbar theme list
 ## Commands
 
 - `new widget` instantiates the bundled controller-first C# template. It uses
-  a source `ProjectReference` inside this repository and the future SDK
-  package reference when installed elsewhere.
+  a discovered source `ProjectReference` inside this repository. Outside the
+  checkout, pass `--sdk-project <path-to-WidgetSdk.csproj>`. Because no
+  supported SDK package is published yet, unresolved SDK input fails before
+  creating a partial scaffold; the CLI never emits a placeholder package.
 - `validate` checks strict manifest JSON and every GBSS file in a widget
   directory. GBSS validation uses the shared `WidgetStyling` parser/compiler,
   enforces typed bounded properties, and blocks scripts, expressions, URLs,

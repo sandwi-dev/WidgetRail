@@ -45,6 +45,13 @@ command, automatic updater, or marketplace client.
 dotnet build .\scratch\VolumeControl\VolumeControl.csproj
 ```
 
+From this source checkout, `gbar new` discovers
+`src\WidgetSdk\WidgetSdk.csproj`. If the CLI/templates are copied elsewhere,
+pass `--sdk-project C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj`.
+No supported SDK package is published yet, so unresolved SDK input fails before
+the output directory is created instead of generating an unbuildable package
+reference.
+
 For the normal edit/build/overlay loop, replace the manual build with:
 
 ```powershell

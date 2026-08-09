@@ -68,6 +68,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Help describes the complete workflow", HelpWorks),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
+    ("New requires a real SDK project outside the source checkout", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
     ("Theme validation rejects unsafe content and unreachable styles", ThemeValidationSafety),
@@ -202,6 +203,61 @@ static async Task NewScaffolds()
     Assert.Equal(WidgetGlyph.Connection, manifest.Presentation.Icon);
     Assert.Equal(WidgetResidencyPolicies.UnloadAfterIdle, manifest.ResidencyPolicy?.Mode);
     Assert.Equal(300, manifest.ResidencyPolicy?.IdleSeconds);
+}
+
+static async Task NewScaffoldsOutsideCheckout()
+{
+    using var temp = new TemporaryDirectory();
+    var originalDirectory = Environment.CurrentDirectory;
+    var originalTemplateRoot = Environment.GetEnvironmentVariable("GBAR_TEMPLATE_ROOT");
+    var sdkProject = Path.GetFullPath(Path.Combine(originalDirectory,
+        "src", "WidgetSdk", "WidgetSdk.csproj"));
+    Assert.True(File.Exists(sdkProject), "Repository WidgetSdk project is unavailable.");
+    var sourceTemplate = Path.Combine(originalDirectory, "templates", "ControllerWidget");
+    var externalRoot = Path.Combine(temp.Path, "external");
+    var externalTemplate = Path.Combine(externalRoot, "templates", "ControllerWidget");
+    Directory.CreateDirectory(externalTemplate);
+    foreach (var source in Directory.EnumerateFiles(sourceTemplate, "*", SearchOption.AllDirectories))
+    {
+        var destination = Path.Combine(externalTemplate, Path.GetRelativePath(sourceTemplate, source));
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        File.Copy(source, destination);
+    }
+
+    try
+    {
+        Environment.CurrentDirectory = externalRoot;
+        Environment.SetEnvironmentVariable("GBAR_TEMPLATE_ROOT", externalTemplate);
+        var rejectedTarget = Path.Combine(externalRoot, "RejectedWidget");
+        var rejected = await RunCli(
+            "new", "widget", "RejectedWidget", "--output", rejectedTarget);
+        Assert.Equal(2, rejected.Code);
+        Assert.Contains("WidgetSdk is not published as a supported package", rejected.Error);
+        Assert.True(!Directory.Exists(rejectedTarget),
+            "Missing SDK resolution wrote a partial scaffold.");
+
+        var destination = Path.Combine(externalRoot, "ExternalWidget");
+        var created = await RunCli(
+            "new", "widget", "ExternalWidget",
+            "--output", destination,
+            "--id", "dev.test.external-widget",
+            "--publisher", "dev.test",
+            "--sdk-project", sdkProject);
+        Assert.Equal(0, created.Code);
+        var project = Path.Combine(destination, "ExternalWidget.csproj");
+        var projectText = await File.ReadAllTextAsync(project);
+        Assert.Contains("ProjectReference", projectText);
+        Assert.DoesNotContain("PackageReference", projectText);
+        var build = await RunProcessAsync(
+            "dotnet", ["build", project, "--configuration", "Release", "--nologo"],
+            TimeSpan.FromSeconds(90));
+        Assert.Equal(0, build.Code);
+    }
+    finally
+    {
+        Environment.CurrentDirectory = originalDirectory;
+        Environment.SetEnvironmentVariable("GBAR_TEMPLATE_ROOT", originalTemplateRoot);
+    }
 }
 
 static async Task NewRejectsIdentity()
@@ -1517,6 +1573,37 @@ static async Task<CliResult> RunCli(params string[] args)
     using var error = new StringWriter();
     var code = await CliApplication.RunAsync(args, output, error);
     return new CliResult(code, output.ToString(), error.ToString());
+}
+
+static async Task<CliResult> RunProcessAsync(
+    string executable,
+    IReadOnlyList<string> arguments,
+    TimeSpan timeout)
+{
+    var start = new ProcessStartInfo(executable)
+    {
+        UseShellExecute = false,
+        CreateNoWindow = true,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+    };
+    foreach (var argument in arguments) start.ArgumentList.Add(argument);
+    using var process = Process.Start(start) ??
+        throw new InvalidOperationException($"Could not start {executable}.");
+    var output = process.StandardOutput.ReadToEndAsync();
+    var error = process.StandardError.ReadToEndAsync();
+    using var cancellation = new CancellationTokenSource(timeout);
+    try
+    {
+        await process.WaitForExitAsync(cancellation.Token);
+    }
+    catch (OperationCanceledException)
+    {
+        try { process.Kill(entireProcessTree: true); }
+        catch (InvalidOperationException) { }
+        throw new TimeoutException($"{executable} exceeded {timeout.TotalSeconds:0} seconds.");
+    }
+    return new CliResult(process.ExitCode, await output, await error);
 }
 
 static async Task<CliResult> RunCliWithHandler(HttpMessageHandler handler, params string[] args)

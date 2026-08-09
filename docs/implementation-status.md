@@ -24,7 +24,7 @@ migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
 uses one lifecycle-owned Active/Latest lane for transport reconciliation; it
 neither retains provider response bodies nor renders unknown exception text.
 Focused Release suites pass Widget SDK 84/84, SDK Gallery 6/6, YT Music 48/48,
-and Gbar CLI 48/48. Packaged controller/companion evidence remains separate.
+and Gbar CLI 49/49. Packaged controller/companion evidence remains separate.
 
 ## Implemented
 
@@ -221,7 +221,9 @@ Up/Down navigation.
   `enable`, `disable`, and `version list|select|rollback` commands. Local and
   remote updates share an exact-stream pre-publish enabled-ID guard. Remote
   acquisition requires SHA-256 pinning, reports the actual digest, and installs
-  disabled pending explicit review. `gbar dev` provides a bounded unsigned
+  disabled pending explicit review. `gbar new` auto-discovers the source SDK or
+  accepts an exact `--sdk-project`; unresolved external use fails before write
+  instead of emitting an unpublished placeholder package. `gbar dev` provides a bounded unsigned
   source/package watch-build-run loop through the production generic worker,
   AppContainer, broker, lifecycle, renderer, and Settings permission path. A
   controller/hotkey-free candidate must authenticate its exact catalog/widget/
@@ -640,7 +642,8 @@ enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
 polling. Styling and platform settings/themes pass 22/22 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 48/48, including bounded data-only snapshot rendering, fail-closed DLL
+passes 49/49, including unrelated-directory scaffold failure-before-write and
+an explicit-SDK Release build, bounded data-only snapshot rendering, fail-closed DLL
 and scenario execution, bounded scenario-manifest discovery,
 authenticated candidate/active development readiness,
 last-good retention/restart, complete bounded source/package watching, cleanup

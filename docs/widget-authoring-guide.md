@@ -97,8 +97,9 @@ versions. Widget code does not set or negotiate them; use
 ## Tutorial 1: scaffold and run the minimal widget
 
 Prerequisites are Windows, PowerShell, the .NET 8 SDK, and this repository.
-The SDK is not yet a supported public NuGet package, so the generator currently
-creates repository-local project references.
+The SDK is not yet a supported public NuGet package, so the generator creates
+a source `ProjectReference` only after it discovers or receives the exact SDK
+project.
 
 Build the CLI and scaffold a widget:
 
@@ -114,6 +115,12 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 dotnet build .\scratch\Clock\Clock.csproj -c Release
 & $gbar validate .\scratch\Clock
 ```
+
+The source checkout is auto-discovered. When running copied CLI/template
+artifacts from an unrelated directory, add
+`--sdk-project C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj`.
+Missing SDK resolution fails before any scaffold files are written; `gbar new`
+does not emit a placeholder NuGet reference.
 
 The smallest useful widget is a public `Widget` subclass with a public
 parameterless constructor (or one whose parameters are all optional):

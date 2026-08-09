@@ -35,9 +35,18 @@ Run it from this checkout, use the built executable with its copied templates,
 or set `GBAR_TEMPLATE_ROOT` to the directory containing
 `templates/ControllerWidget/template.json`.
 
-If scaffolding outside the checkout produces a preview `PackageReference`,
-remember that the SDK package is not currently published. Replace it with a
-valid local `ProjectReference` or develop inside the repository.
+## `gbar new` cannot resolve WidgetSdk
+
+The SDK is not yet published as a supported package. Run `gbar new` from this
+source checkout, or pass the exact local project explicitly:
+
+```powershell
+gbar new widget Example `
+  --sdk-project C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj
+```
+
+The command validates SDK resolution before creating its output directory. It
+does not leave a partial project or silently reference an unpublished package.
 
 ## Spotify Connect returns `ERR_CONNECTION_REFUSED`
 

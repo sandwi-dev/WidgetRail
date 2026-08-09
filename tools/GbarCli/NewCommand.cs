@@ -6,9 +6,11 @@ internal static partial class NewCommand
 {
     public static async Task<int> RunAsync(string[] args, TextWriter output)
     {
-        var parsed = new CommandArguments(args, "--output", "--id", "--publisher");
+        var parsed = new CommandArguments(args, "--output", "--id", "--publisher", "--sdk-project");
         if (parsed.Positionals.Count != 2 || parsed.Positionals[0] != "widget")
-            throw new CliUsageException("Usage: gbar new widget <Name> [--output <directory>] [--id <id>] [--publisher <id>]");
+            throw new CliUsageException(
+                "Usage: gbar new widget <Name> [--output <directory>] [--id <id>] " +
+                "[--publisher <id>] [--sdk-project <WidgetSdk.csproj>]");
 
         var name = parsed.Positionals[1];
         if (!TypeNameRegex().IsMatch(name))
@@ -25,13 +27,14 @@ internal static partial class NewCommand
             throw new CliUsageException($"Output directory is not empty: {target}");
 
         var templateRoot = TemplateLocator.Find();
+        var sdkProject = ResolveSdkProject(parsed.Option("--sdk-project"), templateRoot);
         Directory.CreateDirectory(target);
         var replacements = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["{{WidgetName}}"] = name,
             ["{{WidgetId}}"] = id,
             ["{{Publisher}}"] = publisher,
-            ["{{SdkReference}}"] = BuildSdkReference(target, templateRoot),
+            ["{{SdkReference}}"] = BuildSdkReference(target, sdkProject),
         };
 
         var created = 0;
@@ -55,13 +58,43 @@ internal static partial class NewCommand
         return 0;
     }
 
-    private static string BuildSdkReference(string target, string templateRoot)
+    private static string ResolveSdkProject(string? requested, string templateRoot)
     {
-        var sdkProject = FindSdkProject(templateRoot) ?? FindSdkProject(Environment.CurrentDirectory);
-        if (sdkProject is null)
-            return "<PackageReference Include=\"GameBarAlternative.WidgetSdk\" Version=\"0.1.0-preview.1\" />";
+        if (requested is not null)
+        {
+            try
+            {
+                var fullPath = Path.GetFullPath(requested);
+                if (!File.Exists(fullPath) ||
+                    !string.Equals(Path.GetFileName(fullPath), "WidgetSdk.csproj", StringComparison.OrdinalIgnoreCase))
+                    throw new CliUsageException(
+                        "--sdk-project must name an existing WidgetSdk.csproj file.");
+                if ((File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
+                    throw new CliUsageException("--sdk-project cannot be a reparse point.");
+                return fullPath;
+            }
+            catch (Exception exception) when (exception is ArgumentException or
+                                                   NotSupportedException or
+                                                   PathTooLongException or
+                                                   IOException or
+                                                   UnauthorizedAccessException)
+            {
+                throw new CliUsageException("--sdk-project is not a readable SDK project path.");
+            }
+        }
+
+        return FindSdkProject(templateRoot) ?? FindSdkProject(Environment.CurrentDirectory) ??
+            throw new CliUsageException(
+                "WidgetSdk is not published as a supported package. Run from the source checkout " +
+                "or pass --sdk-project <path-to-WidgetSdk.csproj>; no files were created.");
+    }
+
+    private static string BuildSdkReference(string target, string sdkProject)
+    {
         var relative = Path.GetRelativePath(target, sdkProject).Replace('/', '\\');
-        return $"<ProjectReference Include=\"{relative}\" />";
+        var escaped = System.Security.SecurityElement.Escape(relative) ??
+            throw new CliUsageException("The SDK project path could not be encoded safely.");
+        return $"<ProjectReference Include=\"{escaped}\" />";
     }
 
     private static string? FindSdkProject(string start)
