@@ -94,8 +94,10 @@ Up/Down navigation.
   non-paged resources, model-backed SingleFlight/Latest/Serial optimistic
   commands, bounded route navigation with exact-scope Back/return focus, and
   validated hierarchical/opaque-key IDs; bounded lifecycle-owned operation
-  lanes and offset-paged resources; active input-scope correlation on every
-  standard open-widget action;
+  lanes and offset-paged resources; one 16-pending-item active-lifetime action
+  FIFO shared by direct/quick/controller ingress with typed admission,
+  slider-tail coalescing, cooperative lifecycle drain, late-failure events, and
+  active input-scope correlation on every standard open-widget action;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network/Bluetooth/recent-activity/app-library/media-session services,
@@ -103,9 +105,11 @@ Up/Down navigation.
   state with revision/CAS, descriptors, DTOs, events, errors, and public
   deterministic state-test fixtures.
 - `WidgetRuntime`: lazy out-of-process workers over bounded framed JSON with
-  explicit lifecycle transitions, per-start host-owned companion sessions,
-  pre-process host-owned residency leases, timeouts, failure reporting, and
-  limited restart. Installed/community workers
+  prompt typed action admission rather than provider-completion acknowledgement,
+  protocol-v1 empty-ack/failure-name compatibility, explicit lifecycle
+  transitions, per-start host-owned companion sessions, pre-process host-owned
+  residency leases, timeouts, asynchronous action/process failure reporting,
+  and limited restart. Installed/community workers
   require stable host-derived capability-free Low-integrity AppContainers,
   stripped environments, exact non-inheriting verified-file grants, PID-bound isolated
   pipes, and pre-launch Job Object memory/process/UI/cleanup
@@ -116,7 +120,9 @@ Up/Down navigation.
 - `WidgetBridge`: current-user-only native sidecar pipe, trusted plus installed
   and manifest-backed bundled catalog discovery, no-poll last-good catalog
   monitoring/semantic revisions, compatible-worker preservation and changed-
-  worker retirement, worker forwarding, quick actions, controller input,
+  worker retirement, worker forwarding, shared direct/quick/controller action
+  admission with explicit inactive/saturated failures, generation-owned late
+  action failures, controller input,
   host-owned mandatory community isolation selection, PID/identity/declaration-
   bound broker companions, single-use exact-operation dashboard gesture
   authority, per-session verified-content lease handoff, aggregate resident-worker/count admission with a separate Settings

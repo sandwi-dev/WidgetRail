@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against implementation HEAD `d4291be` after committed bounded bridge dispatch, exact-directory-boundary evidence, action-ingress semantics, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
+Last reassessed: 2026-08-09 against implementation commits `6c5f932` and `7d33ce1` plus the current documentation worktree, after unified action admission and generation-owned native failure handling, bounded bridge dispatch, exact-directory-boundary evidence, GitHub package lifecycle, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -122,17 +122,18 @@ eligible for clean documentation commit `b2956ab` over implementation
 `4f903b0`, with zero stderr or output truncation. Its three explicitly selected
 steps do not update unrelated verification lanes.
 
-The rotated advanced-widget audit found a separate P1 liveness/API-contract
-defect. Controller input is admitted to a bounded queue and acknowledged before
-`OnActionAsync` finishes, but direct bridge `Action` and `QuickAction` requests
-wait for that method to complete. Production gives the worker request two
-seconds, while the public loopback service defaults to ten seconds and permits
-forty. YT Music awaits connect, pair, refresh, and command provider I/O directly
-inside `OnActionAsync`; Spotify works around the contract by maintaining its
-own detached command task and gate. The same logical action can therefore be
-safe through controller ingress and terminate the worker through direct
-ingress. EQ-021 requires one admission/acknowledgement contract rather than a
-larger timeout or more author-owned task plumbing.
+Commits `6c5f932` and `7d33ce1` resolve the action-ingress ownership mismatch.
+Direct, legacy quick, and controller-resolved actions now enter one bounded
+active-lifetime FIFO and acknowledge typed admission instead of provider
+completion. Capacity proof waits on a deterministic execution barrier. Public
+docs define the legacy catalog QuickAction route as deliberately non-authorizing,
+retain protocol-v1 empty acknowledgements and failure names, and reserve exact
+capability gesture authority for snapshot-correlated controller input. YT Music
+and Spotify removed redundant ordinary-action coordination. Late failures now
+enter a bounded native queue with runtime-generation identity; the shell rejects
+stale/malformed payloads and never renders or logs exception text. EQ-021 is
+resolved with focused Release evidence; the clean aggregate gate remains a
+separate verification task.
 
 The bridge-concurrency code also needs one ownership pass before more request
 types or an asynchronous native client are added. `WidgetBridgeServer.RunAsync`
@@ -142,6 +143,15 @@ mutable mechanisms, while `ClientRegistration.OperationGate` separately
 serializes widget work. EQ-022 recommends a narrow internal request dispatcher
 with deterministic tests; this is not a request for a generic framework or a
 line-count refactor.
+
+The accessibility rotation finds a more fundamental product gap. The SDK and
+protocol validate accessible names and values, and the native host applies
+visual accessibility policy, but the custom Direct2D window exposes no Windows
+UI Automation or MSAA provider. There is no `WM_GETOBJECT` handling, provider
+interface, or focus/property/structure event publication. Assistive technology
+therefore cannot discover, navigate, invoke, or read the widget tree. EQ-023
+separates visual accessibility from end-to-end platform accessibility and treats
+the missing host-owned provider as a P1 release boundary.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -158,6 +168,12 @@ also internally incomplete: its manifest requires
 `payload/<WidgetName>.dll`, ordinary `dotnet build` writes beneath `bin`,
 `gbar validate .` checks manifest/style semantics but not entrypoint existence,
 and neither the template nor its README stages the payload before `gbar pack`.
+The generator itself is not yet transactional or version-governed:
+`template.json` is used only as an existence sentinel, its `templateVersion` is
+never parsed, and every recursively discovered file is read as text and written
+directly into the final target after that directory is created. Mid-copy failure,
+unexpected files, binary starter assets, or a changed template layout have no
+bounded schema, compatibility refusal, staging transaction, or rollback test.
 The roughly 200-declaration public SDK surface also has no package metadata or
 API-compatibility baseline yet.
 
@@ -285,6 +301,16 @@ completion continuations, fatal-error arbitration, and drain. The three
 integration-style cases are valuable, but they do not give the scheduler a
 deterministic, cross-platform test surface for every completion and cleanup
 path.
+
+The accessibility rotation adds EQ-023. Searches across native source and tests
+find no `WM_GETOBJECT`, `UiaReturnRawElementProvider`, UIA provider interfaces,
+MSAA bridge, or accessibility-event publication. `accessibilityLabel` is parsed
+and validated, but the only direct use in `OverlayApp` is as fallback text for
+the visible controller shortcut prompt. Renderer “accessibility” tests exercise
+text scale, contrast, reduced transparency/motion, focus geometry, and semantic
+field retention—not an operating-system accessibility tree. No product document
+acknowledges this distinction despite repeatedly saying the host owns or provides
+accessibility.
 
 Commit `e7b4e6b` is documentation-only. It correctly carries retained run
 `20260809T152831Z-67b77c73`'s 325.283 ms launch-lease and 360.426 ms exact-grant
@@ -707,17 +733,26 @@ work to `gbar dev` and reserve `gbar render` for bounded data.
 review is implemented; exact verified-byte launch binding is tracked by
 EQ-014, while provenance and signed publisher trust remain open.**
 
-**Evidence.** `InstallCommand` requires `--sha256` for HTTPS/GitHub packages,
-the downloader applies bounded HTTPS/redirect/size/time rules, and installation
-leaves remote packages disabled. `WidgetCatalogService` rejects updates while
-an ID is enabled, keeps versions immutable, and requires explicit version
-selection. `InstalledPackageIntegrity` seals the extracted content tree, while
+**Evidence.** The manual unsigned lifecycle is real rather than aspirational.
+`InstallCommand` accepts a local package, exact HTTPS URL, or deterministic
+`github:owner/repository@tag/asset` shorthand and requires `--sha256` for remote
+bytes. The downloader applies bounded HTTPS/redirect/size/time rules and keeps
+the temporary file locked through validation. Installation leaves remote
+packages disabled. `WidgetCatalogService` rejects updates while an ID is
+enabled, keeps versions immutable, requires explicit version selection, and
+supports rollback and disabled-only uninstall. The CLI suite registers exact
+GitHub resolution, update/select/rollback/uninstall, unsafe-source, redirect,
+size, encoding, timeout, hash-mismatch cleanup, and integrity cases. This review
+inspected those tests but did not execute them. `InstalledPackageIntegrity`
+seals the extracted content tree, while
 `InstalledWidgetAuthority.PublisherId` derives an `unsigned.<digest>` runtime
 authority so a replacement observed during catalog validation receives a new
 identity instead of inheriting consent or secrets. These are strong integrity
-and containment foundations, but EQ-014 shows that a mutable path is reopened
-after verification, so the exact-byte property is not yet atomic through
-worker load.
+and containment foundations. EQ-014 now records a complete file inventory,
+per-start revalidation, pinned handles, and exact non-inheriting grants across
+the launch seam; its remaining adversarial loader, object-binding, alternate-ACE,
+and partial-grant cases stay owned there rather than being restated as a simple
+mutable-path reopen.
 
 They do not establish author identity. `WidgetPackageInstaller` only verifies
 that a manifest ID falls within its manifest-declared publisher namespace. The
@@ -949,6 +984,22 @@ path, and fails with an actionable message rather than emitting the unpublished
 quickstart, authoring, publishing, and troubleshooting guides state the same
 temporary local-project contract.
 
+That failure-before-write guarantee is currently narrow. After SDK and identity
+preflight, `NewCommand` creates the final target and streams each recursively
+enumerated template file through global string replacement. It does not stage a
+complete sibling tree, pre-read/validate the full input, or remove output if a
+later template read or destination write fails. `TemplateLocator` accepts
+`GBAR_TEMPLATE_ROOT` when it merely contains `template.json`; `NewCommand`
+neither deserializes the declared `templateVersion` nor enforces a closed file
+inventory, file/count/byte bounds, reparse-safe traversal, or text-versus-binary
+mode. A stale template can therefore be silently interpreted by a newer CLI,
+an unexpected editor/backup file is copied into every project, and a future PNG
+or other binary starter asset would be corrupted by `ReadAllTextAsync` and
+`WriteAllTextAsync`. Existing tests cover invalid identity, missing SDK, token
+replacement, validation, and one external Release build; none injects a
+mid-generation failure, unsupported template version, extra file, binary file,
+or reparse traversal and asserts atomic cleanup.
+
 Current HEAD corrects two immediate template defects. The generated
 README now uses `gbar dev` for executable integration and accurately says
 `gbar render` consumes snapshot JSON only. The manifest and Clock sample switch
@@ -1006,7 +1057,9 @@ tests, API-compatibility baseline, and copyable commands are not yet shipped as
 one versioned release set. Development and distribution also construct package
 generations through different author-facing workflows: `gbar dev` owns a useful
 source build/stage implementation that `gbar pack` cannot consume. Generated
-documentation remains outside executable documentation checks.
+documentation remains outside executable documentation checks. The template is
+also treated as an unversioned directory convention rather than one validated
+input artifact owned by the same CLI release.
 
 **Recommended direction.** Treat the CLI, template, SDK/runtime packages, and
 compatibility range as one release set. The production endpoint is a supported,
@@ -1031,6 +1084,18 @@ invent infrastructure the platform already owns. Keep advanced focus/shortcut
 examples, but make the first README path the smallest complete build-run-test-
 package loop.
 
+Make template generation transactional and versioned. Parse a strict template
+manifest before touching the destination; bind its supported schema/version to
+the CLI release and list each expected relative file with text/binary mode and,
+for packaged templates, a content digest. Apply count, per-file, aggregate-byte,
+path, and reparse bounds. Materialize and validate the complete replacement set
+in a unique sibling staging directory, then publish it by one rename only when
+the requested target does not exist; on any failure, remove only that verified
+staging directory. If contributor overrides remain supported, run them through
+the same validation while clearly treating their content as local developer
+input. Do not recursively copy arbitrary files merely because they sit beside
+`template.json`.
+
 Give source widgets one explicit release operation that owns the same bounded
 build-to-generation contract as `gbar dev`, then passes that exact immutable
 generation to the existing deterministic packer. This could be `gbar package
@@ -1052,7 +1117,11 @@ must not become the documented community distribution model.
 Reusing the dev generation builder reduces drift, but release packaging must
 exclude dev readiness files/catalog state and must not launch the overlay;
 duplicating build/staging logic would make development and release artifacts
-diverge again.
+diverge again. A closed template manifest is slightly more maintenance than
+directory enumeration, but it makes binary assets, compatibility, provenance,
+and review diffs explicit. Requiring a nonexistent destination simplifies an
+atomic rename; supporting an already-created empty directory would require a
+more complex recoverable publication contract with little author value.
 
 **Resolution evidence.** The implementation agent reports Release
 `GbarCli.Tests` at 49/49, including a failure-before-write case and an unrelated-
@@ -1076,7 +1145,12 @@ compatibility contract, and retain an external sample repository or immutable
 CI artifact as the public proof. Pack the SDK and protocol dependencies, compare
 their public surface to the approved baseline, and prove an intentional breaking
 change requires an explicit compatibility/version update while an accidental
-one fails the gate.
+one fails the gate. Inject unsupported template versions, an unreadable source,
+a destination write failure, unexpected and binary files, oversized/count-
+limited input, and a reparse directory; every refusal must leave the requested
+target absent and clean only its own staging directory. Prove the published CLI
+accepts exactly its packaged template manifest and preserves declared binary
+bytes without replacement.
 
 ### EQ-002 — P1 — Responsive focus identity required an explicit contract
 
@@ -1460,16 +1534,23 @@ The migrations show three materially different outcomes:
   `WidgetOptimisticCommand`. A textual coordination inventory finds no
   `lock` or `SemaphoreSlim` use and only the lifecycle progress loop/task.
 - YT Music uses `WidgetOperations.RunLatest` for one transport-refresh burst,
-  including current-attempt guards for success and failure. The same class
-  still owns three activation tasks, two semaphores, a state lock, connection
+  including current-attempt guards for success and failure. Commit `6c5f932`
+  now relies on the shared queue for ordinary action serialization
+  and narrows its former action semaphore to connection work that may also start
+  during activation. The same class still owns three activation tasks, two
+  semaphores, a state lock, connection
   and polling policy, progress projection, an optimistic-command list and its
   confirmation/rollback algorithm, action routing, and the complete view.
 - Spotify has successfully moved two offset collections into
   `WidgetPagedResource<TItem>` and one page family into an Active Latest lane.
-  It still has separate command and authorization task registries, action and
-  refresh semaphores, an active generation, polling/progress loops, several
-  lock domains, state/cache fields, action routing, and all view composition in
-  the same class. Audio Mixer and Network Controls have not adopted the new
+  The committed action-admission migration also removes its command task
+  registry and action semaphore by awaiting ordinary commands directly on the
+  shared runtime queue. It still has an authorization task registry, refresh
+  semaphore, active generation, polling/progress loops, several lock domains,
+  state/cache fields, action routing, and all view composition in the same
+  roughly 1,914-line class. Its existing widget tests call `OnActionAsync`
+  directly, so production worker/bridge adoption is not yet demonstrated.
+  Audio Mixer and Network Controls have not adopted the new
   model/resource/operation primitives: their primary files contain roughly 61
   and 44 textual lock sites respectively, while retaining handwritten
   pending/authoritative state and lifecycle coordination. Those counts are not
@@ -1862,7 +1943,7 @@ host-side factory test is not closure.
 
 ### EQ-020 — P1 — Exact-content startup can block the native UI outside every request deadline
 
-**Status: Open against implementation HEAD `d4291be`; the file inventory and
+**Status: Open against implementation HEAD `6c5f932`; the file inventory and
 managed request dispatcher are bounded, and clean retained focused cases prove
 cooperative managed head-of-line behavior. Production-client adoption,
 security-authority application, shutdown drain,
@@ -2040,73 +2121,84 @@ must close/cancel the blocked pipe without leaking its I/O owner. Repeat with a
 slow reply arriving just before and just after the deadline and with an unrelated
 catalog event/request while one widget start is pending.
 
-### EQ-021 — P1 — Action acknowledgement depends on ingress and can terminate a healthy worker
+### EQ-021 — P1 — Unified action admission is platform-owned end to end
 
-**Status: Open against implementation HEAD `d4291be`; controller input has
-bounded admission semantics, while direct actions synchronously inherit provider
-latency.**
+**Status: Resolved in commits `6c5f932`, `7d33ce1`, and `7d92dcd`.
+Admission, lifecycle, compatibility, failure transport, native presentation,
+and advanced-widget adoption have one explicit owner and focused Release
+evidence. A clean aggregate gate remains separate release evidence.**
 
-**Evidence.** `WidgetWorkerServer.HandleRequestAsync` handles protocol
-`Action` by awaiting `Widget.OnActionAsync` and only then sending
-`Acknowledged`. `WidgetProcessClient.SendActionAsync` waits for that response,
-and production `WidgetBridgeServer.CreateRegistration` configures a two-second
-worker `RequestTimeout`; timeout reports `RequestTimedOut` and terminates the
-worker. Both bridge `Action` and bridge `QuickAction` use this path. Native
-`OverlayApp::DispatchScrollPagination` also calls `SendAction` directly.
+**Evidence.** `WidgetControllerQueue.cs` now owns a shared 16-item
+`ActionQueueState`. Internal `AdmitAction` accepts both direct and resolved
+controller actions into one serial active-lifetime FIFO, coalesces only a
+contiguous tail of changes to the same slider, reports `Enqueued`, `Replaced`,
+`RejectedCapacity`, or `RejectedInactive`, cancels/drains on lifecycle exit, and
+publishes later `ActionFailed` events. `WidgetWorkerServer` acknowledges direct
+protocol `Action` after admission rather than after `OnActionAsync` completes;
+`WidgetProcessClient.AdmitActionAsync` exposes that distinction while
+`SendActionAsync` remains a compatibility admission wrapper.
 
-Controller ingress has a different contract. `WidgetControllerQueue` admits
-resolved actions to a 16-item serial queue, coalesces slider tails, acknowledges
-before `OnActionAsync` completes, cancels on deactivation, and reports later
-failures. `ControllerInput` receives that immediate handled result. Public
-`controller-input.md` consequently says dashboard and open-widget actions enter
-one FIFO and acknowledge immediately, while `declarative-ui.md` shows an
-`OnActionAsync` implementation that explicitly awaits slow I/O. Neither guide
-qualifies that direct action ingress bypasses the queue.
-The runtime suite codifies both halves separately: `HungWorkerTimesOut` expects
-a direct `SendActionAsync("hang")` timeout, while the rapid dashboard/controller
-cases prove prompt queued acknowledgement. There is no cross-ingress test for
-the same slow but valid action.
+`WidgetBridgeServer` routes both bridge `Action` and the separate catalog
+`QuickAction` command through `AdmitResidentActionAsync`, returns explicit
+`action_inactive`/`action_saturated` failures, and emits asynchronous failure
+events while preserving protocol-v1 reason `controllerActionFailed`. Updated
+bridge cases assert admission, await invalidation
+before reading completed state, observe a later crash event, and prove restart
+can drain an admitted never-completing action. Runtime cases cover mixed direct
+and controller order, bounded admission, late failure, and prompt acknowledgement
+of a hung action. `DirectActionAdmissionIsBounded` now waits for a deterministic
+invalidation emitted as the blocking action starts, proves slider-tail
+replacement, then fills the exact remaining capacity. A compatibility case maps
+an old empty acknowledgement to `Enqueued` and rejects an invalid `Completed`
+value. Public `controller-input.md` and `declarative-ui.md` describe admission
+versus completion, queue capacity, cancellation/drain, late failure, and the
+legacy catalog QuickAction as explicitly non-authorizing. Focused Release
+execution passed Widget Runtime 48/48, Widget Bridge 46/46, Widget SDK 84/84,
+Spotify 31/31, YT Music 48/48, First-Party Conformance 6/6, and the 49-file
+documentation contract.
 
-This is not theoretical API trivia. YT Music's `OnActionAsync` holds its action
-gate while awaiting connect, pair, refresh, and every provider command. Its
-public loopback requests default to ten seconds and allow up to forty seconds,
-so valid provider latency can exceed the outer two-second action request and
-cause worker termination. Spotify avoids that outcome by returning immediately
-from `OnActionAsync` and maintaining its own `_commandOperationTask`, lock,
-semaphore, lifecycle drain, and error wrapper. The safer behavior is therefore
-also the more complicated author path.
+Commits `7d33ce1` and `7d92dcd` complete the native and diagnostic boundary.
+`WidgetBridgeServer` adds the exact runtime generation to action-failure events.
+`WidgetBridgeClient` strictly distinguishes the legacy action-failure reason,
+requires the closed payload and `canRestart = false`, rejects control-bearing or
+over-512-character messages, and stores only validated widget/generation/action/
+source identifiers in a bounded 16-item FIFO. `OverlayApp` discards mismatched
+runtime generations and binds generic “action failed; try again” copy to the
+affected widget in both dashboard and open-widget footers. It never renders or
+logs the untrusted message. Native source tests parse a valid
+event, reject control characters and false restartability, and prove oldest-
+entry eviction; the bridge test asserts generation and legacy reason, and the
+Release native parser target passes while the Release OverlayHost target builds.
+`WidgetWorkerServer` now publishes only the stable generic `Action failed.`
+message across process boundaries. Domain-aware widgets continue mapping
+provider failures to safe state before they escape `OnActionAsync`.
 
-**Why it matters.** The same action can be reliable from a physical controller
-and destructive when invoked through a direct host action, pagination trigger,
-bridge quick-action request, or another direct client. A slow but valid provider
-call is misclassified as a hung worker, consuming restart budget and losing
-widget state. Authors cannot reason locally about `OnActionAsync` because its
-completion contract depends on an undocumented transport route.
+Both advanced widgets complete the intended migration in `6c5f932`. YT
+Music removes its broad action semaphore from ordinary
+refresh/transport commands and retains a narrowly named `_connectionGate` only
+because activation auto-connect can overlap explicit connect/pair. Spotify awaits
+ordinary commands directly and removes `_actionGate`,
+`_backgroundOperationGate`, `_commandOperationTask`, `StartCommandOperation`,
+and their lifecycle drain. First-Party Conformance runs both community packages
+through the generic isolated worker path; the credential-free Spotify route
+proves setup/navigation admission, while provider-command behavior remains
+covered by its typed-fake suite. Live account evidence remains a separate gate.
 
-**Underlying problem.** The platform has two action schedulers: a mature
-runtime-owned controller queue and a synchronous request/response direct-action
-path. `OnActionAsync` is presented as one public hook, but it does not have one
-admission, ordering, cancellation, saturation, failure, or acknowledgement
-contract. Spotify's task registry is a workaround for missing platform
-ownership; YT Music demonstrates the natural implementation the public example
-encourages.
+**Why it matters.** The original transport-dependent worker-termination hazard
+is structurally removed in `6c5f932`, and `7d33ce1`/`7d92dcd` give users safe
+affected-widget feedback when accepted work fails. Ordinary provider failures
+are no longer described as worker crashes or silently overwritten by an
+unrelated widget.
 
-**Recommended direction.** Route every user-originated action through one
-runtime-owned bounded admission primitive before acknowledging the host.
-Direct `Action`, `QuickAction`, pagination/value changes, and resolved
-`ControllerInput` should share ordering, coalescing, active-lifetime
-cancellation, saturation, and `ControllerActionFailed` semantics. Return a
-typed admission result (`accepted`, `coalesced`, `saturated`, `inactive`) rather
-than treating provider completion as acknowledgement. Start any exact gesture
-capability lifetime only when the admitted action begins execution, preserving
-the existing anti-replay boundary.
+**Underlying problem.** The former implementation conflated admission,
+execution, completion, domain error presentation, runtime diagnostics, and
+worker crash/restart. These are now separate typed contracts with explicit
+lifetime and compatibility ownership.
 
-Keep explicitly widget-lifetime work such as browser authorization separate via
-`WidgetOperations` with a documented lifetime and observable completion; do not
-make every action outlive deactivation. Do not fix the mismatch by raising the
-two-second request timeout to the forty-second provider maximum: that would
-retain inconsistent semantics and worsen the native synchronous-I/O freeze in
-EQ-020.
+**Disposition.** Keep the one queue and compatibility rules stable. Explicitly
+widget-lifetime work such as browser authorization remains separate; ordinary
+actions must not outlive deactivation. Future ingress types must reuse typed
+admission and must declare whether they can carry exact gesture authority.
 
 **Tradeoff.** Unifying ingress changes when direct callers observe completion
 and requires a bounded failure channel rather than synchronous exceptions.
@@ -2114,21 +2206,117 @@ Queueing pagination may require Latest/coalesced policy rather than strict FIFO.
 Those policies should be explicit action metadata or SDK-owned adapters, not
 separate widget task registries.
 
-**Resolution evidence.** Run one deliberately slow and one never-completing
-widget action through direct `Action`, bridge `QuickAction`, pagination/value
-change, open-widget controller, and dashboard-controller ingress. Every accepted
-route must acknowledge within a deterministic admission budget, preserve the
-declared order/coalescing policy, avoid worker restart, publish late failure,
-and cancel/drain on deactivation. Prove saturation returns immediately, a
-three-second loopback command cannot trip the two-second worker timeout, and
-gesture authority begins only for the dequeued matching action. Update the
-public action example and acknowledgement prose, then migrate YT Music and
-remove Spotify's redundant command task/gate only after the shared contract is
-proven.
+**Resolution evidence.** Runtime 48/48 proves prompt slow/hung admission,
+mixed-ingress FIFO order, deterministic saturation, slider replacement,
+deactivation drain, late generic failure, no restart, exact queued gesture
+authority, and protocol-v1 empty-ack compatibility. Bridge 46/46 proves typed
+Action/QuickAction responses, per-widget ordering, generation-owned late
+failure, process-failure separation, and restart/drain. Native parser tests
+prove closed payload validation and bounded eviction; the Release OverlayHost
+build consumes failures only for the current runtime generation and presents
+safe affected-widget feedback in either surface. Widget SDK 84/84, Spotify
+31/31, YT Music 48/48, First-Party Conformance 6/6, and Documentation 1/1 pass.
+The clean aggregate retained bundle is the remaining evidence step, not an open
+action-ownership defect.
+
+### EQ-023 — P1 — The custom renderer has no Windows accessibility provider
+
+**Status: Open in implementation HEAD `7d92dcd`; semantic fields and visual
+accessibility policy exist, but assistive technology has no host accessibility
+tree or interaction surface.**
+
+**Evidence.** The public SDK and `ViewSnapshotValidator` require accessible
+names for icon-only actions, images, loading indicators, action surfaces, and
+sliders, and require an accessible slider value. `WidgetBridgeClient` preserves
+`accessibilityLabel` and `accessibilityValue`. The renderer then owns final
+responsive visibility, clipping, scroll offsets, focus rectangles, navigation
+geometry, high contrast, text scale, reduced transparency, and reduced motion.
+
+That semantic pipeline stops before Windows accessibility. Repository-wide
+native searches find no `WM_GETOBJECT`, `UiaReturnRawElementProvider`,
+`IRawElementProvider*`, `IInvokeProvider`, `IRangeValueProvider`, MSAA
+`IAccessible`/`LresultFromObject`, or `NotifyWinEvent`. `OverlayApp::WindowProc`
+falls through to `DefWindowProcW` for unhandled messages. The only direct use of
+a node's accessible label in `main.cpp` is `CollectShortcutPrompts`, which uses
+it as visible controller-hint fallback text.
+
+`RenderResult` retains interactive hit/focus/navigation rectangles, but exact
+geometry for all nodes is compiled only under
+`GBA_DECLARATIVE_RENDERER_TESTING`. Native tests described as accessibility
+coverage prove visual policy and internal geometry; none acts as a UI Automation
+client, inspects control types/patterns, observes focus/property/structure
+events, or invokes an element through an assistive-technology interface.
+Keyboard arrow/Enter/Escape support exists through `WM_KEYDOWN`, but keyboard
+input is not a screen-reader tree and does not expose names, roles, values, or
+state.
+
+The documentation currently blurs those levels. `plugin-platform.md` promises
+consistent accessibility, `architecture-plan.md` says the host owns
+accessibility, and authoring docs describe labels as accessibility exposure.
+The only screen-reader reference is PS5 research; no status or known-issue text
+states that the Windows host lacks UIA/MSAA support.
+
+**Why it matters.** Narrator and other Windows assistive technologies cannot
+discover the dashboard, focused widget control, selected/disabled/busy state,
+slider value, progress, error text, or route changes. Users who cannot rely on
+the custom pixels receive no equivalent product. Authors are required to supply
+semantic data that the shipping host does not deliver, so the framework's
+accessibility promise is currently misleading.
+
+**Underlying problem.** The project treats accessibility as validated strings
+plus visual adaptation. A custom-drawn HWND needs a separate, host-owned semantic
+surface whose lifetime follows the presented shell/widget generation and whose
+bounds come from final clipped presentation geometry. That ownership boundary
+was never implemented.
+
+**Recommended direction.** Add one native `OverlayAccessibilityProvider` owned
+by the host window. Handle `WM_GETOBJECT` with
+`UiaReturnRawElementProvider`; expose an immutable fragment tree for the shell,
+tray, footer/status, active route, and responsive-visible widget nodes. Build it
+from the exact presented snapshot generation and final renderer geometry—never
+by re-running layout or querying a worker from a COM callback. Use stable
+runtime IDs derived from host surface plus widget instance/node ID, convert
+clipped DIPs to screen pixels, mark hidden/offscreen nodes correctly, and retire
+stale providers when the surface or widget generation changes.
+
+Map closed node semantics to closed UIA patterns: Button/ActionSurface to
+Invoke, Slider to RangeValue, read-only Progress to RangeValue, selected choices
+to SelectionItem or Toggle only where the SDK state actually expresses that
+contract, and text/image/icon/loading nodes to appropriate read-only control
+types and names. Keep focusable and enabled separate because the platform
+deliberately lets disabled/busy nodes remain controller-focusable. Provider
+actions must post a generation-checked command to the UI thread rather than call
+the bridge synchronously from UIA. Define explicitly whether a UIA Invoke or
+RangeValue change is a trusted user gesture for capability authority.
+
+Do not expose arbitrary automation-property bags to widgets. First implement
+the provider using current closed node kinds and fields, then add only proven
+typed SDK semantics that are missing—likely heading level, description/help
+text, and live-region/notification intent. CSS/GBSS classes such as
+`page-heading` must not become hidden semantic transport.
+
+**Tradeoff.** UIA fragment providers, COM lifetime, event coalescing, and stale
+generation handling are substantial native work. A hidden HWND child-control
+tree could reuse built-in accessibility but would duplicate layout/state and
+undermine the custom renderer. A single semantic provider over the existing
+tree is the cleaner architecture, provided it never blocks on widget I/O and
+does not retain stale snapshot objects indefinitely.
+
+**Resolution evidence.** Add pure projection tests for responsive exclusion,
+clipping/offscreen state, stable runtime IDs, names/values, selected/disabled/
+busy mappings, route replacement, and stale-generation rejection. Add a native
+UIA-client integration test against the real HWND that discovers dashboard and
+widget elements, verifies control types/patterns/bounding rectangles and one
+focus event, invokes a button, changes a slider, observes property/structure
+events after a snapshot/route change, and proves hidden content disappears.
+Exercise long/sanitized labels and a worker crash without blocking the provider.
+Finally retain a manual Narrator smoke for dashboard, a multipage Settings
+route, YT Music failure/setup state, and Spotify playback/slider state. Only
+then describe the host as providing end-to-end accessibility.
 
 ### EQ-022 — P2 — Bridge scheduling policy is embedded in the transport session
 
-**Status: Open in implementation HEAD `d4291be`; the new policy is bounded and
+**Status: Open in implementation HEAD `6c5f932`; the policy is bounded and
 documented, but its ownership and deterministic verification surface are not yet
 cohesive.**
 
@@ -2590,12 +2778,13 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Installed catalog scale | Commits `b2d6f95` and `1c1f8bb` add aggregate quotas, prospective refusal, and per-entry/per-read checkpoints; current discovery temporarily materializes a full file inventory for every accepted version before only active enabled versions are retained by bridge closures | Outer watchdog for kernel-blocked I/O, bounded Settings/CLI repair path, and maximum-catalog cold/reload time plus peak/transient memory measurements for full inventories |
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
-| Action dispatch | Controller input has bounded immediate admission, but direct Action/QuickAction waits for `OnActionAsync` under a two-second worker timeout even though provider calls may validly take 10–40 seconds | Unify every user-action ingress behind one typed bounded admission queue; prove slow/hung commands, saturation, cancellation, failure reporting, and gesture authority without worker restart |
-| Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy, but the concurrency kernel remains embedded in `RunAsync`, its new 45-case count lacks retained output, and the shipping native client cannot pipeline | One narrow typed dispatcher with deterministic no-sleep invariant tests, retained integration output, a bounded forced drain, and one asynchronous native read owner/correlation table |
+| Action dispatch | Commits `6c5f932`, `7d33ce1`, and `7d92dcd` unify every ingress behind typed bounded active-lifetime admission, preserve protocol-v1 compatibility, retain exact controller gesture authority, simplify YT Music/Spotify, and deliver generation-owned generic late-failure feedback in dashboard and open-widget surfaces; focused Release suites pass | Retain the clean aggregate bundle and add physical-controller/live-provider evidence; new ingress types must reuse this contract |
+| Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | One narrow typed dispatcher with deterministic no-sleep invariant tests, a bounded forced drain, and one asynchronous native read owner/correlation table |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
+| Windows accessibility | The SDK carries validated names/values and the host applies visual text/contrast/motion policy, but the custom HWND exposes no UIA/MSAA provider or accessibility events | Host-owned immutable UIA fragment tree over final renderer geometry, closed Invoke/RangeValue/selection mappings, nonblocking generation-checked dispatch, automated UIA-client coverage, and Narrator smoke |
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
-| Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
-| CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
+| Spotify | Paging/resource adoption is successful, and commit `6c5f932` removes the command task registry/action semaphore through shared action admission; authorization, refresh, polling, state, routing, and view ownership remain concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
+| CLI author workflow | Data inspection is non-executable; source scaffolding fails honestly without an SDK and builds externally with explicit `--sdk-project`, but the template directory is not parsed/versioned/bounded or transactionally published; there is also no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Transactional manifest-driven template generation, versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 with clean retained 45/45 proof for cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget with cancellation-ignoring drain proof and cancellable correlation-safe off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
@@ -2617,24 +2806,22 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    typed deterministic seam, move one-owner cancellable correlated pipe I/O off
    the native UI thread, and make grant cleanup/rollback explicit on every
    failure and teardown path.
-2. **Unify action admission before migrating another advanced widget.** Route
-   direct Action, QuickAction, pagination/value changes, and controller-resolved
-   actions through one bounded runtime-owned queue with typed admission,
-   ordering/coalescing policy, active-lifetime cancellation, late-failure
-   observation, and execution-scoped gesture authority. Prove slow and hung
-   provider work never consumes the two-second worker timeout, then migrate YT
-   Music and remove Spotify's redundant command task/gate without folding OAuth
-   into the wrong lifetime.
-3. **Finish and publish the quality gate.** Preserve the new manifest/module
-   split, process/output/package/deadline bounds, and clean all-lane local bundle.
-   Clean selected run `20260809T161934Z-5d0bee6a` now retains Bridge 45/45 for
-   `fdcf253`; next run the complete checked-in Windows CI for the current commit,
-   retain its immutable managed/native artifacts, and bind every “current full
-   gate” claim to those results before using
-   it to prove the external SDK/template and clean-directory scaffold.
+2. **Retain action-admission release evidence.** Preserve the shared queue,
+   protocol-v1 compatibility, non-authorizing legacy QuickAction rule,
+   generation-owned native feedback, and generic cross-process diagnostic.
+   Add a physical-controller smoke and live-provider YT Music/Spotify action
+   evidence without folding connection/OAuth work into the active lifetime.
+3. **Implement the host accessibility surface before more visual polish.** Add
+   one nonblocking generation-owned UIA fragment provider over the shell and
+   final presented widget geometry, with closed Invoke/RangeValue/selection
+   mappings and precise focus/property/structure events. Prove it with a real
+   HWND UIA-client suite and Narrator smoke across basic, multipage, failure,
+   YT Music, and Spotify states. Keep the current verification runner and clean
+   focused bundles, then run the complete hosted gate for the resulting commit.
 
 The next review should first reassess these three items, then rotate into the
 installed-package launch/session boundary or native session ownership if
 implementation changes land. Revisit visual or performance proof when a new
 fixture or retained baseline appears; specifically reassess EQ-019 when the
-Guide fallback gains an injected policy seam or hardware trace.
+Guide fallback gains an injected policy seam or hardware trace, and EQ-023 when
+the host gains `WM_GETOBJECT` or a semantic-provider prototype.
