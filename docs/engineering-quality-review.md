@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after manifest/digest pairing landed in current HEAD and the remaining GBSS, lazy-load, and verified-package-namespace boundary was audited<br>
+Last reassessed: 2026-08-09 after live digest-bound GBSS work, aggregate catalog scaling, the native host widget-session ownership boundary, and advanced-widget SDK adoption were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -19,16 +19,15 @@ separated from targets; and the recent SDK work is replacing repeated task,
 cancellation, paging, state, navigation, and command plumbing with explicit
 public abstractions.
 
-The strongest concrete improvement since the previous audit is the narrow
-installed-file consumption contract. Manifest and integrity metadata now use
-one bounded shared handle, tree hashing rejects short/extra/changed input, and
-focused catalog cases cover seekable, changing-length, non-seekable,
-caller-error, and arithmetic edges. That resource-bound work is committed in
-`7d60acc` with an implementation-reported 27/27. Commit `dadd40d` parses the
-exact manifest bytes captured for tree hashing and adds a 28th case; this
-review code-inspected but did not execute it. Manifest policy is now paired
-with its digest, while host-side GBSS compilation and worker loading still
-consume detached mutable paths.
+The strongest concrete improvement since the previous audit is the verified
+package-evidence contract. Committed work bounds manifest/metadata consumption,
+rejects short/extra/changed tree input, and parses the exact manifest bytes
+included in the digest. Current HEAD also emits an exact GBSS path/
+SHA-256 inventory and requires every host-compiled entry/import to match it after
+one bounded strict-UTF-8 read. The implementation agent reports catalog 28/28
+and Styling 23/23; this review code-inspected but did not execute them. This
+closes the resource, manifest-pairing, and style-consumption subproblems while
+leaving executable/dependency/asset launch authority open.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -62,10 +61,10 @@ those exact content bytes. It still cannot show a host-owned acquisition
 receipt, verified signer, rotation, or revocation because those models do not
 exist yet. The deeper launch audit also found that the digest-derived identity
 is published before the generic worker later reopens mutable assembly and
-dependency paths. The bridge also compiles package GBSS and imports from
-reopened paths after verification. No verified-content lease currently binds
-either host-consumed presentation bytes or worker-loaded executable bytes to
-that identity. This is now the highest-risk package-boundary finding.
+dependency paths. Current HEAD binds host-compiled GBSS and imports
+to the verified relative-path/SHA-256 inventory, but no launch lease currently
+binds worker-loaded executable bytes or general assets to that identity. This
+is now the highest-risk package-boundary finding.
 
 The current worktree now adds a system-wide application-worker admission
 envelope on top of the independent Jobs: eight workers and 512 MiB of declared
@@ -90,6 +89,15 @@ a few very large translation units/classes, and its verification process does
 not yet provide an automated, bounded, reproducible GitHub gate. The extensive
 bug ledger has accumulated 55 simultaneously active `Verifying` entries,
 including 22 P0s, which makes priority and release status difficult to trust.
+
+The native-host rotation makes that ownership concern concrete. `OverlayApp`
+occupies about 3,753 lines and directly composes bridge transport, catalog
+generations, snapshot authority, lifecycle, retry, input/focus, presentation,
+rendering, and user-visible failure state. The right first extraction is a
+tested `WidgetSessionCoordinator` above `WidgetBridgeClient`, not another pure
+helper or a broad UI rewrite. Besides reducing change coupling, this is the
+natural owner for the typed persistent capacity/startup failures still missing
+from the product UX.
 
 ## Changes since the previous audit
 
@@ -161,12 +169,13 @@ catalog coverage at 28/28, now including changing seekable length, non-
 seekable limit-plus-one input, and an owned verified-manifest copy; this review
 did not execute it. Discovery now parses that hash-captured copy rather than
 reopening the manifest. More importantly, verification still returns a mutable
-package path rather than a content lease. Before worker launch, the bridge also
-reopens the default GBSS and every import by path; its file provider checks
-`FileInfo.Length` and then separately
-calls `File.ReadAllText`. The parser's character ceiling is therefore applied
-only after the full string allocation, and the consumed style bytes are not the
-ones proved by the digest. The worker later loads its entry assembly and
+package path rather than a content lease. Current HEAD removes the
+bridge's `FileInfo.Length`/`File.ReadAllText` split: catalog verification emits
+per-source SHA-256 values for the exact GBSS inventory, and installed entries
+and imports must match that inventory after one bounded strict-UTF-8 read.
+Styling Release coverage is implementation-reported at 23/23. The parser's
+character ceiling is now applied only after the consumed-byte ceiling.
+The worker later loads its entry assembly and
 dependencies by path under the previous digest-derived authority. The 175 ms
 watcher and stable-tamper retirement test detect change after the fact; they do
 not atomically bind the policy or executed bytes to the verified authority.
@@ -181,6 +190,13 @@ CLI/template without `GBAR_TEMPLATE_ROOT`, or provide the typed-fake snapshot
 exporter the README references. EQ-015 tracks the remaining versioned external-
 developer contract.
 
+Commit `5e3dbd1` materially advances EQ-014 with a verified GBSS inventory and
+digest-bound reads. The
+same inspection identified the unbounded aggregate catalog cost tracked by
+EQ-016. The rotating native audit also deepened EQ-003 by identifying the
+missing host-side widget-session owner above the already cohesive bridge
+transport. No native code change is claimed.
+
 ## Verification snapshot
 
 Implementation-reported bounded local Release results on the current worktree
@@ -194,11 +210,12 @@ are:
 | SDK Gallery | 6/6 passed |
 | YT Music | 48/48 passed |
 | Widget Catalog | 28/28 passed |
+| Widget Styling | 23/23 implementation-reported on current HEAD |
 | Focus Navigation | 41 checks passed |
 | Declarative Renderer | 4,632 checks passed |
 | Widget bridge catalog | passed |
 | OverlayHost Release target | built successfully |
-| Full `scripts/Verify.ps1 -Configuration Release` | passed end to end in 275.1 seconds |
+| Full `scripts/Verify.ps1 -Configuration Release` | passed end to end in 283.5 seconds before GBSS-only retention narrowing; affected current suites rerun green |
 
 The implementation agent reports that the full verifier additionally exercised
 the managed, protocol, capability,
@@ -234,8 +251,18 @@ code-inspected but did not execute the suites or inspect retained output. The te
 cover exact/extra/truncated/changing-length seekable streams, non-seekable
 limit-plus-one input, safe `int.MaxValue` sentinel arithmetic, exact-length
 hashing, and static oversized manifest/metadata error codes. They do not
-exercise coordinated path replacement, package GBSS/import consumption, or
-the digest-to-launch boundary.
+exercise coordinated path replacement or the digest-to-launch boundary.
+The GBSS-only inventory, bridge adoption, bounded strict-UTF-8 source reader,
+and Styling cases are committed in `5e3dbd1`. The implementation agent reports
+`WidgetStyling.Tests` at 23/23; this review inspected but did not execute them.
+The cases prove static/misreported/changing-length consumed-byte bounds, digest
+mismatch, invalid UTF-8, a positive digest-bound multi-import package, and
+rejection of one late-added import. The implementation agent
+also inspected a green 283.5-second full Release gate, then reran Catalog 28/28,
+Styling 23/23, and Bridge 40/40 after narrowing retained hashes to GBSS only.
+The cases do not include a catalog-to-bridge race seam, aggregate installed-
+version limits, or retained
+full-verifier output for the live worktree.
 
 ## Prioritized findings
 
@@ -599,17 +626,37 @@ evidence is still absent.
 
 ### EQ-003 — P1 — `OverlayApp` is a central ownership and change-risk hotspot
 
-**Status: Open.**
+**Status: Open; the first extraction boundary is now identified precisely.**
 
-**Evidence.** `src/OverlayHost/main.cpp` is approximately 4,000 lines. Its
-single `OverlayApp` class owns development argument parsing/readiness, startup
-and performance records, window messages, GameInput/XInput state, catalog
-refresh, widget lifecycle, display/DPI updates, presentation transitions,
-pointer/controller routing, focus memory, bridge snapshot reconciliation,
-graphics resources, shell drawing, widget drawing, and shutdown. The current
-responsive-focus change must edit this class even though the focus algorithm is
-already in `FocusNavigation.cpp`. `DeclarativeRenderer.cpp` is another roughly
-2,000-line planning/rendering unit.
+**Evidence.** `src/OverlayHost/main.cpp` is 4,043 lines, and `OverlayApp` spans
+about 3,753 of them. A mechanical inventory finds roughly 80 method declarations
+and a 118-line member-state region. The class owns development
+arguments/readiness, performance records, both HWNDs and their message paths,
+GameInput/XInput, foreground ownership, catalog revision retries, bridge
+descriptors and snapshots, runtime/presentation generations, widget lifecycle,
+display/DPI refresh, presentation transitions, pointer/controller routing,
+focus/slider/pressed state, renderer cache invalidation, D2D/DWrite resources,
+shell/widget drawing, and shutdown.
+
+The coupling is visible in a few concrete paths. The approximately 300-line
+`HandleMessage` timer branch advances visual transitions, polls controllers,
+pumps bridge events, reconciles appearance/catalog revisions, invalidates
+widget snapshots, gates host effects by runtime generation, and closes the
+overlay. `RefreshWidgetCatalog` combines bridge startup/I/O, descriptor diffing,
+focus/scroll/slider eviction, persistent available-widget reconciliation,
+lifecycle synchronization, and content-reveal animation. `RefreshWidgetSnapshot`
+and `DispatchWidgetAction` combine transport, instance/sequence authority,
+focus/pressed state, user messages, repaint scheduling, and navigation fallback.
+
+The existing abstractions stop one layer too low. `WidgetBridgeClient` owns
+process/pipe transport, parsing, bounded event queues, and catalog revision
+tracking; `WidgetLifecycle` purely computes a desired lifecycle target. Their
+focused tests cover parsing, queues, generation diffs, and lifecycle mapping.
+No directly testable owner composes those contracts into the host's catalog,
+snapshot, lifecycle, retry, and failure state. Searches find no direct native
+tests for `RefreshWidgetCatalog`, `SyncWidgetActivity`, or
+`RefreshWidgetSnapshot`; those behaviors are exercised only through the whole
+window/smoke path.
 
 **Why it matters.** The problem is not line count by itself; it is the number of
 independent state machines sharing one mutable owner. Changes to input,
@@ -618,26 +665,53 @@ another area and are difficult to test without the complete window. This raises
 review cost, encourages more fields and helper methods in the same class, and
 makes senior-level ownership boundaries hard to see.
 
-**Underlying problem.** Useful algorithms have been extracted, but state
-ownership and orchestration remain concentrated in the Win32 application
-object.
+**Underlying problem.** Algorithms and transport mechanics have been extracted,
+but host-side widget session ownership has not. The Win32 application object is
+simultaneously the bridge supervisor, catalog reconciler, lifecycle state
+machine, snapshot cache, input authority, presentation coordinator, and error
+surface. This also explains why capacity refusal and startup/protocol failures
+collapse into transient `lastActionMessage_` text rather than durable typed
+per-widget state.
 
-**Recommended direction.** Extract one tested ownership seam at a time rather
-than attempting a rewrite. Good first candidates are a widget-session/focus
-controller (snapshot, active scope, focus memory, action dispatch), a display
-environment coordinator, and a development-readiness session. `OverlayApp`
-should translate Win32 events and compose these services. Each extracted object
-must own its state and expose explicit commands/results, not borrow references
-to most `OverlayApp` fields.
+**Recommended direction.** Extract one `WidgetSessionCoordinator` above
+`WidgetBridgeClient`; do not begin with a broad UI/controller rewrite. It should
+own the bridge client, descriptor/snapshot collections, catalog retry state,
+tracked lifecycle target, controller input sequence, and typed per-widget
+session status. Its inputs should be a small host-state projection
+(`surface`, focus region, selected/active widget) plus explicit commands such as
+reconcile catalog, refresh/restart, send input, and pump events. Its outputs
+should be a bounded typed result batch: available IDs, snapshot/status changes,
+runtime or presentation replacement, lifecycle result, host effect, and retry
+request.
 
-**Tradeoff.** Premature fragmentation can replace one large class with many
-anemic wrappers. Extract only coherent state machines with independent tests
-and avoid a generic event bus or service locator.
+`OverlayApp` should remain the Win32/presentation adapter. It applies those
+results by clearing focus/renderer state, saving persistent selection,
+requesting a reveal, invalidating the HWND, or dispatching a host command.
+Focus memory, slider/pressed interaction, D2D resources, and transition timing
+should stay outside the first extraction. The coordinator must not receive an
+HWND, renderer, or references to arbitrary `OverlayApp` fields, and it should
+not introduce a generic event bus. Later display-environment or development-
+readiness extractions should be justified independently.
 
-**Resolution evidence.** Document ownership, move one complete state machine
-with no duplicate transitional state, add unit tests at the new seam, and show
-that subsequent feature work no longer edits unrelated input/render/lifecycle
-regions of `main.cpp`.
+**Tradeoff.** This adds an orchestration layer above an already substantial
+transport client. The value comes only if it owns the mutable session state and
+returns domain results; a facade that forwards every bridge call or accepts
+callbacks for window/render/focus operations would add indirection without an
+ownership boundary. Keeping focus and rendering outside initially leaves some
+coordination in `OverlayApp`, but makes the first migration reviewable and
+avoids a speculative host framework.
+
+**Resolution evidence.** Add deterministic coordinator tests for runtime versus
+presentation-only replacement, removed active/hovered widgets, last-good
+catalog retry/abandon, stale invalidations and host effects, failed start and
+snapshot/protocol responses, exact lifecycle transitions without background
+relaunch, restart, and shutdown. Prove each transition emits one typed result
+batch and leaves no duplicated descriptor/snapshot/lifecycle fields in
+`OverlayApp`. A capacity denial or worker failure must persist as an owned
+widget status with retry/resource-management actions instead of expiring footer
+text. Finally, show that the next bridge lifecycle/catalog feature changes the
+coordinator and focused tests without editing unrelated drawing or controller
+polling regions of `main.cpp`; reduced line count alone is not closure.
 
 ### EQ-004 — P1 — There is no automated, bounded repository quality gate
 
@@ -787,17 +861,39 @@ keeping the contract-audit closure of EQ-009 out of the defect count.
 
 ### EQ-006 — P2 — Advanced widgets remain application-sized monoliths
 
-**Status: Partially improving through helper adoption; structural ownership remains open.**
+**Status: Partially improving; Media Sessions proves the SDK direction, but
+the advanced-widget migrations have not yet established a repeatable
+application structure.**
 
-**Evidence.** `samples/YtMusicWidget/YtMusicWidget.cs` is about 1,136 lines,
-`samples/SpotifyWidget/SpotifyWidget.cs` about 2,023,
-`src/FirstPartyWidgets/NetworkControlsWidget/NetworkControlsWidget.cs` about
-2,020, and `AudioMixerWidget.cs` about 2,496. The YT Music file still combines
-rendering, connection state, polling, progress projection, optimistic command
-reconciliation, lifecycle, action routing, and much of its domain model. The
-new operation-lane migration removes one task/cancellation family, but not the
-responsibility concentration; the EQ-010 correction also leaves attempt-local
-failure ownership embedded in the same class.
+**Evidence.** Current primary files are approximately 1,176 lines for
+`samples/YtMusicWidget/YtMusicWidget.cs`, 2,023 for
+`samples/SpotifyWidget/SpotifyWidget.cs`, 2,020 for
+`src/FirstPartyWidgets/NetworkControlsWidget/NetworkControlsWidget.cs`, and
+2,496 for `AudioMixerWidget.cs`. Line count is only a locator for the deeper
+ownership issue.
+
+The migrations show three materially different outcomes:
+
+- Media Sessions is the positive control. Its roughly 768-line primary file
+  keeps render-facing data in `WidgetModel<State>` and transport admission in
+  `WidgetOptimisticCommand`. A textual coordination inventory finds no
+  `lock` or `SemaphoreSlim` use and only the lifecycle progress loop/task.
+- YT Music uses `WidgetOperations.RunLatest` for one transport-refresh burst,
+  including current-attempt guards for success and failure. The same class
+  still owns three activation tasks, two semaphores, a state lock, connection
+  and polling policy, progress projection, an optimistic-command list and its
+  confirmation/rollback algorithm, action routing, and the complete view.
+- Spotify has successfully moved two offset collections into
+  `WidgetPagedResource<TItem>` and one page family into an Active Latest lane.
+  It still has separate command and authorization task registries, action and
+  refresh semaphores, an active generation, polling/progress loops, several
+  lock domains, state/cache fields, action routing, and all view composition in
+  the same class. Audio Mixer and Network Controls have not adopted the new
+  model/resource/operation primitives: their primary files contain roughly 61
+  and 44 textual lock sites respectively, while retaining handwritten
+  pending/authoritative state and lifecycle coordination. Those counts are not
+  quality scores; they identify where shared mutable ownership remains
+  concentrated.
 
 **Why it matters.** These are the examples external developers will copy.
 Framework helpers improve correctness, but a human still has to understand a
@@ -806,15 +902,31 @@ also hide whether remaining complexity is domain behavior or duplicated
 framework plumbing.
 
 **Underlying problem.** Coordination abstractions are being introduced, but
-production migrations have mostly been local substitutions rather than a clear
-application structure with state, controller, routes, and view composition.
+production migrations have mostly been local substitutions rather than a
+defined adoption architecture. Authors can discover useful primitives, yet no
+advanced reference shows how state, provider/event merge, lifecycle work,
+commands, navigation, and pure view composition fit together. Some remaining
+policies are legitimately domain-specific—especially Audio Mixer's
+absolute-value command coalescing and confirmation—but their ownership is not
+separated from rendering.
 
-**Recommended direction.** Choose one advanced widget, preferably YT Music
-before Spotify, and establish a reference structure: immutable state/model,
-provider/controller adapter, lifecycle coordinator, action/command mapping, and
-pure view compositions. Split only along ownership and test seams; do not make
-one file per small method. Use the result to revise the media/multipage
-template, then migrate Spotify by responsibility.
+**Recommended direction.** Treat Media Sessions as the behavioral baseline,
+then create one advanced reference by migrating YT Music before Spotify:
+immutable render state in `WidgetModel`, a provider/controller adapter, an
+explicit lifecycle coordinator for its polling/progress loops, a command
+coordinator that owns pending/confirmation/rollback policy, and pure view
+composition. Preserve the current latest-wins transport proof while moving its
+state commit seam out of the widget class.
+
+Use that result to migrate Spotify by responsibility rather than by helper:
+state/controller/routes/view files, operation lanes for command,
+authorization, refresh, and destination loading where their lifetime policies
+fit, `WidgetNavigator`/`NavigationShell` for the shared destination model, and
+resources for bounded queue/device reads. Do not force Audio Mixer or Network
+Controls through a generic abstraction prematurely. First name and test their
+domain policies—absolute-value/coalesced audio commands with authoritative
+confirmation, and multi-provider event/source merge—then extract narrow
+coordinators that can be reused only if a second consumer proves the shape.
 
 **Tradeoff.** File splitting alone is churn and can make navigation worse.
 Require each extracted type to reduce shared mutable state or enable focused
@@ -822,8 +934,13 @@ tests. Avoid a universal MVVM/base-class framework.
 
 **Resolution evidence.** A new developer should be able to locate and change
 one route, one provider action, or one visual state without reading the entire
-widget. Track render/domain/coordination lines, author-owned tasks and locks,
-explicit invalidations, and cross-file mutable dependencies before and after.
+widget. Track render/domain/coordination lines, author-owned tasks, cancellation
+sources, semaphores/locks, explicit invalidations, and cross-file mutable
+dependencies before and after. Require focused tests for cancellation-ignoring
+stale success and failure, deactivate/destroy drain, provider-event versus
+command reconciliation, confirmation timeout/rollback, and focus preservation.
+A second advanced migration must reproduce the ownership reduction before the
+structure is promoted as the public template.
 
 ### EQ-007 — P2 — Copyable documentation examples are not API-checked
 
@@ -899,9 +1016,9 @@ resource invariant without scheduler-sensitive file-replacement sleeps.
 
 ### EQ-014 — P1 — Installed-package verification does not bind bounded verified bytes through launch
 
-**Status: Resource bounds and manifest/digest pairing are implemented with
-focused coverage; GBSS/import and runtime authority still outlive the exact
-handles that produced them.**
+**Status: Resource bounds, manifest/digest pairing, and digest-inventory-bound
+GBSS/import compilation are implemented with focused coverage; runtime
+executable/asset authority still outlives the exact handles that produced it.**
 
 **Evidence.** `WidgetCatalog.DiscoverInstalledVersions` runs before
 `SetEnabledAsync` mutates enabled state, and `BridgeCatalog.LoadWithInstalledAsync`
@@ -927,7 +1044,7 @@ early-EOF bytes, and confirm static oversized manifest/metadata files retain
 a length that changes after consumption and a non-seekable limit-plus-one
 stream. The implementation agent reports all 28/28 catalog tests pass; this
 review code-inspected the cases but did not run them or inspect retained output.
-These deterministic cases do not cover GBSS/import path replacement or
+These deterministic cases do not cover executable/dependency replacement or
 execution.
 
 The content-tree hasher was already stronger than the previous review stated:
@@ -964,18 +1081,17 @@ after verification but before process/assembly load, test a mutate-and-restore
 inside the debounce window, or prove that lazily loaded dependencies are the
 ones hashed for the active authority.
 
-There is also a host-side use of detached package paths before worker launch.
-`BridgeCatalog.CompileTheme` constructs a `GbssFileSourceProvider` over the
-mutable package root. For the entry stylesheet and each import, `TryRead`
-performs containment/reparse checks and a `FileInfo.Length` ceiling, then
-reopens the path through `File.ReadAllText`. `GbssParser` rejects more than
-1,048,576 characters, but only after the complete string has been allocated.
-Consequently a coordinated replacement or a share-compatible pre-existing
-writer can make the bridge parse bytes not represented by the authority and
-can bypass the intended consumed-byte ceiling. The installer's 512-entry/64
-MiB limits bound the originally sealed tree, not a later replacement. A
-verified-content design must therefore cover host-compiled GBSS/imports and
-other package assets, not only the entry assembly and lazy dependencies.
+The host-side GBSS gap is now closed in current HEAD without retaining
+dormant file handles. The catalog computes an exact GBSS-relative-path/SHA-256
+map while hashing the sealed tree and carries it only on the installed-version
+model used by the bridge. `GbssFileSourceProvider` opens one restrictively
+shared handle, enforces the byte ceiling on consumed bytes, decodes strict
+UTF-8, and compares the bytes in fixed time with the inventory before parsing.
+Installed style discovery consults the verified inventory rather than current
+`File.Exists`. Modified sources fail their digest; late-added imports are absent
+from the inventory and fail as missing. Focused Styling coverage passes 23/23,
+including a ceiling-plus-one file, a misleading-length stream, digest mismatch,
+strict UTF-8 rejection, and a late-added import.
 
 A handle lease also needs an explicit namespace invariant. Holding the files
 present during hashing prevents those files from being replaced, but does not
@@ -984,19 +1100,17 @@ by itself prove that a new filename cannot appear later. The worker's
 `AssemblyDependencyResolver`; it has no verified relative-path inventory. A
 package can therefore carry metadata for a dependency or native library that
 is absent during hashing and have that file inserted before lazy resolution.
-The same late-addition class applies to a previously missing GBSS import or an
-asset opened directly from the package root. Exact-tree authority requires
+The same late-addition class still applies to an asset opened directly from the
+package root. Exact-tree authority requires
 both byte identity for existing entries and namespace membership: reject every
 later-resolved path not present in the verified inventory, and prove that the
 runtime-visible generation cannot acquire unverified new entries.
 
-Public documentation is mostly aligned with this boundary. The publishing and
-security guides now describe the paired manifest/digest result, later worker
-load as non-atomic, and installed directories as version-addressed rather than
-OS-enforced immutable. One publishing update sentence still says a new version
-is immutable, and the security guide calls invalid package GBSS diagnostics
-bounded even though `GbssFileSourceProvider` uses a stat-then-`ReadAllText`
-path. The terminology sweep is also incomplete: `platform-architecture.md`,
+Public documentation is mostly aligned with this boundary. The publishing,
+security, and GBSS guides now describe the paired manifest/digest result,
+digest-inventory-bound style reads, later worker load as non-atomic, and
+installed directories as version-addressed rather than OS-enforced immutable.
+The terminology sweep is still incomplete: `platform-architecture.md`,
 `widget-authoring-guide.md`, `widget-packaging.md`, `implementation-status.md`,
 and several publishing/Settings passages still call current-user-owned package
 roots or installed versions immutable without consistently limiting that term
@@ -1004,11 +1118,11 @@ to installer no-overwrite behavior. Until a lease/protected generation exists,
 the consistent claim is version-addressed, installer-never-overwritten, and
 tamper-detected—not digest-bound at every consumer.
 
-The product roadmap's Phase 4 and risk register make signing/revocation a hard
-pre-public gate but do not name exact verified-content consumption or namespace
-sealing. Signing authenticates a package digest; it does not prove that the
-bridge and worker later consume only that signed tree. Add this as a separate
-pre-public acceptance gate so signing cannot be used to close EQ-014 by proxy.
+The product roadmap's Phase 4 and risk register now name verified namespace/
+launch consumption as a separate mandatory pre-public gate alongside signing
+and revocation. This preserves the distinction: signing authenticates a
+package digest but does not prove that the worker later consumes only that
+signed tree.
 
 **Why it matters.** The platform explicitly promises that replacement bytes
 cannot inherit consent, configuration secrets, or update authority. A mutable
@@ -1021,19 +1135,17 @@ under stale digest-derived authority. The live bounded-reader work removes the
 known oversized metadata pressure path with focused Release evidence,
 but it does not close the authority defect.
 
-**Underlying problem.** Verification now pairs manifest and digest but still
-produces a detached path rather than an owned `VerifiedPackageLaunch`
-capability whose lifetime covers every package byte the bridge or worker may
-consume. Current HEAD fixes the separate pathname-versus-consumption limit
-problem, but the detached later consumers remain.
+**Underlying problem.** Verification now pairs manifest, digest, and a GBSS
+inventory; the style provider revalidates its inputs against that inventory. Worker startup
+still receives a detached path rather than an owned `VerifiedPackageLaunch`
+capability whose lifetime covers every executable, dependency, and asset byte.
 
 **Recommended direction.** Retain the narrow bounded-reader design and its
 overflow-safe `long` sentinel arithmetic and focused resource-bound evidence.
 
-Use two explicit supervisor-owned capabilities rather than retaining handles
-for every dormant installed version. A short-lived `VerifiedPackageSnapshot`
-should hash one locked inventory, parse its manifest, and compile all GBSS
-imports before publishing the descriptor. At lazy start, a
+Current HEAD implements the short-lived publication half by hashing one
+inventory, parsing its captured manifest, and compiling only inventory-matched
+GBSS/imports. At lazy start, a supervisor-owned
 `VerifiedPackageLaunchLease` should reacquire the complete inventory, require
 the exact published digest and relative-path set, and retain write/delete-
 denying handles for the process session. Managed/native resolution must reject
@@ -1044,6 +1156,12 @@ before `Process.Start`, tightening a best-effort DACL, or relying on
 `FileSystemWatcher` leaves either an insertion or check-to-load gap. The
 catalog/supervisor should own both capabilities; the SDK and widget process
 should never provide them.
+Treat the current raw `VerifiedGbssDigests` dictionary plus production
+`InternalsVisibleTo("WidgetBridge")` as an interim host-internal handoff, not as
+the final authorization type. Do not spread that friend access into the runtime
+or worker. Replace it with an opaque immutable publication/launch capability
+whose API can verify text, test inventory membership, and acquire/release the
+session lease without letting callers mistake a stale hash map for ownership.
 Keep publishing and security documentation explicit about version-addressed,
 tamper-detected storage versus atomically verified runtime content during the
 transition.
@@ -1057,20 +1175,140 @@ cheaper but does not seal new namespace entries, lazy managed/native
 dependencies, or package assets. Choose and measure an explicit bounded model
 rather than preserving a cheap but incomplete trust claim.
 
-**Resolution evidence.** Focused cases cover changing length, non-seekable
-limit-plus-one input, and the owned manifest/digest result. Add deterministic
-GBSS provider cases for actual bytes exceeding reported length, entry/import
-replacement between check and consumption, and proof that the compiled theme's
-complete source set belongs to the launch authority. Add a launch seam
+**Resolution evidence.** Focused catalog cases cover changing length, non-
+seekable limit-plus-one input, the manifest/digest result, and exact per-file
+GBSS hashes. Styling cases cover consumed-byte overflow, misleading/changing
+length, digest mismatch, invalid UTF-8, positive verified imports, and a late-
+added import. Add a launch seam
 that pauses after catalog verification: replacement before `Process.Start`
 must prevent admission under the old digest, and mutation/reversion within the
 watcher debounce must not execute. Exercise dependencies and native libraries
 that are missing during verification but inserted before lazy resolution, a
-late-added GBSS import and ordinary asset, exact authority/inventory derivation
+late-added ordinary asset, exact authority/inventory derivation
 from the launch lease, and lease release on failed connection, crash, restart,
 disable/remove, and shutdown.
 Retain stable-tamper/live-worker-retirement coverage, and report the handle,
 startup, and disk cost at the maximum supported entry count.
+
+### EQ-016 — P2 — Installed catalog work is bounded per version but unbounded in aggregate
+
+**Status: Open. The implementation was narrowed to retain GBSS hashes only,
+reducing its incremental cost; the pre-existing aggregate discovery gap remains.**
+
+**Evidence.** `WidgetCatalogOptions` bounds one archive/version to 512 entries
+and 64 MiB by default. `DiscoverInstalledVersions` nevertheless enumerates
+every ID directory and every version directory with no maximum package IDs,
+versions per ID, total versions, catalog files, bytes hashed, or elapsed work.
+It verifies and materializes the complete list before catalog state groups or
+selects active versions. The live integrity change additionally builds and
+freezes a GBSS-relative-path/SHA-256 dictionary for every discovered version
+and retains it on each `InstalledWidgetVersion`, even though only an enabled
+active version needs it. It deliberately does not retain hashes for assemblies,
+assets, or other package files. `BridgeCatalog` applies its
+256-widget limit only after `CatalogService.DiscoverAsync` has completed, so the
+limit does not bound enumeration, hashing, allocation, or malformed-version
+handling. Settings also consumes the full discovery result.
+
+At default limits, one version can still contribute 512 retained GBSS path/hash
+entries and require hashing 64 MiB. Repeated legitimate installs keep old versions for
+rollback, and there is no catalog-wide quota preventing those individually
+valid versions from multiplying startup/reload work. This review found no N+1
+aggregate-bound test or cold-discovery measurement.
+
+**Why it matters.** Catalog reload happens on the product's control path while
+the overlay is in use. A large but individually valid catalog can cause long
+bridge refreshes, allocation spikes, and delayed Settings recovery while the
+user is gaming. Public sharing makes version accumulation normal rather than
+an adversarial edge. Per-package safety claims therefore do not establish the
+product's lightweight aggregate behavior.
+
+**Underlying problem.** Resource budgets belong to the complete catalog
+operation, not only each artifact. The catalog currently combines discovery,
+security verification, active-version selection, UI listing, and publication
+evidence in one eager materialization. The new inventory is valuable security
+evidence but is retained at the broadest scope instead of the active consumer
+scope.
+
+**Recommended direction.** Define explicit product limits for installed IDs,
+versions per ID, total versions, total enumerated entries, and bytes hashed per
+discovery, and enforce compatible quotas in `gbar install` before the atomic
+move. Keep failure deterministic and give Settings/CLI an actionable cleanup
+path rather than allowing an over-limit tree to make all Community widgets
+silently disappear.
+
+Separate lightweight version listing from publication evidence. Retain the
+manifest/digest needed for review, but acquire and hold the full path/hash
+inventory only for enabled active versions during bridge publication and again
+for the future launch lease. If recomputation is chosen instead of retention,
+measure it and keep equality with the reviewed digest explicit; do not trust a
+stale cache merely to avoid hashing mutable files. Apply the bridge's enabled-
+widget bound before expensive publication verification where possible.
+
+**Tradeoff.** Small quotas simplify predictability but can make rollback-heavy
+development annoying; lazy verification reduces normal startup cost but moves
+failure to selection/enablement unless Settings preflights it. A persistent
+digest cache is faster but is not authoritative without an immutable generation
+or a file-identity/change-journal contract. Prefer bounded on-demand work and a
+clear cleanup UX over an unverifiable cache.
+
+**Resolution evidence.** Add N+1 cases for IDs, versions per ID, total versions,
+aggregate files, and aggregate bytes, proving rejection occurs before hashing
+or retaining the over-limit tail. Prove Settings remains reachable and names
+the versions that must be removed, and that the bridge does not verify disabled
+inactive inventories merely to enforce its 256-widget cap. Record cold and
+reload time plus peak memory at the supported maximum, with several rollback
+versions per ID, and retain the result as a release budget.
+
+### EQ-017 — P2 — GBSS file-source failures collapse into a false “missing” diagnostic
+
+**Status: Open; the live reader fails closed but its public provider contract
+cannot preserve the reason.**
+
+**Evidence.** `IGbssSourceProvider` exposes only
+`bool TryRead(path, out source)`. The live `GbssFileSourceProvider` returns
+`false` for a genuinely missing path, a consumed-byte overflow, length change,
+invalid UTF-8, digest absence/mismatch, `IOException`, and access denial.
+`GbssPackageLoader.LoadOne` maps every `false` to `missing_import` with “source
+was not found.” The new focused cases assert `TryRead == false` for invalid
+UTF-8/oversize/digest mismatch and expect `missing_import` for a late import;
+they do not prove distinct safe diagnostics. The same file provider is used by
+`gbar validate`, first-party widget tests, installed widget compilation, and
+the data-only theme catalog.
+
+**Why it matters.** An author whose file is UTF-16, malformed UTF-8, too large,
+or temporarily locked is told it does not exist, encouraging path changes and
+source inspection instead of the correct fix. During installed-package
+publication, a digest mismatch caused by a verification/compile race is
+reported as an ordinary invalid or missing style rather than integrity
+evidence. Fail-closed behavior is preserved, but diagnostics and telemetry no
+longer communicate the security/resource invariant that rejected the source.
+
+**Underlying problem.** The provider abstraction treats data availability as a
+boolean even though file-backed sources now enforce a typed trust boundary.
+The loader owns source-located diagnostics but receives too little information
+to distinguish absence from invalid content or failed verification.
+
+**Recommended direction.** Before public API 1.0, replace or augment `TryRead`
+with a bounded `GbssSourceReadResult` carrying either source text or a closed
+status such as `Missing`, `TooLarge`, `ChangedDuringRead`, `InvalidEncoding`,
+`DigestMismatch`, and `IoUnavailable`. The loader—not an arbitrary provider—
+should map those statuses to stable sanitized diagnostic codes/messages and
+continue bounding source labels. Keep exceptions contained at the file-provider
+boundary. Installed digest mismatch should additionally reach the catalog/
+bridge integrity status path rather than masquerading as author syntax.
+
+**Tradeoff.** A richer result changes a small public styling interface and adds
+status mapping for in-memory/embedded providers. A backward-compatible default
+adapter is possible, but preserving a boolean API indefinitely would encode the
+wrong pre-1.0 contract. Do not expose raw exception messages or filesystem
+paths merely to improve diagnostics.
+
+**Resolution evidence.** Add end-to-end loader/CLI diagnostics for missing,
+oversized, changing-length, invalid UTF-8, inaccessible, and digest-mismatched
+sources, including an imported file. Prove codes are distinct, messages are
+bounded/path-safe, invalid installed content cannot publish a theme, and valid
+UTF-8 with and without BOM plus a positive digest-bound multi-import package
+still compile.
 
 ### EQ-008 — P2 — Focus persistence was scheduled from the steady paint path
 
@@ -1149,28 +1387,34 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded catalog metadata, exact hashing, and paired manifest policy with implementation-reported focused coverage | Digest-paired GBSS, verified path inventory/namespace, and session launch lease; changing/insertion-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
-| SDK lifecycle/coordination | Latest-wins currency now covers YT Music success and failure commits | Broader advanced-widget adoption and packaged churn evidence |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded catalog metadata, paired manifest policy, exact GBSS path/hash inventory, and digest-bound styles | Session launch lease for executable/dependency/assets; changing/insertion-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
+| Installed catalog scale | Each version is entry/byte bounded, but all IDs/versions are eagerly hashed and current HEAD retains every version's GBSS inventory | Aggregate ID/version/file/byte/time limits, active-only inventory ownership, cleanup UX, and maximum-catalog cold/reload memory measurements |
+| SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
-| YT Music | Active Latest migration removes manual lifetime machinery and rejects stale failure commits | Real companion, packaged lifecycle/controller, and visual evidence |
-| Spotify | Capable but still highly complex | Credential-free full-state visuals, live auth/playback gates, structural migration |
+| YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
+| Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
 | CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency or generated snapshot exporter | Versioned public SDK/template release, packaged clean-directory scaffold/build/README proof, isolated scenario execution, native preview, provenance/signing, and automated CI |
 | Performance | Per-worker Jobs plus worktree aggregate admission and runtime-owned process leases; one local single-worker baseline | Direct lease fault-injection proof, ownership/reclamation UI, multi-widget/churn matrix, clean immutable GPU/ETW regression gate |
+| Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
 | Documentation | Extensive and now internally current, but copyable examples are not executable evidence | Compile-test canonical snippets and reduce ledger/status duplication |
 
 ## Recommended next three actions
 
-1. **Bind package authority to every package byte actually consumed.** Compile
-   GBSS/imports from a verified content set, add a supervisor-owned inventory
-   plus launch lease or protected generation, and prove neither replacement nor
+1. **Bind package authority to every package byte actually consumed.** Add a
+   supervisor-owned launch lease or protected generation that enforces the
+   verified inventory, and prove neither replacement nor
    late file insertion between verification and lazy assembly/dependency load
    can execute under the old digest.
-2. **Finish the residency budget as a product contract.** Extend direct
-   failure/live-pipe/disable/shutdown accounting, retain the results, then add a
-   typed persistent refusal plus per-widget ownership and remediation.
+2. **Extract the native widget-session owner and finish failure UX.** Move
+   bridge/catalog/snapshot/lifecycle/retry ownership into one tested
+   `WidgetSessionCoordinator`, extend residency fault-path accounting, and
+   surface capacity/startup/protocol failures as persistent typed per-widget
+   states with retry and resource-management actions.
 3. **Ship a truthful external widget scaffold.** Publish a versioned supported
    SDK/template set, generate a real snapshot fixture/exporter, and prove the
    full build/run/test/package path from an unrelated clean directory.
 
-The next review should first reassess these three items, then rotate into the
-`OverlayApp` ownership seam and advanced-widget composition.
+The next review should first reassess these three items, then rotate into
+credential-free visual-state evidence and performance/residency behavior under
+multi-widget churn. Revisit advanced-widget composition when the next YT Music,
+Spotify, Audio Mixer, or Network Controls migration lands.

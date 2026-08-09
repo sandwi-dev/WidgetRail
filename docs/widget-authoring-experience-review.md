@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD after manifest/digest pairing and the remaining GBSS, lazy-load, and verified-package-namespace audit<br>
+Reassessed: 2026-08-09 against current HEAD after digest-bound GBSS, aggregate catalog scaling, native host widget-session ownership, and advanced-widget adoption audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -30,9 +30,12 @@ currently implement too much coordination infrastructure themselves:
 - extensive manual invalidation.
 
 This is not unique to Spotify. Similar patterns remain in Audio Mixer, Network
-Controls, Games & Apps, and YT Music; Media Sessions now demonstrates the
-shorter model/command path. The framework can express advanced widgets, but
-some safe implementation patterns still require broader migration and recipes.
+Controls, Games & Apps, and YT Music. Media Sessions now demonstrates that the
+model/command primitives can remove most handwritten synchronization from a
+real widget, but the larger samples show an adoption and composition gap: the
+helpers exist without one advanced reference architecture that teaches how to
+combine them. The framework can express advanced widgets, but some safe
+implementation patterns still require broader migration and recipes.
 
 The recommended direction is evolutionary, not a rewrite: retain `Widget`, the
 declarative protocol, GBSS, AppContainer isolation, and typed capabilities.
@@ -106,6 +109,17 @@ be treated as current authoring tools, not roadmap proposals. Higher-level page
 recipes beyond the navigation shell and packaged-font support remain distinct
 open work.
 
+The live GBSS file reader is safer but currently less diagnosable than a senior
+authoring tool should be. It correctly bounds consumed bytes, requires strict
+UTF-8, and can match installed sources to the verified digest inventory.
+However, the boolean `IGbssSourceProvider.TryRead` contract collapses a missing
+file, oversize source, changing length, invalid encoding, access failure, and
+digest mismatch into `missing_import`. `gbar validate` and package/theme
+compilation therefore tell authors that rejected content was not found. Before
+API 1.0, return a closed typed source-read result and let the loader emit safe
+distinct diagnostics; add positive BOM/multi-import coverage as well as one
+case for each rejection reason.
+
 ## Evidence from the repository
 
 Approximate implementation sizes in the current worktree illustrate the gap
@@ -116,19 +130,33 @@ between a minimal and an application-like widget:
 | Clock sample | 40 lines | Deterministic render and one action |
 | SDK Gallery | About 400 lines | Public components, navigation, responsive shell, and local state |
 | Recent Apps | 340 lines | One event-driven provider surface |
-| Media Sessions | 735 lines | Selection, commands, progress, and provider lifecycle |
+| Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
 | Games & Apps | 1,150 lines | Navigation, paging, private state, and launch commands |
-| YT Music | 1,150 lines | Connection lifecycle and optimistic media state |
+| YT Music | About 1,180 lines | Connection lifecycle and optimistic media state |
 | Spotify | About 2,020 lines | OAuth, playback, four destinations, bounded paging, caching, and local playback |
 | Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
 
-The exact counts are less important than the shape of the code. Spotify owns
-multiple `Task`, `CancellationTokenSource`, `SemaphoreSlim`, generation, cache,
-pending-operation, loading, error, and focus fields. Other advanced widgets own
-similar structures. Its presentation also includes about 500 lines of GBSS and
-its dedicated test program is about 1,200 lines. Those tests are valuable, but
-their size reinforces that this is an application-scale reference.
+The exact counts are less important than the shape of the code. A current
+textual coordination inventory makes the adoption result visible. Media
+Sessions has no `lock` or `SemaphoreSlim` use and owns only its lifecycle
+progress loop after adopting `WidgetModel<State>` and
+`WidgetOptimisticCommand`. YT Music has moved one transport-refresh family to
+`WidgetOperations.RunLatest`, but still owns three activation tasks, two
+semaphores, one state lock, and a manual optimistic confirmation list. Spotify
+has adopted paged resources and one page-operation lane, but still owns four
+task fields, two semaphores, several lock domains, generation/cache state, and
+separate command, authorization, refresh, and polling paths. Audio Mixer and
+Network Controls remain roughly 2,500 and 2,000 lines with about 61 and 44
+textual lock sites and no adoption of the new model/resource/operation layer.
+These figures are navigation aids rather than code-quality scores: they show
+that safe coordination is still concentrated in the primary class.
+
+Spotify's presentation also includes about 500 lines of GBSS and its dedicated
+test program is about 1,200 lines. Those tests are valuable, but their size
+reinforces that this is an application-scale reference. A developer can copy
+individual helpers today; they cannot yet copy one senior-quality composition
+that makes ownership boundaries obvious.
 
 The SDK already provides important low-level safety mechanisms:
 
@@ -226,12 +254,15 @@ Spotify supplies provider loading, safe error copy, viewport IDs, item rendering
 and selected-playlist domain state. Queue remains a separate non-paged path.
 
 The latest changes are a successful example of moving proven generic behavior
-into the SDK/host without changing the protocol boundary. Immutable state now
-also has a medium production migration, including optimistic transport
-commands. The next targets are broader helper migrations, responsive
-navigation recipes, and analyzer support; cursor and append/infinite-feed
-resource semantics need a separate design
-rather than being implied by the offset-paged API.
+into the SDK/host without changing the protocol boundary. They are not yet a
+structural Spotify migration: command and authorization task registries,
+refresh serialization, polling/progress loops, state/cache ownership, action
+routing, and view composition remain together in the 2,023-line class.
+Immutable state now also has a medium production migration, including
+optimistic transport commands. The next target should be one complete advanced
+reference architecture, followed by a second migration that proves it is not
+service-specific. Cursor and append/infinite-feed resource semantics still
+need a separate design rather than being implied by the offset-paged API.
 
 No authenticated Player, Queue, Playlists, or Devices screenshots were found in
 the current evidence set; the stored Spotify images still cover configuration
@@ -399,30 +430,31 @@ input; safe `int.MaxValue` sentinel arithmetic; exact-length hashing; and stable
 error codes for static oversized manifest/metadata files. Verification now
 parses an owned copy of the manifest bytes read from the same handle included
 in the digest and returns the model with that digest; a direct case proves the
-result remains stable after later path mutation. This does not bind GBSS/
-imports or worker-loaded bytes to that digest.
+result remains stable after later path mutation. That committed slice did not
+bind GBSS/imports or worker-loaded bytes. Current HEAD closes
+the GBSS half with an exact relative-path/SHA-256 inventory and a bounded,
+strict-UTF-8, digest-checking source provider; worker-loaded bytes remain open.
 
 More importantly, verification still returns a mutable package path alongside
 the paired digest and manifest. The
 bridge derives unsigned runtime authority from that digest, while the worker
-later loads the entry assembly and lazy dependencies by path. The bridge also
-reopens the package's default GBSS and every import before launch. Its file
-provider checks path length metadata and then calls `File.ReadAllText`, so the
-style bytes consumed by the host are not tied to the digest and the parser's
-character ceiling is enforced only after full string allocation. The 175 ms
+later loads the entry assembly and lazy dependencies by path. Installed GBSS
+selection now comes from the verified inventory, and every entry/import is
+read through one consumed-byte-bounded handle, decoded as strict UTF-8, and
+matched to its exact per-file digest before parsing. Modified or late-added
+style sources cannot compile under the package authority. Styling Release
+coverage is implementation-reported at 23/23. The 175 ms
 catalog watcher can retire a changed worker after detection, but it does not
-bind the compiled presentation or loaded executable bytes to the verified
-digest. Public distribution needs a host-owned verified-content lease or
+bind loaded executable bytes to the verified digest. Public distribution needs
+a host-owned verified-content lease or
 protected immutable generation acquired at lazy launch and retained through
-the worker session. Manifest policy and GBSS/imports must be consumed from that
-same verified source, not reopened independently. Tests must cover an
-entry/import whose actual bytes exceed the checked length, replacement before
-style compilation, a pause after verification followed by replacement before
-worker launch, and mutate-and-restore inside the watcher debounce.
+the worker session. Tests must cover a pause after verification followed by
+replacement before worker launch and mutate-and-restore inside the watcher
+debounce.
 
 The lease must bind package namespace as well as the bytes already present.
 Holding existing file handles does not by itself prevent a previously missing
-dependency, native library, GBSS import, or asset from appearing later. The
+dependency, native library, or asset from appearing later. The
 current assembly loader accepts any contained non-reparse path returned by its
 dependency resolver; it has no verified relative-path inventory. A senior
 platform contract should publish manifest plus compiled presentation from one
@@ -443,6 +475,19 @@ verified signer, unknown signer, invalid signature, and revoked signer, and
 show capability/authority changes before enabling an update. Until that exists,
 documentation must keep calling GitHub sharing unsigned developer preview and
 must not imply that AppContainer containment verifies the author.
+
+The multi-version workflow is also not aggregate-bounded. Each installed
+version is individually limited, but discovery eagerly verifies every ID and
+version and current HEAD can retain up to 512 GBSS path/hash entries per
+version (hashes for assemblies/assets are deliberately not retained). The
+bridge's 256-widget cap is enforced only after that work.
+Authors are explicitly encouraged to keep old versions for rollback, so this
+is a normal ecosystem scaling concern, not merely hostile filesystem input.
+Before calling installation effortless, define visible limits and cleanup,
+keep full publication/launch inventories scoped to enabled active versions,
+and measure discovery with several rollback versions per package. A user should
+never need to delete catalog directories manually to restore Settings or
+overlay startup.
 
 ## Reassessment of residency defaults and ecosystem cost
 
@@ -486,6 +531,18 @@ owns the budget or reach the relevant unload/disable action from the refusal.
 This needs a typed, bounded admission result, a persistent controller-facing
 error state, and Settings attribution of each reservation and its residency and
 remediation eligibility.
+
+The native-host audit identifies why this product state has no durable owner.
+`OverlayApp` directly combines bridge transport, descriptor/snapshot caches,
+lifecycle tracking, catalog retry, input sequence authority, focus/render
+cleanup, and transient failure copy across roughly 3,753 lines. Low-level
+helpers are tested, but the session transition that composes them is not. This
+should remain a host implementation concern—widget authors must not gain a new
+session API to compensate. A tested `WidgetSessionCoordinator` above the bridge
+client should own typed per-widget `Starting`, `Ready`, `CapacityDenied`,
+`Unavailable`, and `ProtocolFailed` states and emit bounded presentation
+effects. The Win32 layer can then render/retry/remediate those results without
+making every failure another timer-bound footer string.
 
 `keep-alive` should surface its
 continuing cost during package review. The runtime should offer a bounded,
@@ -1086,10 +1143,10 @@ and fail-closed scenario selection with contract and safety tests.
 
 ### Phase 4: broaden the ecosystem carefully
 
-1. Finish supervisor-owned aggregate residency with a typed controller-facing
-   refusal state, per-widget resource visibility/remediation, optional reclaim
-   only for unload-eligible workers, and bounded temporary critical-work
-   leases.
+1. Extract the host's widget-session coordinator and finish supervisor-owned
+   aggregate residency with typed persistent failure/refusal states, per-widget
+   resource visibility/remediation, optional reclaim only for unload-eligible
+   workers, and bounded temporary critical-work leases.
 2. Bind bounded installed-tree verification to the exact manifest, GBSS/import,
    assembly, dependency, and asset bytes and relative-path inventory consumed
    by each worker session; reject late additions, then add an honest unsigned
@@ -1134,6 +1191,9 @@ The improvements should be evaluated against measurable author outcomes:
 - Every generated README command is exercised by the release gate; the
   scaffold restores/builds through the supported SDK artifact and never emits
   an unavailable placeholder dependency or a rejected execution mode.
+- `gbar validate` distinguishes missing, oversized, changing, invalidly encoded,
+  and integrity-mismatched GBSS sources with bounded path-safe diagnostics
+  instead of reporting every file-provider rejection as `missing_import`.
 - A GitHub-hosted widget can be packaged and acquired by exact pinned bytes,
   and every host-side compiler and worker session consumes only content held by
   the matching verified digest and path inventory; replacement and late-added
@@ -1145,6 +1205,8 @@ The improvements should be evaluated against measurable author outcomes:
   ordinary scaffolded widgets unload after a documented idle bound, genuinely
   retained work uses an explicit bounded lease, and Settings attributes current
   resource ownership before asking the user to resolve capacity pressure.
+  Capacity, startup, and protocol failures remain visible on the affected
+  widget with controller-reachable retry or resource-management actions.
 - Advanced samples contain substantially more domain/rendering code than
   lifecycle and concurrency plumbing.
 - Deactivation, stale responses, command rollback, focus restoration, and task
@@ -1194,6 +1256,14 @@ and bounded scenario-manifest listing are also implemented. Isolated semantic
 scenario execution, cursor/append resources, additional page recipes,
 an ID/action analyzer, interactive/native preview and capture, publication, and
 broader migrations remain.
+
+The immediate need is adoption proof, not another broad abstraction. Use Media
+Sessions as the behavioral baseline, make YT Music the first complete
+state/controller/lifecycle/command/view reference, and require Spotify or
+another advanced widget to reproduce the ownership reduction before promoting
+that structure into templates. Give Audio Mixer and Network Controls their own
+explicit command-confirmation and multi-provider-merge designs rather than
+forcing their domain rules into a universal helper.
 
 The protocol-v11 pagination change is a strong example to repeat: identify a
 generic behavior proven by a demanding widget, move the security- and
