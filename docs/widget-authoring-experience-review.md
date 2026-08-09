@@ -77,7 +77,9 @@ escape and making `gbar dev` the only executable CLI integration path. An
 initial path-level 4 MiB preflight was racy; the current source now reads one
 restrictively shared stream through a ceiling-plus-one detector and rejects
 legacy assembly-only options for JSON. A deterministic misreported-length test
-covers the consumed-byte bound, and the focused Release CLI suite passes 48/48.
+covers the consumed-byte bound. The implementation agent reports the live
+Release CLI suite at 49/49 after adding the external scaffold case; this review
+did not execute it or inspect retained output.
 The broader tradeoff is an explicit tooling gap: there is no headless isolated
 command that turns widget/scenario code into a snapshot. Authors must currently
 add an author-controlled typed-fake test to persist `SnapshotJson` or use the
@@ -341,6 +343,13 @@ to execute a DLL and then replayed the nonexistent output. The worktree now
 uses the correct `gbar dev` path and explains that render is data-only. It still
 supplies a replay file but no typed-fake snapshot-export test or static
 snapshot, leaving the advertised deterministic replay loop incomplete.
+This does not require a new framework abstraction: `WidgetTestHost`,
+`WidgetTestHostServicesBuilder`, and `SnapshotJson` are already public. The
+starter should generate a small deterministic test executable that attaches
+the widget, exercises at least one action/lifecycle transition, asserts the
+state, and writes the exact `snapshot.json` named by the README. Authors can
+then see and copy the supported credential-free state/testing pattern instead
+of being told to design it themselves.
 
 The framework should still treat CLI, template, SDK package, compatibility
 contract, and generated README as one versioned deliverable. The current
@@ -378,16 +387,21 @@ the catalog does not retain a host-owned acquisition receipt.
 
 The exact-byte contract is rechecked at meaningful boundaries: catalog
 discovery recomputes the sealed content tree before enablement, and the bridge
-does so again before publishing runtime authority. Two gaps still prevent
-authors from relying on that as an end-to-end exact-byte guarantee. Installed
-manifest and integrity-metadata reads preflight pathname length before a
-separate unbounded `ReadAllBytes`; both need the maximum-plus-one,
-single-handle invariant now used by `gbar render`. The tree hasher already opens
-content with write/delete sharing denied on Windows, so ordinary growth during
-one open stream is not the primary issue, although explicit consumed-byte and
-exact-length checks would make the invariant portable and auditable.
+does so again before publishing runtime authority. Current HEAD
+addresses the resource-bound half with a narrow `BoundedFileReader`: manifest
+and integrity metadata use one restrictively shared maximum-plus-one read, and
+tree hashing rejects early EOF or bytes beyond the encoded length. The
+implementation agent reports focused Release catalog coverage at 27/27; this
+review did not execute it or inspect retained output. Three added cases cover exact,
+misreported, and changing-length seekable streams; non-seekable limit-plus-one
+input; safe `int.MaxValue` sentinel arithmetic; exact-length hashing; and stable
+error codes for static oversized manifest/metadata files. They do not prove
+changing-path identity, manifest/digest pairing, or launch binding.
 
 More importantly, verification returns a digest and mutable package path. The
+catalog also parses and closes `manifest.json` before reopening the tree for
+its digest, so a coordinated replacement/restoration can pair a different
+manifest policy with the returned digest even before launch. The
 bridge derives unsigned runtime authority from that digest, while the worker
 later loads the entry assembly and lazy dependencies by path. The 175 ms
 catalog watcher can retire a changed worker after detection, but it does not

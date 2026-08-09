@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after aggregate residency was committed, external scaffolding became fail-fast with an explicit SDK override, and the installed-package digest-to-launch boundary was audited<br>
+Last reassessed: 2026-08-09 after bounded installed-file consumption received focused coverage and the remaining manifest/digest/load ownership boundary was audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -19,15 +19,17 @@ separated from targets; and the recent SDK work is replacing repeated task,
 cancellation, paging, state, navigation, and command plumbing with explicit
 public abstractions.
 
-The strongest concrete improvement since the previous audit is the exact
-runtime-owned worker lease. Aggregate count and declared-memory admission no
-longer depends on a pipe-derived `IsRunning` sample, and one separately bounded
-Settings worker remains available when application capacity is full. The new
-runtime tests directly exercise pre-launch denial and exact release across a
-crash/relaunch and cooperative stop, although this review did not execute them.
+The strongest concrete improvement since the previous audit is the narrow
+installed-file consumption contract. Manifest and integrity metadata now use
+one bounded shared handle, tree hashing rejects short/extra/changed input, and
+three focused catalog cases cover seekable, changing-length, non-seekable,
+caller-error, and arithmetic edges. The implementation agent reports 27/27;
+this review code-inspected but did not execute them. This resolves a concrete
+resource-bound weakness without pretending to solve the separate mutable-path
+authority problem.
 
 The public authoring entry point is not yet a coherent shipped product. The
-live worktree removes its misleading external success path: `gbar new widget`
+current HEAD removes its misleading external success path: `gbar new widget`
 no longer emits an unpublished placeholder SDK reference. It resolves a real
 source project before creating output, accepts an explicit validated
 `--sdk-project`, and otherwise fails with no partial scaffold. A new temporary-
@@ -146,16 +148,24 @@ eligible-worker reclaim/override, critical-work leases, and multi-widget
 measurements remain open.
 
 The follow-up exact-byte audit confirmed that enablement and bridge publication
-both recompute the sealed tree digest. Two stat-then-reopen metadata paths can
-still consume bytes beyond their validated limits. More importantly,
-verification returns a digest plus mutable path rather than a content lease:
-the worker later loads its entry assembly and dependencies by path under the
-previous digest-derived authority. The 175 ms watcher and stable-tamper
+both recompute the sealed tree digest. Current HEAD replaces both
+stat-then-reopen metadata paths with bounded single-handle consumption and adds
+exact-length tree hashing. Three focused cases cover exact/misreported helper
+streams, the `int.MaxValue` arithmetic path, and static oversized manifest/
+metadata error mapping. The implementation agent reports focused Release
+catalog coverage at 27/27, now including changing seekable length and non-
+seekable limit-plus-one input; this review did not execute it, and changing-
+path identity remains untested. More importantly,
+discovery still parses the manifest before reopening the tree for its digest,
+and verification returns a digest plus mutable path rather than a content
+lease. The worker later loads its entry assembly and dependencies by path under
+the previous digest-derived authority. The 175 ms watcher and stable-tamper
 retirement test detect change after the fact; they do not atomically bind the
-executed bytes to the verified authority. EQ-014 tracks both boundaries.
+policy or executed bytes to the verified authority. EQ-014 tracks both
+boundaries.
 
 The authoring rotation found that the generator is not yet a shipped external
-contract, but the live worktree implements the recommended honest interim
+contract, but current HEAD implements the recommended honest interim
 boundary. It resolves the SDK before writing, adds `--sdk-project`, removes the
 unavailable preview `PackageReference`, and adds an external-directory build
 test. It still does not publish a cloneable SDK dependency, exercise a packaged
@@ -171,10 +181,11 @@ are:
 | Scope | Result |
 | --- | ---: |
 | Widget SDK | 84/84 passed |
-| Gbar CLI | 48/48 passed |
+| Gbar CLI | 49/49 reported on the live scaffold worktree |
 | Settings Widget | 41/41 passed |
 | SDK Gallery | 6/6 passed |
 | YT Music | 48/48 passed |
+| Widget Catalog | 27/27 passed |
 | Focus Navigation | 41 checks passed |
 | Declarative Renderer | 4,632 checks passed |
 | Widget bridge catalog | passed |
@@ -203,11 +214,19 @@ The residency budget, runtime lease, scaffold residency default, and focused
 tests are committed in `7722763`. The implementation agent reports 36/36
 runtime and 40/40 bridge cases; the new direct lease cases were code-inspected,
 but no retained result was inspected.
-The live scaffold worktree now adds an outside-repository negative/override
+The committed scaffold milestone adds an outside-repository negative/override
 generation case and invokes `dotnet build` on the generated project. This
-review inspected but did not execute it. It still supplies the template through
+review inspected but did not execute it. The case still supplies the template through
 `GBAR_TEMPLATE_ROOT`, references the repository SDK project, and does not run
 the generated README's render/replay, validate, test, or package commands.
+The bounded installed-file reader, its two adoptions, and three focused catalog
+cases are committed in `7d60acc`. The implementation agent reports Release
+`WidgetCatalog.Tests` at 27/27; this review code-inspected but did not execute
+them or inspect retained output. The tests
+cover exact/extra/truncated/changing-length seekable streams, non-seekable
+limit-plus-one input, safe `int.MaxValue` sentinel arithmetic, exact-length
+hashing, and static oversized manifest/metadata error codes. They do not
+exercise coordinated path replacement or the digest-to-launch boundary.
 
 ## Prioritized findings
 
@@ -499,8 +518,14 @@ until that artifact exists; do not reintroduce a project known not to build.
 Keep the corrected `gbar dev` and idle-unload defaults. Add a real generated
 typed-fake test/exporter or a validated static snapshot so the documented
 data-only render/replay path is executable until the isolated scenario worker
-exists. Keep advanced focus/shortcut examples, but make the first README path
-the smallest complete build-run-test-package loop.
+exists. The public SDK already exposes `WidgetTestHost`,
+`WidgetTestHostServicesBuilder`, and `SnapshotJson`; the starter can generate a
+small deterministic test executable that attaches the widget, asserts initial
+and post-action state, and writes the exact `snapshot.json` consumed by the
+existing replay. That is preferable to instructing a first-time author to
+invent infrastructure the platform already owns. Keep advanced focus/shortcut
+examples, but make the first README path the smallest complete build-run-test-
+package loop.
 
 **Tradeoff.** Failing outside the checkout temporarily exposes an unfinished
 product instead of appearing convenient, but it prevents hours of misleading
@@ -865,27 +890,51 @@ resource invariant without scheduler-sensitive file-replacement sleeps.
 
 ### EQ-014 — P1 — Installed-package verification does not bind bounded verified bytes through launch
 
-**Status: Open. Stable tampering fails closed, but metadata reads are not all
-consumption-bounded and runtime authority can outlive the exact bytes that
-produced its digest.**
+**Status: Resource-bound subproblem implemented in current HEAD with
+implementation-reported focused coverage; manifest/digest and runtime authority
+still outlive the exact handles that produced them.**
 
 **Evidence.** `WidgetCatalog.DiscoverInstalledVersions` runs before
 `SetEnabledAsync` mutates enabled state, and `BridgeCatalog.LoadWithInstalledAsync`
 runs it again before publishing runtime authority. That correctly ensures the
 digest shown in Settings is not merely trusted catalog metadata.
 
-The byte-bound implementation is inconsistent with that strong design.
-`WidgetCatalogService` checks `new FileInfo(manifestPath).Length` and then calls
-`File.ReadAllBytes(manifestPath)` through a second open.
-`InstalledPackageIntegrity.Verify` does the same for the 4 KiB host metadata
-file. A replacement between those operations can therefore make the second
-open allocate and consume far more than the accepted size. The content-tree
-hasher is stronger than the previous review stated: every content stream uses
-`FileShare.Read`, which denies new write/delete handles on Windows while that
-stream is open. Its initial `Length` is therefore stable against an ordinary
-concurrent writer. It should still count consumed bytes and prove exact length
-for a self-contained, portable invariant, but the unsupported
-share-compatible-growth scenario is removed from this finding.
+Current HEAD addresses the bounded-consumption subproblem with one narrow
+catalog-internal `BoundedFileReader`. Manifest and 4 KiB integrity metadata now
+open one `FileStream` with `FileShare.Read`, read at most the configured ceiling
+plus one, and compare final consumption/length with the initial seekable length
+before deserialization. `AppendExact` hashes exactly the encoded length, rejects
+early EOF and one extra byte, and rechecks seekable length. Callers map those
+failures to stable `invalid_manifest`, `invalid_integrity_metadata`, or
+`package_tampered` results. This is the right ownership and avoids a generic
+public I/O abstraction.
+
+Three focused catalog cases now use an internal test seam appropriately. They
+prove exact-maximum success, reject seekable streams whose reported length is
+shorter or longer than content, exercise safe `int.MaxValue` sentinel
+arithmetic without allocating the maximum, make `AppendExact` reject extra and
+early-EOF bytes, and confirm static oversized manifest/metadata files retain
+`invalid_manifest` / `invalid_integrity_metadata`. The same Release run rejects
+a length that changes after consumption and a non-seekable limit-plus-one
+stream. The implementation agent reports all 27/27 catalog tests pass; this
+review code-inspected the cases but did not run them or inspect retained output.
+These deterministic cases do not cover path replacement, manifest/digest
+pairing, or execution.
+
+The content-tree hasher was already stronger than the previous review stated:
+every content stream uses `FileShare.Read`, which denies new write/delete
+handles on Windows while that stream is open. The new exact-consumption check
+makes that invariant portable and auditable. The unsupported
+share-compatible-growth scenario remains removed from this finding.
+
+The first semantic check-to-use gap exists inside discovery itself.
+`DiscoverInstalledVersions` reads and parses `manifest.json`, closes that
+handle, validates its identity/capabilities/entrypoint, and only later calls
+`InstalledPackageIntegrity.Verify`, which reopens the entire tree. A coordinated
+manifest replacement/restoration can therefore pair one in-memory manifest
+policy with the digest of another tree even before bridge publication. The new
+bounded reader limits each individual read; it does not prove that the parsed
+manifest is the manifest included in the returned digest.
 
 The higher-risk gap occurs after verification. `InstalledPackageIntegrity.Verify`
 returns a digest string and `DiscoverInstalledVersions` returns the package
@@ -908,6 +957,13 @@ after verification but before process/assembly load, test a mutate-and-restore
 inside the debounce window, or prove that lazily loaded dependencies are the
 ones hashed for the active authority.
 
+Public documentation is aligned with this boundary. The publishing guide says
+verification and later worker load are not atomic and names the missing
+verified-content lease. The security guide now calls the directories version-
+addressed, explains that the installer never overwrites an ID/version, and
+states that current-user-owned files can still change between validation and
+load until the host owns an immutable generation or held-handle lease.
+
 **Why it matters.** The platform explicitly promises that replacement bytes
 cannot inherit consent, configuration secrets, or update authority. A mutable
 path checked at catalog publication and reopened later cannot prove that
@@ -915,22 +971,22 @@ promise. This is not currently a direct self-tamper vector for the
 capability-free AppContainer, which receives read-only access, so it is not a
 P0 claim. It is nevertheless a P1 trust-boundary defect before public package
 distribution: externally modified or accidentally changed bytes can be loaded
-under stale digest-derived authority, and oversized metadata can pressure the
-trusted catalog/Settings process before fail-closed logic runs.
+under stale digest-derived authority. The live bounded-reader work removes the
+known oversized metadata pressure path with focused Release evidence,
+but it does not close the authority defect.
 
 **Underlying problem.** Verification produces detached facts—manifest,
 digest, and paths—rather than an owned `VerifiedPackageLaunch` capability whose
-lifetime covers every byte the worker may load. Separately, two resource limits
-still belong to pathname observations instead of one opened object and its
-consumed bytes.
+lifetime covers every byte the worker may load. Current HEAD fixes the
+separate pathname-versus-consumption limit problem, but the detached semantic
+facts remain.
 
-**Recommended direction.** First, use one catalog-internal bounded reader for
-manifest and integrity metadata: one restrictively shared handle, a limit-plus-
-one loop, and deserialization only after exact bounded consumption. Keep the
-tree hasher streaming, enforce per-file/aggregate limits on actual bytes, and
-reject early EOF or any byte beyond its stable encoded length.
+**Recommended direction.** Retain the narrow bounded-reader design and its
+overflow-safe `long` sentinel arithmetic and focused resource-bound evidence.
 
-Then make lazy launch acquire a supervisor-owned verified-content lease. One
+Then make catalog discovery and lazy launch consume one supervisor-owned
+verified-content lease. Parse the manifest from the same locked file set that
+produces its digest and use that paired result to build policy. One
 viable design is to enumerate and open every accepted package file with
 write/delete sharing denied, recompute the digest from those same handles,
 derive authority from that result, and retain the bounded handle set until the
@@ -940,6 +996,9 @@ materialized from verified bytes is an alternative. Merely hashing again just
 before `Process.Start`, tightening a best-effort DACL, or relying on
 `FileSystemWatcher` still leaves a check-to-load gap. The catalog/supervisor
 should own the lease; the SDK and widget process should never provide it.
+Keep publishing and security documentation explicit about version-addressed,
+tamper-detected storage versus atomically verified runtime content during the
+transition.
 
 **Tradeoff.** Holding every content handle costs up to the package entry limit
 per resident worker and can block legitimate uninstall/update until teardown;
@@ -948,9 +1007,10 @@ entry assembly is cheaper but does not bind lazy managed dependencies, native
 libraries, or package assets. Choose and measure an explicit bounded model
 rather than preserving a cheap but non-atomic trust claim.
 
-**Resolution evidence.** Add deterministic replacement tests for oversized
-manifest and integrity metadata between preflight and consumption, proving
-stable package errors before allocation or state mutation. Add a launch seam
+**Resolution evidence.** The focused cases cover changing length and a
+non-seekable limit-plus-one input. Remaining closure needs coordinated manifest
+replacement, proving the parsed manifest is the one included in its digest.
+Add a launch seam
 that pauses after catalog verification: replacement before `Process.Start`
 must prevent admission under the old digest, and mutation/reversion within the
 watcher debounce must not execute. Exercise a dependency resolved after
@@ -1036,7 +1096,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD honestly labels unsigned content | Consumption-bounded metadata plus verified-content launch lease; clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded metadata/exact hashing with implementation-reported focused coverage | Same-handle manifest/digest pairing plus verified-content launch lease; changing-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
 | SDK lifecycle/coordination | Latest-wins currency now covers YT Music success and failure commits | Broader advanced-widget adoption and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest migration removes manual lifetime machinery and rejects stale failure commits | Real companion, packaged lifecycle/controller, and visual evidence |
@@ -1047,11 +1107,10 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 ## Recommended next three actions
 
-1. **Bind package authority to the bytes actually loaded.** Replace both
-   stat-then-reopen metadata reads with bounded single-handle consumption, add
-   a supervisor-owned verified-content launch lease or protected generation,
-   and prove replacement between verification and lazy load cannot execute
-   under the old digest.
+1. **Bind package authority to the bytes actually loaded.** Parse the manifest
+   from the same locked file set that produces its digest, add a supervisor-owned
+   verified-content launch lease or protected generation, and prove replacement
+   between verification and lazy load cannot execute under the old digest.
 2. **Finish the residency budget as a product contract.** Extend direct
    failure/live-pipe/disable/shutdown accounting, retain the results, then add a
    typed persistent refusal plus per-widget ownership and remediation.
