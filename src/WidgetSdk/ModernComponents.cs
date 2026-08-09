@@ -45,8 +45,9 @@ public sealed record PickerOption(
 
 /// <summary>
 /// A controller-native media timeline composed from the public Slider and text
-/// primitives. Left and Right seek while focused; Up and Down remain available
-/// for navigation. Requested values are emitted as total milliseconds.
+/// primitives. Direct scrubbers seek with focused Left and Right. An opt-in
+/// activation-first mode leaves D-pad navigation available until A selects the
+/// timeline. Requested values are emitted as total milliseconds.
 /// </summary>
 public sealed record ScrubberElement : WidgetElement
 {
@@ -100,6 +101,7 @@ public sealed record ScrubberElement : WidgetElement
     public string? ElapsedLabel { get; init; }
     public string? DurationLabel { get; init; }
     public string? ActivationActionId { get; init; }
+    public SliderInteractionMode? ControllerInteractionMode { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsBusy { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
@@ -117,6 +119,16 @@ public sealed record ScrubberElement : WidgetElement
         FocusNeighbors = (FocusNeighbors ?? new()) with { Down = RequireId(id) },
     };
 
+    public ScrubberElement FocusLeft(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Left = RequireId(id) },
+    };
+
+    public ScrubberElement FocusRight(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Right = RequireId(id) },
+    };
+
     public ScrubberElement Disabled(bool disabled = true) => this with
     {
         IsDisabled = disabled ? true : null,
@@ -130,6 +142,14 @@ public sealed record ScrubberElement : WidgetElement
     public ScrubberElement Activate(string actionId) => this with
     {
         ActivationActionId = RequireId(actionId),
+    };
+
+    /// <inheritdoc cref="SliderElement.RequireControllerActivation"/>
+    public ScrubberElement RequireControllerActivation(bool required = true) => this with
+    {
+        ControllerInteractionMode = required
+            ? SliderInteractionMode.ActivateToAdjust
+            : null,
     };
 
     internal override ViewNode ToProtocolNode()
@@ -154,6 +174,7 @@ public sealed record ScrubberElement : WidgetElement
         {
             IsDisabled = IsDisabled,
             IsBusy = IsBusy,
+            ControllerInteractionMode = ControllerInteractionMode,
             FocusNeighbors = FocusNeighbors,
             StyleClasses = ["gbar-scrubber__slider"],
         };

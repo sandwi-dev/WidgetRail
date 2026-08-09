@@ -397,8 +397,19 @@ static async Task ReadyControllerUi()
     var scrubber = Find(snapshot.Root, "spotify.seek.slider");
     Assert.Equal(ViewNodeKind.Slider, scrubber.Kind);
     Assert.Equal("spotify.seek", scrubber.ValueChangedActionId);
-    Assert.Equal("spotify.seek.slider", Find(snapshot.Root, "spotify.play-toggle").Focus!.Down);
-    Assert.Equal("spotify.shuffle", scrubber.Focus!.Down);
+    Assert.Equal(SliderInteractionMode.ActivateToAdjust, scrubber.SliderInteractionMode);
+    Assert.Equal("spotify.shuffle", Find(snapshot.Root, "spotify.previous").Focus!.Left);
+    Assert.Equal("spotify.seek.slider", Find(snapshot.Root, "spotify.previous").Focus!.Up);
+    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.previous").Focus!.Right);
+    Assert.Equal("spotify.previous", Find(snapshot.Root, "spotify.play-toggle").Focus!.Left);
+    Assert.Equal("spotify.seek.slider", Find(snapshot.Root, "spotify.play-toggle").Focus!.Up);
+    Assert.Equal("spotify.next", Find(snapshot.Root, "spotify.play-toggle").Focus!.Right);
+    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.next").Focus!.Left);
+    Assert.Equal("spotify.seek.slider", Find(snapshot.Root, "spotify.next").Focus!.Up);
+    Assert.Equal("spotify.repeat", Find(snapshot.Root, "spotify.next").Focus!.Right);
+    Assert.Equal("spotify.previous", Find(snapshot.Root, "spotify.shuffle").Focus!.Right);
+    Assert.Equal("spotify.next", Find(snapshot.Root, "spotify.repeat").Focus!.Left);
+    Assert.Equal("spotify.play-toggle", scrubber.Focus!.Down);
     AssertShortcut(snapshot.Root, ControllerButton.LeftBumper, "spotify.previous");
     AssertShortcut(snapshot.Root, ControllerButton.X, "spotify.play-toggle");
     AssertShortcut(snapshot.Root, ControllerButton.RightBumper, "spotify.next");
@@ -415,7 +426,7 @@ static async Task ResponsiveNavigation()
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     var snapshot = widget.RenderSnapshot("spotify.responsive", 1);
-    Assert.Equal(ProtocolConstants.ResponsiveVisibilityVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.SliderActivationVersion, snapshot.ProtocolVersion);
     Assert.Equal(ResponsiveVisibility.ExpandedOnly,
         Find(snapshot.Root, "spotify.shell.wide").VisibleWhen);
     Assert.Equal(ResponsiveVisibility.CompactOnly,
@@ -440,8 +451,13 @@ static async Task LazyPageLoading()
 
     await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
     Assert.Equal(1, harness.QueueCalls);
-    Assert.NotNull(Find(widget.RenderSnapshot("spotify.queue", 1).Root,
-        "spotify.queue.item.wide.0"));
+    var queueSnapshot = widget.RenderSnapshot("spotify.queue", 1);
+    Assert.NotNull(Find(queueSnapshot.Root, "spotify.queue.item.wide.0"));
+    Assert.Equal("3:21", Find(queueSnapshot.Root,
+        "spotify.queue.item.wide.0.state").Text);
+    Assert.True(!ContainsId(queueSnapshot.Root,
+        "spotify.queue.item.wide.0.metadata"),
+        "Queue item rendered a redundant fourth text row.");
     await widget.OnActionAsync(new("spotify.nav.player", "spotify.nav.wide.player"));
     await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
     Assert.Equal(1, harness.QueueCalls);
@@ -462,6 +478,11 @@ static async Task PlaylistDetailBack()
     await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.compact.0"));
     var detail = widget.RenderSnapshot("spotify.playlist.detail", 1);
     Assert.NotNull(Find(detail.Root, "spotify.playlist.track.wide.0"));
+    Assert.Equal("3:21", Find(detail.Root,
+        "spotify.playlist.track.wide.0.state").Text);
+    Assert.True(!ContainsId(detail.Root,
+        "spotify.playlist.track.wide.0.metadata"),
+        "Playlist track rendered a redundant fourth text row.");
     AssertShortcut(detail.Root, ControllerButton.B, "spotify.playlist.back");
     Assert.Equal("spotify.playlist.play.compact", detail.InitialFocusId);
     await widget.OnActionAsync(new("spotify.playlist.back", "spotify.playlist.play.compact"));
@@ -645,6 +666,18 @@ static async Task OptimisticPlayback()
     Assert.Equal(WidgetGlyph.Play, Find(pending.Root, "spotify.play-toggle").Glyph);
     Assert.True(Find(pending.Root, "spotify.play-toggle").IsBusy == true,
         "Pending playback did not expose busy feedback.");
+    foreach (var id in new[]
+             {
+                 "spotify.previous", "spotify.next", "spotify.shuffle", "spotify.repeat",
+                 "spotify.seek.slider",
+             })
+    {
+        var control = Find(pending.Root, id);
+        Assert.True(control.IsBusy is not true,
+            $"Unrelated control '{id}' incorrectly entered its busy state.");
+        Assert.True(control.IsDisabled is not true,
+            $"Unrelated control '{id}' was transiently disabled.");
+    }
     release.SetResult();
     await action;
     Assert.Equal(WidgetSpotifyPlaybackOperation.Pause, harness.Commands[0].Operation);
@@ -701,7 +734,7 @@ static Task ManifestContract()
         WidgetSpotifyCapabilities.LocalPlaybackCapabilityId), "Local playback must remain optional.");
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaylistsReadCapabilityId), "Playlist reading must remain optional.");
-    Assert.Equal("0.2.3", manifest.Version);
+    Assert.Equal("0.2.4", manifest.Version);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
@@ -758,6 +791,9 @@ static ViewNode FindPrefix(ViewNode node, string prefix)
     }
     throw new InvalidOperationException($"Node prefix '{prefix}' was not found.");
 }
+
+static bool ContainsId(ViewNode node, string id) =>
+    node.Id == id || node.Children.Any(child => ContainsId(child, id));
 
 static void AssertShortcut(ViewNode root, ControllerButton button, string action)
 {

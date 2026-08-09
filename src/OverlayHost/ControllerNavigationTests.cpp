@@ -76,21 +76,56 @@ int main() {
 
     using gba::input::FocusedDirectionRoute;
     using gba::input::RouteFocusedDirection;
-    Check(RouteFocusedDirection(L"slider", false, false, NavigationDirection::Left) ==
+    Check(RouteFocusedDirection(
+              L"slider", false, false, false, false, NavigationDirection::Left) ==
               FocusedDirectionRoute::SliderAdjustment,
           "focused slider owns Left adjustment");
-    Check(RouteFocusedDirection(L"slider", false, false, NavigationDirection::Up) ==
+    Check(RouteFocusedDirection(
+              L"slider", false, false, false, false, NavigationDirection::Up) ==
               FocusedDirectionRoute::FocusNavigation,
           "focused slider leaves Up for focus navigation");
-    Check(RouteFocusedDirection(L"slider", true, false, NavigationDirection::Right) ==
+    Check(RouteFocusedDirection(
+              L"slider", true, false, false, false, NavigationDirection::Right) ==
               FocusedDirectionRoute::Consume,
           "disabled slider consumes adjustment without activating");
-    Check(RouteFocusedDirection(L"slider", false, true, NavigationDirection::Right) ==
+    Check(RouteFocusedDirection(
+              L"slider", false, true, false, false, NavigationDirection::Right) ==
               FocusedDirectionRoute::Consume,
           "busy slider consumes adjustment while retaining focus");
-    Check(RouteFocusedDirection(L"button", true, true, NavigationDirection::Right) ==
+    Check(RouteFocusedDirection(
+              L"button", true, true, false, false, NavigationDirection::Right) ==
               FocusedDirectionRoute::FocusNavigation,
           "button direction remains focus navigation regardless of activation state");
+    Check(RouteFocusedDirection(
+              L"slider", false, false, true, false, NavigationDirection::Left) ==
+              FocusedDirectionRoute::FocusNavigation,
+          "inactive activation-first slider leaves Left for focus navigation");
+    Check(RouteFocusedDirection(
+              L"slider", false, false, true, true, NavigationDirection::Left) ==
+              FocusedDirectionRoute::SliderAdjustment,
+          "active activation-first slider owns Left adjustment");
+    Check(RouteFocusedDirection(
+              L"slider", false, false, true, true, NavigationDirection::Down) ==
+              FocusedDirectionRoute::Consume,
+          "active activation-first slider contains vertical navigation");
+
+    using gba::input::FocusedSliderButtonRoute;
+    using gba::input::RouteFocusedSliderButton;
+    Check(RouteFocusedSliderButton(L"slider", true, false, L"A") ==
+              FocusedSliderButtonRoute::EnterAdjustment,
+          "inactive activation-first slider uses A to enter adjustment");
+    Check(RouteFocusedSliderButton(L"slider", true, true, L"A") ==
+              FocusedSliderButtonRoute::ExitAdjustment,
+          "active activation-first slider uses A to exit adjustment");
+    Check(RouteFocusedSliderButton(L"slider", true, true, L"B") ==
+              FocusedSliderButtonRoute::ExitAdjustment,
+          "active activation-first slider uses B to exit adjustment");
+    Check(RouteFocusedSliderButton(L"slider", true, false, L"B") ==
+              FocusedSliderButtonRoute::Widget,
+          "inactive activation-first slider leaves B to widget Back");
+    Check(RouteFocusedSliderButton(L"slider", false, false, L"A") ==
+              FocusedSliderButtonRoute::Widget,
+          "direct slider preserves A activation actions");
 
     using gba::input::ControllerActionContext;
     using gba::input::ControllerActionRoute;

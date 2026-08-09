@@ -174,6 +174,16 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                     "local_playback_timeout",
                     "Spotify local playback did not become ready in time.", exception);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The overlay can transition out of its interactive lifecycle while the
+                // SDK is starting. Never retain a half-started client or a terminal-looking
+                // Starting state after the caller cancels the broker operation.
+                await StopClientLockedAsync().ConfigureAwait(false);
+                SetState(null, IsHostAvailable ? SpotifyLocalPlaybackState.Disabled :
+                    SpotifyLocalPlaybackState.Unavailable, null);
+                throw;
+            }
             catch (SpotifyPlaybackHostClientException exception)
             {
                 var state = GetSummary(identity).State;
@@ -192,6 +202,15 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 throw new SpotifyProviderException(
                     code, GetSummary(identity).DisplayMessage ??
                         "Spotify local playback could not be started.", exception);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                SetState(identity, SpotifyLocalPlaybackState.Error,
+                    "Spotify local playback could not be started.");
+                await StopClientLockedAsync().ConfigureAwait(false);
+                throw new SpotifyProviderException(
+                    "local_playback_failed",
+                    "Spotify local playback could not be started.", exception);
             }
         }
         finally { _gate.Release(); }

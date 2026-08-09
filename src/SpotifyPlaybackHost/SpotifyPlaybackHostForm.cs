@@ -7,6 +7,8 @@ namespace GameBarAlternative.SpotifyPlaybackHost;
 
 internal sealed class SpotifyPlaybackHostForm : Form
 {
+    private const int WsExNoActivate = 0x08000000;
+
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly EphemeralUserDataDirectory _userData = new();
     private readonly SpotifyPlaybackStateMachine _lifecycle = new();
@@ -29,6 +31,23 @@ internal sealed class SpotifyPlaybackHostForm : Form
         Controls.Add(_webView);
         _sdkLoadTimeout.Tick += (_, _) => HandleSdkLoadTimeout();
         Shown += async (_, _) => await InitializeAsync().ConfigureAwait(true);
+    }
+
+    // This process is an audio engine, not an interactive application surface. A normal
+    // WinForms top-level window can briefly become foreground while Application.Run shows
+    // it, even when it is transparent and off-screen. That foreground transition closes
+    // the overlay and cancels the start request, so enforce both WinForms' no-activation
+    // path and the native extended style.
+    protected override bool ShowWithoutActivation => true;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var parameters = base.CreateParams;
+            parameters.ExStyle |= WsExNoActivate;
+            return parameters;
+        }
     }
 
     protected override void Dispose(bool disposing)

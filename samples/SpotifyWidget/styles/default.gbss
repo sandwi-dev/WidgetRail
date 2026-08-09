@@ -429,24 +429,66 @@
   outline-width: 2px;
   outline-offset: -2px;
 }
+.spotify-playlist-header {
+  min-width: 0px;
+  flex-shrink: 0;
+}
+.gbar-section-header__content {
+  width: 100%;
+  min-width: 0px;
+  min-height: 44px;
+}
+.gbar-section-header__trailing {
+  flex-shrink: 0;
+  padding: 0px 2px 0px 8px;
+}
+.spotify-playlist-header-action {
+  min-width: 88px;
+  max-width: 112px;
+  flex-shrink: 0;
+}
 .spotify-media-row {
   width: 100%;
   min-width: 0px;
-  min-height: 64px;
+  min-height: 82px;
   flex-shrink: 0;
-  padding: 7px 9px;
-  gap: 9px;
+  padding: 9px 11px;
+  gap: 11px;
   background: transparent;
   border-color: transparent;
   border-width: 1px;
   corner-radius: 8px;
 }
-.gbar-tile__artwork { width: 48px; height: 48px; corner-radius: 6px; }
-.gbar-tile__content { min-width: 0px; gap: 1px; }
-.gbar-tile__title { font-size: 13px; font-weight: 500; max-lines: 1; text-overflow: ellipsis; }
-.gbar-tile__subtitle,
+.gbar-tile__artwork {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+  corner-radius: 7px;
+}
+.gbar-tile__content { min-width: 0px; flex-grow: 1; flex-shrink: 1; gap: 2px; }
+.gbar-tile__title {
+  width: 100%;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.15;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+.gbar-tile__subtitle {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.15;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
 .gbar-tile__metadata,
-.gbar-tile__state { font-size: 10px; max-lines: 1; text-overflow: ellipsis; }
+.gbar-tile__state {
+  width: 100%;
+  font-size: 11px;
+  line-height: 1.1;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
 .spotify-media-row:focused {
   background: var(--surface-active, #262623);
   outline-color: var(--focus);

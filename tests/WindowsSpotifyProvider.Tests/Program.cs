@@ -36,6 +36,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Web API playback mutations use exact encoded URLs and typed JSON bodies", WebApiMutations),
     ("Playlist authorization expands to the least privileged read scopes", PlaylistScopeExpansion),
     ("Local playback hands off tokens and exposes only its public pseudo-device", LocalPlaybackLifecycle),
+    ("Canceled local playback startup releases the host and resets Starting", LocalPlaybackCancellation),
     ("Local playback maps reauthorization premium and SDK errors", LocalPlaybackErrorStates),
     ("Provider disposal tears down an active local playback host", LocalPlaybackBackendDisposal),
     ("Provider implements typed broker mappings without exposing tokens", BrokerContractMapping),
@@ -989,6 +990,46 @@ static async Task LocalPlaybackErrorStates()
     finally { File.Delete(hostPath); }
 }
 
+static async Task LocalPlaybackCancellation()
+{
+    var hostPath = CreateTemporaryPlaybackHost();
+    try
+    {
+        var client = new FakeLocalPlaybackHostClient(
+            "private-device", raiseReadyOnConnect: false);
+        var manager = new SpotifyLocalPlaybackManager(
+            hostPath,
+            (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
+                "initial-token", DateTimeOffset.UtcNow.AddMinutes(10),
+                [WindowsSpotifyPlatformBackend.StreamingScope])),
+            () => client);
+        await using var backend = Backend(
+            new FakeConfigurationStore("Client123456789"), new FakeVault("refresh"),
+            new FakeHttp(_ => throw new InvalidOperationException(
+                "Canceled startup must not reach the Web API.")),
+            new NullBrowser(), new NullCallback(), localPlayback: manager);
+        var identity = new BrokerWidgetIdentity(
+            "dev.spotify.widget", "dev.publisher", "instance");
+        using var cancellation = new CancellationTokenSource();
+
+        var start = backend.ControlSpotifyLocalPlaybackAsync(identity,
+            new SpotifyLocalPlaybackCommand(
+                SpotifyLocalPlaybackOperation.StartAndTransfer, null, true),
+            cancellation.Token);
+        await WaitUntilAsync(() => manager.GetSummary(Identity()).State ==
+            BrokerSpotifyLocalPlaybackState.Starting);
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => start, string.Empty);
+
+        var summary = await backend.GetSpotifyLocalPlaybackAsync(identity, default);
+        Assert.Equal(BrokerSpotifyLocalPlaybackState.Disabled, summary.State);
+        Assert.Equal(1, client.DisposeCalls);
+        Assert.True(!client.IsRunning);
+    }
+    finally { File.Delete(hostPath); }
+}
+
 static async Task LocalPlaybackBackendDisposal()
 {
     var hostPath = CreateTemporaryPlaybackHost();
@@ -1292,7 +1333,8 @@ internal sealed class FakeDelay : ISpotifyDelay
 
 internal sealed class FakeLocalPlaybackHostClient(
     string readyDeviceId,
-    string? connectErrorCode = null) : ISpotifyPlaybackHostClient
+    string? connectErrorCode = null,
+    bool raiseReadyOnConnect = true) : ISpotifyPlaybackHostClient
 {
     private readonly object _gate = new();
     private bool _isRunning;
@@ -1323,9 +1365,9 @@ internal sealed class FakeLocalPlaybackHostClient(
     {
         cancellationToken.ThrowIfCancellationRequested();
         ConnectOptions = options;
-        if (connectErrorCode is null)
+        if (connectErrorCode is null && raiseReadyOnConnect)
             Raise("ready", new { deviceId = readyDeviceId });
-        else
+        else if (connectErrorCode is not null)
             Raise("sdk_error", new { code = connectErrorCode, message = "Host failure" });
         return Task.FromResult(Envelope("command_completed", new { }));
     }

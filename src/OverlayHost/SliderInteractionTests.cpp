@@ -127,6 +127,39 @@ int main() {
     }
     Check(state.size() == SliderInteractionState::MaximumEntries,
           "transient Slider state is hard LRU bounded");
+
+    auto activationFirst = Slider(0.0);
+    activationFirst.nodeId = L"activation-first";
+    activationFirst.activationRequired = true;
+    auto inactiveAdjustment = state.Adjust(
+        activationFirst, NavigationDirection::Right, 4'000);
+    Check(!inactiveAdjustment.consumed && !inactiveAdjustment.requestedValue,
+          "inactive activation-first slider does not consume navigation");
+    Check(state.EnterAdjustmentMode(activationFirst, 4'001),
+          "A-equivalent host action enters adjustment mode");
+    Check(state.AdjustmentModeActive(activationFirst, 4'002),
+          "entered slider reports active adjustment mode");
+    auto activeModeAdjustment = state.Adjust(
+        activationFirst, NavigationDirection::Right, 4'003);
+    Check(activeModeAdjustment.consumed && activeModeAdjustment.requestedValue,
+          "active activation-first slider adjusts normally");
+    Check(state.ExitAdjustmentMode(activationFirst, 4'004),
+          "A/B-equivalent host action exits adjustment mode");
+    Check(!state.AdjustmentModeActive(activationFirst, 4'005),
+          "exited slider no longer reports active adjustment mode");
+    Check(!state.ExitAdjustmentMode(activationFirst, 4'006),
+          "inactive B leaves adjustment state untouched");
+    Check(state.EnterAdjustmentMode(activationFirst, 4'007),
+          "slider can re-enter adjustment mode");
+    state.RetainAdjustmentMode(L"runtime-1", L"root", L"different-focus");
+    Check(!state.AdjustmentModeActive(activationFirst, 4'008),
+          "moving focus away clears adjustment mode");
+    Check(state.EnterAdjustmentMode(activationFirst, 4'009),
+          "slider can enter before global teardown");
+    state.DeactivateAll();
+    Check(!state.AdjustmentModeActive(activationFirst, 4'010),
+          "overlay transition clears all adjustment modes");
+
     state.ForgetWidget(L"runtime-1");
     Check(state.size() == 0, "runtime teardown clears transient state");
 

@@ -49,7 +49,10 @@ SliderAdjustment SliderInteractionState::Adjust(
         return {};
     if (!Valid(slider)) return {true, std::nullopt};
     auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
-    if (!entry || slider.disabled || slider.busy) return {true, std::nullopt};
+    if (!entry) return {true, std::nullopt};
+    if (entry->activationRequired && !entry->adjustmentActive)
+        return {false, std::nullopt};
+    if (slider.disabled || slider.busy) return {true, std::nullopt};
     const auto target = StepTarget(
         entry->targetValue, entry->minimum, entry->maximum, entry->step, direction);
     if (!target || Near(*target, entry->targetValue, entry->maximum - entry->minimum))
@@ -60,6 +63,37 @@ SliderAdjustment SliderInteractionState::Adjust(
     entry->lastAdjustment = nowMilliseconds;
     entry->lastAccess = ++accessClock_;
     return {true, *target};
+}
+
+bool SliderInteractionState::EnterAdjustmentMode(
+    const SliderInputDescriptor& slider,
+    const std::uint64_t nowMilliseconds) {
+    if (!Valid(slider) || !slider.activationRequired) return false;
+    auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
+    if (!entry || slider.disabled || slider.busy) return false;
+    RetainAdjustmentMode(slider.widgetInstanceId, slider.inputScopeId, slider.nodeId);
+    entry->adjustmentActive = true;
+    entry->lastAccess = ++accessClock_;
+    return true;
+}
+
+bool SliderInteractionState::ExitAdjustmentMode(
+    const SliderInputDescriptor& slider,
+    const std::uint64_t nowMilliseconds) {
+    if (!Valid(slider) || !slider.activationRequired) return false;
+    auto* entry = FindAndSynchronize(slider, nowMilliseconds);
+    if (!entry || !entry->adjustmentActive) return false;
+    entry->adjustmentActive = false;
+    entry->lastAccess = ++accessClock_;
+    return true;
+}
+
+bool SliderInteractionState::AdjustmentModeActive(
+    const SliderInputDescriptor& slider,
+    const std::uint64_t nowMilliseconds) {
+    if (!Valid(slider) || !slider.activationRequired) return false;
+    const auto* entry = FindAndSynchronize(slider, nowMilliseconds);
+    return entry && entry->adjustmentActive;
 }
 
 std::optional<double> SliderInteractionState::PresentationValue(
@@ -87,7 +121,7 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         entry = {
             slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
-            0, ++accessClock_, false,
+            0, ++accessClock_, false, slider.activationRequired, false,
         };
         return &entry;
     }
@@ -95,12 +129,13 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         Near(entry.minimum, slider.minimum, slider.maximum - slider.minimum) &&
         Near(entry.maximum, slider.maximum, slider.maximum - slider.minimum) &&
         Near(entry.step, slider.step, slider.maximum - slider.minimum) &&
-        entry.actionId == slider.valueChangedActionId;
+        entry.actionId == slider.valueChangedActionId &&
+        entry.activationRequired == slider.activationRequired;
     if (!sameContract) {
         entry = {
             slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
-            0, ++accessClock_, false,
+            0, ++accessClock_, false, slider.activationRequired, false,
         };
     } else {
         if (entry.pending &&
@@ -128,7 +163,7 @@ SliderInteractionState::Entry* SliderInteractionState::CreateOrSynchronize(
     auto [position, inserted] = entries_.try_emplace(key, Entry{
         slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
         slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
-        0, ++accessClock_, false,
+        0, ++accessClock_, false, slider.activationRequired, false,
     });
     (void)inserted;
     Trim(key);
@@ -184,6 +219,27 @@ void SliderInteractionState::ForgetWidget(const std::wstring_view widgetInstance
     std::wstring prefix{widgetInstanceId};
     prefix.push_back(L'\x1f');
     std::erase_if(entries_, [&](const auto& entry) { return entry.first.starts_with(prefix); });
+}
+
+void SliderInteractionState::RetainAdjustmentMode(
+    const std::wstring_view widgetInstanceId,
+    const std::wstring_view inputScopeId,
+    const std::wstring_view nodeId) noexcept {
+    std::wstring retained;
+    if (!widgetInstanceId.empty() && !inputScopeId.empty() && !nodeId.empty()) {
+        SliderInputDescriptor descriptor;
+        descriptor.widgetInstanceId = widgetInstanceId;
+        descriptor.inputScopeId = inputScopeId;
+        descriptor.nodeId = nodeId;
+        retained = Key(descriptor);
+    }
+    for (auto& [key, entry] : entries_) {
+        if (key != retained) entry.adjustmentActive = false;
+    }
+}
+
+void SliderInteractionState::DeactivateAll() noexcept {
+    for (auto& [_, entry] : entries_) entry.adjustmentActive = false;
 }
 
 } // namespace gba::input

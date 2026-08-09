@@ -23,6 +23,7 @@ struct SliderInputDescriptor final {
     double step{};
     bool disabled{};
     bool busy{};
+    bool activationRequired{};
 };
 
 struct SliderAdjustment final {
@@ -41,6 +42,27 @@ public:
         const SliderInputDescriptor& slider,
         NavigationDirection direction,
         std::uint64_t nowMilliseconds);
+
+    [[nodiscard]] bool EnterAdjustmentMode(
+        const SliderInputDescriptor& slider,
+        std::uint64_t nowMilliseconds);
+
+    [[nodiscard]] bool ExitAdjustmentMode(
+        const SliderInputDescriptor& slider,
+        std::uint64_t nowMilliseconds);
+
+    [[nodiscard]] bool AdjustmentModeActive(
+        const SliderInputDescriptor& slider,
+        std::uint64_t nowMilliseconds);
+
+    /// Clears edit state everywhere except the currently focused exact slider.
+    /// Pending optimistic values remain available for reconciliation.
+    void RetainAdjustmentMode(
+        std::wstring_view widgetInstanceId,
+        std::wstring_view inputScopeId,
+        std::wstring_view nodeId) noexcept;
+
+    void DeactivateAll() noexcept;
 
     [[nodiscard]] std::optional<double> PresentationValue(
         const SliderInputDescriptor& slider,
@@ -62,6 +84,8 @@ private:
         std::uint64_t lastAdjustment{};
         std::uint64_t lastAccess{};
         bool pending{};
+        bool activationRequired{};
+        bool adjustmentActive{};
     };
 
     [[nodiscard]] static bool Valid(const SliderInputDescriptor& slider) noexcept;

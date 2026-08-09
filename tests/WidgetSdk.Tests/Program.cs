@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Broken focus neighbors are rejected", BrokenFocusIsRejected),
     ("Invalid progress is rejected", InvalidProgressIsRejected),
     ("Slider v3 serializes bounded accessible value semantics", SliderV3RoundTrip),
+    ("Activation-first sliders are opt-in versioned and preserve directional focus", SliderActivationModeRoundTrip),
     ("Slider validation rejects unsafe ranges and focus conflicts", InvalidSlidersAreRejected),
     ("Image and icon nodes round-trip as renderer-neutral primitives", VisualNodesRoundTrip),
     ("Loading indicators round-trip with bounded non-interactive semantics", LoadingIndicatorRoundTrip),
@@ -1190,6 +1191,52 @@ static Task SliderV3RoundTrip()
     var legacy = new WidgetView(UI.Stack("root", UI.Button("Go", "go", "go")))
         .CreateSnapshot("legacy.instance", 1);
     Assert.Equal(ProtocolConstants.BaselineVersion, legacy.ProtocolVersion);
+    return Task.CompletedTask;
+}
+
+static Task SliderActivationModeRoundTrip()
+{
+    var snapshot = new WidgetView(
+        UI.Stack("root",
+            UI.Button("Previous", "previous", "previous"),
+            UI.Slider(0.5, 0, 1, 0.1, "volume.changed", "volume", "Volume")
+                .RequireControllerActivation()
+                .FocusLeft("previous")
+                .FocusRight("next"),
+            UI.Button("Next", "next", "next")),
+        "volume").CreateSnapshot("slider.activation", 1);
+
+    Assert.Equal(ProtocolConstants.SliderActivationVersion, snapshot.ProtocolVersion);
+    var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+    var slider = Find(restored.Root, "volume");
+    Assert.Equal(SliderInteractionMode.ActivateToAdjust, slider.SliderInteractionMode);
+    Assert.Equal("previous", slider.Focus!.Left);
+    Assert.Equal("next", slider.Focus.Right);
+
+    var scrubber = UI.Scrubber(
+            TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(3),
+            TimeSpan.FromSeconds(5), "seek", "timeline")
+        .RequireControllerActivation()
+        .ToProtocolNode();
+    Assert.Equal(
+        SliderInteractionMode.ActivateToAdjust,
+        Find(scrubber, "timeline.slider").SliderInteractionMode);
+
+    var conflict = Assert.Throws<ProtocolValidationException>(() =>
+        new WidgetView(UI.Stack("root",
+            UI.Slider(0.5, 0, 1, 0.1, "change", "conflict", "Volume")
+                .Activate("mute")
+                .RequireControllerActivation()))
+            .CreateSnapshot("slider.activation", 2));
+    Assert.True(conflict.Errors.Any(error =>
+            error.Code == "slider_activation_action_conflict"),
+        "Activation-first Slider must reserve A instead of also publishing an activation action.");
+
+    var oldWire = snapshot with { ProtocolVersion = ProtocolConstants.ResponsiveVisibilityVersion };
+    Assert.True(ViewSnapshotValidator.Validate(oldWire).Any(error =>
+            error.Code == "feature_requires_version" &&
+            error.Path.EndsWith(".sliderInteractionMode", StringComparison.Ordinal)),
+        "Activation-first mode must not be silently accepted by a protocol-v9 host.");
     return Task.CompletedTask;
 }
 

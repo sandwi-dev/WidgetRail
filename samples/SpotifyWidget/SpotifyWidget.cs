@@ -1730,44 +1730,45 @@ public sealed class SpotifyWidget : Widget
                 .Classes("spotify-artwork");
         var previous = UI.IconButton(WidgetGlyph.Previous, "spotify.previous",
                 previousId, "Previous track", size: IconButtonSize.Medium)
-            .Disabled(disallowed.SkippingPrevious || pending is not null)
+            .Disabled(disallowed.SkippingPrevious)
             .Busy(pending == WidgetSpotifyPlaybackOperation.Previous)
-            .FocusRight(toggleId).FocusDown(seekSliderId)
+            .FocusLeft(shuffleId).FocusUp(seekSliderId).FocusRight(toggleId)
             .Classes("spotify-transport");
         var toggle = UI.IconButton(playback.IsPlaying ? WidgetGlyph.Pause : WidgetGlyph.Play,
                 "spotify.play-toggle", toggleId,
                 playback.IsPlaying ? "Pause" : "Play", IconButtonVariant.Primary,
                 IconButtonSize.Large)
-            .Disabled(toggleBlocked || pending is not null)
+            .Disabled(toggleBlocked)
             .Busy(pending is WidgetSpotifyPlaybackOperation.Play or
                 WidgetSpotifyPlaybackOperation.Pause)
-            .FocusLeft(previousId).FocusRight(nextId).FocusDown(seekSliderId)
+            .FocusLeft(previousId).FocusUp(seekSliderId).FocusRight(nextId)
             .Classes("spotify-play");
         var next = UI.IconButton(WidgetGlyph.Next, "spotify.next", nextId,
                 "Next track", size: IconButtonSize.Medium)
-            .Disabled(disallowed.SkippingNext || pending is not null)
+            .Disabled(disallowed.SkippingNext)
             .Busy(pending == WidgetSpotifyPlaybackOperation.Next)
-            .FocusLeft(toggleId).FocusDown(seekSliderId)
+            .FocusLeft(toggleId).FocusUp(seekSliderId).FocusRight(repeatId)
             .Classes("spotify-transport");
         var shuffle = UI.IconButton(WidgetGlyph.Shuffle, "spotify.shuffle",
                 shuffleId, "Toggle shuffle", size: IconButtonSize.Small)
             .Selected(playback.ShuffleState)
-            .Disabled(disallowed.TogglingShuffle || pending is not null)
-            .FocusUp(seekSliderId).FocusRight(repeatId)
+            .Disabled(disallowed.TogglingShuffle)
+            .FocusUp(seekSliderId).FocusRight(previousId)
             .Classes("spotify-secondary-action");
         var repeat = UI.IconButton(WidgetGlyph.Repeat, "spotify.repeat",
                 repeatId, $"Repeat {playback.RepeatState.ToString().ToLowerInvariant()}",
                 size: IconButtonSize.Small)
             .Selected(playback.RepeatState != WidgetSpotifyRepeatState.Off)
-            .Disabled(RepeatUnavailable(playback) || pending is not null)
-            .FocusUp(seekSliderId).FocusLeft(shuffleId)
+            .Disabled(RepeatUnavailable(playback))
+            .FocusUp(seekSliderId).FocusLeft(nextId)
             .Classes("spotify-secondary-action");
         var seek = UI.Scrubber(TimeSpan.FromMilliseconds(position),
                 TimeSpan.FromMilliseconds(duration), TimeSpan.FromSeconds(5), "spotify.seek",
                 seekId, "Spotify playback position")
-            .Disabled(disallowed.Seeking || pending is not null)
+            .Disabled(disallowed.Seeking)
             .Busy(pending == WidgetSpotifyPlaybackOperation.Seek)
-            .FocusUp(toggleId).FocusDown(shuffleId)
+            .FocusDown(toggleId)
+            .RequireControllerActivation()
             .AddClasses("spotify-scrubber");
 
         return UI.Stack($"{prefix}.card",
@@ -1832,8 +1833,8 @@ public sealed class SpotifyWidget : Widget
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Next).Classes("spotify-page");
         var rows = queue.Items.Select((item, index) => MediaRow(item,
-            $"spotify.queue.play.{index}", $"spotify.queue.item.{mode}.{index}",
-            index == 0 ? "Up next" : $"Next {index + 1}")).ToArray();
+            $"spotify.queue.play.{index}", $"spotify.queue.item.{mode}.{index}"))
+            .ToArray();
         return UI.Stack($"spotify.queue.page.{mode}",
                 UI.SectionHeader("Up next", $"spotify.queue.header.{mode}", "QUEUE",
                     queue.IsTruncated ? "Showing Spotify's next items." :
@@ -1883,8 +1884,8 @@ public sealed class SpotifyWidget : Widget
         WidgetSpotifyPlaylistItemsSummary detail, bool loading, string mode)
     {
         var rows = detail.Items.Select((item, index) => MediaRow(item,
-            $"spotify.playlist.track.{index}", $"spotify.playlist.track.{mode}.{index}",
-            FormatTime(item.DurationMilliseconds))).ToList<WidgetElement>();
+            $"spotify.playlist.track.{index}", $"spotify.playlist.track.{mode}.{index}"))
+            .ToList<WidgetElement>();
         if (detail.Items.Count < detail.Total)
             rows.Add(UI.Button(loading ? "Loading…" : "Load more", "spotify.playlist.more",
                     $"spotify.playlist.more.{mode}")
@@ -1892,11 +1893,13 @@ public sealed class SpotifyWidget : Widget
                 .Busy(loading).Disabled(loading).Classes("spotify-page-action"));
         return UI.Stack($"spotify.playlist.detail.{mode}",
                 UI.SectionHeader(detail.Playlist.Name, $"spotify.playlist.detail.header.{mode}",
-                    "PLAYLIST", detail.Playlist.Description,
-                    UI.Button("Play", "spotify.playlist.play",
-                            $"spotify.playlist.play.{mode}")
-                        .Icon(WidgetGlyph.Play, $"Play {detail.Playlist.Name}")
-                        .Busy(loading).Classes("spotify-page-action")),
+                        "PLAYLIST", detail.Playlist.Description,
+                        UI.Button("Play", "spotify.playlist.play",
+                                $"spotify.playlist.play.{mode}")
+                            .Icon(WidgetGlyph.Play, $"Play {detail.Playlist.Name}")
+                            .Busy(loading).Classes("spotify-page-action",
+                                "spotify-playlist-header-action"))
+                    .Classes("spotify-playlist-header"),
                 UI.VerticalScroll($"spotify.playlist.detail.scroll.{mode}", rows.ToArray())
                     .Classes("spotify-page-scroll"))
             .Classes("spotify-page", "spotify-playlist-detail");
@@ -1978,9 +1981,8 @@ public sealed class SpotifyWidget : Widget
     private static ActionSurfaceElement MediaRow(
         WidgetSpotifyMediaItemSummary item,
         string action,
-        string id,
-        string state) => UI.MediaTile(item.Title, state, action, id, item.Subtitle,
-            FormatTime(item.DurationMilliseconds), Artwork(item.ArtworkUrl, item.Title),
+        string id) => UI.MediaTile(item.Title, FormatTime(item.DurationMilliseconds),
+            action, id, item.Subtitle, null, Artwork(item.ArtworkUrl, item.Title),
             $"Play {item.Title} by {item.Subtitle}")
         .Disabled(!item.IsPlayable)
         .Classes("spotify-media-row");

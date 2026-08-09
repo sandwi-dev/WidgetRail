@@ -116,6 +116,7 @@ struct WidgetNode final {
     std::wstring accessibilityValue;
     std::wstring actionId;
     std::wstring valueChangedActionId;
+    std::wstring sliderInteractionMode;
     std::wstring imageSource;
     std::wstring imageFit;
     std::wstring glyph;

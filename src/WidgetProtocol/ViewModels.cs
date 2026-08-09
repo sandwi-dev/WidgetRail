@@ -49,6 +49,17 @@ public enum ScrollAxis
 }
 
 /// <summary>
+/// Selects how controller focus interacts with a horizontal Slider. Omission
+/// and <see cref="Direct"/> preserve the protocol-v3 behavior.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SliderInteractionMode>))]
+public enum SliderInteractionMode
+{
+    Direct,
+    ActivateToAdjust,
+}
+
+/// <summary>
 /// A semantic sizing class, not a window size. The host resolves it against
 /// the current work area, DPI, accessibility scale, and shell chrome.
 /// </summary>
@@ -206,6 +217,11 @@ public sealed record ViewNode
     public double? Step { get; init; }
     /// <summary>Receives a quantized absolute RequestedValue when a Slider changes.</summary>
     public string? ValueChangedActionId { get; init; }
+    /// <summary>
+    /// Optional protocol-v10 controller interaction policy. ActivateToAdjust
+    /// reserves A and B for entering and leaving host-owned adjustment mode.
+    /// </summary>
+    public SliderInteractionMode? SliderInteractionMode { get; init; }
     public string? ImageSource { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }

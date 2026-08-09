@@ -36,6 +36,8 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.ScrollContainerVersion);
             if (ContainsSlider(Root))
                 required = Math.Max(required, ProtocolConstants.SliderVersion);
+            if (ContainsActivationRequiredSlider(Root))
+                required = Math.Max(required, ProtocolConstants.SliderActivationVersion);
             if (QuickActions?.Any(action => action.Capability is not null) == true)
                 required = Math.Max(required, ProtocolConstants.DashboardGestureAuthorityVersion);
             if (ContainsLoadingIndicator(Root))
@@ -96,6 +98,22 @@ public sealed record WidgetView(
         ScrollElement scroll => scroll.Children.Any(ContainsSlider),
         ActionSurfaceElement actionSurface => actionSurface.Children.Any(ContainsSlider),
         GridElement grid => grid.Children.Any(ContainsSlider),
+        _ => false,
+    };
+
+    private static bool ContainsActivationRequiredSlider(WidgetElement element) => element switch
+    {
+        ResponsiveBranchElement branch => ContainsActivationRequiredSlider(branch.Child),
+        SliderElement slider =>
+            slider.ControllerInteractionMode is SliderInteractionMode.ActivateToAdjust,
+        ScrubberElement scrubber =>
+            scrubber.ControllerInteractionMode is SliderInteractionMode.ActivateToAdjust,
+        StackElement stack => stack.Children.Any(ContainsActivationRequiredSlider),
+        RowElement row => row.Children.Any(ContainsActivationRequiredSlider),
+        ScrollElement scroll => scroll.Children.Any(ContainsActivationRequiredSlider),
+        ActionSurfaceElement actionSurface =>
+            actionSurface.Children.Any(ContainsActivationRequiredSlider),
+        GridElement grid => grid.Children.Any(ContainsActivationRequiredSlider),
         _ => false,
     };
 

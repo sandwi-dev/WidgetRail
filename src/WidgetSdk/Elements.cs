@@ -273,8 +273,10 @@ public sealed record ProgressElement : WidgetElement
 }
 
 /// <summary>
-/// A host-rendered controller value control. While focused, Left and Right
-/// emit quantized absolute value-change actions; Up and Down remain focus navigation.
+/// A host-rendered controller value control. By default, focused Left and
+/// Right emit quantized absolute value-change actions. Widgets may opt into
+/// activation-first adjustment so all directions remain focus navigation
+/// until A enters the host-owned adjustment mode.
 /// </summary>
 public sealed record SliderElement : WidgetElement
 {
@@ -308,6 +310,7 @@ public sealed record SliderElement : WidgetElement
     public string AccessibilityValue { get; init; }
     /// <summary>Optional A-button action while this slider has focus.</summary>
     public string? ActivationActionId { get; init; }
+    public SliderInteractionMode? ControllerInteractionMode { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsBusy { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
@@ -319,6 +322,14 @@ public sealed record SliderElement : WidgetElement
     public SliderElement FocusDown(string id) => this with
     {
         FocusNeighbors = (FocusNeighbors ?? new()) with { Down = RequireId(id) },
+    };
+    public SliderElement FocusLeft(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Left = RequireId(id) },
+    };
+    public SliderElement FocusRight(string id) => this with
+    {
+        FocusNeighbors = (FocusNeighbors ?? new()) with { Right = RequireId(id) },
     };
     public SliderElement Disabled(bool disabled = true) => this with
     {
@@ -332,6 +343,17 @@ public sealed record SliderElement : WidgetElement
     {
         ActivationActionId = RequireId(actionId),
     };
+    /// <summary>
+    /// Requires A to enter controller adjustment mode. While inactive, D-pad
+    /// directions navigate normally; while active, Left/Right adjust and A or
+    /// B exits without emitting a separate activation action.
+    /// </summary>
+    public SliderElement RequireControllerActivation(bool required = true) => this with
+    {
+        ControllerInteractionMode = required
+            ? SliderInteractionMode.ActivateToAdjust
+            : null,
+    };
 
     internal override ViewNode ToProtocolNode() => new()
     {
@@ -342,6 +364,7 @@ public sealed record SliderElement : WidgetElement
         Maximum = Maximum,
         Step = Step,
         ValueChangedActionId = ValueChangedActionId,
+        SliderInteractionMode = ControllerInteractionMode,
         ActionId = ActivationActionId,
         AccessibilityLabel = AccessibilityLabel,
         AccessibilityValue = AccessibilityValue,

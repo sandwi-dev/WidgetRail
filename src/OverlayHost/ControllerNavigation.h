@@ -34,17 +34,26 @@ enum class FocusedDirectionRoute {
     Consume,
 };
 
-/// A focused slider owns horizontal direction. Busy/disabled slider input is
-/// consumed rather than leaking into spatial focus; Up/Down always navigate.
+/// Direct sliders own horizontal direction exactly as in protocol v3.
+/// Activation-first sliders navigate normally until selected; while selected,
+/// they contain every direction and use Left/Right for adjustment.
 [[nodiscard]] constexpr FocusedDirectionRoute RouteFocusedDirection(
     const std::wstring_view focusedKind,
     const bool disabled,
     const bool busy,
+    const bool activationRequired,
+    const bool adjustmentActive,
     const NavigationDirection direction) noexcept {
+    if (focusedKind != L"slider")
+        return FocusedDirectionRoute::FocusNavigation;
     const bool horizontal = direction == NavigationDirection::Left ||
                             direction == NavigationDirection::Right;
-    if (focusedKind != L"slider" || !horizontal)
+    if (activationRequired) {
+        if (!adjustmentActive) return FocusedDirectionRoute::FocusNavigation;
+        if (!horizontal) return FocusedDirectionRoute::Consume;
+    } else if (!horizontal) {
         return FocusedDirectionRoute::FocusNavigation;
+    }
     return disabled || busy
         ? FocusedDirectionRoute::Consume
         : FocusedDirectionRoute::SliderAdjustment;
@@ -64,6 +73,30 @@ enum class ControllerActionRoute {
     Widget,
     None,
 };
+
+enum class FocusedSliderButtonRoute {
+    Widget,
+    EnterAdjustment,
+    ExitAdjustment,
+};
+
+/// Activation-first slider mode is host-owned because it changes whether the
+/// D-pad navigates or adjusts. A enters and toggles out; B exits only while the
+/// mode is active so ordinary widget Back remains intact when inactive.
+[[nodiscard]] constexpr FocusedSliderButtonRoute RouteFocusedSliderButton(
+    const std::wstring_view focusedKind,
+    const bool activationRequired,
+    const bool adjustmentActive,
+    const std::wstring_view button) noexcept {
+    if (focusedKind != L"slider" || !activationRequired)
+        return FocusedSliderButtonRoute::Widget;
+    if (button == L"A") return adjustmentActive
+        ? FocusedSliderButtonRoute::ExitAdjustment
+        : FocusedSliderButtonRoute::EnterAdjustment;
+    if (button == L"B" && adjustmentActive)
+        return FocusedSliderButtonRoute::ExitAdjustment;
+    return FocusedSliderButtonRoute::Widget;
+}
 
 /// Decides who receives a non-navigation button first. Tray A/Y remain shell
 /// navigation, tray B is browser-like Back (close), and all interactive

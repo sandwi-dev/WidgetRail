@@ -468,6 +468,11 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.accessibilityValue = OptionalString(source, L"accessibilityValue");
     node.actionId = OptionalString(source, L"actionId");
     node.valueChangedActionId = OptionalString(source, L"valueChangedActionId");
+    node.sliderInteractionMode = OptionalString(source, L"sliderInteractionMode");
+    if (!node.sliderInteractionMode.empty() &&
+        node.sliderInteractionMode != L"direct" &&
+        node.sliderInteractionMode != L"activateToAdjust")
+        throw winrt::hresult_invalid_argument();
     node.imageSource = OptionalString(source, L"imageSource");
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");

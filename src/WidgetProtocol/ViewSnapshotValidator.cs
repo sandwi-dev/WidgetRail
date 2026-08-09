@@ -350,11 +350,25 @@ public static class ViewSnapshotValidator
                 CheckIdentifier(node.ValueChangedActionId, $"{path}.valueChangedActionId", "slider value-changed action ID");
                 if (node.ActionId is not null)
                     CheckIdentifier(node.ActionId, $"{path}.actionId", "slider activation action ID");
+                if (node.SliderInteractionMode is { } interactionMode)
+                {
+                    if (snapshot.ProtocolVersion < ProtocolConstants.SliderActivationVersion)
+                        Add($"{path}.sliderInteractionMode", "feature_requires_version",
+                            $"Slider interaction modes require protocol version {ProtocolConstants.SliderActivationVersion} or later.");
+                    if (!Enum.IsDefined(interactionMode))
+                        Add($"{path}.sliderInteractionMode", "invalid_slider_interaction_mode",
+                            "The slider interaction mode is not supported.");
+                    if (interactionMode is SliderInteractionMode.ActivateToAdjust &&
+                        node.ActionId is not null)
+                        Add($"{path}.actionId", "slider_activation_action_conflict",
+                            "Activation-first sliders reserve A for entering and leaving adjustment mode.");
+                }
                 if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                     Add($"{path}.accessibilityLabel", "required", "A slider requires an accessibility label.");
                 if (string.IsNullOrWhiteSpace(node.AccessibilityValue))
                     Add($"{path}.accessibilityValue", "required", "A slider requires an accessible value.");
-                if (node.Focus?.Left is not null || node.Focus?.Right is not null)
+                if (node.SliderInteractionMode is not SliderInteractionMode.ActivateToAdjust &&
+                    (node.Focus?.Left is not null || node.Focus?.Right is not null))
                     Add($"{path}.focus", "slider_horizontal_focus_not_allowed",
                         "A slider owns Left and Right for value adjustment; use only Up and Down focus neighbors.");
             }
@@ -362,9 +376,10 @@ public static class ViewSnapshotValidator
             {
                 if (node.Minimum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null ||
-                    node.AccessibilityValue is not null)
+                    node.AccessibilityValue is not null ||
+                    node.SliderInteractionMode is not null)
                     Add(path, "slider_property_not_allowed",
-                        "Minimum, step, value-change action, and accessible value apply only to sliders.");
+                        "Minimum, step, value-change action, accessible value, and interaction mode apply only to sliders.");
             }
             if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface) &&
                 node.ActionId is not null)

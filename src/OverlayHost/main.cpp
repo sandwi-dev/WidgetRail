@@ -1316,6 +1316,7 @@ private:
         }
         if (priorSurface != state_.surface() || priorActive != state_.activeWidget() ||
             priorFocusRegion != state_.focusRegion()) {
+            sliderInteraction_.DeactivateAll();
             if (pressedInteraction_.Clear())
                 InvalidateRect(window_, nullptr, FALSE);
         }
@@ -2205,6 +2206,7 @@ private:
                         Dispatch(gba::Command::Activate);
                     }
                     (void)pressedInteraction_.Clear();
+                    sliderInteraction_.DeactivateAll();
                     focusedElementId_ = hit->id;
                     focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                     InvalidateRect(window_, nullptr, FALSE);
@@ -2269,13 +2271,17 @@ private:
                 if (state_.focusRegion() == gba::FocusRegion::Tray) {
                     Dispatch(gba::Command::Activate);
                 } else {
-                    MoveWidgetFocus(L"up");
+                    HandleWidgetDirection(
+                        gba::input::NavigationDirection::Up, phase, false);
                 }
             }
             break;
         case gba::input::BasicKeyboardAction::NavigateDown:
             if (!repeated && state_.surface() == gba::Surface::Widget &&
-                state_.focusRegion() == gba::FocusRegion::Widget) MoveWidgetFocus(L"down");
+                state_.focusRegion() == gba::FocusRegion::Widget) {
+                HandleWidgetDirection(
+                    gba::input::NavigationDirection::Down, phase, false);
+            }
             break;
         case gba::input::BasicKeyboardAction::Activate:
             if (!repeated) DispatchControllerAction(L"A");
@@ -2621,6 +2627,7 @@ private:
             node.step,
             node.isDisabled,
             node.isBusy,
+            node.sliderInteractionMode == L"activateToAdjust",
         };
     }
 
@@ -2644,12 +2651,19 @@ private:
         const auto* focused = gba::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
         if (!focused) return;
+        const auto sliderDescriptor = SliderDescriptor(*snapshot, *focused);
+        const bool activationRequired =
+            focused->sliderInteractionMode == L"activateToAdjust";
+        const bool adjustmentActive = activationRequired &&
+            sliderInteraction_.AdjustmentModeActive(
+                sliderDescriptor, GetTickCount64());
         const auto route = gba::input::RouteFocusedDirection(
-            focused->kind, focused->isDisabled, focused->isBusy, direction);
+            focused->kind, focused->isDisabled, focused->isBusy,
+            activationRequired, adjustmentActive, direction);
         if (route == gba::input::FocusedDirectionRoute::Consume) return;
         if (route == gba::input::FocusedDirectionRoute::SliderAdjustment) {
             const auto adjustment = sliderInteraction_.Adjust(
-                SliderDescriptor(*snapshot, *focused), direction, GetTickCount64());
+                sliderDescriptor, direction, GetTickCount64());
             if (adjustment.requestedValue) {
                 sliderReconcileAt_ = GetTickCount64() +
                     gba::input::SliderInteractionState::PendingTimeoutMilliseconds + 1;
@@ -2798,6 +2812,7 @@ private:
             focusedElementId_, activeScope, lastWidgetRenderResult_);
         if (!visibleFocus) return;
         if (*visibleFocus != focusedElementId_) {
+            sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_ = *visibleFocus;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
@@ -2820,6 +2835,7 @@ private:
         const bool explicitMoves = explicitTarget && gba::input::IsDistinctFocusMove(
             focusedElementId_, explicitTarget->id, explicitNavigable);
         if (explicitMoves) {
+            sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_ = explicitTarget->id;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
@@ -2836,6 +2852,7 @@ private:
         const auto fallback = gba::input::FindGeometricFocusTarget(
             focusedElementId_, navigationDirection, lastWidgetRenderResult_);
         if (fallback) {
+            sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_ = *fallback;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
@@ -2869,9 +2886,56 @@ private:
         return L"";
     }
 
+    bool HandleFocusedSliderModeButton(const std::wstring_view button) {
+        if (button != L"A" && button != L"B") return false;
+        if (state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget) return false;
+        const std::wstring_view widget = state_.activeWidget();
+        const auto* snapshot = SnapshotFor(widget);
+        if (!snapshot) return false;
+        const auto visible = gba::input::ResolveVisibleFocusTarget(
+            focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
+        if (!visible) return false;
+        if (*visible != focusedElementId_) {
+            sliderInteraction_.DeactivateAll();
+            (void)pressedInteraction_.Clear();
+            focusedElementId_ = *visible;
+            focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+        }
+        const auto* focused = gba::input::FindNodeInInputScope(
+            *snapshot, focusedElementId_, snapshot->activeInputScopeId);
+        if (!focused) return false;
+        const auto descriptor = SliderDescriptor(*snapshot, *focused);
+        const bool activationRequired =
+            focused->sliderInteractionMode == L"activateToAdjust";
+        const bool adjustmentActive = activationRequired &&
+            sliderInteraction_.AdjustmentModeActive(
+                descriptor, GetTickCount64());
+        using gba::input::FocusedSliderButtonRoute;
+        switch (gba::input::RouteFocusedSliderButton(
+            focused->kind, activationRequired, adjustmentActive, button)) {
+        case FocusedSliderButtonRoute::EnterAdjustment:
+            (void)sliderInteraction_.EnterAdjustmentMode(
+                descriptor, GetTickCount64());
+            (void)pressedInteraction_.Clear();
+            InvalidateRect(window_, nullptr, FALSE);
+            return true;
+        case FocusedSliderButtonRoute::ExitAdjustment:
+            (void)sliderInteraction_.ExitAdjustmentMode(
+                descriptor, GetTickCount64());
+            (void)pressedInteraction_.Clear();
+            InvalidateRect(window_, nullptr, FALSE);
+            return true;
+        case FocusedSliderButtonRoute::Widget:
+            return false;
+        }
+        return false;
+    }
+
     void DispatchControllerAction(
         const std::wstring_view button,
         const bool physicalPress = false) {
+        if (HandleFocusedSliderModeButton(button)) return;
         using gba::input::ControllerActionContext;
         using gba::input::ControllerActionRoute;
         const auto context = state_.focusRegion() == gba::FocusRegion::Tray
@@ -3565,11 +3629,27 @@ private:
                 if (appearanceState_.current())
                     options.accessibility = CurrentAccessibilityPolicy();
                 options.animationTimestampMilliseconds = GetTickCount64();
+                sliderInteraction_.RetainAdjustmentMode(
+                    snapshot->instanceId,
+                    snapshot->activeInputScopeId,
+                    state_.focusRegion() == gba::FocusRegion::Widget
+                        ? std::wstring_view(focusedElementId_)
+                        : std::wstring_view{});
                 options.pressedElementId = pressedInteraction_.ActiveElementId(
                     *snapshot,
                     state_.focusRegion() == gba::FocusRegion::Widget
                         ? std::wstring_view(focusedElementId_)
                         : std::wstring_view{});
+                if (options.pressedElementId.empty() &&
+                    state_.focusRegion() == gba::FocusRegion::Widget) {
+                    if (const auto* focused = gba::input::FindNodeInInputScope(
+                            *snapshot, focusedElementId_, snapshot->activeInputScopeId);
+                        focused && focused->sliderInteractionMode == L"activateToAdjust" &&
+                        sliderInteraction_.AdjustmentModeActive(
+                            SliderDescriptor(*snapshot, *focused), GetTickCount64())) {
+                        options.pressedElementId = focused->id;
+                    }
+                }
                 const auto collectSliderOverrides = [&](const auto& self,
                                                         const gba::WidgetNode& node) -> void {
                     if (node.kind == L"slider") {
