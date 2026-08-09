@@ -110,7 +110,7 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         {
             appId = "gamebaralternative.ytmusic",
             appName = "Game Bar Alternative YT Music",
-            appVersion = "0.2.3",
+            appVersion = "0.2.4",
         });
         using var document = await SendAsync(
             isPost: true, "/auth/requestcode", body, includeAuthorization: false,

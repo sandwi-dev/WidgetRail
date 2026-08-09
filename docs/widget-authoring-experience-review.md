@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; operation scopes, immutable models, and bounded offset-paged resources implemented, later recommendations open<br>
+Status: living assessment; operation scopes, immutable models, optimistic commands, and bounded offset-paged resources implemented, later recommendations open<br>
 Date: 2026-08-08<br>
-Reassessed: 2026-08-08 after public `WidgetPagedResource<TItem>`, the Spotify 0.2.10 migration, and a public-SDK documentation reconciliation<br>
+Reassessed: 2026-08-08 after public paged resources, the Spotify resource migration, and the Media Sessions model/optimistic-command production migration<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 ## Executive conclusion
@@ -25,9 +25,10 @@ currently implement too much coordination infrastructure themselves:
 - duplicated compact and expanded composition; and
 - extensive manual invalidation.
 
-This is not unique to Spotify. Similar patterns appear in Audio Mixer, Network
-Controls, Games & Apps, Media Sessions, and YT Music. The framework can express
-advanced widgets, but it does not yet make their safe implementation routine.
+This is not unique to Spotify. Similar patterns remain in Audio Mixer, Network
+Controls, Games & Apps, and YT Music; Media Sessions now demonstrates the
+shorter model/command path. The framework can express advanced widgets, but
+some safe implementation patterns still require broader migration and recipes.
 
 The recommended direction is evolutionary, not a rewrite: retain `Widget`, the
 declarative protocol, GBSS, AppContainer isolation, and typed capabilities.
@@ -44,8 +45,10 @@ validation, invalidation, a deterministic bounded LRU, retry, and entering-edge
 focus. Spotify has migrated its playlist collections to that API. The public
 `WidgetModel<TState>` now serializes immutable state transitions, suppresses
 equal-state invalidations, and can derive an operation input from the exact
-committed revision. Cursor/append resources, navigation, and optimistic
-commands remain open.
+committed revision. Media Sessions now keeps all render-facing state in one
+model and uses the public `WidgetOptimisticCommand` coordinator for transport.
+Cursor/append resources and navigation remain open; other widgets still need
+deliberate migration to the new command contract.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -90,6 +93,8 @@ The SDK already provides important low-level safety mechanisms:
 - [`WidgetOperations`](../src/WidgetSdk/WidgetOperations.cs) supplies bounded
   SingleFlight, Latest, and Serial lanes tied to Active, State, or Widget
   lifetimes, with explicit admission and non-faulting completion results.
+  Games & Apps uses an Active Latest lane for initial/retry library reads,
+  replacing author-owned cancellation-source lifecycle cleanup.
 - [`WidgetPagedResource<TItem>`](../src/WidgetSdk/WidgetPagedResource.cs)
   supplies an offset-based immutable page snapshot, Latest coordination,
   bounded LRU, safe error/retry state, invalidation, and responsive Scroll-to-
@@ -143,11 +148,12 @@ provide those generic behaviors with 12-row windows and a six-page/72-item LRU;
 Spotify supplies provider loading, safe error copy, viewport IDs, item rendering,
 and selected-playlist domain state. Queue remains a separate non-paged path.
 
-The latest changes are a successful example of moving a proven generic behavior
-into the SDK/host without changing the protocol boundary. The next targets are
-general immutable state, optimistic commands, and navigation; cursor and
-append/infinite-feed resource semantics need a separate design rather than
-being implied by the offset-paged API.
+The latest changes are a successful example of moving proven generic behavior
+into the SDK/host without changing the protocol boundary. Immutable state now
+also has a medium production migration, including optimistic transport
+commands. The next targets are navigation and broader helper migrations;
+cursor and append/infinite-feed resource semantics need a separate design
+rather than being implied by the offset-paged API.
 
 No authenticated Player, Queue, Playlists, or Devices screenshots were found in
 the current evidence set; the stored Spotify images still cover configuration
@@ -172,7 +178,7 @@ implemented facilities from remaining on the roadmap under an older name.
 
 The highest-priority remaining authoring gaps are therefore application
 coordination, not basic controls: a bounded navigator with focus restoration,
-observable immutable state, optimistic command reconciliation, and
+non-offset resource variants, broader coordination-helper migrations, and
 credential-free scenario/visual testing. Documentation should keep those
 separate from already shipped primitives so authors can use the safe short path
 today.
@@ -301,6 +307,19 @@ need to reread unrelated mutable fields. Destroyed widgets may finish cleanup
 state changes but no longer invalidate. This reduces lock scope and accidental
 `Invalidate` storms without forcing a Redux-style architecture.
 
+Media Sessions is the first medium production proof. Its session collection,
+selection, pending command, view/status state, snapshot revision, live-update
+availability, and reload admission now share one `WidgetModel<State>`. A
+focused regression verifies that selecting a different session publishes one
+invalidation and that repeating the selected action publishes none. Lifecycle
+generations, stale-result rejection, and command admission remain intact.
+
+Media Sessions also validates the command coordinator described below. The
+model still contains domain state, while the coordinator owns admission,
+lifecycle-bound execution, current-attempt completion, and the exact callback
+sequence. Domain-specific projection, provider-event merge, safe messages, and
+rollback remain explicit callbacks rather than hidden framework policy.
+
 ### 3. Bounded offset-paged resource state — implemented
 
 The public resource is constructed once through `CreatePagedResource<TItem>`:
@@ -348,33 +367,61 @@ edge. The widget still owns copy and visual composition. A generic
 `WidgetResource<T>`, cursor paging, append/infinite feeds, and a
 `UI.ResourcePage` composition are not implemented and remain later design work.
 
-### 4. Command and optimistic-update helper
+### 4. Command and optimistic-update helper — implemented
 
 Media, audio, network, and settings widgets repeatedly implement pending state,
-busy controls, optimistic projection, success reconciliation, and rollback.
-Provide a bounded command abstraction:
+busy controls, optimistic projection, success reconciliation, and rollback. The
+public helper is created once over a `WidgetModel<TState>`:
 
 ```csharp
-await Commands.RunOptimisticAsync(
-    key: "playback",
-    apply: state => state.TogglePlayback(),
-    execute: token => HostServices.Spotify.ControlPlaybackAsync(command, token),
-    reconcile: result => result.Playback,
-    onError: error => SafePlaybackMessage(error));
+_playback = CreateOptimisticCommand(
+    "playback",
+    _model,
+    new WidgetOptimisticCommandOptions<State, PlaybackRequest, ProviderCommand, Playback>
+    {
+        Policy = WidgetCommandPolicy.Latest,
+        Lifetime = WidgetOperationLifetime.Active,
+        Apply = (state, request) => new(
+            state.Project(request),
+            ProviderCommand.From(state, request)),
+        Execute = (command, token) => Provider.ControlAsync(command, token),
+        Reconcile = (current, command, result) =>
+            current.MergeProviderResult(command, result),
+        Rollback = (current, baseline, command) =>
+            current.RemoveProjection(baseline, command),
+        MapError = MapSafeCommandError,
+        Fail = (current, baseline, command, error) =>
+            current.RemoveProjection(baseline, command).WithError(error),
+    });
+
+var handle = _playback.Run(request);
 ```
 
-Required semantics:
+The implemented semantics are:
 
-- serial or latest-wins policy chosen per key;
-- automatic busy state;
-- rollback to the exact pre-command revision;
-- late-result rejection after lifecycle or route changes;
-- absolute-value coalescing for sliders;
-- safe error classification; and
-- no automatic retry for mutating commands.
+- SingleFlight joins an in-flight key without projecting a duplicate; Latest
+  replaces stale work and retains the first baseline through a replacement
+  chain; Serial projects each admitted request only when its bounded FIFO turn
+  begins;
+- `Apply` derives both optimistic state and exact provider input from one
+  serialized model transition;
+- `Reconcile`, `Rollback`, and optional `Fail` receive the current model, so
+  their domain merge can preserve unrelated provider events received in flight;
+- Active, State, or Widget lifetime ownership, cancellation, and draining reuse
+  `WidgetOperations`, including current-attempt rejection of late results;
+- inactive/capacity rejection and a joined SingleFlight request do not call
+  `Apply` and cannot mutate the model;
+- provider exceptions are mapped to a validated `WidgetCommandError` with a
+  stable code and at most 256 visible characters; mapper failure falls back to
+  the bounded generic error; and
+- mutating provider calls are executed once. The SDK never retries them.
 
-The helper should build on the existing controller queue rather than create a
-second uncoordinated action path.
+`ShouldExecute: false` lets an admitted projection publish domain-specific
+unavailable state without calling the provider. The helper does not infer
+provider-event identity, confirmation deadlines, slider coalescing semantics,
+or a correct merge/rollback for the widget. Authors must implement those
+callbacks over immutable state. It builds on `WidgetOperations`; it does not
+create a second controller-input queue.
 
 ### 5. Navigation and focus model
 
@@ -546,15 +593,17 @@ code describes Spotify behavior or presentation rather than task plumbing.
 
 Completed foundation: protocol-v11 focus-edge Scroll pagination, the public
 `ScrollElement.Paginate` authoring API, runtime-owned operation scopes,
-immutable widget models, and bounded offset-paged resources. Spotify playlists
-are the first resource migration.
+immutable widget models, bounded optimistic commands, and bounded offset-paged
+resources. Spotify playlists are the first resource migration; Media Sessions
+is the first medium model and command migration.
 
 Next work:
 
 1. Generic non-paged and separately designed cursor/append resource state.
-2. Optimistic command helper integrated with the controller queue.
-3. Migrate one medium widget and the remaining Spotify operation families to
-   validate the APIs.
+2. Migrate the remaining suitable widgets and Spotify operation families while
+   preserving their explicit lifetime, ordering, and reconciliation policies.
+3. Add focused recipes for provider-event merge, confirmation deadlines, and
+   absolute-value command coalescing without making them implicit.
 
 This phase should deliver the largest reduction in semaphores, cancellation
 sources, task fields, locks, generation checks, and manual invalidations.
@@ -593,6 +642,9 @@ The improvements should be evaluated against measurable author outcomes:
 - An offset-paged collection requires no author-owned page dictionary,
   stale-generation counter, cache eviction loop, or compact/wide source-ID
   parsing. This is implemented and exercised by Spotify 0.2.10.
+- An optimistic mutation requires no author-owned admission task, command
+  cancellation source, or stale-attempt gate. This is implemented and exercised
+  by Media Sessions; domain merge and rollback callbacks remain authored.
 - A multipage widget uses one route model for compact and expanded layouts.
 - Authenticated and unavailable states can be previewed without real secrets.
 - Advanced samples contain substantially more domain/rendering code than
@@ -634,8 +686,9 @@ Do not replace the C# SDK or declarative widget model. Treat Spotify, Network
 Controls, and Audio Mixer as design probes that reveal the same missing
 application-level layer. Continue building that layer from small,
 lifecycle-aware, testable primitives: operations and bounded offset-paged
-resources are now implemented; general state, non-paged/cursor resources,
-commands, navigation, and preview tooling remain.
+resources plus general immutable state and optimistic command coordination are
+now implemented and production-exercised; non-paged/cursor resources,
+navigation, preview tooling, and broader migrations remain.
 
 The protocol-v11 pagination change is a strong example to repeat: identify a
 generic behavior proven by a demanding widget, move the security- and

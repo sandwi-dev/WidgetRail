@@ -34,7 +34,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-013 | P1 | Verifying | Network Controls / widget SDK | Separate Wi-Fi and Bluetooth controller views, LB/RB tab switching, explicit scan, and focused-row routing are implemented; packaged visual/controller verification remains. |
 | GBA-014 | P0 | Verifying | YT Music / Widget SDK routing / native icons | Window-wide transport shortcuts and Previous/Next glyph orientation are corrected; packaged controller/visual verification remains. |
 | GBA-015 | P1 | Verifying | Declarative renderer / built-in widget themes | Fixed regions no longer shrink into clipping, Sliders use a thin native track inside their controller target, and the built-in surfaces use a lighter visual hierarchy; packaged visual verification remains. |
-| GBA-016 | P0 | Verifying | OverlayHost focus / lifecycle / controller routing | The selected widget panel now remains visible while the tray owns focus, with one-level Back, automatic tray preview, and root-boundary return behavior; packaged controller evidence remains. |
+| GBA-016 | P0 | Verifying | OverlayHost focus / lifecycle / controller routing | The selected widget panel remains visible while the tray owns focus; root-boundary return now also recovers responsive focusless roots without trapping input. Packaged controller evidence remains. |
 | GBA-017 | P0 | Verifying | Declarative renderer / scroll focus | Focus-follow now snaps the first/last focusable descendant to the true scroll extent; packaged controller verification remains. |
 | GBA-018 | P1 | Verifying | OverlayHost controller routing | Pressed D-pad/left-stick Up from the tray now enters the visible widget without dispatching a widget action. |
 | GBA-019 | P1 | Verifying | OverlayHost controller guide / layout | The guide is density-aware, contextual, bounded, and no-wrap; compact/high-scale visual evidence remains. |
@@ -66,8 +66,11 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-045 | P0 | Verifying | Spotify widget / Widget SDK / protocol v11 | The playlist bridge overflow is fixed through `WidgetPagedResource<TItem>` plus automatic focus-edge pagination: playlist and track lists render one 12-row window, use a six-page/72-item LRU, accept filtered sparse pages, and expose no Load-more row. The host now dispatches pagination before tray fallback when focus already occupies a boundary row; focused resource/widget/native tests cover forward, reverse, eviction, stale completion, retry, sparse data, and focus, while packaged controller evidence remains. |
 | GBA-046 | P0 | Verifying | Spotify Playback Host / WebView2 deployment | Playback-host bootstrap now publishes the x64 WebView2 loader, serves a host-intercepted synthetic HTTPS page, registers Spotify's ready callback before loading the SDK, and reports script-load failure explicitly; the packaged hidden-host smoke reaches `sdk_loaded`, while live Premium transfer/EME/autoplay evidence remains. |
 | GBA-047 | P1 | Verifying | Widget SDK operations/resources / Spotify Community addon | Public bounded SingleFlight, Latest, and Serial lanes bind explicitly to Active, State, or Widget lifetimes and drain before lifecycle callbacks; `Completed` records synchronous no-work success and busy edges still auto-invalidate. Spotify 0.2.10 migrated playlist paging to SDK-owned Active resources, including synchronous cache/reset invalidation, removing its page tasks, generations, dictionaries, eviction loops, and manual page-state invalidation; packaged lifecycle/controller evidence and broader widget migrations remain. |
-| GBA-048 | P1 | Verifying | Widget SDK state coordination / authoring experience | Public `WidgetModel<TState>` now supplies serialized immutable updates, atomic value/revision reads, equality-based one-shot invalidation, result-bearing mutations, and contained change observation; focused concurrency/lifecycle tests pass, while medium-widget production migration remains. |
+| GBA-048 | P1 | Verifying | Widget SDK state coordination / authoring experience | Public `WidgetModel<TState>` supplies serialized immutable updates and equality-based one-shot invalidation; Media Sessions now provides the medium production migration and repeat-suppression regression. Packaged evidence remains. |
 | GBA-049 | P1 | Verifying | YT Music / loopback performance / semantic icons | Stable playback now reads state first and reuses complete same-track metadata for five bounded minutes, halving ordinary loopback traffic and avoiding cross-transition pairing; protocol-v12 `RepeatOne` supplies distinct non-color feedback. Packaged companion/controller evidence remains. |
+| GBA-050 | P0 | Verifying | YT Music / asynchronous playback reconciliation | Accepted play/pause reconciliation now outlives the transient action request, rejects stale companion state as confirmation, and lets repeated toggles supersede an earlier refresh burst. Packaged real-companion evidence remains. |
+| GBA-051 | P1 | Verifying | Widget SDK optimistic command coordination / Media Sessions | Public SingleFlight/Latest/Serial optimistic commands now derive projection and provider input from one model revision, preserve provider events through authored merge/rollback, own bounded lifecycle work, and never retry mutations; Media Sessions is the production migration. Packaged evidence and broader migrations remain. |
+| GBA-052 | P0 | Verifying | Games & Apps / worker lifecycle | Initial and retry library loads now use runtime-owned Active operations, while toast expiry has one cancellation-source disposer and clears the shared reference before disposal. Focused coverage and three consecutive generic-worker/AppContainer conformance runs pass; packaged churn evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -469,7 +472,8 @@ PS5-style preview navigation between a persistent tray and the selected panel.
    widget and swaps the visible panel automatically. A enters that panel's
    controls; it is not required to reveal the panel.
 4. Down from the last root-scope control returns focus to the tray, including a
-   deliberate root self-loop. Directional escape never crosses a nested scope.
+   deliberate root self-loop. A responsive root with no reachable control also
+   returns to the tray on Down; directional escape never crosses a nested scope.
 5. Guide remains a host-global toggle detached from either region's navigation
    graph. Tray and widget retain independent focus restoration.
 6. Lifecycle distinguishes presentation from interaction: the tray-selected
@@ -483,7 +487,11 @@ PS5-style preview navigation between a persistent tray and the selected panel.
 separately from focus ownership. Root Back transfers focus to the persistent
 tray; tray Back closes; tray selection swaps the visible widget; A enters its
 controls; and a root-scope Down boundary returns to the tray without escaping
-nested scopes. Guide remains region-independent. Lifecycle transitions publish
+nested scopes. Responsive focus recovery now admits an empty current focus,
+selects the first visible root target when one exists, and treats a fully
+unreachable root Down as the same tray boundary instead of trapping focus;
+fully clipped nested scopes remain contained. Guide remains region-independent.
+Lifecycle transitions publish
 `Visible` for a previewed panel and `Interactive` only while its controls own
 focus. Controller Navigation passes 73 checks and Declarative Renderer passes
 4,311 checks. Packaged hands-on controller evidence remains required before
@@ -1425,7 +1433,13 @@ result-bearing update derives command input from the same committed transition.
 `Changed` observers run outside the model lock, failures are contained, and
 Destroying suppresses subsequent render invalidation. Focused Release tests
 cover equality, concurrency, result derivation, observer containment, null
-rejection, and lifecycle behavior.
+rejection, and lifecycle behavior. Media Sessions now keeps all render-facing
+state in one model. Its selection regression proves one invalidation for a real
+selection change and none for the repeated equal selection, while its existing
+lifecycle, command-admission, and stale-generation tests remain intact. This
+satisfies the medium-production-widget acceptance item. The widget still owns
+its domain projection and reconciliation policy, but its transport execution now
+uses the public optimistic coordinator tracked by GBA-051.
 
 **Acceptance:**
 
@@ -1450,8 +1464,8 @@ five minutes, and immediately refreshes metadata on identity change, missing
 data, or expiry. Stable playback therefore uses about 30 requests per minute
 while transition state and metadata remain coherent. Protocol v12 adds the
 closed `RepeatOne` glyph across managed validation/serialization, native bridge
-parsing, vector rendering, and YT Music. Focused suites pass 40 YT Music tests,
-76 SDK tests, and native icon rendering is part of the native integration gate.
+parsing, vector rendering, and YT Music. Focused suites pass 43 YT Music tests,
+77 SDK tests, and native icon rendering is part of the native integration gate.
 
 **Acceptance:**
 
@@ -1460,6 +1474,115 @@ parsing, vector rendering, and YT Music. Focused suites pass 40 YT Music tests,
 3. Repeat-one has visible, accessible, non-color-only state.
 4. A packaged real-companion controller run verifies metadata transitions,
    repeat cycling, and compact/150%-text rendering.
+
+## GBA-050 — YT Music play/pause reconciliation ended with the action request
+
+**Evidence:** Play/pause previously took the immediate refresh path tied to the
+input action's cancellation token, while Previous/Next used an asynchronous
+transport refresh burst. Once the host completed the action request, the
+accepted play/pause reconciliation could therefore be canceled before the
+companion published its authoritative state. The refresh completion check also
+inspected the rendered optimistic snapshot, allowing the widget's own projected
+playback value to look like companion confirmation.
+
+**Implementation evidence:** Toggle Playback now uses the same generation-
+superseding transport reconciliation path as Previous/Next. Once the companion
+accepts the command, its bounded refresh burst is linked to widget lifetime
+rather than the completed action request. Resolution checks the pending
+optimistic feature, not the merged render snapshot, so a stale authoritative
+poll cannot confirm the widget's own projection. A repeated play/pause action
+starts promptly, supersedes the older burst, and preserves command order.
+Focused regressions cover repeated toggles, action-request cancellation, and a
+stale snapshot followed by confirmation. YT Music still owns this specialized
+confirmation-burst logic and has not migrated it to the general coordinator;
+GBA-051 does not by itself replace companion-specific confirmation policy.
+
+**Acceptance:**
+
+1. An accepted play/pause command continues bounded reconciliation after its
+   transient input request completes, but stops on a newer transport generation
+   or widget-lifecycle cancellation.
+2. A stale companion snapshot cannot clear the pending optimistic playback
+   intent or masquerade as authoritative confirmation.
+3. Repeated play/pause input is not blocked behind the previous refresh burst
+   and preserves command order.
+4. A packaged real-YTMDesktop2 controller run verifies confirmation, bounded
+   expiry/rollback, rapid repeated input, and lifecycle exit.
+
+## GBA-051 — Widget authors hand-roll optimistic command coordination
+
+**Evidence:** Media, audio, network, and companion widgets independently
+implemented admission, pending projection, provider execution, stale-result
+rejection, cancellation, safe errors, and rollback. Even with immutable models
+and operation lanes, authors still had to connect those primitives correctly
+for every mutating feature.
+
+**Implementation evidence:** `Widget.CreateOptimisticCommand` constructs a
+public `WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>` over one
+`WidgetModel<TState>` and the runtime `WidgetOperations` coordinator. Its
+SingleFlight, Latest, and Serial policies join, replace, or enqueue through the
+existing bounded operation lanes. `Apply` derives optimistic state and exact
+provider input from one serialized model revision. `Reconcile`, `Rollback`, and
+optional `Fail` receive the current state so authored merges can preserve
+unrelated provider events; Latest retains the first baseline across a
+replacement chain. Active, State, or Widget lifetime cancellation and draining
+remain runtime-owned, non-current completions cannot commit, and rejected or
+joined requests do not project state.
+
+`WidgetCommandError` validates a stable code and at most 256 visible message
+characters. A throwing/null mapper falls back to the bounded generic error.
+Mutations execute once with no automatic retry. Focused tests cover inactive
+rejection, Latest replacement with an intervening provider event,
+SingleFlight joining, Serial projection order, failure/mapper fallback, and
+lifecycle rollback/draining.
+
+Media Sessions is the first production migration. Its SingleFlight transport
+command immediately projects Play/Pause, keeps sibling transport presentation
+stable, maps capability failures to safe copy, and rolls back only the affected
+session when its snapshot generation/revision still permits it.
+
+**Acceptance:**
+
+1. Apply derives optimistic model state and provider execution input atomically
+   from the same committed transition.
+2. SingleFlight, Latest, and Serial have deterministic projection/admission
+   semantics; inactive/capacity rejection and joining never mutate state.
+3. Reconcile, rollback, and failure callbacks receive current state so an
+   authored feature-local merge preserves unrelated provider updates;
+   replacement and lifecycle cancellation cannot let a stale attempt commit.
+4. Errors remain bounded and presentation-safe, mapper failure has a safe
+   fallback, and mutating calls are never automatically retried.
+5. A medium production widget migrates with immediate optimistic feedback,
+   correct rollback, stable sibling controls, and packaged controller evidence.
+
+## GBA-052 — Games & Apps lifecycle cleanup could dispose a live worker token
+
+**Evidence:** The full Release verifier intermittently failed the installed
+generic-worker route while Games & Apps entered a new lifecycle state. The
+worker surfaced `The CancellationTokenSource has been disposed` during
+`SetLifecycleStateAsync`. A focused rerun could pass, making this a lifecycle
+ordering race rather than a deterministic provider failure.
+
+**Implementation evidence:** Initial and Retry library reads now use a named
+runtime-owned Active `WidgetOperations.RunLatest` lane. Deactivation cancels
+and drains that lane instead of disposing an author-owned run source. Toast
+expiry is the sole disposer of its linked source and clears the shared source
+reference under the widget state lock before disposal, so replacement or
+deactivation cannot call `Cancel` on an already-disposed source. The focused
+Games & Apps suite passes 27 tests, including leaving during a retry, and the
+real generic-worker/AppContainer conformance suite passed three consecutive
+runs.
+
+**Acceptance:**
+
+1. Leaving Games & Apps during initial or Retry loading cancels and drains the
+   provider operation before the Active lifecycle transition completes.
+2. Toast replacement, expiry, and deactivation have exactly one disposal owner
+   and cannot throw `ObjectDisposedException`.
+3. Focused widget coverage and repeated installed generic-worker conformance
+   remain green.
+4. Packaged rapid widget cycling/retry testing records no worker lifecycle
+   failure or leaked process.
 
 ## Closed issues
 

@@ -36,48 +36,93 @@ public sealed class MediaSessionsWidget : Widget
         MinimumHeight = 330,
     };
 
-    private readonly object _gate = new();
     private readonly TimeProvider _timeProvider;
-    private IReadOnlyList<WidgetMediaSession> _sessions = [];
-    private IReadOnlyDictionary<string, string> _sessionByElement =
-        new Dictionary<string, string>(StringComparer.Ordinal);
-    private string? _selectedSessionId;
-    private WidgetMediaSessionCommand? _pendingCommand;
-    private MediaSessionsViewState _viewState = MediaSessionsViewState.Initial;
-    private string _status = "Media sessions load when this widget becomes visible";
+    private readonly WidgetModel<State> _model;
+    private readonly WidgetOptimisticCommand<
+        State,
+        WidgetMediaSessionCommand,
+        CommandExecution,
+        bool> _transportCommand;
     private CancellationTokenSource? _runLifetime;
     private Task? _progressLoop;
     private long _runGeneration;
-    private long _snapshotRevision;
-    private bool _liveUpdatesAvailable;
-    private bool _reloadInFlight;
 
-    public MediaSessionsWidget(TimeProvider? timeProvider = null) =>
+    private sealed record State(
+        IReadOnlyList<WidgetMediaSession> Sessions,
+        string? SelectedSessionId,
+        WidgetMediaSessionCommand? PendingCommand,
+        MediaSessionsViewState ViewState,
+        string Status,
+        long SnapshotRevision,
+        bool LiveUpdatesAvailable,
+        bool ReloadInFlight)
+    {
+        internal static State Initial { get; } = new(
+            [],
+            null,
+            null,
+            MediaSessionsViewState.Initial,
+            "Media sessions load when this widget becomes visible",
+            0,
+            false,
+            false);
+    }
+
+    public MediaSessionsWidget(TimeProvider? timeProvider = null)
+    {
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _model = CreateModel(State.Initial);
+        _transportCommand = CreateOptimisticCommand(
+            "media.transport",
+            _model,
+            new WidgetOptimisticCommandOptions<
+                State,
+                WidgetMediaSessionCommand,
+                CommandExecution,
+                bool>
+            {
+                Policy = WidgetCommandPolicy.SingleFlight,
+                Apply = PrepareCommand,
+                Execute = async (execution, token) =>
+                {
+                    await HostServices.Media.ControlAsync(
+                        execution.Session!.SessionId, execution.Command, token)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                Reconcile = (state, execution, _) =>
+                    Interlocked.Read(ref _runGeneration) != execution.RunGeneration
+                        ? state
+                        : state with
+                        {
+                            PendingCommand = null,
+                            Status = "Updated by Windows media controls",
+                        },
+                Rollback = RollBackCommand,
+                MapError = MapCommandError,
+                Fail = (state, baseline, execution, error) =>
+                    RollBackCommand(state, baseline, execution) with
+                    {
+                        Status = error.Message,
+                    },
+            });
+    }
 
-    public MediaSessionsViewState ViewState { get { lock (_gate) return _viewState; } }
-    public string? SelectedSessionId { get { lock (_gate) return _selectedSessionId; } }
-    public IReadOnlyList<WidgetMediaSession> Sessions { get { lock (_gate) return _sessions.ToArray(); } }
-    public string Status { get { lock (_gate) return _status; } }
-    public bool LiveUpdatesAvailable { get { lock (_gate) return _liveUpdatesAvailable; } }
+    public MediaSessionsViewState ViewState => _model.Value.ViewState;
+    public string? SelectedSessionId => _model.Value.SelectedSessionId;
+    public IReadOnlyList<WidgetMediaSession> Sessions => _model.Value.Sessions;
+    public string Status => _model.Value.Status;
+    public bool LiveUpdatesAvailable => _model.Value.LiveUpdatesAvailable;
 
     public override WidgetView Render()
     {
-        IReadOnlyList<WidgetMediaSession> sessions;
-        string? selectedId;
-        WidgetMediaSessionCommand? pending;
-        MediaSessionsViewState state;
-        string status;
-        bool reloadInFlight;
-        lock (_gate)
-        {
-            sessions = _sessions;
-            selectedId = _selectedSessionId;
-            pending = _pendingCommand;
-            state = _viewState;
-            status = _status;
-            reloadInFlight = _reloadInFlight;
-        }
+        var model = _model.Value;
+        var sessions = model.Sessions;
+        var selectedId = model.SelectedSessionId;
+        var pending = model.PendingCommand;
+        var state = model.ViewState;
+        var status = model.Status;
+        var reloadInFlight = model.ReloadInFlight;
 
         var header = UI.Stack("media.header",
                 UI.Text("CONTROL CENTER", "media.eyebrow", "Control Center")
@@ -98,14 +143,12 @@ public sealed class MediaSessionsWidget : Widget
 
         var selected = sessions.FirstOrDefault(item =>
             string.Equals(item.SessionId, selectedId, StringComparison.Ordinal)) ?? sessions[0];
-        var elementMap = new Dictionary<string, string>(StringComparer.Ordinal);
         var pillIds = sessions.Select(item => SessionElementId(item.SessionId)).ToArray();
         var pills = new WidgetElement[sessions.Count];
         for (var index = 0; index < sessions.Count; index++)
         {
             var session = sessions[index];
             var id = pillIds[index];
-            elementMap[id] = session.SessionId;
             pills[index] = UI.Button(session.AppName, "media.select", id)
                 .Icon(session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
                     ? WidgetGlyph.Pause : WidgetGlyph.Music,
@@ -118,8 +161,6 @@ public sealed class MediaSessionsWidget : Widget
                     session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
                         ? "is-playing" : "is-idle");
         }
-        lock (_gate) _sessionByElement = elementMap;
-
         var position = ProjectPosition(selected);
         var duration = Math.Max(0, selected.DurationMilliseconds);
         var toggleEnabled = CanToggle(selected);
@@ -213,12 +254,9 @@ public sealed class MediaSessionsWidget : Widget
             TimeSpan.FromMilliseconds(250),
             _ =>
             {
-                lock (_gate)
-                {
-                    var selected = SelectedLocked();
-                    if (selected?.PlaybackStatus != WidgetMediaPlaybackStatus.Playing ||
-                        selected.DurationMilliseconds <= 0) return ValueTask.CompletedTask;
-                }
+                var selected = Selected(_model.Value);
+                if (selected?.PlaybackStatus != WidgetMediaPlaybackStatus.Playing ||
+                    selected.DurationMilliseconds <= 0) return ValueTask.CompletedTask;
                 Invalidate();
                 return ValueTask.CompletedTask;
             },
@@ -263,16 +301,17 @@ public sealed class MediaSessionsWidget : Widget
         }
         if (action.ActionId == "media.select")
         {
-            lock (_gate)
+            _model.Update(state =>
             {
-                if (_sessionByElement.TryGetValue(action.SourceElementId, out var sessionId) &&
-                    _sessions.Any(item => item.SessionId == sessionId))
+                var selected = state.Sessions.FirstOrDefault(item => string.Equals(
+                    SessionElementId(item.SessionId), action.SourceElementId,
+                    StringComparison.Ordinal));
+                return selected is null ? state : state with
                 {
-                    _selectedSessionId = sessionId;
-                    _status = $"Selected {_sessions.First(item => item.SessionId == sessionId).AppName}";
-                }
-            }
-            Invalidate();
+                    SelectedSessionId = selected.SessionId,
+                    Status = $"Selected {selected.AppName}",
+                };
+            });
             return;
         }
 
@@ -284,91 +323,96 @@ public sealed class MediaSessionsWidget : Widget
             _ => (WidgetMediaSessionCommand?)null,
         };
         if (command is null) return;
-        await ExecuteCommandAsync(command.Value, cancellationToken).ConfigureAwait(false);
+        var handle = _transportCommand.Run(command.Value);
+        if (handle.Admission != WidgetOperationAdmission.Joined)
+            await handle.Completion.ConfigureAwait(false);
     }
 
-    private async Task ExecuteCommandAsync(
-        WidgetMediaSessionCommand command, CancellationToken cancellationToken)
+    private WidgetCommandProjection<State, CommandExecution> PrepareCommand(
+        State state,
+        WidgetMediaSessionCommand command)
     {
-        WidgetMediaSession? session;
-        long generation;
-        long snapshotRevision;
-        var unavailable = false;
-        var commandAlreadyPending = false;
-        lock (_gate)
+        var generation = Interlocked.Read(ref _runGeneration);
+        var session = Selected(state);
+        var execution = new CommandExecution(
+            session,
+            command,
+            generation,
+            state.SnapshotRevision);
+        if (state.PendingCommand is not null)
+            return new(state, execution, ShouldExecute: false);
+        if (session is null || !Supports(session, command))
+            return new(state with
+            {
+                Status = "That action is not available for this media session",
+            }, execution, ShouldExecute: false);
+
+        var sessions = state.Sessions;
+        if (command is WidgetMediaSessionCommand.Play or
+            WidgetMediaSessionCommand.Pause or
+            WidgetMediaSessionCommand.TogglePlayPause)
         {
-            session = SelectedLocked();
-            generation = _runGeneration;
-            snapshotRevision = _snapshotRevision;
-            if (_pendingCommand is not null)
+            var projected = ProjectPosition(session);
+            var targetStatus = command switch
             {
-                commandAlreadyPending = true;
-            }
-            else if (session is null || !Supports(session, command))
-            {
-                _status = "That action is not available for this media session";
-                unavailable = true;
-            }
-            else
-            {
-                _pendingCommand = command;
-                _status = command switch
+                WidgetMediaSessionCommand.Play => WidgetMediaPlaybackStatus.Playing,
+                WidgetMediaSessionCommand.Pause => WidgetMediaPlaybackStatus.Paused,
+                _ => session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
+                    ? WidgetMediaPlaybackStatus.Paused
+                    : WidgetMediaPlaybackStatus.Playing,
+            };
+            sessions = state.Sessions.Select(item => item.SessionId == session.SessionId
+                ? item with
                 {
-                    WidgetMediaSessionCommand.Previous => "Going to previous track…",
-                    WidgetMediaSessionCommand.Next => "Going to next track…",
-                    WidgetMediaSessionCommand.Pause => "Pausing…",
-                    _ => "Resuming playback…",
-                };
-            }
-        }
-        if (commandAlreadyPending) return;
-        Invalidate();
-        if (unavailable || session is null) return;
-        try
-        {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, ActiveCancellationToken);
-            await HostServices.Media.ControlAsync(session.SessionId, command, linked.Token)
-                .ConfigureAwait(false);
-            lock (_gate)
-            {
-                if (_runGeneration != generation) return;
-                _pendingCommand = null;
-                _status = "Updated by Windows media controls";
-                if (_snapshotRevision == snapshotRevision &&
-                    command is WidgetMediaSessionCommand.Play or WidgetMediaSessionCommand.Pause or
-                        WidgetMediaSessionCommand.TogglePlayPause)
-                {
-                    var projected = ProjectPosition(session);
-                    var targetStatus = command switch
-                    {
-                        WidgetMediaSessionCommand.Play => WidgetMediaPlaybackStatus.Playing,
-                        WidgetMediaSessionCommand.Pause => WidgetMediaPlaybackStatus.Paused,
-                        _ => session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
-                            ? WidgetMediaPlaybackStatus.Paused
-                            : WidgetMediaPlaybackStatus.Playing,
-                    };
-                    _sessions = _sessions.Select(item => item.SessionId == session.SessionId
-                        ? item with
-                        {
-                            PlaybackStatus = targetStatus,
-                            PositionMilliseconds = projected,
-                            CapturedAtUnixMilliseconds = _timeProvider.GetUtcNow()
-                                .ToUnixTimeMilliseconds(),
-                        }
-                        : item).ToArray();
+                    PlaybackStatus = targetStatus,
+                    PositionMilliseconds = projected,
+                    CapturedAtUnixMilliseconds = _timeProvider.GetUtcNow()
+                        .ToUnixTimeMilliseconds(),
                 }
-            }
-            Invalidate();
+                : item).ToArray();
         }
-        catch (OperationCanceledException) when (ActiveCancellationToken.IsCancellationRequested) { }
-        catch (WidgetCapabilityUnavailableException)
+
+        return new(state with
         {
-            SetCommandError(generation, "Media control service unavailable");
+            Sessions = sessions,
+            PendingCommand = command,
+            Status = command switch
+            {
+                WidgetMediaSessionCommand.Previous => "Going to previous track…",
+                WidgetMediaSessionCommand.Next => "Going to next track…",
+                WidgetMediaSessionCommand.Pause => "Pausing…",
+                _ => "Resuming playback…",
+            },
+        }, execution);
+    }
+
+    private State RollBackCommand(State state, State baseline, CommandExecution execution)
+    {
+        if (Interlocked.Read(ref _runGeneration) != execution.RunGeneration) return state;
+        var sessions = state.Sessions;
+        if (state.SnapshotRevision == execution.SnapshotRevision &&
+            execution.Session is { } session &&
+            baseline.Sessions.FirstOrDefault(item => item.SessionId == session.SessionId)
+                is { } prior)
+        {
+            sessions = state.Sessions.Select(item => item.SessionId == session.SessionId
+                ? prior
+                : item).ToArray();
         }
-        catch (WidgetCapabilityException exception)
+        return state with
         {
-            SetCommandError(generation, exception.ErrorCode switch
+            Sessions = sessions,
+            PendingCommand = null,
+            Status = baseline.Status,
+        };
+    }
+
+    private static WidgetCommandError MapCommandError(Exception exception)
+    {
+        var message = exception switch
+        {
+            WidgetCapabilityUnavailableException => "Media control service unavailable",
+            WidgetCapabilityException capability => capability.ErrorCode switch
             {
                 "permission_denied" or "capability_revoked" =>
                     "Media control permission is off",
@@ -376,22 +420,17 @@ public sealed class MediaSessionsWidget : Widget
                 "resource_not_found" => "That media session ended",
                 "not_supported" => "That action is no longer supported",
                 _ => "Windows rejected the media action",
-            });
-        }
-        finally
-        {
-            var changed = false;
-            lock (_gate)
-            {
-                if (_runGeneration == generation && _pendingCommand == command)
-                {
-                    _pendingCommand = null;
-                    changed = true;
-                }
-            }
-            if (changed) Invalidate();
-        }
+            },
+            _ => "Windows rejected the media action",
+        };
+        return new("media_command_failed", message);
     }
+
+    private sealed record CommandExecution(
+        WidgetMediaSession? Session,
+        WidgetMediaSessionCommand Command,
+        long RunGeneration,
+        long SnapshotRevision);
 
     private void StartActiveRun(
         CancellationToken activeLifetime,
@@ -399,14 +438,13 @@ public sealed class MediaSessionsWidget : Widget
     {
         if (rejectIfLoading)
         {
-            lock (_gate)
-            {
-                // Controller repeats and stale rendered snapshots can deliver a
-                // second activation before the loading snapshot reaches the host.
-                // Do not cancel the fresh native request that is already running.
-                if (_reloadInFlight) return;
-                _reloadInFlight = true;
-            }
+            // Controller repeats and stale rendered snapshots can deliver a
+            // second activation before the loading snapshot reaches the host.
+            // Admit the reload atomically so the fresh native request survives.
+            var admitted = _model.Update(state => state.ReloadInFlight
+                ? (state, false)
+                : (state with { ReloadInFlight = true }, true)).Result;
+            if (!admitted) return;
         }
         var prior = Interlocked.Exchange(ref _runLifetime, null);
         prior?.Cancel();
@@ -414,14 +452,13 @@ public sealed class MediaSessionsWidget : Widget
         var lifetime = CancellationTokenSource.CreateLinkedTokenSource(activeLifetime);
         _runLifetime = lifetime;
         var generation = Interlocked.Increment(ref _runGeneration);
-        lock (_gate)
+        _model.Update(state => state with
         {
-            _reloadInFlight = true;
-            _viewState = MediaSessionsViewState.Loading;
-            _status = "Loading Windows media sessions…";
-            _liveUpdatesAvailable = false;
-        }
-        Invalidate();
+            ReloadInFlight = true,
+            ViewState = MediaSessionsViewState.Loading,
+            Status = "Loading Windows media sessions…",
+            LiveUpdatesAvailable = false,
+        });
         _ = ObserveAsync(generation, lifetime.Token);
     }
 
@@ -430,7 +467,9 @@ public sealed class MediaSessionsWidget : Widget
         var lifetime = Interlocked.Exchange(ref _runLifetime, null);
         lifetime?.Cancel();
         lifetime?.Dispose();
-        lock (_gate) _reloadInFlight = false;
+        _model.Update(state => state.ReloadInFlight
+            ? state with { ReloadInFlight = false }
+            : state);
     }
 
     private async Task ObserveAsync(long generation, CancellationToken cancellationToken)
@@ -501,25 +540,32 @@ public sealed class MediaSessionsWidget : Widget
         bool liveUpdatesAvailable = true)
     {
         var normalized = Normalize(incoming);
-        lock (_gate)
+        _model.Update(state =>
         {
-            if (_runGeneration != generation) return;
-            _sessions = normalized;
-            _snapshotRevision++;
-            _liveUpdatesAvailable = liveUpdatesAvailable;
-            if (_selectedSessionId is null || !normalized.Any(item => item.SessionId == _selectedSessionId))
-                _selectedSessionId = normalized.FirstOrDefault(item => item.IsCurrent)?.SessionId ??
+            if (Interlocked.Read(ref _runGeneration) != generation) return state;
+            var selectedSessionId = state.SelectedSessionId;
+            if (selectedSessionId is null ||
+                !normalized.Any(item => item.SessionId == selectedSessionId))
+                selectedSessionId = normalized.FirstOrDefault(item => item.IsCurrent)?.SessionId ??
                     normalized.FirstOrDefault(item =>
                         item.PlaybackStatus == WidgetMediaPlaybackStatus.Playing)?.SessionId ??
                     normalized.FirstOrDefault()?.SessionId;
-            _pendingCommand = null;
-            _reloadInFlight = false;
-            _viewState = normalized.Count == 0 ? MediaSessionsViewState.Empty : MediaSessionsViewState.Ready;
-            _status = normalized.Count == 0 ? "No active Windows media sessions" :
+            return state with
+            {
+                Sessions = normalized,
+                SnapshotRevision = state.SnapshotRevision + 1,
+                LiveUpdatesAvailable = liveUpdatesAvailable,
+                SelectedSessionId = selectedSessionId,
+                PendingCommand = null,
+                ReloadInFlight = false,
+                ViewState = normalized.Count == 0
+                    ? MediaSessionsViewState.Empty
+                    : MediaSessionsViewState.Ready,
+                Status = normalized.Count == 0 ? "No active Windows media sessions" :
                 normalized.Count == 1 ? "1 active media session · live" :
-                $"{normalized.Count} active media sessions · live";
-        }
-        Invalidate();
+                $"{normalized.Count} active media sessions · live",
+            };
+        });
     }
 
     private static IReadOnlyList<WidgetMediaSession> Normalize(
@@ -571,15 +617,12 @@ public sealed class MediaSessionsWidget : Widget
 
     private WidgetMediaSessionCommand? ResolveToggleCommand()
     {
-        lock (_gate)
-        {
-            var session = SelectedLocked();
-            if (session is null) return null;
-            if (session.CanTogglePlayPause) return WidgetMediaSessionCommand.TogglePlayPause;
-            if (session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing && session.CanPause)
-                return WidgetMediaSessionCommand.Pause;
-            return session.CanPlay ? WidgetMediaSessionCommand.Play : null;
-        }
+        var session = Selected(_model.Value);
+        if (session is null) return null;
+        if (session.CanTogglePlayPause) return WidgetMediaSessionCommand.TogglePlayPause;
+        if (session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing && session.CanPause)
+            return WidgetMediaSessionCommand.Pause;
+        return session.CanPlay ? WidgetMediaSessionCommand.Play : null;
     }
 
     private static bool CanToggle(WidgetMediaSession session) =>
@@ -598,8 +641,9 @@ public sealed class MediaSessionsWidget : Widget
             _ => false,
         };
 
-    private WidgetMediaSession? SelectedLocked() => _sessions.FirstOrDefault(item =>
-        string.Equals(item.SessionId, _selectedSessionId, StringComparison.Ordinal));
+    private static WidgetMediaSession? Selected(State state) =>
+        state.Sessions.FirstOrDefault(item => string.Equals(
+            item.SessionId, state.SelectedSessionId, StringComparison.Ordinal));
 
     private WidgetView RenderState(
         StackElement header,
@@ -642,17 +686,19 @@ public sealed class MediaSessionsWidget : Widget
 
     private void SetError(MediaSessionsViewState state, string status, long generation)
     {
-        lock (_gate)
+        _model.Update(current =>
         {
-            if (_runGeneration != generation) return;
-            _viewState = state;
-            _status = status;
-            _sessions = [];
-            _pendingCommand = null;
-            _liveUpdatesAvailable = false;
-            _reloadInFlight = false;
-        }
-        Invalidate();
+            if (Interlocked.Read(ref _runGeneration) != generation) return current;
+            return current with
+            {
+                ViewState = state,
+                Status = status,
+                Sessions = [],
+                PendingCommand = null,
+                LiveUpdatesAvailable = false,
+                ReloadInFlight = false,
+            };
+        });
     }
 
     private void SetLoadFailure(Exception exception, long generation)
@@ -664,13 +710,11 @@ public sealed class MediaSessionsWidget : Widget
     private void SetLiveUpdateFailure(Exception exception, long generation)
     {
         var (_, status) = ClassifyFailure(exception, liveUpdatesOnly: true);
-        lock (_gate)
+        _model.Update(state =>
         {
-            if (_runGeneration != generation) return;
-            _liveUpdatesAvailable = false;
-            _status = status;
-        }
-        Invalidate();
+            if (Interlocked.Read(ref _runGeneration) != generation) return state;
+            return state with { LiveUpdatesAvailable = false, Status = status };
+        });
     }
 
     private static (MediaSessionsViewState State, string Status) ClassifyFailure(
@@ -708,17 +752,6 @@ public sealed class MediaSessionsWidget : Widget
                 liveUpdatesOnly ? "Current media shown · live updates unavailable" :
                     "Media sessions could not be loaded"),
         };
-    }
-
-    private void SetCommandError(long generation, string status)
-    {
-        lock (_gate)
-        {
-            if (_runGeneration != generation) return;
-            _pendingCommand = null;
-            _status = status;
-        }
-        Invalidate();
     }
 
     private static string SessionElementId(string opaqueId)

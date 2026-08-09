@@ -2921,17 +2921,35 @@ private:
 
     void MoveWidgetFocus(const std::wstring_view direction) {
         if (state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget ||
-            focusedElementId_.empty()) {
+            state_.focusRegion() != gba::FocusRegion::Widget) {
             return;
         }
         const std::wstring_view widgetId = state_.activeWidget();
         const auto* snapshot = SnapshotFor(widgetId);
         if (!snapshot) return;
         const auto activeScope = std::wstring_view(snapshot->activeInputScopeId);
+        gba::input::NavigationDirection navigationDirection =
+            gba::input::NavigationDirection::None;
+        if (direction == L"left") navigationDirection = gba::input::NavigationDirection::Left;
+        else if (direction == L"right") navigationDirection = gba::input::NavigationDirection::Right;
+        else if (direction == L"up") navigationDirection = gba::input::NavigationDirection::Up;
+        else if (direction == L"down") navigationDirection = gba::input::NavigationDirection::Down;
         const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
             focusedElementId_, activeScope, lastWidgetRenderResult_);
-        if (!visibleFocus) return;
+        if (!visibleFocus) {
+            // A constrained viewport or responsive branch can leave a valid
+            // root snapshot with no currently reachable control. Preserve the
+            // same lower-boundary contract as an ordinary last row instead of
+            // trapping controller focus in invisible widget geometry.
+            if (gba::input::ShouldTransferFocusToTray(
+                    navigationDirection,
+                    activeScope == gba::input::RootInputScope(*snapshot),
+                    false,
+                    false)) {
+                Dispatch(gba::Command::SampleWidgetBack);
+            }
+            return;
+        }
         if (*visibleFocus != focusedElementId_) {
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
@@ -2955,12 +2973,6 @@ private:
             gba::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_);
         const bool explicitMoves = explicitTarget && gba::input::IsDistinctFocusMove(
             focusedElementId_, explicitTarget->id, explicitNavigable);
-        gba::input::NavigationDirection navigationDirection =
-            gba::input::NavigationDirection::None;
-        if (direction == L"left") navigationDirection = gba::input::NavigationDirection::Left;
-        else if (direction == L"right") navigationDirection = gba::input::NavigationDirection::Right;
-        else if (direction == L"up") navigationDirection = gba::input::NavigationDirection::Up;
-        else if (direction == L"down") navigationDirection = gba::input::NavigationDirection::Down;
         if (explicitMoves) {
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();

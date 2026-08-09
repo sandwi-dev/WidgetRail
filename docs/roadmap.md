@@ -210,6 +210,18 @@ remains off until the publisher-trust gates in Phase 4.
   broad catalog. Remaining product work includes per-widget clear-local-data
   UI, uninstall/retention policy review, storage/profile cleanup, and other
   widget-specific migrations.
+- Continue the public authoring-coordination layer. `WidgetOperations`,
+  `WidgetModel<TState>`, and bounded offset-paged resources are implemented;
+  Spotify exercises the resource contract and Media Sessions now supplies the
+  medium production model migration with one-invalidation/repeat-suppression
+  coverage. Public SingleFlight/Latest/Serial optimistic commands are also
+  implemented over those primitives, and Media Sessions uses SingleFlight for
+  immediate Play/Pause projection plus bounded rollback. Games & Apps also uses
+  runtime-owned Active operations for initial/retry library reads, with
+  deterministic cancellation/drain coverage. Next migrate suitable
+  command families, add focused provider-event/confirmation/coalescing recipes,
+  and design cursor/append resources and navigation separately. The SDK must
+  not infer domain merge, retry, or confirmation policy.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance

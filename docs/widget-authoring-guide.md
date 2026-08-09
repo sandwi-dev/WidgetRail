@@ -568,11 +568,12 @@ the renderer and GBSS. Disabled/Busy must not be used as a way to remove a
 control from controller navigation. Stable focused IDs survive those state
 changes without falling back to an unrelated control.
 
-For a remote toggle:
+For a remote toggle, prefer the `WidgetOptimisticCommand` helper described
+below. Its domain callbacks should:
 
 1. Store the prior value.
-2. Publish the intended value with `.Selected(newValue).Busy(true)` and call
-   `Invalidate()` before awaiting I/O.
+2. Publish the intended value with `.Selected(newValue).Busy(true)` before
+   awaiting I/O; the model/coordinator owns the resulting invalidation.
 3. Reconcile authoritative events without allowing an older poll to overwrite
    the pending intent.
 4. Clear Busy on confirmation or a bounded deadline.
@@ -585,6 +586,13 @@ guards, bounded progress interpolation, rapid ordered LB/RB actions, exact-port
 local companion access, write-only pairing secrets, dashboard gesture
 authority, and the public pack/install/AppContainer path. It has no trusted
 catalog or custom desktop-worker fallback.
+
+After the companion accepts Play/Pause, keep bounded reconciliation on the
+widget lifecycle rather than the transient input-action token. Do not inspect a
+render snapshot with optimistic state to decide that the remote system has
+confirmed it; track the pending feature against an unmerged authoritative
+snapshot. The YT Music regressions also show repeated playback commands
+superseding an older refresh burst without serially blocking controller input.
 
 For a smaller capability-free reference, install or render the
 [SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md). Its four
@@ -763,6 +771,77 @@ Use its `Result` with `Operations`; do not reread unrelated widget fields.
 `Changed` is a contained observer for diagnostics/tests, not a place to create
 another mutable state graph. Simple widgets can continue using ordinary fields
 and explicit `Invalidate()`.
+
+Now Playing's `MediaSessionsWidget` is the medium production reference: all of
+its render-facing state shares one model, and repeated selection of the current
+session is equality-suppressed while a real selection change invalidates once.
+Its transport path combines that model with the coordinator below. Domain
+projection, provider-event merge, error copy, and rollback stay explicit widget
+policy.
+
+### Optimistic commands
+
+Create one command over the model in the widget constructor:
+
+```csharp
+_playback = CreateOptimisticCommand(
+    "player.playback",
+    _model,
+    new WidgetOptimisticCommandOptions<State, PlaybackRequest, ProviderCommand, Playback>
+    {
+        Policy = WidgetCommandPolicy.Latest,
+        Lifetime = WidgetOperationLifetime.Active,
+        Apply = (state, request) => new(
+            state.Project(request),
+            ProviderCommand.From(state, request)),
+        Execute = (command, token) => Provider.ControlAsync(command, token),
+        Reconcile = (current, command, result) =>
+            current.MergeProviderResult(command, result),
+        Rollback = (current, baseline, command) =>
+            current.RemoveProjection(baseline, command),
+        MapError = MapSafeCommandError,
+        Fail = (current, baseline, command, error) =>
+            current.RemoveProjection(baseline, command).WithError(error),
+    });
+```
+
+`Apply` is a quick, side-effect-free serialized model update. It returns the
+optimistic state and provider input derived from the exact same prior revision.
+Call `_playback.Run(request)` and inspect the ordinary
+`WidgetOperationHandle`; do not create a parallel task or input queue.
+
+Choose policy per stable key:
+
+- `SingleFlight` joins an in-flight command. A joined request neither executes
+  nor projects duplicate state.
+- `Latest` cancels/supersedes older work, projects the new request before `Run`
+  returns, and retains the first baseline through a replacement chain.
+- `Serial` preserves bounded FIFO execution and applies each optimistic
+  projection only when that request's turn begins.
+
+All policies use `WidgetOperations` limits and Active, State, or Widget
+lifetime cancellation/draining. Inactive or capacity-rejected requests do not
+call `Apply` and cannot mutate the model. `ShouldExecute: false` is different:
+the request was admitted, so its projection may publish an unavailable or no-op
+state, but the provider mutation is skipped.
+
+`Reconcile`, `Rollback`, and optional `Fail` receive the **current** state, the
+execution input, and either result, baseline, or error. Merge only the feature
+owned by that command so subscription/provider events that arrived while I/O
+was pending survive. For a Latest replacement chain, rollback receives the
+first pre-chain baseline. The SDK rejects non-current late completion, but it
+cannot infer domain identity, confirmation deadlines, or merge semantics.
+
+Map exceptions to `WidgetCommandError`, whose code is a stable identifier and
+whose safe UI message is limited to 256 visible characters. A mapper failure
+uses `WidgetCommandError.Unexpected`. Mutations run once; the coordinator never
+automatically retries. Without `Fail`, failure invokes `Rollback`; use `Fail`
+when the model also needs the mapped safe error.
+
+Now Playing is the first production consumer. It uses SingleFlight transport
+commands, immediately projects Play/Pause, retains sibling control presentation,
+and rolls back the affected session only when the provider snapshot revision
+still matches.
 
 ### Bounded offset-paged resources
 
@@ -1173,7 +1252,8 @@ Test at least:
 
 - manifest and snapshot validation;
 - dashboard quick actions separately from open-window shortcuts;
-- root and nested scope routing, including focusless `B` close;
+- root and nested scope routing, including one-level B, focusless root recovery,
+  and responsive root Down-to-tray fallback;
 - stable focus and Scroll IDs across list churn;
 - surface hints at small, portrait, ultrawide, and high-scale viewports;
 - disabled/busy/selected state and optimistic rollback;
@@ -1185,8 +1265,8 @@ Test at least:
   150% text.
 
 The repository's `WidgetSdk.Tests`, Audio Mixer, Network Controls, Settings,
-and YT Music suites are the current executable references. Run the complete
-gate with:
+Media Sessions, and YT Music suites are the current executable references. Run
+the complete gate with:
 
 ```powershell
 dotnet run --project `

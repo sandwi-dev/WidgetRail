@@ -71,12 +71,17 @@ do pause transitions and track changes. Every projected or authoritative
 position is clamped to the current duration.
 
 Playback, rating, shuffle, repeat, next, and previous commands update the view
-optimistically. Next/previous reset progress before network I/O and dispatch
-their POST without waiting behind snapshot reconciliation. Each successful
-transport command supersedes any older reconciliation and starts five bounded,
-increasing-delay snapshot attempts; normal two-second polling remains the
-fallback. This keeps repeated LB/RB input responsive without allowing unbounded
-polling work. Like, dislike, shuffle, and repeat publish the intended
+optimistically. Play/pause and next/previous dispatch their accepted POST
+without making the action queue wait for snapshot reconciliation; next/previous
+also reset progress before network I/O. Each successful playback transport
+command supersedes any older reconciliation and starts five bounded,
+increasing-delay snapshot attempts owned by the widget's visible lifecycle;
+normal two-second polling remains the fallback. A completed action request can
+therefore release its cancellation token without abandoning an accepted
+command, while hiding the widget still cancels and drains the burst. Stale
+companion state cannot confirm its own optimistic presentation. This keeps
+repeated X/LB/RB input responsive without allowing unbounded polling work.
+Like, dislike, shuffle, and repeat publish the intended
 `.Selected(...)` value and `.Busy(true)` immediately; Like/Dislike share their
 busy feature. The selected state survives stale polls, and Busy clears on
 authoritative confirmation, deadline reconciliation, or rollback. When a
@@ -118,7 +123,7 @@ The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
 `gbar pack`. By default the package is written to:
 
 ```text
-artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.3.gbarwidget
+artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.4.gbarwidget
 ```
 
 To install and enable it for the current user through the same public catalog
@@ -133,7 +138,7 @@ commands used by any addon publisher:
 ```powershell
 $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar install `
-  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.3.gbarwidget
+  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.4.gbarwidget
 & $gbar enable org.gbar.samples.ytmusic
 & $gbar list
 ```
@@ -171,7 +176,7 @@ To review or test version behavior with the public CLI:
 ```powershell
 & $gbar disable org.gbar.samples.ytmusic
 & $gbar version list org.gbar.samples.ytmusic
-& $gbar version select org.gbar.samples.ytmusic 0.2.3
+& $gbar version select org.gbar.samples.ytmusic 0.2.4
 & $gbar enable org.gbar.samples.ytmusic
 ```
 

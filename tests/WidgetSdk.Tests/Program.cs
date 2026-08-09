@@ -61,6 +61,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Clock refresh invalidates once", ClockInvalidates),
     ("Runtime-owned operations coordinate concurrency and lifecycle cleanup", WidgetOperationTests.Run),
     ("Immutable widget models serialize state and suppress redundant invalidation", WidgetModelTests.Run),
+    ("Optimistic commands coordinate projection rollback and lifecycle", WidgetOptimisticCommandTests.Run),
     ("Paged resources coordinate bounded automatic collection loading", WidgetPagedResourceTests.Run),
     ("Default controller routing resolves dashboard quick actions", DashboardInputResolves),
     ("Default controller routing resolves focused shortcuts", FocusedShortcutResolves),

@@ -43,6 +43,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Transport shortcuts route commands and refresh state", TransportCommandFlow),
     ("Transport transitions preserve complete metadata through stale snapshots", TransportTransitionPreservesMetadata),
     ("Repeated transport commands do not wait for snapshot reconciliation", RepeatedTransportCommandsBypassReconciliation),
+    ("Repeated play-pause commands do not wait for snapshot reconciliation", RepeatedPlaybackCommandsBypassReconciliation),
+    ("Accepted playback reconciliation outlives its action request", PlaybackReconciliationOutlivesActionRequest),
+    ("Optimistic playback does not masquerade as companion confirmation", PlaybackReconciliationRejectsStaleState),
     ("Errors render a focused retry action", ErrorState),
     ("Pairing displays approval code before completing", PairingStateFlow),
     ("Time formatting is stable and defensive", TimeFormatting),
@@ -1070,6 +1073,102 @@ static async Task RepeatedTransportCommandsBypassReconciliation()
     await WaitUntil(() => "After Queue" == Find(
         widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
         "track-title").Text);
+}
+
+static async Task RepeatedPlaybackCommandsBypassReconciliation()
+{
+    var playing = PlayingSnapshot("Playback Queue");
+    var blockedRefresh = NewSnapshotGate();
+    var finalRefresh = NewSnapshotGate();
+    var fake = new FakeClient { Snapshot = playing };
+    fake.SnapshotAsync = (call, token) => call switch
+    {
+        1 => Task.FromResult(playing),
+        2 => blockedRefresh.Task.WaitAsync(token),
+        _ => finalRefresh.Task.WaitAsync(token),
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy());
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "toggle-playback", "play-pause", ControllerButton.X));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    var secondCommand = widget.OnActionAsync(new WidgetActionEvent(
+        "toggle-playback", "play-pause", ControllerButton.X)).AsTask();
+    await secondCommand.WaitAsync(TimeSpan.FromSeconds(1));
+
+    Assert.Equal(2, fake.Commands.Count);
+    Assert.True(fake.Commands.All(command => command == YtMusicCommand.TogglePlayback),
+        "Repeated X actions did not preserve playback command order.");
+    await WaitUntil(() => fake.SnapshotCalls >= 3);
+    finalRefresh.SetResult(playing);
+    await WaitUntil(() => Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
+        "play-pause").Glyph == WidgetGlyph.Pause);
+}
+
+static async Task PlaybackReconciliationOutlivesActionRequest()
+{
+    var playing = PlayingSnapshot("Request Lifetime");
+    var paused = playing with { IsPlaying = false, PositionSeconds = 66 };
+    var refreshGate = NewSnapshotGate();
+    var fake = new FakeClient { Snapshot = playing };
+    fake.SnapshotAsync = (call, token) => call switch
+    {
+        1 => Task.FromResult(playing),
+        _ => refreshGate.Task.WaitAsync(token),
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy());
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    using var actionLifetime = new CancellationTokenSource();
+
+    await widget.OnActionAsync(
+        new WidgetActionEvent("toggle-playback", "play-pause", ControllerButton.X),
+        actionLifetime.Token);
+    actionLifetime.Cancel();
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    refreshGate.SetResult(paused);
+    await WaitUntil(() => Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
+        "play-pause").Glyph == WidgetGlyph.Play);
+    Assert.Equal("Connected to YTMDesktop2", Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 2).Root,
+        "connection-status").Text);
+    await Task.Delay(100);
+    Assert.Equal(2, fake.SnapshotCalls);
+}
+
+static async Task PlaybackReconciliationRejectsStaleState()
+{
+    var playing = PlayingSnapshot("Stale Playback");
+    var paused = playing with { IsPlaying = false, PositionSeconds = 66 };
+    var staleGate = NewSnapshotGate();
+    var confirmedGate = NewSnapshotGate();
+    var fake = new FakeClient { Snapshot = playing };
+    fake.SnapshotAsync = (call, token) => call switch
+    {
+        1 => Task.FromResult(playing),
+        2 => staleGate.Task.WaitAsync(token),
+        _ => confirmedGate.Task.WaitAsync(token),
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy());
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "toggle-playback", "play-pause", ControllerButton.X));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    staleGate.SetResult(playing);
+    await WaitUntil(() => fake.SnapshotCalls >= 3);
+    Assert.Equal(WidgetGlyph.Play, Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
+        "play-pause").Glyph);
+
+    confirmedGate.SetResult(paused);
+    await WaitUntil(() => Find(
+        widget.Render().CreateSnapshot("ytmusic.test", 2).Root,
+        "connection-status").Text == "Connected to YTMDesktop2");
+    await Task.Delay(100);
+    Assert.Equal(3, fake.SnapshotCalls);
 }
 
 static TaskCompletionSource<YtMusicPlaybackSnapshot> NewSnapshotGate() =>

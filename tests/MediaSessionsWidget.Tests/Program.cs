@@ -12,6 +12,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("An in-flight play command does not flash or disable sibling transports", PendingToggleKeepsSiblingControlsStable),
     ("Quick actions expose exact media control authority while visible", DashboardQuickActions),
     ("Session selection remains stable across reorder and metadata churn", SelectionSurvivesChurn),
+    ("Session selection publishes one model invalidation and suppresses repeats", SelectionInvalidatesOnce),
     ("Removed selection falls back to Windows current session", RemovedSelectionFallsBack),
     ("Playing progress interpolates locally without capability polling", ProgressInterpolatesLocally),
     ("Current media artwork renders through the bounded inline image node", ArtworkRenders),
@@ -136,6 +137,8 @@ static async Task PendingToggleKeepsSiblingControlsStable()
     Assert.Equal(baselineNext.IsBusy, inFlightNext.IsBusy);
     Assert.Equal(baselineNext.Glyph, inFlightNext.Glyph);
     Assert.True(inFlightToggle.IsDisabled is true && inFlightToggle.IsBusy is true);
+    Assert.True(inFlightToggle.Glyph != Nodes(baseline.Root)
+        .Single(node => node.Id == "media.play-toggle").Glyph);
 
     // The sibling remains visually enabled, but the widget-level single-flight
     // gate consumes the attempted action without issuing another command.
@@ -148,7 +151,10 @@ static async Task PendingToggleKeepsSiblingControlsStable()
     pending.SetResult(new WidgetCapabilityAcknowledgement(true));
     await playTask;
     var succeeded = widget.RenderSnapshot("media.test", 93);
-    Assert.True(Nodes(succeeded.Root).Single(node => node.Id == "media.play-toggle").IsBusy is not true);
+    var succeededToggle = Nodes(succeeded.Root)
+        .Single(node => node.Id == "media.play-toggle");
+    Assert.True(succeededToggle.IsBusy is not true);
+    Assert.Equal(inFlightToggle.Glyph, succeededToggle.Glyph);
     Assert.Equal(baselinePrevious.IsDisabled, Nodes(succeeded.Root)
         .Single(node => node.Id == "media.previous").IsDisabled);
     Assert.Equal(baselineNext.IsDisabled, Nodes(succeeded.Root)
@@ -160,7 +166,10 @@ static async Task PendingToggleKeepsSiblingControlsStable()
     var failureTask = widget.OnActionAsync(new("media.toggle", "media.play-toggle")).AsTask();
     await WaitUntil(() => fake.Commands.Count == 2);
     var failingSnapshot = widget.RenderSnapshot("media.test", 94);
-    Assert.True(Nodes(failingSnapshot.Root).Single(node => node.Id == "media.play-toggle").IsBusy is true);
+    var failingToggle = Nodes(failingSnapshot.Root)
+        .Single(node => node.Id == "media.play-toggle");
+    Assert.True(failingToggle.IsBusy is true);
+    Assert.True(failingToggle.Glyph != succeededToggle.Glyph);
     Assert.Equal(baselinePrevious.IsDisabled, Nodes(failingSnapshot.Root)
         .Single(node => node.Id == "media.previous").IsDisabled);
     Assert.Equal(baselineNext.IsDisabled, Nodes(failingSnapshot.Root)
@@ -170,6 +179,7 @@ static async Task PendingToggleKeepsSiblingControlsStable()
     var recovered = widget.RenderSnapshot("media.test", 95);
     var recoveredToggle = Nodes(recovered.Root).Single(node => node.Id == "media.play-toggle");
     Assert.True(recoveredToggle.IsBusy is not true && recoveredToggle.IsDisabled is not true);
+    Assert.Equal(succeededToggle.Glyph, recoveredToggle.Glyph);
     Assert.Equal(baselinePrevious.IsDisabled, Nodes(recovered.Root)
         .Single(node => node.Id == "media.previous").IsDisabled);
     Assert.Equal(baselineNext.IsDisabled, Nodes(recovered.Root)
@@ -221,6 +231,28 @@ static async Task SelectionSurvivesChurn()
     Assert.Equal("two", widget.SelectedSessionId);
     fake.Publish([Session("two", app: "Second", title: "Updated"), Session("one", current: true)]);
     await WaitUntil(() => widget.Sessions.First().Title == "Updated");
+    Assert.Equal("two", widget.SelectedSessionId);
+    await Background(widget);
+}
+
+static async Task SelectionInvalidatesOnce()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("one", current: true), Session("two", app: "Second")],
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.Sessions.Count == 2);
+    var second = Nodes(widget.RenderSnapshot("media.test", 40).Root)
+        .Single(node => node.ActionId == "media.select" && node.Text == "Second");
+    var invalidations = 0;
+    widget.Invalidated += (_, _) => invalidations++;
+
+    await widget.OnActionAsync(new("media.select", second.Id));
+    Assert.Equal(1, invalidations);
+    await widget.OnActionAsync(new("media.select", second.Id));
+    Assert.Equal(1, invalidations);
     Assert.Equal("two", widget.SelectedSessionId);
     await Background(widget);
 }

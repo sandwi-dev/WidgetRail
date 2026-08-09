@@ -34,6 +34,7 @@ public sealed class GamesAppsWidget : Widget
     public const int ColdLoadingDelayMilliseconds = 150;
     public const int PageSize = 32;
     public const int MaximumItems = 512;
+    private const string LibraryLoadOperationKey = "games.library.load";
 
     private static readonly WidgetSurfaceHints LibrarySurface = new()
     {
@@ -71,7 +72,6 @@ public sealed class GamesAppsWidget : Widget
     private bool _loadingMore;
     private bool _hasLibrarySnapshot;
     private int? _nextOffset;
-    private CancellationTokenSource? _activeRun;
     private CancellationTokenSource? _toastLifetime;
     private ToastNotice? _toast;
     private long _generation;
@@ -544,8 +544,6 @@ public sealed class GamesAppsWidget : Widget
     private void StartActiveRun(CancellationToken activeLifetime)
     {
         StopActiveRun();
-        var lifetime = CancellationTokenSource.CreateLinkedTokenSource(activeLifetime);
-        _activeRun = lifetime;
         var generation = Interlocked.Increment(ref _generation);
         bool hasLibrarySnapshot;
         lock (_gate)
@@ -571,8 +569,27 @@ public sealed class GamesAppsWidget : Widget
             hasLibrarySnapshot = _hasLibrarySnapshot;
         }
         if (hasLibrarySnapshot) return;
-        _ = LoadSavedLibraryAsync(generation, lifetime.Token);
-        _ = ShowColdLoadingAfterDelayAsync(generation, lifetime.Token);
+        _ = Operations.RunLatest(
+            LibraryLoadOperationKey,
+            context => LoadSavedLibraryRunAsync(generation, showColdLoading: true, context),
+            WidgetOperationLifetime.Active);
+    }
+
+    private async ValueTask LoadSavedLibraryRunAsync(
+        long generation,
+        bool showColdLoading,
+        WidgetOperationContext context)
+    {
+        var load = LoadSavedLibraryAsync(generation, context.CancellationToken);
+        if (!showColdLoading)
+        {
+            await load.ConfigureAwait(false);
+            return;
+        }
+        await Task.WhenAll(
+                load,
+                ShowColdLoadingAfterDelayAsync(generation, context.CancellationToken))
+            .ConfigureAwait(false);
     }
 
     private async Task ShowColdLoadingAfterDelayAsync(
@@ -608,9 +625,6 @@ public sealed class GamesAppsWidget : Widget
             if (!acquired || !IsActive || ActiveCancellationToken.IsCancellationRequested) return;
 
             StopActiveRun();
-            var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
-                ActiveCancellationToken, cancellationToken);
-            _activeRun = lifetime;
             var generation = Interlocked.Increment(ref _generation);
             lock (_gate)
             {
@@ -621,7 +635,12 @@ public sealed class GamesAppsWidget : Widget
                 _loadingMore = false;
             }
             Invalidate();
-            await LoadSavedLibraryAsync(generation, lifetime.Token).ConfigureAwait(false);
+            var operation = Operations.RunLatest(
+                LibraryLoadOperationKey,
+                context => LoadSavedLibraryRunAsync(
+                    generation, showColdLoading: false, context),
+                WidgetOperationLifetime.Active);
+            await operation.Completion.ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (
             cancellationToken.IsCancellationRequested || ActiveCancellationToken.IsCancellationRequested)
@@ -638,9 +657,7 @@ public sealed class GamesAppsWidget : Widget
     {
         Interlocked.Increment(ref _generation);
         ClearToast(invalidate: false);
-        var lifetime = Interlocked.Exchange(ref _activeRun, null);
-        lifetime?.Cancel();
-        lifetime?.Dispose();
+        Operations.Cancel(LibraryLoadOperationKey);
         lock (_gate)
         {
             _launchingAppId = null;
@@ -1042,16 +1059,17 @@ public sealed class GamesAppsWidget : Widget
     {
         var duration = UI.DefaultToastDuration;
         var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ActiveCancellationToken);
-        CancellationTokenSource? previous;
         var generation = Interlocked.Increment(ref _toastGeneration);
         lock (_gate)
         {
-            previous = _toastLifetime;
+            var previous = _toastLifetime;
             _toastLifetime = lifetime;
             _toast = new ToastNotice(title, message, tone, duration);
+            // The expiry task owns disposal. Cancel while holding the state
+            // lock so it cannot dispose the prior source between capture and
+            // cancellation.
+            previous?.Cancel();
         }
-        previous?.Cancel();
-        previous?.Dispose();
         Invalidate();
         _ = ExpireToastAsync(generation, duration, lifetime);
     }
@@ -1079,6 +1097,15 @@ public sealed class GamesAppsWidget : Widget
         }
         finally
         {
+            // Active-lifecycle cancellation can reach this task before
+            // StopActiveRun calls ClearToast. Drop the shared reference while
+            // holding the state lock before disposal so cleanup can never try
+            // to cancel an already-disposed source.
+            lock (_gate)
+            {
+                if (ReferenceEquals(_toastLifetime, lifetime))
+                    _toastLifetime = null;
+            }
             lifetime.Dispose();
         }
     }
@@ -1086,17 +1113,17 @@ public sealed class GamesAppsWidget : Widget
     private void ClearToast(bool invalidate)
     {
         Interlocked.Increment(ref _toastGeneration);
-        CancellationTokenSource? lifetime;
         bool changed;
         lock (_gate)
         {
-            lifetime = _toastLifetime;
+            var lifetime = _toastLifetime;
             _toastLifetime = null;
             changed = _toast is not null;
             _toast = null;
+            // ExpireToastAsync is the sole disposer. Cancellation stays under
+            // the lock to prevent a completion/disposal race.
+            lifetime?.Cancel();
         }
-        lifetime?.Cancel();
-        lifetime?.Dispose();
         if (changed && invalidate) Invalidate();
     }
 

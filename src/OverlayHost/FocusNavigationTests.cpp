@@ -88,6 +88,13 @@ int main() {
     result.focusRects.erase(L"modal-button");
     Check(!ResolveVisibleFocusTarget(L"play", L"modal", result),
           "fully clipped active scope reports no actionable focus");
+    Check(!ResolveVisibleFocusTarget({}, L"modal", result),
+          "focusless fully clipped scope remains explicitly unavailable");
+
+    gba::RenderResult focuslessRoot;
+    Add(focuslessRoot, L"first-visible", {0, 0, 160, 44});
+    Check(ResolveVisibleFocusTarget({}, L"root", focuslessRoot) == L"first-visible",
+          "focusless responsive recovery selects the first visible root target");
 
     gba::RenderResult twoColumnGrid;
     Add(twoColumnGrid, L"grid-0", {0, 0, 100, 44});

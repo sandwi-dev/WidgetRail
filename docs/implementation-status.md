@@ -79,8 +79,9 @@ Up/Down navigation.
   composites with stable semantic
   `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
-  runtime-integrated immutable `WidgetModel<TState>` snapshots/updates;
-  bounded lifecycle-owned operation lanes and offset-paged resources;
+  runtime-integrated immutable `WidgetModel<TState>` snapshots/updates and
+  model-backed SingleFlight/Latest/Serial optimistic commands; bounded
+  lifecycle-owned operation lanes and offset-paged resources;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network/Bluetooth/recent-activity/app-library/media-session services,
@@ -334,6 +335,14 @@ sanitized. A successful provider result emits one generation-bound host effect
 that closes the overlay only after the exact provider launch succeeds; failure,
 denial, cancellation, or a stale widget generation keeps it open.
 
+Initial and explicit-retry library reads run in the SDK's runtime-owned Active
+operation lane, so leaving the widget cancels and drains provider work before
+the lifecycle transition completes. Toast expiry likewise has one disposal
+owner and removes its shared cancellation reference before disposal;
+deactivation cannot race an already-disposed source. The focused suite covers
+cancellation during retry, and the real generic-worker/AppContainer path passed
+three consecutive lifecycle conformance runs.
+
 The trusted `WindowsAppLibraryProvider` lazily merges the bounded current-user/
 all-user Start Menu Programs roots with the current user's Shell AppsFolder on
 one process-wide bounded STA lane. It skips shortcut reparse points, accepts
@@ -358,6 +367,15 @@ sessions from one application through opaque broker IDs, preserves the selected
 session across complete snapshots, renders a compact controller surface with a
 bounded host-normalized GSMTC thumbnail when the media app publishes one, and
 interpolates active progress locally at four Hz between authoritative events.
+All render-facing session, selection, pending-command, view/status, revision,
+live-update, and reload state now resides in one `WidgetModel<State>`; a focused
+regression proves one invalidation for a changed selection and none for a
+repeated equal selection. Command reconciliation remains widget-owned rather
+than inferred by the SDK, but SingleFlight admission, lifecycle-owned provider
+execution, current-attempt completion, safe error fallback, and rollback
+sequencing now use `WidgetOptimisticCommand`. Play/Pause projects immediately;
+rollback restores only the affected session when its generation/revision is
+still current.
 X/LB/RB quick actions expose play-pause/previous/next while the card is merely
 Visible. Each quick action names the one media control operation it may invoke;
 the bridge first records a dormant host-owned reservation for at most 10 seconds
@@ -385,6 +403,10 @@ reconciles the companion every two seconds, and uses bounded optimistic transpor
 updates with rollback on command failure. Like, dislike, shuffle, and repeat
 publish immediate semantic selected/busy feedback, preserve independent pending
 features through stale polls, and clear or roll back on reconciliation.
+Accepted play/pause commands now reconcile in a bounded widget-lifetime task
+rather than the shorter input-action lifetime. The completion test inspects
+pending authoritative confirmation instead of the merged optimistic snapshot,
+and repeated toggles supersede the earlier refresh burst without blocking.
 Its connected X/LB/RB/Y window shortcuts are declared once on the active root
 scope, so they resolve from every connected focus target without sibling
 searching and remain isolated from nested scopes. Previous/Next use corrected
@@ -395,7 +417,10 @@ sibling regions. Tray selection swaps the Visible panel automatically; A moves
 focus into its controls and publishes Interactive; root B or a root Down
 boundary returns focus to the still-visible tray; tray B closes; and nested
 scopes remain contained. Guide is a region-independent global toggle. The
-built-in themes also use non-shrinking fixed regions, a thin native Slider
+responsive recovery path also accepts an empty current focus: it selects the
+first visible root control when possible, and a fully unreachable root returns
+to the tray on Down while a clipped nested scope stays contained. The built-in
+themes also use non-shrinking fixed regions, a thin native Slider
  track inside the 44-DIP target, and lighter typography/radii/spacing. Pressed
  Up from the tray now enters the visible widget. Scroll focus-follow snaps the
  first and last focusable descendants to the true extent boundaries. The
@@ -587,8 +612,8 @@ two-clock dashboard-gesture propagation. Its focused Release harness passes
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK and YT Music focused suites pass 70/70 and
-38/38 respectively, including serialization and widget recovery for host-side
+bounded cleanup. The current SDK and YT Music focused suites pass 77/77 and
+43/43 respectively, including serialization and widget recovery for host-side
 rejected-Bearer invalidation without a second widget delete. The current
 Settings Release suite passes 41/41, including
 scrollable identity and permission review,
@@ -635,7 +660,7 @@ expected PID, nonce, and widget identity checks in force.
  Windows app-library provider retain focused suites covering the in-memory
  Library/Catalog flow and exact shortcut launch revalidation.
  The retained Recent Apps and Windows activity reference suites pass 8/8 and
- 10/10; Windows Media provider and Now Playing pass 11/11 and 16/16. Games &
+ 10/10; Windows Media provider and Now Playing pass 11/11 and 17/17. Games &
  Apps passes 26/26, including its vertical full-tile AppTile Library/Catalog
  focus model and lifecycle-bound Toast feedback.
  The first-party conformance suite passes 5/5 by building and installing the

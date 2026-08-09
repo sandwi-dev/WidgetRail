@@ -492,7 +492,8 @@ public class YtMusicWidget : Widget
         CancellationToken cancellationToken)
     {
         if (ConnectionState != YtMusicWidgetConnectionState.Connected) return;
-        var isTransport = command is YtMusicCommand.Previous or YtMusicCommand.Next;
+        var isTransport = command is
+            YtMusicCommand.TogglePlayback or YtMusicCommand.Previous or YtMusicCommand.Next;
         var transportGeneration = isTransport ? BeginTransportTransition() : 0;
         PendingOptimisticState optimistic;
         lock (_stateLock)
@@ -510,7 +511,7 @@ public class YtMusicWidget : Widget
                 optimistic.ToggleState).ConfigureAwait(false);
             if (isTransport)
             {
-                ScheduleTransportRefresh(command, optimistic.Before, transportGeneration, cancellationToken);
+                ScheduleTransportRefresh(command, transportGeneration);
                 return;
             }
 
@@ -557,14 +558,13 @@ public class YtMusicWidget : Widget
 
     private void ScheduleTransportRefresh(
         YtMusicCommand command,
-        YtMusicPlaybackSnapshot before,
-        long generation,
-        CancellationToken actionLifetime)
+        long generation)
     {
         if (generation != Interlocked.Read(ref _transportRefreshGeneration)) return;
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            actionLifetime,
-            WidgetLifetimeToken);
+        // Once the companion accepts a playback command, reconciliation belongs
+        // to the widget lifecycle rather than the completed action request. A
+        // host request token may be released as soon as this method returns.
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(WidgetLifetimeToken);
         Task task;
         lock (_transportRefreshLock)
         {
@@ -574,7 +574,7 @@ public class YtMusicWidget : Widget
                 return;
             }
             _transportRefreshCancellation = cancellation;
-            task = RunTransportRefreshBurstAsync(command, before, generation, cancellation.Token);
+            task = RunTransportRefreshBurstAsync(command, generation, cancellation.Token);
             _transportRefreshTasks.Add(task);
         }
 
@@ -596,7 +596,6 @@ public class YtMusicWidget : Widget
 
     private async Task RunTransportRefreshBurstAsync(
         YtMusicCommand command,
-        YtMusicPlaybackSnapshot before,
         long generation,
         CancellationToken cancellationToken)
     {
@@ -636,7 +635,7 @@ public class YtMusicWidget : Widget
                     continue;
                 }
 
-                if (TransportTransitionResolved(command, before)) return;
+                if (TransportTransitionResolved(command)) return;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -645,15 +644,19 @@ public class YtMusicWidget : Widget
         }
     }
 
-    private bool TransportTransitionResolved(
-        YtMusicCommand command,
-        YtMusicPlaybackSnapshot before)
+    private bool TransportTransitionResolved(YtMusicCommand command)
     {
         lock (_stateLock)
         {
-            if (!_snapshot.HasCompleteMetadata || !MetadataMatchesState(_snapshot)) return false;
-            if (TrackChanged(before, _snapshot)) return true;
-            return command == YtMusicCommand.Previous && _snapshot.PositionSeconds <= 1.5;
+            // FetchConnectedSnapshotAsync removes the pending state only when
+            // the unmerged companion snapshot confirms it or its bounded
+            // confirmation window expires. Inspecting the rendered snapshot
+            // here would mistake our optimistic value for server confirmation.
+            if (_pendingOptimistic.Any(candidate =>
+                    SameStateFeature(candidate.Command, command)))
+                return false;
+            return command == YtMusicCommand.TogglePlayback ||
+                   _snapshot.HasCompleteMetadata && MetadataMatchesState(_snapshot);
         }
     }
 
@@ -808,7 +811,12 @@ public class YtMusicWidget : Widget
     private static bool Confirms(PendingOptimisticState pending, YtMusicPlaybackSnapshot authoritative) =>
         pending.Command switch
         {
-            YtMusicCommand.Next or YtMusicCommand.Previous =>
+            YtMusicCommand.Next =>
+                !string.Equals(authoritative.TrackId, pending.Before.TrackId, StringComparison.Ordinal) ||
+                !string.Equals(authoritative.Title, pending.Before.Title, StringComparison.Ordinal) ||
+                !string.Equals(authoritative.Artist, pending.Before.Artist, StringComparison.Ordinal),
+            YtMusicCommand.Previous =>
+                authoritative.PositionSeconds <= 1.5 ||
                 !string.Equals(authoritative.TrackId, pending.Before.TrackId, StringComparison.Ordinal) ||
                 !string.Equals(authoritative.Title, pending.Before.Title, StringComparison.Ordinal) ||
                 !string.Equals(authoritative.Artist, pending.Before.Artist, StringComparison.Ordinal),

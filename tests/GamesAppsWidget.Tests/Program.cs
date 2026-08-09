@@ -30,6 +30,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Denied optional launch keeps the readable library usable", LaunchDenialKeepsLibrary),
     ("Permission and provider failures stay recoverable and sanitized", FailureStates),
     ("Try again performs a fresh provider load and recovers transient failures", RetryRecoversTransientFailure),
+    ("Leaving during retry cancels and drains the runtime-owned library load", BackgroundCancelsRetry),
     ("Manifest and GBSS package validate", PackageValidates),
 };
 
@@ -741,6 +742,36 @@ static async Task RetryRecoversTransientFailure()
         tile.ActionId == "games.launch" && TileTitle(tile) == "Alpha"));
     Assert.Valid(recovered);
     await Background(widget);
+}
+
+static async Task BackgroundCancelsRetry()
+{
+    var started = NewSignal();
+    var canceled = NewSignal();
+    var fake = new FakeAppLibraryHost
+    {
+        PrivateState = SavedState("saved-opaque-a"),
+        ResolveException = new WidgetCapabilityException(
+            "platform_unavailable", "private provider detail"),
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.ServiceUnavailable);
+    fake.ResolveException = null;
+    fake.ResolveHandler = async (_, token) =>
+    {
+        started.TrySetResult();
+        using var registration = token.Register(() => canceled.TrySetResult());
+        await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        return new ResolveSavedWidgetAppLibraryItemsResponse([]);
+    };
+
+    var retry = widget.OnActionAsync(new("games.retry", "games.retry")).AsTask();
+    await started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    await Background(widget).WaitAsync(TimeSpan.FromSeconds(1));
+    await canceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    await retry.WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal(GamesAppsPage.Library, widget.Page);
 }
 
 static Task PackageValidates()

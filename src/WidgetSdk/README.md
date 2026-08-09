@@ -147,6 +147,58 @@ records and never mutate a published reference in place. `Changed` is a
 contained diagnostic/test observer, not a second state store. After Destroying,
 model changes no longer invalidate the widget.
 
+For a remote mutation with immediate UI feedback, create one
+`WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>` over that model:
+
+```csharp
+_playback = CreateOptimisticCommand(
+    "player.playback",
+    _model,
+    new WidgetOptimisticCommandOptions<State, Request, ProviderCommand, Result>
+    {
+        Policy = WidgetCommandPolicy.Latest,
+        Lifetime = WidgetOperationLifetime.Active,
+        Apply = (state, request) => new(
+            state.Project(request),
+            ProviderCommand.From(state, request)),
+        Execute = (command, token) => Provider.ControlAsync(command, token),
+        Reconcile = (current, command, result) =>
+            current.MergeResult(command, result),
+        Rollback = (current, baseline, command) =>
+            current.RemoveProjection(baseline, command),
+        MapError = _ => new WidgetCommandError(
+            "playback_failed", "Playback could not be changed."),
+    });
+
+var handle = _playback.Run(request);
+```
+
+`Apply` runs inside the model's serialized update and returns both projected UI
+state and the exact provider input derived from that same revision. Keep it
+quick and side-effect free. SingleFlight joins an existing command without a
+duplicate projection, Latest cancels stale work and retains the first baseline
+through replacements, and Serial applies each projection only when its bounded
+FIFO turn begins. Inactive/capacity-rejected requests and joined SingleFlight
+requests do not call `Apply` or mutate the model. A projection may set
+`ShouldExecute: false` to publish an admitted domain state without invoking the
+provider.
+
+The helper reuses `WidgetOperations`, including Active/State/Widget lifetime
+ownership, cancellation, draining, admission/completion handles, busy state,
+and current-attempt checks. `Reconcile`, `Rollback`, and optional `Fail` receive
+the current model value plus command data, so callbacks can remove only their
+own projection while preserving provider events that arrived in flight. The
+SDK cannot infer that merge and does not automatically retry mutations.
+
+Map provider exceptions to `WidgetCommandError`: its code is a stable
+identifier and its message is limited to 256 visible, non-control characters.
+A null mapper result or throwing mapper becomes `WidgetCommandError.Unexpected`.
+Without a custom `Fail`, failure uses `Rollback`; a custom callback can apply
+the bounded error to presentation state. Media Sessions is the production
+reference: it uses SingleFlight transport coordination, immediately projects
+Play/Pause, and restores only the affected playback projection on failure or
+cancellation.
+
 For a bounded offset/limit collection, create one
 `WidgetPagedResource<TItem>` with `CreatePagedResource` instead of maintaining
 page tasks, generations, caches, and focus calculations independently. Supply
