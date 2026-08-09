@@ -3,6 +3,7 @@
 #include <UIAutomation.h>
 #include <wrl.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <future>
@@ -13,6 +14,10 @@
 namespace {
 
 using Microsoft::WRL::ComPtr;
+using Microsoft::WRL::ClassicCom;
+using Microsoft::WRL::Make;
+using Microsoft::WRL::RuntimeClass;
+using Microsoft::WRL::RuntimeClassFlags;
 
 int checks{};
 
@@ -28,6 +33,10 @@ LRESULT CALLBACK TestWindowProc(
     if (message == WM_GETOBJECT && host &&
         static_cast<LONG>(lParam) == UiaRootObjectId)
         return host->HandleWmGetObject(wParam, lParam);
+    if (message == WM_APP + 42 && host) {
+        host->RaisePendingEvents();
+        return 0;
+    }
     if (message == WM_CLOSE) {
         DestroyWindow(window);
         return 0;
@@ -46,6 +55,76 @@ void Check(const bool condition, const char* message) {
         std::exit(EXIT_FAILURE);
     }
 }
+
+class ClientEventHandler final : public RuntimeClass<
+    RuntimeClassFlags<ClassicCom>,
+    IUIAutomationFocusChangedEventHandler,
+    IUIAutomationPropertyChangedEventHandler,
+    IUIAutomationStructureChangedEventHandler> {
+public:
+    ClientEventHandler()
+        : focusEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
+          propertyEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
+          boundsEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
+          structureEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
+
+    ~ClientEventHandler() override {
+        if (focusEvent_) CloseHandle(focusEvent_);
+        if (propertyEvent_) CloseHandle(propertyEvent_);
+        if (boundsEvent_) CloseHandle(boundsEvent_);
+        if (structureEvent_) CloseHandle(structureEvent_);
+    }
+
+    IFACEMETHODIMP HandleFocusChangedEvent(IUIAutomationElement*) noexcept override {
+        if (focusEvent_) SetEvent(focusEvent_);
+        return S_OK;
+    }
+
+    IFACEMETHODIMP HandlePropertyChangedEvent(
+        IUIAutomationElement*, const PROPERTYID propertyId, VARIANT) noexcept override {
+        if (propertyId == UIA_NamePropertyId) {
+            if (propertyEvent_) SetEvent(propertyEvent_);
+        } else if (propertyId == UIA_BoundingRectanglePropertyId) {
+            ++boundsCount_;
+            if (boundsEvent_) SetEvent(boundsEvent_);
+        }
+        return S_OK;
+    }
+
+    IFACEMETHODIMP HandleStructureChangedEvent(
+        IUIAutomationElement*, StructureChangeType, SAFEARRAY*) noexcept override {
+        if (structureEvent_) SetEvent(structureEvent_);
+        return S_OK;
+    }
+
+    [[nodiscard]] bool WaitForFocus() const noexcept {
+        return focusEvent_ && WaitForSingleObject(focusEvent_, 2000) == WAIT_OBJECT_0;
+    }
+
+    [[nodiscard]] bool WaitForProperty() const noexcept {
+        return propertyEvent_ && WaitForSingleObject(propertyEvent_, 2000) == WAIT_OBJECT_0;
+    }
+
+    [[nodiscard]] bool WaitForBoundsCount(const int expected) const noexcept {
+        if (!boundsEvent_ || WaitForSingleObject(boundsEvent_, 2000) != WAIT_OBJECT_0)
+            return false;
+        const ULONGLONG deadline = GetTickCount64() + 2000;
+        while (boundsCount_.load() < expected && GetTickCount64() < deadline)
+            Sleep(10);
+        return boundsCount_.load() >= expected;
+    }
+
+    [[nodiscard]] bool WaitForStructure() const noexcept {
+        return structureEvent_ && WaitForSingleObject(structureEvent_, 2000) == WAIT_OBJECT_0;
+    }
+
+private:
+    HANDLE focusEvent_{};
+    HANDLE propertyEvent_{};
+    HANDLE boundsEvent_{};
+    HANDLE structureEvent_{};
+    std::atomic<int> boundsCount_{};
+};
 
 std::wstring StringProperty(
     IRawElementProviderSimple* provider, const PROPERTYID property) {
@@ -396,6 +475,74 @@ int main() {
               UIA_SelectionItemPatternId, clientSelectionItem.GetAddressOf())) &&
           clientSelectionItem,
           "real UIA client obtains SelectionItem from the tray item");
+
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    ComPtr<ClientEventHandler> eventHandler = Make<ClientEventHandler>();
+    Check(eventHandler, "real UIA event handler is created");
+    SAFEARRAY* observedProperties = SafeArrayCreateVector(VT_I4, 0, 2);
+    LONG observedPropertyIndex{};
+    PROPERTYID observedProperty = UIA_NamePropertyId;
+    const bool nameFilterAdded = observedProperties && SUCCEEDED(SafeArrayPutElement(
+        observedProperties, &observedPropertyIndex, &observedProperty));
+    ++observedPropertyIndex;
+    observedProperty = UIA_BoundingRectanglePropertyId;
+    Check(nameFilterAdded && SUCCEEDED(SafeArrayPutElement(
+              observedProperties, &observedPropertyIndex, &observedProperty)),
+          "real UIA property subscription filter is created");
+    Check(SUCCEEDED(client->AddFocusChangedEventHandler(
+              nullptr, eventHandler.Get())) &&
+          SUCCEEDED(client->AddPropertyChangedEventHandler(
+              clientRoot.Get(), TreeScope_Subtree, nullptr, eventHandler.Get(),
+              observedProperties)) &&
+          SUCCEEDED(client->AddStructureChangedEventHandler(
+              clientRoot.Get(), TreeScope_Subtree, nullptr, eventHandler.Get())),
+          "real UIA client subscribes to focus, property, and structure events");
+    SafeArrayDestroy(observedProperties);
+    auto changedHostTree = HostTree();
+    changedHostTree.nodes[0].selected = false;
+    changedHostTree.nodes[0].focused = false;
+    gba::accessibility::Node settings;
+    settings.id = L"tray.settings";
+    settings.name = L"Settings";
+    settings.hostTargetId = L"settings";
+    settings.bounds = {100, 220, 64, 64};
+    settings.role = gba::accessibility::Role::ListItem;
+    settings.hostAction = gba::accessibility::HostAction::ActivateTrayItem;
+    settings.selected = true;
+    settings.focused = true;
+    changedHostTree.nodes.push_back(settings);
+    changedHostTree.focusedNode = 1;
+    auto finalHostTree = changedHostTree;
+    finalHostTree.nodes[0].name = L"YouTube Music";
+    host.Publish(changedHostTree, {100, 200, 2, 800, 600});
+    host.Publish(finalHostTree, {100, 200, 2, 800, 600});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    Check(eventHandler->WaitForFocus(),
+          "real UIA client receives the coalesced logical-focus event");
+    Check(eventHandler->WaitForProperty(),
+          "real UIA client receives a closed semantic property event");
+    Check(eventHandler->WaitForStructure(),
+          "real UIA client receives the coalesced structure event");
+    BSTR coalescedName{};
+    Check(SUCCEEDED(clientTrayItem->get_CurrentName(&coalescedName)) &&
+          std::wstring_view{coalescedName, SysStringLen(coalescedName)} == L"YouTube Music",
+          "retained client element observes the newest coalesced publication");
+    SysFreeString(coalescedName);
+    host.Publish(finalHostTree, {120, 240, 1.5, 600, 450});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    Check(eventHandler->WaitForBoundsCount(2),
+          "transform-only publication updates every existing node bound");
+    RECT transformedBounds{};
+    Check(SUCCEEDED(clientTrayItem->get_CurrentBoundingRectangle(&transformedBounds)) &&
+          transformedBounds.left == 150 && transformedBounds.top == 570 &&
+          transformedBounds.right == 246 && transformedBounds.bottom == 666,
+          "retained client element observes the transformed physical bounds");
+    Check(SUCCEEDED(client->RemoveFocusChangedEventHandler(eventHandler.Get())) &&
+          SUCCEEDED(client->RemovePropertyChangedEventHandler(
+              clientRoot.Get(), eventHandler.Get())) &&
+          SUCCEEDED(client->RemoveStructureChangedEventHandler(
+              clientRoot.Get(), eventHandler.Get())),
+          "real UIA client unsubscribes before the test window closes");
 
     host.Clear();
     Check(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,

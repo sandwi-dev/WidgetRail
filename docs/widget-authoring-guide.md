@@ -668,13 +668,19 @@ mutation during an accessibility request. Keep labels concise, supply a human
 readable Slider value, and keep IDs stable for the lifetime of one logical
 control.
 
+The host coalesces renders and announces the newest immutable state through UIA
+structure, logical-focus, and closed property events outside paint. Stable IDs
+let name, value, enabled/selected, range, and physical-bounds changes remain
+property updates; adding/removing controls or changing supported patterns
+invalidates structure. Authors do not raise native events themselves.
+
 Open-widget UIA is currently an implemented preview rather than the completed
 screen-reader ship gate. The host tray publishes its visible widget tiles as a
 single-selection ListItem set with Invoke; inactive widget controls are replaced
-by that tray surface while controller focus is there. Dynamic UIA events and
-dashboard title/status nodes are not yet published, legacy MSAA is not
-implemented, and packaged Narrator evidence is pending. Semantic snapshot tests
-therefore remain required for widget acceptance.
+by that tray surface while controller focus is there. Dashboard title/status
+nodes are not yet published, legacy MSAA is not implemented, and packaged
+Narrator evidence is pending. Semantic snapshot tests therefore remain required
+for widget acceptance.
 
 Every node ID must be unique in the snapshot, at most 128 characters, and use
 only ASCII letters, digits, `.`, `-`, and `_`. Do not derive IDs from list

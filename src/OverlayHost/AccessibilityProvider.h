@@ -75,6 +75,7 @@ public:
     [[nodiscard]] LRESULT HandleWmGetObject(WPARAM wParam, LPARAM lParam);
     [[nodiscard]] HRESULT GetRootProvider(IRawElementProviderSimple** provider) const;
     [[nodiscard]] std::vector<ActionRequest> TakeActions() noexcept;
+    void RaisePendingEvents() noexcept;
 
 private:
     std::shared_ptr<ProviderState> state_;

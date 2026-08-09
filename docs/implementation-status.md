@@ -1,6 +1,6 @@
 # Implementation status
 
-Status: integrated Phase 0 platform prototype, 2026-08-08
+Status: integrated Phase 0 platform prototype, 2026-08-09
 
 This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
@@ -61,9 +61,15 @@ and coalesced latest-wins. A real `IUIAutomation` client test covers provider
 publication, traversal, names, physical screen bounds, patterns, and stale
 runtime rejection. A separate projection-cadence contract proves stable and
 animation-only paints do not rebuild, while transition completion requests one
-final-geometry projection. Dashboard title/status fragments, dynamic UIA events,
-legacy MSAA, and packaged Narrator evidence remain open, so full screen-reader
-support is not yet claimed.
+final-geometry projection. The provider now diffs the last announced immutable
+tree and coalesces structure, logical-focus, and closed property events behind
+one posted window message outside paint. It covers semantic names/help, enabled/
+selected state, RangeValue state, and DPI-aware physical bounds; a real UIA
+client-handler test receives all three event classes. Release coverage passes
+the 7-check planner and 88-check provider suites, the isolated native aggregate
+passes 24/24, and the canonical Debug build/test path is green. Dashboard title/
+status fragments, legacy MSAA, and packaged Narrator evidence remain open, so
+full screen-reader support is not yet claimed.
 
 The dashboard and open-widget tray now share one pure `ComputeTrayLayout`
 result across painting and pointer hit-testing. The bounded visible window,
@@ -79,8 +85,7 @@ sequence. Select and Invoke queue a closed `ActivateTrayItem` action with a
 stable widget target; the UI thread rejects stale trees, exits reorder mode, and
 uses the existing tray state machine. The real UIA-client suite discovers the
 ListItem and obtains SelectionItem, while direct provider coverage verifies the
-typed queued authority. Dashboard title/status nodes and UIA change events
-remain open.
+typed queued authority. Dashboard title/status nodes remain open.
 
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the

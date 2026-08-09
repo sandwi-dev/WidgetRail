@@ -1,4 +1,5 @@
 #include "AccessibilityProvider.h"
+#include "AccessibilityEvents.h"
 
 #include <UIAutomation.h>
 #include <wrl.h>
@@ -11,6 +12,7 @@
 #include <mutex>
 #include <iterator>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace gba::accessibility {
@@ -119,9 +121,11 @@ bool Contains(const UiaRect& bounds, const double x, const double y) noexcept {
 struct ProviderState final {
     mutable std::mutex mutex;
     std::shared_ptr<const PublishedTree> current;
+    std::shared_ptr<const PublishedTree> announced;
     std::vector<ActionRequest> pending;
     HWND window{};
     UINT actionMessage{};
+    bool eventMessagePending{};
 
     [[nodiscard]] std::shared_ptr<const PublishedTree> Snapshot() const noexcept {
         std::scoped_lock lock(mutex);
@@ -661,12 +665,18 @@ void ProviderHost::Publish(Tree tree, const ScreenTransform transform) {
     });
     std::scoped_lock lock(state_->mutex);
     state_->current = std::move(published);
+    if (!state_->eventMessagePending && state_->window && state_->actionMessage &&
+        PostMessageW(state_->window, state_->actionMessage, 0, 0))
+        state_->eventMessagePending = true;
 }
 
 void ProviderHost::Clear() noexcept {
     std::scoped_lock lock(state_->mutex);
     state_->current.reset();
     state_->pending.clear();
+    if (!state_->eventMessagePending && state_->announced && state_->window &&
+        state_->actionMessage && PostMessageW(state_->window, state_->actionMessage, 0, 0))
+        state_->eventMessagePending = true;
 }
 
 LRESULT ProviderHost::HandleWmGetObject(const WPARAM wParam, const LPARAM lParam) {
@@ -689,6 +699,134 @@ std::vector<ActionRequest> ProviderHost::TakeActions() noexcept {
     std::scoped_lock lock(state_->mutex);
     actions.swap(state_->pending);
     return actions;
+}
+
+void ProviderHost::RaisePendingEvents() noexcept {
+    std::shared_ptr<const PublishedTree> previous;
+    std::shared_ptr<const PublishedTree> current;
+    {
+        std::scoped_lock lock(state_->mutex);
+        if (!state_->eventMessagePending) return;
+        state_->eventMessagePending = false;
+        previous = state_->announced;
+        current = state_->current;
+        state_->announced = current;
+    }
+    auto plan = PlanEvents(
+        previous ? &previous->tree : nullptr,
+        current ? &current->tree : nullptr);
+    const bool transformChanged = previous && current &&
+        previous->tree.widgetId == current->tree.widgetId &&
+        previous->tree.runtimeGeneration == current->tree.runtimeGeneration &&
+        (previous->transform.originX != current->transform.originX ||
+         previous->transform.originY != current->transform.originY ||
+         previous->transform.pixelsPerDip != current->transform.pixelsPerDip);
+    if (transformChanged) {
+        for (const auto& node : current->tree.nodes) {
+            const auto before = std::find_if(
+                previous->tree.nodes.begin(), previous->tree.nodes.end(),
+                [&](const Node& candidate) { return candidate.id == node.id; });
+            const bool alreadyPlanned = std::any_of(
+                plan.properties.begin(), plan.properties.end(),
+                [&](const PropertyChange& change) {
+                    return change.nodeId == node.id &&
+                        change.kind == PropertyKind::Bounds;
+                });
+            if (before != previous->tree.nodes.end() && !alreadyPlanned)
+                plan.properties.push_back({
+                    node.id, PropertyKind::Bounds, before->bounds, node.bounds,
+                });
+        }
+    }
+    ComPtr<IRawElementProviderSimple> root;
+    if (FAILED(GetRootProvider(root.GetAddressOf())) || !root) return;
+    if (plan.structureChanged)
+        (void)UiaRaiseStructureChangedEvent(
+            root.Get(), StructureChangeType_ChildrenInvalidated, nullptr, 0);
+
+    const auto providerFor = [&](const std::wstring_view nodeId) {
+        ComPtr<IRawElementProviderSimple> result;
+        if (!current) return result;
+        ComPtr<Provider> provider = Make<Provider>(
+            state_, ElementIdentity{
+                current->tree.widgetId,
+                current->tree.runtimeGeneration,
+                std::wstring{nodeId},
+            });
+        if (provider) (void)provider.As(&result);
+        return result;
+    };
+    if (plan.focusChanged) {
+        auto focused = plan.focusedNodeId
+            ? providerFor(*plan.focusedNodeId)
+            : root;
+        if (focused)
+            (void)UiaRaiseAutomationEvent(
+                focused.Get(), UIA_AutomationFocusChangedEventId);
+    }
+
+    const auto propertyId = [](const PropertyKind kind) -> PROPERTYID {
+        switch (kind) {
+        case PropertyKind::Name: return UIA_NamePropertyId;
+        case PropertyKind::HelpText: return UIA_HelpTextPropertyId;
+        case PropertyKind::Enabled: return UIA_IsEnabledPropertyId;
+        case PropertyKind::Selected: return UIA_SelectionItemIsSelectedPropertyId;
+        case PropertyKind::RangeValue: return UIA_RangeValueValuePropertyId;
+        case PropertyKind::RangeMinimum: return UIA_RangeValueMinimumPropertyId;
+        case PropertyKind::RangeMaximum: return UIA_RangeValueMaximumPropertyId;
+        case PropertyKind::RangeSmallChange: return UIA_RangeValueSmallChangePropertyId;
+        case PropertyKind::RangeLargeChange: return UIA_RangeValueLargeChangePropertyId;
+        case PropertyKind::RangeReadOnly: return UIA_RangeValueIsReadOnlyPropertyId;
+        case PropertyKind::Bounds: return UIA_BoundingRectanglePropertyId;
+        }
+        return 0;
+    };
+    const auto variant = [](const PropertyValue& value, const ScreenTransform* transform) {
+        VARIANT result{};
+        std::visit([&](const auto& item) {
+            using Value = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<Value, std::wstring>) {
+                V_VT(&result) = VT_BSTR;
+                V_BSTR(&result) = SysAllocStringLen(
+                    item.data(), static_cast<UINT>(item.size()));
+            } else if constexpr (std::is_same_v<Value, bool>) {
+                V_VT(&result) = VT_BOOL;
+                V_BOOL(&result) = item ? VARIANT_TRUE : VARIANT_FALSE;
+            } else if constexpr (std::is_same_v<Value, double>) {
+                V_VT(&result) = VT_R8;
+                V_R8(&result) = item;
+            } else {
+                SAFEARRAY* array = SafeArrayCreateVector(VT_R8, 0, 4);
+                if (!array) return;
+                const double scale = transform ? transform->pixelsPerDip : 1.0;
+                const double parts[]{
+                    (transform ? transform->originX : 0.0) + item.x * scale,
+                    (transform ? transform->originY : 0.0) + item.y * scale,
+                    item.width * scale,
+                    item.height * scale,
+                };
+                for (LONG index = 0; index < 4; ++index) {
+                    double part = parts[index];
+                    (void)SafeArrayPutElement(array, &index, &part);
+                }
+                V_VT(&result) = VT_ARRAY | VT_R8;
+                V_ARRAY(&result) = array;
+            }
+        }, value);
+        return result;
+    };
+    for (const auto& change : plan.properties) {
+        auto provider = providerFor(change.nodeId);
+        if (!provider) continue;
+        VARIANT oldValue = variant(
+            change.oldValue, previous ? &previous->transform : nullptr);
+        VARIANT newValue = variant(
+            change.newValue, current ? &current->transform : nullptr);
+        (void)UiaRaiseAutomationPropertyChangedEvent(
+            provider.Get(), propertyId(change.kind), oldValue, newValue);
+        VariantClear(&oldValue);
+        VariantClear(&newValue);
+    }
 }
 
 std::optional<ResolvedAction> ResolveActionRequest(

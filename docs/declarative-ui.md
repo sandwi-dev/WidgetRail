@@ -32,6 +32,15 @@ updates are quantized and coalesced latest-wins per Slider. A real
 `IUIAutomation` client test covers `WM_GETOBJECT`, fragment traversal, names,
 geometry, patterns, and stale-generation rejection.
 
+Publication diffs the last announced immutable tree against the newest tree and
+coalesces intervening renders behind one posted window message. The window
+thread raises UIA structure invalidation, logical-focus changes, and closed
+property changes for name, help text, enabled/selected state, RangeValue
+value/limits/step/read-only state, and physical screen bounds. DPI or window-
+origin changes also update bounds. Event planning and UIA calls run outside
+paint, and a real client-handler test covers structure, property, and focus
+delivery.
+
 While controller focus is on the dashboard/open-widget tray, the provider
 publishes the exact visible carousel window instead of inactive widget controls.
 Each tile is a ListItem with single-selection and Invoke patterns, its selected,
@@ -41,10 +50,10 @@ reorder mode, revalidates the current host-tree sequence, and uses the existing
 tray state machine rather than parsing command strings.
 
 This is not yet the complete screen-reader ship gate. Dashboard tiles are not
-fully described by title/status nodes, dynamic structure/property/focus events
-are not raised, legacy MSAA is not implemented, and a packaged Narrator smoke
-test remains pending. Until those close, treat UIA as an implemented preview and
-keep deterministic semantic snapshots as the primary accessibility contract.
+fully described by title/status nodes, legacy MSAA is not implemented, and a
+packaged Narrator smoke test remains pending. Until those close, treat UIA as an
+implemented preview and keep deterministic semantic snapshots as the primary
+accessibility contract.
 
 ## Elements
 

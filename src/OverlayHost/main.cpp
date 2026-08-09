@@ -2878,6 +2878,7 @@ private:
                 });
             }
         }
+        accessibilityProvider_.RaisePendingEvents();
     }
 
     void ClearAccessibilityTree() noexcept {

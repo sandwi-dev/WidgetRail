@@ -39,6 +39,7 @@ add_executable(OverlayHost WIN32
     AccessibilityProvider.cpp
     TrayLayout.cpp
     HostAccessibility.cpp
+    AccessibilityEvents.cpp
 )
 
 target_compile_features(OverlayHost PRIVATE cxx_std_20)
@@ -196,7 +197,7 @@ if(GBA_BUILD_TESTS)
     add_test(NAME AccessibilityProjectionTests COMMAND AccessibilityProjectionTests)
 
     add_executable(AccessibilityProviderTests
-        AccessibilityProviderTests.cpp AccessibilityProvider.cpp)
+        AccessibilityProviderTests.cpp AccessibilityProvider.cpp AccessibilityEvents.cpp)
     target_compile_features(AccessibilityProviderTests PRIVATE cxx_std_20)
     target_compile_options(AccessibilityProviderTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(AccessibilityProviderTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -215,6 +216,13 @@ if(GBA_BUILD_TESTS)
     target_compile_options(HostAccessibilityTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(HostAccessibilityTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME HostAccessibilityTests COMMAND HostAccessibilityTests)
+
+    add_executable(AccessibilityEventsTests
+        AccessibilityEventsTests.cpp AccessibilityEvents.cpp)
+    target_compile_features(AccessibilityEventsTests PRIVATE cxx_std_20)
+    target_compile_options(AccessibilityEventsTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(AccessibilityEventsTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME AccessibilityEventsTests COMMAND AccessibilityEventsTests)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
