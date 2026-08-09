@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against documentation baseline `b2956ab` and implementation baseline `4f903b0` after committed exact-directory-boundary evidence, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
+Last reassessed: 2026-08-09 against implementation HEAD `d4291be` after committed bounded bridge dispatch, exact-directory-boundary evidence, action-ingress semantics, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -120,6 +120,18 @@ eligible for clean documentation commit `b2956ab` over implementation
 `4f903b0`, with zero stderr or output truncation. Its three explicitly selected
 steps do not update unrelated verification lanes.
 
+The rotated advanced-widget audit found a separate P1 liveness/API-contract
+defect. Controller input is admitted to a bounded queue and acknowledged before
+`OnActionAsync` finishes, but direct bridge `Action` and `QuickAction` requests
+wait for that method to complete. Production gives the worker request two
+seconds, while the public loopback service defaults to ten seconds and permits
+forty. YT Music awaits connect, pair, refresh, and command provider I/O directly
+inside `OnActionAsync`; Spotify works around the contract by maintaining its
+own detached command task and gate. The same logical action can therefore be
+safe through controller ingress and terminate the worker through direct
+ingress. EQ-021 requires one admission/acknowledgement contract rather than a
+larger timeout or more author-owned task plumbing.
+
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
 no longer emits an unpublished placeholder SDK reference. It resolves a real
@@ -223,6 +235,25 @@ clean all-lane result closes the local execution portion of EQ-004; immutable
 hosted execution proof remains open.
 
 ## Changes since the previous audit
+
+Commit `d4291be` moves ordinary request execution off the sole pipe-read loop,
+admits at most 16 requests, preserves framed writes, explicitly chains same-
+widget requests in receive order, rejects excess work with `bridge_busy`, fails
+duplicate active request IDs closed, and tracks/drains requests on session exit.
+Focused Release output was inspected: Bridge passes 45/45, Documentation checks
+49 Markdown files, and First-Party Conformance passes 6/6 through the real
+AppContainer path. The new cases block a cancellation-aware admission and prove
+an unrelated catalog response, the seventeenth-request saturation error, Stop
+acknowledgement, cancellation/resource release, pipelined same-widget ordering,
+response correlation, and duplicate-ID refusal. This closes the cooperative
+managed head-of-line subproblem, not EQ-020: the real ACL path is synchronous,
+up to 16 cancellation-ignoring operations can still be stranded, and shutdown
+drain has no separate deadline.
+
+The same cycle rotates into advanced-widget action dispatch. Static tracing
+from native/bridge ingress through worker acknowledgement and the public
+loopback timeout establishes the new EQ-021 finding; `d4291be` does not change
+that synchronous direct-action acknowledgement contract.
 
 Commit `e7b4e6b` is documentation-only. It correctly carries retained run
 `20260809T152831Z-67b77c73`'s 325.283 ms launch-lease and 360.426 ms exact-grant
@@ -1795,9 +1826,11 @@ host-side factory test is not closure.
 
 ### EQ-020 — P1 — Exact-content startup can block the native UI outside every request deadline
 
-**Status: Open against current HEAD `4f903b0`; the file inventory
-is bounded, but security-authority application, managed dispatch, native pipe
-I/O, and the user-visible start operation do not share an enforced deadline.**
+**Status: Open against implementation HEAD `d4291be`; the file inventory and
+managed request dispatcher are bounded and cooperative managed head-of-line
+blocking is resolved, but security-authority application,
+shutdown drain, native pipe I/O, and the user-visible start operation do not
+share an enforced deadline.**
 
 **Evidence.** `WidgetProcessClient.EnsureConnectedAsync` creates
 `ContentLeaseTimeout` only around `ContentLeaseFactory` and
@@ -1850,12 +1883,21 @@ shape-edge behavior in committed tests and clean release-eligible selected
 evidence. It does not close the missing aggregate deadline or representative
 p50/p95/max evidence.
 
-`WidgetBridgeServer.RunAsync` also awaits each request directly in its single
-read/dispatch loop. A slow first snapshot or lifecycle request remains inside
-`WidgetProcessClient.EnsureConnectedAsync`, so the bridge cannot service catalog,
-diagnostic, lifecycle, or stop requests while ACL activation is stuck. A native
-caller timing out does not cancel an already blocked Windows ACL call or restore
-partially applied persistent grants.
+Commit `d4291be` changes `WidgetBridgeServer.RunAsync` so it no longer awaits
+ordinary requests in the sole pipe-read loop. It dispatches through 16 non-
+waiting slots, tracks active IDs/tasks, preserves the framed write gate, chains
+same-widget requests in receive order, fails duplicate active IDs closed, and
+returns `bridge_busy` after saturation. Focused Release Bridge output passes
+45/45. `StalledAdmissionKeepsControlPlaneResponsive` proves an unrelated
+catalog response, seventeenth-request saturation, Stop acknowledgement,
+cooperative cancellation, and residency release; the pipelined-order and
+duplicate-ID cases prove correlation-safe FIFO mutation and fail-closed ID
+ownership. This is a useful partial fix, not a deadline: each task can still
+block inside the synchronous ACL path, all 16 slots can be stranded, and final
+cleanup performs an unbounded `Task.WhenAll` after cancellation. A native caller
+timing out still cannot cancel the Windows ACL call or restore partially applied
+persistent grants. The tests do not cover the real ACL call or a cancellation-
+ignoring drain.
 
 The native caller does not in fact have a request timeout. `WidgetBridgeClient`
 uses synchronous `WriteFile` and `ReadFile` loops in `WriteFrame`/`ReadFrame`;
@@ -1933,6 +1975,13 @@ disable during admission, caller cancellation, and shutdown. Update the public
 five-second claim only when the enforced full boundary—not one factory and one
 ten-second stopwatch assertion—matches the evidence.
 
+The bounded dispatcher now proves an unrelated catalog request, Stop
+acknowledgement, seventeenth-request `bridge_busy`, duplicate active-ID refusal,
+same-widget ordering, correlation-safe pipelined responses, and cooperative
+resource release. Remaining dispatcher evidence is a separate drain deadline
+for cancellation-ignoring work plus zero request/slot/task leakage on that
+forced-abandon path.
+
 Retain the exact 1,024-directory public pack/install/enable/launch case, the
 atomic 1,025-directory refusal, and the bridge assertion that catalog and
 runtime limits match.
@@ -1944,6 +1993,92 @@ late responses must be discarded by request/session generation, and shutdown
 must close/cancel the blocked pipe without leaking its I/O owner. Repeat with a
 slow reply arriving just before and just after the deadline and with an unrelated
 catalog event/request while one widget start is pending.
+
+### EQ-021 — P1 — Action acknowledgement depends on ingress and can terminate a healthy worker
+
+**Status: Open against implementation baseline `4f903b0`; controller input has
+bounded admission semantics, while direct actions synchronously inherit provider
+latency.**
+
+**Evidence.** `WidgetWorkerServer.HandleRequestAsync` handles protocol
+`Action` by awaiting `Widget.OnActionAsync` and only then sending
+`Acknowledged`. `WidgetProcessClient.SendActionAsync` waits for that response,
+and production `WidgetBridgeServer.CreateRegistration` configures a two-second
+worker `RequestTimeout`; timeout reports `RequestTimedOut` and terminates the
+worker. Both bridge `Action` and bridge `QuickAction` use this path. Native
+`OverlayApp::DispatchScrollPagination` also calls `SendAction` directly.
+
+Controller ingress has a different contract. `WidgetControllerQueue` admits
+resolved actions to a 16-item serial queue, coalesces slider tails, acknowledges
+before `OnActionAsync` completes, cancels on deactivation, and reports later
+failures. `ControllerInput` receives that immediate handled result. Public
+`controller-input.md` consequently says dashboard and open-widget actions enter
+one FIFO and acknowledge immediately, while `declarative-ui.md` shows an
+`OnActionAsync` implementation that explicitly awaits slow I/O. Neither guide
+qualifies that direct action ingress bypasses the queue.
+The runtime suite codifies both halves separately: `HungWorkerTimesOut` expects
+a direct `SendActionAsync("hang")` timeout, while the rapid dashboard/controller
+cases prove prompt queued acknowledgement. There is no cross-ingress test for
+the same slow but valid action.
+
+This is not theoretical API trivia. YT Music's `OnActionAsync` holds its action
+gate while awaiting connect, pair, refresh, and every provider command. Its
+public loopback requests default to ten seconds and allow up to forty seconds,
+so valid provider latency can exceed the outer two-second action request and
+cause worker termination. Spotify avoids that outcome by returning immediately
+from `OnActionAsync` and maintaining its own `_commandOperationTask`, lock,
+semaphore, lifecycle drain, and error wrapper. The safer behavior is therefore
+also the more complicated author path.
+
+**Why it matters.** The same action can be reliable from a physical controller
+and destructive when invoked through a direct host action, pagination trigger,
+bridge quick-action request, or another direct client. A slow but valid provider
+call is misclassified as a hung worker, consuming restart budget and losing
+widget state. Authors cannot reason locally about `OnActionAsync` because its
+completion contract depends on an undocumented transport route.
+
+**Underlying problem.** The platform has two action schedulers: a mature
+runtime-owned controller queue and a synchronous request/response direct-action
+path. `OnActionAsync` is presented as one public hook, but it does not have one
+admission, ordering, cancellation, saturation, failure, or acknowledgement
+contract. Spotify's task registry is a workaround for missing platform
+ownership; YT Music demonstrates the natural implementation the public example
+encourages.
+
+**Recommended direction.** Route every user-originated action through one
+runtime-owned bounded admission primitive before acknowledging the host.
+Direct `Action`, `QuickAction`, pagination/value changes, and resolved
+`ControllerInput` should share ordering, coalescing, active-lifetime
+cancellation, saturation, and `ControllerActionFailed` semantics. Return a
+typed admission result (`accepted`, `coalesced`, `saturated`, `inactive`) rather
+than treating provider completion as acknowledgement. Start any exact gesture
+capability lifetime only when the admitted action begins execution, preserving
+the existing anti-replay boundary.
+
+Keep explicitly widget-lifetime work such as browser authorization separate via
+`WidgetOperations` with a documented lifetime and observable completion; do not
+make every action outlive deactivation. Do not fix the mismatch by raising the
+two-second request timeout to the forty-second provider maximum: that would
+retain inconsistent semantics and worsen the native synchronous-I/O freeze in
+EQ-020.
+
+**Tradeoff.** Unifying ingress changes when direct callers observe completion
+and requires a bounded failure channel rather than synchronous exceptions.
+Queueing pagination may require Latest/coalesced policy rather than strict FIFO.
+Those policies should be explicit action metadata or SDK-owned adapters, not
+separate widget task registries.
+
+**Resolution evidence.** Run one deliberately slow and one never-completing
+widget action through direct `Action`, bridge `QuickAction`, pagination/value
+change, open-widget controller, and dashboard-controller ingress. Every accepted
+route must acknowledge within a deterministic admission budget, preserve the
+declared order/coalescing policy, avoid worker restart, publish late failure,
+and cancel/drain on deactivation. Prove saturation returns immediately, a
+three-second loopback command cannot trip the two-second worker timeout, and
+gesture authority begins only for the dequeued matching action. Update the
+public action example and acknowledgement prose, then migrate YT Music and
+remove Spotify's redundant command task/gate only after the shared contract is
+proven.
 
 ### EQ-016 — P2 — Aggregate catalog bounds lack a recoverable control-plane contract
 
@@ -2337,11 +2472,12 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Installed catalog scale | Commits `b2d6f95` and `1c1f8bb` add aggregate quotas, prospective refusal, and per-entry/per-read checkpoints; current discovery temporarily materializes a full file inventory for every accepted version before only active enabled versions are retained by bridge closures | Outer watchdog for kernel-blocked I/O, bounded Settings/CLI repair path, and maximum-catalog cold/reload time plus peak/transient memory measurements for full inventories |
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
+| Action dispatch | Controller input has bounded immediate admission, but direct Action/QuickAction waits for `OnActionAsync` under a two-second worker timeout even though provider calls may validly take 10–40 seconds | Unify every user-action ingress behind one typed bounded admission queue; prove slow/hung commands, saturation, cancellation, failure reporting, and gesture authority without worker restart |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
 | CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
-| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, and clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render at 1,024 directories; exact ACL application remains outside the five-second deadline, native bridge reads synchronously block the UI, and this one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | One enforced full start budget with phase timings and cancellable off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
+| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 while focused 45/45 coverage proves cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, native bridge reads synchronously block the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | One enforced full start budget with phase timings, cancellation-ignoring drain proof, and cancellable off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
 | Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092`; clean seven-step run `20260809T152831Z-67b77c73` covers `6fc9e01`; clean release-eligible three-step run `20260809T155221Z-ae6e5d8d` covers the exact edge in `4f903b0` through clean docs commit `b2956ab` | Run the complete checked-in Windows workflow for the current implementation commit and retain an immutable hosted artifact/link |
@@ -2361,12 +2497,14 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    bridge requests responsive, move cancellable correlated pipe I/O off the
    native UI thread, and make grant cleanup/rollback explicit on every failure
    and teardown path.
-2. **Extract the native widget-session owner and finish failure UX.** Move
-   bridge/catalog/snapshot/lifecycle/retry ownership into one tested
-   `WidgetSessionCoordinator`, extend residency fault-path accounting, and
-   surface capacity/startup/protocol failures as persistent typed per-widget
-   states with deliberate stale-last-good behavior, disabled/qualified stale
-   controls, retry, and resource-management actions.
+2. **Unify action admission before migrating another advanced widget.** Route
+   direct Action, QuickAction, pagination/value changes, and controller-resolved
+   actions through one bounded runtime-owned queue with typed admission,
+   ordering/coalescing policy, active-lifetime cancellation, late-failure
+   observation, and execution-scoped gesture authority. Prove slow and hung
+   provider work never consumes the two-second worker timeout, then migrate YT
+   Music and remove Spotify's redundant command task/gate without folding OAuth
+   into the wrong lifetime.
 3. **Finish and publish the quality gate.** Preserve the new manifest/module
    split, process/output/package/deadline bounds, and clean all-lane local bundle.
    Run the checked-in Windows CI for the same commit, retain its immutable
@@ -2375,7 +2513,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    it to prove the external SDK/template and clean-directory scaffold.
 
 The next review should first reassess these three items, then rotate into the
-installed-package launch/session boundary or advanced-widget composition if
+installed-package launch/session boundary or native session ownership if
 implementation changes land. Revisit visual or performance proof when a new
 fixture or retained baseline appears; specifically reassess EQ-019 when the
 Guide fallback gains an injected policy seam or hardware trace.

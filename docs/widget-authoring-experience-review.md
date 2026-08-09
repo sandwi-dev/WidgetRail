@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; unified action admission, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against documentation baseline `b2956ab` and implementation baseline `4f903b0` after committed exact-directory-boundary evidence, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against implementation HEAD `d4291be` after committed bounded bridge dispatch, exact-directory-boundary evidence, action-ingress semantics, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -292,6 +292,19 @@ The SDK already provides important low-level safety mechanisms:
   per-edge borders, `:pressed`, and bounded presentation translation, cover the
   low-level responsive/presentation contracts already required by advanced
   widgets.
+
+Action dispatch is an important exception to this otherwise safer short path.
+Resolved `ControllerInput` uses `WidgetControllerQueue`, acknowledges admission
+immediately, and runs `OnActionAsync` later. Direct bridge `Action` and
+`QuickAction` instead wait for `OnActionAsync` to finish under the production
+two-second worker request timeout. The public loopback API defaults to ten
+seconds, and the declarative UI guide explicitly shows awaiting slow I/O in
+`OnActionAsync`. YT Music follows that natural pattern for connect, pair,
+refresh, and commands; Spotify avoids it with its own detached task, lock,
+semaphore, drain, and error handling. A widget author therefore cannot know the
+safe completion model from the public hook alone, and equivalent controller and
+direct invocations can behave differently. This is a framework contract gap,
+not domain complexity.
 
 Implementation status records focused Release results including
 Widget SDK 84/84, Gbar CLI 49/49, SDK Gallery 6/6, YT Music 48/48, Focus
@@ -1074,6 +1087,31 @@ or a correct merge/rollback for the widget. Authors must implement those
 callbacks over immutable state. It builds on `WidgetOperations`; it does not
 create a second controller-input queue.
 
+### 5a. One action-admission contract — open
+
+All user-originated actions should enter one runtime-owned bounded admission
+path before the host is acknowledged. Direct actions, dashboard quick actions,
+pagination/value changes, and controller-resolved actions need the same explicit
+ordering, coalescing, saturation, Active-lifetime cancellation, and late-failure
+semantics. The immediate result should describe admission—not provider
+completion—and the exact capability gesture lease should begin only when that
+queued action executes.
+
+This should reuse the existing controller queue rather than add another author
+helper. Widget-lifetime work such as OAuth may still use a named
+`WidgetOperations` lane, but ordinary provider commands should not require the
+Spotify-style task registry just to acknowledge safely. Increasing the worker
+request timeout is not a substitute: it would keep the ingress inconsistency and
+make overlay stalls longer.
+
+The conformance fixture should send a slow and never-completing action through
+every ingress and prove prompt typed admission, bounded FIFO/latest behavior,
+deactivation drain, failure observation, no worker restart, and exact gesture-
+authority timing. The documentation's slow-I/O example must compile and pass
+against that contract. YT Music should then adopt the shared path, and Spotify
+should be able to delete its command task/gate without losing authorization's
+separate widget-lifetime semantics.
+
 ### 6. Navigation and focus model — implemented
 
 Advanced widgets need a small controller-native router:
@@ -1339,16 +1377,19 @@ migration; Media Sessions is the first medium model and command migration.
 
 Next work:
 
-1. Generalize the cancellation-ignoring stale-success, stale-failure, and
+1. Unify direct, quick, pagination/value, and controller action ingress behind
+   the runtime-owned bounded admission contract; prove slow/hung provider work,
+   saturation, deactivation, failure reporting, and exact gesture authority.
+2. Generalize the cancellation-ignoring stale-success, stale-failure, and
    lifecycle-exit fixtures from YT Music into a reusable operation-migration
    test recipe.
-2. Define credential/session generation semantics before any flow allows
+3. Define credential/session generation semantics before any flow allows
    credentials to be replaced while requests are in flight.
-3. Design cursor/append resource state separately from current-value and
+4. Design cursor/append resource state separately from current-value and
    offset-page semantics.
-4. Migrate the remaining suitable widgets and Spotify operation families while
+5. Migrate the remaining suitable widgets and Spotify operation families while
    preserving their explicit lifetime, ordering, and reconciliation policies.
-5. Add focused recipes for provider-event merge, confirmation deadlines, and
+6. Add focused recipes for provider-event merge, confirmation deadlines, and
    absolute-value command coalescing without making them implicit.
 
 This phase should deliver the largest reduction in semaphores, cancellation
