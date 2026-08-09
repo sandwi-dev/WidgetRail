@@ -92,6 +92,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Scenario manifests are bounded and execution fails closed", ScenarioPreviewTests.Run),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
+    ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced),
     ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
     ("Uninstall is explicit disabled-only and cleans every package version", UninstallWorkflow),
     ("Pack rejects invalid identity without publishing an archive", PackRejectsInvalidManifest),
@@ -1019,6 +1020,38 @@ static async Task LocalDistributionWorkflow()
         "A local update bypassed disabled-only review.");
 }
 
+static async Task DirectoryShapeLimitsAreEnforced()
+{
+    using var temp = new TemporaryDirectory();
+    var source = CreatePackageSource(
+        temp.Path, "dev.test.directory-limit", "dev.test", "1.0.0");
+    AddDeepAssets(source, 255);
+    var tail = Path.Combine(source, "assets", "tail");
+    Directory.CreateDirectory(tail);
+    await File.WriteAllTextAsync(Path.Combine(tail, "asset.txt"), "x");
+    Assert.Equal(1_025, CountRequiredDirectories(source));
+    var package = Path.Combine(temp.Path, "directory-limit.gbarwidget");
+
+    var pack = await RunCli("pack", source, "--output", package);
+    Assert.Equal(1, pack.Code);
+    Assert.Contains("too_many_launch_directories", pack.Error);
+    Assert.True(!File.Exists(package),
+        "An unlaunchable package shape left a published pack output.");
+
+    var rawPackage = Path.Combine(temp.Path, "directory-limit-raw.gbarwidget");
+    ZipFile.CreateFromDirectory(
+        source, rawPackage, CompressionLevel.NoCompression, includeBaseDirectory: false);
+    var catalog = Path.Combine(temp.Path, "catalog");
+    var install = await RunCli("install", rawPackage, "--catalog", catalog);
+    Assert.Equal(1, install.Code);
+    Assert.Contains("too_many_launch_directories", install.Error);
+    Assert.True(!Directory.Exists(Path.Combine(
+            catalog, "packages", "dev.test.directory-limit")),
+        "An unlaunchable package shape published installed bytes.");
+    Assert.Equal(0, (await new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalog)
+        .DiscoverAsync()).Widgets.Count);
+}
+
 static async Task PackRejectsInvalidManifest()
 {
     using var temp = new TemporaryDirectory();
@@ -1510,6 +1543,40 @@ static string CreatePackageSource(string root, string id, string publisher, stri
     File.WriteAllBytes(Path.Combine(source, "payload", "Widget.dll"), "intentionally-not-an-assembly"u8.ToArray());
     File.WriteAllText(Path.Combine(source, "styles", "default.gbss"), "text { color: #ffffff; }");
     return source;
+}
+
+static void AddDeepAssets(string source, int uniqueBranches)
+{
+    for (var index = 0; index < uniqueBranches; index++)
+    {
+        var directory = Path.Combine(
+            source,
+            "assets",
+            $"edge-{index:000}",
+            "one",
+            "two",
+            "three");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "asset.txt"), "x");
+    }
+}
+
+static int CountRequiredDirectories(string source)
+{
+    var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        string.Empty,
+    };
+    foreach (var file in Directory.EnumerateFiles(
+                 source, "*", SearchOption.AllDirectories))
+    {
+        var segments = Path.GetRelativePath(source, file)
+            .Replace(Path.DirectorySeparatorChar, '/')
+            .Split('/');
+        for (var index = 1; index < segments.Length; index++)
+            directories.Add(string.Join('/', segments.Take(index)));
+    }
+    return directories.Count;
 }
 
 static async Task<string> CreateThemeSourceAsync(string root, string id, string publisher, string version)

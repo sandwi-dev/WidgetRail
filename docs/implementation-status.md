@@ -24,7 +24,7 @@ migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
 uses one lifecycle-owned Active/Latest lane for transport reconciliation; it
 neither retains provider response bodies nor renders unknown exception text.
 Focused Release suites pass Widget SDK 84/84, SDK Gallery 6/6, YT Music 48/48,
-and Gbar CLI 49/49. Packaged controller/companion evidence remains separate.
+and Gbar CLI 50/50. Packaged controller/companion evidence remains separate.
 
 ## Implemented
 
@@ -650,7 +650,7 @@ enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
 polling. Styling and platform settings/themes pass 23/23 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 49/49, including unrelated-directory scaffold failure-before-write and
+passes 50/50, including unrelated-directory scaffold failure-before-write and
 an explicit-SDK Release build, bounded data-only snapshot rendering, fail-closed DLL
 and scenario execution, bounded scenario-manifest discovery,
 authenticated candidate/active development readiness,
@@ -659,7 +659,8 @@ failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
 scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, per-package and aggregate
-catalog limits, immutable versions, and adversarial package cases. Catalog
+catalog limits, immutable versions, rejection of a 1,025-directory package
+before pack output or installed-byte publication, and adversarial package cases. Catalog
 passes 32/32, including
 schema-1 state migration, exact active-version pins and disabled repair,
 linearizable concurrent rollback/first-install operations, public-API
@@ -680,6 +681,11 @@ commit `6bd60d3` (implementation baseline `6fc9e01`). Focused tests use
 separate five-second content-acquisition and ten-second maximum-grant ceilings;
 one aggregate production start deadline plus repeated clean/hosted measurements
 remain open.
+The exact accepted namespace edge is also exercised through the public
+pack/install/enable path and a real first-party AppContainer worker: 1,024
+authority directories and 258 verified files pack in 255.038 ms and activate/
+render in 2,521.831 ms on the current machine. This is a focused measurement,
+not a production startup budget.
 Bridge
 passes 42/42, including aggregate count/declared-memory admission, exact crash/
 timeout/idle-unload release, Settings control-plane access, race-safe refusal,
@@ -712,10 +718,12 @@ expected PID, nonce, and widget identity checks in force.
  10/10; Windows Media provider and Now Playing pass 11/11 and 17/17. Games &
  Apps passes 26/26, including its vertical full-tile AppTile Library/Catalog
  focus model and lifecycle-bound Toast feedback.
- The first-party conformance suite passes 5/5 by building and installing the
- actual Audio Mixer, Network Controls, Games & Apps, Now Playing, and YT Music
- packages, launching each with the generic host in its package AppContainer, and
- observing safe brokered reads/actions through simulated platform providers.
+ The first-party conformance suite passes 6/6 by building and installing the
+actual Audio Mixer, Network Controls, Games & Apps, Now Playing, and YT Music
+packages, launching each with the generic host in its package AppContainer, and
+observing safe brokered reads/actions through simulated platform providers.
+It additionally packs, installs, enables, admits, and renders a real first-party
+package at the exact 1,024-directory authority limit.
  The YT case additionally exercises public validate/pack/install/enable,
  pairing, host-side private-secret persistence and Bearer injection, dashboard
  transport, lifecycle enforcement, and the absence of a trusted fallback. Pre-

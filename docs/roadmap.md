@@ -610,7 +610,10 @@ packages are the canonical templates for event-driven system-control widgets.
   current local machine; retain repeated clean/hosted measurements and packaged
   abuse evidence before public community distribution. Content generations use
   distinct AppContainer identities so later versions cannot inherit stale root
-  grants; an aggregate start deadline and alternate-group-ACE policy remain open.
+  grants. The exact 1,024-directory public pack/install/enable/launch edge now
+  records 255.038 ms packing and 2,521.831 ms through first render, while 1,025
+  directories fail before output/publication. An aggregate start deadline and
+  alternate-group-ACE policy remain open.
 - Publisher signing/revocation and a signed update channel, mandatory before
   public community distribution but intentionally sequenced after local
   product-completion gates

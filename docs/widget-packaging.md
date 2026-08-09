@@ -281,6 +281,15 @@ grant fixture above ten seconds, but those separate ceilings are not one
 production start-admission budget. These are one-machine regression
 measurements, not cross-hardware startup targets.
 
+A focused exact-shape fixture uses the public `gbar pack`, `install`, and
+`enable` workflow for 258 verified files reached through exactly 1,024 authority
+directories, then renders a real first-party widget in its AppContainer. On the
+current machine packing takes 255.038 ms and activation through first validated
+render takes 2,521.831 ms. A paired 1,025-directory case proves `gbar pack`
+leaves no output and `gbar install` publishes no package bytes. The measured
+edge remains under a ten-second regression ceiling; it is not the missing
+aggregate production start deadline.
+
 The random global main and optional broker pipes allow only the desktop host
 and exact AppContainer SID, carry a Low mandatory label, accept one local
 client, and verify the expected worker PID before the runtime hello or broker

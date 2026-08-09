@@ -53,6 +53,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bundled catalog rejects unsafe and ambiguous package sources", BundledCatalogRejectsUnsafeSources),
     ("Real first-party packages merge through the community catalog path", InstalledPackagesMerge),
     ("All first-party packages run through generic AppContainer worker and broker", PackagesRunIsolated),
+    ("Exact maximum directory package packs installs and runs isolated", MaximumDirectoryPackageRunsIsolated),
     ("YT Music community package completes isolated install lifecycle recovery and removal", () => YtMusicCommunityPackageRunsIsolated()),
 };
 var failures = new List<string>();
@@ -238,6 +239,67 @@ static async Task PackagesRunIsolated()
         deployment.Packages,
         package => package.ShellId,
         "bundled");
+}
+
+static async Task MaximumDirectoryPackageRunsIsolated()
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
+    var fixture = deployment.Packages[0];
+    var source = Path.Combine(deployment.RootPath, "maximum-directory-source");
+    CopyDirectory(fixture.BundleRoot, source);
+    for (var index = 0; index < 255; index++)
+    {
+        var directory = Path.Combine(
+            source,
+            "assets",
+            $"edge-{index:000}",
+            "one",
+            "two",
+            "three");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(Path.Combine(directory, "asset.txt"), "x");
+    }
+
+    var packagePath = Path.Combine(deployment.RootPath, "maximum-directory.gbarwidget");
+    var packStopwatch = Stopwatch.StartNew();
+    var pack = await RunCliAsync("pack", source, "--output", packagePath);
+    packStopwatch.Stop();
+    Assert.Equal(0, pack.Code);
+    Assert.True(File.Exists(packagePath),
+        "The exact directory-bound package was not published.");
+
+    var catalogRoot = Path.Combine(deployment.RootPath, "maximum-directory-catalog");
+    Assert.Equal(0, (await RunCliAsync(
+        "install", packagePath, "--catalog", catalogRoot)).Code);
+    Assert.Equal(0, (await RunCliAsync(
+        "enable", fixture.Manifest.Id, "--catalog", catalogRoot)).Code);
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        catalogRoot,
+        deployment.WorkerHostPath);
+    var configured = load.Catalog.GetConfigured(fixture.Manifest.Id);
+    Assert.True(configured.ContentLeaseFactory is not null,
+        "The exact directory-bound package omitted content admission.");
+    using (var lease = configured.ContentLeaseFactory!(CancellationToken.None))
+    {
+        Assert.Equal(1_024, lease.ReadOnlyDirectories.Count);
+        Assert.Equal(258, lease.ReadOnlyFiles.Count);
+    }
+
+    TimeSpan activationElapsed = default;
+    await RunCatalogAsync(
+        load.Catalog,
+        [fixture with { BundleRoot = source, PackagePath = packagePath }],
+        package => package.Manifest.Id,
+        "maximum-directory installed",
+        elapsed => activationElapsed = elapsed);
+    Assert.True(packStopwatch.Elapsed < TimeSpan.FromSeconds(10),
+        $"Exact directory-bound packing exceeded ten seconds ({packStopwatch.Elapsed.TotalMilliseconds:0} ms).");
+    Assert.True(activationElapsed > TimeSpan.Zero &&
+                activationElapsed < TimeSpan.FromSeconds(10),
+        $"Exact directory-bound activation exceeded ten seconds ({activationElapsed.TotalMilliseconds:0} ms).");
+    Console.WriteLine(
+        $"METRIC exact_directory_package directories=1024 files=258 packMilliseconds={packStopwatch.Elapsed.TotalMilliseconds:F3} activationMilliseconds={activationElapsed.TotalMilliseconds:F3}");
 }
 
 static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput = null)
@@ -660,6 +722,24 @@ static async Task<(int Code, string Output, string Error)> RunCliAsync(params st
     return (code, output.ToString(), error.ToString());
 }
 
+static void CopyDirectory(string source, string destination)
+{
+    foreach (var directory in Directory.EnumerateDirectories(
+                 source, "*", SearchOption.AllDirectories))
+    {
+        Directory.CreateDirectory(Path.Combine(
+            destination, Path.GetRelativePath(source, directory)));
+    }
+    Directory.CreateDirectory(destination);
+    foreach (var file in Directory.EnumerateFiles(
+                 source, "*", SearchOption.AllDirectories))
+    {
+        var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.Copy(file, target, overwrite: false);
+    }
+}
+
 static string FindRepositoryRootForTest()
 {
     var current = new DirectoryInfo(AppContext.BaseDirectory);
@@ -958,7 +1038,8 @@ static async Task RunCatalogAsync(
     BridgeCatalog catalog,
     IReadOnlyList<PackageFixture> packages,
     Func<PackageFixture, string> widgetId,
-    string route)
+    string route,
+    Action<TimeSpan>? firstRenderObserved = null)
 {
     foreach (var package in packages)
     {
@@ -998,9 +1079,12 @@ static async Task RunCatalogAsync(
                     context),
             });
 
+            var activationStopwatch = Stopwatch.StartNew();
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
             var snapshot = await WaitForSnapshotAsync(client, package.ExpectedText);
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            activationStopwatch.Stop();
+            firstRenderObserved?.Invoke(activationStopwatch.Elapsed);
             Assert.True(client.IsRunning,
                 $"{package.Manifest.Name} {route} worker exited after render.");
 
