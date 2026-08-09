@@ -10,6 +10,19 @@ internal static class BoundedFileReader
         if (!input.CanRead) throw new ArgumentException("Input stream is not readable.", nameof(input));
         if (maximumBytes < 1) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
         var initialLength = input.CanSeek ? input.Length : (long?)null;
+        return ReadCore(input, maximumBytes, initialLength);
+    }
+
+    internal static byte[] ReadExact(Stream input, long expectedLength, int maximumBytes)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (!input.CanRead) throw new ArgumentException("Input stream is not readable.", nameof(input));
+        if (maximumBytes < 1) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        return ReadCore(input, maximumBytes, expectedLength);
+    }
+
+    private static byte[] ReadCore(Stream input, int maximumBytes, long? initialLength)
+    {
         if (initialLength is < 0 or > int.MaxValue)
             throw new InvalidDataException("Input length is invalid.");
         if (initialLength > maximumBytes)
@@ -32,7 +45,7 @@ internal static class BoundedFileReader
                 output.Write(buffer, 0, read);
             }
             if (initialLength is { } expected &&
-                (total != expected || input.Length != expected))
+                (total != expected || (input.CanSeek && input.Length != expected)))
                 throw new InvalidDataException("Input length changed while it was read.");
             return output.ToArray();
         }

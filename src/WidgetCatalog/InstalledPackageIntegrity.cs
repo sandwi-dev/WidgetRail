@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GameBarAlternative.WidgetProtocol;
 
 namespace GameBarAlternative.WidgetCatalog;
 
@@ -30,7 +31,7 @@ internal static class InstalledPackageIntegrity
         string packageRoot,
         WidgetCatalogOptions options)
     {
-        var digest = Compute(catalogRoot, packageRoot, options);
+        var digest = Compute(catalogRoot, packageRoot, options, capturedManifestBytes: null);
         var path = Path.Combine(packageRoot, MetadataFileName);
         if (File.Exists(path) || Directory.Exists(path))
             throw new WidgetPackageException(
@@ -46,11 +47,25 @@ internal static class InstalledPackageIntegrity
         return digest;
     }
 
-    internal static string Verify(
+    internal static InstalledPackageVerification Verify(
         string catalogRoot,
         string packageRoot,
         WidgetCatalogOptions options)
     {
+        var manifestBytes = ReadManifest(catalogRoot, packageRoot, options);
+        WidgetManifest manifest;
+        try
+        {
+            manifest = ManifestJson.Deserialize(manifestBytes);
+        }
+        catch (JsonException exception)
+        {
+            throw new WidgetPackageException(
+                "invalid_manifest",
+                $"Installed manifest is invalid: {Path.Combine(packageRoot, "manifest.json")}",
+                exception);
+        }
+
         var path = Path.Combine(packageRoot, MetadataFileName);
         if (!File.Exists(path))
             throw new WidgetPackageException(
@@ -85,7 +100,7 @@ internal static class InstalledPackageIntegrity
                 "invalid_integrity_metadata",
                 $"Installed widget integrity metadata is invalid: {packageRoot}");
 
-        var actualText = Compute(catalogRoot, packageRoot, options);
+        var actualText = Compute(catalogRoot, packageRoot, options, manifestBytes);
         _ = TryDecodeDigest(actualText, out var actual);
         var matches = CryptographicOperations.FixedTimeEquals(expected, actual);
         CryptographicOperations.ZeroMemory(expected);
@@ -93,14 +108,15 @@ internal static class InstalledPackageIntegrity
         if (!matches)
             throw new WidgetPackageException(
                 "package_tampered",
-                $"Installed widget content no longer matches its immutable package digest: {packageRoot}");
-        return actualText;
+                $"Installed widget content no longer matches its sealed package digest: {packageRoot}");
+        return new InstalledPackageVerification(actualText, manifest);
     }
 
     private static string Compute(
         string catalogRoot,
         string packageRoot,
-        WidgetCatalogOptions options)
+        WidgetCatalogOptions options,
+        byte[]? capturedManifestBytes)
     {
         FileSystemSafety.EnsureTreeContainsNoReparsePoints(catalogRoot, packageRoot);
         var files = Directory.EnumerateFiles(packageRoot, "*", SearchOption.AllDirectories)
@@ -139,10 +155,16 @@ internal static class InstalledPackageIntegrity
                 hash.AppendData(integer);
                 hash.AppendData(pathBytes);
 
-                using var input = new FileStream(
-                    file.FullPath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                    buffer.Length, FileOptions.SequentialScan);
-                var expectedLength = input.Length;
+                var useCapturedManifest = capturedManifestBytes is not null && string.Equals(
+                    file.RelativePath, "manifest.json", StringComparison.Ordinal);
+                using var input = useCapturedManifest
+                    ? null
+                    : new FileStream(
+                        file.FullPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        buffer.Length, FileOptions.SequentialScan);
+                var expectedLength = useCapturedManifest
+                    ? capturedManifestBytes!.LongLength
+                    : input!.Length;
                 if (expectedLength < 0 || expectedLength > options.MaximumEntryBytes)
                     throw new WidgetPackageException(
                         "integrity_limit", "Installed widget file exceeds package limits.");
@@ -152,9 +174,15 @@ internal static class InstalledPackageIntegrity
                         "integrity_limit", "Installed widget exceeds package limits.");
                 BinaryPrimitives.WriteInt64BigEndian(integer, expectedLength);
                 hash.AppendData(integer);
+                if (useCapturedManifest)
+                {
+                    hash.AppendData(capturedManifestBytes!);
+                    continue;
+                }
+
                 try
                 {
-                    BoundedFileReader.AppendExact(hash, input, expectedLength, buffer);
+                    BoundedFileReader.AppendExact(hash, input!, expectedLength, buffer);
                 }
                 catch (InvalidDataException exception)
                 {
@@ -174,6 +202,33 @@ internal static class InstalledPackageIntegrity
         finally
         {
             CryptographicOperations.ZeroMemory(buffer);
+        }
+    }
+
+    private static byte[] ReadManifest(
+        string catalogRoot,
+        string packageRoot,
+        WidgetCatalogOptions options)
+    {
+        var path = Path.Combine(packageRoot, "manifest.json");
+        if (!File.Exists(path))
+            throw new WidgetPackageException(
+                "missing_manifest", $"Installed widget is missing manifest.json: {packageRoot}");
+        FileSystemSafety.EnsureNoReparsePoints(catalogRoot, path);
+        try
+        {
+            using var input = new FileStream(
+                path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                64 * 1024, FileOptions.SequentialScan);
+            return BoundedFileReader.ReadExact(
+                input,
+                input.Length,
+                (int)Math.Min(options.MaximumEntryBytes, 1024L * 1024));
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new WidgetPackageException(
+                "invalid_manifest", $"Installed manifest is invalid: {path}", exception);
         }
     }
 
@@ -198,3 +253,7 @@ internal static class InstalledPackageIntegrity
         [property: JsonRequired] string Algorithm,
         [property: JsonRequired] string ContentDigest);
 }
+
+internal sealed record InstalledPackageVerification(
+    string ContentDigest,
+    WidgetManifest Manifest);

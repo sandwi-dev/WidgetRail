@@ -471,20 +471,9 @@ public sealed class WidgetCatalog
                 if (!File.Exists(manifestPath))
                     throw new WidgetPackageException("missing_manifest", $"Installed widget is missing manifest.json: {versionDirectory}");
                 FileSystemSafety.EnsureNoReparsePoints(_root, manifestPath);
-                WidgetManifest manifest;
-                try
-                {
-                    using var input = new FileStream(
-                        manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                        64 * 1024, FileOptions.SequentialScan);
-                    var bytes = BoundedFileReader.ReadAll(
-                        input, (int)Math.Min(_options.MaximumEntryBytes, 1024L * 1024));
-                    manifest = ManifestJson.Deserialize(bytes);
-                }
-                catch (Exception exception) when (exception is JsonException or InvalidDataException)
-                {
-                    throw new WidgetPackageException("invalid_manifest", $"Installed manifest is invalid: {manifestPath}", exception);
-                }
+                var verification = InstalledPackageIntegrity.Verify(
+                    _root, versionDirectory, _options);
+                var manifest = verification.Manifest;
                 var errors = WidgetManifestValidator.Validate(manifest);
                 if (errors.Count != 0)
                     throw new WidgetPackageException("invalid_manifest", $"Installed manifest failed validation: {errors[0].Path}: {errors[0].Message}");
@@ -500,10 +489,8 @@ public sealed class WidgetCatalog
                 if (!FileSystemSafety.IsWithin(versionDirectory, entrypointPath) || !File.Exists(entrypointPath))
                     throw new WidgetPackageException("missing_entrypoint", $"Installed widget entrypoint is missing: {entrypointPath}");
                 FileSystemSafety.EnsureNoReparsePoints(_root, entrypointPath);
-                var contentDigest = InstalledPackageIntegrity.Verify(
-                    _root, versionDirectory, _options);
                 result.Add(new InstalledWidgetVersion(
-                    manifest.Id, version, versionDirectory, manifest, contentDigest));
+                    manifest.Id, version, versionDirectory, manifest, verification.ContentDigest));
             }
         }
         return result.OrderBy(item => item.Id, StringComparer.Ordinal)

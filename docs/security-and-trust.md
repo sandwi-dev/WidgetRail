@@ -98,14 +98,17 @@ planned. A structurally valid package is not necessarily trustworthy.
 - Package extraction rejects absolute/traversing/ambiguous Windows paths,
   links, reparse points, collisions, excessive entries, and zip expansion
   beyond configured limits.
-- Installed versions are immutable and staged before atomic move. The installer
+- Installed versions are version-addressed and staged before atomic move. The installer
   writes host-owned integrity metadata after extraction; packages cannot
   provide that reserved path. Catalog discovery recomputes the bounded content-
   tree digest and rejects missing, malformed, or mismatched metadata. Manifest
   and integrity JSON limits apply to bytes consumed from one restrictively
   shared handle, not a separate path-length preflight. Tree hashing records one
   initial length per file, consumes exactly that many bytes, and rejects early
-  EOF, trailing bytes, or a changed seekable length.
+  EOF, trailing bytes, or a changed seekable length. Verification parses an
+  owned copy of `manifest.json` read from the exact handle included in that
+  tree hash and returns the resulting model with the digest; discovery does not
+  reopen the path.
 - Remote acquisition accepts only credential-free, fragment-free HTTPS URLs on
   port 443, revalidates up to five HTTPS redirects, rejects obvious localhost
   and private/loopback/link-local address literals, and applies connection,

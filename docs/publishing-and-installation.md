@@ -226,7 +226,7 @@ gbar enable dev.example.volume-control
 A newly discovered widget ID is disabled by default. Explicitly enable it after
 review in Settings → Installed widgets (or with the CLI for automation).
 Installing another local version of an ID preserves that ID's existing catalog
-state and the old immutable package. Follow the same disable, install, explicit
+state and the old version-addressed package. Follow the same disable, install, explicit
 version selection, review, and enable sequence for local updates. Both local
 and remote updates reject an enabled ID before publishing the new immutable
 version into the catalog.
@@ -266,10 +266,13 @@ Installed manifest and host-owned integrity metadata are each read from one
 restrictively shared handle with a consumed-byte ceiling. Content-tree hashing
 uses one captured length per file and rejects early EOF, extra bytes, or a
 changed seekable length. These checks prevent a size preflight from authorizing
-more bytes than the catalog consumes. They do not yet make the later worker
-load atomic with verification: the catalog still returns a digest and mutable
-package path rather than retaining a verified-content lease through the worker
-session.
+more bytes than the catalog consumes. Integrity verification parses an owned
+copy of the exact manifest bytes included in the tree hash and returns that
+model with the verified digest, so policy and digest cannot come from different
+reads. These checks do not yet
+make host-side style compilation or the later worker load atomic with
+verification: the catalog still returns a digest and mutable package path
+rather than retaining a verified-content lease through the worker session.
 
 After CLI installation, open Settings → Installed widgets. The paginated
 controller surface shows package ID, publisher, active/installed versions,

@@ -31,6 +31,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Package cannot supply host integrity metadata", ReservedIntegrityPathIsRejected),
     ("Host compatibility is deterministic across API and architecture", HostCompatibility),
     ("Unsigned authority is stable only for one exact content tree", UnsignedAuthorityIsContentBound),
+    ("Integrity verification parses the manifest bytes it hashed", VerificationReturnsHashedManifest),
     ("Bounded reads reject bytes beyond a reported length", BoundedReadsRejectMisreportedLengths),
     ("Integrity hashing rejects early EOF and trailing bytes", IntegrityHashingRequiresExactLength),
 };
@@ -566,6 +567,27 @@ static async Task UnsignedAuthorityIsContentBound()
         "Different bytes with the same asserted ID and version inherited authority.");
     Assert.True(!string.Equals(authority, first.Manifest.Publisher, StringComparison.Ordinal),
         "Unsigned authority trusted the self-asserted publisher label directly.");
+}
+
+static async Task VerificationReturnsHashedManifest()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var catalog = new WidgetCatalog(root);
+    var installed = await catalog.InstallAsync(
+        CreatePackage(temp.Path, "dev.test.manifest-pair", "dev.test", "1.0.0"));
+
+    var verification = InstalledPackageIntegrity.Verify(
+        root, installed.InstallPath, new WidgetCatalogOptions());
+    Assert.Equal(installed.ContentDigest, verification.ContentDigest);
+    Assert.Equal(installed.Manifest.Id, verification.Manifest.Id);
+    Assert.Equal(installed.Manifest.Version, verification.Manifest.Version);
+
+    await File.WriteAllTextAsync(
+        Path.Combine(installed.InstallPath, "manifest.json"), "{}");
+    Assert.Equal(installed.Manifest.Id, verification.Manifest.Id);
+    var tampered = await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.DiscoverAsync());
+    Assert.Equal("invalid_manifest", tampered.Code);
 }
 
 static Task BoundedReadsRejectMisreportedLengths()
