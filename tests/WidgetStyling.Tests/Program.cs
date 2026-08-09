@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Action Run)[]
@@ -8,6 +10,7 @@ var tests = new (string Name, Action Run)[]
     ("Parser enforces bounded untrusted source sizes", ParserLimits),
     ("Package loader resolves safe imports deterministically", SafeImports),
     ("Package loader rejects traversal, missing files, and cycles", UnsafeImports),
+    ("File sources enforce consumed bytes and verified digests", VerifiedFileSources),
     ("Variables resolve forward references and fallbacks", Variables),
     ("Variable cycles prevent theme publication", VariableCycles),
     ("Cascade applies specificity states and source order", Cascade),
@@ -152,6 +155,81 @@ static void UnsafeImports()
         ["b.gbss"] = "@import \"a.gbss\";",
     }));
     Assert.HasCode(cycle.Diagnostics, "import_cycle");
+}
+
+static void VerifiedFileSources()
+{
+    using var temporary = new TemporaryDirectory();
+    var styles = Path.Combine(temporary.Path, "styles");
+    Directory.CreateDirectory(styles);
+    var path = Path.Combine(styles, "default.gbss");
+    var bytes = Encoding.UTF8.GetBytes("button { color: #123456; }");
+    File.WriteAllBytes(path, bytes);
+    var digest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    var verified = new GbssFileSourceProvider(
+        temporary.Path,
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["styles/default.gbss"] = digest,
+        });
+    Assert.True(verified.TryRead("styles/default.gbss", out var source),
+        "Exact verified GBSS was rejected.");
+    Assert.Equal("button { color: #123456; }", source);
+
+    var mismatched = new GbssFileSourceProvider(
+        temporary.Path,
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["styles/default.gbss"] = new string('0', 64),
+        });
+    Assert.True(!mismatched.TryRead("styles/default.gbss", out _),
+        "Modified GBSS was accepted under another digest.");
+
+    var importedBytes = Encoding.UTF8.GetBytes("button { opacity: 0.5; }");
+    var entryWithImportBytes = Encoding.UTF8.GetBytes("@import \"tokens.gbss\";");
+    File.WriteAllBytes(path, entryWithImportBytes);
+    File.WriteAllBytes(Path.Combine(styles, "tokens.gbss"), importedBytes);
+    var verifiedImports = GbssPackageLoader.Load(
+        "styles/default.gbss",
+        new GbssFileSourceProvider(
+            temporary.Path,
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["styles/default.gbss"] = Convert.ToHexString(
+                    SHA256.HashData(entryWithImportBytes)).ToLowerInvariant(),
+                ["styles/tokens.gbss"] = Convert.ToHexString(
+                    SHA256.HashData(importedBytes)).ToLowerInvariant(),
+            }));
+    Assert.EmptyErrors(verifiedImports.Diagnostics);
+
+    var entryBytes = Encoding.UTF8.GetBytes("@import \"late.gbss\";");
+    File.WriteAllBytes(path, entryBytes);
+    File.WriteAllText(Path.Combine(styles, "late.gbss"), "button { opacity: 0.5; }");
+    var inventory = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["styles/default.gbss"] = Convert.ToHexString(SHA256.HashData(entryBytes)).ToLowerInvariant(),
+    };
+    var lateImport = GbssPackageLoader.Load(
+        "styles/default.gbss",
+        new GbssFileSourceProvider(temporary.Path, inventory));
+    Assert.HasCode(lateImport.Diagnostics, "missing_import");
+
+    File.WriteAllBytes(path, [0xff]);
+    Assert.True(!new GbssFileSourceProvider(temporary.Path).TryRead("styles/default.gbss", out _),
+        "Invalid UTF-8 GBSS was decoded with replacement characters.");
+
+    File.WriteAllBytes(path, new byte[(int)GbssLimits.MaximumSourceBytes + 1]);
+    Assert.True(!new GbssFileSourceProvider(temporary.Path).TryRead("styles/default.gbss", out _),
+        "A ceiling-plus-one GBSS source was consumed.");
+
+    using var misleading = new MisreportedLengthStream(
+        new byte[(int)GbssLimits.MaximumSourceBytes + 1], reportedLength: 1);
+    _ = Assert.Throws<InvalidDataException>(() => GbssFileSourceProvider.ReadBounded(misleading));
+
+    using var changing = new MisreportedLengthStream(
+        [0x20], reportedLength: 1, lengthAfterRead: 2);
+    _ = Assert.Throws<InvalidDataException>(() => GbssFileSourceProvider.ReadBounded(changing));
 }
 
 static void Variables()
@@ -547,6 +625,57 @@ file sealed class DictionaryProvider(IReadOnlyDictionary<string, string> files) 
     public bool TryRead(string packageRelativePath, out string source) => files.TryGetValue(packageRelativePath, out source!);
 }
 
+file sealed class TemporaryDirectory : IDisposable
+{
+    public TemporaryDirectory()
+    {
+        Path = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "widget-styling-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path);
+    }
+
+    public string Path { get; }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
+    }
+}
+
+file sealed class MisreportedLengthStream(
+    byte[] content,
+    long reportedLength,
+    long? lengthAfterRead = null) : Stream
+{
+    private int _position;
+
+    public override bool CanRead => true;
+    public override bool CanSeek => true;
+    public override bool CanWrite => false;
+    public override long Length =>
+        _position > 0 && lengthAfterRead is { } changed ? changed : reportedLength;
+    public override long Position
+    {
+        get => _position;
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var available = content.Length - _position;
+        if (available <= 0) return 0;
+        var read = Math.Min(available, count);
+        Array.Copy(content, _position, buffer, offset, read);
+        _position += read;
+        return read;
+    }
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
 file static class Assert
 {
     public static void True(bool condition, string message)
@@ -564,6 +693,13 @@ file static class Assert
     {
         if (!expected.SequenceEqual(actual))
             throw new InvalidOperationException($"Expected [{string.Join(", ", expected)}], got [{string.Join(", ", actual)}].");
+    }
+
+    public static T Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T exception) { return exception; }
+        throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
     public static void EmptyErrors(IEnumerable<GbssDiagnostic> diagnostics)

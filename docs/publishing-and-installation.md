@@ -269,10 +269,18 @@ changed seekable length. These checks prevent a size preflight from authorizing
 more bytes than the catalog consumes. Integrity verification parses an owned
 copy of the exact manifest bytes included in the tree hash and returns that
 model with the verified digest, so policy and digest cannot come from different
-reads. These checks do not yet
-make host-side style compilation or the later worker load atomic with
-verification: the catalog still returns a digest and mutable package path
-rather than retaining a verified-content lease through the worker session.
+reads. These checks do not yet make the later worker load atomic with
+verification: the catalog still returns a digest, file inventory, and mutable
+package path rather than retaining a verified-content lease through the worker
+session.
+
+For installed widget styles, the catalog also carries an exact relative-path/
+SHA-256 inventory computed in the same tree-hash pass. The bridge reads each
+GBSS entry/import through one consumed-byte-bounded handle, decodes strict
+UTF-8, and compares its bytes with that inventory before parsing. Modified and
+late-added style sources fail closed. Executable assemblies, lazy dependencies,
+and general package assets still require the verified-content lease described
+above.
 
 After CLI installation, open Settings → Installed widgets. The paginated
 controller surface shows package ID, publisher, active/installed versions,

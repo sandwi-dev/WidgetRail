@@ -313,7 +313,8 @@ public sealed class BridgeCatalog
             var assembly = Path.GetFullPath(
                 manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar),
                 packageRoot);
-            var styleFile = File.Exists(Path.Combine(packageRoot, "styles", "default.gbss"))
+            var styleFile = widget.ActiveVersion.VerifiedGbssDigests.ContainsKey(
+                "styles/default.gbss")
                 ? "styles/default.gbss"
                 : null;
             CompiledWidgetStyle style;
@@ -329,7 +330,7 @@ public sealed class BridgeCatalog
                     WorkerExecutable = workerHost,
                     WorkerArguments = [],
                     StyleFile = styleFile,
-                }, packageRoot);
+                }, packageRoot, widget.ActiveVersion.VerifiedGbssDigests);
             }
             catch (Exception exception) when (exception is BridgeCatalogException or IOException or UnauthorizedAccessException)
             {
@@ -672,7 +673,10 @@ public sealed class BridgeCatalog
             throw new BridgeCatalogException($"The {label} cannot contain reparse points.");
     }
 
-    private static CompiledWidgetStyle CompileTheme(ConfiguredWidget source, string packageRoot)
+    private static CompiledWidgetStyle CompileTheme(
+        ConfiguredWidget source,
+        string packageRoot,
+        IReadOnlyDictionary<string, string>? expectedContentDigests = null)
     {
         if (source.StyleFile is null) return new(new GbssPackageResult([], []), null);
         if (!GbssPackageLoader.IsSafePackagePath(source.StyleFile))
@@ -680,7 +684,7 @@ public sealed class BridgeCatalog
                 $"Widget '{source.Id}' styleFile must be a normalized package-relative .gbss path.");
         var package = GbssPackageLoader.Load(
             source.StyleFile,
-            new GbssFileSourceProvider(packageRoot));
+            new GbssFileSourceProvider(packageRoot, expectedContentDigests));
         var compiled = GbssThemeCompiler.Compile(package);
         if (compiled.IsValid) return new(package, compiled.Theme!);
 

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Frozen;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -31,7 +32,9 @@ internal static class InstalledPackageIntegrity
         string packageRoot,
         WidgetCatalogOptions options)
     {
-        var digest = Compute(catalogRoot, packageRoot, options, capturedManifestBytes: null);
+        var digest = Compute(
+            catalogRoot, packageRoot, options,
+            capturedManifestBytes: null, gbssDigests: null);
         var path = Path.Combine(packageRoot, MetadataFileName);
         if (File.Exists(path) || Directory.Exists(path))
             throw new WidgetPackageException(
@@ -100,7 +103,9 @@ internal static class InstalledPackageIntegrity
                 "invalid_integrity_metadata",
                 $"Installed widget integrity metadata is invalid: {packageRoot}");
 
-        var actualText = Compute(catalogRoot, packageRoot, options, manifestBytes);
+        var gbssDigests = new Dictionary<string, string>(StringComparer.Ordinal);
+        var actualText = Compute(
+            catalogRoot, packageRoot, options, manifestBytes, gbssDigests);
         _ = TryDecodeDigest(actualText, out var actual);
         var matches = CryptographicOperations.FixedTimeEquals(expected, actual);
         CryptographicOperations.ZeroMemory(expected);
@@ -109,14 +114,18 @@ internal static class InstalledPackageIntegrity
             throw new WidgetPackageException(
                 "package_tampered",
                 $"Installed widget content no longer matches its sealed package digest: {packageRoot}");
-        return new InstalledPackageVerification(actualText, manifest);
+        return new InstalledPackageVerification(
+            actualText,
+            manifest,
+            gbssDigests.ToFrozenDictionary(StringComparer.Ordinal));
     }
 
     private static string Compute(
         string catalogRoot,
         string packageRoot,
         WidgetCatalogOptions options,
-        byte[]? capturedManifestBytes)
+        byte[]? capturedManifestBytes,
+        IDictionary<string, string>? gbssDigests)
     {
         FileSystemSafety.EnsureTreeContainsNoReparsePoints(catalogRoot, packageRoot);
         var files = Directory.EnumerateFiles(packageRoot, "*", SearchOption.AllDirectories)
@@ -180,9 +189,16 @@ internal static class InstalledPackageIntegrity
                     continue;
                 }
 
+                var trackGbssDigest = gbssDigests is not null &&
+                    Path.GetExtension(file.RelativePath).Equals(
+                        ".gbss", StringComparison.OrdinalIgnoreCase);
+                using var fileHash = !trackGbssDigest
+                    ? null
+                    : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                 try
                 {
-                    BoundedFileReader.AppendExact(hash, input!, expectedLength, buffer);
+                    BoundedFileReader.AppendExact(
+                        hash, input!, expectedLength, buffer, fileHash);
                 }
                 catch (InvalidDataException exception)
                 {
@@ -191,6 +207,10 @@ internal static class InstalledPackageIntegrity
                         "Installed widget content changed while its digest was computed.",
                         exception);
                 }
+                if (fileHash is not null)
+                    gbssDigests!.Add(
+                        file.RelativePath,
+                        Convert.ToHexString(fileHash.GetHashAndReset()).ToLowerInvariant());
             }
             return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
         }
@@ -256,4 +276,5 @@ internal static class InstalledPackageIntegrity
 
 internal sealed record InstalledPackageVerification(
     string ContentDigest,
-    WidgetManifest Manifest);
+    WidgetManifest Manifest,
+    IReadOnlyDictionary<string, string> GbssDigests);

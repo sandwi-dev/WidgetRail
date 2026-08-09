@@ -598,6 +598,10 @@ packages are the canonical templates for event-driven system-control widgets.
 
 ## Phase 4: ecosystem
 
+- Verified package namespace and launch lease (or protected generation), so
+  signed/digest-addressed authority covers every assembly, lazy dependency,
+  native library, style, and asset actually consumed; mandatory before public
+  community distribution
 - Publisher signing/revocation and a signed update channel, mandatory before
   public community distribution but intentionally sequenced after local
   product-completion gates
@@ -618,7 +622,7 @@ packages are the canonical templates for event-driven system-control widgets.
 | Guide conflict or unavailable system button | Critical | Controller/client matrix | GameInput callback, conflict onboarding, controller-only fallback |
 | Overlay not visible in true FSE | High | Presentation matrix | Do not support true FSE initially; no injection |
 | Native UI scope expands uncontrollably | High | Three-card implementation effort and accessibility audit | Small primitive set; renderer-independent widget protocol; compare WinUI only with data |
-| Community widget compromises user | Critical | AppContainer/broker abuse tests plus signing, quota, and audit evidence | Unsigned local development remains AppContainer-isolated and explicitly labeled; signing/revocation is deferred until local product gates pass but remains mandatory before public community distribution |
+| Community widget compromises user | Critical | AppContainer/broker abuse tests plus verified namespace/launch, signing, quota, and audit evidence | Unsigned local development remains AppContainer-isolated and explicitly labeled; manifest and GBSS already bind to the sealed digest inventory, while executable/dependency/asset launch leasing and signing/revocation remain mandatory before public community distribution |
 | Worker model feels slow or heavy | High | Cold-start and working-set measurements | Lazy first launch, resident-Background measurement, explicit user lifecycle choices, resource labels |
 | GBSS updates break themes | Medium | Theme compatibility fixtures | Stable semantic selectors, typed allowlist, versioned tokens |
 | Discord rejects overlay use case | High for social only | Written eligibility/production access | Keep Discord as optional first-party integration, not a core dependency |

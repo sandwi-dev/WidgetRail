@@ -59,7 +59,8 @@ internal static class BoundedFileReader
         IncrementalHash hash,
         Stream input,
         long expectedLength,
-        byte[] buffer)
+        byte[] buffer,
+        IncrementalHash? contentHash = null)
     {
         ArgumentNullException.ThrowIfNull(hash);
         ArgumentNullException.ThrowIfNull(input);
@@ -75,6 +76,7 @@ internal static class BoundedFileReader
             if (read == 0)
                 throw new InvalidDataException("Input ended before its encoded length.");
             hash.AppendData(buffer, 0, read);
+            contentHash?.AppendData(buffer, 0, read);
             consumed += read;
         }
         if (input.Read(buffer, 0, 1) != 0)

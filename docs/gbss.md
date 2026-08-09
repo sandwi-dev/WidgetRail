@@ -85,7 +85,15 @@ progress width, shell placement, and widget replacement are not interpolated
 by this version. See [GBA-032](known-issues.md#gba-032--gbss-transition-declarations-do-not-animate)
 for the remaining packaged visual/performance evidence.
 
-Untrusted input is bounded before publication: source bytes/characters, statements, imports and import depth, selectors per rule, declarations per rule, raw values, and expanded variable values all have hard limits exposed through `GbssLimits`.
+Untrusted input is bounded before publication: source bytes/characters,
+statements, imports and import depth, selectors per rule, declarations per
+rule, raw values, and expanded variable values all have hard limits exposed
+through `GbssLimits`. File-backed sources are strict UTF-8 (an optional UTF-8
+BOM is accepted) and the byte ceiling is enforced on bytes consumed from one
+restrictively shared handle. Installed widget entries/imports must also match
+the exact relative-path/SHA-256 inventory computed with their sealed package
+tree; a modified or newly inserted source is treated as missing and the theme
+does not publish.
 
 ## Imports and safety
 

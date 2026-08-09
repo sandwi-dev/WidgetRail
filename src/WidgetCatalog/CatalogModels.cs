@@ -27,7 +27,11 @@ public sealed record InstalledWidgetVersion(
     Version Version,
     string InstallPath,
     WidgetManifest Manifest,
-    string ContentDigest);
+    string ContentDigest)
+{
+    internal IReadOnlyDictionary<string, string> VerifiedGbssDigests { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+}
 
 public sealed record CatalogWidget(
     string Id,

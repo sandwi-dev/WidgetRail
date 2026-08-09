@@ -575,13 +575,23 @@ static async Task VerificationReturnsHashedManifest()
     var root = Path.Combine(temp.Path, "catalog");
     var catalog = new WidgetCatalog(root);
     var installed = await catalog.InstallAsync(
-        CreatePackage(temp.Path, "dev.test.manifest-pair", "dev.test", "1.0.0"));
+        CreatePackage(
+            temp.Path,
+            "dev.test.manifest-pair",
+            "dev.test",
+            "1.0.0",
+            extras: [new ExtraEntry("styles/default.gbss", "button { color: #123456; }")]));
 
     var verification = InstalledPackageIntegrity.Verify(
         root, installed.InstallPath, new WidgetCatalogOptions());
     Assert.Equal(installed.ContentDigest, verification.ContentDigest);
     Assert.Equal(installed.Manifest.Id, verification.Manifest.Id);
     Assert.Equal(installed.Manifest.Version, verification.Manifest.Version);
+    Assert.Equal(1, verification.GbssDigests.Count);
+    Assert.Equal(
+        Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(
+            Path.Combine(installed.InstallPath, "styles", "default.gbss")))).ToLowerInvariant(),
+        verification.GbssDigests["styles/default.gbss"]);
 
     await File.WriteAllTextAsync(
         Path.Combine(installed.InstallPath, "manifest.json"), "{}");

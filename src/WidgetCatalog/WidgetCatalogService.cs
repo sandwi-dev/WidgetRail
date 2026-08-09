@@ -490,7 +490,10 @@ public sealed class WidgetCatalog
                     throw new WidgetPackageException("missing_entrypoint", $"Installed widget entrypoint is missing: {entrypointPath}");
                 FileSystemSafety.EnsureNoReparsePoints(_root, entrypointPath);
                 result.Add(new InstalledWidgetVersion(
-                    manifest.Id, version, versionDirectory, manifest, verification.ContentDigest));
+                    manifest.Id, version, versionDirectory, manifest, verification.ContentDigest)
+                {
+                    VerifiedGbssDigests = verification.GbssDigests,
+                });
             }
         }
         return result.OrderBy(item => item.Id, StringComparer.Ordinal)

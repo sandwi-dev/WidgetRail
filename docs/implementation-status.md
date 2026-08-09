@@ -136,8 +136,9 @@ Up/Down navigation.
   dependencies inside the mandatory package AppContainer, authenticates an
   optional broker channel, attaches typed host services before creation, then
   serves the standard isolated snapshot/action/lifecycle protocol.
-- `WidgetStyling`: bounded GBSS parsing, safe package-relative imports,
-  variables, explicit trusted cascade layers, typed allowlisted values,
+- `WidgetStyling`: single-handle consumed-byte bounds, strict UTF-8 GBSS
+  decoding, optional exact per-file SHA-256 inventories, safe package-relative
+  imports, variables, explicit trusted cascade layers, typed allowlisted values,
   independent top/right/bottom/left border width/color overrides, and
   diagnostics. The built-in theme provides bounded `.gbar-code-text` wrapping
   with one Windows-baseline `Consolas` family; CSS-style font fallback stacks
@@ -642,7 +643,7 @@ scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. Styling and platform settings/themes pass 22/22 and 15/15,
+polling. Styling and platform settings/themes pass 23/23 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
 passes 49/49, including unrelated-directory scaffold failure-before-write and
 an explicit-SDK Release build, bounded data-only snapshot rendering, fail-closed DLL

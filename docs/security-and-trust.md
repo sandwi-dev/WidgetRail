@@ -136,7 +136,11 @@ planned. A structurally valid package is not necessarily trustworthy.
   integrity instead publishes a trusted-only revision, synchronously removes
   Community registrations, retires their workers, and prevents relaunch by the
   old ID. Conflicts, unsupported capability declarations, and invalid per-
-  package GBSS omit the affected package with bounded diagnostics.
+  package GBSS omit the affected package with bounded diagnostics. Installed
+  GBSS entries and imports are strict UTF-8 read through one restrictively
+  shared consumed-byte-bounded handle and must match the exact per-file SHA-256
+  inventory produced with the sealed tree digest; modified or late-added style
+  files cannot compile under that authority.
   Reload/list does not launch a worker.
 - The generic worker host rejects entrypoint/dependency path escape and reparse
   points, requires a public concrete SDK `Widget` type with a usable public
