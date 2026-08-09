@@ -222,11 +222,14 @@ remains off until the publisher-trust gates in Phase 4.
   deterministic cancellation/drain coverage. SDK Gallery now demonstrates the
   public bounded route stack, route-lifetime cancellation, exact-scope B,
   remembered return focus, and validated hierarchical IDs without private host
-  support. Next migrate suitable command/resource/navigation families, add
-  focused provider-event/confirmation/coalescing recipes, and design cursor/
-  append resources plus a responsive navigation shell separately. Add an
-  analyzer for duplicate/unstable IDs and unhandled actions. The SDK must
-  not infer domain merge, retry, or confirmation policy.
+  support. Protocol-v13 explicit focus persistence, `UI.NavigationShell`, and
+  assembly-free bounded `gbar preview` scenario-manifest listing are now also
+  implemented and exercised by SDK Gallery; selected scenario execution fails
+  closed until an AppContainer preview worker exists. Next migrate suitable
+  command/resource/navigation families, add focused provider-event/
+  confirmation/coalescing recipes, design cursor/append resources, and add an
+  analyzer for duplicate/unstable IDs and unhandled actions. The SDK must not
+  infer domain merge, retry, or confirmation policy.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance

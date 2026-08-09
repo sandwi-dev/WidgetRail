@@ -9,13 +9,17 @@ guarantees that are available now.
 
 - [Widget authoring guide and API map](widget-authoring-guide.md) — complete
   minimal-to-advanced tutorial, manifest/API reference, controller scopes,
-  Scroll/surface contracts, lifecycle, capabilities, local/GitHub workflows,
-  security, performance, responsive layout, and diagnostics.
+  Scroll/surface contracts, responsive `UI.NavigationShell`, lifecycle,
+  capabilities, bounded static scenario declaration/listing, local/GitHub
+  workflows, security, performance, responsive layout, and diagnostics.
+  Scenario factory execution fails closed until an AppContainer preview worker
+  exists.
 - [Platform architecture](platform-architecture.md) — process boundaries,
   data flow, and current implementation limits.
-- [Widget quickstart](widget-quickstart.md) — scaffold, build, validate,
-  render, replay, and run a controller widget through the isolated `gbar dev`
-  watch loop with authenticated readiness and last-good recovery.
+- [Widget quickstart](widget-quickstart.md) — scaffold, build, validate, list
+  bounded scenario declarations, render trusted code, replay, and run a
+  controller widget through the isolated `gbar dev` watch loop with
+  authenticated readiness and last-good recovery.
 - [Widget lifecycle and process residency](widget-residency.md) — lifecycle
   callbacks, versioned manifest policy, safe suspension, bounded idle unload,
   cached views, lazy resume, and legacy migration.

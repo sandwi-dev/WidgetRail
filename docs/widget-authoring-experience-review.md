@@ -1,9 +1,13 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; operation scopes, immutable models, resources, optimistic commands, bounded navigation, and stable-ID scopes implemented, later recommendations open<br>
-Date: 2026-08-08<br>
-Reassessed: 2026-08-09 after public non-paged resources, bounded navigation, stable-ID scopes, the SDK Gallery migration, and YT Music safe-error hardening<br>
+Status: living assessment; core coordination primitives, bounded navigation, stable-ID scopes, protocol-v13 responsive focus persistence, one responsive navigation recipe, and bounded scenario-manifest listing implemented; isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Date: 2026-08-09<br>
+Reassessed: 2026-08-09 against the current worktree after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` scenario contract, and an independent engineering-quality audit<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
+
+Related: [Engineering Quality Review](engineering-quality-review.md) covers the
+cross-cutting architecture, security, verification, and product-readiness
+findings that qualify this authoring assessment.
 
 ## Executive conclusion
 
@@ -22,7 +26,7 @@ currently implement too much coordination infrastructure themselves:
 - loading, stale-result, retry, and cached-data states;
 - optimistic updates and rollback;
 - route stacks, Back handling, and focus restoration;
-- duplicated compact and expanded composition; and
+- responsive composition outside the new navigation-shell recipe; and
 - extensive manual invalidation.
 
 This is not unique to Spotify. Similar patterns remain in Audio Mixer, Network
@@ -50,16 +54,29 @@ model and uses the public `WidgetOptimisticCommand` coordinator for transport.
 The public `WidgetResource<TValue>` now coordinates non-paged reads, while
 `WidgetNavigator<TRoute>` and `WidgetIds` own bounded route history, route
 cancellation, exact-scope Back, focus restoration, and validated hierarchical
-IDs. SDK Gallery is the production-style reference for the navigation and ID
-contracts. Cursor/append resources, a responsive navigation shell, an ID
-analyzer, and broader migrations remain open.
+IDs. `UI.NavigationShell` now renders one destination model as compact tabs or
+an expanded rail around one shared content subtree, with optional expanded-only
+content. Protocol v13 now separates an explicit bounded focus-persistence
+identity from element and action IDs; the shell emits one shared key only for a
+destination's compact and rail presentations. SDK Gallery is the production-
+style reference for the composition, and YT Music now replaces one more hand-written
+cancellation/generation family with an Active Latest operation lane.
+Cursor/append resources, additional page recipes, an ID/action analyzer, and
+broader migrations remain open.
+
+The first scenario-tooling slice is deliberately manifest-only. `gbar preview`
+can validate and list bounded manifest-declared states without resolving or
+loading provider assemblies. Selecting a scenario fails closed until execution
+can move behind an isolated, forcibly terminable process boundary. Semantic
+snapshot execution, interaction, viewport rendering, capture, fake-service
+lifecycle support, and template integration remain open.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
 Grid, row wrapping, per-edge borders, semantic code text, activate-to-adjust
 Sliders, and the modern controller component set are implemented. They should
-be treated as current authoring tools, not roadmap proposals. Higher-level
-responsive navigation/page recipes and packaged-font support remain distinct
+be treated as current authoring tools, not roadmap proposals. Higher-level page
+recipes beyond the navigation shell and packaged-font support remain distinct
 open work.
 
 ## Evidence from the repository
@@ -70,12 +87,12 @@ between a minimal and an application-like widget:
 | Widget | Approximate C# size | What it demonstrates |
 | --- | ---: | --- |
 | Clock sample | 40 lines | Deterministic render and one action |
-| SDK Gallery | 360 lines | Public components and local state |
+| SDK Gallery | About 400 lines | Public components, navigation, responsive shell, and local state |
 | Recent Apps | 340 lines | One event-driven provider surface |
 | Media Sessions | 735 lines | Selection, commands, progress, and provider lifecycle |
 | Games & Apps | 1,150 lines | Navigation, paging, private state, and launch commands |
 | YT Music | 1,150 lines | Connection lifecycle and optimistic media state |
-| Spotify | About 2,170 lines | OAuth, playback, four destinations, bounded paging, caching, and local playback |
+| Spotify | About 2,020 lines | OAuth, playback, four destinations, bounded paging, caching, and local playback |
 | Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
 
@@ -83,7 +100,7 @@ The exact counts are less important than the shape of the code. Spotify owns
 multiple `Task`, `CancellationTokenSource`, `SemaphoreSlim`, generation, cache,
 pending-operation, loading, error, and focus fields. Other advanced widgets own
 similar structures. Its presentation also includes about 500 lines of GBSS and
-its dedicated test program is about 1,100 lines. Those tests are valuable, but
+its dedicated test program is about 1,200 lines. Those tests are valuable, but
 their size reinforces that this is an application-scale reference.
 
 The SDK already provides important low-level safety mechanisms:
@@ -115,6 +132,10 @@ The SDK already provides important low-level safety mechanisms:
   return-focus memory, and route-owned cancellation.
 - [`WidgetIds`](../src/WidgetSdk/WidgetIds.cs) supplies validated hierarchical
   scopes and deterministic opaque `KeyedId` leaves for durable domain keys.
+- [`UI.NavigationShell`](../src/WidgetSdk/NavigationShell.cs) supplies one
+  validated two-to-eight destination model, compact tabs, an expanded rail,
+  optional expanded-only persistent content, and explicit controller focus
+  edges around one shared page subtree.
 - [`ScrollElement.Paginate`](../src/WidgetSdk/Elements.cs) supplies protocol-v11
   host-owned near-start and near-end focus triggers without visible paging
   buttons.
@@ -130,14 +151,25 @@ The SDK already provides important low-level safety mechanisms:
   low-level responsive/presentation contracts already required by advanced
   widgets.
 
-Focused Release evidence for this milestone is Widget SDK 80/80, SDK Gallery
-6/6, and YT Music 45/45. These suites establish the API semantics and sample
-migrations; they do not replace packaged controller, companion, or visual
-evidence.
+Implementation status reports current-worktree Release results of Widget SDK
+84/84, Gbar CLI 47/47, SDK Gallery 6/6, YT Music 48/48, Focus Navigation 41
+checks, Declarative Renderer 4,632 checks, and a green full aggregate. Static
+inspection confirms that the four managed programs register those case totals,
+and focused YT source coverage includes cancellation-ignoring stale ordinary
+and authorization failures plus lifecycle exit. This review cycle did not
+independently execute those suites or inspect a retained result bundle.
+Disabled and busy destinations intentionally remain focusable while activation
+is suppressed; renderer and focus-test source encode that contract. The
+repository still lacks retained structured results or an immutable CI run, and
+available default packages are one source version behind for YT Music and SDK
+Gallery, so they are not current packaged evidence. Real controller, companion,
+physical-display, performance-trace, and representative visual evidence remain
+pending.
 
 These primitives prevent several classes of misuse, but the author still has to
 compose them into an application architecture. Spotify is evidence that the
-missing layer is coordination, not rendering capability.
+remaining gap is mostly reusable coordination, application composition, and
+proof rather than basic rendering capability.
 
 ## Reassessment after the Spotify 0.2.10 changes
 
@@ -179,6 +211,79 @@ the current evidence set; the stored Spotify images still cover configuration
 and setup. The semantic and interaction tests are stronger, but credential-free
 visual scenarios remain necessary to assess the complete playback UI.
 
+## Reassessment after navigation-shell and scenario-preview changes
+
+The responsive navigation work closes one of the earlier high-priority
+composition gaps. `UI.NavigationShell` accepts one selected destination, one
+content entry focus target, one shared content subtree, and two to eight stable
+destinations. It generates distinct compact-tab and expanded-rail control IDs,
+publishes selected and disabled semantics, supplies wrapping directional focus
+edges, and optionally inserts an expanded-only persistent pane. Built-in GBSS
+owns the standard dimensions, focus, selected, pressed, and responsive styles.
+
+Disabled and busy destinations intentionally remain in the focus ring. The host
+separates navigation from activation so users can focus an unavailable control,
+hear or inspect its label/state, and then receive no action dispatch. Native
+renderer, controller-navigation, and widget-surface focus tests exercise that
+contract. Keeping those destinations in the shell's explicit wrap ring and in
+responsive persistence avoids dynamic focus ordering and resize-induced focus
+teleportation.
+
+Protocol v13 now carries `focusPersistenceId` only on focusable nodes. When a
+resize hides the previously focused compact or expanded presentation, the host
+restores focus to the single visible, same-scope control that explicitly shares
+that key. Omitted, ambiguous, and cross-scope matches fail closed. Action IDs
+remain routing intent and may legitimately be shared across different
+destinations. `UI.NavigationShell` derives one bounded persistence key from each
+logical destination ID and publishes it only on that destination's compact and
+rail controls. This resolves the independent audit's identity concern in the
+current code. Reconciliation now runs on resize, snapshot/presentation refresh,
+and focus restoration rather than on every paint, so settled frames perform no
+focus-persistence traversal. Implementation status reports focused managed and
+native passes, but retained results and a direct test of the scheduling edges
+are still pending. The native resolver intentionally classifies disabled and
+busy candidates as focusable; responsive persistence should preserve that
+stable logical destination while activation remains unavailable.
+
+SDK Gallery has adopted the shell around its existing `WidgetNavigator`, so it
+now provides a copyable example of one route model and one page subtree across
+compact and expanded layouts. Focus and validation tests cover shared content,
+distinct responsive IDs, selected-state accessibility, traversal, destination
+bounds, and invalid declarations. This is a credible human-authorable path for
+the main shell of a Spotify-style widget. Spotify itself has not yet migrated,
+and persistent media panels, collection/detail pages, error pages, and action
+footers still need comparable recipes.
+
+YT Music independently demonstrates that the coordination helpers continue to
+pay off outside Spotify. Its transport reconciliation burst now uses one Active
+Latest `WidgetOperations` lane instead of its own lock, task set, linked
+cancellation source, generation counter, continuation cleanup, and deactivation
+drain. Much of YT Music remains manually coordinated, but this is evidence that
+the helper can replace real lifecycle plumbing incrementally.
+
+The migration now applies the Latest currency contract to every attempt-local
+outcome. Successful snapshots, retry status, and authorization failure all
+perform their final `IsCurrent` check under the state lock shared with
+replacement admission. Cancellation-ignoring fakes prove stale ordinary and
+authorization failures cannot change status, pending optimism, connection, or
+replacement execution; lifecycle-exit 401 is also rejected. Current connect,
+poll, and reconciliation 401 behavior still returns the widget to pairing.
+
+The new `gbar preview` command establishes only the data-only discovery portion
+of the scenario recommendation. A bounded `gbar.scenarios.json` manifest names
+a provider assembly and declared factory metadata. Listing validates strict
+JSON, bounded paths, names, descriptions, and scenario count without resolving
+or loading the assembly. Selecting any scenario fails with a fixed diagnostic
+before assembly resolution; it does not invoke reflection, start a timeout task,
+or write an output snapshot.
+
+Semantic execution remains open because an in-process timeout cannot terminate
+arbitrary managed code and would leave scenario code with the full filesystem,
+network, process, and credential authority of the CLI. The next step is a
+dedicated production-equivalent AppContainer/Job/IPC process boundary that can
+be forcibly terminated, followed by deterministic state fixtures, the real
+widget test host, and native capture without exposing secrets or live services.
+
 ## Reconciliation of earlier framework-gap findings
 
 The following items were rechecked against public SDK declarations, protocol
@@ -189,16 +294,20 @@ implemented facilities from remaining on the roadmap under an older name.
 | --- | --- | --- |
 | `:pressed` was parsed but not rendered | GBSS publishes a pressed computed map, and the native host applies it only to the physically held action target. | No framework gap remains; widgets should style the semantic state instead of simulating it. |
 | Motion lacked subtree translation | `translate-x` / `translate-y` move the complete presented subtree, including clip, hit-test, focus, accessibility, and Scroll geometry, with bounded retargetable transitions. | Shell-level presentation choreography remains host product work, not a widget API. |
-| Settings rows, pickers, action sheets, scrubbers, toasts, and media/app tiles were missing | These are public `UI.*` compositions with stable generated IDs, semantic classes, validation limits, and controller behavior. | Adaptive navigation shells and full page recipes remain open. |
+| Settings rows, pickers, action sheets, scrubbers, toasts, and media/app tiles were missing | These are public `UI.*` compositions with stable generated IDs, semantic classes, validation limits, and controller behavior. | Standard page recipes beyond the implemented navigation shell remain open. |
 | Layout lacked per-edge borders and responsive wrap/Grid | GBSS supports independent edge colors/widths and Row wrapping; `UI.ResponsiveGrid` provides protocol-v8 row-major reflow. | Virtualized/sectioned collections remain open. |
-| Compact and expanded layouts required ad hoc host checks | Protocol-v9 `.VisibleWhen(...)` / `UI.ResponsiveBranch(...)` lets the host exclude inactive subtrees from every semantic system. | Authors still duplicate the changed branches; a navigation-shell recipe could reduce that duplication. |
+| Compact and expanded layouts required ad hoc host checks | Protocol-v9 `.VisibleWhen(...)` / `UI.ResponsiveBranch(...)` excludes inactive subtrees from every semantic system, and `UI.NavigationShell` now authors compact tabs and an expanded rail from one destination set around one shared content subtree. Protocol-v13 `focusPersistenceId` maps only explicitly equivalent, same-scope presentations and remains separate from action routing. Disabled and busy destinations deliberately remain focusable while activation is suppressed. | Other adaptive page structures and widgets not yet migrated to the shell still require lower-level composition; the public guide should make the focusable-but-inert contract unmistakable. |
 | Sliders always consumed Left/Right during navigation | Protocol-v10 `.RequireControllerActivation()` reserves A/B for a host-owned adjustment mode; outside that mode all directions remain navigation. | A Slider cannot combine activation-first mode with a separate A activation action. |
 | Typography lacked semantic monospace | `UI.CodeText` supplies bounded, whitespace-preserving semantic code text. | Packaged fonts and browser-style fallback stacks remain unavailable. |
 
-The highest-priority remaining authoring gaps are therefore application
-composition and proof, not basic controls: cursor/append resource variants, a
-responsive navigation shell and recipes, broader coordination-helper
-migrations, an ID/action analyzer, and credential-free scenario/visual testing.
+The two correctness concerns raised in the previous pass are now reconciled:
+YT Music guards attempt-local failure commits, and disabled destinations are
+correctly focusable-but-inert by platform contract. The highest-priority
+remaining authoring work is application composition and proof: cursor/append
+resource variants, page
+recipes beyond the navigation shell, broader coordination-helper migrations,
+an ID/action analyzer, interactive credential-free scenarios, and native visual
+capture.
 Documentation should keep those
 separate from already shipped primitives so authors can use the safe short path
 today.
@@ -517,11 +626,15 @@ SDK Gallery is the production-style public migration. Its tabs use
 `Navigate`, Picker and ActionSheet use `Push`, nested B uses `TryHandleBack`,
 and leaving a route cancels its token before the new snapshot is published.
 
-Add a responsive composition such as `UI.NavigationShell` that maps the same
-destinations to an expanded rail and compact tabs. It should allow a persistent
-expanded pane without requiring authors to duplicate the entire semantic tree.
-The current low-level Row, Stack, visibility, and input-scope APIs should remain
-available as escape hatches.
+The responsive composition is now implemented as `UI.NavigationShell`. It maps
+one destination set to an expanded rail and compact tabs, keeps one content
+subtree, optionally adds a persistent expanded pane, and publishes explicit
+focus entry points. Protocol v13 preserves the logical destination across a
+responsive switch through one explicit persistence key even though each
+presentation has a distinct stable element ID and actions may be shared.
+Low-level Row, Stack, visibility, and input-scope APIs remain
+available as escape hatches. SDK Gallery proves the router/shell composition;
+Spotify and other multi-page widgets still need migration evidence.
 
 ### 7. Stable ID scopes — implemented
 
@@ -544,19 +657,21 @@ opaque suffix, so unsafe provider text and provider identity do not enter the
 snapshot. This helper creates stable identifiers; it does not register action
 handlers or prove that an ID is semantically stable. The analyzer remains open.
 
-Spotify's current pagination code also derives compact or wide mode from the
-source element ID. IDs should identify elements, not become an undocumented
-action-data channel. A navigation-shell helper or bounded typed action context
-should provide the current route/presentation variant without requiring string
-parsing.
+Spotify's paged-resource migration no longer needs compact/wide source-ID
+parsing, and `UI.NavigationShell` gives each responsive presentation distinct
+element IDs. Protocol v13 now keeps the three concerns separate: element IDs
+identify nodes, action IDs identify intent, and focus-persistence IDs identify
+explicit cross-presentation equivalence. A future analyzer should preserve and
+validate this separation.
 
-### 8. Layout recipes and semantic styling
+### 8. Layout recipes and semantic styling — partially implemented
 
 The component library is useful, but advanced widgets still carry hundreds of
-lines of GBSS. Add reusable, theme-respecting recipes rather than
+lines of GBSS. Continue adding reusable, theme-respecting recipes rather than
 service-specific controls:
 
-- adaptive navigation shell;
+- adaptive navigation shell — implemented as `UI.NavigationShell` with built-in
+  semantic GBSS and responsive focus recovery;
 - persistent media panel;
 - scrollable collection page;
 - detail page with nested Back behavior;
@@ -572,25 +687,39 @@ rebuild standard focus, spacing, disabled, and responsive behavior.
 This recommendation is above the current primitive/composite layer. Authors
 already have `ResponsiveGrid`, responsive visibility branches, Row wrapping,
 settings rows, Picker, ActionSheet, Scrubber, status/empty compositions,
-media/app tiles, and Toast. The missing recipes should compose those contracts;
-they should not introduce parallel controls with different focus or styling
-semantics.
+media/app tiles, Toast, and now one reusable navigation shell. The remaining
+recipes should compose those contracts; they should not introduce parallel
+controls with different focus or styling semantics.
 
-### 9. Scenario-based preview and visual testing
+### 9. Scenario-based preview and visual testing — manifest listing implemented
 
-The current Spotify evidence can render setup without credentials, but not its
-authenticated playback surfaces. Add author-defined scenarios:
+The first public contract is a deliberately static scenario manifest:
 
-```csharp
-public static IEnumerable<WidgetScenario> Scenarios =>
-[
-    Scenario.Named("playing").WithServices(Fakes.Playing),
-    Scenario.Named("empty").WithServices(Fakes.NoPlayback),
-    Scenario.Named("permission-denied").WithServices(Fakes.Denied),
-];
+```json
+{
+  "version": 1,
+  "assembly": "bin/Release/net8.0/MyWidget.Scenarios.dll",
+  "providerType": "Dev.Example.MyWidgetScenarios",
+  "scenarios": [
+    { "name": "playing", "factory": "Playing" },
+    { "name": "empty", "factory": "Empty" }
+  ]
+}
 ```
 
-Suggested tooling:
+`gbar preview .` validates and lists declarations without resolving or loading
+the assembly. `gbar preview . --scenario playing` currently fails closed with a
+fixed diagnostic, and `--output` writes nothing. Tests cover strict parsing,
+bounded declarations, traversal rejection, listing without an assembly, and
+fail-closed execution/output behavior.
+
+This is useful discovery and validation infrastructure, but it does not yet
+preview authenticated-looking, empty, denied, or error surfaces. Executing those
+factories in the CLI process would grant ambient authority and a timeout could
+not safely terminate them, so semantic execution must wait for isolation.
+
+The remaining target is an interactive and visual layer over the same named
+states:
 
 ```powershell
 gbar preview . --scenario playing --viewport compact
@@ -598,11 +727,20 @@ gbar capture . --all-scenarios --viewport compact,standard,wide,accessible
 gbar test . --controller-replay replays/smoke.json
 ```
 
-The preview should show focus, input scope, shortcut ownership, element IDs,
-clipping, and accessibility labels. It should never require real OAuth,
-hardware, or user secrets. Visual artifacts should be deterministic enough for
-review, with pixel comparisons used cautiously and semantic snapshots retained
-as the primary contract.
+That layer should instantiate the real widget with typed fake services, drive
+lifecycle and actions, render through the native host, show clipping, and
+isolate and forcibly terminate misbehaving scenario code. It should never require real
+OAuth, hardware, or user secrets. Visual artifacts should be deterministic
+enough for review, with pixel comparisons used cautiously and semantic
+snapshots retained as the primary contract.
+
+The newly expanded public guide and quickstart make both NavigationShell and
+scenario preview much easier to discover, but their copyable examples are not
+compiled by `Documentation.Tests`. The invalid quickstart glyph and stale
+focus/action wording are corrected, and the guide now lists the additive
+protocol-v1–v13 feature matrix. Canonical end-to-end snippets should still be
+compile-tested against the same SDK reference an external widget uses so
+documentation cannot remain green while recommended code drifts.
 
 ### 10. Higher-level test harness
 
@@ -678,11 +816,16 @@ migration; Media Sessions is the first medium model and command migration.
 
 Next work:
 
-1. Design cursor/append resource state separately from current-value and
+1. Generalize the cancellation-ignoring stale-success, stale-failure, and
+   lifecycle-exit fixtures from YT Music into a reusable operation-migration
+   test recipe.
+2. Define credential/session generation semantics before any flow allows
+   credentials to be replaced while requests are in flight.
+3. Design cursor/append resource state separately from current-value and
    offset-page semantics.
-2. Migrate the remaining suitable widgets and Spotify operation families while
+4. Migrate the remaining suitable widgets and Spotify operation families while
    preserving their explicit lifetime, ordering, and reconciliation policies.
-3. Add focused recipes for provider-event merge, confirmation deadlines, and
+5. Add focused recipes for provider-event merge, confirmation deadlines, and
    absolute-value command coalescing without making them implicit.
 
 This phase should deliver the largest reduction in semaphores, cancellation
@@ -691,18 +834,35 @@ sources, task fields, locks, generation checks, and manual invalidations.
 ### Phase 2: improve application composition
 
 Completed foundation: `WidgetNavigator<TRoute>`, `WidgetIds`/`KeyedId`, exact
-active-scope action propagation, and the SDK Gallery production-style migration.
+active-scope action propagation, protocol-v13 explicit focus persistence,
+`UI.NavigationShell`, host focus recovery between responsive presentations,
+and the SDK Gallery production-style migration.
 
-1. Responsive navigation shell and standard page recipes.
-2. Stable-ID/action analyzer rules.
-3. Split and migrate advanced samples by responsibility.
+1. Document and test the deliberate focusable-but-inert disabled/busy contract
+   at the public `UI.NavigationShell` boundary, including wrap, selected
+   destination, activation suppression, and responsive persistence.
+2. Add a transition-scheduling seam test and measure the bounded persistence
+   resolver so the contract is proven correct and dormant on stable frames.
+3. Standard page recipes beyond the navigation shell.
+4. Stable-ID/action analyzer rules.
+5. Split and migrate advanced samples by responsibility, including adopting the
+   shell in a genuinely complex multi-page widget.
 
 ### Phase 3: improve feedback and onboarding
 
-1. Scenario-based preview and capture.
-2. Fluent deterministic test harness.
-3. Complexity-tiered templates.
-4. Publish the SDK and templates so authors do not require a repository-local
+Completed foundation: strict bounded scenario manifests, assembly-free listing,
+and fail-closed scenario selection with contract and safety tests.
+
+1. Move scenario assembly execution into a dedicated production-equivalent
+   AppContainer/Job/IPC process boundary.
+2. Real-widget scenarios with typed fake services, lifecycle, and actions.
+3. Viewport-aware native preview, capture, and controller replay.
+4. Fluent deterministic test harness.
+5. Compile-test the canonical copyable guide and quickstart examples against
+   the public SDK; the corrected glyph and protocol-matrix regressions
+   demonstrate why prose-only checks are insufficient.
+6. Complexity-tiered templates.
+7. Publish the SDK and templates so authors do not require a repository-local
    project reference.
 
 ### Phase 4: broaden the ecosystem carefully
@@ -721,14 +881,25 @@ The improvements should be evaluated against measurable author outcomes:
 - A C# developer can scaffold and run a basic widget in 15 minutes.
 - A one-capability data widget requires no author-created `SemaphoreSlim`,
   `CancellationTokenSource`, or unobserved `Task` field.
+- Latest-wins work cannot commit success, retry status, authorization state, or
+  rollback after supersession unless an explicit external generation proves
+  that result remains globally authoritative.
 - An offset-paged collection requires no author-owned page dictionary,
   stale-generation counter, cache eviction loop, or compact/wide source-ID
   parsing. This is implemented and exercised by Spotify 0.2.10.
 - An optimistic mutation requires no author-owned admission task, command
   cancellation source, or stale-attempt gate. This is implemented and exercised
   by Media Sessions; domain merge and rollback callbacks remain authored.
-- A multipage widget uses one route model for compact and expanded layouts.
-- Authenticated and unavailable states can be previewed without real secrets.
+- A multipage widget uses one route model and destination set for compact and
+  expanded layouts. SDK Gallery now demonstrates this; a larger production
+  migration remains the next proof.
+- Disabled and busy navigation destinations remain reachable and retain stable
+  responsive focus, while pointer/controller activation is consistently
+  suppressed and the unavailable state is exposed clearly.
+- Named authenticated-looking and unavailable scenarios can be declared and
+  listed without loading code, but semantic execution remains unavailable until
+  the isolated preview worker exists. Real-widget interaction and native visual
+  capture also remain open.
 - Advanced samples contain substantially more domain/rendering code than
   lifecycle and concurrency plumbing.
 - Deactivation, stale responses, command rollback, focus restoration, and task
@@ -759,6 +930,9 @@ Suggested baseline metrics for each migrated widget:
   authoring pain unless the coordination model is improved first.
 - **Weakening isolation for convenience.** Easier external integration must not
   provide ambient network access, secrets, raw device IDs, or desktop authority.
+- **Treating in-process preview as a sandbox.** Static scenario assemblies are
+  trusted local developer code; a timeout reports a stuck factory but cannot
+  safely terminate arbitrary managed work in the CLI process.
 - **Optimizing only for line count.** Explicit policy is preferable to concise
   but surprising behavior.
 
@@ -770,17 +944,22 @@ application-level layer. Continue building that layer from small,
 lifecycle-aware, testable primitives: operations, non-paged and bounded
 offset-paged resources, immutable state, optimistic command coordination,
 bounded navigation, and stable-ID scopes are now implemented and exercised;
-cursor/append resources, responsive navigation recipes, analyzer/preview
-tooling, and broader migrations remain.
+the first responsive navigation recipe, explicit responsive focus identity,
+and bounded scenario-manifest listing are also implemented. Isolated semantic
+scenario execution, cursor/append resources, additional page recipes,
+an ID/action analyzer, interactive/native preview and capture, publication, and
+broader migrations remain.
 
 The protocol-v11 pagination change is a strong example to repeat: identify a
 generic behavior proven by a demanding widget, move the security- and
 input-sensitive portion into the host, expose a small declarative SDK surface,
 and leave domain policy with the widget. Applying that same approach to cursor
-resource variants, responsive recipes, broader migrations, and scenario tooling would remove
-much more author plumbing without weakening the platform boundary.
+resource variants, additional responsive recipes, broader migrations, and the
+interactive/native half of scenario tooling would remove much more author
+plumbing without weakening the platform boundary.
 
 The framework will be ready for sophisticated human-authored community widgets
 when advanced authors mostly describe domain behavior and UI, while the SDK
-owns cancellation, bounded concurrency, stale-result rejection, invalidation,
-focus restoration, and deterministic testing.
+owns cancellation, bounded concurrency, invalidation, focus restoration, and
+deterministic testing, and the recommended patterns make every success and
+failure commit prove it is still current.

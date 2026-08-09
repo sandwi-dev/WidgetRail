@@ -17,12 +17,14 @@ controller evidence remains pending until the relaunched overlay is exercised.
 
 The current authoring-coordination milestone also implements public non-paged
 `WidgetResource<TValue>`, bounded `WidgetNavigator<TRoute>`, validated
-`WidgetIds`/opaque `KeyedId`, and active input-scope propagation on every
-standard open-widget action. SDK Gallery is the production-style navigation/ID
-migration. YT Music 0.2.5 now maps typed/status-only failures to bounded copy;
-it neither retains provider response bodies nor renders unknown exception text.
-Focused Release suites pass Widget SDK 80/80, SDK Gallery 6/6, and YT Music
-45/45. Packaged controller/companion evidence remains separate.
+`WidgetIds`/opaque `KeyedId`, active input-scope propagation on every standard
+open-widget action, protocol-v13 explicit focus persistence, and the responsive
+`UI.NavigationShell`. SDK Gallery is the production-style navigation/ID
+migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
+uses one lifecycle-owned Active/Latest lane for transport reconciliation; it
+neither retains provider response bodies nor renders unknown exception text.
+Focused Release suites pass Widget SDK 84/84, SDK Gallery 6/6, YT Music 48/48,
+and Gbar CLI 47/47. Packaged controller/companion evidence remains separate.
 
 ## Implemented
 
@@ -74,7 +76,7 @@ Up/Down navigation.
 ### Widget platform
 
 - `WidgetProtocol`: strict version-1 manifests and additive snapshot protocols
-  v1–v12, deterministic JSON, stable IDs, focus validation, quick actions with
+  v1–v13, deterministic JSON, stable IDs, focus validation, quick actions with
   optional typed control-operation metadata, Scroll/surface hints, absolute-
   value Sliders, images, closed semantic glyphs, explicit active controller
   scopes and snapshot correlation, and interaction state.
@@ -620,12 +622,12 @@ The runtime covers suspended pre-containment
 launch, memory/process/UI limits, kill-on-close, restart cleanup, and mandatory
 community AppContainer authority, bounded intentional unload, and private
 two-clock dashboard-gesture propagation. Its focused Release harness passes
-33/33;
+34/34;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
 bounded cleanup. The current SDK, SDK Gallery, and YT Music focused suites pass
-80/80, 6/6, and 45/45 respectively, including navigation/resource contracts,
+84/84, 6/6, and 48/48 respectively, including navigation/resource contracts,
 safe typed companion errors, serialization, and widget recovery for host-side
 rejected-Bearer invalidation without a second widget delete. The current
 Settings Release suite passes 41/41, including
@@ -635,7 +637,8 @@ enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
 polling. Styling and platform settings/themes pass 22/22 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 45/45, including authenticated candidate/active development readiness,
+passes 47/47, including fail-closed bounded scenario-manifest discovery,
+authenticated candidate/active development readiness,
 last-good retention/restart, complete bounded source/package watching, cleanup
 failure reporting, version
 list/selection/rollback, exact-stream local/remote update policy, theme
@@ -693,10 +696,10 @@ GBSS, and privacy-safe real Windows read smoke.
 The current milestone passed `scripts/Verify.ps1 -Configuration Release` end to
 end, including every managed suite, documentation contract,
 native Release aggregate, hidden OverlayHost smoke, and InputProbe build/smoke.
-Focused native Release suites report Declarative Layout 245 checks, Native Icons 198,
-Declarative Motion 39, Overlay Targeting 42, Controller Navigation 73, Pressed
-Interaction 29, Slider Interaction 2,071, Focus Navigation 30, Widget Surface
-Focus 20, and Declarative Renderer 4,530; the remaining native suites also
+Focused native Release suites report Declarative Layout 245 checks, Native Icons 206,
+Declarative Motion 39, Overlay Targeting 42, Controller Navigation 81, Pressed
+Interaction 29, Slider Interaction 2,082, Focus Navigation 41, Widget Surface
+Focus 20, and Declarative Renderer 4,632; the remaining native suites also
 pass. Managed feature-negotiation regressions assert the highest feature
 version required by the complete tree—such as Grid v8—rather than incorrectly
 pinning an inline-PNG tree to its older v6 minimum. Display-sensitive evidence

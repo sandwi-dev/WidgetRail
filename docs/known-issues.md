@@ -73,7 +73,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-052 | P0 | Verifying | Games & Apps / worker lifecycle | Initial and retry library loads now use runtime-owned Active operations, while toast expiry has one cancellation-source disposer and clears the shared reference before disposal. Focused coverage and three consecutive generic-worker/AppContainer conformance runs pass; packaged churn evidence remains. |
 | GBA-053 | P1 | Verifying | Widget SDK resource coordination | Public `WidgetResource<TValue>` now owns bounded non-paged load/cache/retry/last-good/subscription state with lifecycle cancellation and stale-result rejection; broader production migrations and packaged evidence remain. |
 | GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
-| GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | YT Music 0.2.5 now exposes typed status-only service failures and bounded safe UI copy without retaining response bodies or unknown exception messages; real-companion failure evidence remains. |
+| GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | YT Music 0.2.6 now exposes typed status-only service failures and bounded safe UI copy without retaining response bodies or unknown exception messages; real-companion failure evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -1655,12 +1655,14 @@ runtime/provider exceptions can contain implementation details. Rendering
 either directly would make Community-addon status unpredictable and could leak
 local data into UI, logs, screenshots, or issue reports.
 
-**Implementation evidence:** YT Music package 0.2.5 uses typed
+**Implementation evidence:** YT Music package 0.2.6 uses typed
 `YtMusicServiceException` containing only the HTTP status code. Non-success
 loopback bodies are not retained. The widget maps known capability codes and
 status classes to bounded authored copy and maps every unknown exception to one
 generic message; it never appends `Exception.Message` or response JSON. The
-focused YT Music suite passes 45/45, including the safe typed error regressions.
+focused YT Music suite passes 48/48, including safe typed error regressions,
+lifecycle-owned transport-reconciliation cancellation/draining, and stale
+ordinary/authorization failure rejection after supersession or lifecycle exit.
 
 **Acceptance:**
 

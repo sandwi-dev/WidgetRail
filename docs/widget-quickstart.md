@@ -3,8 +3,8 @@
 Status: implemented developer workflow inside this repository
 
 This guide creates a controller-first C# widget, validates its manifest and
-GBSS, renders a protocol snapshot, and replays input without opening the native
-overlay.
+GBSS, lists bounded scenario declarations, renders a protocol snapshot, and
+replays input without opening the native overlay.
 
 ## Prerequisites
 
@@ -26,9 +26,9 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar help
 ```
 
-The widget commands are `new`, `validate`, `dev`, `render`, `replay`, `pack`,
-`install`, `list`, `enable`, `disable`, and the `version list|select|rollback`
-group. The separate `theme` group provides
+The widget commands are `new`, `validate`, `dev`, `preview`, `render`, `replay`,
+`pack`, `install`, `list`, `enable`, `disable`, and the
+`version list|select|rollback` group. The separate `theme` group provides
 `new`, `validate`, `preview`, `pack`, `inspect`, `install`, and `list` for
 data-only global themes. Remote install accepts an absolute HTTPS URL or a
 deterministic GitHub Release shorthand. There is no GitHub publisher, signing
@@ -101,7 +101,7 @@ The starter contains:
 - a typed `Widget` subclass;
 - stable element IDs and focus neighbors;
 - controller shortcuts and bounded disabled states;
-- optional closed semantic button icons through `.Icon(WidgetGlyph.X)`;
+- optional closed semantic button icons through `.Icon(WidgetGlyph.Refresh)`;
 - a safe `styles/default.gbss` file; and
 - a deterministic controller replay.
 
@@ -171,6 +171,43 @@ calls `Render()`. It is not the production worker boundary and must not be used
 to inspect untrusted binaries. The command can also preview an existing
 snapshot with `gbar render <snapshot.json>`.
 
+## List named scenario declarations
+
+Create `scratch\VolumeControl\gbar.scenarios.json` to describe a bounded set of
+states for the future isolated preview runner:
+
+```json
+{
+  "version": 1,
+  "assembly": "bin/Debug/net8.0/VolumeControl.dll",
+  "providerType": "Dev.Example.VolumeControl.VolumeControlScenarios",
+  "scenarios": [
+    { "name": "muted", "factory": "Muted", "description": "Muted local fixture" }
+  ]
+}
+```
+
+Validate and list the declarations:
+
+```powershell
+& $gbar preview .\scratch\VolumeControl
+```
+
+The listing path validates manifest syntax and limits but does not load the
+assembly, resolve `providerType`, invoke `factory`, or prove that the referenced
+code exists. Selected execution currently fails closed: do not use
+`gbar preview --scenario ...` or `--output` as a working command.
+
+Executing a scenario provider inside the CLI would give developer code the
+process's ambient filesystem, network, process, and user authority. An
+in-process timeout is not a sandbox and cannot safely terminate arbitrary work.
+Factory execution remains disabled until a dedicated AppContainer preview
+worker can own bounded IPC, lifecycle, termination, and snapshot validation.
+Use typed-fake unit tests and `gbar render` with code you wrote or reviewed for
+executable state inspection. See the
+[widget authoring guide](widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test)
+for the complete contract.
+
 ## Replay controller input
 
 ```powershell
@@ -193,7 +230,8 @@ errors before host integration.
    `InitialFocusId` inside it. The host owns/restores current focus.
 6. Handle semantic action IDs in `OnActionAsync`.
 7. Call `Invalidate()` only when visible state changes.
-8. Rebuild, validate, render, and replay.
+8. Rebuild, validate, list scenario declarations, render trusted code, and
+   replay.
 
 Author in logical DIPs and responsive GBSS. Do not assume a fixed physical
 resolution, DPI, aspect ratio, widget width, or positive desktop coordinates.

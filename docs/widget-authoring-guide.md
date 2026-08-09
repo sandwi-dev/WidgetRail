@@ -1,6 +1,6 @@
 # Widget authoring guide and API map
 
-Status: the package schema, managed SDK, declarative protocol versions 1–3,
+Status: the package schema, managed SDK, additive declarative protocol versions 1–13,
 controller routing, lifecycle, GBSS, local packaging/install workflow, and
 typed host capabilities described as **implemented** below exist in this
 repository, including exact-port local JSON and write-only private secrets.
@@ -52,7 +52,7 @@ An author can use today:
 - `HostServices` typed capabilities, private state, exact-port companion JSON,
   and write-only private secrets when declared/allowed;
 - transport-free fakes through `WidgetTestHostServicesBuilder`;
-- `gbar new|validate|render|replay|dev|pack|install|enable|disable` plus immutable
+- `gbar new|validate|preview|render|replay|dev|pack|install|enable|disable` plus immutable
   version selection/rollback, and host-owned `gbar config` management for
   bounded public package configuration; and
 - the same Settings permission/package review and live catalog reload path as
@@ -80,14 +80,15 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1`, `2`, or `3` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects this automatically. |
+| Declarative snapshot protocol | `1` through `13` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
 
-A plain Stack/Row view is emitted as protocol 1. Using `UI.VerticalScroll`,
-`UI.HorizontalScroll`, `UI.Scroll`, or `WidgetView.Surface` emits protocol 2.
-Using `UI.Slider` emits protocol 3, including when it is nested inside a
-protocol-2 Scroll surface. Those additive UI features do **not** require a
-fictional host API 2 or 3: packages still declare the implemented host API
-range `1.0` through major `1`.
+A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
+v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
+v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
+activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
+and explicit focus persistence v13. Combining features selects the highest
+required version. These additive snapshot features do **not** change the
+package host API range, which remains `1.0` through major `1`.
 
 Runtime, bridge, and capability-broker transports also have internal protocol
 versions. Widget code does not set or negotiate them; use
@@ -514,29 +515,73 @@ Surface hints belong to one `WidgetView`, so a compact status page and a wide
 media page can publish different modes. Every view must still reflow and use
 Scroll for overflow after host clamping.
 
-When the semantic hierarchy itself must change, use the host-resolved
-protocol-v9 visibility modifier rather than reading monitor dimensions in the
-worker:
+For a multipage root that changes between compact tabs and an expanded rail,
+prefer `UI.NavigationShell`. Author the destination model and page content
+once; the SDK creates presentation-specific controls while the host chooses the
+active branch from logical-DIP surface dimensions:
 
 ```csharp
-var compact = BuildCompactNavigation()
-    .VisibleWhen(ResponsiveVisibility.CompactOnly);
-var expanded = BuildNavigationRail()
-    .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
+var destinations = new NavigationShellDestination[]
+{
+    new("home", "Home", "navigate.home", WidgetGlyph.Play),
+    new("library", "Library", "navigate.library", WidgetGlyph.Music),
+    new("settings", "Settings", "navigate.settings", WidgetGlyph.Settings),
+};
+
+var content = UI.VerticalScroll(
+    "library.page.scroll",
+    UI.Button("Open album", "album.open", "library.content.first"));
+
+var shell = UI.NavigationShell(
+    id: "library.shell",
+    selectedDestinationId: "library",
+    contentEntryFocusId: "library.content.first",
+    content: content,
+    destinations: destinations);
 
 return new WidgetView(
-    UI.Stack("library.root", compact, expanded, BuildContent()),
+    shell,
     InitialFocusId: "library.content.first");
 ```
 
+The shell accepts two to eight destinations. Destination IDs describe logical
+destinations; compact and rail element IDs are generated separately. Action IDs
+describe routing intent and may be shared when the handler distinguishes
+`SourceElementId`; they are never used as focus identity. `contentEntryFocusId`
+must identify a focusable descendant of the shared content. An optional
+`expandedPane` may add one persistent expanded-only subtree and an
+`expandedPaneEntryFocusId` for navigation from the rail.
+
 Compact means the final widget surface is less than 960 DIPs wide or 540 DIPs
-high; otherwise the expanded branch is active. The inactive subtree is absent
-from layout, paint, hit testing, focus, shortcuts, and accessibility. Keep the
-root unconditional, assign different stable IDs to mutually exclusive
-branches, and ensure `InitialFocusId` can fall back to a focusable control in
-the active branch. Prefer Row wrapping or `ResponsiveGrid` when only placement,
-not hierarchy, needs to change. `UI.ResponsiveBranch(...)` is the equivalent
-non-fluent form.
+high; otherwise the expanded branch is active. The inactive navigation branch
+is absent from layout, paint, hit testing, focus, shortcuts, and accessibility.
+The content subtree is authored once and remains present in both modes. Combine
+the shell with `WidgetNavigator<TRoute>` when root destinations also own nested
+routes, exact-scope B handling, return focus, or route cancellation. The SDK
+Gallery is the copyable production-style reference.
+
+Each shell destination receives one protocol-v13 focus-persistence ID shared by
+its compact and rail controls. This ID exists only to preserve the logical focus
+destination across mutually exclusive presentations. Action IDs remain routing
+intent: distinct destinations may share one and distinguish the source element
+in their handler without affecting focus recovery.
+
+Use the lower-level protocol-v9 visibility modifier when a responsive structure
+is not a navigation shell:
+
+```csharp
+var compact = BuildCompactSummary()
+    .VisibleWhen(ResponsiveVisibility.CompactOnly);
+var expanded = BuildExpandedSummary()
+    .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
+
+return new WidgetView(UI.Stack("summary.root", compact, expanded));
+```
+
+Keep that root unconditional, assign different stable IDs to mutually exclusive
+branches, and keep focus targets valid in the active branch. Prefer Row wrapping
+or `ResponsiveGrid` when only placement, not hierarchy, changes.
+`UI.ResponsiveBranch(...)` is the equivalent non-fluent form.
 
 ## Declarative UI API map
 
@@ -544,6 +589,7 @@ non-fluent form.
 | --- | --- | --- |
 | `UI.Stack(id, children)` | vertical container | Can start an input scope and own shortcuts. |
 | `UI.Row(id, children)` | horizontal container | Can start an input scope and own shortcuts. |
+| `UI.NavigationShell(id, selectedDestinationId, contentEntryFocusId, content, destinations, expandedPane?, expandedPaneEntryFocusId?)` | compact tabs or expanded rail around one shared page subtree | Protocol 13; two to eight stable destinations with shell-owned explicit focus persistence. Action IDs need not be unique. |
 | `element.VisibleWhen(mode)` / `UI.ResponsiveBranch(mode, element)` | host-resolved conditional subtree | Protocol 9; use distinct compact/expanded branch IDs and keep the root unconditional. |
 | `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` | responsive row-major Grid | Protocol 8; host derives bounded columns from final logical width. |
 | `UI.VerticalScroll(id, children)` | vertical Scroll | Protocol 2; host-owned focus-follow offset. |
@@ -553,6 +599,7 @@ non-fluent form.
 | `UI.Text(text, id, accessibilityLabel?)` | text | Non-interactive. |
 | `UI.CodeText(text, id, accessibilityLabel?)` | semantic monospace text | Nonfocusable, whitespace-preserving, and bounded to 4,096 characters. |
 | `UI.Button(label, action, id)` | focusable button | `A` invokes its action. |
+| `focusable.PersistFocusAs(id)` | explicit cross-presentation focus identity | Protocol 13; use only on mutually exclusive controls representing one logical destination. Omission preserves legacy behavior. |
 | `UI.ToggleButton(label, isOn, action, id)` | composed button | Emits On/Off text and selected semantics. |
 | `UI.Stepper(...)` | composed row | Stable `.label`, `.decrement`, `.value`, `.increment` children. |
 | `UI.Progress(value, maximum, id, label?)` | progress | Requires finite `0 <= value <= maximum`, `maximum > 0`. |
@@ -1285,7 +1332,7 @@ Unknown capability IDs are syntactically valid at manifest parse time but an
 installed package declaring unsupported authority is omitted by the bridge.
 Use only the published closed IDs above.
 
-## Validate, render, replay, and test
+## Validate, list scenarios, render, replay, and test
 
 Use the same compiler/validators as production:
 
@@ -1305,6 +1352,49 @@ Use the same compiler/validators as production:
 
 DLL rendering executes the assembly in the CLI process. Use it only for code
 you wrote or reviewed; it is not the production AppContainer boundary.
+
+Named scenario manifests are implemented as a bounded discovery contract. Add
+`gbar.scenarios.json` at the widget root to describe the states an eventual
+isolated preview worker should expose:
+
+```json
+{
+  "version": 1,
+  "assembly": "bin/Release/net8.0/Clock.dll",
+  "providerType": "Dev.Example.Clock.ClockScenarios",
+  "scenarios": [
+    {
+      "name": "running",
+      "factory": "Running",
+      "description": "Deterministic local clock fixture"
+    }
+  ]
+}
+```
+
+List and validate declarations without loading the provider assembly:
+
+```powershell
+& $gbar preview .\scratch\Clock
+```
+
+Listing validates the version, bounded relative assembly path, provider/factory
+names, unique scenario names, descriptions, and manifest limits. It deliberately
+does not load the assembly, resolve the provider type, invoke a factory, produce
+a snapshot, activate a `Widget`, inject services, drive actions, select a
+viewport, or render native pixels. The assembly, provider, and factory fields
+reserve the version-1 declaration shape; listing alone does not prove that the
+referenced code exists or implements a valid factory.
+
+Selected scenario execution currently fails closed. Do not publish or depend on
+`gbar preview --scenario ...` or `--output` as a working author workflow. A
+scenario provider is developer code: executing it in the CLI process would give
+it that process's ambient filesystem, network, process, and user authority, and
+an in-process timeout could not safely terminate arbitrary managed work. That is
+not a sandbox. Factory execution and snapshot output remain disabled until the
+platform has a dedicated AppContainer preview worker with bounded IPC,
+lifecycle, termination, and output validation. Continue using transport-free
+unit tests with typed fakes for executable state coverage.
 
 For transport-free unit tests, configure typed fakes and drive real lifecycle
 hooks:
@@ -1519,6 +1609,9 @@ During local development:
 
 - `gbar validate` reports manifest/GBSS JSON paths and source-located styling
   diagnostics.
+- `gbar preview` validates and lists named scenario declarations without loading
+  their provider assembly. Selected execution and snapshot output fail closed
+  until an AppContainer preview worker exists.
 - `gbar render` catches snapshot validation and displays the semantic tree.
 - `gbar replay` isolates focus/action contract failures without the overlay.
 - Overlay Settings → **Diagnostics** reports bounded bridge, catalog,

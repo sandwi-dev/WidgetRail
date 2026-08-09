@@ -12,13 +12,24 @@ The four pages cover:
 - responsive `MediaTile` and `AppTile` action surfaces; and
 - `CodeText`, `LoadingIndicator`, and non-focus-stealing `Toast` feedback.
 
-The sample is also the production-style reference for the public navigation
-and stable-ID coordination APIs. `WidgetIds.Scope("gallery")` builds the
-validated navigation ID. One `WidgetNavigator<GalleryRoute>` owns root tabs, nested
+The sample is also the production-style reference for the public responsive
+navigation and stable-ID coordination APIs. `UI.NavigationShell` renders one
+four-destination model as compact tabs or an expanded rail around one shared
+page subtree. Compact and rail controls receive distinct stable element IDs but
+share one protocol-v13 focus-persistence identity per logical destination. The
+host uses only that explicit identity to preserve focus across responsive
+presentation changes; action IDs remain routing intent and may be shared. The
+built-in theme owns the standard shell dimensions and focus/selected/pressed
+treatment; the sample does not rebuild those rules in local GBSS.
+
+`WidgetIds.Scope("gallery")` builds the validated navigation ID. One
+`WidgetNavigator<GalleryRoute>` owns root destinations, nested
 Picker/ActionSheet routes, stable input scopes, exact-scope B, remembered return
 focus, and route-lifetime cancellation. It does not keep parallel page/modal,
-focus-return, or scope-string fields. The focused suite proves that leaving a
-route cancels its token before the replacement view is published.
+focus-return, responsive-destination, or scope-string fields. The focused suite
+proves one shared content subtree, distinct compact/expanded controls,
+controller traversal, selected-state accessibility, authoring bounds, and that
+leaving a route cancels its token before the replacement view is published.
 
 The sample has no permissions, custom executable worker, native provider, or
 host-only escape hatch. Its manifest selects `dotnet-worker`, so an installed
@@ -27,7 +38,7 @@ GBSS uses semantic `gbar-*` hooks plus local `gallery-*` classes and no fixed
 pixel window assumptions. Copy the relevant method and its related rules rather
 than copying the entire gallery into a production widget.
 
-## Build, test, and preview
+## Build, test, and inspect a snapshot
 
 From the repository root:
 
@@ -40,6 +51,13 @@ dotnet run --project .\tools\GbarCli\GbarCli.csproj -c Release -- render `
   --type GameBarAlternative.Samples.SdkGalleryWidget.SdkGalleryWidget `
   --instance sample.sdk-gallery
 ```
+
+`gbar render` constructs the widget and prints its current semantic snapshot;
+use it only with code you wrote or reviewed. The separate `gbar preview`
+manifest workflow currently validates and lists scenario declarations without
+loading their provider assembly. Selected scenario execution fails closed until
+an AppContainer preview worker exists. See the
+[widget authoring guide](../../docs/widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test).
 
 Build a deterministic `.gbarwidget` with the same public CLI available to
 community authors:
