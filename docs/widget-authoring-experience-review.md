@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD `6bd60d3` (documentation-only; implementation baseline `6fc9e01`) after verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against current HEAD `4f903b0` after committed exact-directory-boundary evidence, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -84,6 +84,10 @@ covers the consumed-byte bound. Clean all-lane result
 `20260809T141527Z-8946c731` now retains the passing CLI step as part of 41/41
 manifest steps and 755 JUnit cases for exact commit `dc6b092`; this review
 inspected the retained result rather than launching it.
+Current clean selected run `20260809T152831Z-67b77c73` also retains CLI 49/49
+for documentation-only HEAD `6bd60d3` over implementation baseline `6fc9e01`.
+It selected seven launch/package-oriented steps, so it is current CLI evidence
+but not a complete current 41-step gate.
 The broader tradeoff is an explicit tooling gap: there is no headless isolated
 command that turns widget/scenario code into a snapshot. Authors must currently
 add an author-controlled typed-fake test to persist `SnapshotJson` or use the
@@ -185,12 +189,18 @@ inspection and installed-tree verification compute the same canonical
 package-root/implicit-directory set and reject more than 1,024 directories
 before extraction/publication or launch. Bridge coverage keeps that catalog
 limit aligned with the runtime outer guard, the public packaging guide publishes
-it, and a within-file-limit deep-path fixture proves early refusal. Maximum
-accepted deep-shape activation timing remains part of the broader start-budget
-work. Resolution evidence should include an exactly 1,024-directory package
-through pack, install, enable, and launch, plus proof that an over-limit
-`gbar pack` leaves no output and install publishes no package. Authors no longer
-discover the hard limit only on first open.
+it, and a within-file-limit deep-path fixture proves early refusal. Commit
+`4f903b0` materially closes the remaining local edge proof:
+an exactly 1,024-directory,
+258-file package uses public pack/install/enable and renders a real first-party
+widget through the production AppContainer path. Packing records 255.038 ms and
+activation through first validated render 2,521.831 ms. The paired 1,025-
+directory CLI case leaves no pack output and publishes no installed bytes.
+Authors no longer discover the hard limit only on first open.
+Clean selected run `20260809T152831Z-67b77c73` retains the negative admission
+path through Catalog 32/32, Bridge 42/42, and CLI 49/49. The new focused CLI
+50/50 and First-Party Conformance 6/6 results add the accepted and atomic-
+rejection edge cases; clean retained evidence for those additions remains next.
 
 ## Evidence from the repository
 
@@ -289,6 +299,12 @@ cases with zero failures, errors, or skips in 313.016 seconds for exact clean
 commit `dc6b092`. Its retained bundle includes per-step logs/JUnit, 29 package
 digests, exact selected native-toolchain provenance, zero stderr, and no stream
 truncation.
+The newer clean release-eligible result `20260809T152831Z-67b77c73` retains 182
+passing JUnit cases across seven explicitly selected steps for docs-only commit
+`6bd60d3`, including Runtime 44/44, Worker Host 9/9, CLI 49/49, Catalog 32/32,
+Bridge 42/42, First-Party Conformance 5/5, and Documentation 1/1. Its `lane: all`
+metadata does not make it a complete all-manifest run because the recorded
+`selectedStepIds` narrow its scope.
 Disabled and busy destinations intentionally remain focusable while activation
 is suppressed; renderer and focus-test source encode that contract. The
 repository's 33 managed test projects are all custom executable harnesses with
@@ -469,6 +485,11 @@ to execute a DLL and then replayed the nonexistent output. The worktree now
 uses the correct `gbar dev` path and explains that render is data-only. It still
 supplies a replay file but no typed-fake snapshot-export test or static
 snapshot, leaving the advertised deterministic replay loop incomplete.
+The public platform overview makes this gap more confusing by saying
+`gbar new widget` scaffolds a “test/replay” workflow. The generated tree has
+`replays/smoke.json`, but no test project, snapshot exporter, or snapshot input,
+so a new author cannot execute that advertised workflow without designing the
+missing test infrastructure first.
 This does not require a new framework abstraction: `WidgetTestHost`,
 `WidgetTestHostServicesBuilder`, and `SnapshotJson` are already public. The
 starter should generate a small deterministic test executable that attaches
@@ -1377,8 +1398,8 @@ and fail-closed scenario selection with contract and safety tests.
    authority for each worker session; retain stale-generation-root denial and
    reject replacement, alternate group grants, directory rename/reparse substitution, and late additions
    under the production AppContainer token; bind ACL targets to the objects
-   authenticated by the lease; preserve the aligned 1,024-directory admission
-   contract and prove both its exact accepted edge and rejection atomicity;
+   authenticated by the lease; preserve the now-proven aligned 1,024-directory
+   accepted edge and atomic 1,025-directory refusal;
    put revalidation, authority application, process creation, and hello under
    one enforced user-visible start budget without blocking unrelated bridge
    work; clean up persistent ACL grants on every failure/teardown path. Then add an

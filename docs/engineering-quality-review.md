@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against current HEAD `6bd60d3` (documentation-only; implementation baseline `6fc9e01`) after committed digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
+Last reassessed: 2026-08-09 against current HEAD `4f903b0` after committed exact-directory-boundary evidence, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -26,7 +26,7 @@ descendants on success or timeout, and pump completion has its own deadline.
 The same commit provides manifest-driven local/Windows lanes, capped streams and
 cases, test-project coverage, clean-only release eligibility, exact selected
 native compiler/SDK/tool hashes, and SHA-pinned workflow actions. Focused dirty
-evidence passes and is correctly rejected for release use. Clean all-lane result
+evidence passes and is correctly rejected for release use. The broadest clean all-lane result
 `20260809T141527Z-8946c731` now also passes all 41 steps and 755 JUnit cases in
 313.016 seconds for exact clean commit `dc6b092`; the bundle is correctly marked
 release-evidence eligible. An immutable hosted artifact remains open. Package-artifact
@@ -84,22 +84,38 @@ Follow-up `6fc9e01` closes the deterministic package-shape mismatch found by
 this audit. Package inspection and installed-tree verification now reject more
 than 1,024 package-root/implicit directories required to reach verified files,
 the runtime retains the same executable outer limit, and bridge coverage asserts
-the two internal constants remain aligned. The Release Catalog 32/32, Bridge
-42/42, and CLI 49/49 suites are retained green with a within-file-limit deep-
-path refusal case in run `20260809T152831Z-67b77c73`.
+the two internal constants remain aligned. Clean selected-step run
+`20260809T152831Z-67b77c73` retains Catalog 32/32, Bridge 42/42, CLI 49/49,
+Runtime 44/44, Worker Host 9/9, First-Party Conformance 5/5, and the
+documentation contract green: 182 JUnit cases across seven explicitly selected
+steps for clean documentation-only HEAD `6bd60d3`, which contains implementation
+baseline `6fc9e01`. It is release-evidence eligible, but its `lane: all` label
+must not be read as the complete 41-step manifest because `selectedStepIds`
+narrows the run.
 
 The same work exposes a new P1 availability boundary. Its five-second
 `ContentLeaseTimeout` covers revalidation only; the subsequent per-directory and
 per-file ACL reads/writes, AppContainer setup, and pre-process preparation are
 outside that deadline. The new maximum test permits a 512-file startup to take
-almost ten seconds; source prints a one-machine metric, but no current run
-artifact retains it. Because bridge requests are
+almost ten seconds. The current clean selected bundle retains one-machine
+measurements of 360.426 ms for the 512-file exact AppContainer grant path and
+325.283 ms for the 512-file package launch lease; neither is a production
+budget or a deep 1,024-directory case. Because bridge requests are
 dispatched serially and the native client performs synchronous untimed
 `ReadFile` calls from `OverlayApp`, a slow or blocked ACL operation can stall the
 managed control plane and freeze the overlay UI before the worker connect timeout
 begins. EQ-020 requires one enforced start-admission budget, cancellable
 off-UI-thread bridge I/O, transactional authority cleanup, and responsiveness
 evidence.
+
+Commit `4f903b0` materially closes that exact-edge
+test gap without pretending it closes the deadline. A 258-file package requiring exactly 1,024
+authority directories completes public pack/install/enable and renders a real
+first-party widget through the production AppContainer path; packing records
+255.038 ms and activation through first validated render 2,521.831 ms. A paired
+1,025-directory CLI fixture proves pack leaves no output and install publishes
+no bytes. CLI 50/50 and First-Party Conformance 6/6 are focused green; clean
+retained evidence is pending.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -205,6 +221,22 @@ hosted execution proof remains open.
 
 ## Changes since the previous audit
 
+Commit `e7b4e6b` is documentation-only. It correctly carries retained run
+`20260809T152831Z-67b77c73`'s 325.283 ms launch-lease and 360.426 ms exact-grant
+measurements into implementation status, roadmap, and packaging guidance. The
+run remains seven explicitly selected managed steps for clean docs commit
+`6bd60d3`, not a current complete 41-step managed/native gate. No implementation
+finding changes status in this cycle.
+
+Two implementation test files changed after that commit. Code inspection shows
+an exact 1,024-directory/258-file package carried through public pack, install,
+enable, lease-count validation, and a real AppContainer first render, plus an
+exact 1,025-directory CLI refusal that asserts no archive or installed package
+publication. The implementation agent reports CLI 50/50 and First-Party
+Conformance 6/6 with 255.038 ms packing and 2,521.831 ms through first validated
+render. This review did not execute those dirty-worktree tests, and no retained
+bundle contains them yet.
+
 The verification follow-up is committed as `4450cfa`. The runner starts a small
 handshake launcher, assigns it to a kill-on-close Windows Job, starts both capped
 pumps, and only then authorizes the real command. Children inherit the Job, so
@@ -256,7 +288,10 @@ Follow-up `6fc9e01` rejects archive and installed-tree shapes that would require
 more than 1,024 exact authority directories, before extraction/publication or
 worker start. Catalog/runtime constants are checked together by bridge coverage;
 retained Release verification records Catalog 32/32, Bridge 42/42, and CLI 49/49
-in `20260809T152831Z-67b77c73`.
+in `20260809T152831Z-67b77c73`. That clean release-eligible bundle contains 182
+passing JUnit cases across seven explicitly selected managed steps for docs-only
+commit `6bd60d3`; it validates the `6fc9e01` implementation baseline but is not
+a replacement for a current complete 41-step managed/native run.
 
 EQ-014 remains the highest overall risk, but its status advances to materially
 partially implemented. The installed-package conformance path proves ordinary
@@ -273,10 +308,11 @@ path/open/ACL phase, and an explicit protected catalog/alternate-ACE contract.
 The launch-performance audit found that the advertised five-second admission
 deadline ends when the content factory returns. Exact ACL application then runs
 synchronously for every verified directory/file with no token or remaining
-deadline, before the three-second worker connect timer exists. The new
-512-file runtime case reports 372.060 ms locally and asserts only that a full
-startup stays below ten seconds; that threshold is not one production start
-budget. Since the bridge awaits this work in its
+deadline, before the three-second worker connect timer exists. The current clean
+selected run retains 360.426 ms for the 512-file exact-grant path and 325.283 ms
+for the separate launch-lease path, while the test asserts only that startup
+stays below ten seconds; that threshold is not one production start budget.
+Since the bridge awaits this work in its
 serial request loop and the native client waits with synchronous untimed
 `ReadFile` calls from the UI path, EQ-020 records the unenforced latency claim,
 native overlay freeze, control-plane availability, and partial-ACL rollback
@@ -486,12 +522,15 @@ are:
 | OverlayHost Release target | built successfully |
 | Documentation contract | 49 Markdown files passed on commit `b2d6f95` |
 | Full bounded all-lane gate | clean release-eligible run `20260809T141527Z-8946c731` passed 41/41 steps and 755 JUnit cases in 313.016 seconds for commit `dc6b092` |
+| Current launch/package focused gate | clean release-eligible run `20260809T152831Z-67b77c73` passed 182 cases across seven explicitly selected steps for docs-only commit `6bd60d3` over implementation baseline `6fc9e01`; it is not a complete all-manifest run |
 
 The typed-diagnostic milestone is committed. Styling 23/23, CLI 49/49, and the
 49-file documentation contract were run and their output inspected around the
 final API-shape change; Platform Settings 15/15 and Bridge 40/40 were reported
-green earlier in the same milestone. The previous full-verifier run predates
-this commit, so it is not retained end-to-end evidence for current HEAD.
+green earlier in the same milestone. The complete 41-step verifier run predates
+the current implementation. The new seven-step retained run provides current
+evidence for the launch/package path, but not current native-overlay, SDK,
+advanced-widget, provider, Settings, or renderer evidence.
 
 The retained clean all-lane result exercises the managed, protocol, capability,
 documentation, packaging-conformance, native input/layout/rendering, hidden
@@ -863,6 +902,11 @@ README contains no publish/staging/pack command, while the CLI README advertises
 that exact source-directory pack command. The focused scaffold test stops after
 `dotnet build`; it does not execute validate, dev, snapshot export/replay, pack,
 inspect, install, or enable from the generated project.
+`docs/plugin-platform.md` also overstates the current starter as scaffolding a
+“test/replay” workflow. The template contains `replays/smoke.json`, but no test
+project, snapshot exporter, or static snapshot to feed it. This is public
+contract drift, not just missing polish: the platform overview promises a
+workflow its canonical generated artifact cannot execute.
 
 The dependency itself is also not ready to be governed as a public platform
 contract. `WidgetSdk.csproj` has target-framework, nullable, implicit-using, and
@@ -1513,9 +1557,9 @@ misreported as the host's five-second admission timeout. Focused runtime source
 adds direct cases for both behaviors.
 
 This is the correct ownership direction and is substantially more than adding a
-hash helper. Commits `d2e49a9` and `6fc9e01` include it; implementation-reported focused
-Release Catalog 32/32, Runtime 44/44, Bridge 42/42, Worker Host 9/9, and
-First-Party Conformance 5/5 suites are retained green in clean eligible run
+hash helper. Commits `d2e49a9` and `6fc9e01` include it; clean selected Release
+Catalog 32/32, Runtime 44/44, Bridge 42/42, Worker Host 9/9, and First-Party
+Conformance 5/5 suites are retained green in eligible run
 `20260809T152831Z-67b77c73`. New
 catalog tests inspect the full inventory, prove write/delete denial while the
 lease lives, and reject mutation/insertion before admission. Bridge tests prove
@@ -1720,9 +1764,9 @@ admission failure, exact factory wiring, sanitized errors, crash/restart/stop
 lease lifetime, denial of a late text file under the production AppContainer
 token after replacing a prior broad current-root grant, denial of a stale root
 under the next digest identity, and positive execution of five real installed
-packages. Focused implementation runs report Catalog 32/32, Runtime 44/44,
-Bridge 42/42, Worker Host 9/9, and First-Party Conformance 5/5; those current-
-commit runs are not retained in an evidence bundle. Extend the Windows installed-worker fixture to
+packages. Clean selected run `20260809T152831Z-67b77c73` retains Catalog 32/32,
+Runtime 44/44, Bridge 42/42, Worker Host 9/9, and First-Party Conformance 5/5
+for the documentation-only commit containing `6fc9e01`. Extend the Windows installed-worker fixture to
 load a verified managed dependency, native DLL, and asset after startup, while
 matched late-added forms fail. Pause after
 publication and after ACL application; prove replacement/reversion cannot
@@ -1742,7 +1786,8 @@ host-side factory test is not closure.
 
 ### EQ-020 — P1 — Exact-content startup can block the native UI outside every request deadline
 
-**Status: Open against current commit `6fc9e01`; the file inventory
+**Status: Open against current HEAD `6bd60d3` and implementation baseline
+`6fc9e01`; the file inventory
 is bounded, but security-authority application, managed dispatch, native pipe
 I/O, and the user-visible start operation do not share an enforced deadline.**
 
@@ -1763,9 +1808,11 @@ directory and 1,024 file grants. The new
 `MaximumExactContentGrantIsBounded` case creates 512 flat files under one
 directory and considers the entire `GetSnapshotAsync` successful if it finishes
 within ten seconds. It does not exercise a near-maximum distinct-directory/path
-shape, and it does
-not isolate ACL time, retain the observed duration, exercise a slow/failing ACL
-operation, or make ten seconds a production-enforced ceiling. Committed
+shape, isolate ACL time, exercise a slow/failing ACL operation, or make ten
+seconds a production-enforced ceiling. Clean selected run
+`20260809T152831Z-67b77c73` retains 360.426 ms for this 512-file exact-grant path
+and 325.283 ms for the separate 512-file launch-lease path on one machine.
+Committed
 `widget-packaging.md` and `platform-architecture.md` nevertheless say admission
 is bounded to five seconds. That is not the implemented boundary.
 
@@ -1774,10 +1821,14 @@ inspection now refuses more than 1,024 package-root/implicit directories with
 `too_many_launch_directories` before extraction; installed-tree verification and
 launch defend the same bound, and bridge coverage asserts the catalog and
 runtime constants remain equal. The focused negative package needs 1,025
-directories while remaining under 512 files. What remains here is performance
-representativeness: the activation fixture is still flat, and there is no exact
-1,024-directory accepted package carried through pack, install, ACL application,
-and launch.
+directories while remaining under 512 files. The follow-up now carries an exact
+1,024-directory accepted package through public pack, install, enable, content
+admission, ACL application, and real first-party launch. It records 255.038 ms
+packing and 2,521.831 ms through first validated render; the paired over-limit
+CLI case proves no pack output or installed bytes are published. This closes the
+shape-edge behavior in implementation-reported dirty-worktree runs. Committed,
+clean retained evidence is still required; even then it does not close the
+missing aggregate deadline or representative p50/p95/max evidence.
 
 `WidgetBridgeServer.RunAsync` also awaits each request directly in its single
 read/dispatch loop. A slow first snapshot or lifecycle request remains inside
@@ -1862,10 +1913,9 @@ disable during admission, caller cancellation, and shutdown. Update the public
 five-second claim only when the enforced full boundary—not one factory and one
 ten-second stopwatch assertion—matches the evidence.
 
-Retain the new 1,025-directory refusal and add an exact 1,024-directory accepted
-package. The accepted case must pack, install, enable, and launch; the rejected
-case should additionally prove `gbar pack` leaves no output and install publishes
-no bytes. Preserve the bridge assertion that catalog and runtime limits match.
+Retain the exact 1,024-directory public pack/install/enable/launch case, the
+atomic 1,025-directory refusal, and the bridge assertion that catalog and
+runtime limits match.
 
 Add a native transport/session test whose fake bridge accepts a request and
 never replies. The window/message pump must remain responsive, a deterministic
@@ -2271,11 +2321,11 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Paging/resource adoption is successful, but command/auth/refresh/polling/state/view ownership remains concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
 | CLI author workflow | Data inspection is non-executable; source scaffolding now fails honestly without an SDK and builds externally with explicit `--sdk-project`, but has no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
-| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound and `6fc9e01` aligns pack/install/runtime directory limits, but exact ACL application is outside the five-second deadline, native bridge reads synchronously block the UI, the 512-flat-file startup reports 372.060 ms locally under a ten-second test ceiling rather than a production budget, and hidden Guide fallback still polls at 25 ms | One enforced full start budget with phase timings, exact-boundary/deep-directory activation evidence, cancellable off-UI-thread bridge I/O and responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
+| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, and focused exact-edge proof records 255.038 ms packing plus 2,521.831 ms through first render at 1,024 directories; exact ACL application remains outside the five-second deadline, native bridge reads synchronously block the UI, and these one-machine ceilings are not a production budget; hidden Guide fallback still polls at 25 ms | One enforced full start budget with phase timings and cancellable off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
-| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092` with exact selected-toolchain/package provenance | Run the checked-in Windows workflow for the same commit and retain an immutable hosted artifact/link |
-| Documentation | Extensive, but its green contract checks links/headings while 70 C# fences have no designated executable consumer; full-gate wording also lacks run provenance | Compile-test canonical snippets, bind status claims to exact result manifests, and reduce ledger/status duplication |
+| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092`; current clean run `20260809T152831Z-67b77c73` retains 182 cases for seven selected launch/package steps over `6fc9e01`, not the full manifest | Run the complete checked-in Windows workflow for the current implementation commit and retain an immutable hosted artifact/link |
+| Documentation | Extensive, but its green contract checks links/headings while 70 C# fences have no designated executable consumer; `plugin-platform.md` claims the starter scaffolds a test/replay workflow although it generates no test or snapshot exporter | Compile-test canonical snippets, make overview claims derive from generated-template end-to-end tests, bind status claims to exact result manifests, and reduce ledger/status duplication |
 
 ## Recommended next three actions
 
@@ -2285,7 +2335,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    then prove directory replacement, late insertion, replacement, and alternate
    AppContainer-group ACEs cannot execute under the old digest; bind each ACL
    target to the object authenticated by the lease. Retain the aligned package-
-   shape bound and prove its exact accepted edge. Put revalidation, ACL authority,
+   shape bound and its proven exact accepted/refused edges. Put revalidation, ACL authority,
    process creation, and hello under one enforced start budget; keep unrelated
    bridge requests responsive, move cancellable correlated pipe I/O off the
    native UI thread, and make grant cleanup/rollback explicit on every failure
