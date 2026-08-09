@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after bounded installed-file consumption received focused coverage and the remaining manifest/digest/load ownership boundary was audited<br>
+Last reassessed: 2026-08-09 after manifest/digest pairing landed in current HEAD and the remaining GBSS, lazy-load, and verified-package-namespace boundary was audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -22,11 +22,13 @@ public abstractions.
 The strongest concrete improvement since the previous audit is the narrow
 installed-file consumption contract. Manifest and integrity metadata now use
 one bounded shared handle, tree hashing rejects short/extra/changed input, and
-three focused catalog cases cover seekable, changing-length, non-seekable,
-caller-error, and arithmetic edges. The implementation agent reports 27/27;
-this review code-inspected but did not execute them. This resolves a concrete
-resource-bound weakness without pretending to solve the separate mutable-path
-authority problem.
+focused catalog cases cover seekable, changing-length, non-seekable,
+caller-error, and arithmetic edges. That resource-bound work is committed in
+`7d60acc` with an implementation-reported 27/27. Commit `dadd40d` parses the
+exact manifest bytes captured for tree hashing and adds a 28th case; this
+review code-inspected but did not execute it. Manifest policy is now paired
+with its digest, while host-side GBSS compilation and worker loading still
+consume detached mutable paths.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -60,8 +62,10 @@ those exact content bytes. It still cannot show a host-owned acquisition
 receipt, verified signer, rotation, or revocation because those models do not
 exist yet. The deeper launch audit also found that the digest-derived identity
 is published before the generic worker later reopens mutable assembly and
-dependency paths; no verified-content lease currently binds those loaded bytes
-to that identity. This is now the highest-risk package-boundary finding.
+dependency paths. The bridge also compiles package GBSS and imports from
+reopened paths after verification. No verified-content lease currently binds
+either host-consumed presentation bytes or worker-loaded executable bytes to
+that identity. This is now the highest-risk package-boundary finding.
 
 The current worktree now adds a system-wide application-worker admission
 envelope on top of the independent Jobs: eight workers and 512 MiB of declared
@@ -153,16 +157,20 @@ stat-then-reopen metadata paths with bounded single-handle consumption and adds
 exact-length tree hashing. Three focused cases cover exact/misreported helper
 streams, the `int.MaxValue` arithmetic path, and static oversized manifest/
 metadata error mapping. The implementation agent reports focused Release
-catalog coverage at 27/27, now including changing seekable length and non-
-seekable limit-plus-one input; this review did not execute it, and changing-
-path identity remains untested. More importantly,
-discovery still parses the manifest before reopening the tree for its digest,
-and verification returns a digest plus mutable path rather than a content
-lease. The worker later loads its entry assembly and dependencies by path under
-the previous digest-derived authority. The 175 ms watcher and stable-tamper
-retirement test detect change after the fact; they do not atomically bind the
-policy or executed bytes to the verified authority. EQ-014 tracks both
-boundaries.
+catalog coverage at 28/28, now including changing seekable length, non-
+seekable limit-plus-one input, and an owned verified-manifest copy; this review
+did not execute it. Discovery now parses that hash-captured copy rather than
+reopening the manifest. More importantly, verification still returns a mutable
+package path rather than a content lease. Before worker launch, the bridge also
+reopens the default GBSS and every import by path; its file provider checks
+`FileInfo.Length` and then separately
+calls `File.ReadAllText`. The parser's character ceiling is therefore applied
+only after the full string allocation, and the consumed style bytes are not the
+ones proved by the digest. The worker later loads its entry assembly and
+dependencies by path under the previous digest-derived authority. The 175 ms
+watcher and stable-tamper retirement test detect change after the fact; they do
+not atomically bind the policy or executed bytes to the verified authority.
+EQ-014 tracks both boundaries.
 
 The authoring rotation found that the generator is not yet a shipped external
 contract, but current HEAD implements the recommended honest interim
@@ -185,7 +193,7 @@ are:
 | Settings Widget | 41/41 passed |
 | SDK Gallery | 6/6 passed |
 | YT Music | 48/48 passed |
-| Widget Catalog | 27/27 passed |
+| Widget Catalog | 28/28 passed |
 | Focus Navigation | 41 checks passed |
 | Declarative Renderer | 4,632 checks passed |
 | Widget bridge catalog | passed |
@@ -219,14 +227,15 @@ generation case and invokes `dotnet build` on the generated project. This
 review inspected but did not execute it. The case still supplies the template through
 `GBAR_TEMPLATE_ROOT`, references the repository SDK project, and does not run
 the generated README's render/replay, validate, test, or package commands.
-The bounded installed-file reader, its two adoptions, and three focused catalog
-cases are committed in `7d60acc`. The implementation agent reports Release
-`WidgetCatalog.Tests` at 27/27; this review code-inspected but did not execute
-them or inspect retained output. The tests
+The bounded installed-file reader, its two adoptions, and 27 focused catalog
+cases are committed in `7d60acc`. Manifest pairing and the 28th case are
+committed in `dadd40d`, which the implementation agent reports passing; this review
+code-inspected but did not execute the suites or inspect retained output. The tests
 cover exact/extra/truncated/changing-length seekable streams, non-seekable
 limit-plus-one input, safe `int.MaxValue` sentinel arithmetic, exact-length
 hashing, and static oversized manifest/metadata error codes. They do not
-exercise coordinated path replacement or the digest-to-launch boundary.
+exercise coordinated path replacement, package GBSS/import consumption, or
+the digest-to-launch boundary.
 
 ## Prioritized findings
 
@@ -890,9 +899,9 @@ resource invariant without scheduler-sensitive file-replacement sleeps.
 
 ### EQ-014 — P1 — Installed-package verification does not bind bounded verified bytes through launch
 
-**Status: Resource-bound subproblem implemented in current HEAD with
-implementation-reported focused coverage; manifest/digest and runtime authority
-still outlive the exact handles that produced them.**
+**Status: Resource bounds and manifest/digest pairing are implemented with
+focused coverage; GBSS/import and runtime authority still outlive the exact
+handles that produced them.**
 
 **Evidence.** `WidgetCatalog.DiscoverInstalledVersions` runs before
 `SetEnabledAsync` mutates enabled state, and `BridgeCatalog.LoadWithInstalledAsync`
@@ -916,10 +925,10 @@ arithmetic without allocating the maximum, make `AppendExact` reject extra and
 early-EOF bytes, and confirm static oversized manifest/metadata files retain
 `invalid_manifest` / `invalid_integrity_metadata`. The same Release run rejects
 a length that changes after consumption and a non-seekable limit-plus-one
-stream. The implementation agent reports all 27/27 catalog tests pass; this
+stream. The implementation agent reports all 28/28 catalog tests pass; this
 review code-inspected the cases but did not run them or inspect retained output.
-These deterministic cases do not cover path replacement, manifest/digest
-pairing, or execution.
+These deterministic cases do not cover GBSS/import path replacement or
+execution.
 
 The content-tree hasher was already stronger than the previous review stated:
 every content stream uses `FileShare.Read`, which denies new write/delete
@@ -927,18 +936,16 @@ handles on Windows while that stream is open. The new exact-consumption check
 makes that invariant portable and auditable. The unsupported
 share-compatible-growth scenario remains removed from this finding.
 
-The first semantic check-to-use gap exists inside discovery itself.
-`DiscoverInstalledVersions` reads and parses `manifest.json`, closes that
-handle, validates its identity/capabilities/entrypoint, and only later calls
-`InstalledPackageIntegrity.Verify`, which reopens the entire tree. A coordinated
-manifest replacement/restoration can therefore pair one in-memory manifest
-policy with the digest of another tree even before bridge publication. The new
-bounded reader limits each individual read; it does not prove that the parsed
-manifest is the manifest included in the returned digest.
+The manifest semantic gap is now closed. `InstalledPackageIntegrity.Verify`
+captures `manifest.json` from the exact handle whose bytes enter the tree hash,
+parses that owned copy, and returns the model with the verified digest.
+Discovery does not reopen the manifest. A focused case verifies the returned
+digest/model and then mutates the path, proving the already returned manifest
+remains the verified one.
 
-The higher-risk gap occurs after verification. `InstalledPackageIntegrity.Verify`
-returns a digest string and `DiscoverInstalledVersions` returns the package
-path. `InstalledWidgetAuthority` derives `unsigned.<digest>`, and
+The higher-risk gap occurs after verification. Discovery still returns the
+package path with the paired manifest and digest. `InstalledWidgetAuthority`
+derives `unsigned.<digest>`, and
 `BridgeCatalog` uses that identity for the worker fingerprint, isolation key,
 and broker authority while passing `--package-root` and `--widget-assembly`
 paths to the generic worker. The installer moves the staged directory into the
@@ -957,12 +964,51 @@ after verification but before process/assembly load, test a mutate-and-restore
 inside the debounce window, or prove that lazily loaded dependencies are the
 ones hashed for the active authority.
 
-Public documentation is aligned with this boundary. The publishing guide says
-verification and later worker load are not atomic and names the missing
-verified-content lease. The security guide now calls the directories version-
-addressed, explains that the installer never overwrites an ID/version, and
-states that current-user-owned files can still change between validation and
-load until the host owns an immutable generation or held-handle lease.
+There is also a host-side use of detached package paths before worker launch.
+`BridgeCatalog.CompileTheme` constructs a `GbssFileSourceProvider` over the
+mutable package root. For the entry stylesheet and each import, `TryRead`
+performs containment/reparse checks and a `FileInfo.Length` ceiling, then
+reopens the path through `File.ReadAllText`. `GbssParser` rejects more than
+1,048,576 characters, but only after the complete string has been allocated.
+Consequently a coordinated replacement or a share-compatible pre-existing
+writer can make the bridge parse bytes not represented by the authority and
+can bypass the intended consumed-byte ceiling. The installer's 512-entry/64
+MiB limits bound the originally sealed tree, not a later replacement. A
+verified-content design must therefore cover host-compiled GBSS/imports and
+other package assets, not only the entry assembly and lazy dependencies.
+
+A handle lease also needs an explicit namespace invariant. Holding the files
+present during hashing prevents those files from being replaced, but does not
+by itself prove that a new filename cannot appear later. The worker's
+`PackageLoadContext` accepts any contained, non-reparse path returned by
+`AssemblyDependencyResolver`; it has no verified relative-path inventory. A
+package can therefore carry metadata for a dependency or native library that
+is absent during hashing and have that file inserted before lazy resolution.
+The same late-addition class applies to a previously missing GBSS import or an
+asset opened directly from the package root. Exact-tree authority requires
+both byte identity for existing entries and namespace membership: reject every
+later-resolved path not present in the verified inventory, and prove that the
+runtime-visible generation cannot acquire unverified new entries.
+
+Public documentation is mostly aligned with this boundary. The publishing and
+security guides now describe the paired manifest/digest result, later worker
+load as non-atomic, and installed directories as version-addressed rather than
+OS-enforced immutable. One publishing update sentence still says a new version
+is immutable, and the security guide calls invalid package GBSS diagnostics
+bounded even though `GbssFileSourceProvider` uses a stat-then-`ReadAllText`
+path. The terminology sweep is also incomplete: `platform-architecture.md`,
+`widget-authoring-guide.md`, `widget-packaging.md`, `implementation-status.md`,
+and several publishing/Settings passages still call current-user-owned package
+roots or installed versions immutable without consistently limiting that term
+to installer no-overwrite behavior. Until a lease/protected generation exists,
+the consistent claim is version-addressed, installer-never-overwritten, and
+tamper-detected—not digest-bound at every consumer.
+
+The product roadmap's Phase 4 and risk register make signing/revocation a hard
+pre-public gate but do not name exact verified-content consumption or namespace
+sealing. Signing authenticates a package digest; it does not prove that the
+bridge and worker later consume only that signed tree. Add this as a separate
+pre-public acceptance gate so signing cannot be used to close EQ-014 by proxy.
 
 **Why it matters.** The platform explicitly promises that replacement bytes
 cannot inherit consent, configuration secrets, or update authority. A mutable
@@ -975,47 +1021,54 @@ under stale digest-derived authority. The live bounded-reader work removes the
 known oversized metadata pressure path with focused Release evidence,
 but it does not close the authority defect.
 
-**Underlying problem.** Verification produces detached facts—manifest,
-digest, and paths—rather than an owned `VerifiedPackageLaunch` capability whose
-lifetime covers every byte the worker may load. Current HEAD fixes the
-separate pathname-versus-consumption limit problem, but the detached semantic
-facts remain.
+**Underlying problem.** Verification now pairs manifest and digest but still
+produces a detached path rather than an owned `VerifiedPackageLaunch`
+capability whose lifetime covers every package byte the bridge or worker may
+consume. Current HEAD fixes the separate pathname-versus-consumption limit
+problem, but the detached later consumers remain.
 
 **Recommended direction.** Retain the narrow bounded-reader design and its
 overflow-safe `long` sentinel arithmetic and focused resource-bound evidence.
 
-Then make catalog discovery and lazy launch consume one supervisor-owned
-verified-content lease. Parse the manifest from the same locked file set that
-produces its digest and use that paired result to build policy. One
-viable design is to enumerate and open every accepted package file with
-write/delete sharing denied, recompute the digest from those same handles,
-derive authority from that result, and retain the bounded handle set until the
-worker session ends so lazy managed/native dependency loads cannot see
-replacement files. A host-owned protected immutable generation copied or
-materialized from verified bytes is an alternative. Merely hashing again just
+Use two explicit supervisor-owned capabilities rather than retaining handles
+for every dormant installed version. A short-lived `VerifiedPackageSnapshot`
+should hash one locked inventory, parse its manifest, and compile all GBSS
+imports before publishing the descriptor. At lazy start, a
+`VerifiedPackageLaunchLease` should reacquire the complete inventory, require
+the exact published digest and relative-path set, and retain write/delete-
+denying handles for the process session. Managed/native resolution must reject
+paths absent from that inventory. A host-owned protected generation whose
+namespace and bytes are frozen is an alternative and may simplify direct asset
+reads. Merely holding the initially enumerated file handles, hashing again just
 before `Process.Start`, tightening a best-effort DACL, or relying on
-`FileSystemWatcher` still leaves a check-to-load gap. The catalog/supervisor
-should own the lease; the SDK and widget process should never provide it.
+`FileSystemWatcher` leaves either an insertion or check-to-load gap. The
+catalog/supervisor should own both capabilities; the SDK and widget process
+should never provide them.
 Keep publishing and security documentation explicit about version-addressed,
 tamper-detected storage versus atomically verified runtime content during the
 transition.
 
-**Tradeoff.** Holding every content handle costs up to the package entry limit
-per resident worker and can block legitimate uninstall/update until teardown;
-a protected generation costs disk I/O and storage instead. Locking only the
-entry assembly is cheaper but does not bind lazy managed dependencies, native
-libraries, or package assets. Choose and measure an explicit bounded model
-rather than preserving a cheap but non-atomic trust claim.
+**Tradeoff.** The two-stage model hashes an enabled package during descriptor
+publication and again on lazy launch, but avoids retaining up to 512 handles
+for every dormant discovered version. A resident launch lease can still block
+legitimate uninstall/update until teardown; a protected generation costs disk
+I/O and storage instead. Locking only existing files or the entry assembly is
+cheaper but does not seal new namespace entries, lazy managed/native
+dependencies, or package assets. Choose and measure an explicit bounded model
+rather than preserving a cheap but incomplete trust claim.
 
-**Resolution evidence.** The focused cases cover changing length and a
-non-seekable limit-plus-one input. Remaining closure needs coordinated manifest
-replacement, proving the parsed manifest is the one included in its digest.
-Add a launch seam
+**Resolution evidence.** Focused cases cover changing length, non-seekable
+limit-plus-one input, and the owned manifest/digest result. Add deterministic
+GBSS provider cases for actual bytes exceeding reported length, entry/import
+replacement between check and consumption, and proof that the compiled theme's
+complete source set belongs to the launch authority. Add a launch seam
 that pauses after catalog verification: replacement before `Process.Start`
 must prevent admission under the old digest, and mutation/reversion within the
-watcher debounce must not execute. Exercise a dependency resolved after
-entrypoint load, exact authority derivation from the launch lease, and lease
-release on failed connection, crash, restart, disable/remove, and shutdown.
+watcher debounce must not execute. Exercise dependencies and native libraries
+that are missing during verification but inserted before lazy resolution, a
+late-added GBSS import and ordinary asset, exact authority/inventory derivation
+from the launch lease, and lease release on failed connection, crash, restart,
+disable/remove, and shutdown.
 Retain stable-tamper/live-worker-retirement coverage, and report the handle,
 startup, and disk cost at the maximum supported entry count.
 
@@ -1096,7 +1149,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded metadata/exact hashing with implementation-reported focused coverage | Same-handle manifest/digest pairing plus verified-content launch lease; changing-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded catalog metadata, exact hashing, and paired manifest policy with implementation-reported focused coverage | Digest-paired GBSS, verified path inventory/namespace, and session launch lease; changing/insertion-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
 | SDK lifecycle/coordination | Latest-wins currency now covers YT Music success and failure commits | Broader advanced-widget adoption and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest migration removes manual lifetime machinery and rejects stale failure commits | Real companion, packaged lifecycle/controller, and visual evidence |
@@ -1107,10 +1160,11 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 ## Recommended next three actions
 
-1. **Bind package authority to the bytes actually loaded.** Parse the manifest
-   from the same locked file set that produces its digest, add a supervisor-owned
-   verified-content launch lease or protected generation, and prove replacement
-   between verification and lazy load cannot execute under the old digest.
+1. **Bind package authority to every package byte actually consumed.** Compile
+   GBSS/imports from a verified content set, add a supervisor-owned inventory
+   plus launch lease or protected generation, and prove neither replacement nor
+   late file insertion between verification and lazy assembly/dependency load
+   can execute under the old digest.
 2. **Finish the residency budget as a product contract.** Extend direct
    failure/live-pipe/disable/shutdown accounting, retain the results, then add a
    typed persistent refusal plus per-widget ownership and remediation.

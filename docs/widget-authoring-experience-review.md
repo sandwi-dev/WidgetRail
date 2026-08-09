@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD/live worktree after aggregate residency, fail-fast external SDK resolution, and the installed-package digest-to-launch audit<br>
+Reassessed: 2026-08-09 against current HEAD after manifest/digest pairing and the remaining GBSS, lazy-load, and verified-package-namespace audit<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -368,8 +368,8 @@ finished public ecosystem. An author can produce a deterministic
 `.gbarwidget`, attach it to an exact GitHub Release, and give recipients an
 exact SHA-256 pin. The CLI maps the shorthand to one named release asset,
 applies bounded HTTPS/redirect/size/time rules, validates the locked bytes, and
-installs the immutable version disabled. Updates cannot be published while the
-widget is enabled, selecting a version remains a separate disabled-only action,
+installs a version-addressed package disabled. Updates cannot be published
+while the widget is enabled, selecting a version remains a separate disabled-only action,
 and replacement content observed by catalog validation receives a new digest-
 derived runtime authority instead of inheriting consent or secrets. These are
 strong foundations; the later verified-byte-to-worker-load gap described below
@@ -387,30 +387,50 @@ the catalog does not retain a host-owned acquisition receipt.
 
 The exact-byte contract is rechecked at meaningful boundaries: catalog
 discovery recomputes the sealed content tree before enablement, and the bridge
-does so again before publishing runtime authority. Current HEAD
-addresses the resource-bound half with a narrow `BoundedFileReader`: manifest
+does so again before publishing runtime authority. Current HEAD addresses the
+resource-bound half with a narrow `BoundedFileReader`: manifest
 and integrity metadata use one restrictively shared maximum-plus-one read, and
 tree hashing rejects early EOF or bytes beyond the encoded length. The
-implementation agent reports focused Release catalog coverage at 27/27; this
-review did not execute it or inspect retained output. Three added cases cover exact,
+first commit reports focused Release catalog coverage at 27/27. The committed
+manifest-pairing follow-up reports 28/28; this review did not execute it or
+inspect retained output. The cases cover exact,
 misreported, and changing-length seekable streams; non-seekable limit-plus-one
 input; safe `int.MaxValue` sentinel arithmetic; exact-length hashing; and stable
-error codes for static oversized manifest/metadata files. They do not prove
-changing-path identity, manifest/digest pairing, or launch binding.
+error codes for static oversized manifest/metadata files. Verification now
+parses an owned copy of the manifest bytes read from the same handle included
+in the digest and returns the model with that digest; a direct case proves the
+result remains stable after later path mutation. This does not bind GBSS/
+imports or worker-loaded bytes to that digest.
 
-More importantly, verification returns a digest and mutable package path. The
-catalog also parses and closes `manifest.json` before reopening the tree for
-its digest, so a coordinated replacement/restoration can pair a different
-manifest policy with the returned digest even before launch. The
+More importantly, verification still returns a mutable package path alongside
+the paired digest and manifest. The
 bridge derives unsigned runtime authority from that digest, while the worker
-later loads the entry assembly and lazy dependencies by path. The 175 ms
+later loads the entry assembly and lazy dependencies by path. The bridge also
+reopens the package's default GBSS and every import before launch. Its file
+provider checks path length metadata and then calls `File.ReadAllText`, so the
+style bytes consumed by the host are not tied to the digest and the parser's
+character ceiling is enforced only after full string allocation. The 175 ms
 catalog watcher can retire a changed worker after detection, but it does not
-bind the loaded bytes to the verified digest. Public distribution needs a
-host-owned verified-content lease or protected immutable generation acquired
-at lazy launch and retained through the worker session. A test must pause after
-verification, replace content before launch, and prove the old authority can
-never execute it; a mutate-and-restore inside the watcher debounce must fail as
-well.
+bind the compiled presentation or loaded executable bytes to the verified
+digest. Public distribution needs a host-owned verified-content lease or
+protected immutable generation acquired at lazy launch and retained through
+the worker session. Manifest policy and GBSS/imports must be consumed from that
+same verified source, not reopened independently. Tests must cover an
+entry/import whose actual bytes exceed the checked length, replacement before
+style compilation, a pause after verification followed by replacement before
+worker launch, and mutate-and-restore inside the watcher debounce.
+
+The lease must bind package namespace as well as the bytes already present.
+Holding existing file handles does not by itself prevent a previously missing
+dependency, native library, GBSS import, or asset from appearing later. The
+current assembly loader accepts any contained non-reparse path returned by its
+dependency resolver; it has no verified relative-path inventory. A senior
+platform contract should publish manifest plus compiled presentation from one
+short-lived verified snapshot, then reacquire the same digest and exact path
+set in a launch lease retained for the worker session. Resolution must reject
+new names outside that inventory, or the worker must receive a protected
+generation whose namespace cannot change. This also avoids retaining hundreds
+of handles for every dormant installed version.
 
 The next author workflow should preserve the safe mechanics while reducing this
 trust ceremony. `gbar pack`/future `gbar publish` should emit one canonical
@@ -1070,8 +1090,10 @@ and fail-closed scenario selection with contract and safety tests.
    refusal state, per-widget resource visibility/remediation, optional reclaim
    only for unload-eligible workers, and bounded temporary critical-work
    leases.
-2. Bind bounded installed-tree verification to the exact bytes loaded by each
-   worker session, add an honest unsigned acquisition receipt, then publisher signing,
+2. Bind bounded installed-tree verification to the exact manifest, GBSS/import,
+   assembly, dependency, and asset bytes and relative-path inventory consumed
+   by each worker session; reject late additions, then add an honest unsigned
+   acquisition receipt and publisher signing,
    rotation/revocation, signed update metadata, and verified/unverified package
    states before public community distribution.
 3. Publish a language-neutral runtime and snapshot wire specification.
@@ -1112,11 +1134,13 @@ The improvements should be evaluated against measurable author outcomes:
 - Every generated README command is exercised by the release gate; the
   scaffold restores/builds through the supported SDK artifact and never emits
   an unavailable placeholder dependency or a rejected execution mode.
-- A GitHub-hosted widget can be packaged and acquired by exact immutable bytes,
-  and every worker session loads only content held by the matching verified
-  digest authority; before public distribution, Settings clearly distinguishes
-  unsigned from verified publishers, shows a bounded source/digest receipt and
-  version capability changes, and rejects invalid or revoked signatures.
+- A GitHub-hosted widget can be packaged and acquired by exact pinned bytes,
+  and every host-side compiler and worker session consumes only content held by
+  the matching verified digest and path inventory; replacement and late-added
+  package files cannot inherit that authority. Before public distribution,
+  Settings clearly distinguishes unsigned from verified publishers, shows a
+  bounded source/digest receipt and version capability changes, and rejects
+  invalid or revoked signatures.
 - A long session has an enforced aggregate resident-process/memory envelope;
   ordinary scaffolded widgets unload after a documented idle bound, genuinely
   retained work uses an explicit bounded lease, and Settings attributes current
