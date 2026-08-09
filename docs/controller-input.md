@@ -100,9 +100,11 @@ widget, generation, snapshot, scope, node, action, and enabled state, they may
 route an ordinary `OpenWidget` action, but they never qualify for the Visible-
 state dashboard exception. The bridge returns no gesture authority for an
 automation-origin dashboard event, and the runtime independently rejects any
-authority paired with that origin. Interactive lifecycle capability rules still
-apply after the user-facing widget surface is open; origin is not a substitute
-for declaration, consent, lifecycle, payload, or provider validation.
+authority paired with that origin. The worker also refuses to create ambient
+gesture context for automation, and the broker adapter emits gesture sequences
+only after exact host activation succeeds. Interactive lifecycle capability
+rules still apply after the user-facing widget surface is open; origin is not a
+substitute for declaration, consent, lifecycle, payload, or provider validation.
 
 The bridge rejects attempts to forward dashboard A, B, Y, or D-pad as raw widget
 input even if a malformed native client requests it.

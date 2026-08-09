@@ -99,6 +99,10 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         return await RunMalformedWorkerAsync(pipe, instance, maximumBytes);
     VerifyPrecreatedCompanionEndpoint(arguments);
 
+    var usesGestureProbe = arguments.Contains("--gesture-queue-probe", StringComparer.Ordinal) ||
+        arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal) ||
+        arguments.Contains("--gesture-adversarial-probe", StringComparer.Ordinal);
+    var gestureProbe = usesGestureProbe ? new GestureProbeCapabilityClient() : null;
     Widget widget = arguments.Contains("--hanging-destroy", StringComparer.Ordinal)
         ? new HangingDestroyWidget()
         : arguments.Contains("--invalid-protocol-widget", StringComparer.Ordinal)
@@ -107,6 +111,8 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             ? new GestureQueueWidget()
         : arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal)
             ? new CustomGestureWidget()
+        : arguments.Contains("--gesture-adversarial-probe", StringComparer.Ordinal)
+            ? new AdversarialGestureWidget(gestureProbe!)
         : arguments.Contains("--isolation-probe", StringComparer.Ordinal)
             ? new IsolationProbeWidget(
                 RequiredValue(arguments, "--probe-readable-path"),
@@ -115,11 +121,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
                 int.Parse(RequiredValue(arguments, "--probe-network-port"), CultureInfo.InvariantCulture),
                 RequiredValue(arguments, "--probe-secret-name"))
             : new TestWidget();
-    IWidgetCapabilityClient? capabilityClient =
-        arguments.Contains("--gesture-queue-probe", StringComparer.Ordinal) ||
-        arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal)
-            ? new GestureProbeCapabilityClient()
-            : null;
+    IWidgetCapabilityClient? capabilityClient = gestureProbe;
     await new WidgetWorkerServer(
         widget, instance, pipe, maximumBytes, capabilityClient).RunAsync();
     return 0;
@@ -1101,6 +1103,24 @@ static async Task AccessibilityAutomationCannotReserveAuthority()
 
     Assert.True(await client.SendControllerInputAsync(input),
         "Accessibility automation should still admit the ordinary action without authority.");
+
+    var adversarialCompanion = new ProbeCompanionSession();
+    await using var adversarial = CreateClient(
+        extraArguments: ["--gesture-adversarial-probe"],
+        companionFactory: _ => adversarialCompanion);
+    var adversarialSnapshot = await adversarial.GetSnapshotAsync();
+    await adversarial.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    Assert.True(await adversarial.SendControllerInputAsync(input with
+    {
+        Sequence = 14,
+        SnapshotSequence = adversarialSnapshot.Sequence,
+    }), "The adversarial automation action was not handled as an ordinary action.");
+    var adversarialResult = await adversarial.GetSnapshotAsync();
+    Assert.Equal(
+        "context=false;activations=0;provider=0",
+        Find(adversarialResult.Root, "gesture-adversarial-result").Text);
+    Assert.Equal(0, adversarialCompanion.GrantedAuthorities.Count);
+    Assert.Equal(0, adversarialCompanion.RevokedInputSequences.Count);
 }
 
 static async Task SlowDashboardQueueActivatesJustInTime()
@@ -1247,6 +1267,30 @@ static async Task BrokerAdapterBindsGestureContext()
             WidgetMediaCapabilities.Control,
             new ControlWidgetMediaSessionRequest("media-1", WidgetMediaSessionCommand.Next)));
 
+    var activationAttempts = 0;
+    ((IDashboardGestureActivatingCapabilityClient)adapter).SetDashboardGestureActivator(
+        (_, _, _, _) =>
+        {
+            Interlocked.Increment(ref activationAttempts);
+            return ValueTask.FromResult(false);
+        });
+    using (WidgetCapabilityInvocationContext.Enter(new(40, 4)))
+    {
+        await Assert.ThrowsAsync<WidgetCapabilityException>(async () =>
+            await adapter.InvokeAsync(
+                WidgetMediaCapabilities.Control,
+                new ControlWidgetMediaSessionRequest(
+                    "media-1", WidgetMediaSessionCommand.Next)));
+    }
+    Assert.Equal(1, activationAttempts);
+    Assert.Equal(0, backend.MediaControlCalls);
+
+    ((IDashboardGestureActivatingCapabilityClient)adapter).SetDashboardGestureActivator(
+        (_, _, _, _) =>
+        {
+            Interlocked.Increment(ref activationAttempts);
+            return ValueTask.FromResult(true);
+        });
     using (WidgetCapabilityInvocationContext.Enter(new(40, 4)))
     {
         var response = await adapter.InvokeAsync(
@@ -1254,6 +1298,7 @@ static async Task BrokerAdapterBindsGestureContext()
             new ControlWidgetMediaSessionRequest("media-1", WidgetMediaSessionCommand.Next));
         Assert.True(response.Acknowledged, "Exact gesture context was not propagated.");
     }
+    Assert.Equal(2, activationAttempts);
     Assert.Equal(1, backend.MediaControlCalls);
     using (WidgetCapabilityInvocationContext.Enter(new(40, 4)))
     {
@@ -1850,12 +1895,74 @@ file sealed class CustomGestureWidget : Widget
     }
 }
 
+file sealed class AdversarialGestureWidget(
+    GestureProbeCapabilityClient probe) : Widget
+{
+    private readonly object _gate = new();
+    private readonly GestureProbeCapabilityClient _probe = probe;
+    private string _result = "not-invoked";
+
+    public override WidgetView Render()
+    {
+        string result;
+        lock (_gate) result = _result;
+        return new WidgetView(
+            UI.Stack("root", UI.Text(result, "gesture-adversarial-result")),
+            QuickActions:
+            [
+                new WidgetQuickAction(
+                    ControllerButton.X,
+                    "gesture.adversarial",
+                    "Adversarial gesture",
+                    new WidgetQuickActionCapability(
+                        WidgetMediaCapabilities.Control.CapabilityId,
+                        WidgetMediaCapabilities.Control.OperationId)),
+            ]);
+    }
+
+    public override async ValueTask<bool> OnControllerInputAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        if (input is not
+            {
+                Button: ControllerButton.X,
+                Phase: ControllerEventPhase.Pressed,
+                Context: ControllerInputContext.DashboardQuickAction,
+            })
+            return false;
+
+        var hasContext = WidgetCapabilityInvocationContext.Current is { IsActive: true };
+        try
+        {
+            await HostServices.Media.ControlAsync(
+                "media-1", WidgetMediaSessionCommand.Next, cancellationToken);
+        }
+        catch (WidgetCapabilityException)
+        {
+            // The fixture records the independent authority boundaries below.
+        }
+        lock (_gate)
+        {
+            _result = $"context={hasContext.ToString().ToLowerInvariant()};" +
+                $"activations={_probe.ActivationAttempts};provider={_probe.ProviderCalls}";
+        }
+        Invalidate();
+        return true;
+    }
+}
+
 file sealed class GestureProbeCapabilityClient :
     IWidgetCapabilityClient,
     IDashboardGestureActivatingCapabilityClient
 {
     private Func<WidgetCapabilityGestureContext, string, string, CancellationToken, ValueTask<bool>>?
         _activator;
+    private int _activationAttempts;
+    private int _providerCalls;
+
+    public int ActivationAttempts => Volatile.Read(ref _activationAttempts);
+    public int ProviderCalls => Volatile.Read(ref _providerCalls);
 
     public bool IsAvailable => true;
 
@@ -1873,6 +1980,7 @@ file sealed class GestureProbeCapabilityClient :
         if (gesture is null || !gesture.IsActive || _activator is null)
             throw new WidgetCapabilityException(
                 "lifecycle_denied", "The test control call has no active dashboard gesture.");
+        Interlocked.Increment(ref _activationAttempts);
         if (!await _activator(
                 gesture,
                 operation.CapabilityId,
@@ -1880,6 +1988,7 @@ file sealed class GestureProbeCapabilityClient :
                 cancellationToken).ConfigureAwait(false))
             throw new WidgetCapabilityException(
                 "lifecycle_denied", "The host rejected dashboard gesture activation.");
+        Interlocked.Increment(ref _providerCalls);
         return (TResponse)(object)new WidgetCapabilityAcknowledgement(true);
     }
 

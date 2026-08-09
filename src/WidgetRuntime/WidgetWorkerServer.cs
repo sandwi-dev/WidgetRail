@@ -327,7 +327,11 @@ public sealed class WidgetWorkerServer
         case MessageTypes.ControllerInput:
             var input = RuntimeJson.FromElement<ControllerInputEvent>(request.Payload);
             ValidateControllerInput(input);
-            using (input.Context == ControllerInputContext.DashboardQuickAction
+            using (input is
+                {
+                    Context: ControllerInputContext.DashboardQuickAction,
+                    Origin: ControllerInputOrigin.PhysicalController,
+                }
                 ? WidgetCapabilityInvocationContext.Enter(
                     new WidgetCapabilityGestureContext(
                         input.Sequence, input.SnapshotSequence))
@@ -431,6 +435,9 @@ public sealed class WidgetWorkerServer
     private static void ValidateControllerInput(ControllerInputEvent input)
     {
         ArgumentNullException.ThrowIfNull(input);
+        if (!Enum.IsDefined(input.Origin))
+            throw new WidgetProtocolViolationException(
+                "Controller input origin is not supported.");
         if (input.FocusedElementId is { Length: > 128 })
             throw new WidgetProtocolViolationException("Focused element ID is too long.");
         if (input.Sequence < 0 || input.MonotonicTimestampMicroseconds < 0 || input.SnapshotSequence < 0)

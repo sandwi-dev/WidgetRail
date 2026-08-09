@@ -50,19 +50,23 @@ internal sealed class BrokerWidgetCapabilityClient :
             var gesture = WidgetCapabilityInvocationContext.Current is { IsActive: true } active
                 ? active
                 : null;
+            WidgetCapabilityGestureContext? activatedGesture = null;
             if (gesture is not null && _dashboardGestureActivator is not null)
-                _ = await _dashboardGestureActivator(
+            {
+                var activated = await _dashboardGestureActivator(
                         gesture,
                         operation.CapabilityId,
                         operation.OperationId,
                         cancellationToken)
                     .ConfigureAwait(false);
+                if (activated && gesture.IsActive) activatedGesture = gesture;
+            }
             response = await _client.RequestWithGestureAsync(
                 operation.CapabilityId,
                 operation.OperationId,
                 request,
-                gesture?.InputSequence,
-                gesture?.SnapshotSequence,
+                activatedGesture?.InputSequence,
+                activatedGesture?.SnapshotSequence,
                 cancellationToken)
                 .ConfigureAwait(false);
         }

@@ -665,7 +665,9 @@ may enter the visible widget's Interactive lifecycle and use its ordinary typed
 action path after exact revalidation, but they are not proof of a physical
 controller press and never receive the Visible-state dashboard gesture
 exception. Declaration, consent, lifecycle, payload, and provider checks still
-apply to every capability call.
+apply to every capability call. The worker creates no private gesture context
+for automation-origin input, and the broker adapter attaches gesture sequences
+only after the host accepts the exact capability/operation activation.
 Your next immutable render is authoritative; do not depend on synchronous state
 mutation during an accessibility request. Keep labels concise, supply a human
 readable Slider value, and keep IDs stable for the lifetime of one logical

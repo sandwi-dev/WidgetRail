@@ -82,9 +82,14 @@ UIA Invoke/RangeValue input now crosses native host, bridge, runtime, and SDK
 with an explicit `AccessibilityAutomation` origin. Physical controller remains
 the omitted compatibility default. The bridge accepts revalidated automation as
 an ordinary action but never mints dashboard gesture authority for it; the
-runtime rejects any mismatched authority reservation, and the SDK does not enter
-its private gesture context. Focused Release results are WidgetSdk 84/84,
-WidgetRuntime 49/49, and WidgetBridge 46/46. Packaged AppContainer/UIA evidence
+runtime rejects any mismatched authority reservation, while the worker and SDK
+independently omit private gesture context. Broker gesture sequences are emitted
+only after exact host activation succeeds. The adversarial runtime case invokes
+a capability synchronously from an automation-origin dashboard override and
+records no context, activation, provider call, or companion grant; a separate
+denied-activation case proves no gesture metadata reaches the broker. Focused
+Release results are WidgetSdk 84/84, WidgetRuntime 49/49, and WidgetBridge
+46/46. Packaged AppContainer/UIA evidence
 remains a ship-gate item rather than an inferred OS-boundary claim. The
 canonical Release host build and native suites are green for this change.
 The dashboard now exposes its exact painted title as a level-one heading. Static

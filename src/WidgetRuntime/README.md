@@ -99,7 +99,10 @@ reason string while routing failures from every ingress through it.
 
 Only snapshot-correlated `ControllerInput` can carry dashboard gesture
 authority. The legacy catalog `QuickAction` request is admitted to the same
-queue but is deliberately non-authorizing.
+queue but is deliberately non-authorizing. Worker dispatch creates ambient
+gesture context only for the closed `PhysicalController` origin, and broker
+requests carry its sequences only after the companion accepts the exact
+capability/operation activation.
 
 Lifecycle state is host-authoritative and separate from process lifetime:
 

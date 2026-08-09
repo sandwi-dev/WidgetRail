@@ -206,8 +206,12 @@ The semantic input contract distinguishes `PhysicalController` from
 dashboard reservation. Windows UI Automation Invoke/RangeValue may route a
 revalidated ordinary open-widget action, but it is not evidence of physical
 presence and cannot use the Visible-state gesture exception. The bridge omits
-authority for automation origin, the SDK omits its private gesture context, and
-the runtime rejects any mismatched reservation before transport.
+authority for automation origin, the worker and SDK independently omit their
+private gesture context, and the runtime rejects any mismatched reservation
+before transport. The broker adapter attaches gesture sequences only after the
+host accepts the exact capability/operation activation; a denied activation is
+sent as an ordinary non-authorizing capability request, where normal
+declaration, consent, lifecycle, payload, and provider rules still apply.
 
 ### Installed application library
 

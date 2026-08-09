@@ -96,7 +96,9 @@ This is not yet the complete screen-reader ship gate. UIA-originated widget
 actions now carry the explicit `AccessibilityAutomation` origin. They may use
 the revalidated ordinary open-widget action path, but cannot mint or carry the
 physical-controller-only dashboard gesture authority; bridge, runtime, and SDK
-checks enforce that rule independently. Typed choice semantics, legacy MSAA, a
+checks enforce that rule independently. The worker creates no automation-origin
+gesture context, and denied broker activation carries no gesture metadata.
+Typed choice semantics, legacy MSAA, a
 packaged Narrator smoke test, and packaged AppContainer/UIA evidence remain
 pending. Until those close, treat
 UIA as an implemented preview and keep deterministic semantic snapshots as the
