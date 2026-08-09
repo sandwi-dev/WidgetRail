@@ -200,6 +200,8 @@ static async Task NewScaffolds()
     var manifest = ManifestJson.Deserialize(
         await File.ReadAllBytesAsync(Path.Combine(destination, "manifest.json")));
     Assert.Equal(WidgetGlyph.Connection, manifest.Presentation.Icon);
+    Assert.Equal(WidgetResidencyPolicies.UnloadAfterIdle, manifest.ResidencyPolicy?.Mode);
+    Assert.Equal(300, manifest.ResidencyPolicy?.IdleSeconds);
 }
 
 static async Task NewRejectsIdentity()

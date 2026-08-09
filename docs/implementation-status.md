@@ -104,7 +104,8 @@ Up/Down navigation.
   deterministic state-test fixtures.
 - `WidgetRuntime`: lazy out-of-process workers over bounded framed JSON with
   explicit lifecycle transitions, per-start host-owned companion sessions,
-  timeouts, failure reporting, and limited restart. Installed/community workers
+  pre-process host-owned residency leases, timeouts, failure reporting, and
+  limited restart. Installed/community workers
   require stable host-derived capability-free Low-integrity AppContainers,
   stripped environments, explicit read/execute roots, PID-bound isolated
   pipes, and pre-launch Job Object memory/process/UI/cleanup
@@ -118,7 +119,8 @@ Up/Down navigation.
   worker retirement, worker forwarding, quick actions, controller input,
   host-owned mandatory community isolation selection, PID/identity/declaration-
   bound broker companions, single-use exact-operation dashboard gesture
-  authority, invalidation/failure events, no-poll platform-appearance revisions,
+  authority, aggregate resident-worker/count admission with a separate Settings
+  control-plane slot, invalidation/failure events, no-poll platform-appearance revisions,
   globally layered widget themes, bounded shell appearance, and computed GBSS
   styles.
 - `WidgetBridge` and the native declarative renderer preserve the distinct
@@ -623,7 +625,7 @@ The runtime covers suspended pre-containment
 launch, memory/process/UI limits, kill-on-close, restart cleanup, and mandatory
 community AppContainer authority, bounded intentional unload, and private
 two-clock dashboard-gesture propagation. Its focused Release harness passes
-34/34;
+36/36;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
@@ -653,7 +655,9 @@ disabled-update enforcement, lock-free reads during atomic state replacement,
 pin-preserving reorder, shared host-API/architecture evaluation, and exact-
 content-tree sealing/tamper rejection plus content-bound unsigned authority.
 Bridge
-passes 36/36, including semantic catalog revisions/last-good/catch-up reload,
+passes 40/40, including aggregate count/declared-memory admission, exact crash/
+timeout/idle-unload release, Settings control-plane access, race-safe refusal,
+semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
 trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
@@ -822,10 +826,13 @@ with C++ installed:
 - Topmost/foreground reassertion is best effort. Secure desktop, elevated
   windows, exclusive render paths, and multi-monitor backdrop coverage are not
   supported contracts.
-- Background worker processes remain resident under the default `keep-alive`
-  policy. Versioned suspend and bounded idle-unload policies are enforced by
-  the bridge; packaged resource measurements and long-duration churn testing
-  remain part of the performance matrix.
+- The manifest protocol retains `keep-alive` as its compatibility default, but
+  the controller scaffold and Clock sample now select five-minute idle unload.
+  The bridge atomically caps application residency at eight workers and 512 MiB
+  of declared Job memory by default, refuses overcommit without evicting pinned
+  workers, and preserves a separately reported trusted Settings control-plane
+  slot. Per-widget measured telemetry, user overrides, critical-work leases,
+  packaged resource measurements, and long-duration churn remain open.
 - Recent activity observation starts lazily on the first authorized read, then
   remains event-driven until the bridge/backend is disposed. Consent revocation
   blocks delivery and activation and cancels in-flight broker requests, but

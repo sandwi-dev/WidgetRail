@@ -17,7 +17,8 @@
   "optionalPermissions": [],
   "residencyPolicy": {
     "schemaVersion": 1,
-    "mode": "keep-alive"
+    "mode": "unload-after-idle",
+    "idleSeconds": 300
   },
   "resourceRequest": {
     "memoryMb": 32,

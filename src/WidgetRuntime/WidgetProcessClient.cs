@@ -33,6 +33,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private LengthPrefixedJsonChannel? _channel;
     private Process? _process;
     private WindowsWorkerJob? _windowsJob;
+    private IDisposable? _processLease;
     private CancellationTokenSource? _sessionCancellation;
     private Task? _readerTask;
     private IWidgetProcessCompanionSession? _companion;
@@ -328,6 +329,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
 
             TerminateWorker();
             await DisposeSessionAsync(cancellationToken).ConfigureAwait(false);
+            if (_options.ProcessLeaseFactory is { } leaseFactory)
+                _processLease = leaseFactory() ?? throw new WidgetProcessAdmissionException(
+                    "Worker process admission returned no lease.");
             _stopping = false;
             Interlocked.Exchange(ref _failureReported, 0);
             var currentSession = Interlocked.Increment(ref _sessionId);
@@ -447,6 +451,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         $"Expected lifecycle acknowledgement, received '{lifecycleResponse.Type}'.");
             }
         }
+        catch (WidgetProcessAdmissionException)
+        {
+            await DisposeSessionAsync(CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             int? exitCode = null;
@@ -549,6 +558,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private void OnProcessExited(int session)
     {
         if (session != Volatile.Read(ref _sessionId) || _stopping) return;
+        ReleaseProcessLease();
         ReportFailure(WidgetFailureReason.ProcessExited, null);
         FailPending(new WidgetProcessException("Widget worker exited unexpectedly."));
         ClearPendingDashboardGestures();
@@ -605,6 +615,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         var pipe = _pipe;
         var process = _process;
         var windowsJob = _windowsJob;
+        var processLease = Interlocked.Exchange(ref _processLease, null);
         var companion = _companion;
         var companionTask = _companionTask;
 
@@ -623,6 +634,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         pipe?.Dispose();
         process?.Dispose();
         windowsJob?.Dispose();
+        try { processLease?.Dispose(); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
 
         Task? disposeTask = null;
         if (companion is not null)
@@ -651,6 +664,13 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             }
         }
         sessionCancellation?.Dispose();
+    }
+
+    private void ReleaseProcessLease()
+    {
+        var lease = Interlocked.Exchange(ref _processLease, null);
+        try { lease?.Dispose(); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
     }
 
     private static async Task ObserveCompanionCleanupAsync(Task task)

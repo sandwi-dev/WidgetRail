@@ -23,6 +23,8 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Length framing rejects oversized input before allocation", OversizedFrameIsRejected),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
+    ("Process admission failures stay pre-launch and are not worker failures", ProcessAdmissionFailsBeforeLaunch),
+    ("Process residency leases follow exact worker sessions", ProcessLeaseFollowsSession),
     ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
     ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
     ("Windows Job Object kill-on-close cleans up its process", WindowsJobCleansUpProcess),
@@ -178,6 +180,59 @@ static async Task LazyLaunchAndSnapshot()
     Assert.Equal("runtime.test", snapshot.WidgetInstanceId);
     Assert.Equal("button", snapshot.InitialFocusId);
     await client.StopAsync();
+}
+
+static async Task ProcessAdmissionFailsBeforeLaunch()
+{
+    await using var client = CreateClient(processLeaseFactory: () =>
+        throw new WidgetProcessAdmissionException("test capacity exhausted"));
+    var failures = 0;
+    client.Failed += (_, _) => failures++;
+
+    var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+        () => client.GetSnapshotAsync());
+    Assert.True(exception.Message.Contains("capacity exhausted", StringComparison.Ordinal),
+        "Admission refusal lost its actionable host diagnostic.");
+    Assert.Equal(0, client.Starts);
+    Assert.Equal(0, failures);
+    Assert.True(!client.IsRunning, "Admission refusal started a worker process.");
+}
+
+static async Task ProcessLeaseFollowsSession()
+{
+    var acquired = 0;
+    var released = 0;
+    await using var client = CreateClient(
+        maximumRestarts: 1,
+        processLeaseFactory: () =>
+        {
+            Interlocked.Increment(ref acquired);
+            return new CallbackDisposable(() => Interlocked.Increment(ref released));
+        });
+
+    _ = await client.GetSnapshotAsync();
+    Assert.Equal(1, acquired);
+    Assert.Equal(0, released);
+    await Assert.ThrowsAnyAsync(() =>
+        client.SendActionAsync(new WidgetActionEvent("crash", "button")));
+    await WaitUntilAsync(() => Volatile.Read(ref released) == 1, TimeSpan.FromSeconds(3));
+
+    _ = await client.GetSnapshotAsync();
+    Assert.Equal(2, acquired);
+    Assert.Equal(1, released);
+    await client.StopAsync();
+    Assert.Equal(2, released);
+}
+
+static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+{
+    var deadline = DateTime.UtcNow + timeout;
+    while (!condition())
+    {
+        if (DateTime.UtcNow >= deadline)
+            throw new TimeoutException("Condition was not reached before the timeout.");
+        await Task.Delay(25);
+    }
 }
 
 static Task MemoryPolicyIsBounded()
@@ -1133,6 +1188,7 @@ static WidgetProcessClient CreateClient(
     IReadOnlyList<string>? extraArguments = null,
     long memoryLimitBytes = 64L * 1024 * 1024,
     Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>? companionFactory = null,
+    Func<IDisposable>? processLeaseFactory = null,
     TimeProvider? timeProvider = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
@@ -1147,6 +1203,7 @@ static WidgetProcessClient CreateClient(
         MaximumMessageBytes = 64 * 1024,
         MemoryLimitBytes = memoryLimitBytes,
         CompanionSessionFactory = companionFactory,
+        ProcessLeaseFactory = processLeaseFactory,
     };
     return timeProvider is null
         ? new WidgetProcessClient(options)
@@ -1868,4 +1925,11 @@ file static class Assert
         catch (T exception) { return exception; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
+}
+
+file sealed class CallbackDisposable(Action callback) : IDisposable
+{
+    private Action? _callback = callback;
+
+    public void Dispose() => Interlocked.Exchange(ref _callback, null)?.Invoke();
 }

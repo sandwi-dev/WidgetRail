@@ -40,6 +40,22 @@ Omitting `residencyPolicy` means keep-alive.
 | `suspend-when-hidden` | Resident | Background callback/tokens; visible/state work must stop | Suppresses hidden snapshots, invalidations, input, and broker access |
 | `unload-after-idle` | Resident until the explicit idle bound, then destroyed | Background first; `Destroying` if the bound expires | Caches last validated snapshot, bounded teardown, lazy recreation on visibility |
 
+The bridge also owns a host-wide admission envelope. By default, application
+workers may reserve at most eight resident processes and 512 MiB of declared
+Job memory in total. Admission is atomic and happens before launch. If either
+limit is full, the requested worker remains stopped and the host receives an
+actionable error; an existing `keep-alive` worker is never silently evicted.
+Crash, failed launch, idle unload, restart retirement, catalog removal, and
+bridge shutdown release the reservation exactly once. The exact trusted
+Settings worker has one separate control-plane slot so the diagnostics surface
+remains reachable when the application envelope is full. Its reservation is
+still reported and remains individually Job-bounded.
+
+The bridge process accepts trusted launch-time overrides through
+`--max-resident-workers` and `--max-resident-memory-mb`. These limits account
+declared Job ceilings rather than sampled working set, so admission remains
+deterministic and cannot depend on timing or machine pressure.
+
 `idleSeconds` is required only for `unload-after-idle` and must be an integer
 from 5 through 86,400. Unknown schema versions, unknown modes, a stray/missing
 duration, and duplicate old/new policy declarations fail manifest validation.
@@ -85,6 +101,9 @@ disable, and bridge shutdown keep their existing independent failure paths.
 - Keep all semantic IDs stable so focus and scroll restoration remain useful.
 - Test lifecycle callbacks with `WidgetTestHost`; test a packaged worker when
   process teardown/recreation behavior matters.
+- Prefer `unload-after-idle` for ordinary widgets. The controller-widget
+  scaffold and Clock sample use a five-minute bound. Choose `keep-alive` only
+  when process-lifetime Background continuity is an explicit requirement.
 
 ## Legacy manifest migration
 

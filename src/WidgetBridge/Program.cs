@@ -22,6 +22,7 @@ internal static class Program
             var acceptTimeout = OptionalInt(args, "--accept-timeout-ms", 10_000, 100, 60_000);
             var maximumBytes = OptionalInt(args, "--max-message-bytes",
                 BridgeProtocol.DefaultMaximumMessageBytes, 256, BridgeProtocol.AbsoluteMaximumMessageBytes);
+            var residencyBudget = ResolveWorkerResidencyBudget(args);
             using var shutdown = new CancellationTokenSource();
             Console.CancelKeyPress += (_, eventArgs) =>
             {
@@ -75,7 +76,7 @@ internal static class Program
                         new WidgetConfigurationStore(settingsPaths))));
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
-                catalogMonitor);
+                catalogMonitor, residencyBudget);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;
@@ -126,5 +127,25 @@ internal static class Program
         return OptionalValue(args, "--installed-catalog-root") is { } requestedCatalog
             ? Path.GetFullPath(requestedCatalog)
             : Path.Combine(Path.GetFullPath(settingsRoot), "widgets");
+    }
+
+    internal static WorkerResidencyBudgetOptions ResolveWorkerResidencyBudget(string[] args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        return new WorkerResidencyBudgetOptions
+        {
+            MaximumApplicationWorkers = OptionalInt(
+                args,
+                "--max-resident-workers",
+                WorkerResidencyBudgetOptions.DefaultMaximumApplicationWorkers,
+                1,
+                256),
+            MaximumApplicationMemoryMb = OptionalInt(
+                args,
+                "--max-resident-memory-mb",
+                WorkerResidencyBudgetOptions.DefaultMaximumApplicationMemoryMb,
+                16,
+                16_384),
+        };
     }
 }

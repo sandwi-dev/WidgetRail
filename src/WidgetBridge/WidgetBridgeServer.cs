@@ -17,7 +17,8 @@ public sealed class WidgetBridgeServer(
     PlatformAppearanceService? appearance = null,
     ConsentStore? consentStore = null,
     IPlatformBrokerBackend? platformBackend = null,
-    BridgeCatalogMonitor? catalogMonitor = null) : IAsyncDisposable
+    BridgeCatalogMonitor? catalogMonitor = null,
+    WorkerResidencyBudgetOptions? residencyBudget = null) : IAsyncDisposable
 {
     private readonly string _pipeName = ValidatePipeName(pipeName);
     private BridgeCatalog _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -28,6 +29,8 @@ public sealed class WidgetBridgeServer(
     private readonly ConsentStore? _consentStore = consentStore;
     private readonly IPlatformBrokerBackend? _platformBackend = platformBackend;
     private readonly BridgeCatalogMonitor? _catalogMonitor = catalogMonitor;
+    private readonly WorkerResidencyBudget _residentBudget = new(
+        residencyBudget ?? new WorkerResidencyBudgetOptions());
     private readonly ConcurrentDictionary<string, ClientRegistration> _clients = new(StringComparer.Ordinal);
     private readonly object _catalogGate = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
@@ -39,6 +42,7 @@ public sealed class WidgetBridgeServer(
     private bool _disposed;
 
     public int RunningWorkerCount => _clients.Values.Count(registration => registration.Client.IsRunning);
+    public WorkerResidencyBudgetSnapshot ResidencyBudget => _residentBudget.Snapshot;
 
     public async Task RunAsync(TimeSpan acceptTimeout, CancellationToken cancellationToken = default)
     {
@@ -211,8 +215,8 @@ public sealed class WidgetBridgeServer(
             try
             {
                 lifecycleRegistration.CancelIdleUnload();
-                await lifecycleRegistration.Client
-                    .SetLifecycleStateAsync(lifecycleRequest.State, cancellationToken).ConfigureAwait(false);
+                await lifecycleRegistration.Client.SetLifecycleStateAsync(
+                    lifecycleRequest.State, cancellationToken).ConfigureAwait(false);
                 lifecycleRegistration.HostLifecycle = lifecycleRequest.State;
                 ScheduleIdleUnload(lifecycleRegistration);
             }
@@ -388,6 +392,7 @@ public sealed class WidgetBridgeServer(
 
     private ClientRegistration CreateRegistration(ConfiguredWidget configured)
     {
+        var reservationOwner = new object();
         var client = new WidgetProcessClient(new WidgetProcessOptions
             {
                 ExecutablePath = configured.WorkerExecutable,
@@ -398,6 +403,11 @@ public sealed class WidgetBridgeServer(
                 MaximumMessageBytes = _maximumMessageBytes,
                 MaximumRestartAttempts = 2,
                 MemoryLimitBytes = checked((long)configured.MemoryLimitMb * 1024 * 1024),
+                ProcessLeaseFactory = () => _residentBudget.Reserve(
+                    reservationOwner,
+                    configured.Id,
+                    configured.MemoryLimitMb,
+                    IsTrustedSettings(configured)),
                 IsolationPolicy = configured.RequiresAppContainer
                     ? WidgetWorkerIsolationPolicy.RequireAppContainer
                     : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
@@ -576,6 +586,7 @@ public sealed class WidgetBridgeServer(
                 failure?.Code,
                 failure?.CanRestart ?? false);
         }).ToArray();
+        var residency = _residentBudget.Snapshot;
 
         PlatformDiagnosticArea consent;
         if (_consentStore is null)
@@ -628,7 +639,12 @@ public sealed class WidgetBridgeServer(
             PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
             Interlocked.Increment(ref _diagnosticsRevision),
             Area("bridge", "Bridge", PlatformDiagnosticState.Healthy,
-                "Native host session is connected"),
+                $"Native host connected; application workers " +
+                $"{residency.ApplicationWorkers}/{residency.MaximumApplicationWorkers}; " +
+                $"reserved memory {residency.ApplicationMemoryMb}/" +
+                $"{residency.MaximumApplicationMemoryMb} MiB; " +
+                $"control plane {residency.ControlPlaneWorkers} " +
+                $"({residency.ControlPlaneMemoryMb} MiB)"),
             Area("catalog", "Widget catalog", catalogState, catalogSummary),
             appearance,
             _platformBackend is null
@@ -798,7 +814,7 @@ public sealed class WidgetBridgeServer(
         }
     }
 
-    private static async Task DisposeRegistrationAsync(ClientRegistration registration)
+    private async Task DisposeRegistrationAsync(ClientRegistration registration)
     {
         registration.CancelIdleUnload();
         await registration.OperationGate.WaitAsync().ConfigureAwait(false);

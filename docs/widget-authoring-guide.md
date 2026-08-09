@@ -752,6 +752,18 @@ Manifest `residencyPolicy` schema 1 is enforced separately from lifecycle:
   The bridge caches the last good snapshot, sends bounded `Destroying`, tears
   down the process tree, then lazily recreates it when Visible again.
 
+The protocol default remains `keep-alive` for compatibility, but the standard
+controller scaffold selects `unload-after-idle` with a five-minute bound. Use
+that bounded policy for ordinary widgets. Choose `keep-alive` only when a
+documented process-lifetime Background operation genuinely requires it.
+
+Before launch, the bridge also admits application workers against a host-wide
+default envelope of eight processes and 512 MiB of declared Job memory. It
+never silently evicts a `keep-alive` worker. When capacity is full, a new launch
+fails with a remediation message until a resident worker is disabled, removed,
+crashes, or reaches its explicit idle-unload bound. The trusted Settings worker
+has one separate control-plane slot so diagnostics remain reachable.
+
 The host never calls undocumented process/thread suspension APIs and never
 infers unload from CPU or memory. Your callbacks and cancellation tokens still
 own author work. An idle-unloaded widget is reconstructed, not resumed in

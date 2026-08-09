@@ -12,13 +12,18 @@ dotnet build .\\{{WidgetName}}.csproj
 gbar validate .
 ```
 
-Render a protocol snapshot directly from the compiled widget:
+Run the compiled widget through the production AppContainer worker boundary:
 
 ```powershell
-gbar render .\\bin\\Debug\\net8.0\\{{WidgetName}}.dll --type {{Publisher}}.{{WidgetName}}.{{WidgetName}} --instance development.preview --output .\\snapshot.json
+gbar dev .
 ```
 
-Replay controller input without launching the overlay:
+`gbar render` accepts existing bounded snapshot JSON only; it never loads a
+widget DLL. Add a typed-fake test that exports deterministic snapshots when you
+need data-only render/replay fixtures.
+
+After that test has exported `snapshot.json`, replay controller input without
+launching the overlay:
 
 ```powershell
 gbar replay .\\snapshot.json .\\replays\\smoke.json
@@ -40,8 +45,10 @@ non-Home control remain available to the active widget.
 - Keep `Render()` deterministic for the current state.
 - Call `Invalidate()` only after visible state changes.
 - Put visible work under `ActiveCancellationToken` and respond to lifecycle
-  callbacks. The default `keep-alive` policy keeps the process resident; it
-  does not make presentation work valid in Background.
+  callbacks. The scaffold unloads a Background process after five idle minutes;
+  persist durable state and expect a later launch to create a fresh widget.
+  Choose `keep-alive` only for a real documented Background requirement; it
+  still does not make presentation work valid in Background.
 - Request no capability until the widget needs it.
 - Treat the manifest's resource request as a budget, not an entitlement.
 

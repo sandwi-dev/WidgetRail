@@ -76,6 +76,13 @@ public sealed record WidgetProcessOptions
     public Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>?
         CompanionSessionFactory { get; init; }
     /// <summary>
+    /// Trusted host admission hook invoked immediately before a worker session
+    /// allocates process resources. The returned lease is disposed only after
+    /// that exact process exits or its pipe, process, and Job are detached.
+    /// Widget packages and worker messages cannot provide this value.
+    /// </summary>
+    public Func<IDisposable>? ProcessLeaseFactory { get; init; }
+    /// <summary>
     /// Host-owned isolation decision. Package manifests and worker arguments
     /// never control this value.
     /// </summary>
@@ -143,6 +150,8 @@ public sealed record WidgetProcessOptions
                 "Read-only paths apply only to AppContainer workers.", nameof(ReadOnlyPaths));
     }
 }
+
+public sealed class WidgetProcessAdmissionException(string message) : Exception(message);
 
 public enum WidgetFailureReason
 {

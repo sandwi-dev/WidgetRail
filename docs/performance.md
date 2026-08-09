@@ -39,8 +39,12 @@ unbounded caches, or unnecessary helper processes.
 - Widget workers start lazily; listing the catalog, rendering dashboard
   metadata, changing themes, or reviewing permissions does not start them.
 - Each worker receives a host-owned Job Object before it resumes. Trusted
-  policy bounds aggregate memory to 16–256 MiB, limits the job to one active
+  policy bounds that process tree to 16–256 MiB, limits the job to one active
   process, and terminates it on job close.
+- Before launch, the bridge atomically reserves against a default aggregate
+  application envelope of eight workers and 512 MiB of declared Job memory.
+  Capacity refusal is deterministic; `keep-alive` workers are not heuristically
+  evicted. The trusted Settings control plane has one separate reported slot.
 - IPC frames, snapshots, strings, images, update rates, subscriptions, and
   retries are bounded.
 - Platform appearance, catalog, consent, Core Audio, and network changes use
@@ -97,6 +101,15 @@ Residency is explicit manifest policy, never a resource heuristic:
   seconds. The bridge caches the last validated view, sends `Destroying`, and
   tears down the process tree and companion within a bound. Visibility cancels
   a pending unload; the next visible transition lazily creates a fresh worker.
+
+The protocol default remains `keep-alive` for compatibility, while new
+controller scaffolds and the Clock sample explicitly select a five-minute
+`unload-after-idle` policy. Aggregate admission accounts configured Job ceilings,
+not sampled working set. Failed launch/crash, idle unload, restart retirement,
+catalog removal, and shutdown return capacity. Settings diagnostics report the
+current application worker/memory reservations and control-plane count. A
+measured per-widget resource UI, user overrides, temporary critical-work leases,
+and retained 1/8/many-widget churn evidence remain open.
 
 Intentional unload does not consume the crash-restart budget. Catalog change,
 crash recovery, user disable, and bridge shutdown remain distinct paths.

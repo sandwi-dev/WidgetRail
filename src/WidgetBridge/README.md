@@ -110,6 +110,15 @@ recreates the worker lazily when it becomes visible. Intentional unload does not
 consume crash budget. The capability broker denies normal operations and every
 subscription in Background.
 
+Process launch is additionally gated by a supervisor-owned aggregate envelope:
+eight application workers and 512 MiB of declared Job memory by default.
+`--max-resident-workers` and `--max-resident-memory-mb` provide bounded trusted
+launch-time overrides. Admission is serialized before launch; capacity refusal
+does not evict an existing `keep-alive` worker. Reservations are released by
+failed launch/crash, idle unload, restart retirement, catalog removal, and
+shutdown. The exact trusted Settings identity uses one separate control-plane
+slot and reports both envelopes through private diagnostics.
+
 For a widget with closed declared capabilities, the bridge creates a fresh
 `BrokerWidgetProcessCompanion` on every worker start/restart. Package,
 publisher, instance, declarations, consent store, backend, random pipe, and

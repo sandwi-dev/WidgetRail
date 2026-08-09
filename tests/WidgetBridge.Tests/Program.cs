@@ -20,6 +20,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
     ("Settings reviews the same catalog selected by the bridge", SettingsUsesSelectedCatalog),
     ("Catalog owns bounded worker memory policy", CatalogMemoryPolicyIsTrusted),
+    ("Worker residency budget options are bounded and explicit", WorkerResidencyBudgetOptionsAreBounded),
+    ("Worker residency budget admission is race safe", WorkerResidencyBudgetAdmissionIsRaceSafe),
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
     ("Catalog rejects invalid GBSS with safe diagnostics", InvalidThemeIsRejected),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
@@ -51,6 +53,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
+    ("Worker residency budget refuses count overcommit and releases failures", WorkerResidencyCountIsBounded),
+    ("Worker residency budget accounts declared memory and preserves Settings access", WorkerResidencyMemoryIsBounded),
 };
 
 var failures = new List<string>();
@@ -115,6 +119,54 @@ static Task DevelopmentCatalogRootIsScoped()
         GameBarAlternative.WidgetBridge.Program.ResolveInstalledCatalogRoot(
             ["--installed-catalog-root", development, "--installed-catalog-root", development], settings));
     return Task.CompletedTask;
+}
+
+static Task WorkerResidencyBudgetOptionsAreBounded()
+{
+    var defaults = GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget([]);
+    Assert.Equal(8, defaults.MaximumApplicationWorkers);
+    Assert.Equal(512, defaults.MaximumApplicationMemoryMb);
+
+    var configured = GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget(
+        ["--max-resident-workers", "3", "--max-resident-memory-mb", "192"]);
+    Assert.Equal(3, configured.MaximumApplicationWorkers);
+    Assert.Equal(192, configured.MaximumApplicationMemoryMb);
+    Assert.Throws<ArgumentException>(() =>
+        GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget(
+            ["--max-resident-workers", "0"]));
+    Assert.Throws<ArgumentException>(() =>
+        GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget(
+            ["--max-resident-memory-mb", "15"]));
+    return Task.CompletedTask;
+}
+
+static async Task WorkerResidencyBudgetAdmissionIsRaceSafe()
+{
+    var budget = new WorkerResidencyBudget(new WorkerResidencyBudgetOptions
+    {
+        MaximumApplicationWorkers = 4,
+        MaximumApplicationMemoryMb = 64,
+    });
+    var owners = Enumerable.Range(0, 32).Select(_ => new object()).ToArray();
+    var admissions = await Task.WhenAll(owners.Select((owner, index) => Task.Run(() =>
+    {
+        try
+        {
+            budget.Reserve(owner, $"race-{index}", 16, isControlPlane: false);
+            return true;
+        }
+        catch (WidgetProcessAdmissionException)
+        {
+            return false;
+        }
+    })));
+
+    Assert.Equal(4, admissions.Count(admitted => admitted));
+    Assert.Equal(4, budget.Snapshot.ApplicationWorkers);
+    Assert.Equal(64, budget.Snapshot.ApplicationMemoryMb);
+    foreach (var owner in owners) budget.Release(owner);
+    Assert.Equal(0, budget.Snapshot.ApplicationWorkers);
+    Assert.Equal(0, budget.Snapshot.ApplicationMemoryMb);
 }
 
 static async Task SettingsUsesSelectedCatalog()
@@ -858,6 +910,8 @@ static async Task IdleUnloadIsPolicyDriven()
         new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Background));
     await WaitUntilAsync(() => harness.Server.RunningWorkerCount == 0,
         TimeSpan.FromSeconds(WidgetResidencyPolicies.MinimumIdleSeconds + 3));
+    Assert.Equal(0, harness.Server.ResidencyBudget.ApplicationWorkers);
+    Assert.Equal(0, harness.Server.ResidencyBudget.ApplicationMemoryMb);
 
     var cachedResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
@@ -870,6 +924,7 @@ static async Task IdleUnloadIsPolicyDriven()
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
     Assert.Equal(1, harness.Server.RunningWorkerCount);
+    Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
     var resumedResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
     var resumed = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
@@ -994,6 +1049,8 @@ static async Task ForceReloadRecoversTimedOutWorker()
         BridgeMessageTypes.Action,
         new BridgeActionRequest("test-widget", new WidgetActionEvent("hang", "button")));
     Assert.Equal(BridgeMessageTypes.Error, timedOut.Type);
+    await WaitUntilAsync(() => harness.Server.ResidencyBudget.ApplicationWorkers == 0,
+        TimeSpan.FromSeconds(3));
 
     var restarted = await harness.Client.RequestAsync(
         BridgeMessageTypes.RestartWidget, new WidgetIdRequest("test-widget"));
@@ -1248,6 +1305,92 @@ static async Task WorkerFailureIsSurfaced()
     Assert.Equal(BridgeMessageTypes.Widgets, widgets.Type);
 }
 
+static async Task WorkerResidencyCountIsBounded()
+{
+    await using var harness = await BridgeHarness.StartBudgetAsync(
+        new WorkerResidencyBudgetOptions
+        {
+            MaximumApplicationWorkers = 1,
+            MaximumApplicationMemoryMb = 128,
+        },
+        new TemporaryWidgetDefinition("worker-0", "dev.test.worker0", "dev.test", "worker.0", 64),
+        new TemporaryWidgetDefinition("worker-1", "dev.test.worker1", "dev.test", "worker.1", 64));
+
+    var first = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("worker-0", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, first.Type);
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+    Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
+    Assert.Equal(64, harness.Server.ResidencyBudget.ApplicationMemoryMb);
+
+    var refused = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("worker-1", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Error, refused.Type);
+    Assert.True(
+        refused.Payload.GetProperty("message").GetString()!
+            .Contains("application worker limit (1/1)", StringComparison.Ordinal),
+        "Count-bound refusal did not explain the exhausted worker limit.");
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+    Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
+
+    var crashed = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest("worker-0", new WidgetActionEvent("crash", "button")));
+    Assert.Equal(BridgeMessageTypes.Error, crashed.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Failure);
+    await WaitUntilAsync(() => harness.Server.ResidencyBudget.ApplicationWorkers == 0,
+        TimeSpan.FromSeconds(3));
+
+    var replacement = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("worker-1", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, replacement.Type);
+    Assert.Equal(1, harness.Server.RunningWorkerCount);
+    Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
+}
+
+static async Task WorkerResidencyMemoryIsBounded()
+{
+    await using var harness = await BridgeHarness.StartBudgetAsync(
+        new WorkerResidencyBudgetOptions
+        {
+            MaximumApplicationWorkers = 3,
+            MaximumApplicationMemoryMb = 96,
+        },
+        new TemporaryWidgetDefinition("worker-64", "dev.test.worker64", "dev.test", "worker.64", 64),
+        new TemporaryWidgetDefinition("worker-48", "dev.test.worker48", "dev.test", "worker.48", 48),
+        new TemporaryWidgetDefinition("settings", "org.gbar.firstparty.settings",
+            "org.gbar.firstparty", "settings.instance", 64));
+
+    var first = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("worker-64", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, first.Type);
+
+    var refused = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("worker-48", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Error, refused.Type);
+    Assert.True(
+        refused.Payload.GetProperty("message").GetString()!
+            .Contains("application memory limit (64+48/96 MiB)", StringComparison.Ordinal),
+        "Memory-bound refusal did not explain the accounted Job limit.");
+
+    var settings = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("settings", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, settings.Type);
+    var budget = harness.Server.ResidencyBudget;
+    Assert.Equal(1, budget.ApplicationWorkers);
+    Assert.Equal(64, budget.ApplicationMemoryMb);
+    Assert.Equal(1, budget.ControlPlaneWorkers);
+    Assert.Equal(64, budget.ControlPlaneMemoryMb);
+    Assert.Equal(2, budget.TotalWorkers);
+    Assert.Equal(128, budget.TotalMemoryMb);
+}
+
 static string RequiredValue(string[] values, string name)
 {
     var index = Array.IndexOf(values, name);
@@ -1291,6 +1434,18 @@ file sealed class BridgeTestWidget : Widget
     }
 }
 
+file sealed record TemporaryWidgetDefinition(
+    string Id,
+    string PackageId,
+    string PublisherId,
+    string InstanceId,
+    int? MemoryLimitMb = null,
+    string Name = "Test Widget",
+    string? Icon = "music",
+    IReadOnlyList<string>? DeclaredCapabilities = null,
+    WidgetResidencyPolicy? ResidencyPolicy = null,
+    string StyleFile = "styles/default.gbss");
+
 file sealed class TemporaryCatalog : IDisposable
 {
     private readonly string _directory;
@@ -1317,6 +1472,33 @@ file sealed class TemporaryCatalog : IDisposable
         string? styleSource = null,
         WidgetResidencyPolicy? residencyPolicy = null)
     {
+        return CreateCore(
+            [new TemporaryWidgetDefinition(
+                id,
+                packageId,
+                publisherId,
+                instanceId,
+                memoryLimitMb,
+                name,
+                icon,
+                declaredCapabilities,
+                residencyPolicy,
+                styleFile)],
+            addUnknownProperty,
+            invalidStyle,
+            styleSource);
+    }
+
+    public static TemporaryCatalog CreateMany(params TemporaryWidgetDefinition[] widgets) =>
+        CreateCore(widgets, addUnknownProperty: false, invalidStyle: false, styleSource: null);
+
+    private static TemporaryCatalog CreateCore(
+        IReadOnlyList<TemporaryWidgetDefinition> widgets,
+        bool addUnknownProperty,
+        bool invalidStyle,
+        string? styleSource)
+    {
+        if (widgets.Count == 0) throw new ArgumentException("At least one widget is required.", nameof(widgets));
         var directory = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(), $"gba-bridge-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
@@ -1331,22 +1513,20 @@ file sealed class TemporaryCatalog : IDisposable
         var json = JsonSerializer.Serialize(new
         {
             catalogVersion = 1,
-            widgets = new[]
-            {
-                new
+            widgets = widgets.Select(widget => new
                 {
-                    id,
-                    packageId,
-                    publisherId,
-                    name,
-                    instanceId,
-                    icon,
+                    widget.Id,
+                    widget.PackageId,
+                    widget.PublisherId,
+                    widget.Name,
+                    widget.InstanceId,
+                    widget.Icon,
                     workerExecutable = executable,
-                    styleFile,
+                    widget.StyleFile,
                     workerArguments = Array.Empty<string>(),
-                    declaredCapabilities = declaredCapabilities ?? Array.Empty<string>(),
-                    memoryLimitMb,
-                    residencyPolicy,
+                    declaredCapabilities = widget.DeclaredCapabilities ?? Array.Empty<string>(),
+                    widget.MemoryLimitMb,
+                    widget.ResidencyPolicy,
                     quickActions = new[]
                     {
                         new
@@ -1358,8 +1538,7 @@ file sealed class TemporaryCatalog : IDisposable
                             controllerButton = "x",
                         },
                     },
-                },
-            },
+                }).ToArray(),
             unknown = addUnknownProperty ? true : (bool?)null,
         }, new JsonSerializerOptions
         {
@@ -1420,6 +1599,31 @@ file sealed class BridgeHarness : IAsyncDisposable
         catch
         {
             if (appearance is not null) await appearance.DisposeAsync();
+            temporary.Dispose();
+            throw;
+        }
+    }
+
+    public static async Task<BridgeHarness> StartBudgetAsync(
+        WorkerResidencyBudgetOptions budget,
+        params TemporaryWidgetDefinition[] widgets)
+    {
+        var temporary = TemporaryCatalog.CreateMany(widgets);
+        try
+        {
+            var catalog = BridgeCatalog.Load(temporary.Path);
+            var pipeName = $"gba-bridge-budget-{Guid.NewGuid():N}";
+            var server = new WidgetBridgeServer(
+                pipeName,
+                catalog,
+                64 * 1024,
+                residencyBudget: budget);
+            var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+            var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+            return new BridgeHarness(temporary, null, server, client, serverTask);
+        }
+        catch
+        {
             temporary.Dispose();
             throw;
         }
