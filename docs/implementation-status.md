@@ -74,8 +74,10 @@ client-handler test receives structure, focus, property, and live-region
 signals. Each root/fragment is also
 bound to one HWND generation: explicit pre-destroy detach disconnects UIA,
 clears message/action authority, and keeps old providers unavailable across
-same-handle reuse. Root focus/visibility are UI-thread-published, focus loss does
-not target the custom root, and root plus node resize/DPI bounds are announced.
+same-handle reuse. A real client retains original and rebound roots through an
+actual `DestroyWindow` and observes element-unavailable results. Root focus/
+visibility are UI-thread-published, focus loss does not target the custom root,
+and root plus node resize/DPI bounds are announced.
 The dashboard now exposes its exact painted title as a level-one heading. Static
 controller guidance is readable non-live text, while transient action feedback
 replaces it with one polite status live region. Title, help, status, and catalog
@@ -85,7 +87,7 @@ Invoke requests resolve the revalidated stable widget ID in one state transition
 instead of replaying up to 256 directional navigation commands.
 Focused Release coverage passes Slider Interaction 2086, renderer 4636,
 accessibility tree 15, projection cadence 10, host semantics 14, event planning
-10, and provider 111 checks. The isolated Release native aggregate passes 24/24,
+10, and provider 114 checks. The isolated Release native aggregate passes 24/24,
 and the canonical Debug build/test path is green. Legacy MSAA and packaged
 Narrator evidence remain open, so full screen-reader support is not yet claimed.
 

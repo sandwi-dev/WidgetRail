@@ -765,6 +765,10 @@ int main() {
     Check(SUCCEEDED(host.GetRootProvider(reboundRoot.GetAddressOf())) && reboundRoot &&
           StringProperty(reboundRoot.Get(), UIA_NamePropertyId) == L"Game Bar Alternative",
           "same-HWND rebind creates a new provider generation");
+    ComPtr<IUIAutomationElement> reboundClientRoot;
+    Check(SUCCEEDED(client->ElementFromHandle(
+              window, reboundClientRoot.GetAddressOf())) && reboundClientRoot,
+          "real UIA client acquires the rebound same-HWND provider generation");
     Check(root->GetPropertyValue(UIA_NamePropertyId, &detachedName) ==
               UIA_E_ELEMENTNOTAVAILABLE &&
           currentInvoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,
@@ -774,6 +778,14 @@ int main() {
           "second detach is idempotent and retained elements remain unavailable");
     PostMessageW(window, WM_CLOSE, 0, 0);
     windowThread.join();
+    BSTR destroyedName{};
+    Check(!IsWindow(window) &&
+          clientRoot->get_CurrentName(&destroyedName) == UIA_E_ELEMENTNOTAVAILABLE &&
+          !destroyedName,
+          "retained original UIA client root stays unavailable after DestroyWindow");
+    Check(reboundClientRoot->get_CurrentName(&destroyedName) ==
+              UIA_E_ELEMENTNOTAVAILABLE && !destroyedName,
+          "retained rebound UIA client root stays unavailable after DestroyWindow");
     CoUninitialize();
     std::cout << "AccessibilityProviderTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

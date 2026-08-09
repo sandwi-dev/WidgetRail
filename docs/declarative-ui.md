@@ -60,10 +60,11 @@ stable widget ID directly; it does not replay directional controller commands.
 Every provider captures one HWND binding generation. Before window destruction,
 the host disconnects UIA, clears message/action authority, and invalidates that
 generation; retained roots and fragments remain unavailable even if Windows
-reuses the same handle. Root focus and visibility are published by the window
-thread rather than queried with thread-local Win32 state from a free-threaded
-callback. Clearing or hiding the semantic tree does not synthesize a focus event
-on the custom root.
+reuses the same handle. A real UIA client test retains both original and rebound
+roots through actual `DestroyWindow` teardown and observes element-unavailable
+errors. Root focus and visibility are published by the window thread rather than
+queried with thread-local Win32 state from a free-threaded callback. Clearing or
+hiding the semantic tree does not synthesize a focus event on the custom root.
 
 While controller focus is on the dashboard/open-widget tray, the provider
 publishes the exact visible carousel window instead of inactive widget controls.
@@ -73,11 +74,11 @@ Invoke carry a closed host action plus stable widget target; the UI thread exits
 reorder mode, revalidates the current host-tree sequence, and uses the existing
 tray state machine rather than parsing command strings.
 
-This is not yet the complete screen-reader ship gate. Dashboard tiles are not
-fully described by title/status nodes, legacy MSAA is not implemented, and a
-packaged Narrator smoke test remains pending. Until those close, treat UIA as an
-implemented preview and keep deterministic semantic snapshots as the primary
-accessibility contract.
+This is not yet the complete screen-reader ship gate. Open-widget Back, Close,
+footer/status context, and composite widget/tray traversal are not published;
+legacy MSAA is not implemented; and a packaged Narrator smoke test remains
+pending. Until those close, treat UIA as an implemented preview and keep
+deterministic semantic snapshots as the primary accessibility contract.
 
 ## Elements
 
