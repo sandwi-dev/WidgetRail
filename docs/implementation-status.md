@@ -80,7 +80,9 @@ The dashboard now exposes its exact painted title as a level-one heading. Static
 controller guidance is readable non-live text, while transient action feedback
 replaces it with one polite status live region. Title, help, status, and catalog
 display names participate in the host projection revision, and a real UIA client
-observes the heading/live properties plus a status-change event.
+observes the heading/live properties plus a status-change event. Tray Focus and
+Invoke requests resolve the revalidated stable widget ID in one state transition
+instead of replaying up to 256 directional navigation commands.
 Focused Release coverage passes Slider Interaction 2086, renderer 4636,
 accessibility tree 15, projection cadence 10, host semantics 14, event planning
 10, and provider 111 checks. The isolated Release native aggregate passes 24/24,

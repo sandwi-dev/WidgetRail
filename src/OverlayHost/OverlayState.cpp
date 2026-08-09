@@ -152,6 +152,22 @@ bool OverlayState::SetAvailableWidgets(
            priorActive != activeWidget_ || priorSelected != selectedWidget();
 }
 
+bool OverlayState::TrySelectTrayWidget(const std::wstring_view widgetId) noexcept {
+    if (surface_ == Surface::Hidden ||
+        (surface_ == Surface::Widget && focusRegion_ != FocusRegion::Tray) ||
+        reorderMode_) {
+        return false;
+    }
+    const auto found = std::find(persistent_.order.begin(), persistent_.order.end(), widgetId);
+    if (found == persistent_.order.end()) return false;
+    const auto targetSlot = static_cast<std::size_t>(
+        std::distance(persistent_.order.begin(), found));
+    if (targetSlot == selectedSlot_) return true;
+    selectedSlot_ = targetSlot;
+    PresentSelectedWidget(FocusRegion::Tray);
+    return true;
+}
+
 std::wstring_view OverlayState::selectedWidget() const noexcept {
     return persistent_.order.empty() || selectedSlot_ >= persistent_.order.size()
                ? std::wstring_view{}

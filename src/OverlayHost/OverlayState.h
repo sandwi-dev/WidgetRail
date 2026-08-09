@@ -53,6 +53,9 @@ public:
     /// Existing relative order is preserved and new IDs are appended.
     [[nodiscard]] bool SetAvailableWidgets(
         std::vector<std::wstring> availableWidgetIds) noexcept;
+    /// Selects a tray item by stable widget ID without replaying directional input.
+    /// Returns false when the ID is unavailable or the tray does not own input.
+    [[nodiscard]] bool TrySelectTrayWidget(std::wstring_view widgetId) noexcept;
     [[nodiscard]] Surface surface() const noexcept { return surface_; }
     [[nodiscard]] FocusRegion focusRegion() const noexcept { return focusRegion_; }
     [[nodiscard]] std::size_t selectedSlot() const noexcept { return selectedSlot_; }

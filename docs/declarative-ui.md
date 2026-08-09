@@ -54,6 +54,8 @@ action feedback replaces it with a polite status live region. Their text
 participates in the host semantic revision, so feedback and feedback-expiry
 paints publish the matching structure/name and one meaningful live event without
 making either line focusable or announcing routine selection instructions.
+After revalidating a tray action against the published tree, the host selects its
+stable widget ID directly; it does not replay directional controller commands.
 
 Every provider captures one HWND binding generation. Before window destruction,
 the host disconnects UIA, clears message/action authority, and invalidates that

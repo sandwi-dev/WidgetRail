@@ -141,6 +141,22 @@ int main() {
     Check(catalogChanges.surface() == Surface::Dashboard && catalogChanges.activeWidget().empty(),
           "removing an active widget safely returns to dashboard");
 
+    OverlayState directSelection({}, {L"one", L"two", L"three"});
+    Send(directSelection, Command::ToggleOverlay);
+    Check(directSelection.TrySelectTrayWidget(L"three") &&
+          directSelection.selectedWidget() == L"three" &&
+          directSelection.activeWidget() == L"three" &&
+          directSelection.focusRegion() == FocusRegion::Tray,
+          "tray selection resolves a stable widget ID directly");
+    const auto directState = directSelection.persistent();
+    Check(!directSelection.TrySelectTrayWidget(L"missing") &&
+          directSelection.persistent() == directState,
+          "direct tray selection rejects unavailable IDs without mutation");
+    Send(directSelection, Command::Activate);
+    Check(!directSelection.TrySelectTrayWidget(L"one") &&
+          directSelection.selectedWidget() == L"three",
+          "widget-owned input rejects direct tray selection");
+
     OverlayState empty({}, {});
     Send(empty, Command::ToggleOverlay);
     Send(empty, Command::Activate);

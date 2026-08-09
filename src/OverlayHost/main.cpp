@@ -1488,7 +1488,8 @@ private:
         }
     }
 
-    void Dispatch(const gba::Command command) {
+    template <typename Mutation>
+    void ApplyStateTransition(Mutation mutation) {
         const auto priorSurface = state_.surface();
         const auto priorFocusRegion = state_.focusRegion();
         const auto priorExtent = DesiredPresentationExtentDip();
@@ -1498,7 +1499,7 @@ private:
             RememberCurrentFocus(priorActive);
         }
         const auto before = state_.persistent();
-        if (!state_.Dispatch(command)) {
+        if (!mutation()) {
             return;
         }
         if (priorSurface != state_.surface() || priorActive != state_.activeWidget() ||
@@ -1574,6 +1575,20 @@ private:
             priorExtent,
             DesiredPresentationExtentDip()));
         (void)ReconcileResponsiveFocusPersistence();
+    }
+
+    void Dispatch(const gba::Command command) {
+        ApplyStateTransition([&] { return state_.Dispatch(command); });
+    }
+
+    bool SelectTrayWidget(const std::wstring_view widgetId) {
+        bool accepted = false;
+        ApplyStateTransition([&] {
+            const auto priorSelected = state_.selectedWidget();
+            accepted = state_.TrySelectTrayWidget(widgetId);
+            return accepted && priorSelected != state_.selectedWidget();
+        });
+        return accepted;
     }
 
     const gba::WidgetComputedStyle& ShellComputedStyle(
@@ -2815,12 +2830,7 @@ private:
                 }
                 if (state_.focusRegion() != gba::FocusRegion::Tray) continue;
                 if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
-                for (std::size_t remaining = state_.order().size();
-                     remaining > 0 && state_.selectedWidget() != request.hostTargetId;
-                     --remaining) {
-                    Dispatch(gba::Command::NavigateRight);
-                }
-                if (state_.selectedWidget() != request.hostTargetId) continue;
+                if (!SelectTrayWidget(request.hostTargetId)) continue;
                 if (request.kind == gba::accessibility::ActionKind::Invoke)
                     Dispatch(gba::Command::Activate);
                 else if (request.kind != gba::accessibility::ActionKind::Focus)
