@@ -226,11 +226,14 @@ result bundle.
 Disabled and busy destinations intentionally remain focusable while activation
 is suppressed; renderer and focus-test source encode that contract. The
 repository's 33 managed test projects are all custom executable harnesses with
-no standard test SDK, aggregate subprocess timeout, or structured result
-adapter. That is workable for focused local development but does not produce a
-versioned external-SDK quality signal. The repository still lacks retained
-structured results or an immutable CI run, and
-available default packages are one source version behind for YT Music and SDK
+no standard test SDK. Current HEAD's internal runner now supplies a
+41-step inventory, aggregate/per-step deadlines, capped output/case extraction,
+JUnit and JSON adapters, and clean-only release eligibility. That is a strong
+repository quality foundation, but it is not a versioned external-author test
+product. The latest dirty focused result exercises the cap/eligibility self-test,
+but its provenance names the prior commit and rejects release eligibility; there
+is still no clean immutable CI run. The available default packages
+are one source version behind for YT Music and SDK
 Gallery, so they are not current packaged evidence. Real controller, companion,
 physical-display and performance-trace evidence remain pending. This review did
 inspect representative retained PNGs, but the bundle is a dirty older widget-
@@ -409,6 +412,14 @@ state, and writes the exact `snapshot.json` named by the README. Authors can
 then see and copy the supported credential-free state/testing pattern instead
 of being told to design it themselves.
 
+That test should be a sibling project generated with the widget, or created by
+an explicit `gbar test init` command. It should use a normal portable
+`dotnet test` adapter or a published minimal Widget SDK test runner, include one fake-
+provider example and one deterministic lifecycle/snapshot scenario, and run in
+an ordinary external repository CI job. The repository's custom `PASS`-line
+protocol is an internal compatibility concern; community authors should not
+have to reproduce it or edit the platform's private verification manifest.
+
 The framework should still treat CLI, template, SDK package, compatibility
 contract, and generated README as one versioned deliverable. The current
 explicit local-SDK path is truthful contributor tooling, not the production
@@ -478,6 +489,16 @@ protected immutable generation acquired at lazy launch and retained through
 the worker session. Tests must cover a pause after verification followed by
 replacement before worker launch and mutate-and-restore inside the watcher
 debounce.
+
+The current handoff shows why this must remain platform-owned rather than an
+author convention. Catalog discovery ultimately becomes the generic worker path
+plus `--package-root`, `--widget-assembly`, and `--widget-type` strings. The
+runtime's existing `ProcessLeaseFactory` reserves worker count and declared
+memory, but it does not carry the verified digest, manifest, or path inventory.
+The author should receive neither raw verification handles nor a new API to
+recheck their own package. The host needs a separate typed content-authority
+lease, or one supervisor-owned session object that explicitly composes content
+authority with residency admission.
 
 The lease must bind package namespace as well as the bytes already present.
 Holding existing file handles does not by itself prevent a previously missing
@@ -577,6 +598,15 @@ client should own typed per-widget `Starting`, `Ready`, `CapacityDenied`,
 `Unavailable`, and `ProtocolFailed` states and emit bounded presentation
 effects. The Win32 layer can then render/retry/remediate those results without
 making every failure another timer-bound footer string.
+
+That coordinator also needs an explicit `StaleLastGood` policy. A failed
+snapshot refresh currently leaves a prior snapshot cached while showing only a
+four-second message, so controls can still look active even though the worker is
+unavailable. Widget authors should continue owning domain states such as service
+denial, offline data, and provider retry; they should not add host-startup,
+capacity, protocol, or process-crash screens to every widget. The platform must
+qualify or disable stale controls and provide one persistent controller-facing
+retry/remediation path.
 
 `keep-alive` should surface its
 continuing cost during package review. The runtime should offer a bounded,
@@ -1080,12 +1110,27 @@ await WidgetScenario.For(new SpotifyWidget(), services)
 The harness should provide deterministic operation completion, virtual time,
 route navigation, focus assertions, lifecycle leak detection, and standard
 capability states such as unavailable, denied, revoked, stale, and delayed.
-It should also integrate with the platform's bounded verification runner:
+The scenario API should emit results through a portable test adapter and also
+integrate with the platform's bounded internal verification runner:
 stable scenario/case IDs, per-case and process-tree timeouts, structured
 results, captured diagnostics, and exact SDK/template provenance. The current
-33 custom executable test projects prove many useful contracts, but their plain
-console totals are not a portable third-party test protocol and should not be
-copied into every generated widget.
+committed runner is a useful platform foundation: it introduces a stable
+41-step manifest, managed/native local and Windows lanes, 4 MiB per-stream and
+10,000-case defaults, truncation metadata, test-project inventory checks, clean-
+only release eligibility, logs, JUnit, JSON provenance, and 30-day CI retention.
+Its latest retained focused result exercises those cap/eligibility changes but
+is dirty, clean-ineligible, and names a pre-amend commit. Current HEAD gates the
+real command on an event signaled only after a kill-on-close Job and both pumps
+are active, bounds combined pump completion, records selected compiler/SDK/tool
+identity, and SHA-pins workflow actions. Community-artifact provenance now has
+entry/file/byte/output and 30-second process ceilings under the shared remaining
+deadline; root containment plus per-file/total-byte/entry quota fixtures are
+implemented, and the shared-time helper proves reduced budgets plus typed fail-
+before-launch exhaustion. A clean full workflow result remains absent. These are internal
+gate issues, not a protocol every widget repository should inherit. The 33
+custom executable test projects prove many useful contracts, but their `PASS`-
+line adapter and `verification-steps.json` should remain repository compatibility
+layers rather than something every generated widget copies.
 
 ### 11. Templates organized by complexity
 
@@ -1098,7 +1143,9 @@ One starter cannot teach every level. Provide repository templates such as:
 - `companion`: exact-port companion JSON with explicit security constraints.
 
 Templates should use the same production helpers as first-party widgets and
-remain small enough to read end to end.
+remain small enough to read end to end. Every template should also generate the
+same minimal sibling test project and CI-ready command, varying only the fake
+capabilities and scenarios needed by that template's complexity.
 
 ## Recommended Spotify structure after the helpers exist
 
@@ -1291,8 +1338,10 @@ Suggested baseline metrics for each migrated widget:
 - **A service-specific UI framework.** Spotify should use general media,
   navigation, resource, and command patterns.
 - **A custom test runner per generated widget.** Preserve the repository's
-  useful deterministic fakes, but expose one bounded result/timeout contract so
-  authors do not have to invent orchestration and CI parsing.
+  useful deterministic fakes, but generate one portable test-project shape and
+  standard `dotnet test` or published SDK-runner command. Keep the platform's
+  `PASS` parser and private step manifest internal so authors do not have to
+  invent orchestration, CI parsing, or platform-specific result lines.
 - **Magic string replacement without validation.** ID helpers and action maps
   should improve diagnostics, not conceal routing.
 - **Premature language expansion.** Another SDK would duplicate current
