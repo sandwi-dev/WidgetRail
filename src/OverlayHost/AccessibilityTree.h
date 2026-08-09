@@ -41,6 +41,7 @@ struct Tree final {
     std::wstring widgetId;
     std::wstring runtimeGeneration;
     long long snapshotSequence{};
+    std::wstring activeInputScopeId;
     std::vector<Node> nodes;
     std::optional<std::size_t> focusedNode;
 };

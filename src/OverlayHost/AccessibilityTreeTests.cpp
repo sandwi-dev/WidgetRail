@@ -85,6 +85,7 @@ int main() {
     Check(tree.widgetId == L"music" && tree.runtimeGeneration == L"generation-1",
           "tree retains exact widget runtime identity");
     Check(tree.snapshotSequence == 9, "tree retains snapshot authority");
+    Check(tree.activeInputScopeId == L"root", "tree retains active input scope authority");
     Check(tree.nodes.size() == 4, "active semantic nodes are exposed exactly once");
     Check(tree.nodes[0].role == gba::accessibility::Role::Text &&
           tree.nodes[0].name == L"Now playing", "visible text has a static-text name");

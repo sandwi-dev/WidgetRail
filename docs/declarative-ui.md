@@ -8,20 +8,35 @@ Widgets return a semantic tree from `Widget.Render()`. The host owns layout,
 pixels, focus presentation, accessibility, and controller dispatch. Widgets
 cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 
-The native renderer now has a bounded accessibility-geometry path for visible
+The native renderer has a bounded accessibility-geometry path for visible
 Text, Button, Slider, ActionSurface, Image, Icon, Progress, and LoadingIndicator
 nodes. A pure host builder combines that final clipped geometry with the exact
 widget/runtime/snapshot identity, active input scope, accessible names and
 values, disabled/busy/selected/focused state, Invoke metadata, and Slider range.
 ActionSurface descendants remain presentation-only and inactive responsive or
-modal scopes are omitted. Collection is dormant during ordinary rendering to
-avoid per-frame accessibility allocations.
+modal scopes are omitted. Collection is dormant until the HWND is first queried
+by a UIA client, avoiding per-frame accessibility allocations for sessions that
+never use the provider. Once active, a projection tracker rebuilds only for
+snapshot, focus, scope, viewport, DPI, appearance, or accessibility-policy
+changes. Paint-only motion retains the immutable tree and publishes final
+geometry once when the transition settles.
 
-This is provider groundwork, not a screen-reader support claim. The shipping
-HWND does not yet publish that immutable tree through `WM_GETOBJECT`/Windows UI
-Automation, route Invoke or RangeValue requests, or raise focus/property events.
-Narrator and other UIA clients therefore cannot use widget controls yet; that
-native provider and its automated client coverage remain a release gate.
+The shipping HWND now publishes this immutable open-widget surface through
+`WM_GETOBJECT` and Windows UI Automation. Button and ActionSurface nodes expose
+Invoke, Slider exposes writable RangeValue, and bounded Progress exposes
+read-only RangeValue. Provider reads never call the worker. Invoke, SetValue,
+and SetFocus enter one bounded host queue; the window thread revalidates widget,
+runtime generation, snapshot sequence, active scope, node identity, action ID,
+and enabled state before routing controller input or changing focus. RangeValue
+updates are quantized and coalesced latest-wins per Slider. A real
+`IUIAutomation` client test covers `WM_GETOBJECT`, fragment traversal, names,
+geometry, patterns, and stale-generation rejection.
+
+This is not yet the complete screen-reader ship gate. Dashboard tiles are not
+in the fragment tree, dynamic structure/property/focus events are not raised,
+legacy MSAA is not implemented, and a packaged Narrator smoke test remains
+pending. Until those close, treat open-widget UIA as an implemented preview and
+keep deterministic semantic snapshots as the primary accessibility contract.
 
 ## Elements
 

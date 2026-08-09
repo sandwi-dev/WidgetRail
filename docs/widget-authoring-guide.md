@@ -647,6 +647,33 @@ Current semantic glyphs are `Music`, `Play`, `Pause`, `Previous`, `Next`,
 `Check`, `Connection`, `Volume`, `Muted`, `Microphone`, `Wifi`, and `Ethernet`.
 Widgets cannot supply SVG paths or icon-font names.
 
+## Screen-reader and automation contract
+
+When an open widget is queried by Windows UI Automation, the host exposes only
+semantic nodes that survived final responsive layout, clipping, and active
+input-scope selection. Text, images, icons, loading state, and progress publish
+their accessible names; Button and ActionSurface publish Invoke; Slider
+publishes writable RangeValue; bounded Progress publishes read-only RangeValue.
+ActionSurface descendants remain presentation-only so a rich tile is announced
+once. Disabled or Busy controls remain discoverable but cannot invoke.
+
+Provider calls never enter widget code directly. Invoke, SetValue, and SetFocus
+are queued asynchronously, and the host rechecks the exact runtime generation,
+snapshot sequence, scope, node, action, and enabled state on its window thread.
+Invoke and SetValue are treated as explicit accessibility user gestures only
+for the currently visible widget; they enter its Interactive lifecycle and use
+the same typed controller-action and capability-admission path as local input.
+Your next immutable render is authoritative; do not depend on synchronous state
+mutation during an accessibility request. Keep labels concise, supply a human
+readable Slider value, and keep IDs stable for the lifetime of one logical
+control.
+
+Open-widget UIA is currently an implemented preview rather than the completed
+screen-reader ship gate. Dashboard tiles and dynamic UIA events are not yet
+published, legacy MSAA is not implemented, and packaged Narrator evidence is
+pending. Semantic snapshot tests therefore remain required for widget
+acceptance.
+
 Every node ID must be unique in the snapshot, at most 128 characters, and use
 only ASCII letters, digits, `.`, `-`, and `_`. Do not derive IDs from list
 positions or displayed text; changing an ID discards host focus/scroll memory.

@@ -33,6 +33,7 @@ Tree BuildWidgetTree(
         std::move(widgetId),
         std::move(runtimeGeneration),
         snapshot.sequence,
+        snapshot.activeInputScopeId,
     };
     std::map<std::wstring_view, declarative::Rect, std::less<>> regions;
     for (const auto& region : render.accessibilityRegions) {

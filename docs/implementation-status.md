@@ -47,14 +47,23 @@ deadline plus whether visible state changed. A dedicated timer removes expired
 copy and requests one repaint, with the already-active controller timer providing
 a no-extra-repaint fallback if Win32 cannot create that timer.
 
-The renderer can now retain bounded visible semantic geometry on demand, and a
+The renderer can retain bounded visible semantic geometry on demand, and a
 pure native accessibility-tree builder combines it with exact runtime/snapshot
 identity, active input-scope filtering, names, values, focus/state, Invoke
 metadata, and Slider ranges. ActionSurface descendants are collapsed into one
-semantic target. The path is allocation-dormant during ordinary frames. The
-HWND still lacks the `WM_GETOBJECT`/UI Automation provider, patterns, events,
-and automated UIA-client proof, so end-to-end screen-reader support remains
-open and is not claimed by this foundation.
+semantic target. Collection stays allocation-dormant until the first UIA query. The
+HWND now publishes the immutable open-widget tree through `WM_GETOBJECT` and a
+free-threaded Windows UI Automation fragment provider. Button/ActionSurface
+Invoke and Slider RangeValue enqueue bounded asynchronous requests; the UI
+thread revalidates the exact widget/runtime/snapshot/scope/node/action tuple
+before using the existing controller-input route. Slider writes are quantized
+and coalesced latest-wins. A real `IUIAutomation` client test covers provider
+publication, traversal, names, physical screen bounds, patterns, and stale
+runtime rejection. A separate projection-cadence contract proves stable and
+animation-only paints do not rebuild, while transition completion requests one
+final-geometry projection. Dashboard tile fragments, dynamic UIA events, legacy MSAA,
+and packaged Narrator evidence remain open, so full screen-reader support is
+not yet claimed.
 
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the

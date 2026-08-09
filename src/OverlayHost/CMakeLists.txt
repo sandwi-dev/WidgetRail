@@ -36,6 +36,7 @@ add_executable(OverlayHost WIN32
     WidgetLifecycle.cpp
     WidgetActionFeedback.cpp
     AccessibilityTree.cpp
+    AccessibilityProvider.cpp
 )
 
 target_compile_features(OverlayHost PRIVATE cxx_std_20)
@@ -62,6 +63,8 @@ target_link_libraries(OverlayHost PRIVATE
     winhttp
     windowscodecs
     ole32
+    oleaut32
+    uiautomationcore
 )
 
 if(GBA_BUILD_TESTS)
@@ -183,6 +186,20 @@ if(GBA_BUILD_TESTS)
     target_compile_options(AccessibilityTreeTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(AccessibilityTreeTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME AccessibilityTreeTests COMMAND AccessibilityTreeTests)
+
+    add_executable(AccessibilityProjectionTests AccessibilityProjectionTests.cpp)
+    target_compile_features(AccessibilityProjectionTests PRIVATE cxx_std_20)
+    target_compile_options(AccessibilityProjectionTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(AccessibilityProjectionTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME AccessibilityProjectionTests COMMAND AccessibilityProjectionTests)
+
+    add_executable(AccessibilityProviderTests
+        AccessibilityProviderTests.cpp AccessibilityProvider.cpp)
+    target_compile_features(AccessibilityProviderTests PRIVATE cxx_std_20)
+    target_compile_options(AccessibilityProviderTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(AccessibilityProviderTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(AccessibilityProviderTests PRIVATE user32 ole32 oleaut32 uiautomationcore)
+    add_test(NAME AccessibilityProviderTests COMMAND AccessibilityProviderTests)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp

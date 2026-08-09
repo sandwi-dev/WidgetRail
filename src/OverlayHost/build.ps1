@@ -91,9 +91,11 @@ $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
 $actionFeedbackTestObjectDirectory = Join-Path $outputDirectory 'obj\action-feedback-tests'
 $accessibilityTreeTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-tree-tests'
+$accessibilityProjectionTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-projection-tests'
+$accessibilityProviderTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-provider-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -135,6 +137,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),
     (Join-Path $projectDirectory 'WidgetActionFeedback.cpp'),
     (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
+    (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
     "/Fo:$hostObjectDirectory\",
     "/Fe:$outputDirectory\OverlayHost.exe",
     '/link'
@@ -144,7 +147,8 @@ $hostArguments = $common + @(
     "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')",
     'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
-    'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'oleaut32.lib',
+    'uiautomationcore.lib'
 )
 
 & $cl $hostArguments
@@ -642,6 +646,39 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'AccessibilityTreeTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "AccessibilityTreeTests failed with exit code $LASTEXITCODE."
+    }
+
+    $accessibilityProjectionTestArguments = $common + @(
+        (Join-Path $projectDirectory 'AccessibilityProjectionTests.cpp'),
+        "/Fo:$accessibilityProjectionTestObjectDirectory\",
+        "/Fe:$outputDirectory\AccessibilityProjectionTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $accessibilityProjectionTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProjectionTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'AccessibilityProjectionTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProjectionTests failed with exit code $LASTEXITCODE."
+    }
+
+    $accessibilityProviderTestArguments = $common + @(
+        (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
+        "/Fo:$accessibilityProviderTestObjectDirectory\",
+        "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $accessibilityProviderTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProviderTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'AccessibilityProviderTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProviderTests failed with exit code $LASTEXITCODE."
     }
 
     $rendererTestArguments = $common + @(
