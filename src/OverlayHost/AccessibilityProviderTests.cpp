@@ -133,6 +133,26 @@ gba::WidgetSnapshot Snapshot() {
     return snapshot;
 }
 
+gba::accessibility::Tree HostTree() {
+    gba::accessibility::Tree tree;
+    tree.widgetId = L"host.tray";
+    tree.runtimeGeneration = L"host";
+    tree.snapshotSequence = 21;
+    tree.activeInputScopeId = L"host.tray";
+    gba::accessibility::Node music;
+    music.id = L"tray.music";
+    music.name = L"YT Music";
+    music.hostTargetId = L"music";
+    music.bounds = {20, 220, 64, 64};
+    music.role = gba::accessibility::Role::ListItem;
+    music.hostAction = gba::accessibility::HostAction::ActivateTrayItem;
+    music.selected = true;
+    music.focused = true;
+    tree.nodes.push_back(music);
+    tree.focusedNode = 0;
+    return tree;
+}
+
 } // namespace
 
 int main() {
@@ -307,6 +327,75 @@ int main() {
     Check(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,
           "stale provider cannot enqueue into a replacement runtime");
     Check(host.TakeActions().empty(), "stale provider leaves the action queue unchanged");
+
+    host.Publish(HostTree(), {100, 200, 2, 800, 600});
+    ComPtr<IUnknown> selectionUnknown;
+    Check(SUCCEEDED(root->GetPatternProvider(
+              UIA_SelectionPatternId, selectionUnknown.GetAddressOf())) && selectionUnknown,
+          "tray root advertises single selection");
+    ComPtr<ISelectionProvider> selection;
+    Check(SUCCEEDED(selectionUnknown.As(&selection)), "Selection pattern is queryable");
+    BOOL required{};
+    BOOL multiple{TRUE};
+    Check(SUCCEEDED(selection->get_IsSelectionRequired(&required)) && required &&
+          SUCCEEDED(selection->get_CanSelectMultiple(&multiple)) && !multiple,
+          "tray requires exactly one selected item");
+    ComPtr<IRawElementProviderFragment> trayFragment;
+    Check(SUCCEEDED(rootFragment->Navigate(
+              NavigateDirection_FirstChild, trayFragment.GetAddressOf())) && trayFragment,
+          "root navigates to the visible tray item");
+    ComPtr<IRawElementProviderSimple> trayItem;
+    Check(SUCCEEDED(trayFragment.As(&trayItem)) &&
+          StringProperty(trayItem.Get(), UIA_NamePropertyId) == L"YT Music",
+          "tray item exposes its shell-owned name");
+    ComPtr<IUnknown> selectionItemUnknown;
+    Check(SUCCEEDED(trayItem->GetPatternProvider(
+              UIA_SelectionItemPatternId, selectionItemUnknown.GetAddressOf())) &&
+          selectionItemUnknown,
+          "tray item advertises SelectionItem");
+    ComPtr<ISelectionItemProvider> selectionItem;
+    Check(SUCCEEDED(selectionItemUnknown.As(&selectionItem)),
+          "SelectionItem pattern is queryable");
+    Check(SUCCEEDED(selectionItem->Select()), "tray selection posts asynchronously");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 && actions[0].kind == gba::accessibility::ActionKind::Focus &&
+          actions[0].hostAction == gba::accessibility::HostAction::ActivateTrayItem &&
+          actions[0].hostTargetId == L"music",
+          "tray selection retains closed host target authority");
+    ComPtr<IUnknown> trayInvokeUnknown;
+    Check(SUCCEEDED(trayItem->GetPatternProvider(
+              UIA_InvokePatternId, trayInvokeUnknown.GetAddressOf())) && trayInvokeUnknown,
+          "tray item advertises Invoke");
+    ComPtr<IInvokeProvider> trayInvoke;
+    Check(SUCCEEDED(trayInvokeUnknown.As(&trayInvoke)) && SUCCEEDED(trayInvoke->Invoke()),
+          "tray Invoke posts asynchronously");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 && actions[0].kind == gba::accessibility::ActionKind::Invoke &&
+          actions[0].hostTargetId == L"music",
+          "tray Invoke retains the selected widget target");
+    VARIANT trayAutomationId{};
+    V_VT(&trayAutomationId) = VT_BSTR;
+    V_BSTR(&trayAutomationId) = SysAllocString(L"tray.music");
+    ComPtr<IUIAutomationCondition> trayCondition;
+    Check(SUCCEEDED(client->CreatePropertyCondition(
+              UIA_AutomationIdPropertyId, trayAutomationId,
+              trayCondition.GetAddressOf())) && trayCondition,
+          "real UIA client creates a tray-item condition");
+    VariantClear(&trayAutomationId);
+    ComPtr<IUIAutomationElement> clientTrayItem;
+    Check(SUCCEEDED(clientRoot->FindFirst(
+              TreeScope_Descendants, trayCondition.Get(),
+              clientTrayItem.GetAddressOf())) && clientTrayItem,
+          "real UIA client discovers the visible tray item");
+    CONTROLTYPEID trayControlType{};
+    Check(SUCCEEDED(clientTrayItem->get_CurrentControlType(&trayControlType)) &&
+          trayControlType == UIA_ListItemControlTypeId,
+          "real UIA client sees the closed ListItem control type");
+    ComPtr<IUnknown> clientSelectionItem;
+    Check(SUCCEEDED(clientTrayItem->GetCurrentPattern(
+              UIA_SelectionItemPatternId, clientSelectionItem.GetAddressOf())) &&
+          clientSelectionItem,
+          "real UIA client obtains SelectionItem from the tray item");
 
     host.Clear();
     Check(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,

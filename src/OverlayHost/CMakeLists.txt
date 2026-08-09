@@ -38,6 +38,7 @@ add_executable(OverlayHost WIN32
     AccessibilityTree.cpp
     AccessibilityProvider.cpp
     TrayLayout.cpp
+    HostAccessibility.cpp
 )
 
 target_compile_features(OverlayHost PRIVATE cxx_std_20)
@@ -207,6 +208,13 @@ if(GBA_BUILD_TESTS)
     target_compile_options(TrayLayoutTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(TrayLayoutTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME TrayLayoutTests COMMAND TrayLayoutTests)
+
+    add_executable(HostAccessibilityTests
+        HostAccessibilityTests.cpp HostAccessibility.cpp TrayLayout.cpp)
+    target_compile_features(HostAccessibilityTests PRIVATE cxx_std_20)
+    target_compile_options(HostAccessibilityTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(HostAccessibilityTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME HostAccessibilityTests COMMAND HostAccessibilityTests)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp

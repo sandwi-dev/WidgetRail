@@ -27,6 +27,8 @@ struct ActionRequest final {
     std::wstring activeInputScopeId;
     std::wstring nodeId;
     std::wstring actionId;
+    HostAction hostAction{HostAction::None};
+    std::wstring hostTargetId;
     std::optional<double> requestedValue;
 };
 

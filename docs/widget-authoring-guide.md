@@ -669,10 +669,12 @@ readable Slider value, and keep IDs stable for the lifetime of one logical
 control.
 
 Open-widget UIA is currently an implemented preview rather than the completed
-screen-reader ship gate. Dashboard tiles and dynamic UIA events are not yet
-published, legacy MSAA is not implemented, and packaged Narrator evidence is
-pending. Semantic snapshot tests therefore remain required for widget
-acceptance.
+screen-reader ship gate. The host tray publishes its visible widget tiles as a
+single-selection ListItem set with Invoke; inactive widget controls are replaced
+by that tray surface while controller focus is there. Dynamic UIA events and
+dashboard title/status nodes are not yet published, legacy MSAA is not
+implemented, and packaged Narrator evidence is pending. Semantic snapshot tests
+therefore remain required for widget acceptance.
 
 Every node ID must be unique in the snapshot, at most 128 characters, and use
 only ASCII letters, digits, `.`, `-`, and `_`. Do not derive IDs from list

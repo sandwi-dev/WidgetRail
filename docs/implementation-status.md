@@ -61,16 +61,25 @@ and coalesced latest-wins. A real `IUIAutomation` client test covers provider
 publication, traversal, names, physical screen bounds, patterns, and stale
 runtime rejection. A separate projection-cadence contract proves stable and
 animation-only paints do not rebuild, while transition completion requests one
-final-geometry projection. Dashboard tile fragments, dynamic UIA events, legacy MSAA,
-and packaged Narrator evidence remain open, so full screen-reader support is
-not yet claimed.
+final-geometry projection. Dashboard title/status fragments, dynamic UIA events,
+legacy MSAA, and packaged Narrator evidence remain open, so full screen-reader
+support is not yet claimed.
 
 The dashboard and open-widget tray now share one pure `ComputeTrayLayout`
 result across painting and pointer hit-testing. The bounded visible window,
 selected-slot centering, embedded tray band, below-preferred fallback, and edge
 hit policy have focused native coverage. This removes the prior duplicated
-geometry formulas and gives the pending host UIA fragment tree the same final
-tile rectangles as pixels and pointer input; dashboard semantics themselves
+geometry formulas and gives the host UIA fragment tree the same final tile
+rectangles as pixels and pointer input.
+
+The visible dashboard/open-widget tray now publishes those shared rectangles as
+UIA ListItems with required single selection and Invoke. The immutable host tree
+retains selected/focused/enabled state and a monotonically increasing host
+sequence. Select and Invoke queue a closed `ActivateTrayItem` action with a
+stable widget target; the UI thread rejects stale trees, exits reorder mode, and
+uses the existing tray state machine. The real UIA-client suite discovers the
+ListItem and obtains SelectionItem, while direct provider coverage verifies the
+typed queued authority. Dashboard title/status nodes and UIA change events
 remain open.
 
 The visible shell uses separate panel and dimming-backdrop windows on the active

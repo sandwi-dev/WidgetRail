@@ -7,6 +7,7 @@
 #include "ControllerInputOwnership.h"
 #include "GuideInputCompatibility.h"
 #include "FocusNavigation.h"
+#include "HostAccessibility.h"
 #include "NativeIcons.h"
 #include "NativeStyle.h"
 #include "OverlayPlacement.h"
@@ -2783,6 +2784,39 @@ private:
 
     void HandleAccessibilityActions() {
         for (const auto& request : accessibilityProvider_.TakeActions()) {
+            if (request.widgetId == L"host.tray") {
+                const auto node = std::find_if(
+                    accessibilityTree_.nodes.begin(), accessibilityTree_.nodes.end(),
+                    [&](const gba::accessibility::Node& candidate) {
+                        return candidate.id == request.nodeId;
+                    });
+                if (accessibilityTree_.widgetId != L"host.tray" ||
+                    request.runtimeGeneration != L"host" ||
+                    request.snapshotSequence != accessibilityTree_.snapshotSequence ||
+                    request.activeInputScopeId != L"host.tray" ||
+                    node == accessibilityTree_.nodes.end() || !node->enabled ||
+                    node->hostAction != gba::accessibility::HostAction::ActivateTrayItem ||
+                    node->hostTargetId != request.hostTargetId ||
+                    request.hostAction != node->hostAction) {
+                    AppendDiagnostic(L"Dropped stale or invalid tray accessibility action");
+                    continue;
+                }
+                if (state_.focusRegion() != gba::FocusRegion::Tray) continue;
+                if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
+                for (std::size_t remaining = state_.order().size();
+                     remaining > 0 && state_.selectedWidget() != request.hostTargetId;
+                     --remaining) {
+                    Dispatch(gba::Command::NavigateRight);
+                }
+                if (state_.selectedWidget() != request.hostTargetId) continue;
+                if (request.kind == gba::accessibility::ActionKind::Invoke)
+                    Dispatch(gba::Command::Activate);
+                else if (request.kind != gba::accessibility::ActionKind::Focus)
+                    continue;
+                (void)SetFocus(window_);
+                InvalidateRect(window_, nullptr, FALSE);
+                continue;
+            }
             if (state_.surface() != gba::Surface::Widget ||
                 state_.activeWidget() != request.widgetId ||
                 !IsBridgeWidget(request.widgetId)) {
@@ -2869,6 +2903,51 @@ private:
                 static_cast<double>(client.bottom - client.top),
             });
         return true;
+    }
+
+    void PublishTrayAccessibility(
+        const gba::shell::TrayLayout& layout,
+        const float width,
+        const float height) {
+        if (!accessibilityActive_ || state_.focusRegion() != gba::FocusRegion::Tray)
+            return;
+        std::uint64_t orderHash = 1469598103934665603ULL;
+        std::vector<gba::accessibility::TrayItem> items;
+        items.reserve(state_.order().size());
+        for (const auto& widgetId : state_.order()) {
+            for (const wchar_t codeUnit : widgetId) {
+                orderHash ^= static_cast<std::uint16_t>(codeUnit);
+                orderHash *= 1099511628211ULL;
+            }
+            items.push_back({widgetId, std::wstring{DisplayWidgetName(widgetId)}});
+        }
+        const auto policy = appearanceState_.current()
+            ? CurrentAccessibilityPolicy()
+            : gba::NativeAccessibilityPolicy{};
+        const gba::accessibility::ProjectionKey key{
+            L"host.tray",
+            L"host",
+            L"host.tray",
+            std::wstring{state_.selectedWidget()},
+            static_cast<long long>(orderHash & 0x7fffffffffffffffULL),
+            appearanceState_.current() ? appearanceState_.current()->revision : 0,
+            layout.stripBounds.x,
+            layout.stripBounds.y,
+            layout.stripBounds.width,
+            layout.stripBounds.height,
+            width,
+            height,
+            static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F,
+            policy.textScale,
+            policy.minimumFontWeight,
+            policy.reducedMotion,
+            policy.reducedTransparency,
+        };
+        if (!accessibilityProjection_.ShouldCollect(key)) return;
+        accessibilityTree_ = gba::accessibility::BuildTrayTree(
+            items, layout, state_.selectedSlot(), ++hostAccessibilitySequence_);
+        if (PublishAccessibilityTree(key.pixelsPerDip))
+            accessibilityProjection_.Published(key);
     }
 
     bool ReconcileResponsiveFocusPersistence() {
@@ -3745,6 +3824,7 @@ private:
                     : trayItemTextBrush_.Get(),
                 2.35F);
         }
+        PublishTrayAccessibility(*layout, width, height);
     }
 
     static std::wstring_view DisplayButton(const std::wstring_view button) {
@@ -3799,17 +3879,8 @@ private:
     }
 
     void DrawDashboard(const float width, const float height) {
-        // Publish the host root but never leave an open-widget tree visible
-        // after returning to the dashboard. Dashboard tile semantics remain a
-        // separate host-owned accessibility surface.
         if (!accessibilityActive_) {
             if (!accessibilityTree_.widgetId.empty()) ClearAccessibilityTree();
-        } else if (accessibilityTree_.widgetId != L"host.dashboard") {
-            ClearAccessibilityTree();
-            accessibilityTree_.widgetId = L"host.dashboard";
-            accessibilityTree_.runtimeGeneration = L"host";
-            (void)PublishAccessibilityTree(
-                static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0);
         }
         if (width <= 0.0F || height <= 0.0F) return;
         const float horizontalInset = std::min(34.0F, width * 0.1F);
@@ -4019,6 +4090,7 @@ private:
                     accessibilityPolicy.reducedTransparency,
                 };
                 const bool collectAccessibility = accessibilityActive_ &&
+                    state_.focusRegion() == gba::FocusRegion::Widget &&
                     descriptor != widgetDescriptors_.end() &&
                     accessibilityProjection_.ShouldCollect(projectionKey);
                 gba::DeclarativeRenderOptions options;
@@ -4190,6 +4262,7 @@ private:
     gba::accessibility::ProviderHost accessibilityProvider_;
     bool accessibilityActive_{};
     gba::accessibility::ProjectionTracker accessibilityProjection_;
+    long long hostAccessibilitySequence_{};
     ULONGLONG lastGuideDispatchAt_{};
     ULONGLONG sliderReconcileAt_{};
     std::wstring focusedElementId_;

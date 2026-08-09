@@ -16,6 +16,12 @@ enum class Role {
     Text,
     Image,
     Progress,
+    ListItem,
+};
+
+enum class HostAction {
+    None,
+    ActivateTrayItem,
 };
 
 struct Node final {
@@ -24,8 +30,10 @@ struct Node final {
     std::wstring value;
     std::wstring actionId;
     std::wstring valueChangedActionId;
+    std::wstring hostTargetId;
     declarative::Rect bounds;
     Role role{Role::Text};
+    HostAction hostAction{HostAction::None};
     std::optional<std::size_t> parent;
     std::vector<std::size_t> children;
     double rangeValue{};

@@ -32,10 +32,18 @@ updates are quantized and coalesced latest-wins per Slider. A real
 `IUIAutomation` client test covers `WM_GETOBJECT`, fragment traversal, names,
 geometry, patterns, and stale-generation rejection.
 
+While controller focus is on the dashboard/open-widget tray, the provider
+publishes the exact visible carousel window instead of inactive widget controls.
+Each tile is a ListItem with single-selection and Invoke patterns, its selected,
+focused, and enabled states, and the shared paint/pointer rectangle. Select and
+Invoke carry a closed host action plus stable widget target; the UI thread exits
+reorder mode, revalidates the current host-tree sequence, and uses the existing
+tray state machine rather than parsing command strings.
+
 This is not yet the complete screen-reader ship gate. Dashboard tiles are not
-in the fragment tree, dynamic structure/property/focus events are not raised,
-legacy MSAA is not implemented, and a packaged Narrator smoke test remains
-pending. Until those close, treat open-widget UIA as an implemented preview and
+fully described by title/status nodes, dynamic structure/property/focus events
+are not raised, legacy MSAA is not implemented, and a packaged Narrator smoke
+test remains pending. Until those close, treat UIA as an implemented preview and
 keep deterministic semantic snapshots as the primary accessibility contract.
 
 ## Elements

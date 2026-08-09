@@ -76,12 +76,14 @@ int ControlType(const Role role) noexcept {
     case Role::Text: return UIA_TextControlTypeId;
     case Role::Image: return UIA_ImageControlTypeId;
     case Role::Progress: return UIA_ProgressBarControlTypeId;
+    case Role::ListItem: return UIA_ListItemControlTypeId;
     }
     return UIA_CustomControlTypeId;
 }
 
 bool KeyboardFocusable(const Node& node) noexcept {
-    return node.role == Role::Button || node.role == Role::Slider;
+    return node.role == Role::Button || node.role == Role::Slider ||
+        node.role == Role::ListItem;
 }
 
 const WidgetNode* FindNode(
@@ -164,7 +166,9 @@ class Provider final : public RuntimeClass<
     IRawElementProviderFragment,
     IRawElementProviderFragmentRoot,
     IInvokeProvider,
-    IRangeValueProvider> {
+    IRangeValueProvider,
+    ISelectionItemProvider,
+    ISelectionProvider> {
 public:
     Provider(std::shared_ptr<ProviderState> state,
              std::optional<ElementIdentity> identity)
@@ -184,9 +188,20 @@ public:
         const auto published = state_->Snapshot();
         const auto* node = ResolveNode(published);
         if (identity_ && !node) return UIA_E_ELEMENTNOTAVAILABLE;
-        if (!node) return S_OK;
-        if (patternId == UIA_InvokePatternId && node->role == Role::Button &&
-            !node->actionId.empty()) {
+        if (!node) {
+            if (patternId == UIA_SelectionPatternId && published &&
+                std::any_of(
+                    published->tree.nodes.begin(), published->tree.nodes.end(),
+                    [](const Node& candidate) {
+                        return candidate.role == Role::ListItem;
+                    }))
+                return QueryInterface(
+                    __uuidof(ISelectionProvider), reinterpret_cast<void**>(result));
+            return S_OK;
+        }
+        if (patternId == UIA_InvokePatternId &&
+            (node->role == Role::Button || node->role == Role::ListItem) &&
+            (!node->actionId.empty() || node->hostAction != HostAction::None)) {
             return QueryInterface(__uuidof(IInvokeProvider), reinterpret_cast<void**>(result));
         }
         if (patternId == UIA_RangeValuePatternId &&
@@ -195,6 +210,9 @@ public:
               node->rangeMaximum > node->rangeMinimum))) {
             return QueryInterface(__uuidof(IRangeValueProvider), reinterpret_cast<void**>(result));
         }
+        if (patternId == UIA_SelectionItemPatternId && node->role == Role::ListItem)
+            return QueryInterface(
+                __uuidof(ISelectionItemProvider), reinterpret_cast<void**>(result));
         return S_OK;
     }
 
@@ -415,7 +433,9 @@ public:
         const auto published = state_->Snapshot();
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
-        if (node->role != Role::Button || node->actionId.empty()) return UIA_E_NOTSUPPORTED;
+        if ((node->role != Role::Button && node->role != Role::ListItem) ||
+            (node->actionId.empty() && node->hostAction == HostAction::None))
+            return UIA_E_NOTSUPPORTED;
         if (!node->enabled) return UIA_E_ELEMENTNOTENABLED;
         return state_->Enqueue(RequestFor(*published, *node, ActionKind::Invoke));
     }
@@ -472,6 +492,87 @@ public:
         return RangeNumber(result, [](const Node& node) { return node.rangeStep; });
     }
 
+    IFACEMETHODIMP Select() noexcept override {
+        const auto published = state_->Snapshot();
+        const auto* node = ResolveNode(published);
+        if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (node->role != Role::ListItem) return UIA_E_NOTSUPPORTED;
+        return state_->Enqueue(RequestFor(*published, *node, ActionKind::Focus));
+    }
+
+    IFACEMETHODIMP AddToSelection() noexcept override {
+        return UIA_E_INVALIDOPERATION;
+    }
+
+    IFACEMETHODIMP RemoveFromSelection() noexcept override {
+        return UIA_E_INVALIDOPERATION;
+    }
+
+    IFACEMETHODIMP get_IsSelected(BOOL* result) noexcept override {
+        if (!result) return E_INVALIDARG;
+        const auto published = state_->Snapshot();
+        const auto* node = ResolveNode(published);
+        if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (node->role != Role::ListItem) return UIA_E_NOTSUPPORTED;
+        *result = node->selected ? TRUE : FALSE;
+        return S_OK;
+    }
+
+    IFACEMETHODIMP get_SelectionContainer(
+        IRawElementProviderSimple** result) noexcept override {
+        if (!result) return E_INVALIDARG;
+        *result = nullptr;
+        if (!identity_) return UIA_E_NOTSUPPORTED;
+        ComPtr<Provider> root = Make<Provider>(state_, std::nullopt);
+        return root ? root->QueryInterface(IID_PPV_ARGS(result)) : E_OUTOFMEMORY;
+    }
+
+    IFACEMETHODIMP GetSelection(SAFEARRAY** result) noexcept override {
+        if (!result) return E_INVALIDARG;
+        *result = nullptr;
+        if (identity_) return UIA_E_NOTSUPPORTED;
+        const auto published = state_->Snapshot();
+        if (!published) return S_OK;
+        const auto selected = std::find_if(
+            published->tree.nodes.begin(), published->tree.nodes.end(),
+            [](const Node& node) {
+                return node.role == Role::ListItem && node.selected;
+            });
+        if (selected == published->tree.nodes.end()) {
+            *result = SafeArrayCreateVector(VT_UNKNOWN, 0, 0);
+            return *result ? S_OK : E_OUTOFMEMORY;
+        }
+        SAFEARRAY* array = SafeArrayCreateVector(VT_UNKNOWN, 0, 1);
+        if (!array) return E_OUTOFMEMORY;
+        ComPtr<IRawElementProviderFragment> fragment;
+        HRESULT status = CreateFragment(
+            IdentityFor(*published, *selected), fragment.GetAddressOf());
+        ComPtr<IUnknown> unknown;
+        if (SUCCEEDED(status)) status = fragment.As(&unknown);
+        LONG index{};
+        IUnknown* selectedProvider = unknown.Get();
+        if (SUCCEEDED(status))
+            status = SafeArrayPutElement(array, &index, selectedProvider);
+        if (FAILED(status)) {
+            SafeArrayDestroy(array);
+            return status;
+        }
+        *result = array;
+        return S_OK;
+    }
+
+    IFACEMETHODIMP get_CanSelectMultiple(BOOL* result) noexcept override {
+        if (!result) return E_INVALIDARG;
+        *result = FALSE;
+        return identity_ ? UIA_E_NOTSUPPORTED : S_OK;
+    }
+
+    IFACEMETHODIMP get_IsSelectionRequired(BOOL* result) noexcept override {
+        if (!result) return E_INVALIDARG;
+        *result = TRUE;
+        return identity_ ? UIA_E_NOTSUPPORTED : S_OK;
+    }
+
 private:
     [[nodiscard]] const Node* ResolveNode(
         const std::shared_ptr<const PublishedTree>& published) const noexcept {
@@ -513,6 +614,8 @@ private:
             published.tree.activeInputScopeId,
             node.id,
             kind == ActionKind::SetValue ? node.valueChangedActionId : node.actionId,
+            node.hostAction,
+            node.hostTargetId,
         };
     }
 
