@@ -13,7 +13,7 @@ the graphical simulator exists. It has no third-party runtime dependencies.
 gbar new widget VolumeControl --id dev.example.volume-control
 gbar validate .\\VolumeControl
 gbar dev .\\VolumeControl
-gbar render .\\VolumeControl\\bin\\Debug\\net8.0\\VolumeControl.dll --type dev.example.VolumeControl.VolumeControl --output snapshot.json
+gbar render .\\fixtures\\volume-control.snapshot.json --output snapshot.json
 gbar replay snapshot.json .\\VolumeControl\\replays\\smoke.json
 gbar pack .\\VolumeControl --output .\\VolumeControl-1.0.0.gbarwidget
 gbar install .\\VolumeControl-1.0.0.gbarwidget
@@ -74,9 +74,10 @@ gbar theme list
   overlay/bridge/worker process tree, and retries temporary-catalog removal;
   unreclaimed processes or files are reported as cleanup failure. The workflow
   never modifies the user's installed-widget catalog.
-- `render` validates and prints a semantic snapshot tree. Given a widget DLL
-  and type, it runs `Render()` in a collectible development-only load context
-  and can persist the deterministic protocol snapshot.
+- `render` is data-only: it validates, bounds, and prints an existing semantic
+  snapshot tree and can write a canonical copy. DLL input fails closed before
+  type resolution or output handling. Use `dev` when author code must execute;
+  it retains the production AppContainer/worker boundary.
 - `replay` walks explicit D-pad focus edges and resolves `A` actions and
   declared non-Guide shortcuts from a versioned JSON event stream.
 - `pack` validates the root manifest and entrypoint, rejects reparse points,
@@ -202,10 +203,11 @@ validation and is removed on success or failure. These controls do not make an
 untrusted widget safe and do not claim to prevent DNS rebinding; install only
 from publishers you trust.
 
-The DLL renderer is development tooling, not the production worker host or
-security boundary. Do not use it to inspect untrusted widget binaries. Prefer
-`gbar dev` for overlay integration because it retains the production community
-worker boundary.
+`gbar render` and scenario listing never load widget/provider assemblies.
+`gbar dev` is the executable integration path because it retains the production
+community worker boundary. Snapshot fixtures should come from author-controlled
+typed-fake tests or an isolated worker capture, not by executing downloaded code
+inside a test or CLI process.
 
 Exit code 0 means success, 1 means validation/runtime failure, and 2 means the
 command was used incorrectly.

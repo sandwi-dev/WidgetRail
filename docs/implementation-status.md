@@ -24,7 +24,7 @@ migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
 uses one lifecycle-owned Active/Latest lane for transport reconciliation; it
 neither retains provider response bodies nor renders unknown exception text.
 Focused Release suites pass Widget SDK 84/84, SDK Gallery 6/6, YT Music 48/48,
-and Gbar CLI 47/47. Packaged controller/companion evidence remains separate.
+and Gbar CLI 48/48. Packaged controller/companion evidence remains separate.
 
 ## Implemented
 
@@ -637,7 +637,8 @@ enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
 polling. Styling and platform settings/themes pass 22/22 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 47/47, including fail-closed bounded scenario-manifest discovery,
+passes 48/48, including bounded data-only snapshot rendering, fail-closed DLL
+and scenario execution, bounded scenario-manifest discovery,
 authenticated candidate/active development readiness,
 last-good retention/restart, complete bounded source/package watching, cleanup
 failure reporting, version
@@ -807,8 +808,9 @@ with C++ installed:
   Community AppContainers have zero OS capabilities/network authority and no
   general desktop token; direct resource access is limited to explicit
   read/execute runtime/package grants. OS capability APIs remain brokered.
-- The CLI's DLL render command executes trusted development code in the CLI
-  process; it is not a sandbox.
+- `gbar render` accepts only bounded data-only snapshots; DLL input and selected
+  scenario execution fail closed. Executable integration uses the isolated
+  `gbar dev` AppContainer path until a dedicated scenario worker exists.
 - Universal controller suppression is unresolved for games using background
   Raw Input or direct HID access.
 - The quarantined XInput Guide fallback depends on an undocumented system-DLL

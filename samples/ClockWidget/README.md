@@ -13,11 +13,11 @@ dotnet build .\tools\GbarCli\GbarCli.csproj -c Release
 
 $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar validate .\samples\ClockWidget
-& $gbar render `
-  .\samples\ClockWidget\bin\Release\net8.0\ClockWidget.dll `
-  --type GameBarAlternative.Samples.ClockWidget.ClockWidget `
-  --instance sample.clock
 ```
+
+Use `gbar dev .\samples\ClockWidget --configuration Release` for executable
+integration through the generic AppContainer worker. `gbar render` accepts only
+an existing data-only `snapshot.json`; it never loads this sample's DLL.
 
 The separate `ClockWidget.Worker` project demonstrates the public custom-worker
 runtime boundary. Installed `.gbarwidget` packages normally use the platform's

@@ -91,8 +91,7 @@ public static class CliApplication
           gbar validate <widget-directory|manifest.json|style.gbss>
           gbar dev <widget-directory|widget.csproj|file.gbarwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>]
           gbar preview <widget-directory|gbar.scenarios.json> [--scenario <name>] [--output <snapshot.json>] [--instance <id>]
-          gbar render <snapshot.json>
-          gbar render <widget.dll> --type <Namespace.Widget> [--output <snapshot.json>] [--instance <id>]
+          gbar render <snapshot.json> [--output <canonical-snapshot.json>]
           gbar replay <snapshot.json> <input-replay.json>
           gbar pack <widget-directory> [--output <file.gbarwidget>]
           gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> [--sha256 <64-hex>] [--catalog <root>]
@@ -115,6 +114,9 @@ public static class CliApplication
           gbar theme preview <theme-directory|file.gbartheme>
           gbar theme install <file.gbartheme|https-url|github:owner/repository@tag/asset.gbartheme> [--sha256 <64-hex>] [--settings-root <root>]
           gbar theme list [--settings-root <root>]
+
+        render is data-only and never loads widget assemblies. Use gbar dev for
+        isolated AppContainer execution of author code.
 
         Exit codes: 0 success, 1 validation/runtime failure, 2 command usage error, 130 cancelled.
         """;

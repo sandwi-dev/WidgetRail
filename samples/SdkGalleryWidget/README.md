@@ -45,18 +45,15 @@ From the repository root:
 ```powershell
 dotnet build .\samples\SdkGalleryWidget\SdkGalleryWidget.csproj -c Release
 dotnet run --project .\tests\SdkGalleryWidget.Tests\SdkGalleryWidget.Tests.csproj -c Release
-
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -c Release -- render `
-  .\samples\SdkGalleryWidget\bin\Release\net8.0\SdkGalleryWidget.dll `
-  --type GameBarAlternative.Samples.SdkGalleryWidget.SdkGalleryWidget `
-  --instance sample.sdk-gallery
 ```
 
-`gbar render` constructs the widget and prints its current semantic snapshot;
-use it only with code you wrote or reviewed. The separate `gbar preview`
-manifest workflow currently validates and lists scenario declarations without
-loading their provider assembly. Selected scenario execution fails closed until
-an AppContainer preview worker exists. See the
+The focused suite constructs and validates the sample's semantic snapshots in
+an author-controlled test process. `gbar render <snapshot.json>` can inspect a
+persisted data-only fixture but never loads the sample DLL; use `gbar dev` for
+executable AppContainer integration. The separate `gbar preview` manifest
+workflow currently validates and lists scenario declarations without loading
+their provider assembly. Selected scenario execution fails closed until an
+AppContainer preview worker exists. See the
 [widget authoring guide](../../docs/widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test).
 
 Build a deterministic `.gbarwidget` with the same public CLI available to

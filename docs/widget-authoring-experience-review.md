@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded navigation, stable-ID scopes, protocol-v13 responsive focus persistence, one responsive navigation recipe, and bounded scenario-manifest listing implemented; isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded navigation, stable-ID scopes, protocol-v13 responsive focus persistence, one responsive navigation recipe, data-only snapshot inspection, and bounded scenario-manifest listing implemented; isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against the current worktree after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` scenario contract, and an independent engineering-quality audit<br>
+Reassessed: 2026-08-09 against the current worktree after `UI.NavigationShell`, transition-owned responsive focus recovery, SDK Gallery adoption, YT Music operation-lane migration, the first `gbar preview` scenario contract, and an unsigned GitHub distribution/trust audit<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -70,6 +70,14 @@ loading provider assemblies. Selecting a scenario fails closed until execution
 can move behind an isolated, forcibly terminable process boundary. Semantic
 snapshot execution, interaction, viewport rendering, capture, fake-service
 lifecycle support, and template integration remain open.
+
+`gbar render` is now also strictly data-only. It bounds and validates an
+existing snapshot but rejects DLL input before resolving a type or touching an
+output path. This closes the full-trust author-code escape and makes `gbar dev`
+the only executable CLI integration path. The tradeoff is an explicit tooling
+gap: there is no headless isolated command that turns widget/scenario code into
+a snapshot. Authors must currently add an author-controlled typed-fake test to
+persist `SnapshotJson` or use the interactive overlay path.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -152,7 +160,7 @@ The SDK already provides important low-level safety mechanisms:
   widgets.
 
 Implementation status reports current-worktree Release results of Widget SDK
-84/84, Gbar CLI 47/47, SDK Gallery 6/6, YT Music 48/48, Focus Navigation 41
+84/84, Gbar CLI 48/48, SDK Gallery 6/6, YT Music 48/48, Focus Navigation 41
 checks, Declarative Renderer 4,632 checks, and a green full aggregate. Static
 inspection confirms that the four managed programs register those case totals,
 and focused YT source coverage includes cancellation-ignoring stale ordinary
@@ -283,6 +291,49 @@ network, process, and credential authority of the CLI. The next step is a
 dedicated production-equivalent AppContainer/Job/IPC process boundary that can
 be forcibly terminated, followed by deterministic state fixtures, the real
 widget test host, and native capture without exposing secrets or live services.
+
+Removing DLL execution is the right security decision, but it increases the
+priority of that isolated scenario worker. The eventual command should replace
+the removed convenience rather than reintroduce it under a trust flag: execute
+inside the production-equivalent worker boundary, accept typed fake services,
+produce a bounded validated snapshot, and support deterministic interaction and
+capture. Canonical documentation snippets should generate fixtures through the
+same public test/scenario API instead of embedding one-off serialization code
+in every sample.
+
+## Reassessment of GitHub sharing and package trust
+
+The current workflow is a credible developer-preview distribution path, not a
+finished public ecosystem. An author can produce a deterministic
+`.gbarwidget`, attach it to an exact GitHub Release, and give recipients an
+exact SHA-256 pin. The CLI maps the shorthand to one named release asset,
+applies bounded HTTPS/redirect/size/time rules, validates the locked bytes, and
+installs the immutable version disabled. Updates cannot be published while the
+widget is enabled, selecting a version remains a separate disabled-only action,
+and replacement content receives a new digest-derived runtime authority instead
+of inheriting consent or secrets. These are strong foundations.
+
+The workflow still asks too much of both authors and users. Authors have no
+supported public SDK package/template feed or signing command. They must arrange
+an independent authenticated channel for the digest and explain why a GitHub
+release plus a matching hash does not prove authorship. Users then see the
+manifest's self-asserted publisher label in Settings beside **Enable reviewed
+widget**, but not an **Unsigned / publisher unverified** state, the package
+digest, the acquisition source, a signer, or a version capability delta. The
+catalog already carries the sealed content digest, but the controller review UI
+does not expose it and does not retain a host-owned acquisition receipt.
+
+The next author workflow should preserve the safe mechanics while reducing this
+trust ceremony. `gbar pack`/future `gbar publish` should emit one canonical
+release receipt containing the exact asset name, transferred digest, sealed
+content digest, declared identity/capabilities, and—when implemented—a verified
+publisher signature. Installation should persist bounded provenance outside
+package-controlled content while omitting credentials, URL query data, and full
+local paths. Settings should distinguish unsigned development,
+verified signer, unknown signer, invalid signature, and revoked signer, and
+show capability/authority changes before enabling an update. Until that exists,
+documentation must keep calling GitHub sharing unsigned developer preview and
+must not imply that AppContainer containment verifies the author.
 
 ## Reconciliation of earlier framework-gap findings
 
@@ -867,11 +918,14 @@ and fail-closed scenario selection with contract and safety tests.
 
 ### Phase 4: broaden the ecosystem carefully
 
-1. Publish a language-neutral runtime and snapshot wire specification.
-2. Add conformance fixtures and golden messages independent of C# types.
-3. Evaluate a second worker runtime only after author demand and resource
+1. Add an honest unsigned acquisition receipt, then publisher signing,
+   rotation/revocation, signed update metadata, and verified/unverified package
+   states before public community distribution.
+2. Publish a language-neutral runtime and snapshot wire specification.
+3. Add conformance fixtures and golden messages independent of C# types.
+4. Evaluate a second worker runtime only after author demand and resource
    measurements justify it.
-4. Define a separate reviewed provider-development path; do not grant ordinary
+5. Define a separate reviewed provider-development path; do not grant ordinary
    widgets ambient network, token, or operating-system authority.
 
 ## Success metrics
@@ -900,6 +954,10 @@ The improvements should be evaluated against measurable author outcomes:
   listed without loading code, but semantic execution remains unavailable until
   the isolated preview worker exists. Real-widget interaction and native visual
   capture also remain open.
+- A GitHub-hosted widget can be packaged and acquired by exact immutable bytes;
+  before public distribution, Settings clearly distinguishes unsigned from
+  verified publishers, shows a bounded source/digest receipt and version
+  capability changes, and rejects invalid or revoked signatures.
 - Advanced samples contain substantially more domain/rendering code than
   lifecycle and concurrency plumbing.
 - Deactivation, stale responses, command rollback, focus restoration, and task

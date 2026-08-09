@@ -164,8 +164,8 @@ Shortcut bindings must also be unique for the same button and event phase
 inside one input scope. The root is the default scope. Use `.InputScope(id)` on
 a Stack or Row only when a nested surface needs to reuse bindings independently.
 
-Use `gbar render <snapshot.json>` to preview an existing snapshot. Use DLL
-rendering only for code you trust.
+Use `gbar render <snapshot.json>` to inspect an existing bounded data-only
+snapshot. DLL input fails closed; use `gbar dev` for isolated widget execution.
 
 ## Package, download, or catalog command fails
 

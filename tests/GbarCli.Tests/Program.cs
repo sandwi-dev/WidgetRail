@@ -87,6 +87,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dev Job Object reclaims persistent child and grandchild processes", DevJobReclaimsDescendants),
     ("Dev retains last good and cleans its process tree on cancellation", DevRetainsAndCleans),
     ("Render previews a valid snapshot", RenderSnapshot),
+    ("Render rejects assembly execution and unbounded snapshot inputs", RenderFailsClosed),
     ("Scenario manifests are bounded and execution fails closed", ScenarioPreviewTests.Run),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
@@ -826,6 +827,37 @@ static async Task RenderSnapshot()
     Assert.Contains("a11y=\"Apply\"", result.Output);
     Assert.Contains("focus=[left:lower,right:raise]", result.Output);
     Assert.Contains("RightBumper:raise", result.Output);
+}
+
+static async Task RenderFailsClosed()
+{
+    using var temp = new TemporaryDirectory();
+    var assemblyPath = Path.Combine(temp.Path, "untrusted-widget.dll");
+    await File.WriteAllBytesAsync(assemblyPath, [0x4d, 0x5a, 0x00, 0x00]);
+    var destination = Path.Combine(temp.Path, "preserve.snapshot.json");
+    await File.WriteAllTextAsync(destination, "preserve-existing-output");
+
+    var assembly = await RunCli(
+        "render", assemblyPath,
+        "--type", "Untrusted.Widget",
+        "--instance", "untrusted.instance",
+        "--output", destination);
+    Assert.Equal(1, assembly.Code);
+    Assert.Contains("never loads author code into the CLI process", assembly.Error);
+    Assert.Contains("Use gbar dev for isolated AppContainer execution", assembly.Error);
+    Assert.DoesNotContain("Untrusted.Widget", assembly.Error);
+    Assert.DoesNotContain("untrusted-widget.dll", assembly.Error);
+    Assert.Equal("preserve-existing-output", await File.ReadAllTextAsync(destination));
+
+    var oversizedPath = Path.Combine(temp.Path, "oversized.json");
+    await File.WriteAllBytesAsync(
+        oversizedPath,
+        new byte[RenderCommand.MaximumSnapshotBytes + 1]);
+    var oversized = await RunCli("render", oversizedPath);
+    Assert.Equal(1, oversized.Code);
+    Assert.Contains(
+        $"between 1 and {RenderCommand.MaximumSnapshotBytes} bytes",
+        oversized.Error);
 }
 
 static Task ReplayFocusAndActions()

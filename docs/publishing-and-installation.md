@@ -13,8 +13,9 @@ publish widget source in a dedicated GitHub repository:
 
 1. Include source, `manifest.json`, GBSS, assets, replay files, and a license.
 2. Document the required Game Bar Alternative commit or protocol/SDK version.
-3. Run `dotnet build`, `gbar validate`, `gbar render`, `gbar replay`, and
-   `gbar pack` in CI.
+3. Run `dotnet build`, typed-fake tests, `gbar validate`, data-only
+   `gbar render`/`gbar replay` fixtures, and `gbar pack` in CI. Do not load the
+   built DLL into a full-trust CI helper.
 4. Treat repository code and GitHub Actions as reviewable source, not proof of
    publisher identity.
 5. Attach the deterministic `.gbarwidget` to a versioned GitHub Release and

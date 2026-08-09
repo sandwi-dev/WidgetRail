@@ -1,19 +1,20 @@
-using System.Reflection;
-using System.Runtime.Loader;
-using System.Text;
 using System.Text.Json;
 using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.GbarCli;
 
 internal static class RenderCommand
 {
+    // Match the absolute worker/bridge message ceiling without coupling the
+    // data-only CLI command to either transport assembly.
+    internal const int MaximumSnapshotBytes = 4_194_304;
+
     public static async Task<int> RunAsync(string[] args, TextWriter output)
     {
         var parsed = new CommandArguments(args, "--type", "--output", "--instance");
         if (parsed.Positionals.Count != 1)
-            throw new CliUsageException("Usage: gbar render <snapshot.json|widget.dll> [--type <WidgetType>] [--output <snapshot.json>] [--instance <id>]");
+            throw new CliUsageException(
+                "Usage: gbar render <snapshot.json> [--output <canonical-snapshot.json>]");
 
         var source = Path.GetFullPath(parsed.Positionals[0]);
         if (!File.Exists(source)) throw new CliUsageException($"File does not exist: {source}");
@@ -21,24 +22,22 @@ internal static class RenderCommand
         ViewSnapshot snapshot;
         if (Path.GetExtension(source).Equals(".json", StringComparison.OrdinalIgnoreCase))
         {
-            try
-            {
-                snapshot = SnapshotJson.Deserialize(await File.ReadAllBytesAsync(source));
-            }
-            catch (Exception exception) when (exception is JsonException or ProtocolValidationException)
-            {
-                throw new CliOperationException($"Snapshot is invalid: {exception.Message}", exception);
-            }
+            if (parsed.Option("--type") is not null ||
+                parsed.Option("--instance") is not null)
+                throw new CliUsageException(
+                    "--type and --instance are unavailable because render accepts only existing snapshots.");
+            snapshot = await ReadSnapshotAsync(source).ConfigureAwait(false);
         }
         else if (Path.GetExtension(source).Equals(".dll", StringComparison.OrdinalIgnoreCase))
         {
-            var typeName = parsed.Option("--type") ??
-                throw new CliUsageException("--type is required when rendering a widget assembly.");
-            snapshot = RenderAssembly(source, typeName, parsed.Option("--instance") ?? "preview.instance");
+            throw new CliOperationException(
+                "Widget assembly rendering is unavailable because gbar never loads author code into the CLI process. " +
+                "Use gbar dev for isolated AppContainer execution, or render an existing data-only snapshot.json file.");
         }
         else
         {
-            throw new CliUsageException("Render input must be a .json snapshot or .dll widget assembly.");
+            throw new CliUsageException(
+                "Render input must be a .json snapshot. Use gbar dev for isolated widget execution.");
         }
 
         var destination = parsed.Option("--output");
@@ -54,40 +53,30 @@ internal static class RenderCommand
         return 0;
     }
 
-    private static ViewSnapshot RenderAssembly(string assemblyPath, string typeName, string instanceId)
+    private static async Task<ViewSnapshot> ReadSnapshotAsync(string source)
     {
-        var loadContext = new WidgetPreviewLoadContext(assemblyPath);
+        await using var stream = new FileStream(source, new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.Read,
+            BufferSize = 64 * 1024,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+        });
+        var length = stream.Length;
+        if (length is <= 0 or > MaximumSnapshotBytes)
+            throw new CliOperationException(
+                $"Snapshot input must be between 1 and {MaximumSnapshotBytes} bytes.");
+
+        var payload = new byte[(int)length];
+        await stream.ReadExactlyAsync(payload).ConfigureAwait(false);
         try
         {
-            var assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
-            var type = assembly.GetType(typeName, throwOnError: false, ignoreCase: false) ??
-                throw new CliOperationException($"Widget type '{typeName}' was not found.");
-            if (!typeof(Widget).IsAssignableFrom(type))
-                throw new CliOperationException($"Type '{typeName}' does not inherit {typeof(Widget).FullName}.");
-            if (Activator.CreateInstance(type) is not Widget widget)
-                throw new CliOperationException($"Widget type '{typeName}' requires a public parameterless constructor.");
-            return widget.Render().CreateSnapshot(instanceId, 0);
+            return SnapshotJson.Deserialize(payload);
         }
-        catch (Exception exception) when (exception is not CliOperationException)
+        catch (Exception exception) when (exception is JsonException or ProtocolValidationException)
         {
-            throw new CliOperationException($"Could not render widget: {exception.GetBaseException().Message}", exception);
+            throw new CliOperationException($"Snapshot is invalid: {exception.Message}", exception);
         }
-        finally
-        {
-            loadContext.Unload();
-        }
-    }
-}
-
-internal sealed class WidgetPreviewLoadContext(string mainAssemblyPath) : AssemblyLoadContext(isCollectible: true)
-{
-    private readonly AssemblyDependencyResolver _resolver = new(mainAssemblyPath);
-
-    protected override Assembly? Load(AssemblyName assemblyName)
-    {
-        if (assemblyName.Name is "WidgetSdk" or "WidgetProtocol")
-            return null;
-        var path = _resolver.ResolveAssemblyToPath(assemblyName);
-        return path is null ? null : LoadFromAssemblyPath(path);
     }
 }

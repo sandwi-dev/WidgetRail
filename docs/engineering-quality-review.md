@@ -1,8 +1,8 @@
 # Engineering Quality Review
 
-Status: first independent full audit; active findings require disposition<br>
+Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 after scenario execution was removed from `gbar preview`, responsive focus reconciliation left the paint path, and public documentation was revised<br>
+Last reassessed: 2026-08-09 after all CLI author-code inspection paths became data-only, responsive focus reconciliation left the paint path, and the unsigned GitHub distribution/review boundary was audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -19,24 +19,30 @@ separated from targets; and the recent SDK work is replacing repeated task,
 cancellation, paging, state, navigation, and command plumbing with explicit
 public abstractions.
 
-The strongest concrete improvement since the previous audit is that
-`gbar preview` no longer executes scenario assemblies in-process. It validates
-and lists bounded declarations without resolving the assembly, and selected
-execution fails closed until a forcibly terminable isolated worker exists. The
-`UI.NavigationShell`/SDK Gallery composition and YT Music operation-lane
-migration remain the strongest authoring improvements in the broader worktree.
+The strongest concrete improvement since the previous audit is that all CLI
+inspection paths are now data-only. `gbar render` rejects DLL input before type
+resolution or output handling, while `gbar preview` lists bounded declarations
+without resolving the provider assembly and fails selected execution closed
+until a forcibly terminable isolated worker exists.
 
-The highest remaining security risk in this area is the older DLL mode of
-`gbar render`, which still executes a widget assembly inside the full-trust CLI
-process. It is explicitly documented as trusted-only development tooling, and
-the safer `gbar dev` path exists, but the production AppContainer boundary is
-still bypassed. The current worktree resolves the prior responsive-focus
+The current worktree closes the remaining CLI author-code bypass: `gbar render`
+now accepts only bounded snapshot JSON, and DLL input fails closed before type
+resolution or output handling. `gbar dev` remains the executable integration
+path through the production AppContainer worker boundary. The current worktree
+also resolves the prior responsive-focus
 identity risk by separating focus persistence from action and source-element
 routing. It also moves reconciliation out of steady paint and onto relevant
 state transitions. The implementation agent reports that focused managed and
 native Release tests, the OverlayHost Release build, and the repository-wide
 Release verifier all pass on the current worktree; this review did not rerun
 them or inspect a retained machine-readable result.
+
+A separate public-distribution blocker is the unsigned package review surface.
+The acquisition and runtime boundaries preserve exact bytes and prevent a new
+content digest from inheriting old consent, but Settings presents a manifest's
+self-asserted publisher label as an identity the user has reviewed. It does not
+show that the package is unsigned, its sealed digest, its acquisition source,
+or a verified signer because no signed publisher/update model exists yet.
 
 The YT Music operation-lane migration removes a substantial amount of manual
 lifecycle machinery. The current worktree also closes its stale-failure gap:
@@ -57,13 +63,13 @@ snapshot output, and the scenario fixture assembly from `gbar preview`.
 Manifest listing remains assembly-free; `--scenario` returns a fixed failure
 before resolving the declared DLL; and the CLI help, authoring guide,
 quickstart, documentation index, and focused tests now describe this fail-
-closed boundary. This materially resolves the scenario half of EQ-001.
+closed boundary. `gbar render` also removed its reflection/load-context path,
+making every CLI semantic-inspection path data-only. This resolves EQ-001.
 
 The responsive implementation now gives each shell destination a bounded
 `focusPersistenceId` shared only by its compact and rail presentations.
 Distinct destinations may continue sharing an action ID and use source element
-identity for routing. EQ-003 through EQ-006 and the trusted DLL renderer portion
-of EQ-001 remain open.
+identity for routing. EQ-003 through EQ-006 remain open.
 
 The documentation fixes now use a valid quickstart glyph, explain explicit
 focus persistence correctly in SDK Gallery, and accurately enumerate additive
@@ -83,6 +89,14 @@ commits now check current operation identity under the same state lock used for
 replacement admission. Cancellation-ignoring fake requests cover superseded
 ordinary and authorization failures plus lifecycle-exit authorization failure.
 
+The package/distribution audit found strong byte-integrity mechanics but an
+incomplete human trust decision. Remote installs require an exact SHA-256 pin,
+remain disabled, and publish immutable versions; the runtime derives unsigned
+authority from the sealed content tree. However, the Settings review screen
+shows the manifest's unverified publisher claim beside **Enable reviewed
+widget**, without an unsigned label, digest, acquisition receipt, signature, or
+signer. EQ-011 separates that product-security gap from sandbox containment.
+
 ## Verification snapshot
 
 Implementation-reported bounded local Release results on the current worktree
@@ -91,7 +105,7 @@ are:
 | Scope | Result |
 | --- | ---: |
 | Widget SDK | 84/84 passed |
-| Gbar CLI | 47/47 passed |
+| Gbar CLI | 48/48 passed |
 | SDK Gallery | 6/6 passed |
 | YT Music | 48/48 passed |
 | Focus Navigation | 41 checks passed |
@@ -114,55 +128,123 @@ current packaged evidence.
 
 ## Prioritized findings
 
-### EQ-001 — P0 — The DLL renderer executes author code outside the production sandbox
+### EQ-001 — P0 — CLI inspection executed author code outside the production sandbox
 
-**Status: Partially resolved. Scenario execution now fails closed; trusted DLL rendering remains.**
+**Status: Implemented in the current worktree; focused Release verification is reported, retained evidence is pending.**
 
-**Evidence.** `tools/GbarCli/RenderCommand.cs` loads a supplied DLL with
-`AssemblyLoadContext`, constructs its widget, and calls `Render()` in the CLI
-process. A collectible load context is an unload mechanism, not a security
-boundary, and `RenderCommand` has no process-level timeout or forcible cleanup.
-The CLI README, guide, and quickstart warn that DLL rendering is trusted-only
-development tooling and recommend isolated `gbar dev` for integration.
+**Implementation.** `gbar render` now accepts only `.json` snapshots. It checks
+the file length against the 4 MiB absolute transport ceiling before allocation,
+validates the protocol tree, and prints or canonicalizes only that data. A DLL
+input returns a fixed operation error before inspecting `--type`, resolving an
+assembly, or touching `--output`. Reflection, `AssemblyLoadContext`, widget
+construction, and direct `Render()` invocation were removed from the CLI.
 
-`tools/GbarCli/ScenarioPreviewCommand.cs` no longer loads or invokes its
-declared assembly. Listing validates metadata without resolution, and selected
-execution throws a fixed unavailable diagnostic before any author code runs.
-The replacement tests use a deliberately missing assembly to prove listing and
-failure do not require it. This closes the new preview regression identified in
-the first audit, subject to execution of the changed test suite.
+`gbar preview` likewise validates and lists bounded scenario declarations
+without resolving the declared assembly. Selected execution fails closed until
+a forcibly terminable isolated worker exists. `gbar dev` is now the only CLI
+path that executes widget code, and it routes the package through the generic
+AppContainer worker, Job, bounded IPC, lifecycle, broker, and renderer boundary.
 
-**Why it matters.** The platform correctly teaches users that Community widgets
-run in capability-free AppContainers. A developer following a GitHub-hosted
-widget workflow can nevertheless execute repository code with full desktop
-authority by using the convenient DLL-render path. That is both a security hazard
-and an inaccurate development environment: code that accidentally depends on
-ambient authority can pass preview and fail when packaged.
+**Why it matters.** A data-inspection command should not silently grant a
+downloaded assembly the user's ambient filesystem, network, process, and token
+authority. The previous collectible load context organized dependencies but
+provided neither containment nor forcible termination and could also hide
+production-only AppContainer failures.
 
-**Underlying problem.** The older semantic DLL renderer is coupled to
-in-process managed reflection instead of the existing worker isolation
-boundary. Documentation reduces accidental misuse but does not contain code.
+**Tradeoff.** Authors cannot generate a snapshot directly from a DLL until an
+isolated scenario/preview worker exists. Typed-fake tests can persist data-only
+fixtures for deterministic render/replay, while `gbar dev` covers executable
+integration today. This is an intentional workflow gap rather than a full-trust
+escape hatch.
 
-**Recommended direction.** Keep snapshot-only rendering and scenario-manifest
-listing as the only in-process data paths. Execute widget/scenario assemblies through a dedicated preview worker
-using the same package-specific Low-integrity AppContainer, Job Object, bounded
-IPC, stripped environment, and termination rules as `gbar dev`. If a temporary
-trusted-local mode must remain, require an explicit trust-named option and a
-prominent confirmation/warning in command help and every tutorial; do not use
-it for downloaded repositories. Prefer removing the old DLL-render shortcut
-once the isolated scenario path covers its use cases.
+**Resolution evidence.** The implementation agent reports that Release
+`GbarCli.Tests` passes 48/48. Source inspection confirms that the render
+regression supplies an existing invalid DLL, a type name, instance, and
+pre-existing output sentinel; it receives only the fixed isolation diagnostic,
+does not leak assembly/type details, and leaves output unchanged. A second case
+rejects an oversized snapshot before deserialization. Scenario tests prove a
+missing provider assembly can be listed, selected execution remains fail-
+closed, and no snapshot output is written. CLI help, quickstart, authoring,
+publishing, security, troubleshooting, and sample docs now direct executable
+work to `gbar dev` and reserve `gbar render` for bounded data.
 
-**Tradeoff.** Reusing the production worker increases startup and packaging
-work, but it tests the actual authority model and gives timeout cancellation a
-process boundary. A separate minimal preview worker can be faster, but then its
-token, Job, load, IPC, and cleanup policy must not drift from production.
+### EQ-011 — P1 — The package review UI cannot substantiate the identity it asks users to trust
 
-**Resolution evidence.** First run the changed fail-closed CLI tests and prove
-no scenario assembly resolution or output occurs. For eventual execution, add an adversarial fixture that attempts environment,
-arbitrary-file, network, child-process, and long-running work; prove the preview
-process is capability-restricted, bounded, forcibly reclaimed, and leaves no
-child process or locked package. Verify semantic output through authenticated
-bounded IPC and update CLI/security/quickstart documentation.
+**Status: Open; current unsigned flow is appropriate only for local/developer-preview distribution.**
+
+**Evidence.** `InstallCommand` requires `--sha256` for HTTPS/GitHub packages,
+the downloader applies bounded HTTPS/redirect/size/time rules, and installation
+leaves remote packages disabled. `WidgetCatalogService` rejects updates while
+an ID is enabled, keeps versions immutable, and requires explicit version
+selection. `InstalledPackageIntegrity` seals the extracted content tree, while
+`InstalledWidgetAuthority.PublisherId` derives an `unsigned.<digest>` runtime
+authority so replacement bytes cannot inherit consent or secrets. These are
+strong integrity and containment properties.
+
+They do not establish author identity. `WidgetPackageInstaller` only verifies
+that a manifest ID falls within its manifest-declared publisher namespace.
+`InstalledWidgetsSection` nevertheless displays `Publisher: <manifest claim>`,
+labels the action **Enable reviewed widget**, and says enabling confirms review
+of “this identity.” It does not identify the package as unsigned or show the
+available `InstalledWidgetVersion.ContentDigest`. `CatalogModels` retains no
+host-owned acquisition source or signed provenance receipt, and version rows
+show only version/direction/compatibility. Focused Settings tests assert the
+publisher claim and **Enable reviewed widget** copy, but do not require an
+unsigned warning, digest/source, signer, or capability delta. The public docs
+correctly say the publisher is a claim and that the digest must arrive through
+an independently authenticated channel; that warning is not present at the
+actual activation decision.
+
+**Why it matters.** AppContainer and broker isolation reduce the consequences
+of malicious code but do not make an arbitrary publisher safe. A user cannot
+meaningfully distinguish an impostor, a compromised release, or two different
+unsigned builds from the controller review surface, even though the UI frames
+enablement as an identity review. This blocks a credible public GitHub widget
+ecosystem and makes later incident response or revocation impossible to explain
+from installed state.
+
+**Underlying problem.** Byte integrity, runtime authority, acquisition
+provenance, publisher identity, and user trust are separate concepts, but the
+catalog/UI model exposes only manifest identity plus the executable version.
+The safer digest-derived authority is deliberately internal and is not turned
+into a reviewable installation receipt. Signing/revocation is deferred without
+a smaller honest unsigned-review contract in the meantime.
+
+**Recommended direction.** First make the current state explicit: persist a
+bounded host-owned acquisition receipt outside package-controlled content
+(local vs canonical GitHub coordinates or a sanitized HTTPS origin/path,
+never credentials, query data, or a full local path; plus transferred SHA-256,
+install time, and sealed content-tree digest), show **Unsigned / publisher unverified** before
+enablement, and present the exact digest plus declared-capability differences
+for version changes. Do not imply that a manifest namespace or GitHub owner is
+a verified identity.
+
+Before public distribution, define a signed package/update envelope over the
+canonical package digest, publisher key identity, package namespace, version,
+and expiry/rollback policy. Add key enrollment/rotation, revocation and
+compromise handling, signed update metadata, and a Settings distinction between
+verified, unsigned-development, unknown-key, invalid, and revoked packages.
+Consent inheritance must remain bound to a verified signer plus exact declared
+authority policy; unsigned content must retain the current digest-specific
+behavior. Keep developer-mode unsigned installation available behind explicit
+copy rather than weakening the production trust state.
+
+**Tradeoff.** Persisting source metadata cannot prove that the source is
+trustworthy, and a digest shown on the same screen is not an independent trust
+channel. It still provides auditability and honest terminology. A centralized
+PKI/marketplace simplifies discovery and revocation but creates operational and
+moderation ownership; self-managed signing is easier to bootstrap but needs a
+clear key-verification and rotation experience. Neither should delay fixing the
+misleading unsigned enablement copy.
+
+**Resolution evidence.** Tests should prove that unsigned packages are never
+rendered as verified, the activation screen shows the exact sealed/transferred
+digests and bounded source receipt, and version review shows identity,
+capability, and authority changes before enablement. Signed fixtures must cover
+valid, unknown, wrong-namespace, modified, expired, rotated, revoked, downgrade,
+and offline cases. An end-to-end release must demonstrate that a compromised or
+replacement package cannot inherit enablement, consent, configuration secrets,
+or update authority merely by reusing the manifest publisher and package ID.
 
 ### EQ-002 — P1 — Responsive focus identity required an explicit contract
 
@@ -547,20 +629,20 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong architecture, substantial automated evidence | Clean packaged abuse/run evidence and public distribution trust model |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority | Clean packaged abuse/run evidence; honest unsigned review receipt; signed publisher/update/revocation model |
 | SDK lifecycle/coordination | Latest-wins currency now covers YT Music success and failure commits | Broader advanced-widget adoption and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
 | YT Music | Active Latest migration removes manual lifetime machinery and rejects stale failure commits | Real companion, packaged lifecycle/controller, and visual evidence |
 | Spotify | Capable but still highly complex | Credential-free full-state visuals, live auth/playback gates, structural migration |
-| CLI author workflow | Broad command surface; scenario discovery now fails closed | Isolated scenario execution, native/interactive preview, and automated clean CI |
+| CLI author workflow | Data inspection is non-executable; scenario execution fails closed; GitHub acquisition is pinned and bounded | Isolated scenario execution, persisted provenance, publisher signing, native/interactive preview, and automated clean CI |
 | Performance | Honest targets and one local baseline | Clean immutable run, GPU/ETW evidence, current-build regression gate |
 | Documentation | Extensive and now internally current, but copyable examples are not executable evidence | Compile-test canonical snippets and reduce ledger/status duplication |
 
 ## Recommended next three actions
 
-1. **Preserve the new fail-closed `gbar preview` boundary and finish EQ-001.**
-   Move or retire trusted DLL rendering so all author-code execution uses a
-   process/AppContainer boundary.
+1. **Make package trust honest before public distribution.** Expose an unsigned
+   acquisition/digest receipt now, remove the implication that a manifest claim
+   is verified identity, and define the signed publisher/update/revocation path.
 2. **Add a bounded retained-results gate.** Turn the broad local verifier into
    reproducible Windows CI with per-step/overall timeouts and retained managed,
    native, documentation, and package evidence.
@@ -569,4 +651,4 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    transitional state or introducing a generic event bus.
 
 The next review should first reassess these three items, then rotate into the
-package/install/update trust model and advanced-widget ownership seams.
+advanced-widget ownership seams and measured runtime/resource budgets.

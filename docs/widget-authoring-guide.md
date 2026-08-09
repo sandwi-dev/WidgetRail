@@ -1313,7 +1313,7 @@ scope, limits, errors, and tests. YT Music is the first migration consumer.
 | `publisher` | Lowercase reverse-DNS publisher claim. It is not cryptographic proof. |
 | `name` | 1–80 characters. |
 | `version` | Canonical dotted numeric `System.Version` text such as `1.0.0`. Installed versions are immutable. |
-| `hostApi` | Current compatible range is minimum `1.0`, maximum major `1`. This is independent of snapshot protocol 2 or 3. |
+| `hostApi` | Current compatible range is minimum `1.0`, maximum major `1`. This is independent of additive snapshot protocol versions 1–13. |
 | `entrypoint.runtime` | Only `dotnet-worker`. |
 | `entrypoint.assembly` | Exact-case normalized package-relative path with `/`, no traversal. |
 | `entrypoint.type` | Namespace-qualified public concrete `Widget` type with a public constructor whose parameters are all optional. |
@@ -1339,19 +1339,19 @@ Use the same compiler/validators as production:
 ```powershell
 & $gbar validate .\scratch\Clock
 
-& $gbar render `
-  .\scratch\Clock\bin\Release\net8.0\Clock.dll `
-  --type Dev.Example.Clock.ClockWidget `
-  --instance development.preview `
-  --output .\scratch\Clock\snapshot.json
+& $gbar render .\scratch\Clock\snapshot.json
 
 & $gbar replay `
   .\scratch\Clock\snapshot.json `
   .\scratch\Clock\replays\smoke.json
 ```
 
-DLL rendering executes the assembly in the CLI process. Use it only for code
-you wrote or reviewed; it is not the production AppContainer boundary.
+`gbar render` accepts only a bounded existing snapshot, validates it, and prints
+the semantic tree. DLL input fails closed without resolving a type or touching
+an output path. Persist snapshot fixtures from author-controlled typed-fake
+tests with `SnapshotJson.Serialize`; use `gbar dev` when widget code must execute
+through the production AppContainer/worker boundary. Running a downloaded
+repository's test code is not a sandbox.
 
 Named scenario manifests are implemented as a bounded discovery contract. Add
 `gbar.scenarios.json` at the widget root to describe the states an eventual

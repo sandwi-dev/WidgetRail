@@ -213,9 +213,10 @@ distribution](theme-packaging.md).
 ## Trust decision today
 
 Only run widgets that you wrote, reviewed, or obtained from a developer you
-already trust. Prefer building from source. Do not execute an arbitrary DLL
-with `gbar render`: that command loads code in the CLI process and is explicitly
-development tooling, not a sandbox.
+already trust. Prefer building from source. `gbar render` is now data-only and
+rejects DLL input without loading it. Use `gbar dev` for executable integration;
+it routes author code through the same generic AppContainer worker boundary as
+installed Community widgets.
 
 `gbar validate` proves syntax and bounded declarative resources. Package
 validation proves archive containment and identity consistency. HTTPS protects

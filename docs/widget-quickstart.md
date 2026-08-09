@@ -156,20 +156,32 @@ Directory validation checks the strict manifest and every `.gbss` file. You
 can also validate a single `manifest.json` or `.gbss` file. Warnings such as
 safe numeric clamping do not fail validation; malformed or unsafe input does.
 
-## Render a snapshot
+## Inspect a data-only snapshot
 
-```powershell
-& $gbar render `
-  .\scratch\VolumeControl\bin\Debug\net8.0\VolumeControl.dll `
-  --type dev.example.VolumeControl.VolumeControl `
-  --instance development.preview `
-  --output .\scratch\VolumeControl\snapshot.json
+An author-controlled typed-fake test can persist the same validated protocol
+tree it already asserts:
+
+```csharp
+using GameBarAlternative.WidgetProtocol;
+
+var snapshot = new VolumeControl().Render()
+    .CreateSnapshot("development.preview", sequence: 0);
+await File.WriteAllBytesAsync(
+    @".\scratch\VolumeControl\snapshot.json",
+    SnapshotJson.Serialize(snapshot));
 ```
 
-`gbar render` loads the DLL in a collectible development-only load context and
-calls `Render()`. It is not the production worker boundary and must not be used
-to inspect untrusted binaries. The command can also preview an existing
-snapshot with `gbar render <snapshot.json>`.
+Then inspect or canonicalize only that data file:
+
+```powershell
+& $gbar render .\scratch\VolumeControl\snapshot.json
+```
+
+`gbar render` bounds and validates snapshot JSON; it never loads a widget DLL.
+DLL input fails closed before type resolution or output handling. Use `gbar dev`
+for executable integration through the AppContainer worker. Run the test-based
+export only for code you authored and control; a test process is not a sandbox
+for downloaded repository code.
 
 ## List named scenario declarations
 
@@ -203,8 +215,8 @@ process's ambient filesystem, network, process, and user authority. An
 in-process timeout is not a sandbox and cannot safely terminate arbitrary work.
 Factory execution remains disabled until a dedicated AppContainer preview
 worker can own bounded IPC, lifecycle, termination, and snapshot validation.
-Use typed-fake unit tests and `gbar render` with code you wrote or reviewed for
-executable state inspection. See the
+Use typed-fake unit tests for executable state coverage and `gbar render` only
+for the resulting data-only snapshot fixtures. See the
 [widget authoring guide](widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test)
 for the complete contract.
 
@@ -230,8 +242,8 @@ errors before host integration.
    `InitialFocusId` inside it. The host owns/restores current focus.
 6. Handle semantic action IDs in `OnActionAsync`.
 7. Call `Invalidate()` only when visible state changes.
-8. Rebuild, validate, list scenario declarations, render trusted code, and
-   replay.
+8. Rebuild, validate, list scenario declarations, inspect data-only snapshots,
+   and replay.
 
 Author in logical DIPs and responsive GBSS. Do not assume a fixed physical
 resolution, DPI, aspect ratio, widget width, or positive desktop coordinates.
