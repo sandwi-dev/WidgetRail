@@ -52,9 +52,25 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.ResponsiveGridVersion);
             if (ContainsResponsiveVisibility(Root))
                 required = Math.Max(required, ProtocolConstants.ResponsiveVisibilityVersion);
+            if (ContainsGlyph(Root, WidgetGlyph.RepeatOne))
+                required = Math.Max(required, ProtocolConstants.RepeatOneGlyphVersion);
             return required;
         }
     }
+
+    private static bool ContainsGlyph(WidgetElement element, WidgetGlyph glyph) => element switch
+    {
+        ResponsiveBranchElement branch => ContainsGlyph(branch.Child, glyph),
+        ButtonElement button => button.Glyph == glyph,
+        IconElement icon => icon.Glyph == glyph,
+        StackElement stack => stack.Children.Any(child => ContainsGlyph(child, glyph)),
+        RowElement row => row.Children.Any(child => ContainsGlyph(child, glyph)),
+        ScrollElement scroll => scroll.Children.Any(child => ContainsGlyph(child, glyph)),
+        ActionSurfaceElement actionSurface =>
+            actionSurface.Children.Any(child => ContainsGlyph(child, glyph)),
+        GridElement grid => grid.Children.Any(child => ContainsGlyph(child, glyph)),
+        _ => false,
+    };
 
     private static bool ContainsResponsiveVisibility(WidgetElement element) => element switch
     {

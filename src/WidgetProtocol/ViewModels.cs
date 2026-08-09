@@ -126,6 +126,7 @@ public enum WidgetGlyph
     Like,
     Dislike,
     Repeat,
+    RepeatOne,
     Settings,
     Warning,
     Check,

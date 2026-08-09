@@ -214,7 +214,10 @@ public class YtMusicWidget : Widget
                         .FocusUp("next").FocusLeft("like").FocusRight("repeat")
                         .Classes("secondary-action", snapshot.IsDisliked ? "is-active" : "is-inactive"),
                     UI.Button("", "repeat", "repeat")
-                        .Icon(WidgetGlyph.Repeat, RepeatAccessibilityLabel(repeatMode))
+                        .Icon(repeatMode == YtMusicRepeatMode.One
+                                ? WidgetGlyph.RepeatOne
+                                : WidgetGlyph.Repeat,
+                            RepeatAccessibilityLabel(repeatMode))
                         .Selected(repeatMode != YtMusicRepeatMode.Off).Busy(pendingCommands.Contains(YtMusicCommand.Repeat))
                         .FocusUp("refresh").FocusLeft("dislike")
                         .Classes("secondary-action", repeatMode == YtMusicRepeatMode.Off ? "is-inactive" : "is-active",

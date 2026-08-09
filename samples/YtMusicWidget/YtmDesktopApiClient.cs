@@ -14,15 +14,23 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
     public const int CompanionPort = 13091;
     public const string BearerSecretSlot = "ytmdesktop2.bearer";
     private static readonly TimeSpan PairingApprovalTimeout = TimeSpan.FromSeconds(40);
+    private static readonly TimeSpan TrackMetadataCacheDuration = TimeSpan.FromMinutes(5);
 
     private readonly WidgetHostServices _services;
+    private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _credentialGate = new(1, 1);
     private readonly object _credentialStateLock = new();
+    private readonly object _trackCacheLock = new();
     private bool _credentialKnown;
     private bool _hasCredential;
+    private CachedTrackMetadata? _cachedTrack;
+    private long _cachedTrackTimestamp;
 
-    public YtmDesktopApiClient(WidgetHostServices services) =>
+    public YtmDesktopApiClient(WidgetHostServices services, TimeProvider? timeProvider = null)
+    {
         _services = services ?? throw new ArgumentNullException(nameof(services));
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public async Task<YtMusicConnectionInfo> GetStatusAsync(
         CancellationToken cancellationToken = default)
@@ -40,27 +48,37 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         CancellationToken cancellationToken = default)
     {
         var hasCredential = await HasCredentialAsync(cancellationToken).ConfigureAwait(false);
-        var trackTask = SendAsync(
-            isPost: false, "/track", jsonBody: null, includeAuthorization: hasCredential,
-            options: null, cancellationToken);
-        var stateTask = SendAsync(
+        using var stateDocument = await SendAsync(
             isPost: false, "/track/state", jsonBody: null, includeAuthorization: hasCredential,
-            options: null, cancellationToken);
-        try
+            options: null, cancellationToken).ConfigureAwait(false);
+        var state = stateDocument.RootElement;
+        var stateTrackId = GetString(state, "id");
+        var now = _timeProvider.GetTimestamp();
+        CachedTrackMetadata? metadata;
+        lock (_trackCacheLock)
         {
-            await Task.WhenAll(trackTask, stateTask).ConfigureAwait(false);
+            metadata = IsReusableTrackMetadata(_cachedTrack, stateTrackId, now)
+                ? _cachedTrack
+                : null;
         }
-        catch
+
+        if (metadata is null)
         {
-            // Task.WhenAll does not own successful sibling results when one
-            // request fails. Dispose either document that was already created.
-            if (trackTask.IsCompletedSuccessfully) trackTask.Result.Dispose();
-            if (stateTask.IsCompletedSuccessfully) stateTask.Result.Dispose();
-            throw;
+            using var trackDocument = await SendAsync(
+                isPost: false, "/track", jsonBody: null, includeAuthorization: hasCredential,
+                options: null, cancellationToken).ConfigureAwait(false);
+            metadata = ParseTrackMetadata(trackDocument.RootElement);
+            if (metadata.HasCompleteMetadata)
+            {
+                lock (_trackCacheLock)
+                {
+                    _cachedTrack = metadata;
+                    _cachedTrackTimestamp = _timeProvider.GetTimestamp();
+                }
+            }
         }
-        using var trackDocument = await trackTask.ConfigureAwait(false);
-        using var stateDocument = await stateTask.ConfigureAwait(false);
-        return ParseSnapshot(trackDocument.RootElement, stateDocument.RootElement);
+
+        return ParseSnapshot(metadata, state);
     }
 
     public async Task SendCommandAsync(
@@ -92,7 +110,7 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         {
             appId = "gamebaralternative.ytmusic",
             appName = "Game Bar Alternative YT Music",
-            appVersion = "0.2.2",
+            appVersion = "0.2.3",
         });
         using var document = await SendAsync(
             isPost: true, "/auth/requestcode", body, includeAuthorization: false,
@@ -141,6 +159,11 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
 
     internal static YtMusicPlaybackSnapshot ParseSnapshot(JsonElement track, JsonElement state)
     {
+        return ParseSnapshot(ParseTrackMetadata(track), state);
+    }
+
+    private static CachedTrackMetadata ParseTrackMetadata(JsonElement track)
+    {
         var video = GetObject(track, "video");
         var music = GetObject(track, "music");
         var meta = GetObject(track, "meta");
@@ -155,18 +178,32 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         var artist = hasCompleteMetadata ? metadataArtist! : "No track metadata available";
         var album = GetString(music, "album") ?? string.Empty;
         var artwork = GetString(meta, "thumbnail") ?? string.Empty;
-        var trackId = GetString(state, "id") ?? metadataTrackId;
-        var duration = GetNumber(state, "duration", GetNumber(meta, "duration", 0));
+        return new CachedTrackMetadata(
+            metadataTrackId,
+            title,
+            artist,
+            album,
+            IsSafeArtworkUrl(artwork) ? artwork : string.Empty,
+            SanitizeNonNegative(GetNumber(meta, "duration", 0)),
+            hasCompleteMetadata);
+    }
+
+    private static YtMusicPlaybackSnapshot ParseSnapshot(
+        CachedTrackMetadata metadata,
+        JsonElement state)
+    {
+        var trackId = GetString(state, "id") ?? metadata.TrackId;
+        var duration = GetNumber(state, "duration", metadata.DurationSeconds);
         var position = GetNumber(state, "uiProgress", GetNumber(state, "progress", 0));
         duration = SanitizeNonNegative(duration);
         position = Math.Min(SanitizeNonNegative(position), duration > 0 ? duration : double.MaxValue);
 
         return new YtMusicPlaybackSnapshot(
             trackId,
-            title,
-            artist,
-            album,
-            IsSafeArtworkUrl(artwork) ? artwork : string.Empty,
+            metadata.Title,
+            metadata.Artist,
+            metadata.Album,
+            metadata.ArtworkUrl,
             GetBoolean(state, "playing"),
             GetBoolean(state, "liked"),
             GetBoolean(state, "disliked"),
@@ -174,9 +211,18 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
             duration,
             GetOptionalBoolean(state, "shuffle") ?? GetOptionalBoolean(state, "shuffled"),
             GetOptionalRepeatMode(state),
-            metadataTrackId,
-            hasCompleteMetadata);
+            metadata.TrackId,
+            metadata.HasCompleteMetadata);
     }
+
+    private bool IsReusableTrackMetadata(
+        CachedTrackMetadata? metadata,
+        string? stateTrackId,
+        long now) =>
+        metadata is { HasCompleteMetadata: true } &&
+        !string.IsNullOrWhiteSpace(stateTrackId) &&
+        string.Equals(metadata.TrackId, stateTrackId, StringComparison.Ordinal) &&
+        _timeProvider.GetElapsedTime(_cachedTrackTimestamp, now) < TrackMetadataCacheDuration;
 
     private async Task<JsonDocument> SendAsync(
         bool isPost,
@@ -354,4 +400,13 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
     private static bool IsSafeArtworkUrl(string value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
         uri.Scheme == Uri.UriSchemeHttps;
+
+    private sealed record CachedTrackMetadata(
+        string TrackId,
+        string Title,
+        string Artist,
+        string Album,
+        string ArtworkUrl,
+        double DurationSeconds,
+        bool HasCompleteMetadata);
 }

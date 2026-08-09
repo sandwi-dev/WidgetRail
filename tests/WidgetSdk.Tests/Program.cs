@@ -60,6 +60,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Clock sample renders controller metadata", ClockRenders),
     ("Clock refresh invalidates once", ClockInvalidates),
     ("Runtime-owned operations coordinate concurrency and lifecycle cleanup", WidgetOperationTests.Run),
+    ("Immutable widget models serialize state and suppress redundant invalidation", WidgetModelTests.Run),
     ("Paged resources coordinate bounded automatic collection loading", WidgetPagedResourceTests.Run),
     ("Default controller routing resolves dashboard quick actions", DashboardInputResolves),
     ("Default controller routing resolves focused shortcuts", FocusedShortcutResolves),
@@ -1598,13 +1599,23 @@ static Task ButtonIconsRoundTrip()
             UI.Button("Previous", "previous-track", "previous")
                 .Icon(WidgetGlyph.Previous, "Previous track"),
             UI.Button("Pause", "toggle-playback", "play-pause")
-                .Icon(WidgetGlyph.Pause)))
+                .Icon(WidgetGlyph.Pause),
+            UI.Button("Repeat one", "repeat", "repeat-one")
+                .Icon(WidgetGlyph.RepeatOne)))
         .CreateSnapshot("test.instance", 8);
 
+    Assert.Equal(ProtocolConstants.RepeatOneGlyphVersion, snapshot.ProtocolVersion);
     var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
     Assert.Equal(WidgetGlyph.Previous, Find(restored.Root, "previous").Glyph);
     Assert.Equal("Previous track", Find(restored.Root, "previous").AccessibilityLabel);
     Assert.Equal(WidgetGlyph.Pause, Find(restored.Root, "play-pause").Glyph);
+    Assert.Equal(WidgetGlyph.RepeatOne, Find(restored.Root, "repeat-one").Glyph);
+
+    var legacy = snapshot with { ProtocolVersion = ProtocolConstants.ScrollPaginationVersion };
+    Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+            error.Code == "feature_requires_version" &&
+            error.Path.EndsWith("glyph", StringComparison.Ordinal)),
+        "Protocol v11 must reject the Repeat One glyph.");
 
     var invalid = snapshot with
     {

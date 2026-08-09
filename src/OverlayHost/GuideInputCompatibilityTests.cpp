@@ -33,6 +33,31 @@ int main() {
     state = {};
     Check(tracker.Update(state) == 0, "multi-slot release is quiet");
 
+    gba::input::GuideCompatibilityActivation activation;
+    gba::input::GuideCompatibilityActivation::DeviceId first{};
+    gba::input::GuideCompatibilityActivation::DeviceId second{};
+    first[0] = 1;
+    second[0] = 2;
+    Check(!activation.active() && activation.deviceCount() == 0,
+          "compatibility polling starts dormant");
+    Check(activation.Update(first, true) && activation.active(),
+          "first legacy connection activates compatibility polling");
+    Check(!activation.Update(first, true) && activation.deviceCount() == 1,
+          "duplicate connection notification is idempotent");
+    Check(!activation.Update(second, true) && activation.deviceCount() == 2,
+          "additional legacy devices retain one active timer");
+    Check(!activation.Update(first, false) && activation.active(),
+          "disconnecting one of two devices retains polling");
+    Check(activation.Update(second, false) && !activation.active(),
+          "last legacy disconnect disables polling");
+    Check(!activation.Update(first, false),
+          "duplicate disconnect notification is idempotent");
+    Check(activation.Update(first, true),
+          "compatibility polling can reactivate after reconnect");
+    activation.Reset();
+    Check(!activation.active() && activation.deviceCount() == 0,
+          "reset clears tracked devices");
+
     std::cout << "GuideInputCompatibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

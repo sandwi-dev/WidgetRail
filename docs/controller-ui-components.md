@@ -40,8 +40,8 @@ GBSS design constrained by controller navigation and overlay performance.
 | Two-state action | `ToggleButton`, selected Button | Visible and accessible state remains widget-owned. |
 | Read-only value | `Progress` | Not focusable and never accepts controller changes. |
 | Stepped setting | `Stepper` | Separate decrement/increment focus stops; useful when each action must be explicit. |
-| Direct value | `Slider` | Protocol v3, one focus stop, L/R adjustment, optional A action. |
-| Media position | `Scrubber` | Slider-derived absolute seeking with one focus stop and responsive elapsed/duration labels. |
+| Direct value | `Slider` | Protocol v3, one focus stop, direct L/R adjustment, optional A action; protocol v10 can require A before adjustment. |
+| Media position | `Scrubber` | Slider-derived absolute seeking with one focus stop, responsive elapsed/duration labels, and optional activate-to-adjust behavior. |
 | Nested surface | container input scope + scope shortcut | Dialog/detail behavior is modeled without allowing shortcut leakage. |
 | Icon action | `IconButton` | One closed semantic glyph, required accessible name, controller target size/variant classes. |
 | Grouping | `Card`, `SectionHeader`, `Divider` | Nonfocusable visual hierarchy with stable generated child IDs. |
@@ -143,7 +143,11 @@ semantic classes. They do not add worker code, polling, or a new native node:
   position in milliseconds through protocol v3, so the normal latest-wins
   Slider coalescing applies. The SDK formats `m:ss` or `h:mm:ss` unless the
   author supplies localized labels. Disabled, Busy, Up/Down neighbors, and an
-  optional A activation action remain on the stable Slider child.
+  optional A activation action remain on the stable Slider child. For a
+  timeline that users must traverse without accidental seeking, call
+  `.RequireControllerActivation()`: protocol v10 reserves A/B for entering and
+  leaving host-owned adjustment mode, permits horizontal neighbors outside the
+  mode, and cannot be combined with a separate A activation action.
 - `UI.ActionSurface(...)` is the low-level rich-control escape hatch. The root
   is the only focus, pointer, pressed, and action target; descendants are
   presentation only. The v7 validator rejects nested actions, focus, scopes,

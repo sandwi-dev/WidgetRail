@@ -66,6 +66,7 @@ constexpr UINT kForegroundChangedMessage = WM_APP + 5;
 constexpr UINT kPlacementRefreshMessage = WM_APP + 6;
 constexpr UINT kDisplayRefreshMessage = WM_APP + 7;
 constexpr UINT kPerformanceResetMessage = WM_APP + 8;
+constexpr UINT kGuideCompatibilityDeviceMessage = WM_APP + 9;
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
 constexpr gba::NativeColor kSafeCanvasFallback{
@@ -74,6 +75,11 @@ constexpr gba::NativeColor kDefaultCanvas{
     0x10 / 255.0F, 0x13 / 255.0F, 0x1A / 255.0F, 1.0F};
 constexpr gba::NativeColor kDefaultPanel{
     0x1B / 255.0F, 0x1F / 255.0F, 0x29 / 255.0F, 1.0F};
+
+struct GuideCompatibilityDeviceChange final {
+    gba::input::GuideCompatibilityActivation::DeviceId id{};
+    bool connected{};
+};
 constexpr gba::NativeColor kDefaultAccent{
     0xFC / 255.0F, 0x3F / 255.0F, 0x6C / 255.0F, 1.0F};
 
@@ -422,8 +428,14 @@ public:
             RegisterHotKey(window_, kDeveloperHotkey, MOD_NOREPEAT, VK_F1);
             InitializeGameInput();
             if (guideCompatibility_.Initialize()) {
-                SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
-                AppendDiagnostic(L"XInput Guide compatibility adapter available");
+                if (compatibilityDeviceTrackingAvailable_) {
+                    AppendDiagnostic(
+                        L"XInput Guide compatibility adapter standing by for legacy devices");
+                } else {
+                    SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
+                    AppendDiagnostic(
+                        L"XInput Guide compatibility adapter active because GameInput device tracking is unavailable");
+                }
             } else {
                 AppendDiagnostic(L"XInput Guide compatibility adapter unavailable");
             }
@@ -933,6 +945,38 @@ private:
         }
     }
 
+    static void CALLBACK OnGameInputDevice(
+        GameInputCallbackToken,
+        void* context,
+        IGameInputDevice* device,
+        uint64_t,
+        GameInputDeviceStatus current,
+        GameInputDeviceStatus previous) {
+        const bool connected =
+            (current & GameInputDeviceConnected) != GameInputDeviceNoStatus;
+        const bool wasConnected =
+            (previous & GameInputDeviceConnected) != GameInputDeviceNoStatus;
+        if (connected == wasConnected || !device) return;
+
+        const GameInputDeviceInfo* info{};
+        if (FAILED(device->GetDeviceInfo(&info)) || !info ||
+            info->deviceFamily != GameInputFamilyXbox360) return;
+
+        GuideCompatibilityDeviceChange change;
+        std::copy(std::begin(info->deviceId.value), std::end(info->deviceId.value),
+                  change.id.begin());
+        change.connected = connected;
+
+        auto* app = static_cast<OverlayApp*>(context);
+        if (!app || !app->window_) return;
+        {
+            std::scoped_lock lock(app->guideCompatibilityDeviceChangesMutex_);
+            app->guideCompatibilityDeviceChanges_.push_back(change);
+        }
+        (void)PostMessageW(
+            app->window_, kGuideCompatibilityDeviceMessage, 0, 0);
+    }
+
     static void CALLBACK OnForegroundChanged(
         HWINEVENTHOOK,
         DWORD event,
@@ -962,6 +1006,33 @@ private:
             AppendDiagnostic(L"Guide toggle dispatched on window thread");
             Dispatch(gba::Command::ToggleOverlay);
             return 0;
+        case kGuideCompatibilityDeviceMessage: {
+            std::vector<GuideCompatibilityDeviceChange> changes;
+            {
+                std::scoped_lock lock(guideCompatibilityDeviceChangesMutex_);
+                changes.swap(guideCompatibilityDeviceChanges_);
+            }
+            if (!compatibilityDeviceTrackingAvailable_ ||
+                !guideCompatibility_.available()) return 0;
+
+            bool activationChanged = false;
+            for (const auto& change : changes) {
+                activationChanged = guideCompatibilityActivation_.Update(
+                    change.id, change.connected) || activationChanged;
+            }
+            if (activationChanged) {
+                if (guideCompatibilityActivation_.active()) {
+                    SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
+                    AppendDiagnostic(
+                        L"XInput Guide compatibility polling activated for a connected Xbox 360-family device");
+                } else {
+                    KillTimer(window_, kGuideCompatibilityTimer);
+                    AppendDiagnostic(
+                        L"XInput Guide compatibility polling stopped after the last Xbox 360-family device disconnected");
+                }
+            }
+            return 0;
+        }
         case kImageReadyMessage:
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
@@ -1247,6 +1318,25 @@ private:
             AppendDiagnostic(
                 L"GameInput configured for a visible background-read lease plus "
                 L"foreground-exclusive Guide and ordinary controls");
+
+            const HRESULT deviceResult = gameInput_->RegisterDeviceCallback(
+                nullptr,
+                GameInputKindGamepad,
+                GameInputDeviceConnected,
+                GameInputAsyncEnumeration,
+                this,
+                OnGameInputDevice,
+                &guideCompatibilityDeviceCallback_);
+            if (FAILED(deviceResult)) {
+                guideCompatibilityDeviceCallback_ = 0;
+                AppendDiagnostic(
+                    L"GameInput legacy-device tracking failed HRESULT=" +
+                    std::to_wstring(static_cast<unsigned long>(deviceResult)));
+            } else {
+                compatibilityDeviceTrackingAvailable_ = true;
+                AppendDiagnostic(
+                    L"GameInput legacy-device tracking registered; hidden Guide polling remains dormant unless required");
+            }
         }
         AppendDiagnostic(
             L"Controller exclusivity covers other GameInput clients only; XInput, Raw Input, "
@@ -1293,6 +1383,17 @@ private:
             gameInput_->StopCallback(guideCallback_);
             gameInput_->UnregisterCallback(guideCallback_);
             guideCallback_ = 0;
+        }
+        if (gameInput_ && guideCompatibilityDeviceCallback_ != 0) {
+            gameInput_->StopCallback(guideCompatibilityDeviceCallback_);
+            gameInput_->UnregisterCallback(guideCompatibilityDeviceCallback_);
+            guideCompatibilityDeviceCallback_ = 0;
+        }
+        compatibilityDeviceTrackingAvailable_ = false;
+        guideCompatibilityActivation_.Reset();
+        {
+            std::scoped_lock lock(guideCompatibilityDeviceChangesMutex_);
+            guideCompatibilityDeviceChanges_.clear();
         }
         gameInput_.Reset();
         if (runtimeInitialized_) {
@@ -3837,7 +3938,12 @@ private:
 
     ComPtr<IGameInput> gameInput_;
     gba::input::XInputGuideCompatibility guideCompatibility_;
+    gba::input::GuideCompatibilityActivation guideCompatibilityActivation_;
+    std::mutex guideCompatibilityDeviceChangesMutex_;
+    std::vector<GuideCompatibilityDeviceChange> guideCompatibilityDeviceChanges_;
+    bool compatibilityDeviceTrackingAvailable_{};
     GameInputCallbackToken guideCallback_{};
+    GameInputCallbackToken guideCompatibilityDeviceCallback_{};
     ComPtr<ID2D1Factory> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
     ComPtr<ID2D1HwndRenderTarget> renderTarget_;

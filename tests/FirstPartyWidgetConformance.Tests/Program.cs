@@ -494,7 +494,14 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
     await client.DisposeAsync();
 
     await catalog.SetEnabledAsync(package.Manifest.Id, false);
-    const string updateVersion = "0.2.3";
+    var installedVersion = Version.Parse(package.Manifest.Version);
+    if (installedVersion.Build < 0 || installedVersion.Build == int.MaxValue)
+        throw new InvalidOperationException(
+            "YT Music acceptance requires a canonical three-part version with incrementable patch.");
+    var updateVersion = new Version(
+        installedVersion.Major,
+        installedVersion.Minor,
+        installedVersion.Build + 1).ToString(3);
     var updatePackage = await deployment.BuildYtMusicVersionAsync(updateVersion);
     var updateInspection = await catalog.CreateInstaller().ValidateAsync(updatePackage);
     Assert.Equal(updateVersion, updateInspection.Version.ToString());

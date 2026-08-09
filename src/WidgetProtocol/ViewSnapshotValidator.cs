@@ -457,6 +457,10 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is ViewNodeKind.Button && node.Glyph is not null && !Enum.IsDefined(node.Glyph.Value))
                 Add($"{path}.glyph", "invalid_glyph", "The semantic glyph is not supported.");
+            if (node.Glyph == WidgetGlyph.RepeatOne &&
+                snapshot.ProtocolVersion < ProtocolConstants.RepeatOneGlyphVersion)
+                Add($"{path}.glyph", "feature_requires_version",
+                    $"Repeat One requires protocol version {ProtocolConstants.RepeatOneGlyphVersion} or later.");
             var children = node.Children ?? [];
             var shortcuts = node.Shortcuts ?? [];
             var styleClasses = node.StyleClasses ?? [];

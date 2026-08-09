@@ -51,7 +51,9 @@ their other semantic actions; B falls back to the dashboard only when unhandled
 in the root input scope. Nested scopes never bubble to the root.
 GameInput is the primary Guide source. A removable XInput compatibility adapter
 uses an undocumented ordinal only for drivers observed to omit Guide callbacks;
-it is not a universal device-compatibility guarantee.
+its 25 ms timer is dormant unless GameInput reports an Xbox 360-family device,
+with the previous always-on path retained only if device tracking cannot
+register. It is not a universal device-compatibility guarantee.
 
 Open-widget left-stick navigation is two-dimensional with engage/release
 hysteresis and bounded repeat. Focus uses explicit neighbors first and
@@ -63,7 +65,7 @@ Up/Down navigation.
 ### Widget platform
 
 - `WidgetProtocol`: strict version-1 manifests and additive snapshot protocols
-  v1–v8, deterministic JSON, stable IDs, focus validation, quick actions with
+  v1–v12, deterministic JSON, stable IDs, focus validation, quick actions with
   optional typed control-operation metadata, Scroll/surface hints, absolute-
   value Sliders, images, closed semantic glyphs, explicit active controller
   scopes and snapshot correlation, and interaction state.
@@ -77,6 +79,8 @@ Up/Down navigation.
   composites with stable semantic
   `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
+  runtime-integrated immutable `WidgetModel<TState>` snapshots/updates;
+  bounded lifecycle-owned operation lanes and offset-paged resources;
   five-state lifecycle hooks/tokens; bounded, non-overlapping
   Visible/Interactive tickers; transport-neutral capability access; and typed
   audio/network/Bluetooth/recent-activity/app-library/media-session services,

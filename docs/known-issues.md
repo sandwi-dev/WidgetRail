@@ -62,10 +62,12 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-041 | P0 | Verifying | OverlayHost / controller input ownership | A visibility-scoped GameInput lease keeps navigation alive when foreground activation is denied and uses exclusivity when confirmed; packaged backend/game evidence remains. |
 | GBA-042 | P0 | Verifying | Spotify configuration / Settings permissions | Unsigned packages can resolve one unambiguous owning-publisher public configuration document; `final-schema-v2-20260808-final` proves Spotify 0.1.6 unconfigured/setup standalone widget-body rendering, but Settings package-path injection and live configure/connect/revoke evidence remain. |
 | GBA-043 | P0 | Verifying | Spotify OAuth / broker lifecycle / pipe timeout | The explicit Connect task remains resident through browser-triggered Visible/Background, tolerates bounded local probes, and now has a fifteen-minute callback plus seventeen-minute exact broker deadline; live packaged authorization evidence remains. |
-| GBA-044 | P1 | Confirmed | OverlayHost / XInput Guide compatibility / performance | The schema-2 Hidden smoke recorded about 32 host timer messages per second with zero controller timers, paints, or Direct2D frames; the always-on 25 ms ordinal-100 compatibility timer is the remaining hidden cadence. |
+| GBA-044 | P1 | Verifying | OverlayHost / XInput Guide compatibility / performance | The ordinal-100 timer is now dormant unless GameInput reports an Xbox 360-family device; exact multi-device policy and callback cleanup pass native tests, while legacy-controller short-tap and refreshed hidden-performance evidence remain. |
 | GBA-045 | P0 | Verifying | Spotify widget / Widget SDK / protocol v11 | The playlist bridge overflow is fixed through `WidgetPagedResource<TItem>` plus automatic focus-edge pagination: playlist and track lists render one 12-row window, use a six-page/72-item LRU, accept filtered sparse pages, and expose no Load-more row. The host now dispatches pagination before tray fallback when focus already occupies a boundary row; focused resource/widget/native tests cover forward, reverse, eviction, stale completion, retry, sparse data, and focus, while packaged controller evidence remains. |
 | GBA-046 | P0 | Verifying | Spotify Playback Host / WebView2 deployment | Playback-host bootstrap now publishes the x64 WebView2 loader, serves a host-intercepted synthetic HTTPS page, registers Spotify's ready callback before loading the SDK, and reports script-load failure explicitly; the packaged hidden-host smoke reaches `sdk_loaded`, while live Premium transfer/EME/autoplay evidence remains. |
 | GBA-047 | P1 | Verifying | Widget SDK operations/resources / Spotify Community addon | Public bounded SingleFlight, Latest, and Serial lanes bind explicitly to Active, State, or Widget lifetimes and drain before lifecycle callbacks; `Completed` records synchronous no-work success and busy edges still auto-invalidate. Spotify 0.2.10 migrated playlist paging to SDK-owned Active resources, including synchronous cache/reset invalidation, removing its page tasks, generations, dictionaries, eviction loops, and manual page-state invalidation; packaged lifecycle/controller evidence and broader widget migrations remain. |
+| GBA-048 | P1 | Verifying | Widget SDK state coordination / authoring experience | Public `WidgetModel<TState>` now supplies serialized immutable updates, atomic value/revision reads, equality-based one-shot invalidation, result-bearing mutations, and contained change observation; focused concurrency/lifecycle tests pass, while medium-widget production migration remains. |
+| GBA-049 | P1 | Verifying | YT Music / loopback performance / semantic icons | Stable playback now reads state first and reuses complete same-track metadata for five bounded minutes, halving ordinary loopback traffic and avoiding cross-transition pairing; protocol-v12 `RepeatOne` supplies distinct non-color feedback. Packaged companion/controller evidence remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -1382,12 +1384,19 @@ Runtime-record schema 2 now reports the compatibility timer directly, separate
 from total and ordinary visible-controller timers, so subsequent evidence does
 not depend on subtraction.
 
-**Decision:** Do not simply change 25 ms to 50 ms. Ordinal-100 reports sampled
-state rather than a queued supported Guide event, so an interval increase can
-miss a short press that begins and ends between samples. There is no current
-hardware/tap-duration evidence proving 50 ms preserves the fallback's only
-purpose. The behavior remains unchanged until a lower-wake design is tested on
-the controllers that require it.
+**Implementation evidence:** The unchanged 25 ms sampled-state adapter is now
+owned by an event-driven GameInput device-presence policy. It starts only while
+at least one exact `GameInputFamilyXbox360` device is connected and stops after
+the last such device leaves. Duplicate arrival/removal notifications and
+multiple legacy devices are idempotent. Modern/no-controller systems retain
+callback-driven GameInput Guide with no compatibility timer. If device callback
+registration itself fails, the host deliberately preserves the previous
+always-on compatibility path rather than silently risking Guide loss. The full
+native Debug suite passes, including 15 Guide policy checks and callback cleanup.
+
+This avoids the unsafe alternative of lengthening a sampled-state interval,
+which could miss a short press. Release relink and a fresh schema-2 hidden
+baseline follow in the integration gate.
 
 **Acceptance:**
 
@@ -1400,6 +1409,57 @@ the controllers that require it.
    taps and prove no practical regression in open/close detection.
 5. Repeated clean-machine Hidden baselines include CPU, timer cadence, and
    scheduler-wakeup/context-switch evidence before this issue closes.
+
+## GBA-048 — Widget authors repeatedly hand-roll state locks and invalidation
+
+**Evidence:** Spotify, Audio Mixer, Network Controls, Games & Apps, Media
+Sessions, and YT Music each contain overlapping state locks, equality checks,
+snapshot copies, and manual `Invalidate()` calls. Those mechanics make safe
+state changes longer than the domain behavior they protect.
+
+**Implementation evidence:** `Widget.CreateModel<TState>` constructs a public
+`WidgetModel<TState>` with atomic `Value`/`Snapshot` reads, serialized `Set` and
+`Update`, a monotonic model revision, configurable equality, exactly one
+invalidation for a changed value, and none for an equal value. Its
+result-bearing update derives command input from the same committed transition.
+`Changed` observers run outside the model lock, failures are contained, and
+Destroying suppresses subsequent render invalidation. Focused Release tests
+cover equality, concurrency, result derivation, observer containment, null
+rejection, and lifecycle behavior.
+
+**Acceptance:**
+
+1. A record-based widget needs no author-created state lock or manual
+   invalidation for ordinary immutable transitions.
+2. Concurrent updates cannot lose state or publish a torn value/revision pair.
+3. Equal replacements cannot create render storms.
+4. At least one medium production widget migrates without weakening its
+   lifecycle, command, or stale-result guarantees.
+
+## GBA-049 — YT Music repeats stable metadata work and cannot show Repeat One
+
+**Evidence:** Every two-second refresh previously requested both `/track/state`
+and `/track`, producing about 60 loopback calls per minute during a stable song.
+Parallel responses could also represent different sides of a track transition.
+The closed icon vocabulary exposed only `Repeat`, so repeat-all and repeat-one
+depended on copy/classes rather than distinct visible geometry.
+
+**Implementation evidence:** The Community addon now requests state first,
+reuses complete immutable metadata for the same nonempty track ID for at most
+five minutes, and immediately refreshes metadata on identity change, missing
+data, or expiry. Stable playback therefore uses about 30 requests per minute
+while transition state and metadata remain coherent. Protocol v12 adds the
+closed `RepeatOne` glyph across managed validation/serialization, native bridge
+parsing, vector rendering, and YT Music. Focused suites pass 40 YT Music tests,
+76 SDK tests, and native icon rendering is part of the native integration gate.
+
+**Acceptance:**
+
+1. Stable same-track polling does not reread metadata before bounded expiry.
+2. Track changes and incomplete metadata refresh immediately.
+3. Repeat-one has visible, accessible, non-color-only state.
+4. A packaged real-companion controller run verifies metadata transitions,
+   repeat cycling, and compact/150%-text rendering.
 
 ## Closed issues
 

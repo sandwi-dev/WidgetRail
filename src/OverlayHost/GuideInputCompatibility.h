@@ -4,7 +4,9 @@
 #include <Xinput.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <set>
 
 namespace gba::input {
 
@@ -17,6 +19,24 @@ public:
 private:
     std::array<bool, XUSER_MAX_COUNT> previous_{};
     bool primed_{};
+};
+
+/// Tracks the exact legacy GameInput devices that need the XInput Guide
+/// compatibility adapter. Modern controllers use the event-driven GameInput
+/// system-button callback and must not create a hidden polling cadence.
+class GuideCompatibilityActivation final {
+public:
+    using DeviceId = std::array<std::uint8_t, APP_LOCAL_DEVICE_ID_SIZE>;
+
+    /// Applies one connected/disconnected transition. Returns true only when
+    /// the host must start or stop its compatibility timer.
+    [[nodiscard]] bool Update(const DeviceId& deviceId, bool connected);
+    [[nodiscard]] bool active() const noexcept { return !devices_.empty(); }
+    [[nodiscard]] std::size_t deviceCount() const noexcept { return devices_.size(); }
+    void Reset() noexcept { devices_.clear(); }
+
+private:
+    std::set<DeviceId> devices_;
 };
 
 /// Compatibility adapter for Xbox-360-class drivers that omit Guide from

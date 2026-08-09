@@ -28,6 +28,15 @@ the native Slider contract and the action receives an absolute requested
 position in milliseconds. Elapsed and duration labels are formatted by the SDK
 unless localized labels are supplied.
 
+Call `.RequireControllerActivation()` on a Slider or Scrubber when ordinary
+Left/Right navigation must not change its value. This opts into protocol v10:
+A enters host-owned adjustment mode, Left/Right adjusts only while that mode is
+active, and A or B exits it. Outside the mode, all directions navigate and the
+control may declare horizontal focus neighbors. The activation-first contract
+cannot also publish an A activation action through `.Activate(...)` or
+`activationAction`; Disabled/Busy controls remain focusable but cannot enter
+adjustment mode.
+
 Use `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` for
 a bounded set of peer cards/categories that should reflow across compact and
 wide logical viewports. It is protocol v8: the host derives row-major columns
@@ -114,6 +123,29 @@ rejection in a tight loop or mix a key's policy/lifetime while it is busy.
 support UI and deterministic tests. Busy-edge changes auto-invalidate the
 widget; event subscribers can observe the same edge without owning that
 invalidation.
+
+Use `CreateModel<TState>(initialState)` in the widget constructor when several
+fields form one immutable render state:
+
+```csharp
+private readonly WidgetModel<PlayerState> _model;
+
+public PlayerWidget()
+{
+    _model = CreateModel(PlayerState.Initial);
+}
+
+public override WidgetView Render() => BuildView(_model.Value);
+```
+
+`Set` and `Update` serialize changes and invalidate exactly once only when the
+configured equality comparer reports a different value. `Snapshot` reads the
+value and revision atomically. The result-bearing `Update` overload can derive
+an operation input from the exact state transition it commits. Update delegates
+run under the model lock and must be quick and side-effect free; use immutable
+records and never mutate a published reference in place. `Changed` is a
+contained diagnostic/test observer, not a second state store. After Destroying,
+model changes no longer invalidate the widget.
 
 For a bounded offset/limit collection, create one
 `WidgetPagedResource<TItem>` with `CreatePagedResource` instead of maintaining

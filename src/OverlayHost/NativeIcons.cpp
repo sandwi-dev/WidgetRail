@@ -212,6 +212,14 @@ template <std::size_t Count>
     return upper && lower;
 }
 
+[[nodiscard]] bool DrawRepeatOne(
+    ID2D1RenderTarget* target, ID2D1Brush* brush, const Canvas& c, const float stroke) noexcept {
+    const bool repeat = DrawRepeat(target, brush, c, stroke);
+    DrawRoundLine(target, brush, c.Point(0.44F, 0.46F), c.Point(0.53F, 0.39F), stroke * 0.78F);
+    DrawRoundLine(target, brush, c.Point(0.53F, 0.39F), c.Point(0.53F, 0.60F), stroke * 0.78F);
+    return repeat;
+}
+
 [[nodiscard]] bool DrawShuffle(
     ID2D1RenderTarget* target, ID2D1Brush* brush, const Canvas& c, const float stroke) noexcept {
     bool result = PaintPath(target, brush, stroke, PathPaint::Stroke,
@@ -438,6 +446,7 @@ bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) no
         Pair{L"next", NativeIcon::Next}, Pair{L"refresh", NativeIcon::Refresh},
         Pair{L"shuffle", NativeIcon::Shuffle}, Pair{L"like", NativeIcon::Like},
         Pair{L"dislike", NativeIcon::Dislike}, Pair{L"repeat", NativeIcon::Repeat},
+        Pair{L"repeatOne", NativeIcon::RepeatOne},
         Pair{L"settings", NativeIcon::Settings}, Pair{L"warning", NativeIcon::Warning},
         Pair{L"check", NativeIcon::Check}, Pair{L"connection", NativeIcon::Connection},
         Pair{L"volume", NativeIcon::Volume}, Pair{L"muted", NativeIcon::Muted},
@@ -478,6 +487,7 @@ bool DrawNativeIcon(
         case NativeIcon::Like: return DrawLike(renderTarget, brush, canvas, false);
         case NativeIcon::Dislike: return DrawLike(renderTarget, brush, canvas, true);
         case NativeIcon::Repeat: return DrawRepeat(renderTarget, brush, canvas, stroke);
+        case NativeIcon::RepeatOne: return DrawRepeatOne(renderTarget, brush, canvas, stroke);
         case NativeIcon::Settings: return DrawSettings(renderTarget, brush, canvas, stroke);
         case NativeIcon::Warning: return DrawWarning(renderTarget, brush, canvas, stroke);
         case NativeIcon::Check: return DrawCheck(renderTarget, brush, canvas, stroke);

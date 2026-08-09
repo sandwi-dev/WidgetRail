@@ -310,8 +310,9 @@ not irreversible API priority:
    and exposes timer/paint/successful-EndDraw evidence with exact provenance.
    Next expand Audio/Network denial/churn/recovery tests, perform reversible
    Bluetooth pairing only with disposable hardware, add worker crash
-   quarantine/profile cleanup, resolve GBA-044's hidden Guide-compatibility
-   cadence, and add ETW/PresentMon/private-working-set evidence.
+   quarantine/profile cleanup, capture legacy-controller and hidden-performance
+   evidence for GBA-044's new device-gated Guide compatibility path, and add
+   ETW/PresentMon/private-working-set evidence.
 
 Spotify's provider/configuration tests can proceed offline; its live login,
 playback, and Community-addon evidence require a registered Development Mode

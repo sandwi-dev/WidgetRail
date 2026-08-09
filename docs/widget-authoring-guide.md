@@ -403,12 +403,34 @@ ordering boundary. When the widget leaves its active Visible/Interactive
 lifetime, the current controller operation is canceled and pending operations
 are dropped.
 
-Keep Slider and action IDs stable across snapshots. Do not publish horizontal
-focus neighbors: Left/Right belongs to value adjustment even at a bound or
-while Disabled/Busy. Those states remain focusable but suppress activation and
-adjustment, so focus cannot jump merely because work became pending.
+Keep Slider and action IDs stable across snapshots. In the default direct mode,
+do not publish horizontal focus neighbors: Left/Right belongs to value
+adjustment even at a bound or while Disabled/Busy. Those states remain
+focusable but suppress activation and adjustment, so focus cannot jump merely
+because work became pending.
 
-See the [declarative UI Slider contract](declarative-ui.md#controller-native-slider-protocol-v3)
+For a seek bar or other value that should not change during ordinary traversal,
+opt into protocol-v10 activation-first behavior:
+
+```csharp
+var seek = UI.Scrubber(
+        _position, _duration, TimeSpan.FromSeconds(5),
+        "player.seek", "player.timeline")
+    .RequireControllerActivation()
+    .FocusLeft("player.previous")
+    .FocusRight("player.next");
+```
+
+Outside adjustment mode, every direction remains normal focus navigation and
+the Slider may declare horizontal neighbors. A enters host-owned adjustment
+mode; Left/Right then changes the value, and A or B exits without dispatching a
+widget action. Moving focus, leaving the surface, or replacing the widget also
+clears the transient mode. Because A and B are reserved, activation-first
+Sliders and Scrubbers cannot also use `.Activate(...)` or the constructor's
+`activationAction`. Disabled and Busy controls remain focusable but cannot enter
+adjustment mode.
+
+See the [declarative UI Slider contract](declarative-ui.md#controller-native-slider-protocol-v3-and-v10)
 and [controller component patterns](controller-ui-components.md#audio-icon-slider-percentage-pattern).
 
 ## Tutorial 5: choose a useful surface without hard-coding a window
@@ -445,12 +467,37 @@ Surface hints belong to one `WidgetView`, so a compact status page and a wide
 media page can publish different modes. Every view must still reflow and use
 Scroll for overflow after host clamping.
 
+When the semantic hierarchy itself must change, use the host-resolved
+protocol-v9 visibility modifier rather than reading monitor dimensions in the
+worker:
+
+```csharp
+var compact = BuildCompactNavigation()
+    .VisibleWhen(ResponsiveVisibility.CompactOnly);
+var expanded = BuildNavigationRail()
+    .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
+
+return new WidgetView(
+    UI.Stack("library.root", compact, expanded, BuildContent()),
+    InitialFocusId: "library.content.first");
+```
+
+Compact means the final widget surface is less than 960 DIPs wide or 540 DIPs
+high; otherwise the expanded branch is active. The inactive subtree is absent
+from layout, paint, hit testing, focus, shortcuts, and accessibility. Keep the
+root unconditional, assign different stable IDs to mutually exclusive
+branches, and ensure `InitialFocusId` can fall back to a focusable control in
+the active branch. Prefer Row wrapping or `ResponsiveGrid` when only placement,
+not hierarchy, needs to change. `UI.ResponsiveBranch(...)` is the equivalent
+non-fluent form.
+
 ## Declarative UI API map
 
 | SDK call | Result | Notes |
 | --- | --- | --- |
 | `UI.Stack(id, children)` | vertical container | Can start an input scope and own shortcuts. |
 | `UI.Row(id, children)` | horizontal container | Can start an input scope and own shortcuts. |
+| `element.VisibleWhen(mode)` / `UI.ResponsiveBranch(mode, element)` | host-resolved conditional subtree | Protocol 9; use distinct compact/expanded branch IDs and keep the root unconditional. |
 | `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` | responsive row-major Grid | Protocol 8; host derives bounded columns from final logical width. |
 | `UI.VerticalScroll(id, children)` | vertical Scroll | Protocol 2; host-owned focus-follow offset. |
 | `UI.HorizontalScroll(id, children)` | horizontal Scroll | Protocol 2; host-owned focus-follow offset. |
@@ -462,7 +509,7 @@ Scroll for overflow after host clamping.
 | `UI.ToggleButton(label, isOn, action, id)` | composed button | Emits On/Off text and selected semantics. |
 | `UI.Stepper(...)` | composed row | Stable `.label`, `.decrement`, `.value`, `.increment` children. |
 | `UI.Progress(value, maximum, id, label?)` | progress | Requires finite `0 <= value <= maximum`, `maximum > 0`. |
-| `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, label, value?, activation?)` | focusable value control | Protocol 3; absolute requested values, L/R adjustment, optional A action. |
+| `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, label, value?, activation?)` | focusable value control | Protocol 3; absolute requested values and direct L/R adjustment. `.RequireControllerActivation()` opts into protocol-v10 A-to-adjust behavior. |
 | `UI.Spacer(id)` | spacer | Layout-only. |
 | `UI.Image(httpsUrl, id, alt, fit?)` | image | HTTPS only; host applies download/decode/cache limits. |
 | `UI.Icon(glyph, id, label)` | semantic icon | Closed host-rendered glyph vocabulary. |
@@ -470,6 +517,16 @@ Scroll for overflow after host clamping.
 | `UI.ActionSurface(action, id, label, orientation, children...)` | rich full-surface action | Protocol 7; one focus/pointer/action target with bounded presentational children. |
 | `UI.MediaTile(...)`, `UI.AppTile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, and one full-tile action. |
 | `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or timer; remove through lifecycle-owned widget state. |
+| `UI.IconButton(...)` | icon-only button | Required accessible name plus stable size/variant classes. |
+| `UI.Card(...)`, `UI.SectionHeader(...)`, `UI.Divider(...)` | nonfocusable hierarchy | Theme-respecting grouping, heading, and separator compositions. |
+| `UI.StatusBadge(...)`, `UI.Alert(...)`, `UI.EmptyState(...)` | status and recovery | Visible non-color semantics; Alert/EmptyState permit at most one recovery action. |
+| `UI.SegmentedTabs(...)` | bounded tab row | Stable author IDs, selected state, and explicit horizontal focus neighbors. |
+| `UI.Switch(...)` | one-stop two-state setting | Visible/accessibility On/Off state; Disabled remains focusable. |
+| `UI.ScopedDialog(...)` | nested input scope | Scope-owned B; publish its scope and an initial descendant focus while open. |
+| `UI.ValueRow(...)`, `UI.ChoiceRow(...)` | metadata or full-row choice | ValueRow is read-only; ChoiceRow is one complete focus/action target. |
+| `UI.SettingsRow(...)` | responsive actionable setting | Copy reflows independently; only `id.action` enters focus. |
+| `UI.ActionSheet(...)`, `UI.Picker(...)` | bounded nested list | Host-owned vertical Scroll, stable option IDs, and scope-owned B. |
+| `UI.ControllerHint(...)` | display-only input hint | Does not bind a shortcut; use it only when a visible hint is useful. |
 
 All nodes can use `.Classes("name", ...)`. Buttons additionally provide
 `.FocusUp/Down/Left/Right(id)`, `.Disabled(...)`, `.Selected(...)`,
@@ -670,6 +727,42 @@ task. A busy key cannot change policy or lifetime. Use `IsBusy`, `Cancel`,
 tests. Busy-edge changes auto-invalidate the widget. Higher-level SDK resources
 also own the synchronous cache-hit, reset, and snapshot-change invalidations
 that do not come from an operation busy edge.
+
+### Immutable widget models
+
+When a group of fields forms one render state, create a model in the widget
+constructor:
+
+```csharp
+private readonly WidgetModel<PlayerState> _model;
+
+public PlayerWidget()
+{
+    _model = CreateModel(PlayerState.Initial);
+}
+
+public override WidgetView Render() => BuildPlayer(_model.Value);
+```
+
+`WidgetModel<TState>` serializes `Set` and `Update`, exposes an atomic
+`Snapshot` with a monotonic revision, and invalidates once only when the
+configured equality comparer reports a changed value. Treat state as immutable;
+the SDK does not clone it. Update delegates execute under the model lock and
+must stay quick and side-effect free. A result-bearing update can derive an
+operation input from the exact committed revision:
+
+```csharp
+var mutation = _model.Update(state =>
+{
+    var next = state with { IsPlaying = !state.IsPlaying };
+    return (next, next.IsPlaying ? PlayerCommand.Play : PlayerCommand.Pause);
+});
+```
+
+Use its `Result` with `Operations`; do not reread unrelated widget fields.
+`Changed` is a contained observer for diagnostics/tests, not a place to create
+another mutable state graph. Simple widgets can continue using ordinary fields
+and explicit `Invalidate()`.
 
 ### Bounded offset-paged resources
 

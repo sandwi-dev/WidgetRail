@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; operation scopes and bounded offset-paged resources implemented, later recommendations open<br>
+Status: living assessment; operation scopes, immutable models, and bounded offset-paged resources implemented, later recommendations open<br>
 Date: 2026-08-08<br>
-Reassessed: 2026-08-08 after public `WidgetPagedResource<TItem>` and the Spotify 0.2.10 migration<br>
+Reassessed: 2026-08-08 after public `WidgetPagedResource<TItem>`, the Spotify 0.2.10 migration, and a public-SDK documentation reconciliation<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 ## Executive conclusion
@@ -41,9 +41,19 @@ interaction out of Spotify and into the platform. The public
 Serial execution plus lifecycle cancellation/draining. The public
 `WidgetPagedResource<TItem>` builds on both contracts with offset-page state,
 validation, invalidation, a deterministic bounded LRU, retry, and entering-edge
-focus. Spotify has migrated its playlist collections to that API. General
-immutable state, cursor/append resources, navigation, and optimistic commands
-remain open.
+focus. Spotify has migrated its playlist collections to that API. The public
+`WidgetModel<TState>` now serializes immutable state transitions, suppresses
+equal-state invalidations, and can derive an operation input from the exact
+committed revision. Cursor/append resources, navigation, and optimistic
+commands remain open.
+
+The presentation layer is further along than an earlier gap list implied.
+Pressed-state delivery, bounded subtree translation, responsive branches and
+Grid, row wrapping, per-edge borders, semantic code text, activate-to-adjust
+Sliders, and the modern controller component set are implemented. They should
+be treated as current authoring tools, not roadmap proposals. Higher-level
+responsive navigation/page recipes and packaged-font support remain distinct
+open work.
 
 ## Evidence from the repository
 
@@ -84,12 +94,23 @@ The SDK already provides important low-level safety mechanisms:
   supplies an offset-based immutable page snapshot, Latest coordination,
   bounded LRU, safe error/retry state, invalidation, and responsive Scroll-to-
   focus mappings.
+- [`WidgetModel<TState>`](../src/WidgetSdk/WidgetModel.cs) supplies atomic
+  immutable snapshots, serialized updates, equality-based invalidation, exact
+  revisions, result-bearing mutations, and contained diagnostic observation.
 - [`ScrollElement.Paginate`](../src/WidgetSdk/Elements.cs) supplies protocol-v11
   host-owned near-start and near-end focus triggers without visible paging
   buttons.
 - [`WidgetTesting`](../src/WidgetSdk/WidgetTesting.cs) supplies typed fake
   capabilities and lifecycle control.
-- Modern components cover common visual compositions.
+- [`ModernComponents`](../src/WidgetSdk/ModernComponents.cs),
+  [`TileComponents`](../src/WidgetSdk/TileComponents.cs), and
+  [`Toast`](../src/WidgetSdk/Toast.cs) cover settings rows, bounded pickers and
+  action sheets, scrubbers, status/empty states, media/app tiles, and
+  non-focus-stealing feedback.
+- Protocol-v8/v9 responsive Grid and visibility branches, plus GBSS Row wrap,
+  per-edge borders, `:pressed`, and bounded presentation translation, cover the
+  low-level responsive/presentation contracts already required by advanced
+  widgets.
 
 These primitives prevent several classes of misuse, but the author still has to
 compose them into an application architecture. Spotify is evidence that the
@@ -132,6 +153,29 @@ No authenticated Player, Queue, Playlists, or Devices screenshots were found in
 the current evidence set; the stored Spotify images still cover configuration
 and setup. The semantic and interaction tests are stronger, but credential-free
 visual scenarios remain necessary to assess the complete playback UI.
+
+## Reconciliation of earlier framework-gap findings
+
+The following items were rechecked against public SDK declarations, protocol
+validation, native behavior, and current author documentation. This prevents
+implemented facilities from remaining on the roadmap under an older name.
+
+| Earlier concern | Current verified contract | Remaining boundary |
+| --- | --- | --- |
+| `:pressed` was parsed but not rendered | GBSS publishes a pressed computed map, and the native host applies it only to the physically held action target. | No framework gap remains; widgets should style the semantic state instead of simulating it. |
+| Motion lacked subtree translation | `translate-x` / `translate-y` move the complete presented subtree, including clip, hit-test, focus, accessibility, and Scroll geometry, with bounded retargetable transitions. | Shell-level presentation choreography remains host product work, not a widget API. |
+| Settings rows, pickers, action sheets, scrubbers, toasts, and media/app tiles were missing | These are public `UI.*` compositions with stable generated IDs, semantic classes, validation limits, and controller behavior. | Adaptive navigation shells and full page recipes remain open. |
+| Layout lacked per-edge borders and responsive wrap/Grid | GBSS supports independent edge colors/widths and Row wrapping; `UI.ResponsiveGrid` provides protocol-v8 row-major reflow. | Virtualized/sectioned collections remain open. |
+| Compact and expanded layouts required ad hoc host checks | Protocol-v9 `.VisibleWhen(...)` / `UI.ResponsiveBranch(...)` lets the host exclude inactive subtrees from every semantic system. | Authors still duplicate the changed branches; a navigation-shell recipe could reduce that duplication. |
+| Sliders always consumed Left/Right during navigation | Protocol-v10 `.RequireControllerActivation()` reserves A/B for a host-owned adjustment mode; outside that mode all directions remain navigation. | A Slider cannot combine activation-first mode with a separate A activation action. |
+| Typography lacked semantic monospace | `UI.CodeText` supplies bounded, whitespace-preserving semantic code text. | Packaged fonts and browser-style fallback stacks remain unavailable. |
+
+The highest-priority remaining authoring gaps are therefore application
+coordination, not basic controls: a bounded navigator with focus restoration,
+observable immutable state, optimistic command reconciliation, and
+credential-free scenario/visual testing. Documentation should keep those
+separate from already shipped primitives so authors can use the safe short path
+today.
 
 ## Two different extension problems
 
@@ -219,30 +263,43 @@ Spotify's non-paged destination loading uses one Active Latest lane. Its two
 the same coordinator. Other widget command/auth/polling paths can migrate
 separately when their required lifetime and ordering policy are explicit.
 
-### 2. Observable immutable widget state
+### 2. Observable immutable widget state — implemented
 
-Provide an optional small state container rather than requiring every widget to
-hand-roll locking, snapshot copies, equality checks, and invalidation:
+Create the optional state container once in the widget constructor rather than
+hand-rolling locking, snapshot copies, equality checks, and invalidation:
 
 ```csharp
-private readonly WidgetModel<State> _model = new(State.Initial);
+private readonly WidgetModel<State> _model;
+
+public PlayerWidget()
+{
+    _model = CreateModel(State.Initial);
+}
 
 var state = _model.Value;
 _model.Update(state => state with { Status = "Refreshing", IsBusy = true });
 ```
 
-Recommended behavior:
+The implemented contract provides:
 
 - immutable snapshot reads suitable for `Render`;
 - serialized updates;
 - invalidate only when the value changes;
 - an atomic update that can return an operation input;
 - no reflection or ambient global store;
-- optional history or transition observation in tests, not production; and
+- contained `Changed` observation for diagnostics and tests, without retaining
+  production history; and
 - compatibility with ordinary fields for simple widgets.
 
-This should reduce lock scope and accidental `Invalidate` storms without
-forcing a Redux-style architecture.
+`Value` is intentionally not cloned: authors must use immutable records or
+otherwise treat published values as immutable. Update delegates run under the
+model lock and must remain quick and side-effect free. A committed transition
+increments the model revision and invalidates exactly once after releasing the
+lock; an equal replacement does neither. The result-bearing overload derives
+its result from the same prior state revision, so controller commands do not
+need to reread unrelated mutable fields. Destroyed widgets may finish cleanup
+state changes but no longer invalidate. This reduces lock scope and accidental
+`Invalidate` storms without forcing a Redux-style architecture.
 
 ### 3. Bounded offset-paged resource state — implemented
 
@@ -386,6 +443,13 @@ semantic classes. They must remain themeable and must not add background work.
 Widget-local GBSS should primarily express identity and small variations, not
 rebuild standard focus, spacing, disabled, and responsive behavior.
 
+This recommendation is above the current primitive/composite layer. Authors
+already have `ResponsiveGrid`, responsive visibility branches, Row wrapping,
+settings rows, Picker, ActionSheet, Scrubber, status/empty compositions,
+media/app tiles, and Toast. The missing recipes should compose those contracts;
+they should not introduce parallel controls with different focus or styling
+semantics.
+
 ### 8. Scenario-based preview and visual testing
 
 The current Spotify evidence can render setup without credentials, but not its
@@ -481,16 +545,15 @@ code describes Spotify behavior or presentation rather than task plumbing.
 ### Phase 1: remove unsafe repetition
 
 Completed foundation: protocol-v11 focus-edge Scroll pagination, the public
-`ScrollElement.Paginate` authoring API, runtime-owned operation scopes, and
-bounded offset-paged resources. Spotify playlists are the first resource
-migration.
+`ScrollElement.Paginate` authoring API, runtime-owned operation scopes,
+immutable widget models, and bounded offset-paged resources. Spotify playlists
+are the first resource migration.
 
 Next work:
 
-1. Observable immutable widget state.
-2. Generic non-paged and separately designed cursor/append resource state.
-3. Optimistic command helper integrated with the controller queue.
-4. Migrate one medium widget and the remaining Spotify operation families to
+1. Generic non-paged and separately designed cursor/append resource state.
+2. Optimistic command helper integrated with the controller queue.
+3. Migrate one medium widget and the remaining Spotify operation families to
    validate the APIs.
 
 This phase should deliver the largest reduction in semaphores, cancellation
@@ -577,9 +640,9 @@ commands, navigation, and preview tooling remain.
 The protocol-v11 pagination change is a strong example to repeat: identify a
 generic behavior proven by a demanding widget, move the security- and
 input-sensitive portion into the host, expose a small declarative SDK surface,
-and leave domain policy with the widget. Applying that same approach to page
-resources, operation ownership, commands, and navigation would remove much
-more author plumbing without weakening the platform boundary.
+and leave domain policy with the widget. Applying that same approach to other
+resource variants, commands, navigation, and scenario tooling would remove
+much more author plumbing without weakening the platform boundary.
 
 The framework will be ready for sophisticated human-authored community widgets
 when advanced authors mostly describe domain behavior and UI, while the SDK

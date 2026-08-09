@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Client is bound to the declared exact loopback capability", EndpointValidation),
     ("Broker client parses now playing and requests host authorization", BrokerClientParsesSnapshot),
+    ("Broker client caches stable track metadata and refreshes it on identity change", BrokerClientCachesStableMetadata),
     ("Broker client maps rating command and body", BrokerClientMapsCommand),
     ("Private secret service persists and removes the token without reading it", PrivateSecretRoundTrip),
     ("Broker client detects a durable private secret without reading it", BrokerClientLoadsDurableSecret),
@@ -22,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Authoritative polls reconcile drift without visible regressions", ProgressPollReconciliation),
     ("Optimistic playback survives stale confirmation and rolls back failures", OptimisticStateRules),
     ("Secondary actions render immediate selected and busy feedback without stale flicker", SecondaryActionFeedback),
+    ("Repeat one uses a distinct non-color semantic glyph", RepeatOneUsesDistinctGlyph),
     ("Rating actions toggle off and send the requested false state", RatingToggleOff),
     ("Secondary action failures roll back their optimistic state", SecondaryActionRollback),
     ("Independent pending secondary actions reconcile without clobbering each other", IndependentSecondaryActions),
@@ -176,6 +178,46 @@ static async Task BrokerClientParsesSnapshot()
             request.Request.Headers.All(header =>
                 !header.Name.Equals("Authorization", StringComparison.OrdinalIgnoreCase))),
         "The addon attempted to send a raw authorization header.");
+}
+
+static async Task BrokerClientCachesStableMetadata()
+{
+    var stateTrackId = "track-1";
+    var trackRequests = 0;
+    var host = new BrokerClientHarness(request => request.Request.Path switch
+    {
+        "/track/state" => BrokerJson(
+            $"{{\"id\":\"{stateTrackId}\",\"playing\":true,\"uiProgress\":12,\"duration\":180}}"),
+        "/track" => BrokerJson(
+            $"{{\"video\":{{\"title\":\"Title {stateTrackId}\",\"author\":\"Artist\",\"videoId\":\"{stateTrackId}\"}}," +
+            $"\"music\":{{\"album\":\"Album\"}},\"meta\":{{\"thumbnail\":\"https://img.example/{stateTrackId}.jpg\",\"duration\":180}}}}"),
+        _ => throw new InvalidOperationException("Unexpected request."),
+    });
+    host.OnRequest = request =>
+    {
+        if (request.Request.Path == "/track") trackRequests++;
+    };
+    var clock = new ManualTimeProvider();
+    using var client = new YtmDesktopApiClient(host.Services, clock);
+
+    var first = await client.GetSnapshotAsync();
+    var second = await client.GetSnapshotAsync();
+    Assert.Equal("Title track-1", first.Title);
+    Assert.Equal("Title track-1", second.Title);
+    Assert.Equal(1, trackRequests);
+    Assert.Equal(2, host.Requests.Count(request => request.Request.Path == "/track/state"));
+
+    clock.Advance(TimeSpan.FromMinutes(5));
+    var expired = await client.GetSnapshotAsync();
+    Assert.Equal("Title track-1", expired.Title);
+    Assert.Equal(2, trackRequests);
+
+    stateTrackId = "track-2";
+    var changed = await client.GetSnapshotAsync();
+    Assert.Equal("track-2", changed.TrackId);
+    Assert.Equal("Title track-2", changed.Title);
+    Assert.Equal("https://img.example/track-2.jpg", changed.ArtworkUrl);
+    Assert.Equal(3, trackRequests);
 }
 
 static async Task BrokerClientMapsCommand()
@@ -599,6 +641,25 @@ static async Task SecondaryActionFeedback()
             $"{scenario.NodeId} stayed busy after authoritative confirmation.");
         await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     }
+}
+
+static async Task RepeatOneUsesDistinctGlyph()
+{
+    var fake = new FakeClient
+    {
+        Snapshot = PlayingSnapshot("Repeat one") with
+        {
+            RepeatMode = YtMusicRepeatMode.One,
+        },
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy());
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+    var snapshot = widget.Render().CreateSnapshot("ytmusic.test", 1);
+    Assert.Equal(ProtocolConstants.RepeatOneGlyphVersion, snapshot.ProtocolVersion);
+    Assert.Equal(WidgetGlyph.RepeatOne, Find(snapshot.Root, "repeat").Glyph);
+    Assert.Equal("Repeat one · change repeat mode",
+        Find(snapshot.Root, "repeat").AccessibilityLabel);
 }
 
 static async Task SecondaryActionRollback()
@@ -1490,6 +1551,7 @@ file sealed class BrokerClientHarness
     public int SaveCalls { get; private set; }
     public int DeleteCalls { get; private set; }
     public int UnauthorizedInvalidationCalls { get; private set; }
+    public Action<BrokerRecordedRequest>? OnRequest { get; set; }
 
     private ValueTask<WidgetLoopbackJsonResponse> RecordAsync(
         bool isPost,
@@ -1499,6 +1561,7 @@ file sealed class BrokerClientHarness
         cancellationToken.ThrowIfCancellationRequested();
         var recorded = new BrokerRecordedRequest(isPost, request);
         Requests.Add(recorded);
+        OnRequest?.Invoke(recorded);
         var response = _respond(recorded);
         if (response.StatusCode == 401 &&
             request is

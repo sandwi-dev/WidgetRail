@@ -14,6 +14,7 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | --- | --- | --- |
 | `UI.Stack(id, children)` | `stack` | Vertical semantic container. |
 | `UI.Row(id, children)` | `row` | Horizontal semantic container. |
+| `element.VisibleWhen(mode)` / `UI.ResponsiveBranch(mode, element)` | unchanged wrapped kind | Protocol-v9 host-resolved conditional subtree; adds no layout container. |
 | `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` | `grid` | Protocol-v8 row-major container that derives bounded columns from available logical width. |
 | `UI.VerticalScroll(id, children)` | `scroll` | Host-owned vertical viewport with controller focus-follow. |
 | `UI.HorizontalScroll(id, children)` | `scroll` | Host-owned horizontal viewport with controller focus-follow. |
@@ -43,6 +44,12 @@ cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 | `UI.StatusBadge(label, tone, id, glyph?)` | `row`, `icon`, `text` | Nonfocusable status that never relies on color alone. |
 | `UI.Divider(id)` | `spacer` | Decorative themeable separator. |
 | `UI.Alert(...)`, `UI.EmptyState(...)` | `stack`, content, optional `button` | Bounded guidance with zero or one recovery focus stop. |
+| `UI.SegmentedTabs(...)` | `row`, `button` | Bounded selected tab row with stable author IDs and explicit horizontal neighbors. |
+| `UI.Switch(...)` | `button` | One focus stop with visible and accessible On/Off state. |
+| `UI.ScopedDialog(...)` | `stack` plus supplied content | Nested input scope with scope-owned B and stable child IDs. |
+| `UI.ValueRow(...)` | `row`, `stack`, `text`, optional `icon` | Read-only label/value metadata that never enters focus. |
+| `UI.ChoiceRow(...)` | `button` | One full-row choice/action target with selected, Disabled, and Busy semantics. |
+| `UI.ControllerHint(...)` | `row`, `text` | Display-only key/label pair; does not bind controller input. |
 
 Stack, Row, Grid, and Scroll containers may call `.InputScope("scope-id")` to start a nested
 controller input surface. The root is always the default input scope, so a
@@ -206,6 +213,30 @@ Explicit values refine the selected mode but do not bypass work-area, DPI,
 text-scale, tray/footer, or minimum-control-size constraints. Widgets must
 still reflow and use Scroll for overflow after the host clamps the surface.
 
+### Responsive visibility (protocol v9)
+
+Use `.VisibleWhen(ResponsiveVisibility.CompactOnly)` or `ExpandedOnly` when the
+semantic hierarchy, not merely its spacing, must change with the final widget
+surface. `UI.ResponsiveBranch(mode, element)` is the equivalent non-fluent
+form. The modifier adds no native container and preserves the wrapped element's
+kind, ID, classes, and complete subtree:
+
+```csharp
+UI.Stack("player.root",
+    BuildCompactTransport()
+        .VisibleWhen(ResponsiveVisibility.CompactOnly),
+    BuildExpandedTransport()
+        .VisibleWhen(ResponsiveVisibility.ExpandedOnly));
+```
+
+The host selects compact when the final surface is less than 960 logical DIPs
+wide or 540 DIPs high. An inactive subtree has no layout, paint, pointer target,
+controller focus, shortcut, or accessibility exposure. Keep the root
+unconditional, give mutually exclusive branches distinct stable IDs, and do
+not assume the worker knows which branch is active. Initial focus must have a
+valid active fallback. Prefer ordinary Row wrapping or `ResponsiveGrid` when
+the same semantic children only need a different arrangement.
+
 ### Responsive row wrapping
 
 GBSS can reflow a semantic Row without publishing a different widget tree:
@@ -348,8 +379,10 @@ UI.Button(app.DisplayName, "launch", app.Id)
 leading visuals. Use a semantic `.Icon(...)` fallback when pixels are absent.
 
 The closed `WidgetGlyph` set is `Music`, `Play`, `Pause`, `Previous`, `Next`,
-`Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `Settings`, `Warning`,
-`Check`, and `Connection`.
+`Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `RepeatOne`, `Settings`, `Warning`,
+`Check`, `Connection`, `Volume`, `Muted`, `Microphone`, `Wifi`, and `Ethernet`.
+`RepeatOne` negotiates protocol v12 and renders an explicit numeral inside the
+repeat mark so single-track repeat never depends on color alone.
 
 The same closed glyphs can decorate a button without turning the button into
 an arbitrary drawing surface:
@@ -423,7 +456,7 @@ the components together under the real theme, Scroll, controller-focus, and
 generic Community-worker contracts. It is a development reference rather than
 a built-in tray widget and declares no platform capabilities.
 
-## Controller-native Slider (protocol v3)
+## Controller-native Slider (protocol v3 and v10)
 
 Use `UI.Slider` for a value the controller can change directly. `Progress` is
 read-only and `Stepper` creates two focus stops; neither should be repurposed as
@@ -456,6 +489,28 @@ While the Slider is focused:
 - A invokes the optional `activationAction`. Without one, A is unhandled by
   the Slider. This lets one focus stop expose a related discrete action such
   as mute without adding an adjacent controller target.
+
+That direct mode is appropriate for volume and values where focused Left/Right
+unambiguously means adjustment. For a seek bar or another control that users
+should traverse without changing, opt into protocol-v10 activation-first mode:
+
+```csharp
+var timeline = UI.Scrubber(
+        position, duration, TimeSpan.FromSeconds(5),
+        "player.seek", "player.timeline")
+    .RequireControllerActivation()
+    .FocusLeft("player.previous")
+    .FocusRight("player.next");
+```
+
+Before activation, D-pad and left-stick directions use normal focus navigation,
+including the optional horizontal neighbors. A enters a transient host-owned
+adjustment mode; Left/Right then adjusts, and A or B exits without sending an
+activation action. Focus change, surface close, or widget replacement also
+clears the mode. `.RequireControllerActivation()` is available on both
+`SliderElement` and `ScrubberElement`. It cannot be combined with `.Activate`
+or `activationAction` because A and B are reserved for mode control. Disabled
+or Busy controls remain focusable but cannot enter or operate adjustment mode.
 
 The host clamps and quantizes a transient presentation target, repaints it
 immediately, and sends that **absolute** target as

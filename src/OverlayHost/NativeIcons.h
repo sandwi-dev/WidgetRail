@@ -19,6 +19,7 @@ enum class NativeIcon : std::uint8_t {
     Like,
     Dislike,
     Repeat,
+    RepeatOne,
     Settings,
     Warning,
     Check,

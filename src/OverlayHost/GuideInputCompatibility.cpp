@@ -41,6 +41,18 @@ std::uint8_t GuideEdgeTracker::Update(
     return rising;
 }
 
+bool GuideCompatibilityActivation::Update(
+    const DeviceId& deviceId,
+    const bool connected) {
+    const bool wasActive = active();
+    if (connected) {
+        devices_.insert(deviceId);
+    } else {
+        devices_.erase(deviceId);
+    }
+    return wasActive != active();
+}
+
 XInputGuideCompatibility::~XInputGuideCompatibility() {
     Shutdown();
 }
