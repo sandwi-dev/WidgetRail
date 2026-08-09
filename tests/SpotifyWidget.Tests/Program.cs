@@ -26,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Slow playlist detail acknowledges and cannot reopen after B", SlowPlaylistDetailBack),
     ("Active polling reuses configuration and authorization state", PollingRequestBudget),
     ("Devices expose trusted local playback and safe transfer actions", DeviceActions),
+    ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
     ("Failed controls roll back optimistic state", FailedControlRollback),
@@ -565,6 +566,7 @@ static async Task MaximumPlaylistPageContract()
     _ = SnapshotJson.Serialize(widget.RenderSnapshot("spotify.maximum-playlist-detail", 2));
     await widget.OnActionAsync(new("spotify.playlist.track.0", "spotify.playlist.track.wide.0"));
     Assert.Equal(1, harness.StartedPlayback.Count);
+    Assert.Equal("spotify:track:track-0", harness.StartedPlayback[0].OffsetUri);
     await StopAsync(widget);
 }
 
@@ -581,8 +583,36 @@ static async Task DeviceActions()
     await widget.OnActionAsync(new("spotify.local.start", "spotify.local.wide.action"));
     Assert.Equal(WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
         harness.LocalCommands.Single().Operation);
+    Assert.Equal(1, harness.DeviceCalls);
+
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.wide.0"));
+    await widget.OnActionAsync(new("spotify.playlist.track.0", "spotify.playlist.track.wide.0"));
+    Assert.Equal("local-placeholder", harness.StartedPlayback.Single().DeviceId);
+
+    await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.wide.devices"));
     await widget.OnActionAsync(new("spotify.device.select.1", "spotify.device.wide.1"));
     Assert.Equal("remote-device", harness.TransferredDevices.Single());
+
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.wide.0"));
+    await widget.OnActionAsync(new("spotify.playlist.track.0", "spotify.playlist.track.wide.0"));
+    Assert.Equal("remote-device", harness.StartedPlayback[^1].DeviceId);
+    await StopAsync(widget);
+}
+
+static async Task MissingPlaybackDeviceGuidance()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.StartPlaybackError = new WidgetCapabilityException(
+        "resource_not_found", "The platform capability request failed (resource_not_found).");
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
+    await widget.OnActionAsync(new("spotify.queue.play.0", "spotify.queue.item.wide.0"));
+    await WaitUntil(() => widget.Status.Contains("Open Devices", StringComparison.Ordinal));
+    Assert.Equal("No active Spotify device. Open Devices and choose where to play.",
+        widget.Status);
     await StopAsync(widget);
 }
 
@@ -671,7 +701,7 @@ static Task ManifestContract()
         WidgetSpotifyCapabilities.LocalPlaybackCapabilityId), "Local playback must remain optional.");
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaylistsReadCapabilityId), "Playlist reading must remain optional.");
-    Assert.Equal("0.2.2", manifest.Version);
+    Assert.Equal("0.2.3", manifest.Version);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
@@ -741,6 +771,7 @@ file sealed class SpotifyHarness
     public bool Connected { get; set; } = true;
     public Exception? ConfigurationError { get; set; }
     public Exception? ControlError { get; set; }
+    public Exception? StartPlaybackError { get; set; }
     public Task? ControlWait { get; set; }
     public TaskCompletionSource<WidgetSpotifyAuthorizationSummary>? ConnectCompletion { get; set; }
     public CancellationToken? ConnectCancellationToken { get; private set; }
@@ -879,6 +910,7 @@ file sealed class SpotifyHarness
                 (request, cancellationToken) =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if (StartPlaybackError is not null) throw StartPlaybackError;
                     StartedPlayback.Add(request);
                     return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
                 })

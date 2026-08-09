@@ -74,6 +74,7 @@ public sealed class SpotifyWidget : Widget
     private WidgetSpotifyPlaylistItemsSummary? _playlistDetail;
     private WidgetSpotifyDevicesSummary? _devices;
     private WidgetSpotifyLocalPlaybackSummary? _localPlayback;
+    private string? _preferredPlaybackDeviceId;
     private DateTimeOffset? _queueCachedAt;
     private DateTimeOffset? _playlistsCachedAt;
     private DateTimeOffset? _devicesCachedAt;
@@ -858,6 +859,9 @@ public sealed class SpotifyWidget : Widget
                     {
                         _devices = devicesTask.Result;
                         _localPlayback = localTask.Result;
+                        _preferredPlaybackDeviceId = devicesTask.Result.Devices
+                            .FirstOrDefault(device => device.IsActive && !device.IsRestricted)
+                            ?.DeviceId ?? _preferredPlaybackDeviceId;
                         _devicesCachedAt = _timeProvider.GetUtcNow();
                     }
                     break;
@@ -1070,9 +1074,14 @@ public sealed class SpotifyWidget : Widget
             }
             await HostServices.Spotify.TransferPlaybackAsync(
                 device.DeviceId, true, cancellationToken).ConfigureAwait(false);
-            SetCommandStatus($"Playing on {device.Name}");
-            lock (_gate) _devicesCachedAt = null;
-            StartPageOperation(ReloadCurrentPageAsync);
+            lock (_gate)
+            {
+                _preferredPlaybackDeviceId = device.DeviceId;
+                _devices = MarkActiveDevice(_devices, device.DeviceId);
+                _devicesCachedAt = _timeProvider.GetUtcNow();
+                _status = $"Playing on {device.Name}";
+            }
+            Invalidate();
         }
         catch (WidgetCapabilityException exception)
         {
@@ -1096,16 +1105,37 @@ public sealed class SpotifyWidget : Widget
                 _pageLoading = false;
                 _pageError = null;
                 _status = local.DisplayMessage ?? "Local Spotify playback updated";
+                var localDeviceId = _devices?.Devices
+                    .FirstOrDefault(device => device.IsLocalHost)?.DeviceId;
+                if (command.Operation == WidgetSpotifyLocalPlaybackOperation.Stop)
+                {
+                    if (_preferredPlaybackDeviceId == localDeviceId)
+                        _preferredPlaybackDeviceId = null;
+                    _devices = MarkActiveDevice(_devices, null);
+                }
+                else if (localDeviceId is not null)
+                {
+                    _preferredPlaybackDeviceId = localDeviceId;
+                    _devices = MarkActiveDevice(_devices, localDeviceId);
+                }
+                _devicesCachedAt = _timeProvider.GetUtcNow();
             }
-            lock (_gate) _devicesCachedAt = null;
-            StartPageOperation(ReloadCurrentPageAsync);
+            Invalidate();
         }
         catch (WidgetCapabilityException exception)
         {
             lock (_gate)
             {
                 _pageLoading = false;
-                _pageError = PageError(exception);
+                _pageError = null;
+                _status = exception.ErrorCode switch
+                {
+                    "lifecycle_denied" =>
+                        "Return focus to Devices, then try Play here again.",
+                    "resource_not_found" =>
+                        "Spotify could not activate this playback device.",
+                    _ => SafeMessage(exception, "Local Spotify playback could not be updated"),
+                };
             }
             Invalidate();
         }
@@ -1116,7 +1146,8 @@ public sealed class SpotifyWidget : Widget
         WidgetSpotifyMediaItemSummary? item;
         lock (_gate) item = ItemAt(_queue?.Items, index);
         if (item is null || !item.IsPlayable) return;
-        await StartPlaybackAsync(new(null, [item.Uri]), "Playing selected queue item",
+        await StartPlaybackAsync(new(null, [item.Uri], DeviceId: PlaybackDeviceId()),
+            "Playing selected queue item",
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -1125,7 +1156,8 @@ public sealed class SpotifyWidget : Widget
         WidgetSpotifyPlaylistItemsSummary? detail;
         lock (_gate) detail = _playlistDetail;
         if (detail is null) return;
-        await StartPlaybackAsync(new(detail.Playlist.Uri, null),
+        await StartPlaybackAsync(new(detail.Playlist.Uri, null,
+                DeviceId: PlaybackDeviceId()),
             $"Playing {detail.Playlist.Name}", cancellationToken).ConfigureAwait(false);
     }
 
@@ -1135,7 +1167,8 @@ public sealed class SpotifyWidget : Widget
         lock (_gate) detail = _playlistDetail;
         var item = ItemAt(detail?.Items, index);
         if (detail is null || item is null || !item.IsPlayable) return;
-        await StartPlaybackAsync(new(detail.Playlist.Uri, null, OffsetUri: item.Uri),
+        await StartPlaybackAsync(new(detail.Playlist.Uri, null,
+                DeviceId: PlaybackDeviceId(), OffsetUri: item.Uri),
             $"Playing {item.Title}", cancellationToken).ConfigureAwait(false);
     }
 
@@ -1155,9 +1188,27 @@ public sealed class SpotifyWidget : Widget
         }
         catch (WidgetCapabilityException exception)
         {
-            SetCommandStatus(SafeMessage(exception, "Spotify could not start playback"));
+            SetCommandStatus(exception.ErrorCode == "resource_not_found"
+                ? "No active Spotify device. Open Devices and choose where to play."
+                : SafeMessage(exception, "Spotify could not start playback"));
         }
     }
+
+    private string? PlaybackDeviceId()
+    {
+        lock (_gate) return _preferredPlaybackDeviceId;
+    }
+
+    private static WidgetSpotifyDevicesSummary? MarkActiveDevice(
+        WidgetSpotifyDevicesSummary? devices,
+        string? activeDeviceId) => devices is null ? null : devices with
+    {
+        Devices = devices.Devices.Select(device => device with
+        {
+            IsActive = activeDeviceId is not null &&
+                string.Equals(device.DeviceId, activeDeviceId, StringComparison.Ordinal),
+        }).ToArray(),
+    };
 
     private static bool TryParseIndexedAction(string action, string prefix, out int index)
     {
@@ -1256,6 +1307,7 @@ public sealed class SpotifyWidget : Widget
         _queueCachedAt = null;
         _playlistsCachedAt = null;
         _devicesCachedAt = null;
+        _preferredPlaybackDeviceId = null;
         _selectedPlaylist = null;
         _selectedPlaylistMode = null;
         _playlistReturnFocusId = null;
