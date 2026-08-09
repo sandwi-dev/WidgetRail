@@ -107,6 +107,18 @@ does not continuously render or perform ordinary controller polling while
 hidden. Workers start lazily on demand; unexpected exits and request timeouts
 are reported through the runtime and bridge.
 
+The managed bridge accepts at most 16 correlated requests at once. Requests
+for the same widget execute in receive order, while catalog and other-widget
+requests can complete independently; a seventeenth ordinary request receives
+the stable `bridge_busy` error. Stop remains a control-lane request even when
+all ordinary slots are occupied, cancels cooperative pending work, and waits
+for it to release session resources. Duplicate IDs for pending requests fail
+the bridge session closed. This removes managed head-of-line blocking for
+cooperative work, but is not a hard timeout around synchronous Windows ACL
+operations: authority application and dispatcher drain remain part of the open
+aggregate start-admission design, and the current native client still performs
+correlated bridge reads synchronously.
+
 On Windows the runtime creates each worker suspended, assigns it to a dedicated
 Job Object, then resumes it. Trusted bridge catalog policy supplies a bounded
 memory ceiling; the job permits one active process and terminates the worker on

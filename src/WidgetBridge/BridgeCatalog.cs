@@ -117,7 +117,7 @@ public sealed class BridgeCatalog
     private readonly IReadOnlyList<ConfiguredWidget> _ordered;
     private readonly string _fingerprint;
 
-    private BridgeCatalog(IEnumerable<ConfiguredWidget> configured)
+    internal BridgeCatalog(IEnumerable<ConfiguredWidget> configured)
     {
         _ordered = configured.ToArray();
         _configured = _ordered.ToDictionary(widget => widget.Id, StringComparer.Ordinal);

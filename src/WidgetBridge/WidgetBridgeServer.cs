@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformDiagnostics;
@@ -20,6 +21,7 @@ public sealed class WidgetBridgeServer(
     BridgeCatalogMonitor? catalogMonitor = null,
     WorkerResidencyBudgetOptions? residencyBudget = null) : IAsyncDisposable
 {
+    private const int MaximumConcurrentRequests = 16;
     private readonly string _pipeName = ValidatePipeName(pipeName);
     private BridgeCatalog _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
     private readonly int _maximumMessageBytes = maximumMessageBytes is >= 256 and <= BridgeProtocol.AbsoluteMaximumMessageBytes
@@ -61,7 +63,16 @@ public sealed class WidgetBridgeServer(
         acceptCancellation.CancelAfter(acceptTimeout);
         await pipe.WaitForConnectionAsync(acceptCancellation.Token).ConfigureAwait(false);
         _channel = new BridgeFrameChannel(pipe, _maximumMessageBytes);
-        _sessionCancellation = cancellationToken;
+        using var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        _sessionCancellation = sessionCancellation.Token;
+        using var requestSlots = new SemaphoreSlim(
+            MaximumConcurrentRequests, MaximumConcurrentRequests);
+        var activeRequestIds = new ConcurrentDictionary<long, byte>();
+        var requestTasks = new ConcurrentDictionary<long, Task>();
+        var requestOrderGate = new object();
+        var widgetRequestTails = new Dictionary<string, Task>(StringComparer.Ordinal);
+        Exception? fatalRequestException = null;
 
         var hello = await _channel.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (hello.Type != BridgeMessageTypes.Hello || hello.RequestId == 0)
@@ -79,36 +90,113 @@ public sealed class WidgetBridgeServer(
         if (_appearance is not null) _appearance.Changed += OnAppearanceChanged;
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            while (!sessionCancellation.IsCancellationRequested)
             {
-                var request = await _channel.ReadAsync(cancellationToken).ConfigureAwait(false);
+                var request = await _channel.ReadAsync(sessionCancellation.Token)
+                    .ConfigureAwait(false);
                 if (request.RequestId == 0)
                     throw new BridgeProtocolException("Bridge requests require a non-zero request ID.");
+                if (activeRequestIds.ContainsKey(request.RequestId))
+                    throw new BridgeProtocolException(
+                        "Bridge request IDs cannot be reused while a request is pending.");
                 if (request.Type == BridgeMessageTypes.Stop)
                 {
-                    await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
+                    await ReplyAsync(
+                            BridgeMessageTypes.Acknowledged,
+                            request.RequestId,
+                            new { },
+                            sessionCancellation.Token)
                         .ConfigureAwait(false);
                     break;
                 }
-                try
+
+                if (!requestSlots.Wait(0))
                 {
-                    await HandleRequestAsync(request, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    await ReplyAsync(BridgeMessageTypes.Error, request.RequestId,
-                            new BridgeError("request_failed", SafeMessage(exception)), cancellationToken)
+                    await ReplyAsync(
+                            BridgeMessageTypes.Error,
+                            request.RequestId,
+                            new BridgeError(
+                                "bridge_busy",
+                                $"The bridge already has {MaximumConcurrentRequests} requests in progress."),
+                            sessionCancellation.Token)
                         .ConfigureAwait(false);
+                    continue;
                 }
+
+                if (!activeRequestIds.TryAdd(request.RequestId, 0))
+                {
+                    requestSlots.Release();
+                    throw new BridgeProtocolException(
+                        "Bridge request IDs cannot be reused while a request is pending.");
+                }
+
+                var widgetId = RequestWidgetId(request);
+                Task predecessor = Task.CompletedTask;
+                Task requestTask;
+                lock (requestOrderGate)
+                {
+                    if (widgetId is not null &&
+                        widgetRequestTails.TryGetValue(widgetId, out var tail))
+                        predecessor = tail;
+                    requestTask = DispatchRequestAsync(
+                        predecessor,
+                        request,
+                        sessionCancellation.Token);
+                    if (widgetId is not null)
+                        widgetRequestTails[widgetId] = requestTask;
+                }
+                requestTasks[request.RequestId] = requestTask;
+                _ = requestTask.ContinueWith(
+                    completed =>
+                    {
+                        if (completed.IsFaulted)
+                        {
+                            Exception exception = completed.Exception?.InnerException ??
+                                (Exception?)completed.Exception ??
+                                new InvalidOperationException("A bridge request failed without details.");
+                            if (Interlocked.CompareExchange(
+                                    ref fatalRequestException, exception, null) is null)
+                                sessionCancellation.Cancel();
+                        }
+                        activeRequestIds.TryRemove(request.RequestId, out _);
+                        requestTasks.TryRemove(request.RequestId, out _);
+                        if (widgetId is not null)
+                        {
+                            lock (requestOrderGate)
+                            {
+                                if (widgetRequestTails.TryGetValue(widgetId, out var tail) &&
+                                    ReferenceEquals(tail, completed))
+                                    widgetRequestTails.Remove(widgetId);
+                            }
+                        }
+                        requestSlots.Release();
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             }
+        }
+        catch (OperationCanceledException) when (
+            Volatile.Read(ref fatalRequestException) is not null)
+        {
         }
         finally
         {
+            sessionCancellation.Cancel();
+            var pending = requestTasks.Values.ToArray();
+            if (pending.Length != 0)
+            {
+                try { await Task.WhenAll(pending).ConfigureAwait(false); }
+                catch (Exception) when (Volatile.Read(ref fatalRequestException) is not null) { }
+            }
             if (_catalogMonitor is not null) _catalogMonitor.Changed -= OnCatalogChanged;
             if (_appearance is not null) _appearance.Changed -= OnAppearanceChanged;
             _channel = null;
             await DisposeClientsAsync().ConfigureAwait(false);
         }
+
+        if (Volatile.Read(ref fatalRequestException) is { } fatal)
+            ExceptionDispatchInfo.Capture(fatal).Throw();
     }
 
     public async ValueTask DisposeAsync()
@@ -270,6 +358,50 @@ public sealed class WidgetBridgeServer(
         default:
             throw new BridgeProtocolException($"Unknown bridge request type '{request.Type}'.");
         }
+    }
+
+    private async Task DispatchRequestAsync(
+        Task predecessor,
+        BridgeEnvelope request,
+        CancellationToken cancellationToken)
+    {
+        await predecessor.ConfigureAwait(false);
+        // Some trusted admission phases are synchronous today. Yield before
+        // dispatch so one slow widget cannot hold the sole pipe-read loop.
+        // The bounded slot count limits blocked work; it is not a hard timeout
+        // for Windows security-descriptor calls.
+        await Task.Yield();
+        try
+        {
+            await HandleRequestAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            try
+            {
+                await ReplyAsync(
+                        BridgeMessageTypes.Error,
+                        request.RequestId,
+                        new BridgeError("request_failed", SafeMessage(exception)),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+    }
+
+    private static string? RequestWidgetId(BridgeEnvelope request)
+    {
+        if (request.Payload.ValueKind != JsonValueKind.Object ||
+            !request.Payload.TryGetProperty("widgetId", out var widgetId) ||
+            widgetId.ValueKind != JsonValueKind.String)
+            return null;
+        return widgetId.GetString();
     }
 
     private async Task WithResidentClientAsync(

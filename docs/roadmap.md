@@ -616,7 +616,12 @@ packages are the canonical templates for event-driven system-control widgets.
   directories fail before output/publication. The run covers CLI 50/50,
   Documentation 1/1, and First-Party Conformance 6/6 for documentation commit
   `b2956ab` over implementation `4f903b0`; it is not a complete all-manifest
-  run. An aggregate start deadline and alternate-group-ACE policy remain open.
+  run. The managed bridge now bounds correlated work to 16 requests, preserves
+  same-widget receive order, lets unrelated listing and Stop bypass a
+  cooperative stalled admission, rejects duplicate active IDs, and returns
+  `bridge_busy` on saturation. Cancellation-ignoring ACL work, bounded drain,
+  native off-UI-thread I/O, one aggregate start deadline, and the alternate-
+  group-ACE policy remain open.
 - Publisher signing/revocation and a signed update channel, mandatory before
   public community distribution but intentionally sequenced after local
   product-completion gates

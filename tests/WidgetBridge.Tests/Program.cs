@@ -26,6 +26,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog rejects invalid GBSS with safe diagnostics", InvalidThemeIsRejected),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
+    ("Stalled widget admission leaves bounded list and stop control responsive", StalledAdmissionKeepsControlPlaneResponsive),
+    ("Pipelined requests preserve per-widget receive order", PipelinedWidgetRequestsStayOrdered),
+    ("Duplicate pending request IDs fail the bridge session closed", DuplicatePendingRequestIdsFailClosed),
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
     ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),
@@ -304,6 +307,142 @@ static async Task EnumerationIsLazy()
     Assert.False(descriptor.TryGetProperty("workerExecutable", out _),
         "Native descriptors must not expose worker paths.");
     Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+
+static async Task StalledAdmissionKeepsControlPlaneResponsive()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var fixture = new StalledAdmissionFixture();
+    var pipeName = $"gba-bridge-stalled-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipeName, fixture.Catalog, 64 * 1024);
+    using var serverShutdown = new CancellationTokenSource();
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3), serverShutdown.Token);
+
+    try
+    {
+        await using var connection = await RawBridgeConnection.ConnectAsync(pipeName);
+        var channel = connection.Channel;
+
+        await channel.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.GetSnapshot,
+            RequestId = 2,
+            Payload = BridgeJson.ToElement(new WidgetIdRequest("stalled-widget")),
+        }, CancellationToken.None);
+        await fixture.Started.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await channel.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.ListWidgets,
+            RequestId = 3,
+            Payload = BridgeJson.ToElement(new { }),
+        }, CancellationToken.None);
+        var listed = await channel.ReadAsync(CancellationToken.None).AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        stopwatch.Stop();
+        Assert.Equal(3L, listed.RequestId);
+        Assert.Equal(BridgeMessageTypes.Widgets, listed.Type);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1.5),
+            $"ListWidgets waited behind stalled admission for " +
+            $"{stopwatch.Elapsed.TotalMilliseconds:0} ms.");
+
+        for (var requestId = 5L; requestId <= 19L; requestId++)
+        {
+            await channel.WriteAsync(new BridgeEnvelope
+            {
+                Type = BridgeMessageTypes.GetSnapshot,
+                RequestId = requestId,
+                Payload = BridgeJson.ToElement(new WidgetIdRequest("stalled-widget")),
+            }, CancellationToken.None);
+        }
+        await channel.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.ListWidgets,
+            RequestId = 20,
+            Payload = BridgeJson.ToElement(new { }),
+        }, CancellationToken.None);
+        var saturated = await channel.ReadAsync(CancellationToken.None).AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(20L, saturated.RequestId);
+        Assert.Equal(BridgeMessageTypes.Error, saturated.Type);
+        Assert.Equal("bridge_busy",
+            saturated.Payload.GetProperty("code").GetString());
+
+        await channel.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Stop,
+            RequestId = 21,
+            Payload = BridgeJson.ToElement(new { }),
+        }, CancellationToken.None);
+        var stopped = await channel.ReadAsync(CancellationToken.None).AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(21L, stopped.RequestId);
+        Assert.Equal(BridgeMessageTypes.Acknowledged, stopped.Type);
+        await fixture.Canceled.WaitAsync(TimeSpan.FromSeconds(2));
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(0, server.ResidencyBudget.ApplicationWorkers);
+    }
+    finally
+    {
+        serverShutdown.Cancel();
+        try { await serverTask.WaitAsync(TimeSpan.FromSeconds(3)); }
+        catch (OperationCanceledException) { }
+    }
+}
+
+static async Task DuplicatePendingRequestIdsFailClosed()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var fixture = new StalledAdmissionFixture();
+    var pipeName = $"gba-bridge-duplicate-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipeName, fixture.Catalog, 64 * 1024);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var connection = await RawBridgeConnection.ConnectAsync(pipeName);
+
+    await connection.Channel.WriteAsync(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.GetSnapshot,
+        RequestId = 2,
+        Payload = BridgeJson.ToElement(new WidgetIdRequest("stalled-widget")),
+    }, CancellationToken.None);
+    await fixture.Started.WaitAsync(TimeSpan.FromSeconds(2));
+    await connection.Channel.WriteAsync(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ListWidgets,
+        RequestId = 2,
+        Payload = BridgeJson.ToElement(new { }),
+    }, CancellationToken.None);
+
+    var exception = await Assert.ThrowsAsync<BridgeProtocolException>(
+        () => serverTask.WaitAsync(TimeSpan.FromSeconds(3)));
+    Assert.True(exception.Message.Contains("reused", StringComparison.Ordinal),
+        "Duplicate active request ID lost its stable fail-closed diagnostic.");
+    await fixture.Canceled.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(0, server.ResidencyBudget.ApplicationWorkers);
+}
+
+static async Task PipelinedWidgetRequestsStayOrdered()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+
+    var responses = await harness.Client.PipelineAsync(
+        (BridgeMessageTypes.Action, new BridgeActionRequest(
+            "test-widget", new WidgetActionEvent("ordered.first", "button"))),
+        (BridgeMessageTypes.Action, new BridgeActionRequest(
+            "test-widget", new WidgetActionEvent("ordered.second", "button"))),
+        (BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget")));
+
+    Assert.SequenceEqual(
+        [BridgeMessageTypes.Acknowledged, BridgeMessageTypes.Acknowledged,
+            BridgeMessageTypes.Snapshot],
+        responses.Select(response => response.Type));
+    var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        responses[2].Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal("first,second", FindNode(snapshot.Root, "busy-button").Text);
 }
 
 static async Task InstalledWidgetsJoinCatalog()
@@ -1499,6 +1638,7 @@ static string RequiredValue(string[] values, string name)
 file sealed class BridgeTestWidget : Widget
 {
     private double _volume = 0.5;
+    private string _actionOrder = "none";
 
     public override WidgetView Render() => new(
         UI.Stack("root",
@@ -1507,7 +1647,7 @@ file sealed class BridgeTestWidget : Widget
                 .Shortcut(ControllerButton.RightBumper).Classes("primary"),
             UI.Button("Unavailable", "disabled", "disabled-button")
                 .Disabled().Classes("disabled"),
-            UI.Button("Saving", "busy", "busy-button")
+            UI.Button(_actionOrder == "none" ? "Saving" : _actionOrder, "busy", "busy-button")
                 .Busy().Classes("busy"),
             UI.Slider(_volume, 0, 1, 0.1, "volume.changed", "volume",
                 "Volume", $"{_volume:P0}")),
@@ -1528,6 +1668,13 @@ file sealed class BridgeTestWidget : Widget
             Environment.Exit(31);
         else if (action.ActionId == "hang")
             Thread.Sleep(TimeSpan.FromSeconds(30));
+        else if (action.ActionId == "ordered.first")
+        {
+            Thread.Sleep(TimeSpan.FromMilliseconds(150));
+            _actionOrder = "first";
+        }
+        else if (action.ActionId == "ordered.second")
+            _actionOrder += ",second";
         return ValueTask.CompletedTask;
     }
 }
@@ -1821,6 +1968,95 @@ file sealed class TemporaryDirectory : IDisposable
     }
 }
 
+file sealed class StalledAdmissionFixture
+{
+    private readonly TaskCompletionSource<bool> _started = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _canceled = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public StalledAdmissionFixture()
+    {
+        var executable = Environment.ProcessPath ??
+            throw new InvalidOperationException("Test process path is unavailable.");
+        Catalog = new BridgeCatalog([new ConfiguredWidget
+        {
+            Id = "stalled-widget",
+            PackageId = "dev.test.stalled",
+            PublisherId = "dev.test",
+            Name = "Stalled Widget",
+            InstanceId = "stalled.instance",
+            WorkerExecutable = executable,
+            RequiresAppContainer = true,
+            IsolationKey = $"bridge-stalled-admission-{Guid.NewGuid():N}",
+            ContentLeaseFactory = cancellationToken =>
+            {
+                _started.TrySetResult(true);
+                try
+                {
+                    cancellationToken.WaitHandle.WaitOne();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    throw new InvalidOperationException("Unreachable admission branch.");
+                }
+                finally
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        _canceled.TrySetResult(true);
+                }
+            },
+            WorkerFingerprint = new string('a', 64),
+            CatalogFingerprint = new string('b', 64),
+        }]);
+    }
+
+    public BridgeCatalog Catalog { get; }
+    public Task Started => _started.Task;
+    public Task Canceled => _canceled.Task;
+}
+
+file sealed class RawBridgeConnection : IAsyncDisposable
+{
+    private readonly NamedPipeClientStream _pipe;
+
+    private RawBridgeConnection(
+        NamedPipeClientStream pipe,
+        BridgeFrameChannel channel)
+    {
+        _pipe = pipe;
+        Channel = channel;
+    }
+
+    public BridgeFrameChannel Channel { get; }
+
+    public static async Task<RawBridgeConnection> ConnectAsync(string pipeName)
+    {
+        var pipe = new NamedPipeClientStream(
+            ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        try
+        {
+            await pipe.ConnectAsync(3000);
+            var channel = new BridgeFrameChannel(pipe, 64 * 1024);
+            await channel.WriteAsync(new BridgeEnvelope
+            {
+                Type = BridgeMessageTypes.Hello,
+                RequestId = 1,
+                Payload = BridgeJson.ToElement(new BridgeHello("raw-bridge-test")),
+            }, CancellationToken.None);
+            var hello = await channel.ReadAsync(CancellationToken.None).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(BridgeMessageTypes.HelloAccepted, hello.Type);
+            return new RawBridgeConnection(pipe, channel);
+        }
+        catch
+        {
+            await pipe.DisposeAsync();
+            throw;
+        }
+    }
+
+    public ValueTask DisposeAsync() => _pipe.DisposeAsync();
+}
+
 file sealed class BridgeTestClient : IAsyncDisposable
 {
     private readonly NamedPipeClientStream _pipe;
@@ -1869,6 +2105,40 @@ file sealed class BridgeTestClient : IAsyncDisposable
                 throw new InvalidOperationException("Received response for a different request.");
             return response;
         }
+    }
+
+    public async Task<IReadOnlyList<BridgeEnvelope>> PipelineAsync(
+        params (string Type, object Payload)[] requests)
+    {
+        var requestIds = new long[requests.Length];
+        for (var index = 0; index < requests.Length; index++)
+        {
+            requestIds[index] = Interlocked.Increment(ref _requestId);
+            await _channel.WriteAsync(new BridgeEnvelope
+            {
+                Type = requests[index].Type,
+                RequestId = requestIds[index],
+                Payload = BridgeJson.ToElement(requests[index].Payload),
+            }, CancellationToken.None);
+        }
+
+        var expected = requestIds.ToHashSet();
+        var responses = new Dictionary<long, BridgeEnvelope>();
+        while (responses.Count != requestIds.Length)
+        {
+            var response = await _channel.ReadAsync(CancellationToken.None).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(4));
+            if (response.RequestId == 0)
+            {
+                _events.Enqueue(response);
+                continue;
+            }
+            if (!expected.Contains(response.RequestId) ||
+                !responses.TryAdd(response.RequestId, response))
+                throw new InvalidOperationException(
+                    "Received an unknown or duplicate pipelined response.");
+        }
+        return requestIds.Select(requestId => responses[requestId]).ToArray();
     }
 
     public async Task<BridgeEnvelope> ReadEventAsync(string type)

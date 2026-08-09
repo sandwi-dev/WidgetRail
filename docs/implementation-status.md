@@ -690,7 +690,10 @@ and First-Party Conformance 6/6 for documentation commit `b2956ab` over
 implementation `4f903b0`. This is a focused one-machine measurement, not a
 production startup budget or a complete all-manifest verification run.
 Bridge
-passes 42/42, including aggregate count/declared-memory admission, exact crash/
+passes 45/45, including bounded 16-request correlated dispatch, stable
+`bridge_busy` saturation, cooperative stalled-admission list/Stop
+responsiveness and cleanup, duplicate-active-ID refusal, per-widget receive
+ordering, aggregate count/declared-memory admission, exact crash/
 timeout/idle-unload release, Settings control-plane access, race-safe refusal,
 semantic catalog revisions/last-good/catch-up reload,
 atomic presentation metadata replacement, compatible-worker reconciliation,
@@ -698,7 +701,10 @@ trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
 gesture derivation, including trusted-only publication and worker retirement
 when installed state/integrity fails, pre-launch content-race rejection, and
-live-byte pinning until asynchronous worker teardown completes. PlatformBroker focused coverage passes
+live-byte pinning until asynchronous worker teardown completes. The dispatcher
+does not hard-bound cancellation-ignoring Windows ACL calls or its final drain,
+and native bridge reads remain synchronous; those are still release-blocking
+startup/availability work. PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
