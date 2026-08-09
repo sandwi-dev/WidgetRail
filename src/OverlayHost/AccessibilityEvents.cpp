@@ -10,10 +10,10 @@ bool SameRect(const declarative::Rect& left, const declarative::Rect& right) noe
         left.width == right.width && left.height == right.height;
 }
 
-std::optional<std::wstring> FocusedId(const Tree* tree) {
+std::optional<ElementKey> FocusedKey(const Tree* tree) {
     if (!tree || !tree->focusedNode || *tree->focusedNode >= tree->nodes.size())
         return std::nullopt;
-    return tree->nodes[*tree->focusedNode].id;
+    return KeyFor(tree->nodes[*tree->focusedNode]);
 }
 
 bool SupportsInvoke(const Node& node) noexcept {
@@ -43,7 +43,8 @@ bool SameStructure(const Tree& left, const Tree& right) {
     for (std::size_t index = 0; index < left.nodes.size(); ++index) {
         const auto& before = left.nodes[index];
         const auto& after = right.nodes[index];
-        if (before.id != after.id || before.role != after.role ||
+        if (before.domain != after.domain || before.id != after.id ||
+            before.role != after.role ||
             before.parent != after.parent || before.children != after.children ||
             SupportsInvoke(before) != SupportsInvoke(after) ||
             SupportsRangeValue(before) != SupportsRangeValue(after)) return false;
@@ -54,12 +55,12 @@ bool SameStructure(const Tree& left, const Tree& right) {
 template<typename Value>
 void AddIfChanged(
     EventPlan& plan,
-    const std::wstring& nodeId,
+    const Node& node,
     const PropertyKind kind,
     const Value& before,
     const Value& after) {
     if (before != after)
-        plan.properties.push_back({nodeId, kind, before, after});
+        plan.properties.push_back({node.id, kind, before, after, node.domain});
 }
 
 } // namespace
@@ -67,10 +68,10 @@ void AddIfChanged(
 EventPlan PlanEvents(const Tree* previous, const Tree* current) {
     EventPlan plan;
     plan.structureChanged = !previous || !current || !SameStructure(*previous, *current);
-    const auto oldFocus = FocusedId(previous);
-    const auto newFocus = FocusedId(current);
+    const auto oldFocus = FocusedKey(previous);
+    const auto newFocus = FocusedKey(current);
     plan.focusChanged = oldFocus != newFocus;
-    plan.focusedNodeId = newFocus;
+    plan.focusedElement = newFocus;
     if (!previous || !current ||
         previous->widgetId != current->widgetId ||
         previous->runtimeGeneration != current->runtimeGeneration) return plan;
@@ -78,48 +79,48 @@ EventPlan PlanEvents(const Tree* previous, const Tree* current) {
     for (const auto& after : current->nodes) {
         const auto before = std::find_if(
             previous->nodes.begin(), previous->nodes.end(),
-            [&](const Node& candidate) { return candidate.id == after.id; });
+            [&](const Node& candidate) { return KeyFor(candidate) == KeyFor(after); });
         if (before == previous->nodes.end()) {
             if (after.liveSetting != LiveSetting::Off && !after.name.empty())
-                plan.liveRegionChangedNodeIds.push_back(after.id);
+                plan.liveRegionChangedElements.push_back(KeyFor(after));
             continue;
         }
         if (before->role != after.role) continue;
-        AddIfChanged(plan, after.id, PropertyKind::Name, before->name, after.name);
-        AddIfChanged(plan, after.id, PropertyKind::HelpText, before->value, after.value);
-        AddIfChanged(plan, after.id, PropertyKind::Enabled, before->enabled, after.enabled);
-        AddIfChanged(plan, after.id, PropertyKind::Selected, before->selected, after.selected);
+        AddIfChanged(plan, after, PropertyKind::Name, before->name, after.name);
+        AddIfChanged(plan, after, PropertyKind::HelpText, before->value, after.value);
+        AddIfChanged(plan, after, PropertyKind::Enabled, before->enabled, after.enabled);
+        AddIfChanged(plan, after, PropertyKind::Selected, before->selected, after.selected);
         AddIfChanged(
-            plan, after.id, PropertyKind::HeadingLevel,
+            plan, after, PropertyKind::HeadingLevel,
             static_cast<int>(before->headingLevel), static_cast<int>(after.headingLevel));
         AddIfChanged(
-            plan, after.id, PropertyKind::LiveSetting,
+            plan, after, PropertyKind::LiveSetting,
             static_cast<int>(before->liveSetting), static_cast<int>(after.liveSetting));
         if (before->name != after.name && after.liveSetting != LiveSetting::Off)
-            plan.liveRegionChangedNodeIds.push_back(after.id);
+            plan.liveRegionChangedElements.push_back(KeyFor(after));
         if (after.role == Role::Slider || after.role == Role::Progress) {
             AddIfChanged(
-                plan, after.id, PropertyKind::RangeValue,
+                plan, after, PropertyKind::RangeValue,
                 before->rangeValue, after.rangeValue);
             AddIfChanged(
-                plan, after.id, PropertyKind::RangeMinimum,
+                plan, after, PropertyKind::RangeMinimum,
                 before->rangeMinimum, after.rangeMinimum);
             AddIfChanged(
-                plan, after.id, PropertyKind::RangeMaximum,
+                plan, after, PropertyKind::RangeMaximum,
                 before->rangeMaximum, after.rangeMaximum);
             AddIfChanged(
-                plan, after.id, PropertyKind::RangeSmallChange,
+                plan, after, PropertyKind::RangeSmallChange,
                 before->rangeStep, after.rangeStep);
             AddIfChanged(
-                plan, after.id, PropertyKind::RangeLargeChange,
+                plan, after, PropertyKind::RangeLargeChange,
                 RangeLargeChange(*before), RangeLargeChange(after));
             AddIfChanged(
-                plan, after.id, PropertyKind::RangeReadOnly,
+                plan, after, PropertyKind::RangeReadOnly,
                 RangeReadOnly(*before), RangeReadOnly(after));
         }
         if (!SameRect(before->bounds, after.bounds))
             plan.properties.push_back({
-                after.id, PropertyKind::Bounds, before->bounds, after.bounds,
+                after.id, PropertyKind::Bounds, before->bounds, after.bounds, after.domain,
             });
     }
     return plan;

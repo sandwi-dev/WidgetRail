@@ -6,7 +6,9 @@
 #include <cstddef>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace gba::accessibility {
@@ -37,7 +39,21 @@ enum class HostAction {
     None,
     ActivateTrayItem,
     BackToTray,
+    BackWithinWidget,
     CloseOverlay,
+};
+
+enum class ElementDomain {
+    Widget,
+    HostShell,
+    Tray,
+};
+
+struct ElementKey final {
+    ElementDomain domain{ElementDomain::Widget};
+    std::wstring id;
+
+    friend bool operator==(const ElementKey&, const ElementKey&) = default;
 };
 
 struct Node final {
@@ -52,6 +68,7 @@ struct Node final {
     HeadingLevel headingLevel{HeadingLevel::None};
     LiveSetting liveSetting{LiveSetting::Off};
     HostAction hostAction{HostAction::None};
+    ElementDomain domain{ElementDomain::Widget};
     std::optional<std::size_t> parent;
     std::vector<std::size_t> children;
     double rangeValue{};
@@ -73,6 +90,27 @@ struct Tree final {
     std::optional<std::size_t> focusedNode;
     std::wstring name;
 };
+
+[[nodiscard]] inline ElementKey KeyFor(const Node& node) {
+    return {node.domain, node.id};
+}
+[[nodiscard]] inline std::wstring AutomationId(const Node& node) {
+    std::wstring result;
+    switch (node.domain) {
+    case ElementDomain::Widget: result = L"widget:"; break;
+    case ElementDomain::HostShell: result = L"host:"; break;
+    case ElementDomain::Tray: result = L"tray:"; break;
+    }
+    result += node.id;
+    return result;
+}
+[[nodiscard]] inline bool HasUniqueElementKeys(const Tree& tree) {
+    std::set<std::pair<ElementDomain, std::wstring_view>> keys;
+    for (const auto& node : tree.nodes) {
+        if (node.id.empty() || !keys.emplace(node.domain, node.id).second) return false;
+    }
+    return true;
+}
 
 /// Builds a closed immutable accessibility tree from the exact semantic
 /// geometry produced by the completed render pass. Only the active input scope

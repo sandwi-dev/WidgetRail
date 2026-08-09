@@ -34,7 +34,8 @@ int main() {
           tree.nodes[1].hostTargetId == L"performance",
           "only final visible tray items are published in catalog order");
     Check(tree.nodes[0].name == L"YT Music" &&
-          tree.nodes[0].role == gba::accessibility::Role::ListItem,
+          tree.nodes[0].role == gba::accessibility::Role::ListItem &&
+          tree.nodes[0].domain == gba::accessibility::ElementDomain::Tray,
           "tray item exposes its accessible list-item name");
     Check(tree.nodes[1].hostAction == gba::accessibility::HostAction::ActivateTrayItem,
           "tray activation is a closed typed action");
@@ -56,6 +57,7 @@ int main() {
         items, *layout, 2, 18, &dashboard);
     Check(dashboardTree.nodes.size() == 4 &&
           dashboardTree.nodes[0].id == L"host.dashboard.title" &&
+          dashboardTree.nodes[0].domain == gba::accessibility::ElementDomain::HostShell &&
           dashboardTree.nodes[0].role == gba::accessibility::Role::Heading &&
           dashboardTree.nodes[0].headingLevel == gba::accessibility::HeadingLevel::Level1,
           "dashboard title is a level-one heading with exact host-owned text");
@@ -97,7 +99,7 @@ int main() {
     widgetTree.snapshotSequence = 42;
     widgetTree.activeInputScopeId = L"music.root";
     gba::accessibility::Node play;
-    play.id = L"music.play";
+    play.id = L"host.open.back";
     play.name = L"Play";
     play.actionId = L"music.play";
     play.bounds = {20, 80, 120, 44};
@@ -106,13 +108,19 @@ int main() {
     widgetTree.nodes.push_back(play);
     widgetTree.focusedNode = 0;
     const gba::accessibility::OpenWidgetSemantics open{
-        L"YT Music", true,
+        L"YT Music", gba::accessibility::HostAction::BackToTray, L"music.root",
         {320, 440, 80, 30}, {400, 440, 100, 30},
         L"X Play  LB Previous  RB Next", {20, 440, 286, 30},
         L"", {20, 440, 286, 30},
     };
     const auto openTree = gba::accessibility::BuildOpenWidgetTree(
         widgetTree, items, *layout, 1, false, open);
+    auto nestedOpen = open;
+    nestedOpen.backAction = gba::accessibility::HostAction::BackWithinWidget;
+    nestedOpen.backTargetId = L"music.sheet";
+    Check(gba::accessibility::ComputeOpenWidgetSemanticRevision(items, open) !=
+          gba::accessibility::ComputeOpenWidgetSemanticRevision(items, nestedOpen),
+          "Back action and target participate in composite projection revision");
     Check(openTree.widgetId == L"music" &&
           openTree.runtimeGeneration == L"music-v1" &&
           openTree.snapshotSequence == 42 &&
@@ -121,12 +129,20 @@ int main() {
     Check(openTree.focusedNode == 0 && openTree.nodes[0].focused,
           "widget focus remains the singular composite focus owner");
     Check(openTree.nodes[1].id == L"host.open.back" &&
+          openTree.nodes[0].domain == gba::accessibility::ElementDomain::Widget &&
+          openTree.nodes[1].domain == gba::accessibility::ElementDomain::HostShell &&
           openTree.nodes[1].hostAction == gba::accessibility::HostAction::BackToTray &&
           !openTree.nodes[1].keyboardFocusable &&
           openTree.nodes[2].id == L"host.open.close" &&
           openTree.nodes[2].hostAction == gba::accessibility::HostAction::CloseOverlay &&
           !openTree.nodes[2].keyboardFocusable,
           "open shell exposes closed non-focus-stealing Back and Close commands");
+    Check(gba::accessibility::HasUniqueElementKeys(openTree) &&
+          gba::accessibility::AutomationId(openTree.nodes[0]) ==
+              L"widget:host.open.back" &&
+          gba::accessibility::AutomationId(openTree.nodes[1]) ==
+              L"host:host.open.back",
+          "widget and host elements may share raw IDs without identity collision");
     Check(openTree.nodes[3].id == L"host.open.help" &&
           openTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Off &&
           openTree.nodes[3].bounds.width == open.helpBounds.width,
@@ -149,6 +165,34 @@ int main() {
           trayFocusedTree.nodes[3].role == gba::accessibility::Role::Status &&
           trayFocusedTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Polite,
           "transient open-widget feedback replaces static help with one polite status");
+
+    gba::WidgetSnapshot nested;
+    nested.sequence = 43;
+    nested.activeInputScopeId = L"music.sheet";
+    nested.root.id = L"music.root";
+    nested.root.inputScopeId = L"music.root";
+    gba::WidgetNode sheet;
+    sheet.id = L"sheet";
+    sheet.inputScopeId = L"music.sheet";
+    sheet.shortcuts.push_back({L"b", L"sheet.back", L"pressed"});
+    nested.root.children.push_back(sheet);
+    Check(gba::accessibility::HasActiveScopeBackShortcut(nested) &&
+          gba::accessibility::IsCurrentBackAction(
+              gba::accessibility::HostAction::BackWithinWidget,
+              L"music.sheet", nested) &&
+          !gba::accessibility::IsCurrentBackAction(
+              gba::accessibility::HostAction::BackToTray,
+              L"music.sheet", nested) &&
+          !gba::accessibility::IsCurrentBackAction(
+              gba::accessibility::HostAction::BackWithinWidget,
+              L"music.stale", nested),
+          "nested Back resolves only to the active scope's explicit B shortcut");
+    nested.root.children[0].shortcuts[0].phase = L"released";
+    Check(!gba::accessibility::HasActiveScopeBackShortcut(nested) &&
+          !gba::accessibility::IsCurrentBackAction(
+              gba::accessibility::HostAction::BackWithinWidget,
+              L"music.sheet", nested),
+          "missing pressed-B authority suppresses nested Back without tray fallback");
 
     std::cout << "HostAccessibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

@@ -87,6 +87,10 @@ int main() {
     Check(tree.snapshotSequence == 9, "tree retains snapshot authority");
     Check(tree.activeInputScopeId == L"root", "tree retains active input scope authority");
     Check(tree.nodes.size() == 4, "active semantic nodes are exposed exactly once");
+    Check(gba::accessibility::HasUniqueElementKeys(tree) &&
+          tree.nodes[0].domain == gba::accessibility::ElementDomain::Widget &&
+          gba::accessibility::AutomationId(tree.nodes[1]) == L"widget:next",
+          "widget projection owns a unique namespaced UIA identity");
     Check(tree.nodes[0].role == gba::accessibility::Role::Text &&
           tree.nodes[0].name == L"Now playing", "visible text has a static-text name");
     Check(tree.nodes[1].role == gba::accessibility::Role::Button &&

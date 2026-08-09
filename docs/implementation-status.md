@@ -98,9 +98,16 @@ publish one composite root named for the active page, with widget controls,
 closed non-focus-stealing Back/Close commands, exact visible quiet help or live
 status, and the visible tray. Switching focus regions changes one focus owner;
 it no longer replaces the semantic surface.
+Composite elements now carry a closed widget/host-shell/tray owner domain
+through AutomationId, runtime identity, lookup, event diffing, and queued action
+authority. Cross-domain raw-ID reuse is safe, duplicate same-domain publication
+fails closed, and authors do not reserve shell prefixes. Root Back remains a
+typed tray transition; nested Back is published only for the exact active scope
+root's pressed-B shortcut and is revalidated before automation-origin dispatch,
+with no scope fallback.
 Focused Release coverage passes Slider Interaction 2086, renderer 4636,
-accessibility tree 15, projection cadence 10, host semantics 21, event planning
-10, and provider 121 checks. The isolated Release native aggregate passes 24/24,
+accessibility tree 16, projection cadence 11, host semantics 25, event planning
+11, and provider 149 checks. The isolated Release native aggregate passes 24/24,
 and the canonical Debug build/test path is green. Legacy MSAA and packaged
 Narrator evidence remain open, so full screen-reader support is not yet claimed.
 

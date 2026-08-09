@@ -265,6 +265,7 @@ gba::accessibility::Tree HostTree(const bool includeDashboard = false) {
     tree.activeInputScopeId = L"host.tray";
     gba::accessibility::Node music;
     music.id = L"tray.music";
+    music.domain = gba::accessibility::ElementDomain::Tray;
     music.name = L"YT Music";
     music.hostTargetId = L"music";
     music.bounds = {20, 220, 64, 64};
@@ -277,6 +278,7 @@ gba::accessibility::Tree HostTree(const bool includeDashboard = false) {
     if (includeDashboard) {
         gba::accessibility::Node heading;
         heading.id = L"host.dashboard.title";
+        heading.domain = gba::accessibility::ElementDomain::HostShell;
         heading.name = L"YT Music";
         heading.bounds = {20, 10, 760, 34};
         heading.role = gba::accessibility::Role::Heading;
@@ -284,6 +286,7 @@ gba::accessibility::Tree HostTree(const bool includeDashboard = false) {
         tree.nodes.push_back(heading);
         gba::accessibility::Node help;
         help.id = L"host.dashboard.help";
+        help.domain = gba::accessibility::ElementDomain::HostShell;
         help.name = L"A Select  B Close";
         help.bounds = {20, 44, 760, 22};
         help.role = gba::accessibility::Role::Text;
@@ -297,24 +300,53 @@ gba::accessibility::Tree OpenHostTree() {
     tree.widgetId = L"music";
     tree.runtimeGeneration = L"generation-open";
     tree.snapshotSequence = 30;
-    tree.activeInputScopeId = L"music.root";
+    tree.activeInputScopeId = L"music.sheet";
     tree.name = L"YT Music · Game Bar Alternative";
     gba::accessibility::Node back;
     back.id = L"host.open.back";
-    back.name = L"Back to widget tray";
+    back.domain = gba::accessibility::ElementDomain::HostShell;
+    back.name = L"Back";
     back.bounds = {300, 240, 80, 30};
     back.role = gba::accessibility::Role::Button;
-    back.hostAction = gba::accessibility::HostAction::BackToTray;
+    back.hostAction = gba::accessibility::HostAction::BackWithinWidget;
+    back.hostTargetId = L"music.sheet";
     back.keyboardFocusable = false;
     tree.nodes.push_back(back);
     gba::accessibility::Node close;
     close.id = L"host.open.close";
+    close.domain = gba::accessibility::ElementDomain::HostShell;
     close.name = L"Close overlay";
     close.bounds = {380, 240, 100, 30};
     close.role = gba::accessibility::Role::Button;
     close.hostAction = gba::accessibility::HostAction::CloseOverlay;
     close.keyboardFocusable = false;
     tree.nodes.push_back(close);
+    return tree;
+}
+
+gba::accessibility::Tree CollisionTree() {
+    gba::accessibility::Tree tree;
+    tree.widgetId = L"music";
+    tree.runtimeGeneration = L"generation-collision";
+    tree.snapshotSequence = 31;
+    tree.activeInputScopeId = L"music.root";
+    gba::accessibility::Node widget;
+    widget.id = L"host.open.back";
+    widget.name = L"Widget action";
+    widget.actionId = L"widget.action";
+    widget.role = gba::accessibility::Role::Button;
+    widget.focused = true;
+    tree.nodes.push_back(widget);
+    tree.focusedNode = 0;
+    gba::accessibility::Node hostBack;
+    hostBack.domain = gba::accessibility::ElementDomain::HostShell;
+    hostBack.id = L"host.open.back";
+    hostBack.name = L"Back to widget tray";
+    hostBack.hostAction = gba::accessibility::HostAction::BackToTray;
+    hostBack.hostTargetId = L"music.root";
+    hostBack.role = gba::accessibility::Role::Button;
+    hostBack.keyboardFocusable = false;
+    tree.nodes.push_back(hostBack);
     return tree;
 }
 
@@ -368,7 +400,7 @@ int main() {
     SysFreeString(clientRootName);
     VARIANT automationId{};
     V_VT(&automationId) = VT_BSTR;
-    V_BSTR(&automationId) = SysAllocString(L"next");
+    V_BSTR(&automationId) = SysAllocString(L"widget:next");
     ComPtr<IUIAutomationCondition> buttonCondition;
     Check(SUCCEEDED(client->CreatePropertyCondition(
               UIA_AutomationIdPropertyId, automationId,
@@ -438,12 +470,14 @@ int main() {
     Check(actions.size() == 1 && actions[0].kind == gba::accessibility::ActionKind::Invoke &&
           actions[0].widgetId == L"music" && actions[0].runtimeGeneration == L"generation-1" &&
           actions[0].snapshotSequence == 9 && actions[0].activeInputScopeId == L"root" &&
+          actions[0].domain == gba::accessibility::ElementDomain::Widget &&
           actions[0].nodeId == L"next" && actions[0].actionId == L"next",
           "Invoke retains the full generation and snapshot authority tuple");
 
     Check(SUCCEEDED(buttonFragment->SetFocus()), "focus request is admitted asynchronously");
     actions = host.TakeActions();
     Check(actions.size() == 1 && actions[0].kind == gba::accessibility::ActionKind::Focus &&
+          actions[0].domain == gba::accessibility::ElementDomain::Widget &&
           actions[0].nodeId == L"next", "focus request retains node identity");
 
     ComPtr<IRawElementProviderFragmentRoot> fragmentRoot;
@@ -554,6 +588,7 @@ int main() {
           "tray Invoke posts asynchronously");
     actions = host.TakeActions();
     Check(actions.size() == 1 && actions[0].kind == gba::accessibility::ActionKind::Invoke &&
+          actions[0].domain == gba::accessibility::ElementDomain::Tray &&
           actions[0].hostTargetId == L"music",
           "tray Invoke retains the selected widget target");
 
@@ -586,7 +621,9 @@ int main() {
           "host Back exposes a closed Invoke pattern");
     actions = host.TakeActions();
     Check(actions.size() == 1 &&
-          actions[0].hostAction == gba::accessibility::HostAction::BackToTray &&
+          actions[0].domain == gba::accessibility::ElementDomain::HostShell &&
+          actions[0].hostAction == gba::accessibility::HostAction::BackWithinWidget &&
+          actions[0].hostTargetId == L"music.sheet" &&
           actions[0].widgetId == L"music" &&
           actions[0].runtimeGeneration == L"generation-open" &&
           actions[0].snapshotSequence == 30,
@@ -605,13 +642,65 @@ int main() {
           "host Close is separately traversable and invokable");
     actions = host.TakeActions();
     Check(actions.size() == 1 &&
+          actions[0].domain == gba::accessibility::ElementDomain::HostShell &&
           actions[0].hostAction == gba::accessibility::HostAction::CloseOverlay,
           "host Close queues only the typed idempotent close authority");
+
+    const auto collisionTree = CollisionTree();
+    Check(gba::accessibility::HasUniqueElementKeys(collisionTree),
+          "cross-domain raw-ID reuse is a valid composite tree");
+    host.Publish(collisionTree, {100, 200, 2, 800, 600});
+    ComPtr<IRawElementProviderFragment> collisionWidget;
+    ComPtr<IRawElementProviderFragment> collisionHost;
+    Check(SUCCEEDED(rootFragment->Navigate(
+              NavigateDirection_FirstChild, collisionWidget.GetAddressOf())) &&
+          collisionWidget && SUCCEEDED(collisionWidget->Navigate(
+              NavigateDirection_NextSibling, collisionHost.GetAddressOf())) &&
+          collisionHost,
+          "provider traverses both elements that share a raw ID");
+    ComPtr<IRawElementProviderSimple> collisionWidgetSimple;
+    ComPtr<IRawElementProviderSimple> collisionHostSimple;
+    Check(SUCCEEDED(collisionWidget.As(&collisionWidgetSimple)) &&
+          SUCCEEDED(collisionHost.As(&collisionHostSimple)) &&
+          StringProperty(collisionWidgetSimple.Get(), UIA_AutomationIdPropertyId) ==
+              L"widget:host.open.back" &&
+          StringProperty(collisionHostSimple.Get(), UIA_AutomationIdPropertyId) ==
+              L"host:host.open.back" &&
+          RuntimeId(collisionWidget.Get()) != RuntimeId(collisionHost.Get()),
+          "AutomationId and runtime identity remain collision-proof by owner domain");
+    ComPtr<IUnknown> collisionWidgetInvokeUnknown;
+    ComPtr<IUnknown> collisionHostInvokeUnknown;
+    ComPtr<IInvokeProvider> collisionWidgetInvoke;
+    ComPtr<IInvokeProvider> collisionHostInvoke;
+    Check(SUCCEEDED(collisionWidgetSimple->GetPatternProvider(
+              UIA_InvokePatternId, collisionWidgetInvokeUnknown.GetAddressOf())) &&
+          SUCCEEDED(collisionHostSimple->GetPatternProvider(
+              UIA_InvokePatternId, collisionHostInvokeUnknown.GetAddressOf())) &&
+          collisionWidgetInvokeUnknown && collisionHostInvokeUnknown &&
+          SUCCEEDED(collisionWidgetInvokeUnknown.As(&collisionWidgetInvoke)) &&
+          SUCCEEDED(collisionHostInvokeUnknown.As(&collisionHostInvoke)) &&
+          SUCCEEDED(collisionWidgetInvoke->Invoke()) &&
+          SUCCEEDED(collisionHostInvoke->Invoke()),
+          "both colliding raw IDs retain their independent Invoke workflows");
+    actions = host.TakeActions();
+    Check(actions.size() == 2 &&
+          actions[0].domain == gba::accessibility::ElementDomain::Widget &&
+          actions[0].actionId == L"widget.action" &&
+          actions[1].domain == gba::accessibility::ElementDomain::HostShell &&
+          actions[1].hostAction == gba::accessibility::HostAction::BackToTray,
+          "queued actions retain typed identity through the real provider workflow");
+    auto duplicateTree = collisionTree;
+    duplicateTree.nodes.push_back(duplicateTree.nodes[0]);
+    host.Publish(duplicateTree, {100, 200, 2, 800, 600});
+    ComPtr<IRawElementProviderFragment> invalidChild;
+    Check(SUCCEEDED(rootFragment->Navigate(
+              NavigateDirection_FirstChild, invalidChild.GetAddressOf())) && !invalidChild,
+          "provider fails closed instead of publishing duplicate same-domain identity");
 
     host.Publish(HostTree(), {100, 200, 2, 800, 600});
     VARIANT trayAutomationId{};
     V_VT(&trayAutomationId) = VT_BSTR;
-    V_BSTR(&trayAutomationId) = SysAllocString(L"tray.music");
+    V_BSTR(&trayAutomationId) = SysAllocString(L"tray:tray.music");
     ComPtr<IUIAutomationCondition> trayCondition;
     Check(SUCCEEDED(client->CreatePropertyCondition(
               UIA_AutomationIdPropertyId, trayAutomationId,
@@ -670,6 +759,7 @@ int main() {
     changedHostTree.nodes[0].focused = false;
     gba::accessibility::Node settings;
     settings.id = L"tray.settings";
+    settings.domain = gba::accessibility::ElementDomain::Tray;
     settings.name = L"Settings";
     settings.hostTargetId = L"settings";
     settings.bounds = {100, 220, 64, 64};
@@ -714,8 +804,8 @@ int main() {
         VariantClear(&automationId);
         return element;
     };
-    auto headingElement = findByAutomationId(L"host.dashboard.title");
-    auto helpElement = findByAutomationId(L"host.dashboard.help");
+    auto headingElement = findByAutomationId(L"host:host.dashboard.title");
+    auto helpElement = findByAutomationId(L"host:host.dashboard.help");
     VARIANT headingLevel{};
     VARIANT helpLiveSetting{};
     Check(headingElement && SUCCEEDED(headingElement->GetCurrentPropertyValue(
@@ -730,6 +820,7 @@ int main() {
     VariantClear(&helpLiveSetting);
     gba::accessibility::Node status;
     status.id = L"host.dashboard.status";
+    status.domain = gba::accessibility::ElementDomain::HostShell;
     status.name = L"Playback command failed";
     status.bounds = finalHostTree.nodes[2].bounds;
     status.role = gba::accessibility::Role::Status;
@@ -739,7 +830,7 @@ int main() {
     SendMessageW(window, WM_APP + 42, 0, 0);
     Check(eventHandler->WaitForLiveRegion(),
           "real UIA client receives the dashboard live-region change");
-    auto statusElement = findByAutomationId(L"host.dashboard.status");
+    auto statusElement = findByAutomationId(L"host:host.dashboard.status");
     VARIANT liveSetting{};
     CONTROLTYPEID statusControlType{};
     Check(statusElement && SUCCEEDED(statusElement->get_CurrentControlType(
@@ -781,7 +872,7 @@ int main() {
           "real UIA client receives the presented RangeValue revision");
     VARIANT sliderAutomationId{};
     V_VT(&sliderAutomationId) = VT_BSTR;
-    V_BSTR(&sliderAutomationId) = SysAllocString(L"progress");
+    V_BSTR(&sliderAutomationId) = SysAllocString(L"widget:progress");
     ComPtr<IUIAutomationCondition> sliderCondition;
     Check(SUCCEEDED(client->CreatePropertyCondition(
               UIA_AutomationIdPropertyId, sliderAutomationId,

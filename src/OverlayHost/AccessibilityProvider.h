@@ -25,6 +25,7 @@ struct ActionRequest final {
     std::wstring runtimeGeneration;
     long long snapshotSequence{};
     std::wstring activeInputScopeId;
+    ElementDomain domain{ElementDomain::Widget};
     std::wstring nodeId;
     std::wstring actionId;
     HostAction hostAction{HostAction::None};

@@ -2814,7 +2814,8 @@ private:
             const auto publishedNode = std::find_if(
                 accessibilityTree_.nodes.begin(), accessibilityTree_.nodes.end(),
                 [&](const gba::accessibility::Node& candidate) {
-                    return candidate.id == request.nodeId;
+                    return candidate.domain == request.domain &&
+                        candidate.id == request.nodeId;
                 });
             if (request.hostAction != gba::accessibility::HostAction::None) {
                 if (request.widgetId != accessibilityTree_.widgetId ||
@@ -2842,12 +2843,51 @@ private:
                     if (request.kind == gba::accessibility::ActionKind::Invoke)
                         Dispatch(gba::Command::Activate);
                 } else if (request.hostAction ==
-                           gba::accessibility::HostAction::BackToTray) {
+                               gba::accessibility::HostAction::BackToTray ||
+                           request.hostAction ==
+                               gba::accessibility::HostAction::BackWithinWidget) {
                     if (request.kind != gba::accessibility::ActionKind::Invoke ||
                         state_.surface() != gba::Surface::Widget ||
-                        state_.focusRegion() != gba::FocusRegion::Widget)
+                        state_.focusRegion() != gba::FocusRegion::Widget ||
+                        state_.activeWidget() != request.widgetId ||
+                        !IsBridgeWidget(request.widgetId))
                         continue;
-                    Dispatch(gba::Command::SampleWidgetBack);
+                    const auto descriptor = std::find_if(
+                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                        [&](const gba::WidgetDescriptor& candidate) {
+                            return candidate.id == request.widgetId;
+                        });
+                    const auto* snapshot = SnapshotFor(request.widgetId);
+                    if (descriptor == widgetDescriptors_.end() || !snapshot ||
+                        descriptor->runtimeGeneration != request.runtimeGeneration ||
+                        snapshot->sequence != request.snapshotSequence ||
+                        snapshot->activeInputScopeId != request.hostTargetId) {
+                        AppendDiagnostic(L"Dropped stale Back accessibility action");
+                        continue;
+                    }
+                    if (!gba::accessibility::IsCurrentBackAction(
+                            request.hostAction, request.hostTargetId, *snapshot))
+                        continue;
+                    if (request.hostAction == gba::accessibility::HostAction::BackToTray) {
+                        Dispatch(gba::Command::SampleWidgetBack);
+                    } else {
+                        const auto handled = bridge_.SendControllerInput(
+                            request.widgetId, L"b", L"openWidget", focusedElementId_,
+                            snapshot->activeInputScopeId, snapshot->sequence,
+                            ++controllerSequence_,
+                            static_cast<long long>(GetTickCount64() * 1000),
+                            L"pressed", std::nullopt,
+                            gba::ControllerInputOrigin::AccessibilityAutomation);
+                        if (!handled) {
+                            AppendDiagnostic(
+                                L"Accessibility Back transport failed for " +
+                                request.widgetId);
+                        } else if (*handled) {
+                            RefreshAndApplyPresentation([&] {
+                                RefreshWidgetSnapshot(request.widgetId);
+                            });
+                        }
+                    }
                 } else if (request.hostAction ==
                            gba::accessibility::HostAction::CloseOverlay) {
                     if (request.kind != gba::accessibility::ActionKind::Invoke ||
@@ -4121,12 +4161,20 @@ private:
         const bool rootScope = snapshot &&
             std::wstring_view(snapshot->activeInputScopeId) ==
                 gba::input::RootInputScope(*snapshot);
-        const std::wstring hostPrompt = rootScope
+        const bool nestedBack = snapshot && !rootScope &&
+            gba::accessibility::HasActiveScopeBackShortcut(*snapshot);
+        const bool hasBack = rootScope || nestedBack;
+        const std::wstring hostPrompt = hasBack
             ? L"B  Back     Guide  Close"
             : L"Guide  Close";
-        openWidgetAccessibility_.backAvailable = rootScope;
+        if (hasBack) {
+            openWidgetAccessibility_.backAction = rootScope
+                ? gba::accessibility::HostAction::BackToTray
+                : gba::accessibility::HostAction::BackWithinWidget;
+            openWidgetAccessibility_.backTargetId = snapshot->activeInputScopeId;
+        }
         if (contentRight - contentLeft >= 300.0F) {
-            const float hostPromptWidth = rootScope ? 180.0F : 106.0F;
+            const float hostPromptWidth = hasBack ? 180.0F : 106.0F;
             const float hostPromptLeft = contentRight - hostPromptWidth;
             const gba::declarative::Rect promptBounds{
                 contentLeft, textTop,
@@ -4140,7 +4188,7 @@ private:
                 openWidgetAccessibility_.help = help;
                 openWidgetAccessibility_.helpBounds = promptBounds;
             }
-            if (rootScope) {
+            if (hasBack) {
                 openWidgetAccessibility_.backBounds = {
                     hostPromptLeft, textTop, 74.0F, textBottom - textTop,
                 };
@@ -4165,7 +4213,7 @@ private:
             // At narrow logical widths retain the hierarchy/escape affordance;
             // widget action labels remain discoverable on larger surfaces.
             const float halfWidth = footerBounds.width * 0.5F;
-            if (rootScope) {
+            if (hasBack) {
                 openWidgetAccessibility_.backBounds = {
                     footerBounds.x, footerBounds.y, halfWidth, footerBounds.height,
                 };

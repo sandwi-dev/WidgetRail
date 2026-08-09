@@ -25,7 +25,8 @@ struct DashboardSemantics final {
 
 struct OpenWidgetSemantics final {
     std::wstring title;
-    bool backAvailable{};
+    HostAction backAction{HostAction::None};
+    std::wstring backTargetId;
     declarative::Rect backBounds;
     declarative::Rect closeBounds;
     std::wstring help;
@@ -33,6 +34,19 @@ struct OpenWidgetSemantics final {
     std::wstring status;
     declarative::Rect statusBounds;
 };
+
+/// Returns true only when the exact active scope root owns a pressed-B
+/// shortcut. The root surface's host-owned Back behavior is intentionally
+/// handled separately.
+[[nodiscard]] bool HasActiveScopeBackShortcut(
+    const WidgetSnapshot& snapshot) noexcept;
+
+/// Revalidates a published Back command against the current immutable
+/// snapshot. No Back action falls through to a different scope behavior.
+[[nodiscard]] bool IsCurrentBackAction(
+    HostAction action,
+    std::wstring_view targetScopeId,
+    const WidgetSnapshot& snapshot) noexcept;
 
 [[nodiscard]] long long ComputeTraySemanticRevision(
     const std::vector<TrayItem>& items,

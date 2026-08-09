@@ -50,6 +50,13 @@ moves focus to the icon tray without hiding the selected panel. B on the tray
 closes the overlay. Guide/Home remains the global toggle, is detached from both
 regions' navigation graphs, and closes immediately from any depth.
 
+The UI Automation composite exposes the same hierarchy. Root Back is a typed
+host transition to the tray. Nested Back is present only for an exact active
+scope root with a pressed-B shortcut, and invocation revalidates the current
+widget generation, snapshot sequence, and scope before sending B with
+`AccessibilityAutomation` origin. A stale or missing nested binding is dropped;
+it never becomes a root or tray fallback.
+
 The tray and each widget scope retain independent focus memory. A on the tray
 enters the selected panel at its remembered/root initial control. Down from the
 last root-scope control—including an explicit self-neighbor used to express a

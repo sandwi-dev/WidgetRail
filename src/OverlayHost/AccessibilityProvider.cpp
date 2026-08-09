@@ -34,12 +34,14 @@ struct PublishedTree final {
 struct ElementIdentity final {
     std::wstring widgetId;
     std::wstring runtimeGeneration;
+    ElementDomain domain{ElementDomain::Widget};
     std::wstring nodeId;
 };
 
 bool SameAuthority(const ActionRequest& left, const ActionRequest& right) noexcept {
     return left.kind == right.kind && left.widgetId == right.widgetId &&
         left.runtimeGeneration == right.runtimeGeneration &&
+        left.domain == right.domain &&
         left.nodeId == right.nodeId;
 }
 
@@ -303,7 +305,7 @@ public:
         switch (propertyId) {
         case UIA_ControlTypePropertyId: IntVariant(ControlType(node->role), result); break;
         case UIA_NamePropertyId: return StringVariant(node->name, result);
-        case UIA_AutomationIdPropertyId: return StringVariant(node->id, result);
+        case UIA_AutomationIdPropertyId: return StringVariant(AutomationId(*node), result);
         case UIA_HelpTextPropertyId:
             if (!node->value.empty()) return StringVariant(node->value, result);
             break;
@@ -402,6 +404,7 @@ public:
             UiaAppendRuntimeId,
             static_cast<LONG>(Hash(identity_->widgetId, 2166136261U) & 0x7fffffffU),
             static_cast<LONG>(Hash(identity_->runtimeGeneration, 16777619U) & 0x7fffffffU),
+            static_cast<LONG>(identity_->domain) + 1,
             static_cast<LONG>(Hash(identity_->nodeId, 2246822519U) & 0x7fffffffU),
             static_cast<LONG>(Hash(identity_->nodeId, 3266489917U) & 0x7fffffffU),
         };
@@ -668,7 +671,9 @@ private:
             published->tree.runtimeGeneration != identity_->runtimeGeneration) return nullptr;
         const auto found = std::find_if(
             published->tree.nodes.begin(), published->tree.nodes.end(),
-            [&](const Node& node) { return node.id == identity_->nodeId; });
+            [&](const Node& node) {
+                return node.domain == identity_->domain && node.id == identity_->nodeId;
+            });
         return found == published->tree.nodes.end() ? nullptr : &*found;
     }
 
@@ -678,7 +683,9 @@ private:
             published.tree.runtimeGeneration != identity_->runtimeGeneration) return std::nullopt;
         const auto found = std::find_if(
             published.tree.nodes.begin(), published.tree.nodes.end(),
-            [&](const Node& node) { return node.id == identity_->nodeId; });
+            [&](const Node& node) {
+                return node.domain == identity_->domain && node.id == identity_->nodeId;
+            });
         return found == published.tree.nodes.end()
             ? std::nullopt
             : std::optional<std::size_t>{static_cast<std::size_t>(
@@ -687,7 +694,10 @@ private:
 
     static ElementIdentity IdentityFor(
         const PublishedTree& published, const Node& node) {
-        return {published.tree.widgetId, published.tree.runtimeGeneration, node.id};
+        return {
+            published.tree.widgetId, published.tree.runtimeGeneration,
+            node.domain, node.id,
+        };
     }
 
     ActionRequest RequestFor(
@@ -699,6 +709,7 @@ private:
             published.tree.runtimeGeneration,
             published.tree.snapshotSequence,
             published.tree.activeInputScopeId,
+            node.domain,
             node.id,
             kind == ActionKind::SetValue ? node.valueChangedActionId : node.actionId,
             node.hostAction,
@@ -782,6 +793,10 @@ void ProviderHost::SetWindowVisible(const bool visible) noexcept {
 }
 
 void ProviderHost::Publish(Tree tree, const ScreenTransform transform) {
+    if (!HasUniqueElementKeys(tree)) {
+        Clear();
+        return;
+    }
     auto published = std::make_shared<PublishedTree>(PublishedTree{
         std::move(tree), transform,
     });
@@ -884,16 +899,19 @@ void ProviderHost::RaisePendingEvents() noexcept {
             for (const auto& node : current->tree.nodes) {
                 const auto before = std::find_if(
                     previous->tree.nodes.begin(), previous->tree.nodes.end(),
-                    [&](const Node& candidate) { return candidate.id == node.id; });
+                    [&](const Node& candidate) {
+                        return KeyFor(candidate) == KeyFor(node);
+                    });
                 const bool alreadyPlanned = std::any_of(
                     plan.properties.begin(), plan.properties.end(),
                     [&](const PropertyChange& change) {
-                        return change.nodeId == node.id &&
+                        return change.domain == node.domain && change.nodeId == node.id &&
                             change.kind == PropertyKind::Bounds;
                     });
                 if (before != previous->tree.nodes.end() && !alreadyPlanned)
                     plan.properties.push_back({
                         node.id, PropertyKind::Bounds, before->bounds, node.bounds,
+                        node.domain,
                     });
             }
         }
@@ -904,20 +922,21 @@ void ProviderHost::RaisePendingEvents() noexcept {
         (void)UiaRaiseStructureChangedEvent(
             root.Get(), StructureChangeType_ChildrenInvalidated, nullptr, 0);
 
-    const auto providerFor = [&](const std::wstring_view nodeId) {
+    const auto providerFor = [&](const ElementKey& key) {
         ComPtr<IRawElementProviderSimple> result;
         if (!current) return result;
         ComPtr<Provider> provider = Make<Provider>(
             state_, ElementIdentity{
                 current->tree.widgetId,
                 current->tree.runtimeGeneration,
-                std::wstring{nodeId},
+                key.domain,
+                key.id,
             }, binding);
         if (provider) (void)provider.As(&result);
         return result;
     };
-    if (plan.focusChanged && plan.focusedNodeId) {
-        auto focused = providerFor(*plan.focusedNodeId);
+    if (plan.focusChanged && plan.focusedElement) {
+        auto focused = providerFor(*plan.focusedElement);
         if (focused)
             (void)UiaRaiseAutomationEvent(
                 focused.Get(), UIA_AutomationFocusChangedEventId);
@@ -985,7 +1004,9 @@ void ProviderHost::RaisePendingEvents() noexcept {
         return result;
     };
     for (const auto& change : plan.properties) {
-        auto provider = change.nodeId.empty() ? root : providerFor(change.nodeId);
+        auto provider = change.nodeId.empty()
+            ? root
+            : providerFor({change.domain, change.nodeId});
         if (!provider) continue;
         VARIANT oldValue = variant(
             change.oldValue, change.kind,
@@ -998,8 +1019,8 @@ void ProviderHost::RaisePendingEvents() noexcept {
         VariantClear(&oldValue);
         VariantClear(&newValue);
     }
-    for (const auto& nodeId : plan.liveRegionChangedNodeIds) {
-        auto liveRegion = providerFor(nodeId);
+    for (const auto& element : plan.liveRegionChangedElements) {
+        auto liveRegion = providerFor(element);
         if (liveRegion)
             (void)UiaRaiseAutomationEvent(
                 liveRegion.Get(), UIA_LiveRegionChangedEventId);
@@ -1011,7 +1032,8 @@ std::optional<ResolvedAction> ResolveActionRequest(
     const std::wstring_view currentWidgetId,
     const std::wstring_view currentRuntimeGeneration,
     const WidgetSnapshot& currentSnapshot) noexcept {
-    if (request.widgetId != currentWidgetId ||
+    if (request.domain != ElementDomain::Widget ||
+        request.widgetId != currentWidgetId ||
         request.runtimeGeneration != currentRuntimeGeneration ||
         request.snapshotSequence != currentSnapshot.sequence ||
         request.activeInputScopeId != currentSnapshot.activeInputScopeId) return std::nullopt;

@@ -32,13 +32,14 @@ struct PropertyChange final {
     PropertyKind kind{PropertyKind::Name};
     PropertyValue oldValue;
     PropertyValue newValue;
+    ElementDomain domain{ElementDomain::Widget};
 };
 
 struct EventPlan final {
     bool structureChanged{};
     bool focusChanged{};
-    std::optional<std::wstring> focusedNodeId;
-    std::vector<std::wstring> liveRegionChangedNodeIds;
+    std::optional<ElementKey> focusedElement;
+    std::vector<ElementKey> liveRegionChangedElements;
     std::vector<PropertyChange> properties;
 };
 

@@ -679,17 +679,31 @@ let name, value, enabled/selected, range, and physical-bounds changes remain
 property updates; adding/removing controls or changing supported patterns
 invalidates structure. Authors do not raise native events themselves.
 
+UIA identity is namespaced by owner: your nodes publish as
+`widget:<stable-node-id>`, while host chrome and tray elements use separate
+`host:` and `tray:` domains. Do not reserve or avoid source-ID prefixes for the
+host. The owner domain participates in runtime identity, lookup, events, and
+queued action authority, so even an author ID identical to a shell ID cannot
+alias shell behavior. IDs must still be unique within your widget snapshot.
+
+The composite root exposes a scope-correct Back command. At your root scope it
+returns to the tray. At a nested scope it exists only when that exact scope root
+binds a pressed-B shortcut, as `WidgetNavigator`, `UI.Picker`, and
+`UI.ActionSheet` do. UIA invocation rechecks the current generation, snapshot,
+and active scope before sending automation-origin B. Missing or stale nested
+Back never falls through to the tray, so custom scopes must author their own
+one-level B action.
+
 Open-widget UIA is currently an implemented preview rather than the completed
 screen-reader ship gate. One composite root retains the active widget controls,
 closed host Back/Close commands, exact visible quiet footer help or polite
 transient feedback, and visible tray ListItems while controller focus changes
 between widget and tray. The dashboard publishes a level-one title heading,
 non-live controller help, and polite transient action feedback. The desktop-
-automation/AppContainer smoke evidence, collision-proof host identities,
-nested-scope Back, typed choice semantics, legacy MSAA, and packaged Narrator
-evidence remain pending. The gesture-origin policy itself is explicit and
-defense-in-depth enforced. Semantic snapshot tests therefore remain required
-for widget acceptance.
+automation/AppContainer smoke evidence, typed choice semantics, legacy MSAA,
+and packaged Narrator evidence remain pending. The gesture-origin policy itself
+is explicit and defense-in-depth enforced. Semantic snapshot tests therefore
+remain required for widget acceptance.
 
 Every node ID must be unique in the snapshot, at most 128 characters, and use
 only ASCII letters, digits, `.`, `-`, and `_`. Do not derive IDs from list

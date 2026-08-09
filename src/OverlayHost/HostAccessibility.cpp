@@ -4,6 +4,48 @@
 #include <cstdint>
 
 namespace gba::accessibility {
+namespace {
+
+const WidgetNode* FindDeclaredScopeRoot(
+    const WidgetNode& node,
+    const std::wstring_view scopeId) noexcept {
+    if (node.inputScopeId == scopeId) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = FindDeclaredScopeRoot(child, scopeId)) return found;
+    }
+    return nullptr;
+}
+
+} // namespace
+
+bool HasActiveScopeBackShortcut(const WidgetSnapshot& snapshot) noexcept {
+    if (snapshot.activeInputScopeId.empty()) return false;
+    const auto* scopeRoot = FindDeclaredScopeRoot(
+        snapshot.root, snapshot.activeInputScopeId);
+    if (!scopeRoot) return false;
+    return std::any_of(
+        scopeRoot->shortcuts.begin(), scopeRoot->shortcuts.end(),
+        [](const WidgetShortcut& shortcut) {
+            return shortcut.button == L"b" && shortcut.phase == L"pressed" &&
+                !shortcut.actionId.empty();
+        });
+}
+
+bool IsCurrentBackAction(
+    const HostAction action,
+    const std::wstring_view targetScopeId,
+    const WidgetSnapshot& snapshot) noexcept {
+    if (targetScopeId.empty() || targetScopeId != snapshot.activeInputScopeId)
+        return false;
+    const std::wstring_view rootScope = snapshot.root.inputScopeId.empty()
+        ? std::wstring_view(snapshot.root.id)
+        : std::wstring_view(snapshot.root.inputScopeId);
+    if (action == HostAction::BackToTray)
+        return targetScopeId == rootScope;
+    if (action == HostAction::BackWithinWidget)
+        return targetScopeId != rootScope && HasActiveScopeBackShortcut(snapshot);
+    return false;
+}
 
 long long ComputeTraySemanticRevision(
     const std::vector<TrayItem>& items,
@@ -39,8 +81,13 @@ long long ComputeOpenWidgetSemanticRevision(
     };
     auto revision = static_cast<std::uint64_t>(
         ComputeTraySemanticRevision(items, &semanticText));
-    revision ^= semantics.backAvailable ? 0x9e3779b97f4a7c15ULL : 0ULL;
+    revision ^= static_cast<std::uint64_t>(semantics.backAction) +
+        0x9e3779b97f4a7c15ULL;
     revision *= 1099511628211ULL;
+    for (const wchar_t codeUnit : semantics.backTargetId) {
+        revision ^= static_cast<std::uint16_t>(codeUnit);
+        revision *= 1099511628211ULL;
+    }
     return static_cast<long long>(revision & 0x7fffffffffffffffULL);
 }
 
@@ -60,6 +107,7 @@ Tree BuildTrayTree(
     if (dashboard && !dashboard->title.empty()) {
         Node title;
         title.id = L"host.dashboard.title";
+        title.domain = ElementDomain::HostShell;
         title.name = dashboard->title;
         title.bounds = dashboard->titleBounds;
         title.role = Role::Heading;
@@ -72,6 +120,7 @@ Tree BuildTrayTree(
         if (item.widgetId.empty() || item.name.empty()) continue;
         Node node;
         node.id = L"tray." + item.widgetId;
+        node.domain = ElementDomain::Tray;
         node.name = item.name;
         node.hostTargetId = item.widgetId;
         node.bounds = tile.bounds;
@@ -87,6 +136,7 @@ Tree BuildTrayTree(
     if (dashboard && !dashboard->help.empty()) {
         Node help;
         help.id = L"host.dashboard.help";
+        help.domain = ElementDomain::HostShell;
         help.name = dashboard->help;
         help.bounds = dashboard->helpBounds;
         help.role = Role::Text;
@@ -95,6 +145,7 @@ Tree BuildTrayTree(
     if (dashboard && !dashboard->status.empty()) {
         Node status;
         status.id = L"host.dashboard.status";
+        status.domain = ElementDomain::HostShell;
         status.name = dashboard->status;
         status.bounds = dashboard->statusBounds;
         status.role = Role::Status;
@@ -119,19 +170,24 @@ Tree BuildOpenWidgetTree(
         widgetTree.focusedNode.reset();
     }
 
-    if (semantics.backAvailable) {
+    if (semantics.backAction != HostAction::None) {
         Node back;
         back.id = L"host.open.back";
-        back.name = L"Back to widget tray";
+        back.domain = ElementDomain::HostShell;
+        back.name = semantics.backAction == HostAction::BackToTray
+            ? L"Back to widget tray"
+            : L"Back";
         back.bounds = semantics.backBounds;
         back.role = Role::Button;
-        back.hostAction = HostAction::BackToTray;
+        back.hostAction = semantics.backAction;
+        back.hostTargetId = semantics.backTargetId;
         back.keyboardFocusable = false;
         widgetTree.nodes.push_back(std::move(back));
     }
 
     Node close;
     close.id = L"host.open.close";
+    close.domain = ElementDomain::HostShell;
     close.name = L"Close overlay";
     close.bounds = semantics.closeBounds;
     close.role = Role::Button;
@@ -142,6 +198,7 @@ Tree BuildOpenWidgetTree(
     if (!semantics.help.empty()) {
         Node help;
         help.id = L"host.open.help";
+        help.domain = ElementDomain::HostShell;
         help.name = semantics.help;
         help.bounds = semantics.helpBounds;
         help.role = Role::Text;
@@ -151,6 +208,7 @@ Tree BuildOpenWidgetTree(
     if (!semantics.status.empty()) {
         Node status;
         status.id = L"host.open.status";
+        status.domain = ElementDomain::HostShell;
         status.name = semantics.status;
         status.bounds = semantics.statusBounds;
         status.role = Role::Status;
@@ -165,6 +223,7 @@ Tree BuildOpenWidgetTree(
         if (item.widgetId.empty() || item.name.empty()) continue;
         Node node;
         node.id = L"tray." + item.widgetId;
+        node.domain = ElementDomain::Tray;
         node.name = item.name;
         node.hostTargetId = item.widgetId;
         node.bounds = tile.bounds;

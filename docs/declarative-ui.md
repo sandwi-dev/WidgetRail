@@ -77,13 +77,28 @@ rectangle. Select and Invoke carry a closed host action plus stable widget
 target; the UI thread revalidates the current composite generation and uses one
 direct tray-state transition rather than parsing command strings.
 
+Composite identity has three closed owner domains: widget, host shell, and
+tray. UIA `AutomationId` is `widget:<node-id>`, `host:<host-id>`, or
+`tray:<tray-id>`; runtime IDs, provider lookup, event diffing, and queued actions
+include the same domain. Authors do not reserve host or tray prefixes in their
+stable IDs. A widget node may therefore have the same raw ID as host chrome
+without aliasing it, while duplicate IDs inside one owner domain reject the
+entire publication.
+
+Back is also scope-typed. At the widget root, the composite Back command returns
+to the tray. In a nested input scope, Back is exposed only when that exact scope
+root declares a pressed-B shortcut; invoking it sends B through the ordinary
+automation-origin route after revalidating widget, runtime generation, snapshot,
+and active scope. It never falls through to root/tray behavior. A nested scope
+without an explicit B shortcut publishes no Back command.
+
 This is not yet the complete screen-reader ship gate. UIA-originated widget
 actions now carry the explicit `AccessibilityAutomation` origin. They may use
 the revalidated ordinary open-widget action path, but cannot mint or carry the
 physical-controller-only dashboard gesture authority; bridge, runtime, and SDK
-checks enforce that rule independently. Typed choice semantics, collision-proof
-host identities, nested-scope Back, legacy MSAA, a packaged Narrator smoke test,
-and packaged AppContainer/UIA evidence remain pending. Until those close, treat
+checks enforce that rule independently. Typed choice semantics, legacy MSAA, a
+packaged Narrator smoke test, and packaged AppContainer/UIA evidence remain
+pending. Until those close, treat
 UIA as an implemented preview and keep deterministic semantic snapshots as the
 primary accessibility contract.
 

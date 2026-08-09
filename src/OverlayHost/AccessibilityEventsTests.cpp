@@ -60,7 +60,9 @@ int main() {
     auto before = Tree();
     auto plan = gba::accessibility::PlanEvents(nullptr, &before);
     Check(plan.structureChanged && plan.focusChanged &&
-          plan.focusedNodeId == L"play" && plan.properties.empty(),
+          plan.focusedElement == gba::accessibility::ElementKey{
+              gba::accessibility::ElementDomain::Widget, L"play"} &&
+          plan.properties.empty(),
           "initial publication raises structure and focus only");
     plan = gba::accessibility::PlanEvents(&before, &before);
     Check(!plan.structureChanged && !plan.focusChanged && plan.properties.empty(),
@@ -72,7 +74,9 @@ int main() {
     focused.focusedNode = 1;
     plan = gba::accessibility::PlanEvents(&before, &focused);
     Check(!plan.structureChanged && plan.focusChanged &&
-          plan.focusedNodeId == L"progress", "focus move is independent of structure");
+          plan.focusedElement == gba::accessibility::ElementKey{
+              gba::accessibility::ElementDomain::Widget, L"progress"},
+          "focus move is independent of structure");
 
     auto after = focused;
     after.nodes[0].name = L"Pause";
@@ -98,8 +102,9 @@ int main() {
           Has(plan, gba::accessibility::PropertyKind::RangeReadOnly) &&
           Has(plan, gba::accessibility::PropertyKind::Bounds),
           "closed semantic and range-pattern changes are classified exactly");
-    Check(plan.liveRegionChangedNodeIds.size() == 1 &&
-          plan.liveRegionChangedNodeIds[0] == L"dashboard-status",
+    Check(plan.liveRegionChangedElements.size() == 1 &&
+          plan.liveRegionChangedElements[0] == gba::accessibility::ElementKey{
+              gba::accessibility::ElementDomain::Widget, L"dashboard-status"},
           "polite status-name changes request one live-region event");
 
     auto staticHelp = before;
@@ -109,22 +114,23 @@ int main() {
     auto changedHelp = staticHelp;
     changedHelp.nodes[2].name = L"A Select, B Close, Y Reorder";
     plan = gba::accessibility::PlanEvents(&staticHelp, &changedHelp);
-    Check(plan.liveRegionChangedNodeIds.empty() &&
+    Check(plan.liveRegionChangedElements.empty() &&
           Has(plan, gba::accessibility::PropertyKind::Name),
           "routine dashboard guidance updates without a live announcement");
     auto insertedStatus = changedHelp;
     insertedStatus.nodes.pop_back();
     insertedStatus.nodes.push_back(after.nodes[2]);
     plan = gba::accessibility::PlanEvents(&changedHelp, &insertedStatus);
-    Check(plan.structureChanged && plan.liveRegionChangedNodeIds.size() == 1 &&
-          plan.liveRegionChangedNodeIds[0] == L"dashboard-status",
+    Check(plan.structureChanged && plan.liveRegionChangedElements.size() == 1 &&
+          plan.liveRegionChangedElements[0] == gba::accessibility::ElementKey{
+              gba::accessibility::ElementDomain::Widget, L"dashboard-status"},
           "new transient feedback is announced once when it replaces static help");
 
     auto structural = after;
     structural.nodes.pop_back();
     structural.focusedNode.reset();
     plan = gba::accessibility::PlanEvents(&after, &structural);
-    Check(plan.structureChanged && plan.focusChanged && !plan.focusedNodeId,
+    Check(plan.structureChanged && plan.focusChanged && !plan.focusedElement,
           "removal raises structure and focus-clear state");
     auto replacement = before;
     replacement.runtimeGeneration = L"generation-2";
@@ -137,6 +143,21 @@ int main() {
     plan = gba::accessibility::PlanEvents(&before, &roleReplacement);
     Check(plan.structureChanged && plan.properties.empty(),
           "control-type replacement relies on structure invalidation");
+
+    auto collisionBefore = before;
+    gba::accessibility::Node hostCollision;
+    hostCollision.domain = gba::accessibility::ElementDomain::HostShell;
+    hostCollision.id = L"play";
+    hostCollision.name = L"Back";
+    hostCollision.role = gba::accessibility::Role::Button;
+    collisionBefore.nodes.push_back(hostCollision);
+    auto collisionAfter = collisionBefore;
+    collisionAfter.nodes[0].name = L"Pause";
+    plan = gba::accessibility::PlanEvents(&collisionBefore, &collisionAfter);
+    Check(!plan.structureChanged && plan.properties.size() == 1 &&
+          plan.properties[0].domain == gba::accessibility::ElementDomain::Widget &&
+          plan.properties[0].nodeId == L"play",
+          "event diffing keeps identical raw IDs isolated by owner domain");
 
     std::cout << "AccessibilityEventsTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
