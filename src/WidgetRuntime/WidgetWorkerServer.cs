@@ -364,7 +364,7 @@ public sealed class WidgetWorkerServer
                 Payload = RuntimeJson.ToElement(new ControllerActionFailurePayload(
                     args.Action.ActionId,
                     args.Action.SourceElementId,
-                    SafeMessage(args.Exception))),
+                    "Action failed.")),
             }, _runCancellation).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)

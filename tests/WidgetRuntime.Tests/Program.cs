@@ -915,8 +915,7 @@ static async Task DirectActionFailuresAreObservable()
         await client.AdmitActionAsync(new WidgetActionEvent("queued-fail", "direct")));
     var failure = await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
     Assert.Equal("queued-fail", failure.ActionId);
-    Assert.True(failure.Message.Contains("intentional", StringComparison.Ordinal),
-        "Failure should retain bounded diagnostic context.");
+    Assert.Equal("Action failed.", failure.Message);
     Assert.True(client.IsRunning, "An action failure must not crash the worker.");
 }
 
@@ -1307,8 +1306,7 @@ static async Task ControllerQueueFailuresAreObservable()
         "Failing action was not accepted.");
     var failure = await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
     Assert.Equal("queued-fail", failure.ActionId);
-    Assert.True(failure.Message.Contains("intentional", StringComparison.Ordinal),
-        "Failure should retain bounded diagnostic context.");
+    Assert.Equal("Action failed.", failure.Message);
     Assert.True(client.IsRunning, "An action failure must not crash the worker.");
 }
 

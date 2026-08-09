@@ -1177,6 +1177,7 @@ private:
                             L"Dropped stale widget action failure for " + failure.widgetId);
                         continue;
                     }
+                    lastActionWidgetId_ = failure.widgetId;
                     lastActionMessage_ = std::wstring(DisplayWidgetName(failure.widgetId)) +
                         L" action failed; try again";
                     lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -2898,6 +2899,7 @@ private:
         if (!IsBridgeWidget(widgetId)) return;
         if (!bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
+            lastActionWidgetId_ = widgetId;
             lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
                                  L" reload failed: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -2925,6 +2927,7 @@ private:
         const auto restarted = bridge_.RestartWidget(widgetId);
         if (!restarted || !*restarted) {
             pendingContentRevealWidget_.clear();
+            lastActionWidgetId_ = widgetId;
             lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
                                  L" reload failed: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -2933,6 +2936,7 @@ private:
             return;
         }
 
+        lastActionWidgetId_ = widgetId;
         lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) + L" reloaded";
         lastActionExpiresAt_ = GetTickCount64() + 1800;
         AppendDiagnostic(lastActionMessage_);
@@ -2944,6 +2948,7 @@ private:
         if (!IsBridgeWidget(widgetId)) return;
         if (!bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
+            lastActionWidgetId_ = widgetId;
             lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
                                  L" unavailable: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -2952,6 +2957,7 @@ private:
         }
         auto snapshot = bridge_.GetSnapshot(widgetId);
         if (!snapshot) {
+            lastActionWidgetId_ = widgetId;
             lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
                                  L" failed: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -2964,6 +2970,7 @@ private:
                 return candidate.id == widgetId;
             });
         if (descriptor == widgetDescriptors_.end() || snapshot->instanceId != descriptor->instanceId) {
+            lastActionWidgetId_ = widgetId;
             lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
                                  L" returned a mismatched widget instance";
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -3227,6 +3234,7 @@ private:
                     ? std::wstring_view{L"repeated"}
                     : std::wstring_view{L"pressed"},
                 requestedValue);
+            lastActionWidgetId_ = widget;
             if (!handled) {
                 if (pressedInteraction_.Cancel(protocolButton))
                     InvalidateRect(window_, nullptr, FALSE);
@@ -3266,6 +3274,7 @@ private:
             return;
         }
 
+        lastActionWidgetId_ = widget;
         lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                              L": forwarded " + std::wstring(button);
         lastActionExpiresAt_ = GetTickCount64() + 1800;
@@ -3643,7 +3652,8 @@ private:
     }
 
     std::wstring DashboardHint(const float availableWidth) const {
-        if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty()) {
+        if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty() &&
+            lastActionWidgetId_ == state_.selectedWidget()) {
             return lastActionMessage_;
         }
         std::vector<gba::ControllerGuideAction> quickActions;
@@ -3704,6 +3714,10 @@ private:
     }
 
     std::wstring OpenWidgetPrompt() const {
+        if (lastActionExpiresAt_ > GetTickCount64() && !lastActionMessage_.empty() &&
+            lastActionWidgetId_ == state_.activeWidget()) {
+            return lastActionMessage_;
+        }
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         if (!snapshot) return L"A  Select";
         std::vector<std::pair<std::wstring, std::wstring>> prompts;
@@ -3968,6 +3982,7 @@ private:
     std::optional<bool> lastForegroundOwnership_;
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
+    std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
     ULONGLONG lastGuideDispatchAt_{};
     ULONGLONG sliderReconcileAt_{};
