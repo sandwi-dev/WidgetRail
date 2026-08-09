@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against current HEAD `4f903b0` after committed exact-directory-boundary evidence, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
+Last reassessed: 2026-08-09 against implementation baseline `4f903b0` after committed exact-directory-boundary evidence, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -114,8 +114,8 @@ authority directories completes public pack/install/enable and renders a real
 first-party widget through the production AppContainer path; packing records
 255.038 ms and activation through first validated render 2,521.831 ms. A paired
 1,025-directory CLI fixture proves pack leaves no output and install publishes
-no bytes. CLI 50/50 and First-Party Conformance 6/6 are focused green; clean
-retained evidence is pending.
+no bytes. CLI 50/50 and First-Party Conformance 6/6 are implementation-reported
+focused green; clean retained evidence is pending.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -225,17 +225,17 @@ Commit `e7b4e6b` is documentation-only. It correctly carries retained run
 `20260809T152831Z-67b77c73`'s 325.283 ms launch-lease and 360.426 ms exact-grant
 measurements into implementation status, roadmap, and packaging guidance. The
 run remains seven explicitly selected managed steps for clean docs commit
-`6bd60d3`, not a current complete 41-step managed/native gate. No implementation
-finding changes status in this cycle.
+`6bd60d3`, not a current complete 41-step managed/native gate. That
+documentation-only commit did not change implementation finding status.
 
-Two implementation test files changed after that commit. Code inspection shows
+Commit `4f903b0` lands those two implementation test files. Code inspection shows
 an exact 1,024-directory/258-file package carried through public pack, install,
 enable, lease-count validation, and a real AppContainer first render, plus an
 exact 1,025-directory CLI refusal that asserts no archive or installed package
 publication. The implementation agent reports CLI 50/50 and First-Party
 Conformance 6/6 with 255.038 ms packing and 2,521.831 ms through first validated
-render. This review did not execute those dirty-worktree tests, and no retained
-bundle contains them yet.
+render. This review did not execute the committed tests, and no release-eligible
+retained bundle contains them yet.
 
 The verification follow-up is committed as `4450cfa`. The runner starts a small
 handshake launcher, assigns it to a kill-on-close Windows Job, starts both capped
@@ -1786,8 +1786,7 @@ host-side factory test is not closure.
 
 ### EQ-020 — P1 — Exact-content startup can block the native UI outside every request deadline
 
-**Status: Open against current HEAD `6bd60d3` and implementation baseline
-`6fc9e01`; the file inventory
+**Status: Open against current HEAD `4f903b0`; the file inventory
 is bounded, but security-authority application, managed dispatch, native pipe
 I/O, and the user-visible start operation do not share an enforced deadline.**
 
@@ -1816,6 +1815,15 @@ Committed
 `widget-packaging.md` and `platform-architecture.md` nevertheless say admission
 is bounded to five seconds. That is not the implemented boundary.
 
+The exact-edge test's activation stopwatch begins immediately before the
+`Visible` lifecycle request and stops after the expected snapshot is received
+and validated. That is a useful user-observable interval, but it does not
+separate lease hashing, ACL application, process creation, pipe connection,
+worker initialization, and render. Its one 2,521.831 ms local sample is not
+retained, repeated, or tied to a declared hardware profile. Keep the ten-second
+assertion as a catastrophic regression ceiling if it remains stable, but use a
+separate repeatable measurement lane for phase timings and p50/p95/max claims.
+
 Commit `6fc9e01` resolves the deterministic directory-count mismatch. Package
 inspection now refuses more than 1,024 package-root/implicit directories with
 `too_many_launch_directories` before extraction; installed-tree verification and
@@ -1826,8 +1834,8 @@ directories while remaining under 512 files. The follow-up now carries an exact
 admission, ACL application, and real first-party launch. It records 255.038 ms
 packing and 2,521.831 ms through first validated render; the paired over-limit
 CLI case proves no pack output or installed bytes are published. This closes the
-shape-edge behavior in implementation-reported dirty-worktree runs. Committed,
-clean retained evidence is still required; even then it does not close the
+shape-edge behavior in committed, implementation-reported focused runs. Clean
+retained evidence is still required; even then it does not close the
 missing aggregate deadline or representative p50/p95/max evidence.
 
 `WidgetBridgeServer.RunAsync` also awaits each request directly in its single
@@ -2335,7 +2343,8 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
    then prove directory replacement, late insertion, replacement, and alternate
    AppContainer-group ACEs cannot execute under the old digest; bind each ACL
    target to the object authenticated by the lease. Retain the aligned package-
-   shape bound and its proven exact accepted/refused edges. Put revalidation, ACL authority,
+   shape bound and the committed exact accepted/refused cases in a clean bundle.
+   Put revalidation, ACL authority,
    process creation, and hello under one enforced start budget; keep unrelated
    bridge requests responsive, move cancellable correlated pipe I/O off the
    native UI thread, and make grant cleanup/rollback explicit on every failure

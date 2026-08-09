@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD `4f903b0` after committed exact-directory-boundary evidence, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against implementation baseline `4f903b0` after committed exact-directory-boundary evidence, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -199,8 +199,9 @@ directory CLI case leaves no pack output and publishes no installed bytes.
 Authors no longer discover the hard limit only on first open.
 Clean selected run `20260809T152831Z-67b77c73` retains the negative admission
 path through Catalog 32/32, Bridge 42/42, and CLI 49/49. The new focused CLI
-50/50 and First-Party Conformance 6/6 results add the accepted and atomic-
-rejection edge cases; clean retained evidence for those additions remains next.
+50/50 and First-Party Conformance 6/6 results are implementation-reported and
+add the accepted and atomic-rejection edge cases; clean retained evidence for
+those additions remains next.
 
 ## Evidence from the repository
 
@@ -1398,8 +1399,8 @@ and fail-closed scenario selection with contract and safety tests.
    authority for each worker session; retain stale-generation-root denial and
    reject replacement, alternate group grants, directory rename/reparse substitution, and late additions
    under the production AppContainer token; bind ACL targets to the objects
-   authenticated by the lease; preserve the now-proven aligned 1,024-directory
-   accepted edge and atomic 1,025-directory refusal;
+   authenticated by the lease; preserve the committed focused 1,024-directory
+   accepted edge and atomic 1,025-directory refusal, then retain them cleanly;
    put revalidation, authority application, process creation, and hello under
    one enforced user-visible start budget without blocking unrelated bridge
    work; clean up persistent ACL grants on every failure/teardown path. Then add an
