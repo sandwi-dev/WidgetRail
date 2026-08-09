@@ -666,7 +666,9 @@ the same typed controller-action and capability-admission path as local input.
 Your next immutable render is authoritative; do not depend on synchronous state
 mutation during an accessibility request. Keep labels concise, supply a human
 readable Slider value, and keep IDs stable for the lifetime of one logical
-control.
+control. While a controller adjustment is awaiting acknowledgement, the host
+uses one bounded optimistic numeric value for both the visible thumb and UIA
+RangeValue; a matching newer snapshot or the bounded timeout reconciles both.
 
 The host coalesces renders and announces the newest immutable state through UIA
 structure, logical-focus, and closed property events outside paint. Stable IDs

@@ -64,6 +64,11 @@ public:
 
     void DeactivateAll() noexcept;
 
+    /// Changes whenever the host-visible optimistic value set changes.
+    [[nodiscard]] std::uint64_t presentationRevision() const noexcept {
+        return presentationRevision_;
+    }
+
     [[nodiscard]] std::optional<double> PresentationValue(
         const SliderInputDescriptor& slider,
         std::uint64_t nowMilliseconds);
@@ -100,6 +105,7 @@ private:
 
     std::unordered_map<std::wstring, Entry> entries_;
     std::uint64_t accessClock_{};
+    std::uint64_t presentationRevision_{};
 };
 
 } // namespace gba::input

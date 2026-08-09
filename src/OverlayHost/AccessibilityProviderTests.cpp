@@ -74,12 +74,14 @@ public:
         : focusEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
           propertyEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
           boundsEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
+          rangeEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)),
           structureEvent_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
 
     ~ClientEventHandler() override {
         if (focusEvent_) CloseHandle(focusEvent_);
         if (propertyEvent_) CloseHandle(propertyEvent_);
         if (boundsEvent_) CloseHandle(boundsEvent_);
+        if (rangeEvent_) CloseHandle(rangeEvent_);
         if (structureEvent_) CloseHandle(structureEvent_);
     }
 
@@ -89,12 +91,17 @@ public:
     }
 
     IFACEMETHODIMP HandlePropertyChangedEvent(
-        IUIAutomationElement*, const PROPERTYID propertyId, VARIANT) noexcept override {
+        IUIAutomationElement*, const PROPERTYID propertyId,
+        const VARIANT newValue) noexcept override {
         if (propertyId == UIA_NamePropertyId) {
             if (propertyEvent_) SetEvent(propertyEvent_);
         } else if (propertyId == UIA_BoundingRectanglePropertyId) {
             ++boundsCount_;
             if (boundsEvent_) SetEvent(boundsEvent_);
+        } else if (propertyId == UIA_RangeValueValuePropertyId &&
+                   V_VT(&newValue) == VT_R8) {
+            rangeValue_.store(V_R8(&newValue));
+            if (rangeEvent_) SetEvent(rangeEvent_);
         }
         return S_OK;
     }
@@ -122,6 +129,11 @@ public:
         return boundsCount_.load() >= expected;
     }
 
+    [[nodiscard]] bool WaitForRangeValue(const double expected) const noexcept {
+        return rangeEvent_ && WaitForSingleObject(rangeEvent_, 2000) == WAIT_OBJECT_0 &&
+            std::abs(rangeValue_.load() - expected) < 1e-9;
+    }
+
     [[nodiscard]] bool WaitForStructure() const noexcept {
         return structureEvent_ && WaitForSingleObject(structureEvent_, 2000) == WAIT_OBJECT_0;
     }
@@ -130,8 +142,10 @@ private:
     HANDLE focusEvent_{};
     HANDLE propertyEvent_{};
     HANDLE boundsEvent_{};
+    HANDLE rangeEvent_{};
     HANDLE structureEvent_{};
     std::atomic<int> boundsCount_{};
+    std::atomic<double> rangeValue_{};
 };
 
 std::wstring StringProperty(
@@ -505,14 +519,18 @@ int main() {
     SendMessageW(window, WM_APP + 42, 0, 0);
     ComPtr<ClientEventHandler> eventHandler = Make<ClientEventHandler>();
     Check(eventHandler, "real UIA event handler is created");
-    SAFEARRAY* observedProperties = SafeArrayCreateVector(VT_I4, 0, 2);
+    SAFEARRAY* observedProperties = SafeArrayCreateVector(VT_I4, 0, 3);
     LONG observedPropertyIndex{};
     PROPERTYID observedProperty = UIA_NamePropertyId;
     const bool nameFilterAdded = observedProperties && SUCCEEDED(SafeArrayPutElement(
         observedProperties, &observedPropertyIndex, &observedProperty));
     ++observedPropertyIndex;
     observedProperty = UIA_BoundingRectanglePropertyId;
-    Check(nameFilterAdded && SUCCEEDED(SafeArrayPutElement(
+    const bool boundsFilterAdded = nameFilterAdded && SUCCEEDED(SafeArrayPutElement(
+        observedProperties, &observedPropertyIndex, &observedProperty));
+    ++observedPropertyIndex;
+    observedProperty = UIA_RangeValueValuePropertyId;
+    Check(boundsFilterAdded && SUCCEEDED(SafeArrayPutElement(
               observedProperties, &observedPropertyIndex, &observedProperty)),
           "real UIA property subscription filter is created");
     Check(SUCCEEDED(client->AddFocusChangedEventHandler(
@@ -570,6 +588,39 @@ int main() {
           transformedRootBounds.left == 120 && transformedRootBounds.top == 240 &&
           transformedRootBounds.right == 720 && transformedRootBounds.bottom == 690,
           "real UIA client observes transformed root bounds");
+
+    auto presentedSliderTree = Tree(L"generation-4", 13);
+    host.Publish(presentedSliderTree, {120, 240, 1.5, 600, 450});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    presentedSliderTree.snapshotSequence = 14;
+    presentedSliderTree.nodes[1].rangeValue = 75;
+    host.Publish(presentedSliderTree, {120, 240, 1.5, 600, 450});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    Check(eventHandler->WaitForRangeValue(75),
+          "real UIA client receives the presented RangeValue revision");
+    VARIANT sliderAutomationId{};
+    V_VT(&sliderAutomationId) = VT_BSTR;
+    V_BSTR(&sliderAutomationId) = SysAllocString(L"progress");
+    ComPtr<IUIAutomationCondition> sliderCondition;
+    Check(SUCCEEDED(client->CreatePropertyCondition(
+              UIA_AutomationIdPropertyId, sliderAutomationId,
+              sliderCondition.GetAddressOf())) && sliderCondition,
+          "real UIA client creates a presented-slider condition");
+    VariantClear(&sliderAutomationId);
+    ComPtr<IUIAutomationElement> presentedSlider;
+    Check(SUCCEEDED(clientRoot->FindFirst(
+              TreeScope_Descendants, sliderCondition.Get(),
+              presentedSlider.GetAddressOf())) && presentedSlider,
+          "real UIA client discovers the presented slider");
+    ComPtr<IUnknown> presentedRangeUnknown;
+    ComPtr<IUIAutomationRangeValuePattern> presentedRange;
+    double presentedRangeValue{};
+    Check(SUCCEEDED(presentedSlider->GetCurrentPattern(
+              UIA_RangeValuePatternId, presentedRangeUnknown.GetAddressOf())) &&
+          presentedRangeUnknown && SUCCEEDED(presentedRangeUnknown.As(&presentedRange)) &&
+          SUCCEEDED(presentedRange->get_CurrentValue(&presentedRangeValue)) &&
+          presentedRangeValue == 75,
+          "provider and RangeValue event expose the same presented revision");
     Check(SUCCEEDED(client->RemoveFocusChangedEventHandler(eventHandler.Get())) &&
           SUCCEEDED(client->RemovePropertyChangedEventHandler(
               clientRoot.Get(), eventHandler.Get())) &&
@@ -577,13 +628,25 @@ int main() {
               clientRoot.Get(), eventHandler.Get())),
           "real UIA client unsubscribes before the test window closes");
 
+    ComPtr<IRawElementProviderFragment> currentButtonFragment;
+    ComPtr<IRawElementProviderSimple> currentButton;
+    ComPtr<IUnknown> currentInvokeUnknown;
+    ComPtr<IInvokeProvider> currentInvoke;
+    Check(SUCCEEDED(rootFragment->Navigate(
+              NavigateDirection_FirstChild, currentButtonFragment.GetAddressOf())) &&
+          currentButtonFragment && SUCCEEDED(currentButtonFragment.As(&currentButton)) &&
+          SUCCEEDED(currentButton->GetPatternProvider(
+              UIA_InvokePatternId, currentInvokeUnknown.GetAddressOf())) &&
+          currentInvokeUnknown && SUCCEEDED(currentInvokeUnknown.As(&currentInvoke)),
+          "current-generation fragment is retained for detach coverage");
+
     host.Detach();
     VARIANT detachedName{};
     Check(root->GetPropertyValue(UIA_NamePropertyId, &detachedName) ==
               UIA_E_ELEMENTNOTAVAILABLE,
           "retained root is unavailable after explicit detach");
     SAFEARRAY* detachedRuntimeId{};
-    Check(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE &&
+    Check(currentInvoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE &&
           buttonFragment->GetRuntimeId(&detachedRuntimeId) ==
               UIA_E_ELEMENTNOTAVAILABLE && !detachedRuntimeId,
           "retained fragment actions are unavailable after explicit detach");
@@ -600,7 +663,7 @@ int main() {
           "same-HWND rebind creates a new provider generation");
     Check(root->GetPropertyValue(UIA_NamePropertyId, &detachedName) ==
               UIA_E_ELEMENTNOTAVAILABLE &&
-          invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,
+          currentInvoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,
           "old providers stay unavailable after same-HWND reuse");
     host.Detach();
     Check(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE,

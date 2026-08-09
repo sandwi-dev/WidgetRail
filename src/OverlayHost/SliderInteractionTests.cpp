@@ -23,10 +23,16 @@ int main() {
     using namespace gba::input;
     SliderInteractionState state;
     auto slider = Slider();
+    auto presentationRevision = state.presentationRevision();
     auto first = state.Adjust(slider, NavigationDirection::Right, 10);
     Check(first.consumed && first.requestedValue.has_value(), "right is consumed and dispatched");
+    Check(state.presentationRevision() > presentationRevision,
+          "first optimistic target advances the presentation revision");
+    presentationRevision = state.presentationRevision();
     Near(*first.requestedValue, 0.2, "arbitrary range snaps to next minimum-anchored step");
     auto repeated = state.Adjust(slider, NavigationDirection::Right, 20);
+    Check(state.presentationRevision() > presentationRevision,
+          "repeated optimistic target advances the presentation revision");
     Near(*repeated.requestedValue, 0.5, "repeat advances transient target, not stale snapshot");
     Near(*state.PresentationValue(slider, 25), 0.5, "pending target drives optimistic paint");
 
@@ -48,7 +54,10 @@ int main() {
 
     slider.value = 0.5;
     slider.snapshotSequence = 2;
+    presentationRevision = state.presentationRevision();
     Check(!state.PresentationValue(slider, 30), "authoritative acknowledgement clears override");
+    Check(state.presentationRevision() > presentationRevision,
+          "authoritative acknowledgement advances the presentation revision");
     slider.value = 1.0;
     slider.snapshotSequence = 3;
     auto saturated = state.Adjust(slider, NavigationDirection::Right, 40);
@@ -82,7 +91,10 @@ int main() {
     slider.value = 0.0;
     slider.snapshotSequence = 5;
     (void)state.Adjust(slider, NavigationDirection::Right, 100);
+    presentationRevision = state.presentationRevision();
     Check(!state.PresentationValue(slider, 2'101), "stale optimistic value expires");
+    Check(state.presentationRevision() > presentationRevision,
+          "optimistic timeout advances the presentation revision");
 
     slider.snapshotSequence = 6;
     (void)state.Adjust(slider, NavigationDirection::Right, 2'200);

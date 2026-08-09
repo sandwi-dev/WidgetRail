@@ -4,6 +4,7 @@
 #include "WidgetBridgeClient.h"
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -62,6 +63,7 @@ struct Tree final {
     std::wstring runtimeGeneration,
     const WidgetSnapshot& snapshot,
     const RenderResult& render,
-    std::wstring_view focusedElementId);
+    std::wstring_view focusedElementId,
+    const std::map<std::wstring, double, std::less<>>& presentedSliderValues = {});
 
 } // namespace gba::accessibility

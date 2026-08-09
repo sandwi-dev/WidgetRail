@@ -39,6 +39,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -2942,6 +2943,7 @@ private:
             L"host.tray",
             std::wstring{state_.selectedWidget()},
             static_cast<long long>(orderHash & 0x7fffffffffffffffULL),
+            0,
             appearanceState_.current() ? appearanceState_.current()->revision : 0,
             layout.stripBounds.x,
             layout.stripBounds.y,
@@ -4078,6 +4080,19 @@ private:
                 const auto accessibilityPolicy = appearanceState_.current()
                     ? CurrentAccessibilityPolicy()
                     : gba::NativeAccessibilityPolicy{};
+                const auto presentationTime = GetTickCount64();
+                std::map<std::wstring, double, std::less<>> presentedSliderValues;
+                const auto collectSliderOverrides = [&](const auto& self,
+                                                        const gba::WidgetNode& node) -> void {
+                    if (node.kind == L"slider") {
+                        if (const auto value = sliderInteraction_.PresentationValue(
+                                SliderDescriptor(*snapshot, node), presentationTime)) {
+                            presentedSliderValues.emplace(node.id, *value);
+                        }
+                    }
+                    for (const auto& child : node.children) self(self, child);
+                };
+                collectSliderOverrides(collectSliderOverrides, snapshot->root);
                 const gba::accessibility::ProjectionKey projectionKey{
                     std::wstring{widget},
                     descriptor != widgetDescriptors_.end()
@@ -4088,6 +4103,7 @@ private:
                         ? focusedElementId_
                         : std::wstring{},
                     snapshot->sequence,
+                    sliderInteraction_.presentationRevision(),
                     appearanceState_.current() ? appearanceState_.current()->revision : 0,
                     viewport.x,
                     viewport.y,
@@ -4119,7 +4135,8 @@ private:
                     0.0F, panelCornerRadius_ - panelContentInset);
                 if (appearanceState_.current())
                     options.accessibility = accessibilityPolicy;
-                options.animationTimestampMilliseconds = GetTickCount64();
+                options.animationTimestampMilliseconds = presentationTime;
+                options.sliderValueOverrides = presentedSliderValues;
                 sliderInteraction_.RetainAdjustmentMode(
                     snapshot->instanceId,
                     snapshot->activeInputScopeId,
@@ -4141,17 +4158,6 @@ private:
                         options.pressedElementId = focused->id;
                     }
                 }
-                const auto collectSliderOverrides = [&](const auto& self,
-                                                        const gba::WidgetNode& node) -> void {
-                    if (node.kind == L"slider") {
-                        if (const auto value = sliderInteraction_.PresentationValue(
-                                SliderDescriptor(*snapshot, node), GetTickCount64())) {
-                            options.sliderValueOverrides.emplace(node.id, *value);
-                        }
-                    }
-                    for (const auto& child : node.children) self(self, child);
-                };
-                collectSliderOverrides(collectSliderOverrides, snapshot->root);
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot,
                     state_.focusRegion() == gba::FocusRegion::Widget
@@ -4178,7 +4184,8 @@ private:
                         *snapshot, result,
                         state_.focusRegion() == gba::FocusRegion::Widget
                             ? std::wstring_view{focusedElementId_}
-                            : std::wstring_view{});
+                            : std::wstring_view{},
+                        options.sliderValueOverrides);
                     if (PublishAccessibilityTree(physicalPixelsPerDip))
                         accessibilityProjection_.Published(projectionKey);
                 }

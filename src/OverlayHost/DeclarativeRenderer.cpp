@@ -1398,6 +1398,9 @@ struct DeclarativeRenderer::RenderPass final {
             {D2DRect(track), trackHeight * 0.5F, trackHeight * 0.5F},
             trackBrush.Get());
         const auto thumbX = track.x + track.width * static_cast<float>(ratio);
+#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+        result.sliderThumbXs[node.id] = thumbX;
+#endif
         const Rect fill{track.x, track.y, std::max(0.0F, thumbX - track.x), track.height};
         auto accentBrush = Brush(target, WithOpacity(accent, opacity));
         if (accentBrush && fill.width > 0.0F) target->FillRoundedRectangle(

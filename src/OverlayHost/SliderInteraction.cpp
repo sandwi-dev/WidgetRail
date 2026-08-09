@@ -62,6 +62,7 @@ SliderAdjustment SliderInteractionState::Adjust(
     entry->adjustmentSnapshotSequence = slider.snapshotSequence;
     entry->lastAdjustment = nowMilliseconds;
     entry->lastAccess = ++accessClock_;
+    ++presentationRevision_;
     return {true, *target};
 }
 
@@ -118,11 +119,13 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         // so a sequence regression cannot be an in-flight stale read. Workers
         // legitimately restart with the same installed instance ID and reset
         // their sequence; treat that as a fresh authoritative session.
+        const bool presentationChanged = entry.pending;
         entry = {
             slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
             0, ++accessClock_, false, slider.activationRequired, false,
         };
+        if (presentationChanged) ++presentationRevision_;
         return &entry;
     }
     const bool sameContract =
@@ -132,11 +135,13 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         entry.actionId == slider.valueChangedActionId &&
         entry.activationRequired == slider.activationRequired;
     if (!sameContract) {
+        const bool presentationChanged = entry.pending;
         entry = {
             slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
             0, ++accessClock_, false, slider.activationRequired, false,
         };
+        if (presentationChanged) ++presentationRevision_;
     } else {
         if (entry.pending &&
             ((slider.snapshotSequence > entry.adjustmentSnapshotSequence &&
@@ -145,6 +150,7 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
               nowMilliseconds - entry.lastAdjustment > PendingTimeoutMilliseconds))) {
             entry.pending = false;
             entry.targetValue = slider.value;
+            ++presentationRevision_;
         } else if (!entry.pending) {
             entry.targetValue = slider.value;
         }
@@ -211,14 +217,22 @@ void SliderInteractionState::Trim(const std::wstring_view protectedKey) {
                 oldest = item;
         }
     }
-    if (oldest != entries_.end()) entries_.erase(oldest);
+    if (oldest != entries_.end()) {
+        if (oldest->second.pending) ++presentationRevision_;
+        entries_.erase(oldest);
+    }
 }
 
 void SliderInteractionState::ForgetWidget(const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
     std::wstring prefix{widgetInstanceId};
     prefix.push_back(L'\x1f');
+    const bool presentationChanged = std::any_of(
+        entries_.begin(), entries_.end(), [&](const auto& entry) {
+            return entry.first.starts_with(prefix) && entry.second.pending;
+        });
     std::erase_if(entries_, [&](const auto& entry) { return entry.first.starts_with(prefix); });
+    if (presentationChanged) ++presentationRevision_;
 }
 
 void SliderInteractionState::RetainAdjustmentMode(

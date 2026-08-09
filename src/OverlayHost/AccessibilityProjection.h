@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -12,6 +13,7 @@ struct ProjectionKey final {
     std::wstring activeInputScopeId;
     std::wstring focusedElementId;
     long long snapshotSequence{};
+    std::uint64_t sliderPresentationRevision{};
     long long appearanceRevision{};
     float viewportX{};
     float viewportY{};

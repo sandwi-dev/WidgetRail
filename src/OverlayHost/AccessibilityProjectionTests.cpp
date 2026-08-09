@@ -17,7 +17,7 @@ void Check(const bool condition, const char* message) {
 
 gba::accessibility::ProjectionKey Key() {
     return {
-        L"music", L"generation-1", L"root", L"play", 9, 3,
+        L"music", L"generation-1", L"root", L"play", 9, 0, 3,
         20, 30, 600, 400, 720, 540, 1.5F, 1.0F, 400, false, false,
     };
 }
@@ -46,6 +46,11 @@ int main() {
     auto resized = focusChanged;
     resized.viewportWidth = 480;
     Check(tracker.ShouldCollect(resized), "viewport changes collect immediately");
+    tracker.Published(resized);
+    auto sliderChanged = resized;
+    ++sliderChanged.sliderPresentationRevision;
+    Check(tracker.ShouldCollect(sliderChanged),
+          "optimistic slider presentation changes collect immediately");
     tracker.Clear();
     Check(tracker.ShouldCollect(focusChanged), "surface clear retires published authority");
 

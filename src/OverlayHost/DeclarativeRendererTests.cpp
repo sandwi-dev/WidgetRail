@@ -2002,6 +2002,13 @@ void RealDirect2DSmoke() {
     Check(result.currentFocusRect.has_value(), "real render returns focused geometry");
     Check(result.hitRegions.size() == 4,
           "buttons and optimistic Slider render through the real Direct2D path");
+    const auto& optimisticSliderRect = result.elementRects.at(L"volume");
+    const auto focusedTrackInset = 10.0F;
+    const auto focusedTrackWidth = std::max(
+        0.0F, optimisticSliderRect.width - focusedTrackInset * 2.0F);
+    Near(result.sliderThumbXs.at(L"volume"),
+         optimisticSliderRect.x + focusedTrackInset + focusedTrackWidth * 0.75F,
+         "optimistic Slider thumb paints at the presented value instead of snapshot value");
 
     WidgetSnapshot loadingSnapshot;
     loadingSnapshot.instanceId = L"loading.runtime";

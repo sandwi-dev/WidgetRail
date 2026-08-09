@@ -28,7 +28,8 @@ Tree BuildWidgetTree(
     std::wstring runtimeGeneration,
     const WidgetSnapshot& snapshot,
     const RenderResult& render,
-    const std::wstring_view focusedElementId) {
+    const std::wstring_view focusedElementId,
+    const std::map<std::wstring, double, std::less<>>& presentedSliderValues) {
     Tree tree{
         std::move(widgetId),
         std::move(runtimeGeneration),
@@ -65,7 +66,11 @@ Tree BuildWidgetTree(
             node.bounds = region->second;
             node.role = *role;
             node.parent = accessibleParent;
-            node.rangeValue = source.value;
+            const auto presentedValue = presentedSliderValues.find(source.id);
+            node.rangeValue = source.kind == L"slider" &&
+                    presentedValue != presentedSliderValues.end()
+                ? presentedValue->second
+                : source.value;
             node.rangeMinimum = source.minimum;
             node.rangeMaximum = source.maximum;
             node.rangeStep = source.step;

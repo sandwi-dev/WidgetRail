@@ -61,6 +61,7 @@ struct RenderResult final {
     // for every decorative and structural node.
     std::map<std::wstring, declarative::Rect, std::less<>> elementRects;
     std::map<std::wstring, declarative::Rect, std::less<>> elementVisibleRects;
+    std::map<std::wstring, float, std::less<>> sliderThumbXs;
 #endif
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
     // Full logical controller geometry includes offscreen descendants of a

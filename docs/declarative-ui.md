@@ -32,6 +32,13 @@ updates are quantized and coalesced latest-wins per Slider. A real
 `IUIAutomation` client test covers `WM_GETOBJECT`, fragment traversal, names,
 geometry, patterns, and stale-generation rejection.
 
+Controller slider adjustments resolve one host-owned presented-value map before
+rendering. The renderer and accessibility-tree builder consume that same map,
+and its monotonic presentation revision participates in projection cadence.
+Optimistic adjustment, authoritative acknowledgement, and timeout therefore
+produce one numeric RangeValue/property-event revision matching the visible
+thumb instead of exposing the older worker snapshot to UIA.
+
 Publication diffs the last announced immutable tree against the newest tree and
 coalesces intervening renders behind one posted window message. The window
 thread raises UIA structure invalidation, logical-focus changes, and closed

@@ -98,6 +98,13 @@ int main() {
           "slider exposes value and busy state");
     Check(tree.nodes[2].rangeValue == 60 && tree.nodes[2].rangeMaximum == 180 &&
           tree.nodes[2].rangeStep == 5, "slider exposes a closed numeric range");
+    const std::map<std::wstring, double, std::less<>> presentedValues{
+        {L"progress", 75},
+    };
+    tree = gba::accessibility::BuildWidgetTree(
+        L"music", L"generation-1", snapshot, render, L"next", presentedValues);
+    Check(tree.nodes[2].rangeValue == 75,
+          "accessibility range uses the same optimistic value as rendered pixels");
     Check(tree.nodes[3].name == L"Open album" && tree.nodes[3].children.empty(),
           "action-surface descendants remain presentation-only");
     Check(std::none_of(tree.nodes.begin(), tree.nodes.end(), [](const auto& node) {
