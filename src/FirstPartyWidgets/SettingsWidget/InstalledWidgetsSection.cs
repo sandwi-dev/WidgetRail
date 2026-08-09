@@ -106,7 +106,7 @@ public sealed partial class SettingsWidget
         {
             UI.Text("Installed widgets", "installed.heading", "Installed widgets").Classes("page-heading"),
             UI.Text(valid
-                    ? "Built-in widgets are included with the app. Review community package identity and permissions before enabling one."
+                    ? "Built-in widgets are included with the app. Community packages are unsigned: review their exact sealed bytes and requested capabilities before enabling. Publisher labels are unverified."
                     : diagnostic ?? "Installed widget catalog is unavailable.",
                 "installed.help", "Installed widget help")
                 .Classes(valid ? "page-help" : "diagnostic-error"),
@@ -141,7 +141,7 @@ public sealed partial class SettingsWidget
             var compatibility = WidgetHostCompatibility.Evaluate(package.ActiveVersion.Manifest);
             var status = package.Enabled
                 ? compatibility.IsSupported ? "Enabled" : "Enabled · incompatible"
-                : compatibility.IsSupported ? "Disabled · review required" : "Incompatible";
+                : compatibility.IsSupported ? "Disabled · unsigned review required" : "Incompatible";
             children.Add(UI.Button(
                     $"{package.Name} · {package.ActiveVersion.Version} · {status}",
                     $"installed.select.{index}", $"installed.item.{index}")
@@ -267,7 +267,8 @@ public sealed partial class SettingsWidget
                 $"Unload after idle · Destroying after {residency.IdleDuration?.TotalSeconds:0} seconds; last view is cached",
             _ => "Unknown",
         };
-        var action = package.Enabled ? "Disable widget" : "Enable reviewed widget";
+        var contentDigest = package.ActiveVersion.ContentDigest.ToLowerInvariant();
+        var action = package.Enabled ? "Disable widget" : "Enable unsigned widget";
         var canToggle = package.Enabled || compatibility.IsSupported;
         var hasPermissions = permissionCatalogValid &&
             permissionPackageIds.Contains(manifest.Id, StringComparer.Ordinal);
@@ -294,11 +295,17 @@ public sealed partial class SettingsWidget
         return View(header,
             PageScope("installed.details",
                 UI.Text(package.Name, "installed.details.heading", "Installed widget name").Classes("page-heading"),
+                UI.Text("Trust: Unsigned · publisher unverified", "installed.details.trust",
+                    "Unsigned package trust status").Classes("diagnostic-error"),
                 UI.Text($"ID: {manifest.Id}", "installed.details.id", "Package ID").Classes("diagnostic-line"),
-                UI.Text($"Publisher: {manifest.Publisher}", "installed.details.publisher", "Package publisher")
+                UI.Text($"Declared publisher (unverified): {manifest.Publisher}",
+                    "installed.details.publisher", "Unverified declared package publisher")
                     .Classes("diagnostic-line"),
                 UI.Text($"Active version: {manifest.Version}", "installed.details.version", "Package version")
                     .Classes("diagnostic-line"),
+                UI.Text("Sealed content SHA-256:", "installed.details.digest-label",
+                    "Sealed content digest label").Classes("diagnostic-line"),
+                UI.CodeText(contentDigest, "installed.details.digest", "Sealed content SHA-256 digest"),
                 UI.Text($"Runtime: {manifest.Entrypoint.Runtime}", "installed.details.runtime", "Package runtime")
                     .Classes("diagnostic-line"),
                 UI.Text($"Host API: {manifest.HostApi.Minimum} through major {manifest.HostApi.MaximumMajor}",
@@ -318,10 +325,10 @@ public sealed partial class SettingsWidget
                     .Classes("page-help"),
                 UI.Text(package.Enabled
                         ? compatibility.IsSupported
-                            ? "This widget is available in the overlay. Disable it to stop future activation."
+                            ? "This unsigned widget is available in the overlay. Its declared publisher remains unverified. Disable it to stop future activation."
                             : "This widget is marked enabled but cannot run on this host. Disable it before installing a compatible update."
                         : compatibility.IsSupported
-                            ? "Enabling confirms that you reviewed this identity and its declared capabilities. Capability access still requires separate consent."
+                            ? "Enabling confirms review of these exact unsigned bytes and declared capabilities, not publisher identity. Capability access still requires separate consent."
                             : "Install a version that supports this host API and architecture before enabling. Capability consent is a separate decision.",
                     "installed.details.status", "Package enabled status").Classes("page-help"),
                 versionsButton,
@@ -358,7 +365,7 @@ public sealed partial class SettingsWidget
                 .Classes("page-heading"),
             UI.Text(package.Enabled
                     ? "Disable this widget before changing executable versions."
-                    : "Select an exact reviewed version. Selection does not enable the widget.",
+                    : "Select an exact unsigned version. Selection does not enable it; review the full sealed digest and capabilities on package details before enabling.",
                 "installed.versions.help", "Version selection help").Classes("page-help"),
             UI.Text($"Page {page + 1} of {lastPage + 1}", "installed.versions.page-label",
                 "Installed version page").Classes("page-counter"),
@@ -374,7 +381,8 @@ public sealed partial class SettingsWidget
                 : installed.Version < package.ActiveVersion.Version ? "Rollback" : "Select newer";
             children.Add(UI.Button(
                     $"{direction} · {installed.Version} · " +
-                    (compatibility.IsSupported ? "Compatible" : "Incompatible"),
+                    (compatibility.IsSupported ? "Compatible" : "Incompatible") +
+                    $" · SHA-256 {ShortContentDigest(installed.ContentDigest)}…",
                     $"installed.version.select.{index}", $"installed.version.item.{index}")
                 .Disabled(package.Enabled || isActive).Busy(busy).Selected(isActive)
                 .Classes("setting-row", isActive ? "is-enabled" : "is-disabled"));
@@ -501,7 +509,7 @@ public sealed partial class SettingsWidget
                 _busy = false;
                 _error = permissionWarning is not null;
                 _status = permissionWarning ??
-                    $"{selected.Name} {requested.Version} selected; review before enabling";
+                    $"{selected.Name} {requested.Version} selected; review its unsigned digest and capabilities before enabling";
             }
         }
         catch (WidgetPackageException exception)
@@ -590,4 +598,9 @@ public sealed partial class SettingsWidget
 
     private static int LastInstalledVersionPage(CatalogWidget widget) =>
         Math.Max(0, (widget.Versions.Count - 1) / InstalledVersionsPerPage);
+
+    private static string ShortContentDigest(string digest) =>
+        digest.Length >= 12
+            ? digest[..12].ToLowerInvariant()
+            : "invalid-digest";
 }

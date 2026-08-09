@@ -247,10 +247,11 @@ the generic SDK/bridge/native path, uses nested controller scopes, persists
 bounded appearance values, pages valid/invalid themes, exposes diagnostics,
 requires confirmation before reset, and provides two separate controller
 flows: a source-separated widget inventory with read-only Built-in manifest
-details and Community package identity/version/publisher/runtime/required-
-optional capability review, a nested paged Manage versions surface with
-disabled-only exact selection/rollback, plus enable/disable for Community
-packages only; then package → capability → grant/deny consent. Enablement is
+details and an honest Community review that labels packages unsigned, treats
+the manifest publisher as unverified, shows the full sealed SHA-256 digest,
+and repeats that digest at consent; a nested paged Manage versions surface with
+digest prefixes and disabled-only exact selection/rollback; plus enable/disable
+for Community packages only; then package → capability → grant/deny consent. Enablement is
 not consent. Permission grants require explicit
 confirmation; deny/revoke is immediate, missing/invalid state fails closed,
 and first-party packages are not auto-granted. An exact tombstone migrates the

@@ -23,6 +23,13 @@ publish widget source in a dedicated GitHub repository:
 6. Label the release **developer preview / unsigned** until publisher signing
    is implemented.
 
+Recipients see **Unsigned · publisher unverified** in Settings together with
+the package's sealed content-tree SHA-256 before enablement. That digest-bound
+review prevents replacement bytes from inheriting authority, but it is not a
+signature and does not prove that the manifest publisher or GitHub account is
+the author. Share the expected digest through an independent authenticated
+channel.
+
 The SDK does not yet have a supported public NuGet release. External widget
 repositories must currently reference a checked-out SDK project or vendor a
 specific compatible SDK build. Do not advertise the placeholder preview

@@ -218,6 +218,13 @@ rejects DLL input without loading it. Use `gbar dev` for executable integration;
 it routes author code through the same generic AppContainer worker boundary as
 installed Community widgets.
 
+Settings labels every Community package **Unsigned · publisher unverified** and
+shows its full sealed content-tree SHA-256 digest before enablement and consent.
+That makes the current review honest and binds decisions to exact bytes, but it
+does not authenticate the manifest publisher or acquisition source. Compare a
+digest through an independent authenticated channel. Publisher signing,
+rotation/revocation, and host-owned acquisition receipts remain unimplemented.
+
 `gbar validate` proves syntax and bounded declarative resources. Package
 validation proves archive containment and identity consistency. HTTPS protects
 transport to the resolved servers, and `--sha256` can pin exact bytes. None of

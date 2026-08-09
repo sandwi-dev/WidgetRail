@@ -225,7 +225,10 @@ mutate a bundled manifest or community catalog state.
 
 Community packages retain pages of at most five rows; LB/RB changes only the
 Community page inside the nested scope. A opens package details, and the details
-page enables or disables the reviewed identity. Install itself remains a CLI
+page explicitly labels the package **Unsigned · publisher unverified**, shows
+the manifest publisher as an unverified claim, and displays the full sealed
+content-tree SHA-256 digest before **Enable unsigned widget**. This is an exact-
+bytes review, not publisher verification. Install itself remains a CLI
 operation; Settings has no file picker. A shared catalog evaluator matches
 bridge host-API/architecture gating: an incompatible package shows a bounded
 reason and cannot be enabled, while an already enabled incompatible package can
@@ -275,11 +278,14 @@ as Active, Rollback, or Select newer and reports Compatible or Incompatible.
 B returns first to package details and then to the package list. The active row
 is selected and non-actionable. While the widget is enabled every version row
 is disabled and focus starts on Back; disable the widget before selecting code.
-A version selection persists the exact pin and reports “review before
-enabling,” but never enables it. Return to package details and use **Enable
-reviewed widget** only after reviewing the selected identity, compatibility,
-and capabilities. An incompatible selected version remains reviewable but
-cannot be enabled.
+A version selection persists the exact pin and reports that its unsigned digest
+and capabilities require review, but never enables it. Version rows include a
+digest prefix for distinction. Return to package details and compare the
+complete sealed digest, compatibility, and capabilities before using **Enable
+unsigned widget**. An incompatible selected version remains reviewable but
+cannot be enabled. Permission review repeats the unsigned state and full digest;
+consent is bound to that digest-derived authority rather than the manifest
+publisher claim.
 
 Installed package/permission state is refreshed with the other Settings state
 on activation, not by a polling loop. The bridge independently watches catalog

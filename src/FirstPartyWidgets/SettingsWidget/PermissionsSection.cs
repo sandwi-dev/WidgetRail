@@ -46,7 +46,8 @@ public sealed partial class SettingsWidget
         string Publisher,
         string AuthorityPublisher,
         string Name,
-        IReadOnlyList<DeclaredCapability> Capabilities);
+        IReadOnlyList<DeclaredCapability> Capabilities,
+        string? ContentDigest);
 
     private IReadOnlyList<PermissionPackage> _permissionPackages = [];
     private ConsentDocument _consent = ConsentDocument.Empty;
@@ -91,7 +92,8 @@ public sealed partial class SettingsWidget
                 var package = CreatePermissionPackage(
                     manifest,
                     InstalledWidgetAuthority.PublisherId(widget.ActiveVersion),
-                    unknownDeclarations);
+                    unknownDeclarations,
+                    widget.ActiveVersion.ContentDigest);
                 if (package.Capabilities.Count != 0)
                     discovered.TryAdd(package.Id, package);
             }
@@ -229,7 +231,8 @@ public sealed partial class SettingsWidget
     private static PermissionPackage CreatePermissionPackage(
         WidgetManifest manifest,
         string authorityPublisher,
-        UnknownDeclarationAccumulator unknownDeclarations)
+        UnknownDeclarationAccumulator unknownDeclarations,
+        string? contentDigest = null)
     {
         var capabilities = new List<DeclaredCapability>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -256,7 +259,8 @@ public sealed partial class SettingsWidget
             manifest.Name,
             capabilities.OrderByDescending(capability => capability.IsRequired)
                 .ThenBy(capability => capability.Id, StringComparer.Ordinal)
-                .ToArray());
+                .ToArray(),
+            contentDigest?.ToLowerInvariant());
     }
 
     private static IReadOnlyList<WidgetManifest> DiscoverBundledManifests(string root)
@@ -486,7 +490,15 @@ public sealed partial class SettingsWidget
         var children = new List<WidgetElement>
         {
             UI.Text(package.Name, "capabilities.heading", "Selected package").Classes("page-heading"),
-            UI.Text($"Publisher: {package.Publisher}", "capabilities.publisher", "Package publisher")
+            UI.Text(package.ContentDigest is null
+                    ? "Trust: Built-in"
+                    : "Trust: Unsigned · publisher unverified",
+                "capabilities.trust", "Package trust status")
+                .Classes(package.ContentDigest is null ? "diagnostic-ok" : "diagnostic-error"),
+            UI.Text(package.ContentDigest is null
+                    ? $"Publisher: {package.Publisher}"
+                    : $"Declared publisher (unverified): {package.Publisher}",
+                "capabilities.publisher", "Package publisher claim")
                 .Classes("page-help"),
             UI.Text(
                     "Required access is needed for a declared widget feature; blocking it can limit that feature. " +
@@ -494,6 +506,13 @@ public sealed partial class SettingsWidget
                     "capabilities.help", "Required and optional access help")
                 .Classes("page-help"),
         };
+        if (package.ContentDigest is not null)
+        {
+            children.Add(UI.Text("Consent authority is bound to sealed content SHA-256:",
+                "capabilities.digest-label", "Consent digest label").Classes("page-help"));
+            children.Add(UI.CodeText(package.ContentDigest, "capabilities.digest",
+                "Sealed content SHA-256 digest"));
+        }
         if (!consentValid)
         {
             children.Add(UI.Text(
@@ -571,9 +590,13 @@ public sealed partial class SettingsWidget
         };
         if (!granted)
         {
+            var recipient = package.ContentDigest is null
+                ? $"{package.Name} from {package.Publisher}"
+                : $"unsigned {package.Name}; declared publisher {package.Publisher} is unverified, " +
+                  $"and this decision is bound to SHA-256 {ShortContentDigest(package.ContentDigest)}…";
             children.Add(UI.Text(
                 $"Confirm granting this {requirement.ToLowerInvariant()} to " +
-                $"{package.Name} from {package.Publisher}.",
+                $"{recipient}.",
                 "capability.confirmation", "Grant confirmation").Classes("page-help"));
             children.Add(UI.Button("Allow access", "capability.grant", "capability.grant")
                 .Disabled(!consentValid).Busy(busy).Classes("primary-button"));

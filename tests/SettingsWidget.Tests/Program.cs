@@ -456,6 +456,8 @@ static async Task InstalledWidgetReview()
         WriteInstalledWidget(catalogRoot, $"dev.test.installed{index}", $"dev.publisher{index}",
             $"Installed {index}", [PlatformCapabilities.AudioSessionsReadV1],
             [PlatformCapabilities.AudioSessionsControlV1]);
+    var reviewedVersion = (await new WidgetCatalog(catalogRoot).DiscoverAsync())
+        .Widgets.Single(package => package.Id == "dev.test.installed5").ActiveVersion;
     var widget = CreateWithPermissions(temp.Path, catalogRoot,
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
@@ -468,7 +470,7 @@ static async Task InstalledWidgetReview()
         "installed.next-page");
     Assert.Equal(5, Buttons(first.Root).Count(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)));
-    Assert.Contains("review required", Button(first.Root, "installed.item.0").Text!);
+    Assert.Contains("unsigned review required", Button(first.Root, "installed.item.0").Text!);
 
     await Action(widget, "installed.next-page");
     var second = Snapshot(widget);
@@ -480,8 +482,13 @@ static async Task InstalledWidgetReview()
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Equal("installed.details", details.ActiveInputScopeId);
     Assert.HasShortcut(details.Root, "installed.details", ControllerButton.B, "back");
+    Assert.Contains("Unsigned", Text(details.Root, "installed.details.trust").Text!);
+    Assert.Contains("publisher unverified", Text(details.Root, "installed.details.trust").Text!);
     Assert.Contains("dev.test.installed5", Text(details.Root, "installed.details.id").Text!);
     Assert.Contains("dev.publisher5", Text(details.Root, "installed.details.publisher").Text!);
+    Assert.Contains("unverified", Text(details.Root, "installed.details.publisher").Text!);
+    Assert.Equal(reviewedVersion.ContentDigest.ToLowerInvariant(),
+        Text(details.Root, "installed.details.digest").Text!);
     Assert.Contains(PlatformCapabilities.AudioSessionsReadV1,
         Text(details.Root, "installed.details.required-permissions").Text!);
     Assert.Contains(PlatformCapabilities.AudioSessionsControlV1,
@@ -490,7 +497,9 @@ static async Task InstalledWidgetReview()
         Text(details.Root, "installed.details.residency").Text!);
     Assert.Contains("no process/thread suspension",
         Text(details.Root, "installed.details.residency").Text!);
-    Assert.Contains("Enable reviewed widget", Button(details.Root, "installed.details.toggle").Text!);
+    Assert.Contains("Enable unsigned widget", Button(details.Root, "installed.details.toggle").Text!);
+    Assert.Contains("exact unsigned bytes", Text(details.Root, "installed.details.status").Text!);
+    Assert.Contains("not publisher identity", Text(details.Root, "installed.details.status").Text!);
     Assert.Contains("Permissions & configuration",
         Button(details.Root, "installed.details.permissions").Text!);
 
@@ -500,6 +509,9 @@ static async Task InstalledWidgetReview()
     Assert.Equal("capabilities.package", permissions.ActiveInputScopeId);
     Assert.HasShortcut(permissions.Root, "capabilities.package", ControllerButton.B, "back");
     Assert.Contains("Installed 5", Text(permissions.Root, "capabilities.heading").Text!);
+    Assert.Contains("Unsigned", Text(permissions.Root, "capabilities.trust").Text!);
+    Assert.Equal(reviewedVersion.ContentDigest.ToLowerInvariant(),
+        Text(permissions.Root, "capabilities.digest").Text!);
     await Action(widget, "back");
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Valid(first);
@@ -598,7 +610,7 @@ static async Task InstalledWidgetToggle()
     await Action(widget, "installed.toggle");
     Assert.Equal(false, (await catalog.DiscoverAsync()).Widgets.Single().Enabled);
     var disabled = Snapshot(widget);
-    Assert.Contains("Enable reviewed widget", Button(disabled.Root, "installed.details.toggle").Text!);
+    Assert.Contains("Enable unsigned widget", Button(disabled.Root, "installed.details.toggle").Text!);
     Assert.Contains("Toggle disabled", Text(disabled.Root, "settings.status").Text!);
     Assert.Valid(enabled);
     Assert.Valid(disabled);
@@ -624,6 +636,9 @@ static async Task InstalledWidgetVersionRollback()
 
     await Action(widget, "installed.versions.open");
     var versions = Snapshot(widget);
+    var catalogSnapshot = await catalog.DiscoverAsync();
+    var rollbackDigest = catalogSnapshot.Widgets.Single().Versions[1].ContentDigest[..12]
+        .ToLowerInvariant();
     Assert.Equal(SettingsPage.InstalledWidgetVersions, widget.CurrentPage);
     Assert.Equal("installed.versions", versions.ActiveInputScopeId);
     Assert.HasShortcut(versions.Root, "installed.versions", ControllerButton.B, "back");
@@ -631,13 +646,15 @@ static async Task InstalledWidgetVersionRollback()
     Assert.Equal(true, Button(versions.Root, "installed.version.item.0").IsSelected);
     Assert.Equal(true, Button(versions.Root, "installed.version.item.0").IsDisabled);
     Assert.Contains("Rollback · 2.0.0", Button(versions.Root, "installed.version.item.1").Text!);
+    Assert.Contains(rollbackDigest, Button(versions.Root, "installed.version.item.1").Text!);
 
     await Action(widget, "installed.version.select.1");
     Assert.Equal("2.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
     var rolledBack = Snapshot(widget);
     Assert.Equal(true, Button(rolledBack.Root, "installed.version.item.1").IsSelected);
     Assert.Contains("Select newer · 3.0.0", Button(rolledBack.Root, "installed.version.item.0").Text!);
-    Assert.Contains("2.0.0 selected; review before enabling", Text(rolledBack.Root, "settings.status").Text!);
+    Assert.Contains("2.0.0 selected; review its unsigned digest and capabilities before enabling",
+        Text(rolledBack.Root, "settings.status").Text!);
 
     await Action(widget, "back");
     await Action(widget, "installed.toggle");
@@ -1077,7 +1094,11 @@ static async Task GrantAndRevoke()
     Assert.Equal((ConsentDecision?)null, await consent.GetDecisionAsync(
         new("dev.test.audio", "dev.publisher.audio", "test"),
         PlatformCapabilities.AudioSessionsReadV1));
-    Assert.Contains("Confirm granting", Text(Snapshot(widget).Root, "capability.confirmation").Text!);
+    var confirmation = Text(Snapshot(widget).Root, "capability.confirmation").Text!;
+    Assert.Contains("Confirm granting", confirmation);
+    Assert.Contains("unsigned Audio", confirmation);
+    Assert.Contains("publisher dev.publisher.audio is unverified", confirmation);
+    Assert.Contains("SHA-256", confirmation);
 
     var beforeGrant = invalidations;
     await Action(widget, "capability.grant");
