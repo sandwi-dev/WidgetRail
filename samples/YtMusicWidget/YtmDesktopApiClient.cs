@@ -11,6 +11,7 @@ namespace GameBarAlternative.Samples.YtMusicWidget;
 /// </summary>
 public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
 {
+    public const string PackageVersion = "0.2.6";
     public const int CompanionPort = 13091;
     public const string BearerSecretSlot = "ytmdesktop2.bearer";
     private static readonly TimeSpan PairingApprovalTimeout = TimeSpan.FromSeconds(40);
@@ -110,7 +111,7 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         {
             appId = "gamebaralternative.ytmusic",
             appName = "Game Bar Alternative YT Music",
-            appVersion = "0.2.5",
+            appVersion = PackageVersion,
         });
         using var document = await SendAsync(
             isPost: true, "/auth/requestcode", body, includeAuthorization: false,

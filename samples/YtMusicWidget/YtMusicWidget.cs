@@ -22,6 +22,7 @@ public class YtMusicWidget : Widget
     private const string ConnectAction = "connect";
     private const string PairAction = "pair";
     private const string RefreshAction = "refresh";
+    private const string TransportRefreshOperation = "ytmusic.transport-refresh";
     private static readonly WidgetSurfaceHints StandardSurface = new()
     {
         Mode = WidgetSurfaceMode.Standard,
@@ -48,16 +49,12 @@ public class YtMusicWidget : Widget
     private double _pendingForwardCorrectionSeconds;
     private bool _hasProgressSnapshot;
     private readonly List<PendingOptimisticState> _pendingOptimistic = [];
-    private readonly object _transportRefreshLock = new();
-    private readonly HashSet<Task> _transportRefreshTasks = [];
     private string _status = "Connect to YTMDesktop2 to begin";
     private string? _pairingCode;
     private int _autoConnectStarted;
     private Task? _autoConnectTask;
     private Task? _progressLoop;
     private Task? _pollLoop;
-    private CancellationTokenSource? _transportRefreshCancellation;
-    private long _transportRefreshGeneration;
 
     public YtMusicWidget(
         IYtMusicClient? client = null,
@@ -265,14 +262,9 @@ public class YtMusicWidget : Widget
 
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        Interlocked.Increment(ref _transportRefreshGeneration);
-        CancelTransportRefresh();
-        Task[] transportTasks;
-        lock (_transportRefreshLock) transportTasks = _transportRefreshTasks.ToArray();
         var tasks = new[] { _autoConnectTask, _progressLoop, _pollLoop }
             .Where(task => task is not null)
             .Cast<Task>()
-            .Concat(transportTasks)
             .ToArray();
         _autoConnectTask = null;
         _progressLoop = null;
@@ -494,7 +486,6 @@ public class YtMusicWidget : Widget
         if (ConnectionState != YtMusicWidgetConnectionState.Connected) return;
         var isTransport = command is
             YtMusicCommand.TogglePlayback or YtMusicCommand.Previous or YtMusicCommand.Next;
-        var transportGeneration = isTransport ? BeginTransportTransition() : 0;
         PendingOptimisticState optimistic;
         lock (_stateLock)
         {
@@ -511,7 +502,7 @@ public class YtMusicWidget : Widget
                 optimistic.ToggleState).ConfigureAwait(false);
             if (isTransport)
             {
-                ScheduleTransportRefresh(command, transportGeneration);
+                ScheduleTransportRefresh(command);
                 return;
             }
 
@@ -538,67 +529,33 @@ public class YtMusicWidget : Widget
         }
     }
 
-    private long BeginTransportTransition()
+    private void ScheduleTransportRefresh(YtMusicCommand command)
     {
-        var generation = Interlocked.Increment(ref _transportRefreshGeneration);
-        CancelTransportRefresh();
-        return generation;
-    }
-
-    private void CancelTransportRefresh()
-    {
-        CancellationTokenSource? cancellation;
-        lock (_transportRefreshLock)
-        {
-            cancellation = _transportRefreshCancellation;
-            _transportRefreshCancellation = null;
-        }
-        cancellation?.Cancel();
-    }
-
-    private void ScheduleTransportRefresh(
-        YtMusicCommand command,
-        long generation)
-    {
-        if (generation != Interlocked.Read(ref _transportRefreshGeneration)) return;
         // Once the companion accepts a playback command, reconciliation belongs
-        // to the widget lifecycle rather than the completed action request. A
-        // host request token may be released as soon as this method returns.
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(WidgetLifetimeToken);
-        Task task;
-        lock (_transportRefreshLock)
+        // to the active widget lifecycle rather than the completed action
+        // request. The public operation lane cancels stale work, bounds it to
+        // one running plus one replacement, and drains it before deactivation.
+        WidgetOperationHandle operation;
+        lock (_stateLock)
         {
-            if (generation != Interlocked.Read(ref _transportRefreshGeneration))
-            {
-                cancellation.Dispose();
-                return;
-            }
-            _transportRefreshCancellation = cancellation;
-            task = RunTransportRefreshBurstAsync(command, generation, cancellation.Token);
-            _transportRefreshTasks.Add(task);
+            if (_connectionState != YtMusicWidgetConnectionState.Connected) return;
+            // Admission shares the state lock with attempt-local commits. A
+            // replacement therefore cannot become current between an older
+            // attempt's final currency check and its state mutation.
+            operation = Operations.RunLatest(
+                TransportRefreshOperation,
+                context => RunTransportRefreshBurstAsync(command, context),
+                WidgetOperationLifetime.Active);
         }
-
-        _ = task.ContinueWith(
-            _ =>
-            {
-                lock (_transportRefreshLock)
-                {
-                    _transportRefreshTasks.Remove(task);
-                    if (ReferenceEquals(_transportRefreshCancellation, cancellation))
-                        _transportRefreshCancellation = null;
-                }
-                cancellation.Dispose();
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        if (!operation.IsAccepted)
+            SetConnectedStatus("Track update will refresh when the widget is active");
     }
 
-    private async Task RunTransportRefreshBurstAsync(
+    private async ValueTask RunTransportRefreshBurstAsync(
         YtMusicCommand command,
-        long generation,
-        CancellationToken cancellationToken)
+        WidgetOperationContext context)
     {
+        var cancellationToken = context.CancellationToken;
         try
         {
             for (var attempt = 0; attempt < _updatePolicy.TransportRefreshAttempts; attempt++)
@@ -606,7 +563,7 @@ public class YtMusicWidget : Widget
                 var delay = _updatePolicy.TransportRefreshInitialDelay +
                             (_updatePolicy.TransportRefreshDelayStep * attempt);
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                if (generation != Interlocked.Read(ref _transportRefreshGeneration)) return;
+                if (!context.IsCurrent) return;
 
                 try
                 {
@@ -616,7 +573,7 @@ public class YtMusicWidget : Widget
                         var applied = await FetchConnectedSnapshotAsync(
                             force: false,
                             cancellationToken,
-                            generation).ConfigureAwait(false);
+                            context).ConfigureAwait(false);
                         if (!applied) return;
                     }
                     finally
@@ -626,12 +583,12 @@ public class YtMusicWidget : Widget
                 }
                 catch (YtMusicAuthorizationRequiredException)
                 {
-                    await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+                    TrySetAuthorizationRequired(context);
                     return;
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    SetConnectedStatus("Track update delayed · retrying…");
+                    TrySetConnectedStatus(context, "Track update delayed · retrying…");
                     continue;
                 }
 
@@ -663,18 +620,14 @@ public class YtMusicWidget : Widget
     private async Task<bool> FetchConnectedSnapshotAsync(
         bool force,
         CancellationToken cancellationToken,
-        long? expectedTransportGeneration = null,
+        WidgetOperationContext? operationContext = null,
         bool establishConnection = false)
     {
         var snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        if (expectedTransportGeneration is { } expectedBeforeLock &&
-            expectedBeforeLock != Interlocked.Read(ref _transportRefreshGeneration))
-            return false;
+        if (operationContext is { IsCurrent: false }) return false;
         lock (_stateLock)
         {
-            if (expectedTransportGeneration is { } expectedInLock &&
-                expectedInLock != Interlocked.Read(ref _transportRefreshGeneration))
-                return false;
+            if (operationContext is { IsCurrent: false }) return false;
             if (!establishConnection &&
                 _connectionState != YtMusicWidgetConnectionState.Connected)
                 return false;
@@ -1092,6 +1045,38 @@ public class YtMusicWidget : Widget
         if (changed) Invalidate();
     }
 
+    private bool TrySetConnectedStatus(WidgetOperationContext context, string message)
+    {
+        var changed = false;
+        lock (_stateLock)
+        {
+            if (!context.IsCurrent ||
+                _connectionState != YtMusicWidgetConnectionState.Connected)
+                return false;
+            changed = !string.Equals(_status, message, StringComparison.Ordinal);
+            _status = message;
+        }
+        if (changed) Invalidate();
+        return true;
+    }
+
+    private bool TrySetAuthorizationRequired(WidgetOperationContext context)
+    {
+        lock (_stateLock)
+        {
+            if (!context.IsCurrent) return false;
+            _pendingOptimistic.Clear();
+            _connectionState = YtMusicWidgetConnectionState.Disconnected;
+            _status = "Authorization expired · pair device";
+            _pairingCode = null;
+        }
+        // This current delegate returns immediately, so canceling its own lane
+        // is unnecessary. Avoiding a second lane-wide cancellation also keeps
+        // a replacement admitted after this atomic commit from being revoked.
+        Invalidate();
+        return true;
+    }
+
     private void SetState(YtMusicWidgetConnectionState state, string status, string? pairingCode)
     {
         lock (_stateLock)
@@ -1110,8 +1095,7 @@ public class YtMusicWidget : Widget
 
     private Task SetAuthorizationRequiredAsync()
     {
-        Interlocked.Increment(ref _transportRefreshGeneration);
-        CancelTransportRefresh();
+        Operations.Cancel(TransportRefreshOperation);
         lock (_stateLock) _pendingOptimistic.Clear();
         SetState(
             YtMusicWidgetConnectionState.Disconnected,

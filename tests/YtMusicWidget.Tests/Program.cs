@@ -47,6 +47,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Repeated transport commands do not wait for snapshot reconciliation", RepeatedTransportCommandsBypassReconciliation),
     ("Repeated play-pause commands do not wait for snapshot reconciliation", RepeatedPlaybackCommandsBypassReconciliation),
     ("Accepted playback reconciliation outlives its action request", PlaybackReconciliationOutlivesActionRequest),
+    ("Transport reconciliation is canceled and drained when the widget becomes inactive", TransportReconciliationStopsWhenInactive),
+    ("Superseded transport failures cannot commit attempt-local state", SupersededTransportFailuresCannotCommit),
+    ("Lifecycle-stale authorization failures cannot disconnect", LifecycleStaleAuthorizationCannotCommit),
     ("Optimistic playback does not masquerade as companion confirmation", PlaybackReconciliationRejectsStaleState),
     ("Errors render a focused retry action", ErrorState),
     ("Pairing displays approval code before completing", PairingStateFlow),
@@ -1006,6 +1009,7 @@ static async Task TransportCommandFlow()
     var fake = new FakeClient { Snapshot = PlayingSnapshot("Before") };
     var widget = new YtMusicWidget(fake, FastUpdatePolicy());
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     fake.Snapshot = PlayingSnapshot("After") with
     {
         TrackId = "after-id",
@@ -1019,6 +1023,7 @@ static async Task TransportCommandFlow()
         "track-title").Text);
     Assert.Equal(2, fake.SnapshotCalls);
     Assert.Equal("After", Find(widget.Render().CreateSnapshot("ytmusic.test", 3).Root, "track-title").Text);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
 }
 
 static async Task TransportTransitionPreservesMetadata()
@@ -1071,6 +1076,7 @@ static async Task TransportTransitionPreservesMetadata()
     };
     var widget = new YtMusicWidget(fake, FastUpdatePolicy(), clock);
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     clock.Advance(TimeSpan.FromSeconds(3));
     Assert.True(Find(widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
         "track-progress").Value!.Value >= 93, "The test clock did not advance playback.");
@@ -1103,6 +1109,7 @@ static async Task TransportTransitionPreservesMetadata()
         widget.Render().CreateSnapshot("ytmusic.test", 6).Root,
         "track-title").Text);
     Assert.Equal(5, fake.SnapshotCalls);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
 }
 
 static async Task RepeatedTransportCommandsBypassReconciliation()
@@ -1129,6 +1136,7 @@ static async Task RepeatedTransportCommandsBypassReconciliation()
     };
     var widget = new YtMusicWidget(fake, FastUpdatePolicy());
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
 
     await widget.OnActionAsync(new WidgetActionEvent("next", "next", ControllerButton.RightBumper));
     await WaitUntil(() => fake.SnapshotCalls >= 2);
@@ -1144,6 +1152,7 @@ static async Task RepeatedTransportCommandsBypassReconciliation()
     await WaitUntil(() => "After Queue" == Find(
         widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
         "track-title").Text);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
 }
 
 static async Task RepeatedPlaybackCommandsBypassReconciliation()
@@ -1160,6 +1169,7 @@ static async Task RepeatedPlaybackCommandsBypassReconciliation()
     };
     var widget = new YtMusicWidget(fake, FastUpdatePolicy());
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
 
     await widget.OnActionAsync(new WidgetActionEvent(
         "toggle-playback", "play-pause", ControllerButton.X));
@@ -1176,6 +1186,7 @@ static async Task RepeatedPlaybackCommandsBypassReconciliation()
     await WaitUntil(() => Find(
         widget.Render().CreateSnapshot("ytmusic.test", 1).Root,
         "play-pause").Glyph == WidgetGlyph.Pause);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
 }
 
 static async Task PlaybackReconciliationOutlivesActionRequest()
@@ -1191,6 +1202,7 @@ static async Task PlaybackReconciliationOutlivesActionRequest()
     };
     var widget = new YtMusicWidget(fake, FastUpdatePolicy());
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     using var actionLifetime = new CancellationTokenSource();
 
     await widget.OnActionAsync(
@@ -1207,6 +1219,165 @@ static async Task PlaybackReconciliationOutlivesActionRequest()
         "connection-status").Text);
     await Task.Delay(100);
     Assert.Equal(2, fake.SnapshotCalls);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static async Task TransportReconciliationStopsWhenInactive()
+{
+    var playing = PlayingSnapshot("Lifecycle Reconciliation");
+    var refreshCanceled = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeClient { Snapshot = playing };
+    fake.SnapshotAsync = (call, token) => call == 1
+        ? Task.FromResult(playing)
+        : ObserveSnapshotCancellationAsync(token, refreshCanceled);
+    var policy = FastUpdatePolicy() with
+    {
+        ProgressInterval = TimeSpan.FromSeconds(5),
+        PollInterval = TimeSpan.FromSeconds(30),
+    };
+    var widget = new YtMusicWidget(fake, policy);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "next", "next", ControllerButton.RightBumper));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+
+    await widget.SetLifecycleStateAsync(
+            WidgetLifecycleState.Background, CancellationToken.None)
+        .AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+    await refreshCanceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    var callsAfterDeactivation = fake.SnapshotCalls;
+    await Task.Delay(80);
+    Assert.Equal(callsAfterDeactivation, fake.SnapshotCalls);
+}
+
+static async Task SupersededTransportFailuresCannotCommit()
+{
+    await AssertSupersededTransportFailureCannotCommit(
+        new InvalidOperationException("stale ordinary failure"));
+    await AssertSupersededTransportFailureCannotCommit(
+        new YtMusicAuthorizationRequiredException());
+}
+
+static async Task AssertSupersededTransportFailureCannotCommit(Exception staleFailure)
+{
+    var initial = PlayingSnapshot("Before stale failure") with
+    {
+        TrackId = "before-stale-id",
+        MetadataTrackId = "before-stale-id",
+    };
+    var confirmed = PlayingSnapshot("Replacement committed") with
+    {
+        TrackId = "replacement-id",
+        MetadataTrackId = "replacement-id",
+        PositionSeconds = 3,
+    };
+    var staleFailureGate = NewSnapshotGate();
+    var replacementUnconfirmed = NewSnapshotGate();
+    var replacementConfirmed = NewSnapshotGate();
+    var fake = new FakeClient { Snapshot = initial, HasCredential = true };
+    fake.SnapshotAsync = (call, _) => call switch
+    {
+        1 => Task.FromResult(initial),
+        2 => staleFailureGate.Task, // Deliberately ignores cancellation.
+        3 => replacementUnconfirmed.Task,
+        _ => replacementConfirmed.Task,
+    };
+    var policy = FastUpdatePolicy() with
+    {
+        ProgressInterval = TimeSpan.FromSeconds(5),
+        PollInterval = TimeSpan.FromSeconds(30),
+    };
+    var widget = new YtMusicWidget(fake, policy);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "next", "next", ControllerButton.RightBumper));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "next", "next", ControllerButton.RightBumper));
+
+    staleFailureGate.SetException(staleFailure);
+    await WaitUntil(() => fake.SnapshotCalls >= 3);
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    Assert.Equal("Next track…", Find(
+        widget.Render().CreateSnapshot("ytmusic.stale-failure", 1).Root,
+        "connection-status").Text);
+
+    replacementUnconfirmed.SetResult(initial);
+    await WaitUntil(() => fake.SnapshotCalls >= 4);
+    AssertBetween(0, 1.5, ProgressValue(widget, 2),
+        "The stale failure cleared the replacement's optimistic pending state.");
+    Assert.Equal("Next track…", Find(
+        widget.Render().CreateSnapshot("ytmusic.stale-failure", 3).Root,
+        "connection-status").Text);
+
+    replacementConfirmed.SetResult(confirmed);
+    await WaitUntil(() => "Replacement committed" == Find(
+        widget.Render().CreateSnapshot("ytmusic.stale-failure", 4).Root,
+        "track-title").Text);
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    Assert.Equal("Playing through YTMDesktop2", Find(
+        widget.Render().CreateSnapshot("ytmusic.stale-failure", 5).Root,
+        "connection-status").Text);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static async Task LifecycleStaleAuthorizationCannotCommit()
+{
+    var initial = PlayingSnapshot("Lifecycle stale authorization");
+    var staleFailureGate = NewSnapshotGate();
+    var cancellationObserved = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeClient { Snapshot = initial, HasCredential = true };
+    fake.SnapshotAsync = (call, token) =>
+    {
+        if (call == 1) return Task.FromResult(initial);
+        token.Register(() => cancellationObserved.TrySetResult());
+        return staleFailureGate.Task; // Deliberately ignores cancellation.
+    };
+    var policy = FastUpdatePolicy() with
+    {
+        ProgressInterval = TimeSpan.FromSeconds(5),
+        PollInterval = TimeSpan.FromSeconds(30),
+    };
+    var widget = new YtMusicWidget(fake, policy);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "next", "next", ControllerButton.RightBumper));
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+
+    var backgrounding = widget.SetLifecycleStateAsync(
+        WidgetLifecycleState.Background, CancellationToken.None).AsTask();
+    await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    staleFailureGate.SetException(
+        new YtMusicAuthorizationRequiredException());
+    await backgrounding.WaitAsync(TimeSpan.FromSeconds(1));
+
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    Assert.Equal("Next track…", Find(
+        widget.Render().CreateSnapshot("ytmusic.lifecycle-stale", 1).Root,
+        "connection-status").Text);
+}
+
+static async Task<YtMusicPlaybackSnapshot> ObserveSnapshotCancellationAsync(
+    CancellationToken cancellationToken,
+    TaskCompletionSource cancellationObserved)
+{
+    try
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        throw new InvalidOperationException("The lifecycle-owned refresh unexpectedly completed.");
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        cancellationObserved.TrySetResult();
+        throw;
+    }
 }
 
 static async Task PlaybackReconciliationRejectsStaleState()
@@ -1224,6 +1395,7 @@ static async Task PlaybackReconciliationRejectsStaleState()
     };
     var widget = new YtMusicWidget(fake, FastUpdatePolicy());
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
 
     await widget.OnActionAsync(new WidgetActionEvent(
         "toggle-playback", "play-pause", ControllerButton.X));
@@ -1240,6 +1412,7 @@ static async Task PlaybackReconciliationRejectsStaleState()
         "connection-status").Text == "Connected to YTMDesktop2");
     await Task.Delay(100);
     Assert.Equal(3, fake.SnapshotCalls);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
 }
 
 static TaskCompletionSource<YtMusicPlaybackSnapshot> NewSnapshotGate() =>
@@ -1492,6 +1665,7 @@ static Task PackageAssetsAreValid()
     Assert.True(manifest.OptionalPermissions.Contains("storage.private-secrets.v1"),
         "Private-secret permission is missing.");
     Assert.Equal(WidgetGlyph.Music, manifest.Presentation.Icon);
+    Assert.Equal(YtmDesktopApiClient.PackageVersion, manifest.Version);
 
     var stylesRoot = Path.Combine(AppContext.BaseDirectory, "styles");
     var styles = GbssPackageLoader.Load(
