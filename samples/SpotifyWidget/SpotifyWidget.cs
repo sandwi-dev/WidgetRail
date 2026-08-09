@@ -72,15 +72,12 @@ public sealed class SpotifyWidget : Widget
     private WidgetSpotifyPlaybackSummary? _playback;
     private SpotifyDestination _destination;
     private WidgetSpotifyQueueSummary? _queue;
-    private WidgetSpotifyPlaylistPageSummary? _playlists;
-    private WidgetSpotifyPlaylistItemsSummary? _playlistDetail;
-    private readonly Dictionary<int, WidgetSpotifyPlaylistPageSummary> _playlistPages = [];
-    private readonly Dictionary<int, WidgetSpotifyPlaylistItemsSummary> _playlistItemPages = [];
+    private readonly WidgetPagedResource<WidgetSpotifyPlaylistSummary> _playlists;
+    private readonly WidgetPagedResource<WidgetSpotifyMediaItemSummary> _playlistItems;
     private WidgetSpotifyDevicesSummary? _devices;
     private WidgetSpotifyLocalPlaybackSummary? _localPlayback;
     private string? _preferredPlaybackDeviceId;
     private DateTimeOffset? _queueCachedAt;
-    private DateTimeOffset? _playlistsCachedAt;
     private DateTimeOffset? _devicesCachedAt;
     private bool _pageLoading;
     private string? _pageError;
@@ -100,8 +97,55 @@ public sealed class SpotifyWidget : Widget
     private readonly object _authorizationGate = new();
     private Task? _authorizationTask;
 
-    public SpotifyWidget(TimeProvider? timeProvider = null) =>
+    public SpotifyWidget(TimeProvider? timeProvider = null)
+    {
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _playlists = CreatePagedResource<WidgetSpotifyPlaylistSummary>(
+            "spotify.playlists", new()
+        {
+            PageSize = CollectionPageSize,
+            MaximumCachedPages = MaximumCachedCollectionPages,
+            MaximumCachedItems = CollectionPageSize * MaximumCachedCollectionPages,
+            CacheDuration = PlaylistCacheLifetime,
+            TimeProvider = _timeProvider,
+            LoadPage = async (offset, limit, token) =>
+            {
+                var page = await HostServices.Spotify.GetPlaylistsAsync(offset, limit, token)
+                    .ConfigureAwait(false);
+                return new(page.Items, page.Offset, page.Limit, page.Total);
+            },
+            MapError = SpotifyResourceError,
+            Viewports =
+            [
+                new("spotify.playlists.scroll.wide",
+                    (_, index) => $"spotify.playlist.item.wide.{index}",
+                    "spotify.page.sparse.playlist.wide"),
+                new("spotify.playlists.scroll.compact",
+                    (_, index) => $"spotify.playlist.item.compact.{index}",
+                    "spotify.page.sparse.playlist.compact"),
+            ],
+        });
+        _playlistItems = CreatePagedResource<WidgetSpotifyMediaItemSummary>(
+            "spotify.playlist.items", new()
+        {
+            PageSize = CollectionPageSize,
+            MaximumCachedPages = MaximumCachedCollectionPages,
+            MaximumCachedItems = CollectionPageSize * MaximumCachedCollectionPages,
+            CacheDuration = PlaylistCacheLifetime,
+            TimeProvider = _timeProvider,
+            LoadPage = LoadSelectedPlaylistPageAsync,
+            MapError = SpotifyResourceError,
+            Viewports =
+            [
+                new("spotify.playlist.detail.scroll.wide",
+                    (_, index) => $"spotify.playlist.track.wide.{index}",
+                    "spotify.playlist.play.wide"),
+                new("spotify.playlist.detail.scroll.compact",
+                    (_, index) => $"spotify.playlist.track.compact.{index}",
+                    "spotify.playlist.play.compact"),
+            ],
+        });
+    }
 
     public SpotifyWidgetViewState ViewState { get { lock (_gate) return _viewState; } }
     public string Status { get { lock (_gate) return _status; } }
@@ -117,8 +161,7 @@ public sealed class SpotifyWidget : Widget
         bool showSetup;
         SpotifyDestination destination;
         WidgetSpotifyQueueSummary? queue;
-        WidgetSpotifyPlaylistPageSummary? playlists;
-        WidgetSpotifyPlaylistItemsSummary? playlistDetail;
+        WidgetSpotifyPlaylistSummary? selectedPlaylist;
         WidgetSpotifyDevicesSummary? devices;
         WidgetSpotifyLocalPlaybackSummary? localPlayback;
         bool pageLoading;
@@ -133,14 +176,15 @@ public sealed class SpotifyWidget : Widget
             showSetup = _showSetup;
             destination = _destination;
             queue = _queue;
-            playlists = _playlists;
-            playlistDetail = _playlistDetail;
+            selectedPlaylist = _selectedPlaylist;
             devices = _devices;
             localPlayback = _localPlayback;
             pageLoading = _pageLoading;
             pageError = _pageError;
             readyInitialFocusId = _readyInitialFocusId;
         }
+        var playlists = _playlists.Snapshot;
+        var playlistItems = _playlistItems.Snapshot;
 
         if (showSetup)
             return RenderSetup(status, Volatile.Read(ref _setupViewGeneration));
@@ -159,11 +203,12 @@ public sealed class SpotifyWidget : Widget
                 "The provider returned an unexpected error. Retry without leaving the overlay."),
             SpotifyWidgetViewState.Ready when playback is { IsAvailable: true, Item: not null } =>
                 RenderConnected(header, playback, pending, destination, queue, playlists,
-                    playlistDetail, devices, localPlayback, pageLoading, pageError,
-                    readyInitialFocusId),
+                    playlistItems, selectedPlaylist, devices, localPlayback, pageLoading,
+                    pageError, readyInitialFocusId, _playlists, _playlistItems),
             SpotifyWidgetViewState.Ready => RenderConnected(header, playback, pending,
-                destination, queue, playlists, playlistDetail, devices, localPlayback,
-                pageLoading, pageError, readyInitialFocusId),
+                destination, queue, playlists, playlistItems, selectedPlaylist, devices,
+                localPlayback, pageLoading, pageError, readyInitialFocusId,
+                _playlists, _playlistItems),
             _ => RenderLoading(header),
         };
     }
@@ -298,16 +343,19 @@ public sealed class SpotifyWidget : Widget
                 break;
             case "spotify.playlist.back":
                 CancelPageOperation();
+                _playlists.ClearRequestedFocus(invalidate: false);
                 lock (_gate)
                 {
-                    _playlistDetail = null;
                     _selectedPlaylist = null;
                     _selectedPlaylistMode = null;
                     _pageLoading = false;
                     _pageError = null;
                     _readyInitialFocusId = _playlistReturnFocusId;
                 }
+                _playlistItems.Reset(invalidate: false);
                 Invalidate();
+                break;
+            case "spotify.page.noop":
                 break;
             case "spotify.local.start":
                 StartCommandOperation(token => ControlLocalPlaybackAsync(
@@ -355,6 +403,9 @@ public sealed class SpotifyWidget : Widget
 
     private bool TryHandlePageAction(WidgetActionEvent action)
     {
+        if (_playlists.TryHandlePagination(action, out _) ||
+            _playlistItems.TryHandlePagination(action, out _))
+            return true;
         switch (action.ActionId)
         {
             case "spotify.nav.queue":
@@ -362,51 +413,37 @@ public sealed class SpotifyWidget : Widget
                     SpotifyDestination.Queue, action.SourceElementId, operation));
                 return true;
             case "spotify.nav.playlists":
-                StartPageOperation(operation => NavigateAndLoadAsync(
-                    SpotifyDestination.Playlists, action.SourceElementId, operation));
+                Navigate(SpotifyDestination.Playlists, action.SourceElementId);
+                _playlists.EnsureLoaded();
                 return true;
             case "spotify.nav.devices":
                 StartPageOperation(operation => NavigateAndLoadAsync(
                     SpotifyDestination.Devices, action.SourceElementId, operation));
                 return true;
             case "spotify.page.retry":
+                WidgetSpotifyPlaylistSummary? selected;
                 lock (_gate)
                 {
-                    if (_selectedPlaylist is null)
+                    selected = _selectedPlaylist;
+                    if (selected is null)
                     {
                         var mode = action.SourceElementId.Contains(".compact.",
                             StringComparison.Ordinal) ? "compact" : "wide";
                         _readyInitialFocusId = NavId(_destination, mode);
                     }
                 }
-                StartPageOperation(ReloadCurrentPageAsync);
-                return true;
-            case "spotify.playlists.previous":
-                StartPageOperation(operation => LoadPlaylistPageAsync(
-                    -1, ModeFromSource(action.SourceElementId), operation),
-                    replaceRunning: false);
-                return true;
-            case "spotify.playlists.more":
-                StartPageOperation(operation => LoadPlaylistPageAsync(
-                    1, ModeFromSource(action.SourceElementId), operation),
-                    replaceRunning: false);
-                return true;
-            case "spotify.playlist.previous":
-                StartPageOperation(operation => LoadPlaylistItemsPageAsync(
-                    -1, ModeFromSource(action.SourceElementId), operation),
-                    replaceRunning: false);
-                return true;
-            case "spotify.playlist.more":
-                StartPageOperation(operation => LoadPlaylistItemsPageAsync(
-                    1, ModeFromSource(action.SourceElementId), operation),
-                    replaceRunning: false);
+                if (selected is not null)
+                    _playlistItems.Retry();
+                else if (Destination == SpotifyDestination.Playlists)
+                    _playlists.Retry();
+                else
+                    StartPageOperation(ReloadCurrentPageAsync);
                 return true;
         }
         if (!TryParseIndexedAction(action.ActionId, "spotify.playlist.open.",
                 out var playlistIndex))
             return false;
-        StartPageOperation(operation => OpenPlaylistAsync(
-            playlistIndex, action.SourceElementId, operation));
+        OpenPlaylist(playlistIndex, action.SourceElementId);
         return true;
     }
 
@@ -605,7 +642,7 @@ public sealed class SpotifyWidget : Widget
                 .ConfigureAwait(false);
             if (!configuration.IsConfigured)
             {
-                lock (_gate) ClearPageCachesLocked();
+                ClearPageCaches();
                 SetState(generation, SpotifyWidgetViewState.Unconfigured,
                     "Add your Spotify developer Client ID to continue", null);
                 return;
@@ -622,7 +659,7 @@ public sealed class SpotifyWidget : Widget
                     return;
                 case WidgetSpotifyAuthorizationState.Disconnected:
                 case WidgetSpotifyAuthorizationState.ReauthorizationRequired:
-                    lock (_gate) ClearPageCachesLocked();
+                    ClearPageCaches();
                     SetState(generation, SpotifyWidgetViewState.Disconnected,
                         authorization.DisplayMessage ?? (authorization.State ==
                             WidgetSpotifyAuthorizationState.ReauthorizationRequired
@@ -686,7 +723,7 @@ public sealed class SpotifyWidget : Widget
                     authorization.DisplayMessage ?? "Spotify connection was not completed", null);
                 return;
             }
-            lock (_gate) ClearPageCachesLocked();
+            ClearPageCaches();
             if (IsActive)
             {
                 await RefreshAsync(cancellationToken).ConfigureAwait(false);
@@ -724,7 +761,7 @@ public sealed class SpotifyWidget : Widget
         try
         {
             await HostServices.Spotify.DisconnectAsync(cancellationToken).ConfigureAwait(false);
-            lock (_gate) ClearPageCachesLocked();
+            ClearPageCaches();
             SetState(Volatile.Read(ref _activeGeneration), SpotifyWidgetViewState.Disconnected,
                 "Disconnected from Spotify", null);
         }
@@ -736,16 +773,17 @@ public sealed class SpotifyWidget : Widget
 
     private void Navigate(SpotifyDestination destination, string sourceElementId)
     {
+        _playlists.ClearRequestedFocus(invalidate: false);
         lock (_gate)
         {
             _destination = destination;
-            _playlistDetail = null;
             _selectedPlaylist = null;
             _selectedPlaylistMode = null;
             _pageError = null;
             _pageLoading = false;
             _readyInitialFocusId = sourceElementId;
         }
+        _playlistItems.Reset(invalidate: false);
         Invalidate();
     }
 
@@ -754,11 +792,11 @@ public sealed class SpotifyWidget : Widget
         string sourceElementId,
         WidgetOperationContext operation)
     {
+        _playlists.ClearRequestedFocus(invalidate: false);
         var shouldLoad = false;
         lock (_gate)
         {
             _destination = destination;
-            _playlistDetail = null;
             _selectedPlaylist = null;
             _selectedPlaylistMode = null;
             _pageError = null;
@@ -767,14 +805,13 @@ public sealed class SpotifyWidget : Widget
             {
                 SpotifyDestination.Queue => _queue is null ||
                     !IsFresh(_queueCachedAt, QueueCacheLifetime),
-                SpotifyDestination.Playlists => _playlists is null ||
-                    !IsFresh(_playlistsCachedAt, PlaylistCacheLifetime),
                 SpotifyDestination.Devices => _devices is null || _localPlayback is null ||
                     !IsFresh(_devicesCachedAt, DevicesCacheLifetime),
                 _ => false,
             };
             _pageLoading = shouldLoad;
         }
+        _playlistItems.Reset(invalidate: false);
         Invalidate();
         if (shouldLoad) await LoadDestinationAsync(destination, operation)
             .ConfigureAwait(false);
@@ -783,20 +820,14 @@ public sealed class SpotifyWidget : Widget
     private Task ReloadCurrentPageAsync(WidgetOperationContext operation)
     {
         SpotifyDestination destination;
-        WidgetSpotifyPlaylistSummary? selectedPlaylist;
-        string selectedMode;
         lock (_gate)
         {
             destination = _destination;
-            selectedPlaylist = _selectedPlaylist;
-            selectedMode = _selectedPlaylistMode ?? "wide";
             _pageLoading = true;
             _pageError = null;
         }
         Invalidate();
-        return destination == SpotifyDestination.Playlists && selectedPlaylist is not null
-            ? LoadPlaylistDetailAsync(selectedPlaylist, selectedMode, operation)
-            : LoadDestinationAsync(destination, operation);
+        return LoadDestinationAsync(destination, operation);
     }
 
     private async Task LoadDestinationAsync(
@@ -816,19 +847,6 @@ public sealed class SpotifyWidget : Widget
                     {
                         _queue = queue;
                         _queueCachedAt = _timeProvider.GetUtcNow();
-                    }
-                    break;
-                case SpotifyDestination.Playlists:
-                    var playlists = await HostServices.Spotify.GetPlaylistsAsync(
-                        0, CollectionPageSize, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (!operation.IsCurrent) return;
-                    lock (_gate)
-                    {
-                        _playlists = playlists;
-                        _playlistPages.Clear();
-                        CachePage(_playlistPages, playlists.Offset, playlists);
-                        _playlistsCachedAt = _timeProvider.GetUtcNow();
                     }
                     break;
                 case SpotifyDestination.Devices:
@@ -885,225 +903,40 @@ public sealed class SpotifyWidget : Widget
         if (operation.IsCurrent) Invalidate();
     }
 
-    private async Task OpenPlaylistAsync(
-        int index,
-        string sourceElementId,
-        WidgetOperationContext operation)
+    private void OpenPlaylist(int absoluteIndex, string sourceElementId)
     {
-        WidgetSpotifyPlaylistSummary? playlist;
+        if (!_playlists.TryGetCurrentItem(absoluteIndex, out var playlist)) return;
         var mode = sourceElementId.Contains(".compact.", StringComparison.Ordinal)
             ? "compact" : "wide";
         lock (_gate)
         {
-            playlist = ItemAt(_playlists?.Items, index);
-            if (playlist is null) return;
-            _playlistItemPages.Clear();
-            _pageLoading = true;
             _pageError = null;
             _playlistReturnFocusId = sourceElementId;
             _selectedPlaylist = playlist;
             _selectedPlaylistMode = mode;
-            _readyInitialFocusId = sourceElementId;
+            _readyInitialFocusId = $"spotify.playlist.play.{mode}";
         }
-        Invalidate();
-        await LoadPlaylistDetailAsync(playlist, mode, operation)
-            .ConfigureAwait(false);
+        _playlistItems.Reset(invalidate: false);
+        _playlistItems.EnsureLoaded();
     }
 
-    private async Task LoadPlaylistDetailAsync(
-        WidgetSpotifyPlaylistSummary playlist,
-        string mode,
-        WidgetOperationContext operation)
+    private async ValueTask<WidgetPage<WidgetSpotifyMediaItemSummary>>
+        LoadSelectedPlaylistPageAsync(
+            int offset,
+            int limit,
+            CancellationToken cancellationToken)
     {
-        var cancellationToken = operation.CancellationToken;
-        try
-        {
-            var detail = await HostServices.Spotify.GetPlaylistItemsAsync(
-                playlist.PlaylistId, 0, CollectionPageSize,
-                cancellationToken).ConfigureAwait(false);
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _playlistDetail = detail;
-                _playlistItemPages.Clear();
-                CachePage(_playlistItemPages, detail.Offset, detail);
-                _pageLoading = false;
-                _pageError = null;
-                _readyInitialFocusId = $"spotify.playlist.play.{mode}";
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (Exception exception)
-        {
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _playlistDetail = null;
-                _pageLoading = false;
-                _pageError = exception is WidgetCapabilityException capability
-                    ? PageError(capability)
-                    : "Spotify could not load this playlist. Try again.";
-                _readyInitialFocusId = $"spotify.page.error.{mode}.action";
-            }
-        }
-        if (operation.IsCurrent) Invalidate();
-    }
-
-    private async Task LoadPlaylistPageAsync(
-        int direction,
-        string mode,
-        WidgetOperationContext operation)
-    {
-        var cancellationToken = operation.CancellationToken;
-        WidgetSpotifyPlaylistPageSummary? before;
-        WidgetSpotifyPlaylistPageSummary? cached = null;
-        int targetOffset;
-        lock (_gate)
-        {
-            before = _playlists;
-            if (before is null || _pageLoading) return;
-            targetOffset = direction > 0
-                ? before.Offset + Math.Max(1, before.Limit)
-                : Math.Max(0, before.Offset - CollectionPageSize);
-            if (targetOffset == before.Offset || targetOffset >= before.Total) return;
-            if (_playlistPages.TryGetValue(targetOffset, out cached))
-            {
-                _playlists = cached;
-                _readyInitialFocusId = PlaylistFocusId(cached, mode, direction);
-                _pageError = null;
-            }
-            else
-            {
-                _pageLoading = true;
-            }
-        }
-        Invalidate();
-        if (cached is not null) return;
-        try
-        {
-            var next = await HostServices.Spotify.GetPlaylistsAsync(targetOffset,
-                CollectionPageSize, cancellationToken)
-                .ConfigureAwait(false);
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _playlists = next;
-                CachePage(_playlistPages, next.Offset, next);
-                _playlistsCachedAt = _timeProvider.GetUtcNow();
-                _pageLoading = false;
-                _pageError = null;
-                _readyInitialFocusId = PlaylistFocusId(next, mode, direction);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (Exception exception)
-        {
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _pageLoading = false;
-                _pageError = exception is WidgetCapabilityException capability
-                    ? PageError(capability)
-                    : "Spotify could not load that playlist page.";
-            }
-        }
-        if (operation.IsCurrent) Invalidate();
-    }
-
-    private async Task LoadPlaylistItemsPageAsync(
-        int direction,
-        string mode,
-        WidgetOperationContext operation)
-    {
-        var cancellationToken = operation.CancellationToken;
-        WidgetSpotifyPlaylistItemsSummary? before;
-        WidgetSpotifyPlaylistItemsSummary? cached = null;
-        int targetOffset;
-        lock (_gate)
-        {
-            before = _playlistDetail;
-            if (before is null || _pageLoading) return;
-            targetOffset = direction > 0
-                ? before.Offset + Math.Max(1, before.Limit)
-                : Math.Max(0, before.Offset - CollectionPageSize);
-            if (targetOffset == before.Offset || targetOffset >= before.Total) return;
-            if (_playlistItemPages.TryGetValue(targetOffset, out cached))
-            {
-                _playlistDetail = cached;
-                _readyInitialFocusId = PlaylistTrackFocusId(cached, mode, direction);
-                _pageError = null;
-            }
-            else
-            {
-                _pageLoading = true;
-            }
-        }
-        Invalidate();
-        if (cached is not null) return;
-        try
-        {
-            var next = await HostServices.Spotify.GetPlaylistItemsAsync(
-                before.Playlist.PlaylistId, targetOffset,
-                CollectionPageSize, cancellationToken)
-                .ConfigureAwait(false);
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _playlistDetail = next;
-                CachePage(_playlistItemPages, next.Offset, next);
-                _pageLoading = false;
-                _pageError = null;
-                _readyInitialFocusId = PlaylistTrackFocusId(next, mode, direction);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (Exception exception)
-        {
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _pageLoading = false;
-                _pageError = exception is WidgetCapabilityException capability
-                    ? PageError(capability)
-                    : "Spotify could not load that playlist page.";
-            }
-        }
-        if (operation.IsCurrent) Invalidate();
+        WidgetSpotifyPlaylistSummary? playlist;
+        lock (_gate) playlist = _selectedPlaylist;
+        if (playlist is null)
+            throw new InvalidOperationException("No Spotify playlist is selected.");
+        var page = await HostServices.Spotify.GetPlaylistItemsAsync(
+            playlist.PlaylistId, offset, limit, cancellationToken).ConfigureAwait(false);
+        return new(page.Items, page.Offset, page.Limit, page.Total);
     }
 
     private bool IsFresh(DateTimeOffset? cachedAt, TimeSpan lifetime) =>
         cachedAt is { } value && _timeProvider.GetUtcNow() - value < lifetime;
-
-    private static string ModeFromSource(string sourceElementId) =>
-        sourceElementId.Contains(".compact.", StringComparison.Ordinal) ||
-        sourceElementId.EndsWith(".compact", StringComparison.Ordinal)
-            ? "compact"
-            : "wide";
-
-    private static string PlaylistFocusId(
-        WidgetSpotifyPlaylistPageSummary page,
-        string mode,
-        int direction)
-    {
-        var localIndex = direction > 0 ? 0 : Math.Max(0, page.Items.Count - 1);
-        return $"spotify.playlist.item.{mode}.{page.Offset + localIndex}";
-    }
-
-    private static string PlaylistTrackFocusId(
-        WidgetSpotifyPlaylistItemsSummary page,
-        string mode,
-        int direction)
-    {
-        var localIndex = direction > 0 ? 0 : Math.Max(0, page.Items.Count - 1);
-        return $"spotify.playlist.track.{mode}.{page.Offset + localIndex}";
-    }
-
-    private static void CachePage<T>(Dictionary<int, T> cache, int offset, T page)
-    {
-        cache[offset] = page;
-        while (cache.Count > MaximumCachedCollectionPages)
-            cache.Remove(cache.Keys.First());
-    }
 
     private async Task SelectDeviceAsync(int index, CancellationToken cancellationToken)
     {
@@ -1200,21 +1033,24 @@ public sealed class SpotifyWidget : Widget
 
     private async Task PlayPlaylistAsync(CancellationToken cancellationToken)
     {
-        WidgetSpotifyPlaylistItemsSummary? detail;
-        lock (_gate) detail = _playlistDetail;
-        if (detail is null) return;
-        await StartPlaybackAsync(new(detail.Playlist.Uri, null,
+        WidgetSpotifyPlaylistSummary? playlist;
+        lock (_gate) playlist = _selectedPlaylist;
+        if (playlist is null) return;
+        await StartPlaybackAsync(new(playlist.Uri, null,
                 DeviceId: PlaybackDeviceId()),
-            $"Playing {detail.Playlist.Name}", cancellationToken).ConfigureAwait(false);
+            $"Playing {playlist.Name}", cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task PlayPlaylistTrackAsync(int index, CancellationToken cancellationToken)
+    private async Task PlayPlaylistTrackAsync(
+        int absoluteIndex,
+        CancellationToken cancellationToken)
     {
-        WidgetSpotifyPlaylistItemsSummary? detail;
-        lock (_gate) detail = _playlistDetail;
-        var item = ItemAt(detail?.Items, index);
-        if (detail is null || item is null || !item.IsPlayable) return;
-        await StartPlaybackAsync(new(detail.Playlist.Uri, null,
+        WidgetSpotifyPlaylistSummary? playlist;
+        lock (_gate) playlist = _selectedPlaylist;
+        if (playlist is null ||
+            !_playlistItems.TryGetCurrentItem(absoluteIndex, out var item) ||
+            !item.IsPlayable) return;
+        await StartPlaybackAsync(new(playlist.Uri, null,
                 DeviceId: PlaybackDeviceId(), OffsetUri: item.Uri),
             $"Playing {item.Title}", cancellationToken).ConfigureAwait(false);
     }
@@ -1277,6 +1113,12 @@ public sealed class SpotifyWidget : Widget
             "Spotify Premium is required for playback and device transfer.",
         _ => SafeMessage(exception, "Spotify could not load this page. Try again."),
     };
+
+    private static WidgetResourceError SpotifyResourceError(Exception exception) => new(
+        "spotify_page_error",
+        exception is WidgetCapabilityException capability
+            ? PageError(capability)
+            : "Spotify could not load this page. Try again.");
 
     private async Task ExecuteAsync(
         WidgetSpotifyPlaybackOperation operation,
@@ -1344,24 +1186,24 @@ public sealed class SpotifyWidget : Widget
         Invalidate();
     }
 
-    private void ClearPageCachesLocked()
+    private void ClearPageCaches()
     {
-        _queue = null;
-        _playlists = null;
-        _playlistDetail = null;
-        _playlistPages.Clear();
-        _playlistItemPages.Clear();
-        _devices = null;
-        _localPlayback = null;
-        _queueCachedAt = null;
-        _playlistsCachedAt = null;
-        _devicesCachedAt = null;
-        _preferredPlaybackDeviceId = null;
-        _selectedPlaylist = null;
-        _selectedPlaylistMode = null;
-        _playlistReturnFocusId = null;
-        _pageLoading = false;
-        _pageError = null;
+        lock (_gate)
+        {
+            _queue = null;
+            _devices = null;
+            _localPlayback = null;
+            _queueCachedAt = null;
+            _devicesCachedAt = null;
+            _preferredPlaybackDeviceId = null;
+            _selectedPlaylist = null;
+            _selectedPlaylistMode = null;
+            _playlistReturnFocusId = null;
+            _pageLoading = false;
+            _pageError = null;
+        }
+        _playlists.Reset(invalidate: false);
+        _playlistItems.Reset(invalidate: false);
     }
 
     private WidgetSpotifyPlaybackOperation ResolveToggleOperation()
@@ -1635,21 +1477,25 @@ public sealed class SpotifyWidget : Widget
         WidgetSpotifyPlaybackOperation? pending,
         SpotifyDestination destination,
         WidgetSpotifyQueueSummary? queue,
-        WidgetSpotifyPlaylistPageSummary? playlists,
-        WidgetSpotifyPlaylistItemsSummary? playlistDetail,
+        WidgetPagedResourceSnapshot<WidgetSpotifyPlaylistSummary> playlists,
+        WidgetPagedResourceSnapshot<WidgetSpotifyMediaItemSummary> playlistItems,
+        WidgetSpotifyPlaylistSummary? selectedPlaylist,
         WidgetSpotifyDevicesSummary? devices,
         WidgetSpotifyLocalPlaybackSummary? localPlayback,
         bool pageLoading,
         string? pageError,
-        string? initialFocusId)
+        string? initialFocusId,
+        WidgetPagedResource<WidgetSpotifyPlaylistSummary> playlistResource,
+        WidgetPagedResource<WidgetSpotifyMediaItemSummary> playlistItemsResource)
     {
         var wide = UI.Row("spotify.shell.wide",
                 NavigationRail(destination, "wide"),
                 UI.Stack("spotify.player.wide", PlayerPanel(playback, pending, "wide"))
                     .Classes("spotify-player-pane"),
                 UI.Stack("spotify.context.wide",
-                        DestinationPage(destination, queue, playlists, playlistDetail, devices,
-                            localPlayback, pageLoading, pageError, "wide"))
+                        DestinationPage(destination, queue, playlists, playlistItems,
+                            selectedPlaylist, devices, localPlayback, pageLoading, pageError,
+                            "wide", playlistResource, playlistItemsResource))
                     .Classes("spotify-context-pane"))
             .Classes("spotify-shell", "spotify-shell-wide")
             .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
@@ -1660,8 +1506,9 @@ public sealed class SpotifyWidget : Widget
                             ? UI.VerticalScroll("spotify.player.compact.scroll",
                                     PlayerPanel(playback, pending, "compact"))
                                 .Classes("spotify-compact-player-scroll")
-                            : DestinationPage(destination, queue, playlists, playlistDetail,
-                                devices, localPlayback, pageLoading, pageError, "compact"))
+                            : DestinationPage(destination, queue, playlists, playlistItems,
+                                selectedPlaylist, devices, localPlayback, pageLoading, pageError,
+                                "compact", playlistResource, playlistItemsResource))
                     .Classes("spotify-compact-pane"))
             .Classes("spotify-shell", "spotify-shell-compact")
             .VisibleWhen(ResponsiveVisibility.CompactOnly);
@@ -1669,7 +1516,7 @@ public sealed class SpotifyWidget : Widget
         var root = UI.Stack("spotify.root", header, wide, compact)
             .InputScope(InputScope)
             .Classes("spotify-widget", "is-ready");
-        if (playlistDetail is not null && destination == SpotifyDestination.Playlists)
+        if (selectedPlaylist is not null && destination == SpotifyDestination.Playlists)
             root = root.Shortcut(ControllerButton.B, "spotify.playlist.back");
         if (playback is { IsAvailable: true })
         {
@@ -1698,10 +1545,25 @@ public sealed class SpotifyWidget : Widget
                 quickActions.Add(new(ControllerButton.RightBumper, "spotify.next",
                     "Next track", PlaybackControlAuthority));
         }
-        var resolvedInitialFocus = initialFocusId == "spotify.play-toggle" &&
+        var requestedPageFocus = destination == SpotifyDestination.Playlists
+            ? selectedPlaylist is null
+                ? playlists.RequestedFocusId
+                : playlistItems.RequestedFocusId
+            : null;
+        var requestedInitialFocus = requestedPageFocus ?? initialFocusId;
+        if (destination == SpotifyDestination.Playlists && selectedPlaylist is not null &&
+            playlistItems.Page is null)
+        {
+            var mode = initialFocusId?.Contains(".compact", StringComparison.Ordinal) == true
+                ? "compact" : "wide";
+            requestedInitialFocus = playlistItems.Error is null
+                ? NavId(SpotifyDestination.Playlists, mode)
+                : $"spotify.page.error.{mode}.action";
+        }
+        var resolvedInitialFocus = requestedInitialFocus == "spotify.play-toggle" &&
             playback is not { IsAvailable: true, Item: not null }
                 ? "spotify.player.empty.wide.action"
-                : initialFocusId;
+                : requestedInitialFocus;
         return new WidgetView(root, resolvedInitialFocus, quickActions,
             ActiveInputScopeId: InputScope, Surface: StandardSurface);
     }
@@ -1842,18 +1704,22 @@ public sealed class SpotifyWidget : Widget
     private static WidgetElement DestinationPage(
         SpotifyDestination destination,
         WidgetSpotifyQueueSummary? queue,
-        WidgetSpotifyPlaylistPageSummary? playlists,
-        WidgetSpotifyPlaylistItemsSummary? playlistDetail,
+        WidgetPagedResourceSnapshot<WidgetSpotifyPlaylistSummary> playlists,
+        WidgetPagedResourceSnapshot<WidgetSpotifyMediaItemSummary> playlistItems,
+        WidgetSpotifyPlaylistSummary? selectedPlaylist,
         WidgetSpotifyDevicesSummary? devices,
         WidgetSpotifyLocalPlaybackSummary? localPlayback,
         bool loading,
         string? error,
-        string mode) => destination switch
+        string mode,
+        WidgetPagedResource<WidgetSpotifyPlaylistSummary> playlistResource,
+        WidgetPagedResource<WidgetSpotifyMediaItemSummary> playlistItemsResource) =>
+        destination switch
         {
             SpotifyDestination.Player => PlayerOverview(mode),
             SpotifyDestination.Queue => QueuePage(queue, loading, error, mode),
-            SpotifyDestination.Playlists => PlaylistsPage(playlists, playlistDetail,
-                loading, error, mode),
+            SpotifyDestination.Playlists => PlaylistsPage(playlists, playlistItems,
+                selectedPlaylist, mode, playlistResource, playlistItemsResource),
             SpotifyDestination.Devices => DevicesPage(devices, localPlayback,
                 loading, error, mode),
             _ => PlayerOverview(mode),
@@ -1894,77 +1760,105 @@ public sealed class SpotifyWidget : Widget
     }
 
     private static WidgetElement PlaylistsPage(
-        WidgetSpotifyPlaylistPageSummary? playlists,
-        WidgetSpotifyPlaylistItemsSummary? detail,
-        bool loading,
-        string? error,
-        string mode)
+        WidgetPagedResourceSnapshot<WidgetSpotifyPlaylistSummary> playlists,
+        WidgetPagedResourceSnapshot<WidgetSpotifyMediaItemSummary> playlistItems,
+        WidgetSpotifyPlaylistSummary? selectedPlaylist,
+        string mode,
+        WidgetPagedResource<WidgetSpotifyPlaylistSummary> playlistResource,
+        WidgetPagedResource<WidgetSpotifyMediaItemSummary> playlistItemsResource)
     {
-        if (loading && detail is null && playlists is null)
+        if (selectedPlaylist is not null)
+            return PlaylistDetail(selectedPlaylist, playlistItems, mode,
+                playlistItemsResource);
+        if (playlists.Status == WidgetPagedResourceStatus.Loading && playlists.Page is null)
             return LoadingPage("Loading playlists", mode);
-        if (error is not null) return PageFailure("Playlists unavailable", error, mode);
-        if (detail is not null) return PlaylistDetail(detail, loading, mode);
-        if (playlists is null || playlists.Items.Count == 0)
+        if (playlists.Error is { } playlistError && playlists.Page is null)
+            return PageFailure("Playlists unavailable", playlistError.Message, mode);
+        var page = playlists.Page;
+        if (page is null || page.Items.Count == 0 && page.Total == 0)
             return UI.EmptyState("No playlists", "Your Spotify library has no playlists.",
                 $"spotify.playlists.empty.{mode}",
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Music).Classes("spotify-page");
-        var rows = playlists.Items.Select((playlist, index) => UI.MediaTile(
-                playlist.Name, $"{playlist.ItemCount} items", $"spotify.playlist.open.{index}",
-                $"spotify.playlist.item.{mode}.{playlists.Offset + index}", playlist.OwnerName,
+        var rows = page.Items.Select((playlist, index) => UI.MediaTile(
+                playlist.Name, $"{playlist.ItemCount} items",
+                $"spotify.playlist.open.{page.Offset + index}",
+                $"spotify.playlist.item.{mode}.{page.Offset + index}", playlist.OwnerName,
                 playlist.Description, Artwork(playlist.ArtworkUrl, playlist.Name),
                 $"Open playlist {playlist.Name}"))
             .Select(row => row.Classes("spotify-media-row"))
             .ToList<WidgetElement>();
-        var first = playlists.Offset + 1;
-        var last = playlists.Offset + playlists.Items.Count;
-        var scroll = PaginatedCollectionScroll(
-            $"spotify.playlists.scroll.{mode}", rows,
-            playlists.Offset > 0 ? "spotify.playlists.previous" : null,
-            last < playlists.Total ? "spotify.playlists.more" : null);
-        return UI.Stack($"spotify.playlists.page.{mode}",
-                UI.SectionHeader("Your playlists", $"spotify.playlists.header.{mode}",
-                    "LIBRARY", $"{first}–{last} of {playlists.Total} playlists"),
-                scroll.Classes("spotify-page-scroll"))
+        if (rows.Count == 0)
+            rows.Add(SparsePagePlaceholder("playlist", mode));
+        var first = page.Offset + 1;
+        var last = page.Offset + page.Items.Count;
+        var range = page.Items.Count == 0
+            ? $"{first}–{Math.Min(page.Offset + page.Limit, page.Total)} unavailable"
+            : $"{first}–{last} of {page.Total} playlists";
+        var scroll = playlistResource.Paginate(
+            UI.VerticalScroll($"spotify.playlists.scroll.{mode}", rows.ToArray()));
+        var content = new List<WidgetElement>
+        {
+            UI.SectionHeader("Your playlists", $"spotify.playlists.header.{mode}",
+                "LIBRARY", range),
+            scroll.Classes("spotify-page-scroll"),
+        };
+        if (playlists.Error is { } retainedError)
+            content.Add(RetainedPageError(retainedError.Message, mode));
+        return UI.Stack($"spotify.playlists.page.{mode}", content.ToArray())
             .Classes("spotify-page");
     }
 
     private static WidgetElement PlaylistDetail(
-        WidgetSpotifyPlaylistItemsSummary detail, bool loading, string mode)
+        WidgetSpotifyPlaylistSummary playlist,
+        WidgetPagedResourceSnapshot<WidgetSpotifyMediaItemSummary> items,
+        string mode,
+        WidgetPagedResource<WidgetSpotifyMediaItemSummary> resource)
     {
-        var rows = detail.Items.Select((item, index) => MediaRow(item,
-            $"spotify.playlist.track.{index}",
-            $"spotify.playlist.track.{mode}.{detail.Offset + index}"))
+        if (items.Status == WidgetPagedResourceStatus.Loading && items.Page is null)
+            return LoadingPage($"Loading {playlist.Name}", mode);
+        if (items.Error is { } itemError && items.Page is null)
+            return PageFailure("Playlist unavailable", itemError.Message, mode);
+        var page = items.Page;
+        var rows = (page?.Items ?? []).Select((item, index) => MediaRow(item,
+            $"spotify.playlist.track.{page!.Offset + index}",
+            $"spotify.playlist.track.{mode}.{page.Offset + index}"))
             .ToList<WidgetElement>();
-        var last = detail.Offset + detail.Items.Count;
-        var scroll = PaginatedCollectionScroll(
-            $"spotify.playlist.detail.scroll.{mode}", rows,
-            detail.Offset > 0 ? "spotify.playlist.previous" : null,
-            last < detail.Total ? "spotify.playlist.more" : null);
-        return UI.Stack($"spotify.playlist.detail.{mode}",
-                UI.SectionHeader(detail.Playlist.Name, $"spotify.playlist.detail.header.{mode}",
-                        "PLAYLIST", detail.Playlist.Description,
-                        UI.Button("Play", "spotify.playlist.play",
-                                $"spotify.playlist.play.{mode}")
-                            .Icon(WidgetGlyph.Play, $"Play {detail.Playlist.Name}")
-                            .Busy(loading).Classes("spotify-page-action",
-                                "spotify-playlist-header-action"))
-                    .Classes("spotify-playlist-header"),
-                scroll.Classes("spotify-page-scroll"))
+        if (page is { Total: > 0 } && rows.Count == 0)
+            rows.Add(SparsePagePlaceholder("track", mode));
+        var scroll = resource.Paginate(
+            UI.VerticalScroll($"spotify.playlist.detail.scroll.{mode}", rows.ToArray()));
+        var loading = items.Status is WidgetPagedResourceStatus.Loading or
+            WidgetPagedResourceStatus.Refreshing or
+            WidgetPagedResourceStatus.LoadingAdjacent;
+        var content = new List<WidgetElement>
+        {
+            UI.SectionHeader(playlist.Name, $"spotify.playlist.detail.header.{mode}",
+                    "PLAYLIST", playlist.Description,
+                    UI.Button("Play", "spotify.playlist.play",
+                            $"spotify.playlist.play.{mode}")
+                        .Icon(WidgetGlyph.Play, $"Play {playlist.Name}")
+                        .Busy(loading).Classes("spotify-page-action",
+                            "spotify-playlist-header-action"))
+                .Classes("spotify-playlist-header"),
+            scroll.Classes("spotify-page-scroll"),
+        };
+        if (items.Error is { } retainedError)
+            content.Add(RetainedPageError(retainedError.Message, mode));
+        return UI.Stack($"spotify.playlist.detail.{mode}", content.ToArray())
             .Classes("spotify-page", "spotify-playlist-detail");
     }
 
-    private static ScrollElement PaginatedCollectionScroll(
-        string id,
-        IReadOnlyList<WidgetElement> rows,
-        string? nearStartActionId,
-        string? nearEndActionId)
-    {
-        var scroll = UI.VerticalScroll(id, rows.ToArray());
-        return nearStartActionId is null && nearEndActionId is null
-            ? scroll
-            : scroll.Paginate(nearStartActionId, nearEndActionId, threshold: 1);
-    }
+    private static ButtonElement SparsePagePlaceholder(string itemKind, string mode) =>
+        UI.Button($"No available {itemKind}s on this page", "spotify.page.noop",
+                $"spotify.page.sparse.{itemKind}.{mode}")
+            .Classes("spotify-media-row", "is-quiet");
+
+    private static WidgetElement RetainedPageError(string error, string mode) =>
+        UI.Alert("More items unavailable", error, AlertTone.Warning,
+                $"spotify.page.retained-error.{mode}",
+                new ComponentAction("Try again", "spotify.page.retry", WidgetGlyph.Refresh))
+            .Classes("spotify-page-inline-error");
 
     private static WidgetElement DevicesPage(
         WidgetSpotifyDevicesSummary? devices,

@@ -157,6 +157,22 @@ breaking controller navigation. Non-finite, negative, or excessive internal
 offsets are clamped by the native layout engine, and an unknown/missing axis is
 rejected before publication.
 
+Protocol v11 optionally adds host-owned focus-edge actions through
+`ScrollElement.Paginate(nearStartActionId, nearEndActionId, threshold)`. After
+controller focus moves into the first/last threshold direct child in the
+matching direction, the host sends the configured action with the Scroll ID as
+its source. It does not fetch, cache, or append widget data and does not add a
+visible **Load more** control.
+
+For bounded offset-based provider data, use the public
+`WidgetPagedResource<TItem>` documented in the [widget authoring
+guide](widget-authoring-guide.md#bounded-offset-paged-resources). Its
+`Paginate(scroll)` and `TryHandlePagination(...)` helpers bind this same v11
+contract while the SDK owns page state, invalidation, Latest coordination,
+bounded LRU caching, and entering-edge focus. It is an SDK state helper, not a
+new declarative node. Cursor and append/infinite-feed resources are not part of
+the current API.
+
 ## Per-view surface hints
 
 `WidgetView.Surface` describes the useful shape of the *current view* without
@@ -486,11 +502,13 @@ migration.
 
 The current snapshot limits include:
 
-- protocol versions 1–8. Plain Stack/Row views remain v1; Scroll or explicit
+- protocol versions 1–11. Plain Stack/Row views remain v1; Scroll or explicit
   surface hints opt into v2, Slider into v3, capability-backed dashboard
   gestures into v4, LoadingIndicator into v5, inline PNG into v6, and
-  ActionSurface into v7, and responsive Grid into v8. These additive snapshot
-  features do not change package host API 1;
+  ActionSurface into v7, responsive Grid into v8, responsive visibility into
+  v9, activate-to-adjust Slider behavior into v10, and Scroll focus-edge
+  pagination into v11. These additive snapshot features do not change package
+  host API 1;
 - at most 2,048 nodes;
 - at most 32 levels of tree depth;
 - strings up to 4,096 characters; and

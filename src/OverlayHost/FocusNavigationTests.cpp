@@ -1,4 +1,5 @@
 #include "FocusNavigation.h"
+#include "WidgetBridgeClient.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -126,6 +127,50 @@ int main() {
           "DPI-scaled responsive geometry preserves directional navigation");
     Check(ResolveVisibleFocusTarget(L"grid-2", L"root", scaledGrid) == L"grid-2",
           "DPI-scaled reflow retains the same stable focus ID");
+
+    gba::WidgetNode pagedScroll{
+        .id = L"library.scroll",
+        .kind = L"scroll",
+        .scrollAxis = L"vertical",
+        .scrollNearStartActionId = L"library.previous",
+        .scrollNearEndActionId = L"library.next",
+        .scrollPaginationThreshold = 1,
+        .children = {
+            gba::WidgetNode{.id = L"library.first", .kind = L"button"},
+            gba::WidgetNode{
+                .id = L"library.last",
+                .kind = L"actionSurface",
+                .children = {
+                    gba::WidgetNode{.id = L"library.last.label", .kind = L"text"},
+                },
+            },
+        },
+    };
+    const auto nextPage = gba::input::FindScrollPaginationAction(
+        pagedScroll, L"library.last.label", NavigationDirection::Down);
+    Check(nextPage && nextPage->actionId == L"library.next" &&
+              nextPage->sourceElementId == L"library.scroll",
+          "Down on an already-focused last row resolves pagination before tray fallback");
+    const auto previousPage = gba::input::FindScrollPaginationAction(
+        pagedScroll, L"library.first", NavigationDirection::Up);
+    Check(previousPage && previousPage->actionId == L"library.previous",
+          "Up on an already-focused first row resolves previous-page pagination");
+    Check(!gba::input::FindScrollPaginationAction(
+              pagedScroll, L"library.first", NavigationDirection::Down),
+          "A non-boundary direction preserves ordinary focus navigation");
+
+    gba::WidgetNode singleItemScroll = pagedScroll;
+    singleItemScroll.children.resize(1);
+    singleItemScroll.children[0].id = L"library.only";
+    const auto singleItemNext = gba::input::FindScrollPaginationAction(
+        singleItemScroll, L"library.only", NavigationDirection::Down);
+    Check(singleItemNext && singleItemNext->actionId == L"library.next",
+          "A one-row page can paginate when no ordinary focus move exists");
+
+    pagedScroll.scrollNearEndActionId.clear();
+    Check(!gba::input::FindScrollPaginationAction(
+              pagedScroll, L"library.last", NavigationDirection::Down),
+          "A boundary without a configured action remains available to tray fallback");
 
     gba::RenderResult scrolled;
     Add(scrolled, L"session-0", {0, 0, 200, 44});

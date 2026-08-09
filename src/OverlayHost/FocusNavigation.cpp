@@ -1,4 +1,5 @@
 #include "FocusNavigation.h"
+#include "WidgetBridgeClient.h"
 
 #include <algorithm>
 #include <cmath>
@@ -17,7 +18,48 @@ bool Overlaps(const float a0, const float a1, const float b0, const float b1) no
     return std::min(a1, b1) >= std::max(a0, b0);
 }
 
+bool ContainsWidgetNode(
+    const WidgetNode& node,
+    const std::wstring_view nodeId) noexcept {
+    if (node.id == nodeId) return true;
+    return std::ranges::any_of(node.children, [&](const WidgetNode& child) {
+        return ContainsWidgetNode(child, nodeId);
+    });
+}
+
 } // namespace
+
+std::optional<ScrollPaginationAction> FindScrollPaginationAction(
+    const WidgetNode& root,
+    const std::wstring_view focusedId,
+    const NavigationDirection direction) {
+    for (const auto& child : root.children) {
+        if (const auto nested = FindScrollPaginationAction(
+                child, focusedId, direction))
+            return nested;
+    }
+    if (root.kind != L"scroll" || root.scrollPaginationThreshold == 0 ||
+        root.children.empty())
+        return std::nullopt;
+    const bool towardStart =
+        (root.scrollAxis == L"vertical" && direction == NavigationDirection::Up) ||
+        (root.scrollAxis == L"horizontal" && direction == NavigationDirection::Left);
+    const bool towardEnd =
+        (root.scrollAxis == L"vertical" && direction == NavigationDirection::Down) ||
+        (root.scrollAxis == L"horizontal" && direction == NavigationDirection::Right);
+    if (!towardStart && !towardEnd) return std::nullopt;
+    for (std::size_t index = 0; index < root.children.size(); ++index) {
+        if (!ContainsWidgetNode(root.children[index], focusedId)) continue;
+        if (towardStart && !root.scrollNearStartActionId.empty() &&
+            index < root.scrollPaginationThreshold)
+            return ScrollPaginationAction{root.scrollNearStartActionId, root.id};
+        if (towardEnd && !root.scrollNearEndActionId.empty() &&
+            root.children.size() - index <= root.scrollPaginationThreshold)
+            return ScrollPaginationAction{root.scrollNearEndActionId, root.id};
+        break;
+    }
+    return std::nullopt;
+}
 
 std::optional<PointerHitTarget> FindPointerHitTarget(
     const float x,

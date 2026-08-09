@@ -353,14 +353,15 @@ is the Scroll ID, the active input-scope ID is preserved, and the action enters
 the same serialized widget action route as a Button. No sentinel row or visible
 **Load more** button is added by the host.
 
-The widget still owns fetching, cancellation, end-of-list checks, duplicate
-request suppression, and cache policy. Keep only a small current page in the
-render tree, keep a bounded number of prior pages if fast reverse navigation is
-useful, and derive row IDs from stable item identity or absolute collection
-offset rather than the slot within the page. After a successful swap, request
-focus on the first row of a next page or the last row of a previous page. Do
-not append an unbounded remote collection: snapshots still have a 2,048-node
-limit and the worker/bridge default framed-message ceiling is 1 MiB.
+This is the low-level trigger contract. For an offset-based remote collection,
+prefer `WidgetPagedResource<TItem>` below; it owns fetching coordination,
+end-of-list checks, duplicate suppression, bounded caching, safe error state,
+and entering-edge focus. Cursor paging and append/infinite-feed semantics are
+not implemented. When using `Paginate` directly, keep only a small current page
+in the render tree and derive row IDs from stable item identity or absolute
+collection offset rather than the slot within the page. Do not append an
+unbounded remote collection: snapshots still have a 2,048-node limit and the
+worker/bridge default framed-message ceiling is 1 MiB.
 
 ## Controller-native value controls
 
@@ -652,8 +653,10 @@ lifecycle transition callbacks; delegates must therefore honor
 `context.CancellationToken` and finish promptly.
 
 Admission and completion are separate. `WidgetOperationHandle.Admission` is
-`Started`, `Joined`, `Replaced`, `Enqueued`, `RejectedInactive`, or
-`RejectedCapacity`; `IsAccepted` is false only for the two rejection cases.
+`Completed`, `Started`, `Joined`, `Replaced`, `Enqueued`,
+`RejectedInactive`, or `RejectedCapacity`; `Completed` means the request was
+satisfied synchronously without scheduling work, and `IsAccepted` is false
+only for the two rejection cases.
 `Completion` never faults and returns `Succeeded`, `Canceled`, `Superseded`,
 `Failed`, or `Rejected`, with the exception attached only to `Failed`.
 `OperationFailed` publishes that failure once. For latest-wins work, check
@@ -664,13 +667,80 @@ The coordinator admits at most 32 keys and 64 total active/pending operations.
 Capacity rejection is a result, not an invitation to spin or create a fallback
 task. A busy key cannot change policy or lifetime. Use `IsBusy`, `Cancel`,
 `WhenIdleAsync`, `WhenAllIdleAsync`, and `BusyChanged` for presentation and
-tests; busy-edge changes already invalidate the widget.
+tests. Busy-edge changes auto-invalidate the widget. Higher-level SDK resources
+also own the synchronous cache-hit, reset, and snapshot-change invalidations
+that do not come from an operation busy edge.
 
-Spotify's Community addon is the first migration: all destination, retry,
-playlist-open, and protocol-v11 near-edge page loads share one Active
-`RunLatest` lane. Its 12-row playlist windows and six-page caches remain domain
-policy, while cancellation, non-overlap, stale-result authority, and lifecycle
-draining now come from the SDK. There is still no visible **Load more** row.
+### Bounded offset-paged resources
+
+Create a `WidgetPagedResource<TItem>` once from the widget constructor for an
+offset/limit provider:
+
+```csharp
+_items = CreatePagedResource<Item>("library.items", new()
+{
+    PageSize = 12,
+    MaximumCachedPages = 6,
+    MaximumCachedItems = 72,
+    LoadPage = async (offset, limit, token) =>
+    {
+        var page = await LoadLibraryPageAsync(offset, limit, token);
+        return new WidgetPage<Item>(page.Items, page.Offset, page.Limit, page.Total);
+    },
+    MapError = _ => new WidgetResourceError(
+        "library_unavailable", "This library could not be loaded. Try again."),
+    Viewports =
+    [
+        new("library.items.scroll",
+            (_, absoluteIndex) => $"library.item.{absoluteIndex}",
+            "library.empty.action"),
+    ],
+});
+```
+
+Call `EnsureLoaded()` from an appropriate lifecycle/action path. Render the
+immutable `Snapshot.Page`, wrap the matching Scroll with
+`_items.Paginate(scroll)`, and publish `Snapshot.RequestedFocusId` as the
+view's initial focus when it is non-null. Route actions before other dispatch:
+
+```csharp
+if (_items.TryHandlePagination(action, out _)) return;
+```
+
+`EnsureLoaded(forceRefresh?)`, `Refresh`, `Move`, and `Retry` return observed
+`WidgetOperationHandle` values. An identical in-flight request is `Joined`; a
+fresh cache hit or an already-satisfied boundary is `Completed` with a
+`Succeeded` completion. `TryGetCurrentItem` resolves an absolute index without
+exposing the cache; `ClearRequestedFocus` acknowledges a consumed focus request;
+`Reset` cancels work, rejects late publication, clears the LRU, and returns to
+`NotLoaded`; `WhenIdleAsync` supports deterministic tests. `Reset(false)` and
+`ClearRequestedFocus(false)` are only for an owning widget that immediately
+publishes one composed route/state invalidation.
+
+Render states are `NotLoaded`, `Loading`, `Ready`, `Refreshing`,
+`LoadingAdjacent`, and `Error`. `RetainLastGoodPage` defaults to true. Error
+mapping must produce a stable identifier plus at most 256 visible characters;
+never pass provider exceptions to UI. `Snapshot.HasValue`, `HasPrevious`, and
+`HasNext` are render helpers, while `Revision` changes only with published
+state. The resource invalidates the widget when its snapshot changes.
+
+Bounds are explicit: page size 1–100, cached pages 1–8, cached items 1–512 and
+at least one page, pagination threshold 1–8, and one or more unique configured
+viewports. Cache duration defaults to five minutes; eviction is deterministic
+LRU by both page and item limits. Returned pages must match the requested
+offset, stay within the configured limit, contain no null items, and report a
+consistent total. The default lifetime is `Active`; choose `State` or `Widget`
+only when the provider operation truly needs that shorter or longer authority.
+Sparse pages are valid when a provider filters unavailable server entries;
+adjacent offsets therefore advance by the returned page limit, not the number
+of rendered items. Render a bounded focusable placeholder for an empty
+non-terminal page so focus-edge paging can continue.
+
+Spotify 0.2.10 is the first migration. Its playlist and playlist-item resources
+use 12-row windows, a six-page/72-item LRU, automatic protocol-v11 focus-edge
+paging across compact and wide Scroll IDs, cached reverse navigation, and no
+visible **Load more** row. Queue remains non-paged state owned by the widget.
+Cursor/append collections are not supplied by this API.
 
 ## GBSS: safe widget-local styling
 

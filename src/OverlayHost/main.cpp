@@ -2631,68 +2631,24 @@ private:
         };
     }
 
-    static bool ContainsWidgetNode(
-        const gba::WidgetNode& node,
-        const std::wstring_view nodeId) noexcept {
-        if (node.id == nodeId) return true;
-        return std::ranges::any_of(node.children, [&](const gba::WidgetNode& child) {
-            return ContainsWidgetNode(child, nodeId);
-        });
-    }
-
-    static std::optional<std::pair<std::wstring, std::wstring>>
-    ScrollPaginationActionForFocus(
-        const gba::WidgetNode& node,
-        const std::wstring_view focusedId,
-        const gba::input::NavigationDirection direction) {
-        for (const auto& child : node.children) {
-            if (const auto nested = ScrollPaginationActionForFocus(
-                    child, focusedId, direction))
-                return nested;
-        }
-        if (node.kind != L"scroll" || node.scrollPaginationThreshold == 0 ||
-            node.children.empty())
-            return std::nullopt;
-        const bool towardStart =
-            (node.scrollAxis == L"vertical" &&
-                direction == gba::input::NavigationDirection::Up) ||
-            (node.scrollAxis == L"horizontal" &&
-                direction == gba::input::NavigationDirection::Left);
-        const bool towardEnd =
-            (node.scrollAxis == L"vertical" &&
-                direction == gba::input::NavigationDirection::Down) ||
-            (node.scrollAxis == L"horizontal" &&
-                direction == gba::input::NavigationDirection::Right);
-        if (!towardStart && !towardEnd) return std::nullopt;
-        for (std::size_t index = 0; index < node.children.size(); ++index) {
-            if (!ContainsWidgetNode(node.children[index], focusedId)) continue;
-            if (towardStart && !node.scrollNearStartActionId.empty() &&
-                index < node.scrollPaginationThreshold)
-                return std::pair{node.scrollNearStartActionId, node.id};
-            if (towardEnd && !node.scrollNearEndActionId.empty() &&
-                node.children.size() - index <= node.scrollPaginationThreshold)
-                return std::pair{node.scrollNearEndActionId, node.id};
-            break;
-        }
-        return std::nullopt;
-    }
-
-    void DispatchScrollPagination(
+    bool DispatchScrollPagination(
         const std::wstring_view widgetId,
         const gba::WidgetSnapshot& snapshot,
         const gba::input::NavigationDirection direction) {
-        const auto action = ScrollPaginationActionForFocus(
+        const auto action = gba::input::FindScrollPaginationAction(
             snapshot.root, focusedElementId_, direction);
-        if (!action) return;
+        if (!action) return false;
         const auto handled = bridge_.SendAction(
-            widgetId, action->first, action->second, snapshot.activeInputScopeId);
+            widgetId, action->actionId, action->sourceElementId,
+            snapshot.activeInputScopeId);
         if (!handled) {
             AppendDiagnostic(std::wstring(DisplayWidgetName(widgetId)) +
                 L" pagination failed: " + bridge_.lastError());
-            return;
+            return true;
         }
         if (*handled)
             RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widgetId); });
+        return true;
     }
 
     void HandleWidgetDirection(
@@ -2925,6 +2881,8 @@ private:
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
+        if (DispatchScrollPagination(widgetId, *snapshot, navigationDirection))
+            return;
         if (gba::input::ShouldTransferFocusToTray(
                 navigationDirection,
                 activeScope == gba::input::RootInputScope(*snapshot),

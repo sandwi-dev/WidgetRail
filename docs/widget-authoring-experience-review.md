@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; runtime-owned operation scopes implemented, later recommendations open  
-Date: 2026-08-08  
-Reassessed: 2026-08-08 after public `WidgetOperations` and the Spotify 0.2.8 migration  
+Status: living assessment; operation scopes and bounded offset-paged resources implemented, later recommendations open<br>
+Date: 2026-08-08<br>
+Reassessed: 2026-08-08 after public `WidgetPagedResource<TItem>` and the Spotify 0.2.10 migration<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 ## Executive conclusion
@@ -38,10 +38,12 @@ The latest Spotify work supports this direction. Protocol-v11 host-owned
 focus-edge pagination and `ScrollElement.Paginate` move a generic controller
 interaction out of Spotify and into the platform. The public
 `WidgetOperations` coordinator now also owns bounded SingleFlight, Latest, and
-Serial execution plus lifecycle cancellation/draining. Spotify has migrated its
-page-loading lane to that API. Data/resource state, caches, navigation, and
-optimistic commands remain author-owned, so the later recommendations remain
-open.
+Serial execution plus lifecycle cancellation/draining. The public
+`WidgetPagedResource<TItem>` builds on both contracts with offset-page state,
+validation, invalidation, a deterministic bounded LRU, retry, and entering-edge
+focus. Spotify has migrated its playlist collections to that API. General
+immutable state, cursor/append resources, navigation, and optimistic commands
+remain open.
 
 ## Evidence from the repository
 
@@ -78,6 +80,10 @@ The SDK already provides important low-level safety mechanisms:
 - [`WidgetOperations`](../src/WidgetSdk/WidgetOperations.cs) supplies bounded
   SingleFlight, Latest, and Serial lanes tied to Active, State, or Widget
   lifetimes, with explicit admission and non-faulting completion results.
+- [`WidgetPagedResource<TItem>`](../src/WidgetSdk/WidgetPagedResource.cs)
+  supplies an offset-based immutable page snapshot, Latest coordination,
+  bounded LRU, safe error/retry state, invalidation, and responsive Scroll-to-
+  focus mappings.
 - [`ScrollElement.Paginate`](../src/WidgetSdk/Elements.cs) supplies protocol-v11
   host-owned near-start and near-end focus triggers without visible paging
   buttons.
@@ -89,7 +95,7 @@ These primitives prevent several classes of misuse, but the author still has to
 compose them into an application architecture. Spotify is evidence that the
 missing layer is coordination, not rendering capability.
 
-## Reassessment after the Spotify 0.2.8 changes
+## Reassessment after the Spotify 0.2.10 changes
 
 The latest Spotify changes improve both the widget and the framework:
 
@@ -109,19 +115,18 @@ The protocol addition is a meaningful authoring improvement. A widget can now
 request adjacent data naturally as the user navigates, without adding a visible
 `Load more` button or detecting focus geometry itself.
 
-The implementation also makes the remaining gap unusually clear. Spotify no
-longer owns page-operation tasks, cancellation sources, or generation counters:
-one Active `RunLatest` lane provides non-overlap, synchronous stale-result
-authority through `IsCurrent`, and lifecycle draining. Spotify still owns two
-page dictionaries, cache limits and eviction, loading and error fields, retry
-behavior, and focus-ID calculation. It also infers compact versus wide
-presentation by parsing the source element ID. Those remaining concerns belong
-to the later resource/state/navigation milestones.
+Spotify no longer owns page-operation tasks, cancellation sources, generation
+counters, page dictionaries, eviction loops, loading/error state, retry intent,
+or compact/wide focus-mode parsing. Two `WidgetPagedResource<TItem>` instances
+provide those generic behaviors with 12-row windows and a six-page/72-item LRU;
+Spotify supplies provider loading, safe error copy, viewport IDs, item rendering,
+and selected-playlist domain state. Queue remains a separate non-paged path.
 
-The latest changes therefore do not weaken the review's conclusion. They
-provide a successful first example of moving one generic behavior into the
-SDK/host, and they sharpen the next target: a paged-resource coordinator that
-works with `ScrollElement.Paginate`.
+The latest changes are a successful example of moving a proven generic behavior
+into the SDK/host without changing the protocol boundary. The next targets are
+general immutable state, optimistic commands, and navigation; cursor and
+append/infinite-feed resource semantics need a separate design rather than
+being implied by the offset-paged API.
 
 No authenticated Player, Queue, Playlists, or Devices screenshots were found in
 the current evidence set; the stored Spotify images still cover configuration
@@ -199,18 +204,20 @@ The implemented coordinator:
 - exposes busy state by stable operation key; and
 - supports deterministic idle waits and focused tests without sleeps.
 
-Admission is explicit (`Started`, `Joined`, `Replaced`, `Enqueued`,
-`RejectedInactive`, or `RejectedCapacity`) and completion is explicit
+Admission is explicit (`Completed`, `Started`, `Joined`, `Replaced`,
+`Enqueued`, `RejectedInactive`, or `RejectedCapacity`) and completion is explicit
 (`Succeeded`, `Canceled`, `Superseded`, `Failed`, or `Rejected`). Latest
 contexts become non-current synchronously when replacement is admitted. Bounds
 are 32 tracked keys, 64 total active/pending operations, and 16 pending Serial
 operations per key. Active spans Visible/Interactive, State belongs to one
-exact runtime state, and Widget spans creation through Destroying.
+exact runtime state, and Widget spans creation through Destroying. `Completed`
+means the request was satisfied synchronously without scheduling work.
+Busy-edge changes auto-invalidate the widget and also publish `BusyChanged`.
 
-Spotify's automatic destination and 12-row playlist paging now uses one Active
-Latest lane, replacing its page task, cancellation source, and generation
-counter. Other widget command/auth/polling paths can migrate separately when
-their required lifetime and ordering policy are explicit.
+Spotify's non-paged destination loading uses one Active Latest lane. Its two
+12-row playlist collections now use separate Active paged resources built on
+the same coordinator. Other widget command/auth/polling paths can migrate
+separately when their required lifetime and ordering policy are explicit.
 
 ### 2. Observable immutable widget state
 
@@ -237,44 +244,52 @@ Recommended behavior:
 This should reduce lock scope and accidental `Invalidate` storms without
 forcing a Redux-style architecture.
 
-### 3. Async resource state
+### 3. Bounded offset-paged resource state — implemented
 
-Loading a page currently requires data, loading, error, cache timestamp,
-generation, cancellation, retry, and invalidation fields. Introduce a reusable
-resource model:
+The public resource is constructed once through `CreatePagedResource<TItem>`:
 
 ```csharp
-private readonly WidgetResource<QueueSummary> _queue = new();
+private readonly WidgetPagedResource<Item> _items;
 
-await _queue.LoadLatestAsync(
-    token => HostServices.Spotify.GetQueueAsync(token),
-    cacheFor: TimeSpan.FromSeconds(5),
-    cancellationToken);
+public LibraryWidget()
+{
+    _items = CreatePagedResource<Item>("library.items", new()
+    {
+        PageSize = 12,
+        MaximumCachedPages = 6,
+        MaximumCachedItems = 72,
+        LoadPage = LoadPageAsync,
+        MapError = MapSafeError,
+        Viewports =
+        [
+            new("library.items.scroll",
+                (_, absoluteIndex) => $"library.item.{absoluteIndex}"),
+        ],
+    });
+}
 ```
 
-It should represent `NotLoaded`, `Loading`, `Ready`, `Refreshing`, and `Error`,
-optionally retain last-good data during refresh, reject stale completions, map
-safe public errors, and expose retry. A `WidgetPagedResource<T>` should add a
-bounded page window/cache, total/count handling, adjacent-page navigation,
-duplicate-request suppression, deterministic eviction, and next-focus
-selection.
+Its immutable snapshot represents `NotLoaded`, `Loading`, `Ready`,
+`Refreshing`, `LoadingAdjacent`, and `Error`; last-good retention is optional
+and enabled by default. It validates offset pages, maps safe bounded errors,
+retries the exact failed intent, rejects stale/late completions, coalesces an
+identical request, and exposes explicit `Completed` admission for cache hits and
+no-op boundaries. Limits are 100 items per page, eight cached pages, 512 cached
+items, and a protocol-v11 threshold of 1–8. Cache eviction is deterministic
+LRU, and its lifetime defaults to Active.
 
-Protocol-v11 `ScrollElement.Paginate` should remain the host-owned trigger. The
-paged resource should complement it by handling the resulting near-start and
-near-end actions; it should not reimplement focus-edge detection in the worker.
+Protocol-v11 `ScrollElement.Paginate` remains the host-owned trigger. The
+resource's `Paginate(scroll)` publishes only currently valid boundary actions;
+`TryHandlePagination` accepts only an exact action and configured Scroll ID.
+Viewport delegates receive absolute collection indexes and produce stable
+entering-edge focus IDs for compact/wide surfaces. No worker focus geometry or
+visible Load-more row is required.
 
-Pair it with a renderer-neutral composition helper:
-
-```csharp
-UI.ResourcePage(
-    resource,
-    ready: data => RenderQueue(data),
-    empty: () => UI.EmptyState(...),
-    retryAction: "queue.retry")
-```
-
-The resource owns coordination state; the widget still owns copy and visual
-composition.
+The resource owns its state-change invalidation and runtime-owned Latest lane,
+including synchronous cache-hit/reset changes that have no operation busy
+edge. The widget still owns copy and visual composition. A generic
+`WidgetResource<T>`, cursor paging, append/infinite feeds, and a
+`UI.ResourcePage` composition are not implemented and remain later design work.
 
 ### 4. Command and optimistic-update helper
 
@@ -466,13 +481,14 @@ code describes Spotify behavior or presentation rather than task plumbing.
 ### Phase 1: remove unsafe repetition
 
 Completed foundation: protocol-v11 focus-edge Scroll pagination, the public
-`ScrollElement.Paginate` authoring API, and public runtime-owned operation
-scopes. Spotify page loading is the first migration.
+`ScrollElement.Paginate` authoring API, runtime-owned operation scopes, and
+bounded offset-paged resources. Spotify playlists are the first resource
+migration.
 
 Next work:
 
 1. Observable immutable widget state.
-2. Async and paged resource state integrated with `ScrollElement.Paginate`.
+2. Generic non-paged and separately designed cursor/append resource state.
 3. Optimistic command helper integrated with the controller queue.
 4. Migrate one medium widget and the remaining Spotify operation families to
    validate the APIs.
@@ -511,8 +527,9 @@ The improvements should be evaluated against measurable author outcomes:
 - A C# developer can scaffold and run a basic widget in 15 minutes.
 - A one-capability data widget requires no author-created `SemaphoreSlim`,
   `CancellationTokenSource`, or unobserved `Task` field.
-- A paged collection requires no author-owned page dictionary, stale-generation
-  counter, cache eviction loop, or compact/wide source-ID parsing.
+- An offset-paged collection requires no author-owned page dictionary,
+  stale-generation counter, cache eviction loop, or compact/wide source-ID
+  parsing. This is implemented and exercised by Spotify 0.2.10.
 - A multipage widget uses one route model for compact and expanded layouts.
 - Authenticated and unavailable states can be previewed without real secrets.
 - Advanced samples contain substantially more domain/rendering code than
@@ -553,8 +570,9 @@ Suggested baseline metrics for each migrated widget:
 Do not replace the C# SDK or declarative widget model. Treat Spotify, Network
 Controls, and Audio Mixer as design probes that reveal the same missing
 application-level layer. Continue building that layer from small,
-lifecycle-aware, testable primitives: operations are now implemented; state,
-resources, commands, navigation, and preview tooling remain.
+lifecycle-aware, testable primitives: operations and bounded offset-paged
+resources are now implemented; general state, non-paged/cursor resources,
+commands, navigation, and preview tooling remain.
 
 The protocol-v11 pagination change is a strong example to repeat: identify a
 generic behavior proven by a demanding widget, move the security- and

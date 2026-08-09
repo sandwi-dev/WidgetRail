@@ -13,6 +13,8 @@ public enum WidgetOperationLifetime
 
 public enum WidgetOperationAdmission
 {
+    /// <summary>The request was satisfied synchronously without scheduled work.</summary>
+    Completed,
     /// <summary>The operation started immediately.</summary>
     Started,
     /// <summary>A single-flight request joined the already-running operation.</summary>

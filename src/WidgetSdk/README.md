@@ -102,15 +102,49 @@ work while keeping delegates non-overlapping, and `RunSerial` preserves FIFO.
 their lifecycle callbacks run. Check `WidgetOperationContext.IsCurrent` before
 committing latest-wins results and always honor its cancellation token.
 
-The returned handle separates admission (`Started`, `Joined`, `Replaced`,
-`Enqueued`, `RejectedInactive`, `RejectedCapacity`) from completion
+The returned handle separates admission (`Completed`, `Started`, `Joined`,
+`Replaced`, `Enqueued`, `RejectedInactive`, `RejectedCapacity`) from completion
 (`Succeeded`, `Canceled`, `Superseded`, `Failed`, `Rejected`). Completion tasks
-never fault; failed results carry the exception and also raise
+never fault; `Completed` means no work had to be scheduled, while failed
+results carry the exception and also raise
 `OperationFailed` once. Limits are 32 busy keys, 64 total active/pending
 operations, and 16 pending Serial operations per key. Do not retry capacity
 rejection in a tight loop or mix a key's policy/lifetime while it is busy.
 `IsBusy`, `BusyChanged`, `Cancel`, `WhenIdleAsync`, and `WhenAllIdleAsync`
-support UI and deterministic tests.
+support UI and deterministic tests. Busy-edge changes auto-invalidate the
+widget; event subscribers can observe the same edge without owning that
+invalidation.
+
+For a bounded offset/limit collection, create one
+`WidgetPagedResource<TItem>` with `CreatePagedResource` instead of maintaining
+page tasks, generations, caches, and focus calculations independently. Supply
+`WidgetPagedResourceOptions<TItem>` with `PageSize`, `MaximumCachedPages`,
+`MaximumCachedItems`, `LoadPage`, `MapError`, and one or more
+`WidgetPagedViewport<TItem>` mappings. A viewport maps its stable Scroll ID and
+absolute item indexes to stable focus IDs.
+
+Call `EnsureLoaded`, `Refresh`, `Move`, or `Retry`; inspect the immutable
+`Snapshot`; render the current page through `resource.Paginate(scroll)`; and
+route `resource.TryHandlePagination(action, out operation)` before unrelated
+actions. The resource owns Latest coordination, state-change invalidation,
+stale-result rejection, safe errors, entering-edge `RequestedFocusId`, and a
+deterministic bounded LRU. A cache hit or no-op boundary returns
+`WidgetOperationAdmission.Completed`. `ClearRequestedFocus` acknowledges a
+consumed entering-edge focus request. `Reset` cancels and clears the resource;
+its optional non-invalidating form is only for one immediately composed widget
+state update. `WhenIdleAsync` supports deterministic tests.
+
+Statuses are `NotLoaded`, `Loading`, `Ready`, `Refreshing`,
+`LoadingAdjacent`, and `Error`. Bounds are page size 1–100, cached pages 1–8,
+cached items 1–512 (and at least one page), pagination threshold 1–8, and error
+messages up to 256 visible characters. The lifetime defaults to `Active`, cache
+duration to five minutes, and last-good retention to enabled. This API is
+offset-based: cursor paging, append/infinite feeds, and a generic
+`WidgetResource<T>` are not implemented.
+Sparse pages are supported for providers that filter unavailable server
+entries; next-page offsets use the server page limit rather than rendered item
+count. An empty non-terminal page still needs a focusable widget placeholder so
+the host can emit the next focus-edge action.
 
 Unit tests can use the supported transport-free fake instead of reflection,
 internal APIs, named pipes, or hand-written JSON:
