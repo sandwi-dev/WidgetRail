@@ -507,9 +507,11 @@ Commit `b2d6f95` aggregate-bounds the multi-version workflow: defaults cap
 IDs, versions per ID, total versions, installed entries, accounted bytes, and
 elapsed discovery, while install prospectively refuses a new package that would
 cross a count or byte quota. This is a meaningful ecosystem safeguard. The
-elapsed check runs only between whole-version verification units, however, and
-accepted versions are still eagerly hashed and can retain up to 512 GBSS path/
-hash entries each (assembly/asset hashes are deliberately not retained).
+`1c1f8bb` follow-up threads elapsed/cancellation checkpoints through recursive
+tree enumeration and each at-most-64-KiB bounded hash read. A process-level
+watchdog is still required for an already blocked Windows filesystem call.
+Accepted versions are also still eagerly hashed and can retain up to 512 GBSS
+path/hash entries each (assembly/asset hashes are deliberately not retained).
 
 The author/user recovery path remains incomplete. Settings collapses any limit
 failure to an empty “catalog unavailable” surface, while `gbar uninstall`

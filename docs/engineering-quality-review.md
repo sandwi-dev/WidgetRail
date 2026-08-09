@@ -22,10 +22,13 @@ public abstractions.
 The strongest concrete improvement since the previous audit is commit
 `b2d6f95`'s aggregate installed-catalog policy. It caps IDs, versions, entries,
 accounted bytes, and detected elapsed discovery work and prospectively rejects
-installs before publication. Catalog 29/29, Bridge 40/40, Settings 41/41, and
-the 49-file documentation contract passed with inspected output. Its control-
-plane recovery and interruptible-deadline contract remain incomplete, so
-EQ-016 is only partially implemented.
+installs before publication. The implementation agent reports Catalog 29/29,
+Bridge 40/40, Settings 41/41, and the 49-file documentation contract green;
+this review did not rerun them or inspect a retained result. Follow-up commit
+`1c1f8bb` adds cancellation/deadline checkpoints per recursive entry and before
+each at-most-64-KiB read. Control-plane recovery, active-only inventory
+ownership, and maximum-scale evidence remain incomplete, so EQ-016 is only
+partially implemented.
 
 The earlier verified package-evidence contract remains a strong foundation.
 Committed work bounds manifest/metadata consumption,
@@ -229,9 +232,11 @@ Commit `b2d6f95` materially advances EQ-016. It adds explicit
 ID/version/entry/byte/time options, bounded N+1 directory enumeration, checked
 verified totals, and prospective install refusal. The implementation agent
 reports Catalog 29/29, Bridge 40/40, Settings 41/41, and the 49-file
-documentation contract with inspected output. Full
-closure still needs cancellation/deadline checks inside file hashing, a
-Settings/CLI repair route that works when full discovery is over limit,
+documentation contract green; this review did not rerun them or inspect a
+retained result. Commit `1c1f8bb` subsequently threads the discovery checkpoint
+through recursive tree inspection, manifest/metadata reads, filename
+enumeration, and every bounded hash read. Full closure still needs a Settings/
+CLI repair route that works when full discovery is over limit,
 active-only publication inventory ownership, and maximum-scale measurements.
 
 ## Verification snapshot
@@ -1272,10 +1277,10 @@ startup, and disk cost at the maximum supported entry count.
 
 ### EQ-016 — P2 — Aggregate catalog bounds lack a recoverable control-plane contract
 
-**Status: Partially implemented in commit `b2d6f95`. Cardinality and byte
-budgets plus prospective install rejection are present; interruptible time
-enforcement, cleanup UX, active-only inventory ownership, and maximum-scale
-evidence remain open.**
+**Status: Partially implemented in commits `b2d6f95` and `1c1f8bb`.
+Cardinality/byte budgets, prospective install rejection, and fine-grained
+cancellation/deadline checkpoints are present; cleanup UX, active-only
+inventory ownership, and maximum-scale evidence remain open.**
 
 **Implementation evidence.** `WidgetCatalogOptions` now supplies defaults of
 256 IDs, eight versions per ID, 512 total versions, 32,768 installed entries,
@@ -1294,23 +1299,24 @@ One new custom test case covers invalid option relationships, direct ID N+1,
 prospective ID/per-ID-version/total-version/entry/byte refusal, an unexpected
 root file, and a deterministic elapsed-time failure. It also asserts selected
 install rejections do not create the incoming package directory. The
-expanded Catalog suite passed 29/29 with inspected output. Its exact tree case
+implementation agent reports the expanded Catalog suite at 29/29; this review
+did not rerun it or inspect a retained result. Its exact tree case
 configures `MaximumInstalledEntries = 4`; the installed version already has
 four filesystem entries (`manifest.json`, `.gbar-integrity.json`, the payload
 directory, and the entrypoint), so adding one empty directory is the fifth and
 correctly produces `integrity_limit`. Bridge 40/40, Settings 41/41, and the
-49-file documentation contract also pass.
+49-file documentation contract are likewise implementation-reported green.
 
-The elapsed limit is currently detection between coarse units, not an
-interruptible deadline. `CheckBudget` runs around each version, but
-`InstalledPackageIntegrity.Verify` and `BoundedFileReader.AppendExact` receive
-neither the cancellation token nor the deadline. Directory traversal and as
-much as one 64 MiB version hash can therefore complete after the budget or
-cancellation is exceeded, and a blocked synchronous filesystem read has no
-runner-owned escape. Aggregate entry/byte refusal likewise occurs after the
-version that crosses the limit has been enumerated and hashed. Per-version
-bounds make that overshoot finite, but the option name must not imply a hard
-wall-clock guarantee yet.
+Commit `1c1f8bb` makes elapsed/cancellation detection fine-grained:
+`CheckBudget` is passed into verification, recursive tree inspection invokes it
+per entry, filename enumeration invokes it before materialization, and bounded
+manifest/metadata/hash readers invoke it before every at-most-64-KiB read. A
+deterministic reader case cancels between two chunks. Aggregate entry/byte
+refusal still occurs after the one bounded version that crosses the limit has
+been verified, and no cancellation token can preempt a synchronous Windows
+filesystem read already blocked in the kernel. A future outer process watchdog
+is still required for a hard wall-clock guarantee, but ordinary multi-file work
+no longer waits for a complete 64 MiB version before observing the budget.
 
 Recovery is the larger product gap. `SettingsWidget.ReloadInstalledWidgetsAsync`
 catches the new codes, clears its projection, and shows only “Installed widget
@@ -1342,12 +1348,11 @@ UI listing, and publication evidence in one all-or-nothing materialization.
 Hard failure is safe for publication, but it cannot also be the only route to
 the control plane that repairs that failure.
 
-**Recommended direction.** Keep the new product quotas and pre-publication
-installer accounting. Thread cancellation/deadline checks into tree enumeration
-and each bounded file-read loop, and name the remaining non-preemptible local
-filesystem limitation honestly. Retain an overall watchdog in the future
-bounded command/process runner rather than promising that a cancellation token
-can interrupt every Windows filesystem stall.
+**Recommended direction.** Keep the new product quotas, pre-publication
+installer accounting, and fine-grained checkpoints. Name the remaining non-
+preemptible local filesystem limitation honestly, and retain an overall
+watchdog in the future bounded command/process runner rather than promising
+that a cancellation token can interrupt every Windows filesystem stall.
 
 Add a separately bounded catalog-health/repair projection that can identify
 safe package ID/version directory candidates and their coarse counts without
@@ -1374,7 +1379,8 @@ clear cleanup UX over an unverifiable cache.
 
 **Resolution evidence.** Preserve N+1 cases for IDs, versions per ID, total
 versions, aggregate files, and aggregate bytes, and add direct-discovery entry/
-byte overflow plus cancellation/deadline tests inside a multi-file hash. Prove
+byte overflow plus a discovery-level deadline test across multiple files.
+Preserve the deterministic per-buffer cancellation case. Prove
 an over-limit legacy/external tree leaves Settings and CLI able to identify and
 remove a chosen safe package/version without manual deletion, after which full
 discovery recovers. Prove the bridge does not retain disabled inactive GBSS
@@ -1460,7 +1466,7 @@ state matrix or visual regression verdict.**
 `artifacts/evidence/auth-free/final-schema-v2-20260808-final/manifest.json`
 honestly identifies a standalone widget-body harness, exact source/tool hashes,
 and excluded pass criteria. It records a dirty source tree with 44 entries at
-revision `f3ac48c`; the implementation HEAD at reassessment is `b2d6f95`. Its
+revision `f3ac48c`; the implementation HEAD at reassessment is `1c1f8bb`. Its
 Spotify package is 0.1.6,
 while the current manifest is 0.2.10. The 12 captures cover Games & Apps and
 Spotify's initial/setup states only. Settings failed to start in the harness,
@@ -1597,7 +1603,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
 | Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; current HEAD adds bounded catalog metadata, paired manifest policy, exact GBSS path/hash inventory, and digest-bound styles | Session launch lease for executable/dependency/assets; changing/insertion-path tests and clean packaged abuse/run evidence; persisted acquisition receipt and capability delta; signed publisher/update/revocation model |
-| Installed catalog scale | Commit `b2d6f95` adds aggregate ID/version/entry/byte quotas and prospective install refusal, but accepted versions are still eagerly hashed and over-limit discovery blocks supported cleanup | Interruptible per-read deadline/cancellation, bounded Settings/CLI repair path, active-only inventory ownership, and maximum-catalog cold/reload memory measurements |
+| Installed catalog scale | Commits `b2d6f95` and `1c1f8bb` add aggregate quotas, prospective refusal, and per-entry/per-read checkpoints, but accepted versions are still eagerly hashed and over-limit discovery blocks supported cleanup | Outer watchdog for kernel-blocked I/O, bounded Settings/CLI repair path, active-only inventory ownership, and maximum-catalog cold/reload memory measurements |
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
 | Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
