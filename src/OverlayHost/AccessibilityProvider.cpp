@@ -103,8 +103,9 @@ int LiveSettingValue(const LiveSetting setting) noexcept {
 }
 
 bool KeyboardFocusable(const Node& node) noexcept {
-    return node.role == Role::Button || node.role == Role::Slider ||
-        node.role == Role::ListItem;
+    return node.keyboardFocusable &&
+        (node.role == Role::Button || node.role == Role::Slider ||
+         node.role == Role::ListItem);
 }
 
 const WidgetNode* FindNode(
@@ -279,7 +280,12 @@ public:
         if (!node) {
             switch (propertyId) {
             case UIA_ControlTypePropertyId: IntVariant(UIA_PaneControlTypeId, result); break;
-            case UIA_NamePropertyId: return StringVariant(L"Game Bar Alternative", result);
+            case UIA_NamePropertyId:
+                return StringVariant(
+                    published && !published->tree.name.empty()
+                        ? std::wstring_view{published->tree.name}
+                        : std::wstring_view{L"Game Bar Alternative"},
+                    result);
             case UIA_AutomationIdPropertyId:
                 return StringVariant(L"GameBarAlternative.Overlay", result);
             case UIA_IsControlElementPropertyId:

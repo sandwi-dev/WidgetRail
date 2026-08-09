@@ -292,6 +292,32 @@ gba::accessibility::Tree HostTree(const bool includeDashboard = false) {
     return tree;
 }
 
+gba::accessibility::Tree OpenHostTree() {
+    gba::accessibility::Tree tree;
+    tree.widgetId = L"music";
+    tree.runtimeGeneration = L"generation-open";
+    tree.snapshotSequence = 30;
+    tree.activeInputScopeId = L"music.root";
+    tree.name = L"YT Music · Game Bar Alternative";
+    gba::accessibility::Node back;
+    back.id = L"host.open.back";
+    back.name = L"Back to widget tray";
+    back.bounds = {300, 240, 80, 30};
+    back.role = gba::accessibility::Role::Button;
+    back.hostAction = gba::accessibility::HostAction::BackToTray;
+    back.keyboardFocusable = false;
+    tree.nodes.push_back(back);
+    gba::accessibility::Node close;
+    close.id = L"host.open.close";
+    close.name = L"Close overlay";
+    close.bounds = {380, 240, 100, 30};
+    close.role = gba::accessibility::Role::Button;
+    close.hostAction = gba::accessibility::HostAction::CloseOverlay;
+    close.keyboardFocusable = false;
+    tree.nodes.push_back(close);
+    return tree;
+}
+
 } // namespace
 
 int main() {
@@ -530,6 +556,59 @@ int main() {
     Check(actions.size() == 1 && actions[0].kind == gba::accessibility::ActionKind::Invoke &&
           actions[0].hostTargetId == L"music",
           "tray Invoke retains the selected widget target");
+
+    host.Publish(OpenHostTree(), {100, 200, 2, 800, 600});
+    BSTR openRootName{};
+    Check(SUCCEEDED(clientRoot->get_CurrentName(&openRootName)) &&
+          std::wstring_view{openRootName, SysStringLen(openRootName)} ==
+              L"YT Music · Game Bar Alternative",
+          "real UIA client reads open-widget page context from the composite root");
+    SysFreeString(openRootName);
+    ComPtr<IRawElementProviderFragment> backFragment;
+    ComPtr<IRawElementProviderSimple> backProvider;
+    Check(SUCCEEDED(rootFragment->Navigate(
+              NavigateDirection_FirstChild, backFragment.GetAddressOf())) &&
+          backFragment && SUCCEEDED(backFragment.As(&backProvider)),
+          "composite root traverses to the host Back command");
+    VARIANT backFocusable{};
+    Check(SUCCEEDED(backProvider->GetPropertyValue(
+              UIA_IsKeyboardFocusablePropertyId, &backFocusable)) &&
+          V_VT(&backFocusable) == VT_BOOL && V_BOOL(&backFocusable) == VARIANT_FALSE &&
+          backFragment->SetFocus() == UIA_E_NOTSUPPORTED,
+          "host Back remains invokable without creating a second logical focus owner");
+    VariantClear(&backFocusable);
+    ComPtr<IUnknown> backInvokeUnknown;
+    ComPtr<IInvokeProvider> backInvoke;
+    Check(SUCCEEDED(backProvider->GetPatternProvider(
+              UIA_InvokePatternId, backInvokeUnknown.GetAddressOf())) &&
+          backInvokeUnknown && SUCCEEDED(backInvokeUnknown.As(&backInvoke)) &&
+          SUCCEEDED(backInvoke->Invoke()),
+          "host Back exposes a closed Invoke pattern");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 &&
+          actions[0].hostAction == gba::accessibility::HostAction::BackToTray &&
+          actions[0].widgetId == L"music" &&
+          actions[0].runtimeGeneration == L"generation-open" &&
+          actions[0].snapshotSequence == 30,
+          "host Back retains the composite widget generation tuple");
+    ComPtr<IRawElementProviderFragment> closeFragment;
+    ComPtr<IRawElementProviderSimple> closeProvider;
+    ComPtr<IUnknown> closeInvokeUnknown;
+    ComPtr<IInvokeProvider> closeInvoke;
+    Check(SUCCEEDED(backFragment->Navigate(
+              NavigateDirection_NextSibling, closeFragment.GetAddressOf())) &&
+          closeFragment && SUCCEEDED(closeFragment.As(&closeProvider)) &&
+          SUCCEEDED(closeProvider->GetPatternProvider(
+              UIA_InvokePatternId, closeInvokeUnknown.GetAddressOf())) &&
+          closeInvokeUnknown && SUCCEEDED(closeInvokeUnknown.As(&closeInvoke)) &&
+          SUCCEEDED(closeInvoke->Invoke()),
+          "host Close is separately traversable and invokable");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 &&
+          actions[0].hostAction == gba::accessibility::HostAction::CloseOverlay,
+          "host Close queues only the typed idempotent close authority");
+
+    host.Publish(HostTree(), {100, 200, 2, 800, 600});
     VARIANT trayAutomationId{};
     V_VT(&trayAutomationId) = VT_BSTR;
     V_BSTR(&trayAutomationId) = SysAllocString(L"tray.music");

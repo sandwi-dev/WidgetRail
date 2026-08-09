@@ -51,6 +51,11 @@ int main() {
     ++sliderChanged.sliderPresentationRevision;
     Check(tracker.ShouldCollect(sliderChanged),
           "optimistic slider presentation changes collect immediately");
+    tracker.Published(sliderChanged);
+    auto hostSemanticChanged = sliderChanged;
+    ++hostSemanticChanged.hostSemanticRevision;
+    Check(tracker.ShouldCollect(hostSemanticChanged),
+          "open-shell help status or catalog changes collect immediately");
     tracker.Clear();
     Check(tracker.ShouldCollect(focusChanged), "surface clear retires published authority");
 

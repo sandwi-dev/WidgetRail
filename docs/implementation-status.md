@@ -84,10 +84,14 @@ replaces it with one polite status live region. Title, help, status, and catalog
 display names participate in the host projection revision, and a real UIA client
 observes the heading/live properties plus a status-change event. Tray Focus and
 Invoke requests resolve the revalidated stable widget ID in one state transition
-instead of replaying up to 256 directional navigation commands.
+instead of replaying up to 256 directional navigation commands. Open widgets now
+publish one composite root named for the active page, with widget controls,
+closed non-focus-stealing Back/Close commands, exact visible quiet help or live
+status, and the visible tray. Switching focus regions changes one focus owner;
+it no longer replaces the semantic surface.
 Focused Release coverage passes Slider Interaction 2086, renderer 4636,
-accessibility tree 15, projection cadence 10, host semantics 14, event planning
-10, and provider 114 checks. The isolated Release native aggregate passes 24/24,
+accessibility tree 15, projection cadence 10, host semantics 21, event planning
+10, and provider 121 checks. The isolated Release native aggregate passes 24/24,
 and the canonical Debug build/test path is green. Legacy MSAA and packaged
 Narrator evidence remain open, so full screen-reader support is not yet claimed.
 
@@ -106,8 +110,8 @@ stable widget target; the UI thread rejects stale trees, exits reorder mode, and
 uses one direct stable-ID tray state transition. The real UIA-client suite
 discovers the ListItem and obtains SelectionItem, while direct provider coverage
 verifies the typed queued authority. The dashboard also publishes its heading,
-static help, and transient live status; composite open-widget Back/Close/footer
-semantics remain open.
+static help, and transient live status. The open-widget composite retains those
+tray items alongside widget content and typed Back/Close/footer semantics.
 
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the

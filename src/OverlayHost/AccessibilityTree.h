@@ -36,6 +36,8 @@ enum class LiveSetting {
 enum class HostAction {
     None,
     ActivateTrayItem,
+    BackToTray,
+    CloseOverlay,
 };
 
 struct Node final {
@@ -59,6 +61,7 @@ struct Node final {
     bool enabled{true};
     bool selected{};
     bool focused{};
+    bool keyboardFocusable{true};
 };
 
 struct Tree final {
@@ -68,6 +71,7 @@ struct Tree final {
     std::wstring activeInputScopeId;
     std::vector<Node> nodes;
     std::optional<std::size_t> focusedNode;
+    std::wstring name;
 };
 
 /// Builds a closed immutable accessibility tree from the exact semantic

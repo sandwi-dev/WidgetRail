@@ -2811,30 +2811,52 @@ private:
 
     void HandleAccessibilityActions() {
         for (const auto& request : accessibilityProvider_.TakeActions()) {
-            if (request.widgetId == L"host.tray") {
-                const auto node = std::find_if(
-                    accessibilityTree_.nodes.begin(), accessibilityTree_.nodes.end(),
-                    [&](const gba::accessibility::Node& candidate) {
-                        return candidate.id == request.nodeId;
-                    });
-                if (accessibilityTree_.widgetId != L"host.tray" ||
-                    request.runtimeGeneration != L"host" ||
+            const auto publishedNode = std::find_if(
+                accessibilityTree_.nodes.begin(), accessibilityTree_.nodes.end(),
+                [&](const gba::accessibility::Node& candidate) {
+                    return candidate.id == request.nodeId;
+                });
+            if (request.hostAction != gba::accessibility::HostAction::None) {
+                if (request.widgetId != accessibilityTree_.widgetId ||
+                    request.runtimeGeneration != accessibilityTree_.runtimeGeneration ||
                     request.snapshotSequence != accessibilityTree_.snapshotSequence ||
-                    request.activeInputScopeId != L"host.tray" ||
-                    node == accessibilityTree_.nodes.end() || !node->enabled ||
-                    node->hostAction != gba::accessibility::HostAction::ActivateTrayItem ||
-                    node->hostTargetId != request.hostTargetId ||
-                    request.hostAction != node->hostAction) {
-                    AppendDiagnostic(L"Dropped stale or invalid tray accessibility action");
+                    request.activeInputScopeId != accessibilityTree_.activeInputScopeId ||
+                    publishedNode == accessibilityTree_.nodes.end() ||
+                    !publishedNode->enabled ||
+                    request.hostAction != publishedNode->hostAction ||
+                    request.hostTargetId != publishedNode->hostTargetId) {
+                    AppendDiagnostic(L"Dropped stale or invalid host accessibility action");
                     continue;
                 }
-                if (state_.focusRegion() != gba::FocusRegion::Tray) continue;
-                if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
-                if (!SelectTrayWidget(request.hostTargetId)) continue;
-                if (request.kind == gba::accessibility::ActionKind::Invoke)
-                    Dispatch(gba::Command::Activate);
-                else if (request.kind != gba::accessibility::ActionKind::Focus)
+                if (request.hostAction ==
+                    gba::accessibility::HostAction::ActivateTrayItem) {
+                    if (request.kind != gba::accessibility::ActionKind::Invoke &&
+                        request.kind != gba::accessibility::ActionKind::Focus)
+                        continue;
+                    if (state_.surface() == gba::Surface::Widget &&
+                        state_.focusRegion() == gba::FocusRegion::Widget)
+                        Dispatch(gba::Command::SampleWidgetBack);
+                    if (state_.focusRegion() != gba::FocusRegion::Tray) continue;
+                    if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
+                    if (!SelectTrayWidget(request.hostTargetId)) continue;
+                    if (request.kind == gba::accessibility::ActionKind::Invoke)
+                        Dispatch(gba::Command::Activate);
+                } else if (request.hostAction ==
+                           gba::accessibility::HostAction::BackToTray) {
+                    if (request.kind != gba::accessibility::ActionKind::Invoke ||
+                        state_.surface() != gba::Surface::Widget ||
+                        state_.focusRegion() != gba::FocusRegion::Widget)
+                        continue;
+                    Dispatch(gba::Command::SampleWidgetBack);
+                } else if (request.hostAction ==
+                           gba::accessibility::HostAction::CloseOverlay) {
+                    if (request.kind != gba::accessibility::ActionKind::Invoke ||
+                        state_.surface() == gba::Surface::Hidden)
+                        continue;
+                    Dispatch(gba::Command::CloseOverlay);
+                } else {
                     continue;
+                }
                 (void)SetFocus(window_);
                 InvalidateRect(window_, nullptr, FALSE);
                 continue;
@@ -2905,8 +2927,10 @@ private:
 
     void ClearAccessibilityTree() noexcept {
         accessibilityTree_ = {};
+        widgetAccessibilityTree_ = {};
         accessibilityProvider_.Clear();
         accessibilityProjection_.Clear();
+        widgetAccessibilityProjection_.Clear();
     }
 
     bool PublishAccessibilityTree(const double pixelsPerDip) {
@@ -2933,14 +2957,56 @@ private:
         const float width,
         const float height,
         const gba::accessibility::DashboardSemantics* dashboard = nullptr) {
-        if (!accessibilityActive_ || state_.focusRegion() != gba::FocusRegion::Tray)
-            return;
+        if (!accessibilityActive_) return;
         std::vector<gba::accessibility::TrayItem> items;
         items.reserve(state_.order().size());
         for (const auto& widgetId : state_.order()) {
             const std::wstring name{DisplayWidgetName(widgetId)};
             items.push_back({widgetId, name});
         }
+        if (state_.surface() == gba::Surface::Widget) {
+            if (widgetAccessibilityTree_.widgetId != state_.activeWidget() ||
+                openWidgetAccessibility_.title.empty())
+                return;
+            const auto semanticRevision =
+                gba::accessibility::ComputeOpenWidgetSemanticRevision(
+                    items, openWidgetAccessibility_);
+            const auto policy = appearanceState_.current()
+                ? CurrentAccessibilityPolicy()
+                : gba::NativeAccessibilityPolicy{};
+            gba::accessibility::ProjectionKey key{
+                widgetAccessibilityTree_.widgetId,
+                widgetAccessibilityTree_.runtimeGeneration,
+                widgetAccessibilityTree_.activeInputScopeId,
+                state_.focusRegion() == gba::FocusRegion::Tray
+                    ? std::wstring{state_.selectedWidget()}
+                    : focusedElementId_,
+                widgetAccessibilityTree_.snapshotSequence,
+                widgetAccessibilityRevision_,
+                appearanceState_.current() ? appearanceState_.current()->revision : 0,
+                layout.stripBounds.x,
+                layout.stripBounds.y,
+                layout.stripBounds.width,
+                layout.stripBounds.height,
+                width,
+                height,
+                static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F,
+                policy.textScale,
+                policy.minimumFontWeight,
+                policy.reducedMotion,
+                policy.reducedTransparency,
+            };
+            key.hostSemanticRevision = semanticRevision;
+            if (!accessibilityProjection_.ShouldCollect(key)) return;
+            accessibilityTree_ = gba::accessibility::BuildOpenWidgetTree(
+                widgetAccessibilityTree_, items, layout, state_.selectedSlot(),
+                state_.focusRegion() == gba::FocusRegion::Tray,
+                openWidgetAccessibility_);
+            if (PublishAccessibilityTree(key.pixelsPerDip))
+                accessibilityProjection_.Published(std::move(key));
+            return;
+        }
+        if (state_.focusRegion() != gba::FocusRegion::Tray) return;
         const auto semanticRevision =
             gba::accessibility::ComputeTraySemanticRevision(items, dashboard);
         const auto policy = appearanceState_.current()
@@ -3963,7 +4029,7 @@ private:
         for (const auto& child : node.children) CollectShortcutPrompts(child, prompts);
     }
 
-    std::wstring OpenWidgetPrompt() const {
+    std::optional<std::wstring> OpenWidgetStatus() const {
         const auto activeDescriptor = std::find_if(
             widgetDescriptors_.begin(), widgetDescriptors_.end(),
             [&](const gba::WidgetDescriptor& descriptor) {
@@ -3981,6 +4047,10 @@ private:
             lastActionWidgetId_ == state_.activeWidget()) {
             return lastActionMessage_;
         }
+        return std::nullopt;
+    }
+
+    std::wstring OpenWidgetPrompt() const {
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         if (!snapshot) return L"A  Select";
         std::vector<std::pair<std::wstring, std::wstring>> prompts;
@@ -4007,6 +4077,7 @@ private:
     }
 
     void DrawWidgetFooter(const gba::OverlaySurfaceGeometry& geometry) {
+        openWidgetAccessibility_ = {};
         if (geometry.footerHeight <= 0.0F || geometry.panelWidth <= 0.0F) return;
         const float panelLeft = geometry.panelX;
         const float panelRight = geometry.panelX + geometry.panelWidth;
@@ -4019,17 +4090,31 @@ private:
         const float textBottom = panelBottom -
             std::min(12.0F, geometry.footerHeight * 0.25F);
         if (textBottom <= textTop + 1.0F) return;
+        const gba::declarative::Rect footerBounds{
+            contentLeft, textTop, contentRight - contentLeft, textBottom - textTop,
+        };
+        openWidgetAccessibility_.title =
+            std::wstring{DisplayWidgetName(state_.activeWidget())};
         if (state_.focusRegion() == gba::FocusRegion::Tray) {
             const auto status = DashboardStatus();
-            const std::wstring footer = status
-                ? *status
-                : DashboardHint(contentRight - contentLeft);
+            const std::wstring help = DashboardHint(contentRight - contentLeft);
+            const std::wstring footer = status ? *status : help;
+            openWidgetAccessibility_.closeBounds = footerBounds;
+            if (status) {
+                openWidgetAccessibility_.status = *status;
+                openWidgetAccessibility_.statusBounds = footerBounds;
+            } else {
+                openWidgetAccessibility_.help = help;
+                openWidgetAccessibility_.helpBounds = footerBounds;
+            }
             DrawTextLine(footer, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
                          dashboardSecondaryBrush_.Get());
             return;
         }
-        const std::wstring prompt = OpenWidgetPrompt();
+        const auto status = OpenWidgetStatus();
+        const std::wstring help = OpenWidgetPrompt();
+        const std::wstring prompt = status ? *status : help;
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         const bool rootScope = snapshot &&
             std::wstring_view(snapshot->activeInputScopeId) ==
@@ -4037,8 +4122,35 @@ private:
         const std::wstring hostPrompt = rootScope
             ? L"B  Back     Guide  Close"
             : L"Guide  Close";
+        openWidgetAccessibility_.backAvailable = rootScope;
         if (contentRight - contentLeft >= 300.0F) {
             const float hostPromptWidth = rootScope ? 180.0F : 106.0F;
+            const float hostPromptLeft = contentRight - hostPromptWidth;
+            const gba::declarative::Rect promptBounds{
+                contentLeft, textTop,
+                std::max(0.0F, hostPromptLeft - 14.0F - contentLeft),
+                textBottom - textTop,
+            };
+            if (status) {
+                openWidgetAccessibility_.status = *status;
+                openWidgetAccessibility_.statusBounds = promptBounds;
+            } else {
+                openWidgetAccessibility_.help = help;
+                openWidgetAccessibility_.helpBounds = promptBounds;
+            }
+            if (rootScope) {
+                openWidgetAccessibility_.backBounds = {
+                    hostPromptLeft, textTop, 74.0F, textBottom - textTop,
+                };
+                openWidgetAccessibility_.closeBounds = {
+                    hostPromptLeft + 74.0F, textTop,
+                    contentRight - hostPromptLeft - 74.0F, textBottom - textTop,
+                };
+            } else {
+                openWidgetAccessibility_.closeBounds = {
+                    hostPromptLeft, textTop, hostPromptWidth, textBottom - textTop,
+                };
+            }
             DrawTextLine(prompt, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop,
                                      contentRight - hostPromptWidth - 14.0F, textBottom),
@@ -4050,6 +4162,18 @@ private:
         } else {
             // At narrow logical widths retain the hierarchy/escape affordance;
             // widget action labels remain discoverable on larger surfaces.
+            const float halfWidth = footerBounds.width * 0.5F;
+            if (rootScope) {
+                openWidgetAccessibility_.backBounds = {
+                    footerBounds.x, footerBounds.y, halfWidth, footerBounds.height,
+                };
+                openWidgetAccessibility_.closeBounds = {
+                    footerBounds.x + halfWidth, footerBounds.y,
+                    footerBounds.width - halfWidth, footerBounds.height,
+                };
+            } else {
+                openWidgetAccessibility_.closeBounds = footerBounds;
+            }
             DrawTextLine(hostPrompt, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
                          secondaryBrush_.Get());
@@ -4150,9 +4274,8 @@ private:
                     accessibilityPolicy.reducedTransparency,
                 };
                 const bool collectAccessibility = accessibilityActive_ &&
-                    state_.focusRegion() == gba::FocusRegion::Widget &&
                     descriptor != widgetDescriptors_.end() &&
-                    accessibilityProjection_.ShouldCollect(projectionKey);
+                    widgetAccessibilityProjection_.ShouldCollect(projectionKey);
                 gba::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
                 options.collectAccessibility = collectAccessibility;
@@ -4211,18 +4334,18 @@ private:
                 if (accessibilityActive_ && !result.succeeded) {
                     ClearAccessibilityTree();
                 } else if (collectAccessibility) {
-                    accessibilityTree_ = gba::accessibility::BuildWidgetTree(
+                    widgetAccessibilityTree_ = gba::accessibility::BuildWidgetTree(
                         std::wstring{widget}, descriptor->runtimeGeneration,
                         *snapshot, result,
                         state_.focusRegion() == gba::FocusRegion::Widget
                             ? std::wstring_view{focusedElementId_}
                             : std::wstring_view{},
                         options.sliderValueOverrides);
-                    if (PublishAccessibilityTree(physicalPixelsPerDip))
-                        accessibilityProjection_.Published(projectionKey);
+                    ++widgetAccessibilityRevision_;
+                    widgetAccessibilityProjection_.Published(projectionKey);
                 }
                 if (accessibilityActive_ &&
-                    accessibilityProjection_.ObserveFrame(result.animationActive))
+                    widgetAccessibilityProjection_.ObserveFrame(result.animationActive))
                     InvalidateRect(window_, nullptr, FALSE);
                 const auto lastSequence = renderedSnapshotSequences_.find(std::wstring(widget));
                 if (lastSequence == renderedSnapshotSequences_.end() ||
@@ -4310,9 +4433,13 @@ private:
     ULONGLONG lastActionExpiresAt_{};
     gba::WidgetActionFeedbackController actionFailureFeedback_;
     gba::accessibility::Tree accessibilityTree_;
+    gba::accessibility::Tree widgetAccessibilityTree_;
+    gba::accessibility::OpenWidgetSemantics openWidgetAccessibility_;
     gba::accessibility::ProviderHost accessibilityProvider_;
     bool accessibilityActive_{};
     gba::accessibility::ProjectionTracker accessibilityProjection_;
+    gba::accessibility::ProjectionTracker widgetAccessibilityProjection_;
+    std::uint64_t widgetAccessibilityRevision_{};
     long long hostAccessibilitySequence_{};
     ULONGLONG lastGuideDispatchAt_{};
     ULONGLONG sliderReconcileAt_{};

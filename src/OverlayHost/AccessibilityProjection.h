@@ -26,6 +26,7 @@ struct ProjectionKey final {
     int minimumFontWeight{};
     bool reducedMotion{};
     bool reducedTransparency{};
+    long long hostSemanticRevision{};
 
     friend bool operator==(const ProjectionKey&, const ProjectionKey&) = default;
 };

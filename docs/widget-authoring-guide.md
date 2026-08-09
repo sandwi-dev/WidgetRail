@@ -677,13 +677,14 @@ property updates; adding/removing controls or changing supported patterns
 invalidates structure. Authors do not raise native events themselves.
 
 Open-widget UIA is currently an implemented preview rather than the completed
-screen-reader ship gate. The host tray publishes its visible widget tiles as a
-single-selection ListItem set with Invoke; inactive widget controls are replaced
-by that tray surface while controller focus is there. The dashboard publishes a
-level-one title heading, non-live controller help, and polite transient action
-feedback. Open-widget Back/Close/footer context, legacy MSAA, and packaged
-Narrator evidence remain pending. Semantic snapshot tests therefore remain
-required for widget acceptance.
+screen-reader ship gate. One composite root retains the active widget controls,
+closed host Back/Close commands, exact visible quiet footer help or polite
+transient feedback, and visible tray ListItems while controller focus changes
+between widget and tray. The dashboard publishes a level-one title heading,
+non-live controller help, and polite transient action feedback. The desktop-
+automation gesture-authority decision, typed choice semantics, legacy MSAA, and
+packaged Narrator evidence remain pending. Semantic snapshot tests therefore
+remain required for widget acceptance.
 
 Every node ID must be unique in the snapshot, at most 128 characters, and use
 only ASCII letters, digits, `.`, `-`, and `_`. Do not derive IDs from list

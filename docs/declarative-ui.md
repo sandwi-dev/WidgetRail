@@ -66,19 +66,23 @@ errors. Root focus and visibility are published by the window thread rather than
 queried with thread-local Win32 state from a free-threaded callback. Clearing or
 hiding the semantic tree does not synthesize a focus event on the custom root.
 
-While controller focus is on the dashboard/open-widget tray, the provider
-publishes the exact visible carousel window instead of inactive widget controls.
-Each tile is a ListItem with single-selection and Invoke patterns, its selected,
-focused, and enabled states, and the shared paint/pointer rectangle. Select and
-Invoke carry a closed host action plus stable widget target; the UI thread exits
-reorder mode, revalidates the current host-tree sequence, and uses the existing
-tray state machine rather than parsing command strings.
+An open widget publishes one composite immutable tree regardless of whether the
+controller focus owner is widget content or the tray. Its root names the active
+widget, then exposes the visible widget controls, exact footer help or transient
+status, closed host Back/Close Invoke commands, and the exact visible carousel
+window. Host commands are non-keyboard-focusable so they cannot create a second
+logical focus owner. Each tray tile is a ListItem with single-selection and
+Invoke patterns, selected/focused/enabled state, and the shared paint/pointer
+rectangle. Select and Invoke carry a closed host action plus stable widget
+target; the UI thread revalidates the current composite generation and uses one
+direct tray-state transition rather than parsing command strings.
 
-This is not yet the complete screen-reader ship gate. Open-widget Back, Close,
-footer/status context, and composite widget/tray traversal are not published;
-legacy MSAA is not implemented; and a packaged Narrator smoke test remains
-pending. Until those close, treat UIA as an implemented preview and keep
-deterministic semantic snapshots as the primary accessibility contract.
+This is not yet the complete screen-reader ship gate. UIA-originated widget
+actions still share capability admission with controller gestures without a
+final documented desktop-automation threat decision; typed choice semantics,
+legacy MSAA, and a packaged Narrator smoke test also remain pending. Until those
+close, treat UIA as an implemented preview and keep deterministic semantic
+snapshots as the primary accessibility contract.
 
 ## Elements
 

@@ -91,6 +91,65 @@ int main() {
               renamedItems, &dashboard),
           "catalog display-name changes invalidate the host projection revision");
 
+    gba::accessibility::Tree widgetTree;
+    widgetTree.widgetId = L"music";
+    widgetTree.runtimeGeneration = L"music-v1";
+    widgetTree.snapshotSequence = 42;
+    widgetTree.activeInputScopeId = L"music.root";
+    gba::accessibility::Node play;
+    play.id = L"music.play";
+    play.name = L"Play";
+    play.actionId = L"music.play";
+    play.bounds = {20, 80, 120, 44};
+    play.role = gba::accessibility::Role::Button;
+    play.focused = true;
+    widgetTree.nodes.push_back(play);
+    widgetTree.focusedNode = 0;
+    const gba::accessibility::OpenWidgetSemantics open{
+        L"YT Music", true,
+        {320, 440, 80, 30}, {400, 440, 100, 30},
+        L"X Play  LB Previous  RB Next", {20, 440, 286, 30},
+        L"", {20, 440, 286, 30},
+    };
+    const auto openTree = gba::accessibility::BuildOpenWidgetTree(
+        widgetTree, items, *layout, 1, false, open);
+    Check(openTree.widgetId == L"music" &&
+          openTree.runtimeGeneration == L"music-v1" &&
+          openTree.snapshotSequence == 42 &&
+          openTree.name == L"YT Music · Game Bar Alternative",
+          "open shell retains widget authority and publishes page context on the root");
+    Check(openTree.focusedNode == 0 && openTree.nodes[0].focused,
+          "widget focus remains the singular composite focus owner");
+    Check(openTree.nodes[1].id == L"host.open.back" &&
+          openTree.nodes[1].hostAction == gba::accessibility::HostAction::BackToTray &&
+          !openTree.nodes[1].keyboardFocusable &&
+          openTree.nodes[2].id == L"host.open.close" &&
+          openTree.nodes[2].hostAction == gba::accessibility::HostAction::CloseOverlay &&
+          !openTree.nodes[2].keyboardFocusable,
+          "open shell exposes closed non-focus-stealing Back and Close commands");
+    Check(openTree.nodes[3].id == L"host.open.help" &&
+          openTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Off &&
+          openTree.nodes[3].bounds.width == open.helpBounds.width,
+          "visible widget shortcut guidance is readable non-live text with exact bounds");
+    Check(openTree.nodes.size() == 6 &&
+          openTree.nodes[4].id == L"tray.music" &&
+          openTree.nodes[5].id == L"tray.performance" &&
+          !openTree.nodes[4].focused && !openTree.nodes[5].focused,
+          "open shell appends only the visible tray window without stealing widget focus");
+
+    auto statusOpen = open;
+    statusOpen.help.clear();
+    statusOpen.status = L"Playback command failed";
+    const auto trayFocusedTree = gba::accessibility::BuildOpenWidgetTree(
+        widgetTree, items, *layout, 2, true, statusOpen);
+    Check(trayFocusedTree.focusedNode == 5 &&
+          !trayFocusedTree.nodes[0].focused && trayFocusedTree.nodes[5].focused,
+          "tray focus clears widget focus and selects exactly one visible tray item");
+    Check(trayFocusedTree.nodes[3].id == L"host.open.status" &&
+          trayFocusedTree.nodes[3].role == gba::accessibility::Role::Status &&
+          trayFocusedTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Polite,
+          "transient open-widget feedback replaces static help with one polite status");
+
     std::cout << "HostAccessibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }
