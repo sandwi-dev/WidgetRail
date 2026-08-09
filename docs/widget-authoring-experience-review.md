@@ -2,7 +2,7 @@
 
 Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, data-only inspection, and a truthful local-SDK scaffold are implemented; a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against current HEAD `6fc9e01` after verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against current HEAD `6bd60d3` (documentation-only; implementation baseline `6fc9e01`) after verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -144,8 +144,9 @@ hashes, manage ACLs, or write loader guards. That is the right ergonomic
 boundary. A new runtime test already runs a real AppContainer worker, replaces a
 prior broad grant for the same SID on the current root, and proves a verified
 text file remains readable while a late file is denied. Treat the complete
-workflow as provisional until current-commit execution is retained and the
-remaining adversarial cases pass. The first-party
+workflow as pre-publication until the remaining adversarial cases pass. Clean
+eligible run `20260809T152831Z-67b77c73` retains the selected Release path for
+documentation-only HEAD `6bd60d3` over implementation baseline `6fc9e01`. The first-party
 conformance harness now routes five real installed packages through the exact
 lease, including YT Music suspend, restart, force reload, update, and removal.
 The latest runtime follow-up also rejects content authority overlapping the
@@ -186,7 +187,10 @@ before extraction/publication or launch. Bridge coverage keeps that catalog
 limit aligned with the runtime outer guard, the public packaging guide publishes
 it, and a within-file-limit deep-path fixture proves early refusal. Maximum
 accepted deep-shape activation timing remains part of the broader start-budget
-work; authors no longer discover the hard limit only on first open.
+work. Resolution evidence should include an exactly 1,024-directory package
+through pack, install, enable, and launch, plus proof that an over-limit
+`gbar pack` leaves no output and install publishes no package. Authors no longer
+discover the hard limit only on first open.
 
 ## Evidence from the repository
 
@@ -1373,7 +1377,8 @@ and fail-closed scenario selection with contract and safety tests.
    authority for each worker session; retain stale-generation-root denial and
    reject replacement, alternate group grants, directory rename/reparse substitution, and late additions
    under the production AppContainer token; bind ACL targets to the objects
-   authenticated by the lease;
+   authenticated by the lease; preserve the aligned 1,024-directory admission
+   contract and prove both its exact accepted edge and rejection atomicity;
    put revalidation, authority application, process creation, and hello under
    one enforced user-visible start budget without blocking unrelated bridge
    work; clean up persistent ACL grants on every failure/teardown path. Then add an

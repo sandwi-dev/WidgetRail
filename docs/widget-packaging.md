@@ -273,8 +273,9 @@ byte authority, not a claim that the current-user package directory is generally
 OS-immutable.
 
 The bounded maximum-inventory fixtures use 512 verified files. Current local
-Release evidence records 321.978 ms to reacquire/hash/pin that inventory and
-372.060 ms to apply exact AppContainer grants and complete lazy activation. The
+Clean retained Release run `20260809T152831Z-67b77c73` records 325.283 ms to
+reacquire/hash/pin that inventory and 360.426 ms to apply exact AppContainer
+grants and complete lazy activation. The
 focused tests reject content acquisition above five seconds and the maximum-
 grant fixture above ten seconds, but those separate ceilings are not one
 production start-admission budget. These are one-machine regression

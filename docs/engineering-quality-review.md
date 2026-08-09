@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against current HEAD `6fc9e01` after committed digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
+Last reassessed: 2026-08-09 against current HEAD `6bd60d3` (documentation-only; implementation baseline `6fc9e01`) after committed digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -60,9 +60,9 @@ content lease: it rechecks the exact tree, pins every verified file with
 write/delete-denying handles, gives the AppContainer direct non-inheriting grants
 only for required directories and files, and retains the lease until process
 teardown. This is the first implementation that actually carries verified
-content authority across the bridge/runtime launch seam. It is committed, and
-implementation-reported focused Release suites are green; no retained artifact
-yet proves the current commit.
+content authority across the bridge/runtime launch seam. Clean retained run
+`20260809T152831Z-67b77c73` proves the selected Release path at documentation-
+only HEAD `6bd60d3` over implementation baseline `6fc9e01`.
 Source conformance now routes five real installed
 first-party packages through that path and exercises YT Music across suspend,
 crash/restart, force reload, update, and removal. It still does not adversarially
@@ -85,8 +85,8 @@ this audit. Package inspection and installed-tree verification now reject more
 than 1,024 package-root/implicit directories required to reach verified files,
 the runtime retains the same executable outer limit, and bridge coverage asserts
 the two internal constants remain aligned. The Release Catalog 32/32, Bridge
-42/42, and CLI 49/49 suites are implementation-reported green with a within-
-file-limit deep-path refusal case; no retained `6fc9e01` result bundle exists.
+42/42, and CLI 49/49 suites are retained green with a within-file-limit deep-
+path refusal case in run `20260809T152831Z-67b77c73`.
 
 The same work exposes a new P1 availability boundary. Its five-second
 `ContentLeaseTimeout` covers revalidation only; the subsequent per-directory and
@@ -255,8 +255,8 @@ inspected the committed source but did not execute the focused suites.
 Follow-up `6fc9e01` rejects archive and installed-tree shapes that would require
 more than 1,024 exact authority directories, before extraction/publication or
 worker start. Catalog/runtime constants are checked together by bridge coverage;
-primary Release verification reports Catalog 32/32, Bridge 42/42, and CLI 49/49,
-but this review found no retained current-commit output.
+retained Release verification records Catalog 32/32, Bridge 42/42, and CLI 49/49
+in `20260809T152831Z-67b77c73`.
 
 EQ-014 remains the highest overall risk, but its status advances to materially
 partially implemented. The installed-package conformance path proves ordinary
@@ -1515,8 +1515,8 @@ adds direct cases for both behaviors.
 This is the correct ownership direction and is substantially more than adding a
 hash helper. Commits `d2e49a9` and `6fc9e01` include it; implementation-reported focused
 Release Catalog 32/32, Runtime 44/44, Bridge 42/42, Worker Host 9/9, and
-First-Party Conformance 5/5 suites are green, but no current-commit result bundle
-was retained. New
+First-Party Conformance 5/5 suites are retained green in clean eligible run
+`20260809T152831Z-67b77c73`. New
 catalog tests inspect the full inventory, prove write/delete denial while the
 lease lives, and reject mutation/insertion before admission. Bridge tests prove
 factory wiring and pre-launch refusal. Runtime tests prove content admission
@@ -2263,7 +2263,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; commit `d2e49a9` adds a complete file inventory, per-start revalidation, pinned file handles, exact non-inheriting AppContainer grants, trusted-runtime overlap refusal, production-token late-file and stale-generation-root denial, and positive execution paths for five installed packages; `6fc9e01` rejects unlaunchable directory shapes before extraction | Retain clean current-commit evidence, add installed-worker managed/native/asset abuse and directory replacement cases, bind ACL-applied objects to lease-authenticated identities, and prove the catalog ACL policy excludes alternate group grants and handles partial grant failure; then add acquisition receipts, capability deltas, signing, update, and revocation |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; commit `d2e49a9` adds a complete file inventory, per-start revalidation, pinned file handles, exact non-inheriting AppContainer grants, trusted-runtime overlap refusal, production-token late-file and stale-generation-root denial, and positive execution paths for five installed packages; `6fc9e01` rejects unlaunchable directory shapes before extraction; clean selected evidence is retained | Add installed-worker managed/native/asset abuse and directory replacement cases, bind ACL-applied objects to lease-authenticated identities, and prove the catalog ACL policy excludes alternate group grants and handles partial grant failure; then add acquisition receipts, capability deltas, signing, update, and revocation |
 | Installed catalog scale | Commits `b2d6f95` and `1c1f8bb` add aggregate quotas, prospective refusal, and per-entry/per-read checkpoints; current discovery temporarily materializes a full file inventory for every accepted version before only active enabled versions are retained by bridge closures | Outer watchdog for kernel-blocked I/O, bounded Settings/CLI repair path, and maximum-catalog cold/reload time plus peak/transient memory measurements for full inventories |
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |

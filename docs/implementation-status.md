@@ -673,8 +673,10 @@ deadline checks, pre-extraction refusal when implicit file paths would require
 more than 1,024 exact authority directories, unexpected-entry rejection, plus
 content-bound unsigned authority.
 The maximum-inventory fixtures retain 512 verified files: current local Release
-evidence acquires and hashes the pinned-file lease in 321.978 ms and applies the
-exact AppContainer grants plus lazy activation in 372.060 ms. Focused tests use
+evidence acquires and hashes the pinned-file lease in 325.283 ms and applies the
+exact AppContainer grants plus lazy activation in 360.426 ms. Clean eligible
+run `20260809T152831Z-67b77c73` retains the seven affected Release steps for
+commit `6bd60d3` (implementation baseline `6fc9e01`). Focused tests use
 separate five-second content-acquisition and ten-second maximum-grant ceilings;
 one aggregate production start deadline plus repeated clean/hosted measurements
 remain open.
