@@ -326,6 +326,42 @@ memory.
 Ordinary Stack/Row clipping is different: a clipped button is not a navigation
 candidate because the host cannot reveal it.
 
+### Focus-edge pagination (protocol v11)
+
+Large remote collections should render a bounded page instead of accumulating
+every item in one snapshot. Add `.Paginate(...)` to the Scroll; the host then
+emits an ordinary widget action after controller focus moves into the first or
+last configured number of direct children in the matching navigation
+direction:
+
+```csharp
+var page = UI.VerticalScroll(
+        "library.items.scroll",
+        _page.Items.Select(BuildLibraryRow).ToArray())
+    .Paginate(
+        nearStartActionId: _page.Offset > 0 ? "library.previous-page" : null,
+        nearEndActionId: _page.Offset + _page.Limit < _page.Total
+            ? "library.next-page"
+            : null,
+        threshold: 1);
+```
+
+At least one action ID is required and `threshold` must be 1–8 (the default is
+2). For a vertical Scroll, Up can emit the near-start action and Down the
+near-end action; a horizontal Scroll uses Left and Right. The source element ID
+is the Scroll ID, the active input-scope ID is preserved, and the action enters
+the same serialized widget action route as a Button. No sentinel row or visible
+**Load more** button is added by the host.
+
+The widget still owns fetching, cancellation, end-of-list checks, duplicate
+request suppression, and cache policy. Keep only a small current page in the
+render tree, keep a bounded number of prior pages if fast reverse navigation is
+useful, and derive row IDs from stable item identity or absolute collection
+offset rather than the slot within the page. After a successful swap, request
+focus on the first row of a next page or the last row of a previous page. Do
+not append an unbounded remote collection: snapshots still have a 2,048-node
+limit and the worker/bridge default framed-message ceiling is 1 MiB.
+
 ## Controller-native value controls
 
 Use `UI.Slider` instead of composing minus/progress/plus controls. A focused
@@ -418,6 +454,7 @@ Scroll for overflow after host clamping.
 | `UI.VerticalScroll(id, children)` | vertical Scroll | Protocol 2; host-owned focus-follow offset. |
 | `UI.HorizontalScroll(id, children)` | horizontal Scroll | Protocol 2; host-owned focus-follow offset. |
 | `UI.Scroll(id, axis, children)` | explicit Scroll | Axis cannot be changed by a theme. |
+| `scroll.Paginate(nearStartActionId, nearEndActionId, threshold?)` | focus-edge page actions | Protocol 11; threshold 1–8, at least one action, and no visible sentinel control. |
 | `UI.Text(text, id, accessibilityLabel?)` | text | Non-interactive. |
 | `UI.CodeText(text, id, accessibilityLabel?)` | semantic monospace text | Nonfocusable, whitespace-preserving, and bounded to 4,096 characters. |
 | `UI.Button(label, action, id)` | focusable button | `A` invokes its action. |
@@ -460,8 +497,9 @@ children, at most 32 descendants, and four relative content levels; a snapshot
 that contains one automatically selects protocol v7 and fails closed on hosts
 that do not understand it. A snapshot containing ResponsiveGrid selects
 protocol v8; its minimum column width is 44–1600 DIPs and optional maximum is
-1–32 columns. Grid itself is not focusable and preserves child IDs/order across
-reflow.
+1–32 columns. Responsive visibility selects protocol v9, activate-to-adjust
+Slider behavior selects v10, and a paginated Scroll selects v11. Grid itself
+is not focusable and preserves child IDs/order across reflow.
 
 ## Interaction state and reconciliation
 
