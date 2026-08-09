@@ -40,6 +40,11 @@ struct RenderHitRegion final {
     bool enabled{};
 };
 
+struct RenderAccessibilityRegion final {
+    std::wstring nodeId;
+    declarative::Rect rect;
+};
+
 struct RenderResult final {
     bool succeeded{};
     /// True only while at least one paint-only node transition requires a
@@ -47,6 +52,9 @@ struct RenderResult final {
     bool animationActive{};
     std::vector<RenderDiagnostic> diagnostics;
     std::vector<RenderHitRegion> hitRegions;
+    /// Visible semantic geometry retained for the immutable Windows
+    /// accessibility snapshot. Decorative layout nodes are deliberately absent.
+    std::vector<RenderAccessibilityRegion> accessibilityRegions;
 #ifdef GBA_DECLARATIVE_RENDERER_TESTING
     // Test-only exact geometry seam. Production results intentionally retain
     // only interactive geometry so ordinary paints do not allocate two maps
@@ -85,6 +93,9 @@ struct ButtonContentPlacement final {
 struct DeclarativeRenderOptions final {
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
+    /// Semantic geometry is retained only while a native accessibility client
+    /// is active, avoiding per-frame tree allocations during ordinary gameplay.
+    bool collectAccessibility{};
     /// Host surface dimensions before detached chrome (such as the controller
     /// guide footer) is removed from the widget content viewport. Responsive
     /// branches describe the surface the widget requested, not an internal

@@ -1,4 +1,5 @@
 #include "OverlayState.h"
+#include "AccessibilityTree.h"
 #include "DeclarativeRenderer.h"
 #include "ControllerNavigation.h"
 #include "ControllerInputOwnership.h"
@@ -2128,6 +2129,7 @@ private:
         KillTimer(window_, kControllerTimer);
         KillTimer(window_, kActionFeedbackTimer);
         (void)actionFailureFeedback_.Hide();
+        accessibilityTree_ = {};
         visibleControllerReadLease_ = false;
         lastControllerReadPath_ = gba::input::ControllerReadPath::None;
         lastControllerForegroundExclusive_.reset();
@@ -3732,6 +3734,9 @@ private:
     }
 
     void DrawDashboard(const float width, const float height) {
+        // Dashboard shell semantics will be published by the host provider;
+        // never leave an open-widget tree visible after returning to the tray.
+        accessibilityTree_ = {};
         if (width <= 0.0F || height <= 0.0F) return;
         const float horizontalInset = std::min(34.0F, width * 0.1F);
         const float contentLeft = horizontalInset;
@@ -3910,6 +3915,7 @@ private:
                 };
                 gba::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
+                options.collectAccessibility = accessibilityActive_;
                 options.responsiveViewport = gba::declarative::Size{
                     geometry->panelWidth,
                     geometry->panelHeight,
@@ -3972,6 +3978,20 @@ private:
                     InvalidateRect(window_, nullptr, FALSE);
                 }
                 lastWidgetRenderResult_ = result;
+                const auto descriptor = std::find_if(
+                    widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                    [widget](const gba::WidgetDescriptor& candidate) {
+                        return candidate.id == widget;
+                    });
+                accessibilityTree_ = accessibilityActive_ && result.succeeded &&
+                        descriptor != widgetDescriptors_.end()
+                    ? gba::accessibility::BuildWidgetTree(
+                        std::wstring{widget}, descriptor->runtimeGeneration,
+                        *snapshot, result,
+                        state_.focusRegion() == gba::FocusRegion::Widget
+                            ? std::wstring_view{focusedElementId_}
+                            : std::wstring_view{})
+                    : gba::accessibility::Tree{};
                 const auto lastSequence = renderedSnapshotSequences_.find(std::wstring(widget));
                 if (lastSequence == renderedSnapshotSequences_.end() ||
                     lastSequence->second != snapshot->sequence) {
@@ -3984,6 +4004,7 @@ private:
                         std::wstring(widget), snapshot->sequence);
                 }
             } else {
+                accessibilityTree_ = {};
                 DrawTextLine(L"Starting isolated " + std::wstring(DisplayWidgetName(widget)) +
                                  L" widget…",
                              bodyFormat_.Get(),
@@ -4056,6 +4077,8 @@ private:
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
     gba::WidgetActionFeedbackController actionFailureFeedback_;
+    gba::accessibility::Tree accessibilityTree_;
+    bool accessibilityActive_{};
     ULONGLONG lastGuideDispatchAt_{};
     ULONGLONG sliderReconcileAt_{};
     std::wstring focusedElementId_;

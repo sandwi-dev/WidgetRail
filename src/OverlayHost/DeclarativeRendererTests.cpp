@@ -244,9 +244,19 @@ void PlanningMetadataAndKinds() {
     snapshot.root.children = {row, label, progress, spacer, image, icon};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    const auto first = renderer.Render(nullptr, snapshot, L"play", {0.0F, 0.0F, 960.0F, 540.0F});
+    gba::DeclarativeRenderOptions accessibilityOptions;
+    accessibilityOptions.collectAccessibility = true;
+    const auto first = renderer.Render(
+        nullptr, snapshot, L"play", {0.0F, 0.0F, 960.0F, 540.0F},
+        accessibilityOptions);
     Check(!first.succeeded, "null target is reported as unsuccessful");
     Check(first.hitRegions.size() == 3, "buttons produce hit regions");
+    Check(first.accessibilityRegions.size() == 7,
+          "visible controls and semantic content retain accessibility geometry");
+    const auto ordinaryFrame = renderer.Render(
+        nullptr, snapshot, L"play", {0.0F, 0.0F, 960.0F, 540.0F});
+    Check(ordinaryFrame.accessibilityRegions.empty(),
+          "ordinary frames do not retain accessibility geometry");
     Check(first.focusRects.size() == 3, "buttons produce focus rectangles");
     Check(first.currentFocusRect.has_value(), "focused button produces current focus rect");
     Check(first.hitRegions[0].enabled, "normal button is enabled");
@@ -301,14 +311,26 @@ void ResponsiveVisibilityExcludesInactiveSubtrees() {
     snapshot.root.children = {compact, expanded};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    gba::DeclarativeRenderOptions accessibilityOptions;
+    accessibilityOptions.collectAccessibility = true;
     const auto expandedResult = renderer.Render(
-        nullptr, snapshot, L"expanded.action", {0.0F, 0.0F, 960.0F, 540.0F});
+        nullptr, snapshot, L"expanded.action", {0.0F, 0.0F, 960.0F, 540.0F},
+        accessibilityOptions);
     Check(expandedResult.elementRects.contains(L"expanded.branch"),
           "expanded branch participates at the exact non-compact threshold");
     Check(expandedResult.elementRects.contains(L"expanded.copy"),
           "expanded presentational/accessibility content participates");
     Check(expandedResult.focusRects.contains(L"expanded.action"),
           "expanded action participates in focus and hit-test geometry");
+    Check(std::any_of(
+              expandedResult.accessibilityRegions.begin(),
+              expandedResult.accessibilityRegions.end(),
+              [](const auto& region) { return region.nodeId == L"expanded.copy"; }) &&
+          std::none_of(
+              expandedResult.accessibilityRegions.begin(),
+              expandedResult.accessibilityRegions.end(),
+              [](const auto& region) { return region.nodeId == L"compact.copy"; }),
+          "only the active responsive branch retains accessibility geometry");
     Check(!expandedResult.elementRects.contains(L"compact.branch") &&
           !expandedResult.elementRects.contains(L"compact.copy") &&
           !expandedResult.focusRects.contains(L"compact.action") &&
@@ -317,7 +339,8 @@ void ResponsiveVisibilityExcludesInactiveSubtrees() {
           "inactive compact subtree owns no layout, paint, focus, shortcut target, or accessibility geometry");
 
     const auto compactResult = renderer.Render(
-        nullptr, snapshot, L"compact.action", {0.0F, 0.0F, 959.0F, 540.0F});
+        nullptr, snapshot, L"compact.action", {0.0F, 0.0F, 959.0F, 540.0F},
+        accessibilityOptions);
     Check(compactResult.elementRects.contains(L"compact.branch") &&
           compactResult.elementRects.contains(L"compact.copy") &&
           compactResult.focusRects.contains(L"compact.action"),

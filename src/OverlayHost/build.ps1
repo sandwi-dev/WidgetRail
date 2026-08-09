@@ -90,9 +90,10 @@ $focusTestObjectDirectory = Join-Path $outputDirectory 'obj\focus-tests'
 $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus-tests'
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
 $actionFeedbackTestObjectDirectory = Join-Path $outputDirectory 'obj\action-feedback-tests'
+$accessibilityTreeTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-tree-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -133,6 +134,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
     (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),
     (Join-Path $projectDirectory 'WidgetActionFeedback.cpp'),
+    (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
     "/Fo:$hostObjectDirectory\",
     "/Fe:$outputDirectory\OverlayHost.exe",
     '/link'
@@ -624,6 +626,22 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'WidgetActionFeedbackTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetActionFeedbackTests failed with exit code $LASTEXITCODE."
+    }
+
+    $accessibilityTreeTestArguments = $common + @(
+        (Join-Path $projectDirectory 'AccessibilityTreeTests.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
+        "/Fo:$accessibilityTreeTestObjectDirectory\",
+        "/Fe:$outputDirectory\AccessibilityTreeTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $accessibilityTreeTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityTreeTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'AccessibilityTreeTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityTreeTests failed with exit code $LASTEXITCODE."
     }
 
     $rendererTestArguments = $common + @(

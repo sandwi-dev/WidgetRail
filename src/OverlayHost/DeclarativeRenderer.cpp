@@ -1527,6 +1527,19 @@ struct DeclarativeRenderer::RenderPass final {
         result.elementVisibleRects[node.id] = presented.visibleBox;
 #endif
 
+        const auto visibleRect = presented.visibleBox;
+        const bool semanticNode =
+            node.kind == L"button" || node.kind == L"slider" ||
+            node.kind == L"actionSurface" || node.kind == L"image" ||
+            node.kind == L"icon" || node.kind == L"loadingIndicator" ||
+            node.kind == L"progress" ||
+            (node.kind == L"text" &&
+                (!node.text.empty() || !node.accessibilityLabel.empty()));
+        if (options.collectAccessibility && semanticNode &&
+            visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
+            result.accessibilityRegions.push_back({node.id, visibleRect});
+        }
+
         if (node.kind == L"button" || node.kind == L"slider" ||
             node.kind == L"actionSurface") {
             result.navigationRects[node.id] = presented.borderBox;
@@ -1540,7 +1553,6 @@ struct DeclarativeRenderer::RenderPass final {
             // Controller focus and pointer hit-testing must use the geometry a
             // user can actually see. A clipped/offscreen child remains in the
             // declarative tree but is not a navigation candidate.
-            const auto visibleRect = presented.visibleBox;
             if (visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
                 result.hitRegions.push_back(
                     {node.id, visibleRect, !node.isDisabled && !node.isBusy});
@@ -1619,11 +1631,11 @@ struct DeclarativeRenderer::RenderPass final {
         } else if (node.kind == L"icon") {
             DrawSemanticIcon(node, style, presented.contentBox, opacity, node.glyph);
         } else if (node.kind == L"loadingIndicator") {
-            const auto visibleRect = Intersection(
+            const auto visibleIndicatorRect = Intersection(
                 presented.contentBox, presented.visibleBox);
-            DrawLoadingIndicatorNode(node, style, visibleRect, opacity);
+            DrawLoadingIndicatorNode(node, style, visibleIndicatorRect, opacity);
             if (!options.accessibility.reducedMotion &&
-                visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
+                visibleIndicatorRect.width > 0.5F && visibleIndicatorRect.height > 0.5F) {
                 // The shell owns the next-frame cadence. Invisible or
                 // reduced-motion indicators never keep it awake.
                 result.animationActive = true;

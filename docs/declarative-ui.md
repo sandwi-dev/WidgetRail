@@ -8,6 +8,21 @@ Widgets return a semantic tree from `Widget.Render()`. The host owns layout,
 pixels, focus presentation, accessibility, and controller dispatch. Widgets
 cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
 
+The native renderer now has a bounded accessibility-geometry path for visible
+Text, Button, Slider, ActionSurface, Image, Icon, Progress, and LoadingIndicator
+nodes. A pure host builder combines that final clipped geometry with the exact
+widget/runtime/snapshot identity, active input scope, accessible names and
+values, disabled/busy/selected/focused state, Invoke metadata, and Slider range.
+ActionSurface descendants remain presentation-only and inactive responsive or
+modal scopes are omitted. Collection is dormant during ordinary rendering to
+avoid per-frame accessibility allocations.
+
+This is provider groundwork, not a screen-reader support claim. The shipping
+HWND does not yet publish that immutable tree through `WM_GETOBJECT`/Windows UI
+Automation, route Invoke or RangeValue requests, or raise focus/property events.
+Narrator and other UIA clients therefore cannot use widget controls yet; that
+native provider and its automated client coverage remain a release gate.
+
 ## Elements
 
 | SDK call | Protocol kind | Purpose |

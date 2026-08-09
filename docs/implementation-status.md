@@ -47,6 +47,15 @@ deadline plus whether visible state changed. A dedicated timer removes expired
 copy and requests one repaint, with the already-active controller timer providing
 a no-extra-repaint fallback if Win32 cannot create that timer.
 
+The renderer can now retain bounded visible semantic geometry on demand, and a
+pure native accessibility-tree builder combines it with exact runtime/snapshot
+identity, active input-scope filtering, names, values, focus/state, Invoke
+metadata, and Slider ranges. ActionSurface descendants are collapsed into one
+semantic target. The path is allocation-dormant during ordinary frames. The
+HWND still lacks the `WM_GETOBJECT`/UI Automation provider, patterns, events,
+and automated UIA-client proof, so end-to-end screen-reader support remains
+open and is not claimed by this foundation.
+
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
 overlay. Both windows are topmost only while visible. Ordinary controller reads
