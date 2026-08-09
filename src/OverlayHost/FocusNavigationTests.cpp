@@ -221,6 +221,60 @@ int main() {
     Check(singleItemNext && singleItemNext->actionId == L"library.next",
           "A one-row page can paginate when no ordinary focus move exists");
 
+    for (const auto mode : {std::wstring(L"wide"), std::wstring(L"compact")}) {
+        gba::WidgetNode spotifyRoot{.id = L"spotify.root", .kind = L"stack"};
+        spotifyRoot.children.push_back(gba::WidgetNode{
+            .id = L"spotify.nav." + mode,
+            .kind = L"button",
+        });
+        gba::WidgetNode spotifyPage{
+            .id = L"spotify.playlists.scroll." + mode,
+            .kind = L"scroll",
+            .scrollAxis = L"vertical",
+            .scrollNearEndActionId = L"spotify.playlists.page.next",
+            .scrollPaginationThreshold = 1,
+        };
+        for (int index = 0; index < 12; ++index) {
+            spotifyPage.children.push_back(gba::WidgetNode{
+                .id = L"spotify.playlist.item." + mode + L"." +
+                    std::to_wstring(index),
+                .kind = L"actionSurface",
+            });
+        }
+        spotifyRoot.children.push_back(spotifyPage);
+        const auto forward = gba::input::FindScrollPaginationAction(
+            spotifyRoot,
+            L"spotify.playlist.item." + mode + L".11",
+            NavigationDirection::Down);
+        Check(forward && forward->actionId == L"spotify.playlists.page.next" &&
+                  forward->sourceElementId ==
+                      L"spotify.playlists.scroll." + mode,
+              "Spotify 12-row edge paginates before focus can escape to its navigation rail");
+
+        auto& finalSpotifyPage = spotifyRoot.children.back();
+        finalSpotifyPage.children.clear();
+        finalSpotifyPage.scrollNearEndActionId.clear();
+        finalSpotifyPage.scrollNearStartActionId = L"spotify.playlists.page.previous";
+        for (int index = 24; index < 29; ++index) {
+            finalSpotifyPage.children.push_back(gba::WidgetNode{
+                .id = L"spotify.playlist.item." + mode + L"." +
+                    std::to_wstring(index),
+                .kind = L"actionSurface",
+            });
+        }
+        const auto reverse = gba::input::FindScrollPaginationAction(
+            spotifyRoot,
+            L"spotify.playlist.item." + mode + L".24",
+            NavigationDirection::Up);
+        Check(reverse && reverse->actionId == L"spotify.playlists.page.previous",
+              "Spotify five-row final page admits reverse pagination at its first row");
+        Check(!gba::input::FindScrollPaginationAction(
+                  spotifyRoot,
+                  L"spotify.playlist.item." + mode + L".28",
+                  NavigationDirection::Down),
+              "Spotify final row does not invent a forward page or escape action");
+    }
+
     pagedScroll.scrollNearEndActionId.clear();
     Check(!gba::input::FindScrollPaginationAction(
               pagedScroll, L"library.last", NavigationDirection::Down),

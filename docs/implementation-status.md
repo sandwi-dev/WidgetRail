@@ -558,9 +558,16 @@ themes also use non-shrinking fixed regions, a thin native Slider
  first and last focusable descendants to the true extent boundaries. The
  host resolves focus-edge pagination against the current row before an ordinary
  move can leave its Scroll, and a changed replacement-page focus request
- outranks stale ordinal focus memory. Focused Release coverage passes 21 widget-
- surface focus checks, 41 focus-navigation checks, and Spotify 31/31; packaged
- reverse-pagination controller evidence remains open. The controller guide is
+ outranks stale ordinal focus memory. That request is consumed when focus is
+ remembered, so an unrelated refresh cannot steal focus again. Deterministic
+ compact and expanded Spotify coverage now drives the real 29-item playlist and
+ detail resources through the 12/12/5 forward/reverse sequence, including a slow
+ cancellation-ignoring page, joined repeated edge input, cached reverse pages,
+ absolute visible IDs, and exact provider call counts. Matching native tests use the
+ exact Spotify scroll/rail IDs and five-row final topology. Focused Release
+ coverage passes 24 widget-surface focus checks, 47 focus-navigation checks, and
+ Spotify 32/32; packaged physical-controller evidence and a live retest remain
+ open. The controller guide is
  density-aware and no-wrap, the widget viewport has a
  host-owned rounded clip, and size-changing widget swaps commit one synchronous
  complete repaint after a no-redraw move to avoid an intermediate black frame.

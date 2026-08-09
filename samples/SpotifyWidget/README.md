@@ -13,6 +13,16 @@ Version 0.2 adds four controller-first destinations:
 
 Wide surfaces use a navigation rail with a persistent player. Compact surfaces use tabs and one content pane. Playlist detail is a nested navigation entry: B returns to the exact playlist tile; B at a root destination remains available to the overlay shell. Search is intentionally absent until the SDK has a controller-appropriate text-entry contract.
 
+Playlist and detail collections use bounded 12-row windows with focus-edge
+pagination. Down at the final row enters the next page, Up at the first row
+restores the preceding cached page, and a short final page remains reversible.
+Repeated edge input joins one in-flight provider request; failures retain the
+last good page and require the visible Retry action. The automated 29-item
+contract covers compact and expanded 12/12/5 forward/reverse traversal for both
+playlist tiles and detail tracks. A
+physical-controller retest with live Spotify data remains part of the manual
+release checklist.
+
 ```powershell
 dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples
 ```

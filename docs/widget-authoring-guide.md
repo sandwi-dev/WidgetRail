@@ -408,6 +408,14 @@ is the Scroll ID, the active input-scope ID is preserved, and the action enters
 the same serialized widget action route as a Button. No sentinel row or visible
 **Load more** button is added by the host.
 
+The host resolves an edge action before geometric focus can leave that Scroll.
+While the adjacent load is pending, repeated edge input joins the same resource
+operation instead of starting another provider call. A successful replacement
+requests the entering-edge row; after the host remembers that focus, later
+unrelated snapshots with the same request preserve the user's current row. A
+failed adjacent load retains the last good page and suppresses automatic retry
+until the user activates the visible retry action.
+
 This is the low-level trigger contract. For an offset-based remote collection,
 prefer `WidgetPagedResource<TItem>` below; it owns fetching coordination,
 end-of-list checks, duplicate suppression, bounded caching, safe error state,
@@ -1117,8 +1125,12 @@ non-terminal page so focus-edge paging can continue.
 
 Spotify 0.2.10 is the first migration. Its playlist and playlist-item resources
 use 12-row windows, a six-page/72-item LRU, automatic protocol-v11 focus-edge
-paging across compact and wide Scroll IDs, cached reverse navigation, and no
-visible **Load more** row. Queue remains non-paged state owned by the widget.
+paging across compact and wide Scroll IDs, cached reverse navigation, joined
+repeated edge input, retained failure state, and no visible **Load more** row.
+The deterministic 29-item contract exercises 12/12/5 forward and reverse
+navigation for both playlists and detail tracks with exactly three provider
+page calls per collection and responsive mode. Queue remains non-paged state
+owned by the widget.
 Cursor/append collections are not supplied by this API; use
 `WidgetResource<TValue>` only for one non-paged current value.
 

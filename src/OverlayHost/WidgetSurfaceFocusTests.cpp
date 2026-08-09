@@ -194,6 +194,30 @@ int main() {
     replacementPage.initialFocusId = L"session.page.2";
     Check(memory.Restore(L"paged", replacementPage) == L"session.page.2",
           "a replacement page entering-edge request outranks stale ordinal memory");
+    memory.Remember(L"paged", replacementPage, L"session.page.1");
+    auto unrelatedRefresh = replacementPage;
+    unrelatedRefresh.sequence++;
+    Check(memory.Restore(L"paged", unrelatedRefresh) == L"session.page.1",
+          "the consumed page-entry request cannot steal focus on an unrelated refresh");
+
+    auto finalPage = SessionList({
+        L"session.page.24", L"session.page.25", L"session.page.26",
+        L"session.page.27", L"session.page.28",
+    });
+    finalPage.initialFocusId = L"session.page.24";
+    memory.Remember(L"paged", unrelatedRefresh, L"session.page.2");
+    Check(memory.Restore(L"paged", finalPage) == L"session.page.24",
+          "a five-row final page focuses its entering edge instead of stale page ordinal");
+    memory.Remember(L"paged", finalPage, L"session.page.24");
+    auto cachedMiddlePage = SessionList({
+        L"session.page.12", L"session.page.13", L"session.page.14",
+        L"session.page.15", L"session.page.16", L"session.page.17",
+        L"session.page.18", L"session.page.19", L"session.page.20",
+        L"session.page.21", L"session.page.22", L"session.page.23",
+    });
+    cachedMiddlePage.initialFocusId = L"session.page.23";
+    Check(memory.Restore(L"paged", cachedMiddlePage) == L"session.page.23",
+          "reverse paging restores the cached page's leaving edge");
 
     std::cout << "WidgetSurfaceFocusTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

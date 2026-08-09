@@ -21,6 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
+    ("Controller edges traverse compact and expanded 12/12/5 playlist pages", ControllerPlaylistPaginationRoundTrip),
     ("Paged playlist Back restores the opened item", PagedPlaylistBackRestoresOpenedItem),
     ("Adjacent playlist failures remain visible and retryable", AdjacentPlaylistFailureRetry),
     ("Sparse Spotify pages remain controller-navigable", SparsePlaylistPage),
@@ -623,6 +624,214 @@ static async Task MaximumPlaylistPageContract()
     await StopAsync(widget);
 }
 
+static async Task ControllerPlaylistPaginationRoundTrip()
+{
+    foreach (var mode in new[] { "wide", "compact" })
+    {
+        var playlists = Enumerable.Range(0, 29)
+            .Select(index => new WidgetSpotifyPlaylistSummary(
+                $"playlist-{index}", $"Playlist {index}", null, null,
+                $"https://open.spotify.com/playlist/playlist-{index}",
+                $"spotify:playlist:playlist-{index}", "Listener", false, true, 1))
+            .ToArray();
+        var tracks = Enumerable.Range(0, 29)
+            .Select(index => new WidgetSpotifyMediaItemSummary(
+                WidgetSpotifyPlaybackItemType.Track, $"Track {index}", $"Artist {index}",
+                180_000, null, $"spotify:track:track-{index}",
+                $"https://open.spotify.com/track/track-{index}", true))
+            .ToArray();
+        var harness = SpotifyHarness.Ready();
+        harness.Playlists = new(playlists, 0, 12, playlists.Length);
+        harness.PlaylistDetail = new(
+            playlists[0], tracks, 0, 12, tracks.Length);
+        var widget = await StartAsync(harness);
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        await widget.OnActionAsync(new(
+            "spotify.nav.playlists", $"spotify.nav.{mode}.playlists"));
+        await WaitUntil(() => harness.PlaylistCalls == 1);
+
+        var focus = $"spotify.playlist.item.{mode}.0";
+        long sequence = 1;
+        for (var index = 0; index < 11; index++)
+            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+        Assert.Equal($"spotify.playlist.item.{mode}.11", focus);
+        bool paged;
+        if (mode == "wide")
+        {
+            harness.PlaylistCompletion = new(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            harness.IgnorePlaylistCancellation = true;
+            var slowPage = PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+            await WaitUntil(() => harness.PlaylistCalls == 2);
+            var repeatedPage = PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+            Assert.Equal(2, harness.PlaylistCalls);
+            Assert.True(!repeatedPage.IsCompleted,
+                "Repeated controller input started another adjacent page load.");
+            harness.PlaylistCompletion.SetResult(harness.Playlists);
+            harness.PlaylistCompletion = null;
+            (focus, sequence, paged) = await slowPage;
+            var repeated = await repeatedPage;
+            Assert.True(repeated.Paginated && repeated.Focus == focus &&
+                        harness.PlaylistCalls == 2,
+                "Repeated controller input did not join the in-flight page transition.");
+        }
+        else
+        {
+            (focus, sequence, paged) = await PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+        }
+        Assert.True(paged, $"{mode} controller Down did not enter page two.");
+        Assert.Equal($"spotify.playlist.item.{mode}.12", focus);
+
+        for (var index = 0; index < 11; index++)
+            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+        (focus, sequence, paged) = await PressPlaylistDirectionAsync(
+            widget, mode, focus, sequence, down: true);
+        Assert.True(paged, $"{mode} controller Down did not enter the five-row final page.");
+        Assert.Equal($"spotify.playlist.item.{mode}.24", focus);
+        for (var index = 0; index < 4; index++)
+            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+        Assert.Equal($"spotify.playlist.item.{mode}.28", focus);
+        var finalFocus = focus;
+        (finalFocus, sequence, paged) = await PressPlaylistDirectionAsync(
+            widget, mode, focus, sequence, down: true);
+        Assert.True(!paged && finalFocus == focus,
+            $"{mode} final page exposed a nonexistent forward transition.");
+
+        for (var index = 0; index < 4; index++)
+            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: false);
+        Assert.Equal($"spotify.playlist.item.{mode}.24", focus);
+        (focus, sequence, paged) = await PressPlaylistDirectionAsync(
+            widget, mode, focus, sequence, down: false);
+        Assert.True(paged, $"{mode} controller Up did not restore cached page two.");
+        Assert.Equal($"spotify.playlist.item.{mode}.23", focus);
+        for (var index = 0; index < 11; index++)
+            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+                widget, mode, focus, sequence, down: false);
+        (focus, sequence, paged) = await PressPlaylistDirectionAsync(
+            widget, mode, focus, sequence, down: false);
+        Assert.True(paged, $"{mode} controller Up did not restore cached page one.");
+        Assert.Equal($"spotify.playlist.item.{mode}.11", focus);
+        Assert.Equal(3, harness.PlaylistCalls);
+
+        await widget.OnActionAsync(new(
+            "spotify.playlist.open.0", $"spotify.playlist.item.{mode}.0"));
+        await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+        focus = $"spotify.playlist.track.{mode}.0";
+        for (var index = 0; index < 11; index++)
+            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+        (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
+            widget, mode, focus, sequence, down: true);
+        Assert.True(paged && focus == $"spotify.playlist.track.{mode}.12",
+            $"{mode} playlist-detail Down did not enter page two.");
+        for (var index = 0; index < 11; index++)
+            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+        (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
+            widget, mode, focus, sequence, down: true);
+        Assert.True(paged && focus == $"spotify.playlist.track.{mode}.24",
+            $"{mode} playlist-detail Down did not enter the final page.");
+        (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
+            widget, mode, focus, sequence, down: false);
+        Assert.True(paged && focus == $"spotify.playlist.track.{mode}.23",
+            $"{mode} playlist-detail Up did not restore cached page two.");
+        Assert.Equal(3, harness.PlaylistDetailCalls);
+        await StopAsync(widget);
+    }
+}
+
+static Task<(string Focus, long Sequence, bool Paginated)>
+    PressPlaylistDirectionAsync(
+        SpotifyWidget widget,
+        string mode,
+        string focus,
+        long sequence,
+        bool down) => PressPagedDirectionAsync(
+            widget,
+            $"spotify.playlists.scroll.{mode}",
+            $"spotify.playlist.item.{mode}.",
+            focus,
+            sequence,
+            down);
+
+static Task<(string Focus, long Sequence, bool Paginated)>
+    PressPlaylistItemDirectionAsync(
+        SpotifyWidget widget,
+        string mode,
+        string focus,
+        long sequence,
+        bool down) => PressPagedDirectionAsync(
+            widget,
+            $"spotify.playlist.detail.scroll.{mode}",
+            $"spotify.playlist.track.{mode}.",
+            focus,
+            sequence,
+            down);
+
+static async Task<(string Focus, long Sequence, bool Paginated)>
+    PressPagedDirectionAsync(
+        SpotifyWidget widget,
+        string scrollId,
+        string itemIdPrefix,
+        string focus,
+        long sequence,
+        bool down)
+{
+    var snapshot = widget.RenderSnapshot("spotify.controller-page", sequence);
+    var scroll = Find(snapshot.Root, scrollId);
+    var visibleIds = scroll.Children.Select(child => child.Id).ToArray();
+    var visibleIndex = Array.IndexOf(visibleIds, focus);
+    Assert.True(visibleIndex >= 0,
+        $"Focused row {focus} is not in the visible page for {scrollId}.");
+    var adjacent = visibleIndex + (down ? 1 : -1);
+    if (adjacent >= 0 && adjacent < visibleIds.Length)
+        return (visibleIds[adjacent], sequence, false);
+
+    var actionId = down ? scroll.ScrollNearEndActionId : scroll.ScrollNearStartActionId;
+    if (actionId is null) return (focus, sequence, false);
+    var absoluteIndex = int.Parse(
+        focus[(focus.LastIndexOf('.') + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+    var target = itemIdPrefix + (absoluteIndex + (down ? 1 : -1)).ToString(
+        System.Globalization.CultureInfo.InvariantCulture);
+    await widget.OnActionAsync(new(actionId, scroll.Id));
+    var replacementSequence = sequence + 1;
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.controller-page", replacementSequence).Root,
+        target));
+    var replacement = widget.RenderSnapshot(
+        "spotify.controller-page", replacementSequence);
+    Assert.Equal(target, replacement.InitialFocusId);
+    return (target, replacementSequence, true);
+}
+
+static async Task<bool> DispatchPagedEdgeAsync(
+    SpotifyWidget widget,
+    string scrollId,
+    string focus,
+    long sequence,
+    bool down)
+{
+    var snapshot = widget.RenderSnapshot("spotify.controller-edge", sequence);
+    var scroll = Find(snapshot.Root, scrollId);
+    var visibleIds = scroll.Children.Select(child => child.Id).ToArray();
+    var visibleIndex = Array.IndexOf(visibleIds, focus);
+    if (visibleIndex < 0 ||
+        (down && visibleIndex != visibleIds.Length - 1) ||
+        (!down && visibleIndex != 0))
+        return false;
+    var actionId = down ? scroll.ScrollNearEndActionId : scroll.ScrollNearStartActionId;
+    if (actionId is null) return false;
+    await widget.OnActionAsync(new(actionId, scroll.Id));
+    return true;
+}
+
 static async Task PagedPlaylistBackRestoresOpenedItem()
 {
     var playlists = Enumerable.Range(0, 24)
@@ -670,8 +879,13 @@ static async Task AdjacentPlaylistFailureRetry()
 
     harness.PlaylistDetailError = new WidgetCapabilityException(
         "spotify_unavailable", "Spotify could not load more tracks");
-    await widget.OnActionAsync(new(
-        "spotify.playlist.items.page.next", "spotify.playlist.detail.scroll.wide"));
+    Assert.True(await DispatchPagedEdgeAsync(
+        widget,
+        "spotify.playlist.detail.scroll.wide",
+        "spotify.playlist.track.wide.11",
+        sequence: 2,
+        down: true),
+        "Controller Down did not admit the failing adjacent detail page.");
     await WaitUntil(() => harness.PlaylistDetailCalls == 2);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.retained-wait", 2).Root,
@@ -963,6 +1177,9 @@ file sealed class SpotifyHarness
         [new WidgetSpotifyPlaylistSummary("playlist-one", "Night Drive", "Late-night focus",
             "https://i.scdn.co/image/playlist", "https://open.spotify.com/playlist/playlist-one",
             "spotify:playlist:playlist-one", "Listener", false, true, 1)], 0, 50, 1);
+    public TaskCompletionSource<WidgetSpotifyPlaylistPageSummary>?
+        PlaylistCompletion { get; set; }
+    public bool IgnorePlaylistCancellation { get; set; }
     public WidgetSpotifyPlaylistItemsSummary PlaylistDetail { get; set; } = new(
         new WidgetSpotifyPlaylistSummary("playlist-one", "Night Drive", "Late-night focus",
             "https://i.scdn.co/image/playlist", "https://open.spotify.com/playlist/playlist-one",
@@ -1035,17 +1252,23 @@ file sealed class SpotifyHarness
                     return ValueTask.FromResult(Queue);
                 })
             .WithHandler(WidgetSpotifyCapabilities.GetPlaylists,
-                (request, cancellationToken) =>
+                async (request, cancellationToken) =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     PlaylistCalls++;
-                    var items = Playlists.Items.Skip(request.Offset).Take(request.Limit).ToArray();
-                    return ValueTask.FromResult(Playlists with
+                    var source = PlaylistCompletion is null
+                        ? Playlists
+                        : IgnorePlaylistCancellation
+                            ? await PlaylistCompletion.Task.ConfigureAwait(false)
+                            : await PlaylistCompletion.Task.WaitAsync(cancellationToken)
+                                .ConfigureAwait(false);
+                    var items = source.Items.Skip(request.Offset).Take(request.Limit).ToArray();
+                    return source with
                     {
                         Items = items,
                         Offset = request.Offset,
                         Limit = request.Limit,
-                    });
+                    };
                 })
             .WithHandler(WidgetSpotifyCapabilities.GetPlaylistItems,
                 async (request, cancellationToken) =>
