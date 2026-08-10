@@ -245,6 +245,12 @@ package path. Spotify list work
 that depends on shared cursor/append foundations remains in the serialized
 integration queue rather than being patched locally.
 
+Only two independent widgets milestones are currently Ready. DLV-006 must land
+the shared collection contract before Spotify continuous-list and launcher work,
+while the remaining planned widget features depend on platform/protocol work or
+third-party authentication. Adding a third widgets-only item now would create
+filler or bypass those dependencies.
+
 ### DLV-007 — Make Spotify presentation state coherent
 
 **State:** Done; accepted and integrated as `0941e41`
