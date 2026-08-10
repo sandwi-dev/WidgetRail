@@ -1390,11 +1390,33 @@ second lifecycle/session owner.
 
 ### DLV-039 — Extract bridge client and residency ownership
 
-**State:** Assigned
+**State:** Correction requested; candidate `57befdd` is not accepted or
+integrated
 **Baseline:** accepted DLV-037 closing commit `d339030`
 **Dependencies:** DLV-032 and DLV-037
 **Owner:** managed `WidgetBridgeServer` client/catalog/residency internals and
 direct bridge lifecycle fixtures; no native host or public protocol files
+
+**Reviewer evidence:** Candidate `57befdd` materially reduces the server from
+1,312 to 825 lines and moves catalog, client-generation, residency, idle-unload,
+restart, and disposal state behind one 863-line internal registry. Retained
+stable dirty-worktree evidence passes Widget Runtime 74/74, WidgetBridge 57/57,
+and documentation contracts over 52 Markdown files. The candidate is not yet
+linearizable at generation replacement. `RestartAsync` removes the old current
+registration before retirement and publishes its fresh registration only
+afterward, so a concurrent `GetOrCreate` can install a competing generation;
+the restart then throws from `TryAdd` without disposing the client it just
+created. Client event handlers also check `IsCurrent` before invoking their
+external publication callbacks, and snapshot/request results leave their final
+current check before the server writes them, leaving replacement-versus-
+publication TOCTOU windows. The direct stale-event fixture raises only after
+removal and does not force either window. Detached catalog/replacement
+retirements are also unobserved, while terminal registry disposal stops after
+the first unexpected client-disposal exception. A bounded correction must keep
+one generation reserved through restart preparation, clean every unpublished
+client, carry exact-generation admission through event/result publication,
+observe detached retirement, and attempt every captured terminal cleanup with
+manually controlled no-sleep interleavings.
 
 **Objective:** Keep `WidgetBridgeServer` as the pipe-session, framing,
 handshake, reserved-Stop, request-routing, and serialized-write owner while

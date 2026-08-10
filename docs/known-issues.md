@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll contains every control and restores the last master, microphone, or application focus target; packaged visual/controller verification remains. |
-| GBA-004 | P1 | Implementing | OverlayHost UI thread / presentation / composition | DLV-020 removed the startup surface in focused captures, but 2026-08-10 user evidence shows the real Games & Apps extent animation misses frames, flickers the whole interface, and exposes large gray/black bands. DLV-025 is assigned. |
+| GBA-004 | P1 | Blocked | OverlayHost UI thread / presentation / composition | DLV-020 removed the startup surface in focused captures, but 2026-08-10 user evidence shows the real Games & Apps extent animation misses frames, flickers the whole interface, and exposes large gray/black bands. DLV-025 reproduced the single-HWND resize/composition failure and stopped without a product commit; resumption requires a user-authorized atomic compositor design. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -210,9 +210,15 @@ resize with whole-interface flicker, light-gray exposed areas, black side/lower
 bands, and partially committed geometry. Code inspection also confirms that
 the 16 ms transition timer, per-frame `SetWindowPos`, synchronous `WM_SIZE` and
 Direct2D target resize, and `RedrawWindow(...RDW_UPDATENOW...)` share the Win32
-UI thread. Widget code is isolated in worker processes, but several host bridge
-requests still perform blocking pipe reads on their caller; DLV-025 must measure
-rather than assume whether those requests overlap the failing interval.
+UI thread. DLV-025 then measured populated first paints near 31 ms, only six
+successful Spotify paints across 14 inputs over 674 ms, and five consecutive
+captures with a dark interior band at final geometry. Removing repeated extent
+interpolation did not close the defect: resizing the current single-HWND
+Direct2D target can expose its undefined resized back buffer before the next
+successful draw, and a later `DwmFlush` cannot retract an already composed
+frame. The known-bad prototype remains uncommitted. Resumption requires a
+bounded user-authorized offscreen atomic-present, DirectComposition, or
+swap-chain design.
 
 **Acceptance:**
 
