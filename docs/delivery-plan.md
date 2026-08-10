@@ -677,10 +677,25 @@ that needs its own bounded assignment.
 
 ### DLV-010 — Prove the external widget package journey
 
-**State:** Assigned
+**State:** Done
 **Baseline:** accepted DLV-028 integration `4ec931b` plus the reviewer
 control-plane commit assigning this milestone
+**Closing commit:** `83cc32d` (`[DLV-010] Prove external widget package journey`)
+**Integrated on `main`:** `e68b8be`
 **Owner:** managed scaffold/CLI, sample package, and public authoring docs
+
+**Reviewer disposition:** Accepted. A generated project now carries a
+content-addressed matching SDK package in a relative offline feed, compiles and
+runs a generated lifecycle/state/action snapshot test outside the checkout,
+and uses one source-aware bounded build/stage/validate/pack path without
+publishing compiler symbols or checkout paths. The retained external fixture
+validates, renders, replays, produces byte-identical packages from directory
+and project inputs, installs two versions, selects/rolls back, and removes them.
+Focused run `20260810T123758Z-6ca1bb73` passed CLI/scaffold 53/53, catalog 35/35,
+and 52 Markdown contracts in 45.536 seconds; it is correctly dirty-worktree
+assignment evidence rather than clean release evidence. External SDK
+publication/API governance and transactional versioned template input remain
+separate open work.
 
 **Objective:** Make the recommended community path reproducible from scaffold
 through build, semantic validation, package creation, local install, version
@@ -709,8 +724,8 @@ or weakening package validation/trust boundaries.
 
 ### DLV-030 — Split YT Music by stable responsibility
 
-**State:** Ready after DLV-010
-**Baseline:** closing commit of DLV-010
+**State:** Assigned
+**Baseline:** accepted DLV-010 closing commit `83cc32d`
 **Dependencies:** DLV-009 and DLV-023
 **Owner:** YT Music managed internals and credential-free companion fixtures
 

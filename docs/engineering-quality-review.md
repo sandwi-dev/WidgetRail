@@ -2,9 +2,8 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-10<br>
-Last reassessed: 2026-08-10 against integrated `main` `69e86ef`, including
-accepted DLV-004, DLV-009, DLV-014, DLV-017, DLV-024, and DLV-027
-implementation/evidence plus
+Last reassessed: 2026-08-10 against integrated `main` `e68b8be`, including
+accepted work through DLV-010 and DLV-028 plus
 the retained stable dirty full-gate run `20260810T030727Z-449cac31` and clean
 full-gate result for `0598e5a`<br>
 Scope: architecture, maintainability, correctness, security, performance,
@@ -35,6 +34,14 @@ widget lifecycle migration, production-host action-failure composition, and a
 real Games & Apps responsibility split are accepted. Trusted artwork, shared
 list/focus and geometry corrections, Audio
 endpoint blocker, and physical/product evidence remain open.
+
+DLV-010 now closes the immediate external package-journey break: the scaffold
+has a matching offline SDK dependency, an executable lifecycle/state/action
+snapshot test, and one bounded source build/stage/validate/pack operation. Its
+external temporary-directory fixture proves deterministic package bytes and the
+two-version install/select/rollback/removal lifecycle without checkout paths.
+External publication/API compatibility governance and transactional versioned
+template input remain open rather than being implied by this local proof.
 
 There is substantial good engineering here: the installed-widget runtime uses
 an explicit AppContainer and broker boundary; protocol and package inputs are
@@ -280,21 +287,17 @@ the widget helper manually selects the Scroll action and calls
 EQ-026 therefore remains Verifying pending a serialized real-snapshot host/
 bridge round trip and the user's live controller retest.
 
-The public authoring entry point is not yet a coherent shipped product. The
-current HEAD removes its misleading external success path: `gbar new widget`
-no longer emits an unpublished placeholder SDK reference. It resolves a real
-source project before creating output, accepts an explicit validated
-`--sdk-project`, and otherwise fails with no partial scaffold. A new temporary-
-directory case copies the template outside the checkout, proves rejection
-without an SDK, generates with the override, and builds the result. This is an
-honest contributor workflow, not yet a standalone community product: the
-generated repository still points back to the platform source tree, no SDK
-artifact is published, and the README refers snapshot export to typed-fake
-tests the template does not generate. The generated source-to-package path is
-also internally incomplete: its manifest requires
-`payload/<WidgetName>.dll`, ordinary `dotnet build` writes beneath `bin`,
-`gbar validate .` checks manifest/style semantics but not entrypoint existence,
-and neither the template nor its README stages the payload before `gbar pack`.
+The public authoring entry point now has a coherent local package journey.
+Accepted DLV-010 gives `gbar new widget` a matching content-addressed offline SDK
+dependency, generated lifecycle/state/action snapshot proof, and source-aware
+packaging; its unrelated-directory fixture completes deterministic two-version
+installation, selection, rollback, and removal without checkout references.
+It remains a local pre-publication workflow rather than a governed externally
+published SDK/template release. API compatibility, transactional strict
+template input, generic isolated scenario execution, and public release/CI
+provenance remain open. The prior generated source-to-package mismatch was
+closed by reusing the bounded build/generation owner and validating the staged
+entrypoint before deterministic publication.
 The generator itself is not yet transactional or version-governed:
 `template.json` is used only as an existence sentinel, its `templateVersion` is
 never parsed, and every recursively discovered file is read as text and written
@@ -762,8 +765,8 @@ constructs 1,025 required directories while staying below the file-count limit.
 Exact-boundary acceptance and a deep package's complete pack/install/launch path
 remain evidence gaps, not an open format-design mismatch.
 
-The external-author workflow rotation found no implementation change, but made
-EQ-015 more concrete. The generated README's first two commands can succeed
+At the pre-DLV-010 baseline, the external-author workflow rotation made EQ-015
+more concrete. The generated README's first two commands could succeed
 while leaving the manifest-declared `payload/<WidgetName>.dll` absent. `gbar
 dev` hides that mismatch by building into its own temporary package generation;
 `gbar pack .` correctly rejects the same source tree as `missing_entrypoint`.
@@ -1311,13 +1314,33 @@ private working set, CPU, wakeups, handles, threads, GPU/game-frame impact, and
 latency. The controller performance surface and user override require packaged
 visual and interaction evidence.
 
-### EQ-015 — P1 — The generated widget lacks a published standalone SDK/test contract
+### EQ-015 — P1 — Local packaging works, but published SDK governance remains open
 
-**Status: Partially implemented in current HEAD. Local-project SDK resolution
-is truthful and build-tested; published SDK, generated snapshot/test contracts,
-and the generated source-to-package path remain open.**
+**Status: Partially implemented in current HEAD. DLV-010 closes the cloneable
+offline scaffold, generated snapshot/test, and source-to-package journey;
+externally published/versioned SDK governance and transactional template input
+remain open.**
 
-**Evidence.** `NewCommand` now resolves the source checkout or requires an
+**Accepted DLV-010 reassessment.** Commit `83cc32d`, integrated by `e68b8be`,
+replaces the checkout `ProjectReference`/`--sdk-project` path with a matching
+content-addressed `GameBarAlternative.WidgetSdk` package in the generated
+project's relative `.gbar/packages` feed. The generated executable test drives
+Created/Interactive/Background lifecycle, state-changing action, retained state,
+and the exact snapshot consumed by render/replay. Source-aware `gbar pack` now
+reuses the bounded dev-generation builder with generation-private intermediates,
+omits symbols/runtime-owned SDK contract assemblies, validates the staged
+generation, and atomically publishes through the existing deterministic packer;
+raw staged-directory packing remains unchanged.
+
+The external temporary-directory fixture executes offline scaffold, Release
+build, generated test, validate, render, replay, byte-identical directory/project
+source packs, checkout-path inspection, two-version install, selection,
+rollback, disable, and removal without generated-file edits. Retained focused
+run `20260810T123758Z-6ca1bb73` passes CLI/scaffold 53/53, catalog 35/35, and 52
+documentation contracts in 45.536 seconds with stable dirty-worktree provenance.
+This is sufficient assignment evidence, not clean product-release evidence.
+
+**Pre-DLV-010 evidence.** `NewCommand` resolved the source checkout or required an
 explicit existing non-reparse `WidgetSdk.csproj` through `--sdk-project`. It
 does so before creating the output directory, escapes the relative MSBuild
 path, and fails with an actionable message rather than emitting the unpublished
@@ -1341,19 +1364,19 @@ replacement, validation, and one external Release build; none injects a
 mid-generation failure, unsupported template version, extra file, binary file,
 or reparse traversal and asserts atomic cleanup.
 
-Current HEAD corrects two immediate template defects. The generated
-README now uses `gbar dev` for executable integration and accurately says
-`gbar render` consumes snapshot JSON only. The manifest and Clock sample switch
+The pre-DLV-010 HEAD corrected two immediate template defects. The generated
+README used `gbar dev` for executable integration and accurately said
+`gbar render` consumed snapshot JSON only. The manifest and Clock sample switched
 from permanent `keep-alive` to `unload-after-idle` at 300 seconds, and the CLI
-test asserts that residency metadata. A new test copies the template under an
-unrelated temporary root, proves unresolved SDK discovery leaves no output
-directory, supplies the exact SDK project, and successfully runs a bounded
-Release build of the generated widget. However, the README tells authors to add
-a typed-fake snapshot exporter while the template contains no test project,
-exporter, or static snapshot, so its subsequent `gbar replay` path still has no
+test asserted that residency metadata. A new test copied the template under an
+unrelated temporary root, proved unresolved SDK discovery left no output
+directory, supplied the exact SDK project, and successfully ran a bounded
+Release build of the generated widget. However, the README told authors to add
+a typed-fake snapshot exporter while the template contained no test project,
+exporter, or static snapshot, so its subsequent `gbar replay` path had no
 generated input.
 
-The package path is independently incomplete. The generated manifest declares
+At that baseline, the package path was independently incomplete. The generated manifest declared
 `payload/<WidgetName>.dll`, but its README runs ordinary `dotnet build`, whose
 output remains under `bin`, followed by `gbar validate .`. `Validation.cs`
 validates manifest and GBSS syntax without checking that the manifest entrypoint
@@ -1383,7 +1406,7 @@ That count is not a quality score, but it makes accidental pre-release API
 expansion and later breaking changes expensive unless the supported surface is
 deliberately versioned before publication.
 
-**Why it matters.** The misleading successful-but-unbuildable scaffold is now
+**Why it mattered at the pre-DLV-010 baseline.** The misleading successful-but-unbuildable scaffold was
 removed. Standalone GitHub repositories—the intended sharing unit—still cannot
 consume the SDK through a supported published dependency, and developers must
 bring a platform checkout, invent a snapshot-export path, and discover a second
@@ -1392,13 +1415,17 @@ apparently successful validation is particularly misleading because the first
 complete package validation occurs only after the author reaches `gbar pack`.
 That remains short of the promised 15-minute community starter experience.
 
-**Underlying problem.** The generator now treats local SDK resolution as a
+**Remaining underlying problem.** The accepted local dependency and package
+journey do not make the SDK an externally published platform contract. The
+generator also still treats the template as an unversioned recursively copied
+text directory rather than a strict, bounded, transactional input artifact.
+At the pre-DLV-010 baseline, the generator treated local SDK resolution as a
 validated dependency, but the CLI, template, SDK/runtime package, generated
-tests, API-compatibility baseline, and copyable commands are not yet shipped as
-one versioned release set. Development and distribution also construct package
-generations through different author-facing workflows: `gbar dev` owns a useful
-source build/stage implementation that `gbar pack` cannot consume. Generated
-documentation remains outside executable documentation checks. The template is
+tests, API-compatibility baseline, and copyable commands were not shipped as
+one versioned release set. Development and distribution also constructed package
+generations through different author-facing workflows: `gbar dev` owned a useful
+source build/stage implementation that `gbar pack` could not consume. Generated
+documentation remained outside executable documentation checks. The template was
 also treated as an unversioned directory convention rather than one validated
 input artifact owned by the same CLI release.
 
@@ -1406,24 +1433,17 @@ input artifact owned by the same CLI release.
 compatibility range as one release set. The production endpoint is a supported,
 immutable NuGet SDK/runtime release plus a template that pins a compatible
 version and can be restored from a clean machine without the platform source.
-The current explicit local-project override is appropriate for contributors
-until that artifact exists; do not reintroduce a project known not to build.
+The accepted content-addressed local package is appropriate for offline
+scaffolding until that artifact exists; do not reintroduce checkout references.
 Define the intended author-facing API before the first package: enable package
 validation against a checked-in baseline, generate XML documentation and symbol/
 source metadata, and classify intentional breaks through the same host-API/
 template compatibility policy rather than silently growing a 200-type surface.
 
-Keep the corrected `gbar dev` and idle-unload defaults. Add a real generated
-typed-fake test/exporter or a validated static snapshot so the documented
-data-only render/replay path is executable until the isolated scenario worker
-exists. The public SDK already exposes `WidgetTestHost`,
-`WidgetTestHostServicesBuilder`, and `SnapshotJson`; the starter can generate a
-small deterministic test executable that attaches the widget, asserts initial
-and post-action state, and writes the exact `snapshot.json` consumed by the
-existing replay. That is preferable to instructing a first-time author to
-invent infrastructure the platform already owns. Keep advanced focus/shortcut
-examples, but make the first README path the smallest complete build-run-test-
-package loop.
+Retain DLV-010's generated `WidgetTestHost`/`SnapshotJson` executable and its
+small complete build-test-render-replay-package loop. The remaining isolated
+scenario worker should build on that public fixture contract rather than
+replacing it with another author-visible result protocol.
 
 Make template generation transactional and versioned. Parse a strict template
 manifest before touching the destination; bind its supported schema/version to
@@ -1437,24 +1457,17 @@ the same validation while clearly treating their content as local developer
 input. Do not recursively copy arbitrary files merely because they sit beside
 `template.json`.
 
-Give source widgets one explicit release operation that owns the same bounded
-build-to-generation contract as `gbar dev`, then passes that exact immutable
-generation to the existing deterministic packer. This could be `gbar package
-<source>` or a carefully named `gbar pack --build`; it should not silently make
-the current directory packer execute arbitrary projects. Alternatively,
-generate an MSBuild publish target and explicit staging directory, but keep one
-canonical command in the README and CI. Make source validation distinguish
-manifest/style validation from package completeness, and ensure the generated
-workflow never reports a release-ready result while its declared entrypoint is
-absent.
+Retain DLV-010's explicit source-aware `gbar pack` operation and its separation
+from low-level staged-directory packing. It already owns the bounded build-to-
+generation contract, validates the declared entrypoint, and publishes only the
+accepted immutable generation. Future release CI should call this same command
+rather than grow another MSBuild or staging path.
 
-**Tradeoff.** Failing outside the checkout temporarily exposes an unfinished
-product instead of appearing convenient, but it prevents hours of misleading
-restore troubleshooting. Publishing packages creates versioning, symbol/source,
-provenance, and support obligations; vendoring SDK binaries into each scaffold
-avoids a feed but produces opaque duplication and unsafe upgrade mechanics.
-An explicit local project override is useful for platform contributors, but it
-must not become the documented community distribution model.
+**Tradeoff.** Publishing an external SDK creates versioning, symbol/source,
+provenance, and support obligations. DLV-010's content-addressed local dependency
+is a transparent offline bootstrap and avoids checkout coupling, but it is not
+an upgrade/distribution channel and should eventually yield to the governed
+external SDK release.
 Reusing the dev generation builder reduces drift, but release packaging must
 exclude dev readiness files/catalog state and must not launch the overlay;
 duplicating build/staging logic would make development and release artifacts
@@ -1464,34 +1477,17 @@ and review diffs explicit. Requiring a nonexistent destination simplifies an
 atomic rename; supporting an already-created empty directory would require a
 more complex recoverable publication contract with little author value.
 
-**Resolution evidence.** The implementation agent reports Release
-`GbarCli.Tests` at 49/49, including a failure-before-write case and an unrelated-
-directory explicit-SDK Release build. This review inspected the new case but
-did not execute it or inspect retained output. The source-to-package mismatch
-above is derived from the template, validator, dev-generation builder, packer,
-and test code; this cycle did not execute the generated command sequence. For
-full closure, run a release
-test from a temporary directory with no
-repository ancestor and no `GBAR_TEMPLATE_ROOT`: invoke the packaged CLI,
-scaffold, restore/build with only declared prerequisites, validate, run the
-generated deterministic tests/replay, package, and inspect the result. Execute
-or mechanically verify every command in the generated README, including the
-data-only snapshot handoff. Assert the generated release package contains the
-declared entrypoint and runtime dependencies, can be installed disabled into an
-empty catalog, and launches through the generic worker without reading the
-source tree. Add a negative test proving an unavailable SDK
-fails during scaffolding with no partial directory rather than later in
-`dotnet restore`. Verify the emitted package/template versions match the host
-compatibility contract, and retain an external sample repository or immutable
-CI artifact as the public proof. Pack the SDK and protocol dependencies, compare
-their public surface to the approved baseline, and prove an intentional breaking
-change requires an explicit compatibility/version update while an accidental
-one fails the gate. Inject unsupported template versions, an unreadable source,
-a destination write failure, unexpected and binary files, oversized/count-
-limited input, and a reparse directory; every refusal must leave the requested
-target absent and clean only its own staging directory. Prove the published CLI
-accepts exactly its packaged template manifest and preserves declared binary
-bytes without replacement.
+**Remaining resolution evidence.** Publish the CLI/template/SDK as one immutable
+versioned release unit and exercise the same generated commands from that
+packaged distribution in ordinary external CI, including isolated generic-worker
+launch. Check the intended public SDK surface against a committed compatibility
+baseline and require an intentional API/host-range/version update for breaking
+changes. Parse a strict template manifest with supported version, closed file
+inventory, text/binary mode, digests, path/reparse/count/byte bounds, and stage
+the complete generated tree before one atomic publication. Inject unsupported
+template versions, unreadable inputs, destination faults, unexpected/binary
+files, size/count overflow, and reparse traversal; every failure must preserve
+the requested target contract and clean only its verified staging tree.
 
 ### EQ-002 — P1 — Responsive focus identity required an explicit contract
 
@@ -3692,7 +3688,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | SDK lifecycle/coordination | DLV-009 (`08d44db`, integrated by `304102a`) makes YT Music the second repeatable lifecycle/state proof: SDK Active lanes own auto-connect/progress/poll/Latest transport work, one immutable presentation record owns rendering, and no Task/CTS registry remains. Spotify DLV-007/008 independently proves coherent keyed presentation and responsibility files | Use the two results to document a narrow operation-migration recipe; keep provider merge, confirmation, rollback, and view composition explicit until another consumer proves a reusable boundary; retain packaged churn evidence |
 | Action dispatch | DLV-014 (`2a160b4`, integrated by `9060f12`) composes a deterministic YT Music post-admission failure through the real worker/runtime/bridge/native host into painted and polite UIA status. It proves exact generation/action/source, sanitized logging, focus retention, replacement/expiry, Hide/Stop, and no restart; native Release, bridge 47/47, and isolated addon acceptance passed | Retain physical GameInput and packaged assistive-technology evidence; do not reopen implementation unless those gates expose a concrete defect |
 | Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | DLV-032 owns one narrow typed dispatcher with deterministic no-sleep invariant tests and bounded forced drain; DLV-033 owns the later asynchronous native read owner/correlation table |
-| Managed capability broker | `PlatformCapabilityBroker` keeps authority singular but also concentrates the central route plus audio, network/Bluetooth, app-library, media/Spotify, loopback, secret, and private-state validation/projection in one roughly 2,265-line class | DLV-031 extracts named internal domain policy while retaining one authorization, lease, lifecycle, gesture, and event authority; no generic mediator or public-protocol churn |
+| Managed capability broker | `PlatformCapabilityBroker` keeps authority singular but also concentrates the central route plus audio, network/Bluetooth, app-library, media/Spotify, loopback, secret, and private-state validation/projection in one roughly 2,377-line class | DLV-031 extracts named internal domain policy while retaining one authorization, lease, lifecycle, gesture, and event authority; no generic mediator or public-protocol churn |
 | Spotify platform provider | One roughly 1,724-line class owns OAuth/PKCE and token/vault state, HTTP retry/rate-limit behavior, playback/devices/queue/playlists, local-player transfer, parsing/validation, and broker mapping | DLV-034 follows DLV-023/DLV-031 so provider ownership is separated only after transient widget-state failures are distinguished from transport/auth defects |
 | Windows network provider | `WindowsNetworkPlatformBackend` is roughly 1,186 lines and combines an owner thread/command queue, scan and connection timers, committed provider state, reconciliation, equality policy, and three event pumps | DLV-035 follows the broker split and preserves one owner thread/state while extracting directly testable command, timeout, reconciliation, and event-projection policy; the separate 1,297-line native-adapter file is an interop aggregation review signal, not an automatic file-splitting target |
 | Settings widget | The roughly 1,090-line widget combines lifecycle/action orchestration, six page renderers, preference persistence, diagnostics, and exact-token authority-recovery selection/actions | DLV-036 separates snapshot-only page/navigation policy, ordinary preference persistence, and privileged diagnostic/recovery policy while retaining one lifecycle and committed-state owner |
@@ -3703,7 +3699,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Windows accessibility | Commits through `9ec0374` provide real composite UIA and physical-only origin enforcement. `6a079b6` mirrors managed Back semantics across focus/no-focus, disabled/busy, ancestor, stale, and nested-scope cases using allocation-free bounded recursion; separate algorithm ownership and real route proof remain open, typed choices remain open, and exact clean evidence stops at `0598e5a` | Bind native/managed Back through shared conformance or one protocol result, retain clean evidence, then prove full real-client Picker/ActionSheet/Navigator traversal plus packaged Narrator/MSAA/AppContainer evidence |
 | YT Music | DLV-009 (`08d44db`, integrated by `304102a`) removes three lifecycle task fields and the auto-connect flag, adopts SDK Active lanes plus one immutable presentation record, and passes 51/51 including cancellation-ignoring pairing/poll/transport races. The class still owns domain confirmation, action routing, and full view composition | DLV-030 owns the provider/controller/command-policy/view responsibility split without another coordinator; real companion, packaged lifecycle/controller, and visual evidence remain |
 | Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while separating lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partials. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy: recoverable refresh/poll faults retain route, focus, playback, and cached list state with bounded 5/15/30-second backoff, fatal permission/auth/configuration remains explicit, recovery clears the warning, and stale Active-generation results are rejected. User evidence still confirms an incomplete seek/nav focus graph, replacement-page jumps, fixed-header oscillation, and clipped Library text | DLV-022 owns the explicit focus graph and continuous-list migration after DLV-006/DLV-021. Keep GBA-061 Verifying until live recurrence testing; retain current credential-free full-state/composed-host visuals and run live auth/playback gates only when authorized |
-| CLI author workflow | Data inspection is non-executable; source scaffolding fails honestly without an SDK and builds externally with explicit `--sdk-project`, but the template directory is not parsed/versioned/bounded or transactionally published; there is also no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Transactional manifest-driven template generation, versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
+| CLI author workflow | DLV-010 (`83cc32d`, integrated by `e68b8be`) provides a cloneable offline SDK dependency, generated lifecycle/state/action snapshot exporter, bounded source build/stage/validate/pack operation, deterministic checkout-path-free package proof, and local two-version install/select/rollback/removal. Focused retained evidence passes 53/53 CLI, 35/35 catalog, and 52 documentation contracts | Transactional manifest-driven template generation with strict inventory/version/binary handling; externally published/versioned SDK/template release and checked-in API-compatibility baseline; isolated semantic scenario execution, native preview, publisher provenance/signing, and automated update/CI evidence |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 with clean retained 45/45 proof for cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget with cancellation-ignoring drain proof and cancellable correlation-safe off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists. DLV-024 retains 16 current widget-body captures and seven semantic snapshots for Games continuity, including compact, 150%, and wide removal states, with zero renderer diagnostics. DLV-020's 44 real-HWND frames removed startup blanking in its bounded harness, but DLV-025 real temporal evidence now proves the current HWND resize path still exposes repeated dark-band frames on list-heavy product surfaces. Other captures still show clipped Spotify `LIBRARY`, missing Games & Apps artwork, and shared Now Playing alignment imbalance | Choose an atomic compositor architecture for DLV-025, then repeat timestamped first-party intervals. Retain clean current package/state/profile plus physical full-shell/controller/DPI evidence; offscreen body captures cannot close compositor behavior. |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | DLV-033 owns one tested `WidgetSessionCoordinator` after DLV-025/DLV-032; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp` and retain typed persistent session failures |
@@ -3769,10 +3765,10 @@ below.
    reproduction. Authorize either a narrowly proven offscreen atomic-present
    design or DirectComposition/swap-chain ownership before platform work
    resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-010 — prove the external widget package journey.** DLV-028 is
-   accepted as `4ec931b`. Prove scaffold through build, validation, package,
-   local install, version selection/rollback, and removal from a clean external
-   project without checkout-local references or hand-edited generated files.
+2. **Widgets DLV-030 — split YT Music by stable responsibility.** DLV-010 is
+   accepted as `83cc32d` and integrated as `e68b8be`. Preserve one lifecycle
+   and committed-state owner while extracting directly testable connection,
+   confirmation/rollback, action, and snapshot-only presentation seams.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
