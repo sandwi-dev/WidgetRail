@@ -470,6 +470,19 @@ Up/Down navigation.
   control-plane slot, invalidation/failure events, no-poll platform-appearance revisions,
   globally layered widget themes, bounded shell appearance, and computed GBSS
   styles.
+  Request scheduling is now isolated behind one internal dispatcher that owns
+  unique request IDs, the global admitted-request bound, per-widget FIFO tails,
+  session-fatal cancellation, and bounded drain. The server retains framing,
+  decoding, the reserved Stop lane, catalog/client lifetime, replies, and the
+  serialized write path. The existing per-client operation gate remains only a
+  worker-lifecycle/residency mutex for coordination with idle unload and catalog
+  retirement; it does not duplicate request admission or FIFO ordering. The
+  server authority surface decreased from 1,380 lines (62,914 bytes) to 1,315
+  lines (59,716 bytes), with the 214-line dispatcher replacing the server's
+  semaphore, active-ID/task registries, ordering gate, per-widget tails, fatal
+  exception slot, and scheduling continuation. Retained focused Release run
+  `20260810T133940Z-18b2982e` completed in 21.5 seconds: WidgetBridge 51/51,
+  WidgetWorkerHost 9/9, and the documentation contract over 52 Markdown files.
 - `WidgetBridge` and the native declarative renderer preserve the distinct
   `loadingIndicator` render role (rather than treating it as a container) and
   understand protocol-v7 ActionSurface orientation, computed style, bounded

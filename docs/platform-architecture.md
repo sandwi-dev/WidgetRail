@@ -77,6 +77,22 @@ All transport messages have explicit size limits, protocol versions, strict
 camel-case JSON, and unknown-member rejection. The native process never loads
 third-party managed assemblies.
 
+### Bridge request scheduling
+
+The bridge server owns session framing, request decoding, the reserved Stop
+lane, catalog/client lifetime, replies, and the serialized write path. An
+internal request dispatcher owns the independent scheduling policy: unique
+request IDs, the global admitted-request bound, per-widget FIFO tails,
+session-fatal cancellation, and bounded drain. Each admitted entry is removed
+from the active-ID and widget-tail registries on success, failure, or
+cancellation; forced drain leaves no residual request IDs, tails, or tasks.
+
+The per-client operation gate remains a worker-lifecycle and residency mutex.
+It coordinates an admitted operation with idle unload and catalog retirement,
+which do not enter the request dispatcher; it is not a second FIFO or request-
+admission mechanism. This keeps request ordering in one owner while preserving
+one bridge owner for worker and lease mutation.
+
 ## Capability flow
 
 1. A complete validated bridge catalog revision supplies package ID, publisher

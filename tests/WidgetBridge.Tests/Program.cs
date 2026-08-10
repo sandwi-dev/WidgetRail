@@ -27,6 +27,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog rejects invalid GBSS with safe diagnostics", InvalidThemeIsRejected),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
+    ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
+    ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
+    ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),
+    ("Request dispatcher forced drain cancels and clears every registry", RequestDispatcherForcedDrainIsComplete),
     ("Stalled widget admission leaves bounded list and stop control responsive", StalledAdmissionKeepsControlPlaneResponsive),
     ("Pipelined requests preserve per-widget receive order", PipelinedWidgetRequestsStayOrdered),
     ("Duplicate pending request IDs fail the bridge session closed", DuplicatePendingRequestIdsFailClosed),
@@ -424,6 +428,200 @@ static async Task EnumerationIsLazy()
     Assert.False(descriptor.TryGetProperty("workerExecutable", out _),
         "Native descriptors must not expose worker paths.");
     Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+
+static async Task RequestDispatcherCleansTerminalPaths()
+{
+    var successFatal = new TaskCompletionSource<Exception>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    await using (var dispatcher = new BridgeRequestDispatcher(
+        CancellationToken.None,
+        exception => successFatal.TrySetResult(exception),
+        maximumConcurrentRequests: 2))
+    {
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var accepted = dispatcher.TryDispatch(
+            1, "widget-a", _ => completion.Task);
+        Assert.Equal(BridgeRequestDispatchStatus.Accepted, accepted.Status);
+        completion.SetResult();
+        await accepted.Completion!;
+        Assert.Equal(0, dispatcher.ActiveCount);
+        Assert.Equal(0, dispatcher.WidgetTailCount);
+        Assert.Equal(2, dispatcher.AvailableSlots);
+        Assert.False(successFatal.Task.IsCompleted,
+            "Successful request incorrectly canceled the bridge session.");
+    }
+
+    var failureFatal = new TaskCompletionSource<Exception>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    await using (var dispatcher = new BridgeRequestDispatcher(
+        CancellationToken.None,
+        exception => failureFatal.TrySetResult(exception)))
+    {
+        var failed = dispatcher.TryDispatch(
+            2, null, _ => Task.FromException(new InvalidOperationException("fatal")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failed.Completion!);
+        var fatal = await failureFatal.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal("fatal", fatal.Message);
+        await dispatcher.CancelAndDrainAsync();
+        Assert.Equal(0, dispatcher.ActiveCount);
+        Assert.Equal(0, dispatcher.WidgetTailCount);
+        Assert.Equal(BridgeRequestDispatcher.MaximumConcurrentRequests,
+            dispatcher.AvailableSlots);
+    }
+
+    using var session = new CancellationTokenSource();
+    await using (var dispatcher = new BridgeRequestDispatcher(
+        session.Token, _ => throw new InvalidOperationException(
+            "Cancellation must not be fatal.")))
+    {
+        var started = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var canceled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = dispatcher.TryDispatch(3, "widget-a", async token =>
+        {
+            started.SetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException)
+            {
+                canceled.SetResult();
+                throw;
+            }
+        });
+        await started.Task;
+        session.Cancel();
+        await request.Completion!;
+        await canceled.Task;
+        Assert.Equal(0, dispatcher.ActiveCount);
+        Assert.Equal(0, dispatcher.WidgetTailCount);
+    }
+}
+
+static async Task RequestDispatcherOwnsWidgetOrdering()
+{
+    var order = new List<string>();
+    var firstStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseFirst = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    await using (var dispatcher = new BridgeRequestDispatcher(
+        CancellationToken.None, _ => { }, maximumConcurrentRequests: 3))
+    {
+        var first = dispatcher.TryDispatch(1, "widget-a", async _ =>
+        {
+            order.Add("first-start");
+            firstStarted.SetResult();
+            await releaseFirst.Task;
+            order.Add("first-end");
+        });
+        var second = dispatcher.TryDispatch(2, "widget-a", _ =>
+        {
+            order.Add("second");
+            return Task.CompletedTask;
+        });
+        var otherWidget = dispatcher.TryDispatch(3, "widget-b", _ =>
+        {
+            order.Add("other");
+            return Task.CompletedTask;
+        });
+        await firstStarted.Task;
+        await otherWidget.Completion!;
+        Assert.False(order.Contains("second", StringComparer.Ordinal),
+            "Same-widget successor ran before its predecessor completed.");
+        releaseFirst.SetResult();
+        await Task.WhenAll(first.Completion!, second.Completion!);
+        Assert.True(
+            order.IndexOf("first-end") < order.IndexOf("second"),
+            "Same-widget FIFO order changed after predecessor completion.");
+        Assert.Equal(0, dispatcher.ActiveCount);
+        Assert.Equal(0, dispatcher.WidgetTailCount);
+    }
+
+    var fatalCount = 0;
+    var successorRan = false;
+    await using (var dispatcher = new BridgeRequestDispatcher(
+        CancellationToken.None, _ => Interlocked.Increment(ref fatalCount)))
+    {
+        var releaseFailure = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var predecessor = dispatcher.TryDispatch(10, "widget-a", async _ =>
+        {
+            await releaseFailure.Task;
+            throw new InvalidOperationException("predecessor failed");
+        });
+        var successor = dispatcher.TryDispatch(11, "widget-a", _ =>
+        {
+            successorRan = true;
+            return Task.CompletedTask;
+        });
+        releaseFailure.SetResult();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => predecessor.Completion!);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => successor.Completion!);
+        await dispatcher.CancelAndDrainAsync();
+        Assert.False(successorRan,
+            "A successor ran after its FIFO predecessor failed.");
+        Assert.Equal(1, fatalCount);
+        Assert.Equal(0, dispatcher.ActiveCount);
+        Assert.Equal(0, dispatcher.WidgetTailCount);
+    }
+}
+
+static async Task RequestDispatcherBoundsAdmission()
+{
+    var release = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    await using var dispatcher = new BridgeRequestDispatcher(
+        CancellationToken.None, _ => { }, maximumConcurrentRequests: 2);
+    var first = dispatcher.TryDispatch(1, "widget-a", _ => release.Task);
+    var second = dispatcher.TryDispatch(2, "widget-b", _ => release.Task);
+    Assert.Equal(0, dispatcher.AvailableSlots);
+    Assert.Throws<BridgeProtocolException>(() =>
+        dispatcher.TryDispatch(1, null, _ => Task.CompletedTask));
+    var thirdRan = false;
+    var saturated = dispatcher.TryDispatch(3, null, _ =>
+    {
+        thirdRan = true;
+        return Task.CompletedTask;
+    });
+    Assert.Equal(BridgeRequestDispatchStatus.CapacityExceeded, saturated.Status);
+    Assert.Equal<Task?>(null, saturated.Completion);
+    Assert.False(thirdRan, "Over-capacity handler ran without admission.");
+    release.SetResult();
+    await Task.WhenAll(first.Completion!, second.Completion!);
+    Assert.Equal(0, dispatcher.ActiveCount);
+    Assert.Equal(0, dispatcher.WidgetTailCount);
+    Assert.Equal(2, dispatcher.AvailableSlots);
+}
+
+static async Task RequestDispatcherForcedDrainIsComplete()
+{
+    var started = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var starts = 0;
+    var cancellations = 0;
+    await using var dispatcher = new BridgeRequestDispatcher(
+        CancellationToken.None, _ => { }, maximumConcurrentRequests: 2);
+    for (var requestId = 1L; requestId <= 2; requestId++)
+    {
+        _ = dispatcher.TryDispatch(requestId, $"widget-{requestId}", async token =>
+        {
+            if (Interlocked.Increment(ref starts) == 2) started.SetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException)
+            {
+                Interlocked.Increment(ref cancellations);
+                throw;
+            }
+        });
+    }
+    await started.Task;
+    await dispatcher.CancelAndDrainAsync().WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal(2, cancellations);
+    Assert.Equal(0, dispatcher.ActiveCount);
+    Assert.Equal(0, dispatcher.WidgetTailCount);
+    Assert.Equal(2, dispatcher.AvailableSlots);
 }
 
 static async Task StalledAdmissionKeepsControlPlaneResponsive()
