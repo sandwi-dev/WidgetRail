@@ -4,132 +4,28 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings;
 
-public sealed partial class SettingsWidget
+/// <summary>Pure snapshot-only composition for installed-widget Settings pages.</summary>
+internal static class SettingsInstalledWidgetPresentation
 {
-    public const int InstalledWidgetsPerPage = 5;
-    public const int InstalledVersionsPerPage = 5;
-
-    private async Task<string?> ReloadInstalledWidgetsAsync(CancellationToken cancellationToken)
+    public static WidgetView RenderInstalledWidgets(
+        StackElement header,
+        bool busy,
+        SettingsInstalledWidgetState state)
     {
-        try
-        {
-            var snapshot = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
-            var builtIn = _bundledWidgetRoot is null
-                ? []
-                : DiscoverBundledManifests(_bundledWidgetRoot)
-                    .GroupBy(manifest => manifest.Id, StringComparer.Ordinal)
-                    .Select(group => group.First())
-                    .OrderBy(manifest => manifest.Name, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(manifest => manifest.Id, StringComparer.Ordinal)
-                    .ToArray();
-            lock (_stateLock)
-            {
-                _installedWidgets = snapshot;
-                _installedCatalogHealth = new WidgetCatalogHealthSnapshot(null, []);
-                _builtInWidgets = builtIn;
-                _installedWidgetCatalogValid = true;
-                _installedWidgetDiagnostic = null;
-                _selectedRepairCandidate = null;
-                _installedWidgetPage = Math.Clamp(
-                    _installedWidgetPage, 0, LastInstalledWidgetPage(snapshot));
-                if (_selectedInstalledWidgetId is not null &&
-                    !snapshot.Widgets.Any(widget => widget.Id == _selectedInstalledWidgetId))
-                {
-                    _selectedInstalledWidgetId = null;
-                    _installedVersionPage = 0;
-                    if (_page is SettingsPage.InstalledWidgetDetails or
-                        SettingsPage.InstalledWidgetVersions or
-                        SettingsPage.InstalledWidgetRecovery)
-                        _page = SettingsPage.InstalledWidgets;
-                }
-                else if (_page == SettingsPage.InstalledWidgetRecovery)
-                {
-                    _page = SettingsPage.InstalledWidgets;
-                }
-                if (_selectedBuiltInWidgetId is not null &&
-                    !builtIn.Any(manifest => manifest.Id == _selectedBuiltInWidgetId))
-                {
-                    _selectedBuiltInWidgetId = null;
-                    if (_page == SettingsPage.InstalledWidgetDetails)
-                        _page = SettingsPage.InstalledWidgets;
-                }
-            }
-            return null;
-        }
-        catch (WidgetPackageException exception)
-        {
-            WidgetCatalogHealthSnapshot health;
-            try
-            {
-                health = await _widgetCatalog.InspectHealthAsync(cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception inspectionException) when (inspectionException is
-                WidgetPackageException or IOException or UnauthorizedAccessException)
-            {
-                health = new WidgetCatalogHealthSnapshot(exception.Code, []);
-            }
-            return SetInstalledWidgetCatalogFailure(
-                $"Installed widget catalog unavailable ({exception.Code})", health);
-        }
-        catch (IOException)
-        {
-            return SetInstalledWidgetCatalogFailure("Installed widget catalog unavailable (io_error)");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return SetInstalledWidgetCatalogFailure("Installed widget catalog unavailable (access_denied)");
-        }
-    }
+        var snapshot = state.Catalog;
+        var builtIn = state.BuiltIns;
+        var valid = state.CatalogValid;
+        var diagnostic = state.Diagnostic;
+        var page = state.Page;
+        var selectedBuiltInId = state.SelectedBuiltInId;
 
-    private string SetInstalledWidgetCatalogFailure(
-        string diagnostic,
-        WidgetCatalogHealthSnapshot? health = null)
-    {
-        lock (_stateLock)
-        {
-            _installedWidgets = new WidgetCatalogSnapshot([]);
-            _installedCatalogHealth = health ?? new WidgetCatalogHealthSnapshot(null, []);
-            _builtInWidgets = [];
-            _installedWidgetCatalogValid = false;
-            _installedWidgetDiagnostic = diagnostic;
-            _installedWidgetPage = 0;
-            _selectedInstalledWidgetId = null;
-            _selectedBuiltInWidgetId = null;
-            _selectedRepairCandidate = null;
-            _installedVersionPage = 0;
-            if (_page is SettingsPage.InstalledWidgetDetails or
-                SettingsPage.InstalledWidgetVersions or
-                SettingsPage.InstalledWidgetRecovery)
-                _page = SettingsPage.InstalledWidgets;
-        }
-        return diagnostic;
-    }
+        if (!valid) return RenderInstalledCatalogRecoveryList(
+            header, busy, diagnostic, state);
 
-    private WidgetView RenderInstalledWidgets(StackElement header, bool busy)
-    {
-        WidgetCatalogSnapshot snapshot;
-        IReadOnlyList<WidgetManifest> builtIn;
-        bool valid;
-        string? diagnostic;
-        int page;
-        string? selectedBuiltInId;
-        lock (_stateLock)
-        {
-            snapshot = _installedWidgets;
-            builtIn = _builtInWidgets;
-            valid = _installedWidgetCatalogValid;
-            diagnostic = _installedWidgetDiagnostic;
-            page = _installedWidgetPage;
-            selectedBuiltInId = _selectedBuiltInWidgetId;
-        }
-
-        if (!valid) return RenderInstalledCatalogRecoveryList(header, busy, diagnostic);
-
-        var lastPage = LastInstalledWidgetPage(snapshot);
+        var lastPage = SettingsInstalledWidgetPolicy.LastCatalogPage(snapshot);
         page = Math.Clamp(page, 0, lastPage);
-        var start = page * InstalledWidgetsPerPage;
-        var visible = snapshot.Widgets.Skip(start).Take(InstalledWidgetsPerPage).ToArray();
+        var start = page * SettingsWidget.InstalledWidgetsPerPage;
+        var visible = snapshot.Widgets.Skip(start).Take(SettingsWidget.InstalledWidgetsPerPage).ToArray();
         var children = new List<WidgetElement>
         {
             UI.Text("Installed widgets", "installed.heading", "Installed widgets").Classes("page-heading"),
@@ -182,7 +78,7 @@ public sealed partial class SettingsWidget
             children.Add(UI.Text(valid ? "No community widgets are installed." : "No package actions are available.",
                 "installed.empty", "Installed widget list status").Classes("diagnostic-line"));
         children.Add(UI.Button("Back", "back", "installed.back").Classes("secondary-button"));
-        LinkVertical(children);
+        SettingsPresentation.LinkVertical(children);
 
         var scope = UI.VerticalScroll("installed.widgets", children.ToArray())
             .InputScope("installed.widgets")
@@ -200,26 +96,22 @@ public sealed partial class SettingsWidget
             : builtIn.Count != 0
                 ? "installed.builtin.item.0"
                 : visible.Length == 0 ? "installed.back" : $"installed.item.{start}";
-        return View(header, scope, initialFocus, "installed.widgets");
+        return SettingsPresentation.View(header, scope, initialFocus, "installed.widgets");
     }
 
-    private WidgetView RenderInstalledCatalogRecoveryList(
+    public static WidgetView RenderInstalledCatalogRecoveryList(
         StackElement header,
         bool busy,
-        string? diagnostic)
+        string? diagnostic,
+        SettingsInstalledWidgetState state)
     {
-        WidgetCatalogHealthSnapshot health;
-        int page;
-        lock (_stateLock)
-        {
-            health = _installedCatalogHealth;
-            page = _installedWidgetPage;
-        }
+        var health = state.Health;
+        var page = state.Page;
         var removable = health.Candidates.Where(item => item.CanRemove).ToArray();
-        var lastPage = Math.Max(0, (removable.Length - 1) / InstalledWidgetsPerPage);
+        var lastPage = Math.Max(0, (removable.Length - 1) / SettingsWidget.InstalledWidgetsPerPage);
         page = Math.Clamp(page, 0, lastPage);
-        var start = page * InstalledWidgetsPerPage;
-        var visible = removable.Skip(start).Take(InstalledWidgetsPerPage).ToArray();
+        var start = page * SettingsWidget.InstalledWidgetsPerPage;
+        var visible = removable.Skip(start).Take(SettingsWidget.InstalledWidgetsPerPage).ToArray();
         var children = new List<WidgetElement>
         {
             UI.Text("Catalog recovery", "installed.repair.heading", "Installed widget catalog recovery")
@@ -252,33 +144,35 @@ public sealed partial class SettingsWidget
                 .Classes("diagnostic-line"));
         children.Add(UI.Button("Back", "back", "installed.repair.back")
             .Classes("secondary-button"));
-        LinkVertical(children);
+        SettingsPresentation.LinkVertical(children);
         var scope = UI.VerticalScroll("installed.repair.list", children.ToArray())
             .InputScope("installed.repair.list")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
         if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "installed.previous-page");
         if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "installed.next-page");
-        return View(
+        return SettingsPresentation.View(
             header, scope,
             visible.Length == 0 ? "installed.repair.back" : $"installed.repair.item.{start}",
             "installed.repair.list");
     }
 
-    private WidgetView RenderInstalledWidgetRecovery(StackElement header, bool busy)
+    public static WidgetView RenderInstalledWidgetRecovery(
+        StackElement header,
+        bool busy,
+        SettingsInstalledWidgetState state)
     {
-        WidgetCatalogRepairCandidate? candidate;
-        lock (_stateLock) candidate = _selectedRepairCandidate;
+        var candidate = state.SelectedRepair;
         if (candidate is null || !candidate.CanRemove)
-            return View(header,
-                PageScope("installed.repair.confirm",
+            return SettingsPresentation.View(header,
+                SettingsPresentation.PageScope("installed.repair.confirm",
                     UI.Text("Recovery candidate unavailable", "installed.repair.confirm.heading",
                         "Recovery candidate unavailable").Classes("page-heading"),
                     UI.Button("Back", "back", "installed.repair.confirm.back")
                         .Classes("secondary-button")),
                 "installed.repair.confirm.back", "installed.repair.confirm");
-        return View(header,
-            PageScope("installed.repair.confirm",
+        return SettingsPresentation.View(header,
+            SettingsPresentation.PageScope("installed.repair.confirm",
                 UI.Text("Remove inactive version?", "installed.repair.confirm.heading",
                     "Confirm inactive version removal").Classes("page-heading"),
                 UI.Text($"Package ID: {candidate.Id}", "installed.repair.confirm.id", "Package ID")
@@ -296,84 +190,19 @@ public sealed partial class SettingsWidget
             "installed.repair.confirm.back", "installed.repair.confirm");
     }
 
-    private void SelectRepairCandidate(int index)
+    public static WidgetView RenderInstalledWidgetDetails(
+        StackElement header,
+        bool busy,
+        SettingsInstalledWidgetState state,
+        SettingsPermissionState permissionState)
     {
-        lock (_stateLock)
-        {
-            var removable = _installedCatalogHealth.Candidates.Where(item => item.CanRemove).ToArray();
-            if (_page != SettingsPage.InstalledWidgets ||
-                _installedWidgetCatalogValid || index < 0 || index >= removable.Length) return;
-            _selectedRepairCandidate = removable[index];
-            _page = SettingsPage.InstalledWidgetRecovery;
-        }
-        Invalidate();
-    }
-
-    private async Task RemoveSelectedRepairCandidateAsync(CancellationToken cancellationToken)
-    {
-        WidgetCatalogRepairCandidate? candidate;
-        lock (_stateLock)
-            candidate = _page == SettingsPage.InstalledWidgetRecovery
-                ? _selectedRepairCandidate
-                : null;
-        if (candidate is null || !candidate.CanRemove) return;
-        SetOperation($"Removing {candidate.Id} {candidate.Version}…", busy: true, error: false);
-        try
-        {
-            var result = await _widgetCatalog.RemoveInactiveVersionAsync(
-                candidate.Id, candidate.Version, cancellationToken).ConfigureAwait(false);
-            var warning = await ReloadInstalledWidgetsAsync(cancellationToken).ConfigureAwait(false);
-            if (warning is null)
-                warning = await ReloadPermissionsAsync(cancellationToken).ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _page = SettingsPage.InstalledWidgets;
-                _selectedRepairCandidate = null;
-                _busy = false;
-                _error = warning is not null;
-                _status = warning ??
-                    $"Removed inactive {result.Id} {result.Version}" +
-                    (result.CleanupPending ? "; staging cleanup is pending" : string.Empty);
-            }
-        }
-        catch (WidgetPackageException exception)
-        {
-            SetOperation($"Catalog repair failed ({exception.Code})", busy: false, error: true);
-            return;
-        }
-        catch (KeyNotFoundException)
-        {
-            SetOperation("Catalog repair failed (package_not_found)", busy: false, error: true);
-            return;
-        }
-        catch (IOException)
-        {
-            SetOperation("Catalog repair failed (io_error)", busy: false, error: true);
-            return;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            SetOperation("Catalog repair failed (access_denied)", busy: false, error: true);
-            return;
-        }
-        Invalidate();
-    }
-
-    private WidgetView RenderInstalledWidgetDetails(StackElement header, bool busy)
-    {
-        CatalogWidget? package;
-        WidgetManifest? builtIn;
-        bool valid;
-        bool permissionCatalogValid;
-        IReadOnlyList<string> permissionPackageIds;
-        lock (_stateLock)
-        {
-            package = SelectedInstalledWidgetLocked();
-            builtIn = SelectedBuiltInWidgetLocked();
-            valid = _installedWidgetCatalogValid;
-            permissionCatalogValid = _permissionCatalogValid;
-            permissionPackageIds = _permissionPackages.Select(item => item.Id).ToArray();
-        }
+        var package = state.SelectedInstalled;
+        var builtIn = state.SelectedBuiltIn;
+        var valid = state.CatalogValid;
+        var permissionCatalogValid = permissionState.Projection.CatalogValid;
+        var permissionPackageIds = permissionState.Projection.Packages
+            .Select(item => item.Id)
+            .ToArray();
         if (builtIn is not null && valid)
         {
             var builtInHasPermissions = permissionCatalogValid &&
@@ -385,8 +214,8 @@ public sealed partial class SettingsWidget
             var builtInOptionalPermissions = builtIn.OptionalPermissions.Count == 0
                 ? "None"
                 : string.Join(", ", builtIn.OptionalPermissions.Order(StringComparer.Ordinal));
-            return View(header,
-                PageScope("installed.details",
+            return SettingsPresentation.View(header,
+                SettingsPresentation.PageScope("installed.details",
                     UI.Text(builtIn.Name, "installed.details.heading", "Built-in widget name")
                         .Classes("page-heading"),
                     UI.Text("Source: Built-in", "installed.details.source", "Built-in widget source")
@@ -423,8 +252,8 @@ public sealed partial class SettingsWidget
                 "installed.details");
         }
         if (package is null || !valid)
-            return View(header,
-                PageScope("installed.details",
+            return SettingsPresentation.View(header,
+                SettingsPresentation.PageScope("installed.details",
                     UI.Text("Package unavailable", "installed.details.heading", "Package unavailable")
                         .Classes("page-heading"),
                     UI.Text("Return to the installed widget list and reload Settings.",
@@ -476,8 +305,8 @@ public sealed partial class SettingsWidget
         var back = UI.Button("Back", "back", "installed.details.back")
             .FocusUp(canToggle ? "installed.details.toggle" : "installed.details.permissions")
             .Classes("secondary-button");
-        return View(header,
-            PageScope("installed.details",
+        return SettingsPresentation.View(header,
+            SettingsPresentation.PageScope("installed.details",
                 UI.Text(package.Name, "installed.details.heading", "Installed widget name").Classes("page-heading"),
                 UI.Text("Trust: Unsigned · publisher unverified", "installed.details.trust",
                     "Unsigned package trust status").Classes("diagnostic-error"),
@@ -522,27 +351,25 @@ public sealed partial class SettingsWidget
             canToggle ? "installed.details.toggle" : "installed.details.back", "installed.details");
     }
 
-    private WidgetView RenderInstalledWidgetVersions(StackElement header, bool busy)
+    public static WidgetView RenderInstalledWidgetVersions(
+        StackElement header,
+        bool busy,
+        SettingsInstalledWidgetState state)
     {
-        CatalogWidget? package;
-        int page;
-        lock (_stateLock)
-        {
-            package = _installedWidgetCatalogValid ? SelectedInstalledWidgetLocked() : null;
-            page = _installedVersionPage;
-        }
+        var package = state.CatalogValid ? state.SelectedInstalled : null;
+        var page = state.VersionPage;
         if (package is null)
-            return View(header,
-                PageScope("installed.versions",
+            return SettingsPresentation.View(header,
+                SettingsPresentation.PageScope("installed.versions",
                     UI.Text("Versions unavailable", "installed.versions.heading", "Versions unavailable")
                         .Classes("page-heading"),
                     UI.Button("Back", "back", "installed.versions.back").Classes("secondary-button")),
                 "installed.versions.back", "installed.versions");
 
-        var lastPage = LastInstalledVersionPage(package);
+        var lastPage = SettingsInstalledWidgetPolicy.LastVersionPage(package);
         page = Math.Clamp(page, 0, lastPage);
-        var start = page * InstalledVersionsPerPage;
-        var visible = package.Versions.Skip(start).Take(InstalledVersionsPerPage).ToArray();
+        var start = page * SettingsWidget.InstalledVersionsPerPage;
+        var visible = package.Versions.Skip(start).Take(SettingsWidget.InstalledVersionsPerPage).ToArray();
         var children = new List<WidgetElement>
         {
             UI.Text($"{package.Name} versions", "installed.versions.heading", "Installed versions")
@@ -566,13 +393,13 @@ public sealed partial class SettingsWidget
             children.Add(UI.Button(
                     $"{direction} · {installed.Version} · " +
                     (compatibility.IsSupported ? "Compatible" : "Incompatible") +
-                    $" · SHA-256 {ShortContentDigest(installed.ContentDigest)}…",
+                    $" · SHA-256 {SettingsPresentation.ShortContentDigest(installed.ContentDigest)}…",
                     $"installed.version.select.{index}", $"installed.version.item.{index}")
                 .Disabled(package.Enabled || isActive).Busy(busy).Selected(isActive)
                 .Classes("setting-row", isActive ? "is-enabled" : "is-disabled"));
         }
         children.Add(UI.Button("Back", "back", "installed.versions.back").Classes("secondary-button"));
-        LinkVertical(children);
+        SettingsPresentation.LinkVertical(children);
 
         var scope = UI.Stack("installed.versions", children.ToArray())
             .InputScope("installed.versions")
@@ -588,207 +415,6 @@ public sealed partial class SettingsWidget
                 .Where(item => item.version.Version != package.ActiveVersion.Version)
                 .Select(item => $"installed.version.item.{start + item.offset}")
                 .FirstOrDefault() ?? "installed.versions.back";
-        return View(header, scope, initialFocus, "installed.versions");
+        return SettingsPresentation.View(header, scope, initialFocus, "installed.versions");
     }
-
-    private void ChangeInstalledWidgetPage(int delta)
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.InstalledWidgets) return;
-            var count = _installedWidgetCatalogValid
-                ? _installedWidgets.Widgets.Count
-                : _installedCatalogHealth.Candidates.Count(item => item.CanRemove);
-            _installedWidgetPage = Math.Clamp(
-                _installedWidgetPage + delta, 0,
-                Math.Max(0, (count - 1) / InstalledWidgetsPerPage));
-        }
-        Invalidate();
-    }
-
-    private void SelectInstalledWidget(int index)
-    {
-        lock (_stateLock)
-        {
-            if (!_installedWidgetCatalogValid || index < 0 || index >= _installedWidgets.Widgets.Count) return;
-            _selectedInstalledWidgetId = _installedWidgets.Widgets[index].Id;
-            _selectedBuiltInWidgetId = null;
-            _installedVersionPage = 0;
-            _page = SettingsPage.InstalledWidgetDetails;
-        }
-        Invalidate();
-    }
-
-    private void SelectBuiltInWidget(int index)
-    {
-        lock (_stateLock)
-        {
-            if (!_installedWidgetCatalogValid || index < 0 || index >= _builtInWidgets.Count) return;
-            _selectedBuiltInWidgetId = _builtInWidgets[index].Id;
-            _selectedInstalledWidgetId = null;
-            _installedVersionPage = 0;
-            _page = SettingsPage.InstalledWidgetDetails;
-        }
-        Invalidate();
-    }
-
-    private void OpenInstalledWidgetVersions()
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.InstalledWidgetDetails ||
-                SelectedInstalledWidgetLocked() is null ||
-                SelectedBuiltInWidgetLocked() is not null)
-                return;
-            _page = SettingsPage.InstalledWidgetVersions;
-        }
-        Invalidate();
-    }
-
-    private void ChangeInstalledVersionPage(int delta)
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.InstalledWidgetVersions) return;
-            var selected = SelectedInstalledWidgetLocked();
-            if (selected is null) return;
-            _installedVersionPage = Math.Clamp(
-                _installedVersionPage + delta, 0, LastInstalledVersionPage(selected));
-        }
-        Invalidate();
-    }
-
-    private async Task SelectInstalledVersionAsync(int index, CancellationToken cancellationToken)
-    {
-        CatalogWidget? selected;
-        InstalledWidgetVersion? requested;
-        lock (_stateLock)
-        {
-            selected = _installedWidgetCatalogValid ? SelectedInstalledWidgetLocked() : null;
-            requested = selected is not null && index >= 0 && index < selected.Versions.Count
-                ? selected.Versions[index]
-                : null;
-        }
-        if (selected is null || requested is null) return;
-        if (selected.Enabled)
-        {
-            SetOperation("Disable the widget before changing versions", busy: false, error: true);
-            return;
-        }
-        if (requested.Version == selected.ActiveVersion.Version) return;
-
-        SetOperation($"Selecting {requested.Version}…", busy: true, error: false);
-        try
-        {
-            await _widgetCatalog.SetActiveVersionAsync(
-                selected.Id, requested.Version, cancellationToken).ConfigureAwait(false);
-            var refreshed = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
-            // Version changes can replace declarations and always replace the
-            // installed package authority. Refresh the permission projection
-            // before reporting success so this still-visible Settings worker
-            // can never grant against the previously selected version.
-            var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
-                .ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _installedWidgets = refreshed;
-                _installedWidgetCatalogValid = true;
-                _installedWidgetDiagnostic = null;
-                _busy = false;
-                _error = permissionWarning is not null;
-                _status = permissionWarning ??
-                    $"{selected.Name} {requested.Version} selected; review its unsigned digest and capabilities before enabling";
-            }
-        }
-        catch (WidgetPackageException exception)
-        {
-            SetOperation($"Version change failed ({exception.Code})", busy: false, error: true);
-            return;
-        }
-        catch (KeyNotFoundException)
-        {
-            SetOperation("Version change failed (package_not_found)", busy: false, error: true);
-            return;
-        }
-        catch (IOException)
-        {
-            SetOperation("Version change failed (io_error)", busy: false, error: true);
-            return;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            SetOperation("Version change failed (access_denied)", busy: false, error: true);
-            return;
-        }
-        Invalidate();
-    }
-
-    private async Task ToggleSelectedInstalledWidgetAsync(CancellationToken cancellationToken)
-    {
-        CatalogWidget? selected;
-        lock (_stateLock)
-            selected = _installedWidgetCatalogValid ? SelectedInstalledWidgetLocked() : null;
-        if (selected is null) return;
-
-        var nextEnabled = !selected.Enabled;
-        if (nextEnabled && !WidgetHostCompatibility.Evaluate(selected.ActiveVersion.Manifest).IsSupported)
-        {
-            SetOperation("Widget cannot be enabled because it is incompatible with this host",
-                busy: false, error: true);
-            return;
-        }
-        SetOperation(nextEnabled ? "Enabling widget…" : "Disabling widget…", busy: true, error: false);
-        try
-        {
-            await _widgetCatalog.SetEnabledAsync(selected.Id, nextEnabled, cancellationToken).ConfigureAwait(false);
-            var refreshed = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _installedWidgets = refreshed;
-                _installedWidgetCatalogValid = true;
-                _installedWidgetDiagnostic = null;
-                _busy = false;
-                _error = false;
-                _status = nextEnabled ? $"{selected.Name} enabled" : $"{selected.Name} disabled";
-            }
-        }
-        catch (WidgetPackageException exception)
-        {
-            SetOperation($"Widget change failed ({exception.Code})", busy: false, error: true);
-            return;
-        }
-        catch (KeyNotFoundException)
-        {
-            SetOperation("Widget change failed (package_not_found)", busy: false, error: true);
-            return;
-        }
-        catch (IOException)
-        {
-            SetOperation("Widget change failed (io_error)", busy: false, error: true);
-            return;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            SetOperation("Widget change failed (access_denied)", busy: false, error: true);
-            return;
-        }
-        Invalidate();
-    }
-
-    private CatalogWidget? SelectedInstalledWidgetLocked() => _installedWidgets.Widgets.FirstOrDefault(
-        widget => widget.Id == _selectedInstalledWidgetId);
-
-    private WidgetManifest? SelectedBuiltInWidgetLocked() => _builtInWidgets.FirstOrDefault(
-        manifest => manifest.Id == _selectedBuiltInWidgetId);
-
-    private static int LastInstalledWidgetPage(WidgetCatalogSnapshot snapshot) =>
-        Math.Max(0, (snapshot.Widgets.Count - 1) / InstalledWidgetsPerPage);
-
-    private static int LastInstalledVersionPage(CatalogWidget widget) =>
-        Math.Max(0, (widget.Versions.Count - 1) / InstalledVersionsPerPage);
-
-    private static string ShortContentDigest(string digest) =>
-        digest.Length >= 12
-            ? digest[..12].ToLowerInvariant()
-            : "invalid-digest";
 }

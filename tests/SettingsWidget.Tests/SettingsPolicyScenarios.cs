@@ -1,8 +1,11 @@
 using System.Text.Json;
 using GameBarAlternative.FirstPartyWidgets.Settings;
+using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformDiagnostics;
 using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetSdk;
 
 internal static class SettingsPolicyScenarios
 {
@@ -177,6 +180,195 @@ internal static class SettingsPolicyScenarios
                 .Contains(token, StringComparison.Ordinal),
             "Opaque recovery token escaped through presentation metadata.");
         return Task.CompletedTask;
+    }
+
+    public static Task InstalledPolicyRemovesStaleSelection()
+    {
+        var state = SettingsInstalledWidgetState.Empty with
+        {
+            SelectedInstalledId = "dev.test.removed",
+            VersionPage = 4,
+        };
+        var reconciled = SettingsInstalledWidgetPolicy.Reconcile(
+            state,
+            new WidgetCatalogSnapshot([]),
+            [],
+            SettingsPage.InstalledWidgetVersions);
+        Equal(SettingsPage.InstalledWidgets, reconciled.Page,
+            "Removed selection did not return to the catalog list.");
+        Require(reconciled.State.SelectedInstalledId is null,
+            "Removed catalog identity survived reconciliation.");
+        Equal(0, reconciled.State.VersionPage,
+            "Removed catalog identity retained a stale version page.");
+
+        var failed = SettingsInstalledWidgetPolicy.Failure(
+            "Catalog unavailable (test)",
+            new WidgetCatalogHealthSnapshot("test_failure", []),
+            SettingsPage.InstalledWidgetDetails);
+        Equal(SettingsPage.InstalledWidgets, failed.Page,
+            "Catalog failure retained a detail route.");
+        Require(!failed.State.CatalogValid && failed.State.Catalog.Widgets.Count == 0,
+            "Catalog failure retained actionable catalog rows.");
+        return Task.CompletedTask;
+    }
+
+    public static Task PermissionPolicyBindsAuthorityAndRevocation()
+    {
+        const string packageId = "dev.test.permissions";
+        const string authorityA = "dev.test.publisher\nsha256:a";
+        const string authorityB = "dev.test.publisher\nsha256:b";
+        const string capabilityId = PlatformCapabilities.NetworkReadV1;
+        var packageA = new SettingsPermissionPackage(
+            packageId,
+            "dev.test.publisher",
+            authorityA,
+            "Permission sample",
+            [new SettingsDeclaredCapability(capabilityId, IsRequired: true)],
+            new string('a', 64));
+        var grant = new ConsentDocument(
+            1,
+            7,
+            [new ConsentEntry(packageId, authorityA, capabilityId, ConsentDecision.Grant)]);
+        var projectionA = new SettingsPermissionProjection(
+            [packageA],
+            grant,
+            CatalogValid: true,
+            ConsentValid: true,
+            Diagnostic: null,
+            UnknownDeclarations: 0,
+            HiddenConsentEntries: 0,
+            InactiveConsentClassificationAvailable: true,
+            UnknownDeclarationDetails: [],
+            HiddenConsentDetails: []);
+        var initial = SettingsPermissionPolicy.Reconcile(
+            SettingsPermissionState.Empty,
+            projectionA,
+            SettingsPage.Permissions);
+        Require(SettingsPermissionPolicy.TrySelectPackage(
+                initial.State, 0, out var selected),
+            "Current permission package could not be selected.");
+        Require(SettingsPermissionPolicy.TrySelectCapability(
+                selected.State, 0, out var capability),
+            "Current declared capability could not be selected.");
+        Equal(ConsentDecision.Grant,
+            SettingsPermissionPolicy.FindDecision(
+                capability.State.Projection.Consent,
+                capability.State.SelectedPackage!,
+                capabilityId),
+            "Current grant was not projected.");
+
+        var denied = grant with
+        {
+            Revision = 8,
+            Entries = [new ConsentEntry(
+                packageId, authorityA, capabilityId, ConsentDecision.Deny)],
+        };
+        var revoked = SettingsPermissionPolicy.Reconcile(
+            capability.State,
+            projectionA with { Consent = denied },
+            SettingsPage.CapabilityDecision);
+        Equal(ConsentDecision.Deny,
+            SettingsPermissionPolicy.FindDecision(
+                revoked.State.Projection.Consent,
+                revoked.State.SelectedPackage!,
+                capabilityId),
+            "Updated denial did not replace the prior grant.");
+
+        var packageB = packageA with { AuthorityPublisher = authorityB };
+        var replaced = SettingsPermissionPolicy.Reconcile(
+            revoked.State,
+            projectionA with { Packages = [packageB] },
+            SettingsPage.CapabilityDecision);
+        Equal(SettingsPage.Permissions, replaced.Page,
+            "Authority replacement retained a stale capability route.");
+        Require(replaced.State.SelectedPackage is null &&
+                replaced.State.SelectedCapabilityId is null,
+            "Authority replacement retained stale selection authority.");
+        return Task.CompletedTask;
+    }
+
+    public static Task SectionPresentersAreRepeatableAndBusySafe()
+    {
+        var headerState = new SettingsPresentationState(
+            SettingsPage.InstalledWidgets,
+            PlatformSettingsDocument.Default,
+            new ThemeCatalogSnapshot([]),
+            PlatformDiagnosticsSnapshot.Unavailable(),
+            null,
+            "Ready",
+            SettingsValid: true,
+            Busy: true,
+            Error: false);
+        var header = SettingsPresentation.Header(headerState);
+        var failed = SettingsInstalledWidgetPolicy.Failure(
+            "Catalog unavailable (test)",
+            new WidgetCatalogHealthSnapshot(
+                "test_failure",
+                [new WidgetCatalogRepairCandidate(
+                    "dev.test.widget", new Version(1, 0, 0), false, false)]),
+            SettingsPage.InstalledWidgets).State;
+        var first = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
+            header, busy: true, failed);
+        var second = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
+            header, busy: true, failed);
+        Equal(SnapshotJson(first), SnapshotJson(second),
+            "Installed snapshot presentation changed for the same immutable input.");
+        var installed = first.CreateSnapshot("settings-policy", 1);
+        Require(Nodes(installed.Root).Single(node =>
+                node.Id == "installed.repair.item.0").IsBusy == true,
+            "Busy installed recovery remained actionable.");
+
+        var permissionFirst = SettingsPermissionPresentation.RenderPermissionPackages(
+            header,
+            busy: false,
+            SettingsPermissionState.Empty);
+        var permissionSecond = SettingsPermissionPresentation.RenderPermissionPackages(
+            header,
+            busy: false,
+            SettingsPermissionState.Empty);
+        Equal(SnapshotJson(permissionFirst), SnapshotJson(permissionSecond),
+            "Permission snapshot presentation changed for the same immutable input.");
+        return Task.CompletedTask;
+    }
+
+    public static async Task CancelledSectionRefreshPreservesCommittedState()
+    {
+        using var temp = new PolicyTemporaryDirectory();
+        var paths = new PlatformSettingsPaths(temp.Path);
+        var widget = new SettingsWidget(
+            new PlatformSettingsStore(paths),
+            new ThemeCatalog(paths));
+        await widget.InitializeAsync(CancellationToken.None);
+        await widget.SetLifecycleStateAsync(
+            WidgetLifecycleState.Visible, CancellationToken.None);
+        await widget.OnActionAsync(new WidgetActionEvent("open.permissions", "test"));
+        var before = SnapshotJson(widget.Render());
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        try
+        {
+            await widget.OnActionAsync(
+                new WidgetActionEvent("refresh", "test"), cancelled.Token);
+            throw new InvalidOperationException("Cancelled section refresh completed.");
+        }
+        catch (OperationCanceledException) when (cancelled.IsCancellationRequested)
+        {
+        }
+        Equal(SettingsPage.Permissions, widget.CurrentPage,
+            "Cancelled refresh changed the committed page.");
+        Equal(before, SnapshotJson(widget.Render()),
+            "Cancelled refresh changed committed section presentation.");
+    }
+
+    private static string SnapshotJson(WidgetView view) =>
+        JsonSerializer.Serialize(view.CreateSnapshot("settings-policy", 1));
+
+    private static IEnumerable<ViewNode> Nodes(ViewNode node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+        foreach (var descendant in Nodes(child))
+            yield return descendant;
     }
 
     private static void Require(bool condition, string message)

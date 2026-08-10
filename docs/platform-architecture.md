@@ -348,8 +348,15 @@ recovery instead uses a separate exact-token policy: selection captures the
 reviewed recovery ID and opaque token, retry is authorized only while both
 still match the current sanitized diagnostic, and closed results return value
 transitions for the widget owner to commit. No opaque token enters the view
-snapshot. Installed-widget and permission review remain cohesive residual
-sections of the same Settings owner rather than new lifecycle or state owners.
+snapshot. DLV-044 removes the two residual `SettingsWidget` partial
+declarations. Installed-widget selection/version/failure and permission/
+consent projection/action rules now accept immutable section state and return
+typed value transitions. Their snapshot presenters have no services, locks,
+tasks, lifecycle, committed model, or invalidation access. The one non-partial
+widget remains the effect adapter that performs catalog, consent, settings,
+theme, and diagnostics I/O and commits returned values under the existing
+lock. Catalog enablement/version authority and consent/recovery authority stay
+in their original stores and services.
 
 The bridge also publishes bounded semantic shell styles and persisted
 interface/text scale, backdrop opacity, motion, contrast, bold-text, and

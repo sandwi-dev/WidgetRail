@@ -1,330 +1,35 @@
 using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+using PermissionPackage = GameBarAlternative.FirstPartyWidgets.Settings.SettingsPermissionPackage;
+using DeclaredCapability = GameBarAlternative.FirstPartyWidgets.Settings.SettingsDeclaredCapability;
+using UnknownDeclaration = GameBarAlternative.FirstPartyWidgets.Settings.SettingsUnknownDeclaration;
+using HiddenConsentDecision = GameBarAlternative.FirstPartyWidgets.Settings.SettingsHiddenConsentDecision;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings;
 
-public sealed partial class SettingsWidget
+/// <summary>Pure snapshot-only composition for permission and consent Settings pages.</summary>
+internal static class SettingsPermissionPresentation
 {
-    private const int MaximumPermissionPackages = 256;
-    private const int MaximumPermissionDiagnostics = 16;
     private const int MaximumDiagnosticComponentRunes = 120;
-    private const int MaximumBundledDirectories = 64;
-    private const int MaximumManifestBytes = 1024 * 1024;
 
-    private sealed record DeclaredCapability(string Id, bool IsRequired);
-    private sealed record UnknownDeclaration(
-        string PackageId,
-        string PackageName,
-        string AuthorityPublisher,
-        string CapabilityId,
-        bool IsRequired);
-    private sealed record HiddenConsentDecision(
-        string PackageId,
-        string PackageName,
-        string PublisherId,
-        string CapabilityId,
-        ConsentDecision Decision);
-    private sealed class UnknownDeclarationAccumulator
+    public static WidgetView RenderPermissionPackages(
+        StackElement header,
+        bool busy,
+        SettingsPermissionState state)
     {
-        public int Count { get; private set; }
-        public List<UnknownDeclaration> Details { get; } = [];
-
-        public void Add(UnknownDeclaration item)
-        {
-            Count = checked(Count + 1);
-            if (Details.Count < MaximumPermissionDiagnostics) Details.Add(item);
-        }
-    }
-    private sealed record PermissionPackage(
-        string Id,
-        string Publisher,
-        string AuthorityPublisher,
-        string Name,
-        IReadOnlyList<DeclaredCapability> Capabilities,
-        string? ContentDigest);
-
-    private IReadOnlyList<PermissionPackage> _permissionPackages = [];
-    private ConsentDocument _consent = ConsentDocument.Empty;
-    private string? _selectedPackageId;
-    private string? _selectedPublisherId;
-    private string? _selectedCapabilityId;
-    private SettingsPage _packageCapabilitiesReturnPage = SettingsPage.Permissions;
-    private bool _permissionCatalogValid = true;
-    private bool _consentValid = true;
-    private string? _permissionDiagnostic;
-    private int _unknownDeclarations;
-    private int _hiddenConsentEntries;
-    private bool _inactiveConsentClassificationAvailable = true;
-    private bool _permissionDiagnosticsReturnFocus;
-    private IReadOnlyList<UnknownDeclaration> _unknownDeclarationDetails = [];
-    private IReadOnlyList<HiddenConsentDecision> _hiddenConsentDetails = [];
-
-    private async Task<string?> ReloadPermissionsAsync(CancellationToken cancellationToken)
-    {
-        IReadOnlyList<PermissionPackage> packages = [];
-        var catalogValid = true;
-        var catalogComplete = true;
-        string? catalogDiagnostic = null;
-        var unknownDeclarations = new UnknownDeclarationAccumulator();
-        try
-        {
-            var catalog = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
-            var discovered = new Dictionary<string, PermissionPackage>(StringComparer.Ordinal);
-            if (_bundledWidgetRoot is not null)
-            {
-                foreach (var manifest in DiscoverBundledManifests(_bundledWidgetRoot))
-                {
-                    var package = CreatePermissionPackage(
-                        manifest, manifest.Publisher, unknownDeclarations);
-                    if (package.Capabilities.Count != 0)
-                        discovered.TryAdd(package.Id, package);
-                }
-            }
-            foreach (var widget in catalog.Widgets.Take(MaximumPermissionPackages))
-            {
-                var manifest = widget.ActiveVersion.Manifest;
-                var package = CreatePermissionPackage(
-                    manifest,
-                    InstalledWidgetAuthority.PublisherId(widget.ActiveVersion),
-                    unknownDeclarations,
-                    widget.ActiveVersion.ContentDigest);
-                if (package.Capabilities.Count != 0)
-                    discovered.TryAdd(package.Id, package);
-            }
-            packages = discovered.Values
-                .OrderBy(package => package.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(package => package.Id, StringComparer.Ordinal)
-                .Take(MaximumPermissionPackages)
-                .ToArray();
-            if (catalog.Widgets.Count > MaximumPermissionPackages ||
-                discovered.Count > MaximumPermissionPackages)
-            {
-                catalogComplete = false;
-                catalogDiagnostic = $"Installed package list is limited to {MaximumPermissionPackages} entries";
-            }
-        }
-        catch (WidgetPackageException exception)
-        {
-            catalogValid = false;
-            catalogComplete = false;
-            catalogDiagnostic = $"Catalog unavailable ({exception.Code})";
-        }
-        catch (IOException)
-        {
-            catalogValid = false;
-            catalogComplete = false;
-            catalogDiagnostic = "Catalog unavailable (io_error)";
-        }
-        catch (UnauthorizedAccessException)
-        {
-            catalogValid = false;
-            catalogComplete = false;
-            catalogDiagnostic = "Catalog unavailable (access_denied)";
-        }
-
-        ConsentDocument consent = ConsentDocument.Empty;
-        var consentValid = true;
-        string? consentDiagnostic = null;
-        try
-        {
-            consent = await _consentStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (BrokerException exception)
-        {
-            consentValid = false;
-            consentDiagnostic = $"Consent unavailable ({exception.Code})";
-        }
-        catch (IOException)
-        {
-            consentValid = false;
-            consentDiagnostic = "Consent unavailable (io_error)";
-        }
-        catch (UnauthorizedAccessException)
-        {
-            consentValid = false;
-            consentDiagnostic = "Consent unavailable (access_denied)";
-        }
-
-        var inactiveClassificationAvailable = catalogValid && catalogComplete && consentValid;
-        var declaredKeys = packages
-            .SelectMany(package => package.Capabilities.Select(capability =>
-                ConsentKey(package.Id, package.AuthorityPublisher, capability.Id)))
-            .ToHashSet(StringComparer.Ordinal);
-        var packageNames = packages.ToDictionary(
-            package => ConsentKey(package.Id, package.AuthorityPublisher, string.Empty),
-            package => package.Name,
-            StringComparer.Ordinal);
-        var hiddenConsentEntries = inactiveClassificationAvailable
-            ? consent.Entries
-                .Where(entry => !declaredKeys.Contains(ConsentKey(
-                    entry.PackageId, entry.PublisherId, entry.CapabilityId)))
-                .OrderBy(entry => entry.PackageId, StringComparer.Ordinal)
-                .ThenBy(entry => entry.CapabilityId, StringComparer.Ordinal)
-                .ThenBy(entry => entry.PublisherId, StringComparer.Ordinal)
-                .ToArray()
-            : [];
-        var unknownCount = catalogValid ? unknownDeclarations.Count : 0;
-        var unknownDetails = catalogValid
-            ? unknownDeclarations.Details
-                .OrderBy(item => item.PackageName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.CapabilityId, StringComparer.Ordinal)
-                .Take(MaximumPermissionDiagnostics)
-                .ToArray()
-            : [];
-        var remainingDiagnosticBudget = Math.Max(
-            0, MaximumPermissionDiagnostics - unknownDetails.Length);
-        var hiddenConsentDetails = hiddenConsentEntries
-            .Take(remainingDiagnosticBudget)
-            .Select(entry => new HiddenConsentDecision(
-                entry.PackageId,
-                packageNames.TryGetValue(
-                    ConsentKey(entry.PackageId, entry.PublisherId, string.Empty), out var packageName)
-                    ? packageName
-                    : entry.PackageId,
-                entry.PublisherId,
-                entry.CapabilityId,
-                entry.Decision))
-            .ToArray();
-        var diagnostic = string.Join("; ", new[] { catalogDiagnostic, consentDiagnostic }
-            .Where(value => value is not null));
-        lock (_stateLock)
-        {
-            _permissionPackages = packages;
-            _consent = consent;
-            _permissionCatalogValid = catalogValid;
-            _consentValid = consentValid;
-            _permissionDiagnostic = diagnostic.Length == 0 ? null : diagnostic;
-            _unknownDeclarations = unknownCount;
-            _hiddenConsentEntries = hiddenConsentEntries.Length;
-            _inactiveConsentClassificationAvailable = inactiveClassificationAvailable;
-            _unknownDeclarationDetails = unknownDetails;
-            _hiddenConsentDetails = hiddenConsentDetails;
-            var selected = SelectedPackageLocked();
-            if (selected is null)
-            {
-                _selectedPackageId = null;
-                _selectedPublisherId = null;
-                _selectedCapabilityId = null;
-                if (_page is SettingsPage.PackageCapabilities or SettingsPage.CapabilityDecision)
-                    _page = _packageCapabilitiesReturnPage;
-            }
-            else
-            {
-                if (_selectedCapabilityId is not null &&
-                    !selected.Capabilities.Any(capability => capability.Id == _selectedCapabilityId))
-                {
-                    _selectedCapabilityId = null;
-                    if (_page == SettingsPage.CapabilityDecision)
-                        _page = SettingsPage.PackageCapabilities;
-                }
-            }
-        }
-        return !catalogValid || !consentValid ? diagnostic : null;
-    }
-
-    private static PermissionPackage CreatePermissionPackage(
-        WidgetManifest manifest,
-        string authorityPublisher,
-        UnknownDeclarationAccumulator unknownDeclarations,
-        string? contentDigest = null)
-    {
-        var capabilities = new List<DeclaredCapability>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var id in manifest.Permissions)
-        {
-            if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
-                capabilities.Add(new(id, IsRequired: true));
-            else if (!PlatformCapabilities.TryGet(id, out _))
-                unknownDeclarations.Add(new(
-                    manifest.Id, manifest.Name, authorityPublisher, id, IsRequired: true));
-        }
-        foreach (var id in manifest.OptionalPermissions)
-        {
-            if (PlatformCapabilities.TryGet(id, out _) && seen.Add(id))
-                capabilities.Add(new(id, IsRequired: false));
-            else if (!PlatformCapabilities.TryGet(id, out _))
-                unknownDeclarations.Add(new(
-                    manifest.Id, manifest.Name, authorityPublisher, id, IsRequired: false));
-        }
-        return new PermissionPackage(
-            manifest.Id,
-            manifest.Publisher,
-            authorityPublisher,
-            manifest.Name,
-            capabilities.OrderByDescending(capability => capability.IsRequired)
-                .ThenBy(capability => capability.Id, StringComparer.Ordinal)
-                .ToArray(),
-            contentDigest?.ToLowerInvariant());
-    }
-
-    private static IReadOnlyList<WidgetManifest> DiscoverBundledManifests(string root)
-    {
-        if (!Directory.Exists(root)) return [];
-        RejectReparsePoint(root);
-        var manifests = new List<WidgetManifest>();
-        var directories = Directory.EnumerateDirectories(root)
-            .Order(StringComparer.Ordinal)
-            .Take(MaximumBundledDirectories + 1)
-            .ToArray();
-        if (directories.Length > MaximumBundledDirectories)
-            throw new IOException("Bundled widget directory limit exceeded.");
-        foreach (var directory in directories)
-        {
-            RejectReparsePoint(directory);
-            var manifestPath = Path.Combine(directory, "manifest.json");
-            if (!File.Exists(manifestPath)) continue;
-            RejectReparsePoint(manifestPath);
-            if (new FileInfo(manifestPath).Length > MaximumManifestBytes)
-                throw new IOException("Bundled widget manifest exceeds its bound.");
-            WidgetManifest manifest;
-            try { manifest = ManifestJson.Deserialize(File.ReadAllBytes(manifestPath)); }
-            catch (JsonException exception)
-            {
-                throw new WidgetPackageException(
-                    "invalid_bundled_manifest", "Bundled widget manifest is invalid.", exception);
-            }
-            if (WidgetManifestValidator.Validate(manifest).Count != 0)
-                throw new WidgetPackageException(
-                    "invalid_bundled_manifest", "Bundled widget manifest failed validation.");
-            manifests.Add(manifest);
-        }
-        return manifests;
-    }
-
-    private static void RejectReparsePoint(string path)
-    {
-        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-            throw new WidgetPackageException(
-                "unsafe_bundled_catalog", "Bundled widget catalog path is unsafe.");
-    }
-
-    private WidgetView RenderPermissionPackages(StackElement header, bool busy)
-    {
-        IReadOnlyList<PermissionPackage> packages;
-        bool catalogValid;
-        bool inactiveClassificationAvailable;
-        bool returnDiagnosticsFocus;
-        string? diagnostic;
-        string? selectedPackageId;
-        int unknown;
-        int hidden;
-        lock (_stateLock)
-        {
-            packages = _permissionPackages;
-            catalogValid = _permissionCatalogValid;
-            inactiveClassificationAvailable = _inactiveConsentClassificationAvailable;
-            returnDiagnosticsFocus = _permissionDiagnosticsReturnFocus;
-            diagnostic = _permissionDiagnostic;
-            selectedPackageId = _selectedPackageId;
-            unknown = _unknownDeclarations;
-            hidden = _hiddenConsentEntries;
-        }
+        var projection = state.Projection;
+        var packages = projection.Packages;
+        var catalogValid = projection.CatalogValid;
+        var inactiveClassificationAvailable = projection.InactiveConsentClassificationAvailable;
+        var returnDiagnosticsFocus = state.DiagnosticsReturnFocus;
+        var diagnostic = projection.Diagnostic;
+        var selectedPackageId = state.SelectedPackageId;
+        var unknown = projection.UnknownDeclarations;
+        var hidden = projection.HiddenConsentEntries;
         var children = new List<WidgetElement>
         {
             UI.Text("Widget access", "permissions.heading", "Widget permissions and capabilities")
@@ -362,7 +67,7 @@ public sealed partial class SettingsWidget
                 .Disabled(!catalogValid).Busy(busy).Classes("setting-row");
             children.Add(button);
         }
-        LinkVertical(children);
+        SettingsPresentation.LinkVertical(children);
         var scope = UI.VerticalScroll("permissions.packages", children.ToArray())
             .InputScope("permissions.packages")
             .Shortcut(ControllerButton.B, "back")
@@ -379,24 +84,19 @@ public sealed partial class SettingsWidget
             : packages.Count != 0
                 ? $"permission.item.{(hasSelectedPackage ? selectedIndex : 0)}"
                 : showDiagnosticsReview ? "permissions.diagnostics.open" : null;
-        return View(header, scope, initial, "permissions.packages");
+        return SettingsPresentation.View(header, scope, initial, "permissions.packages");
     }
 
-    private WidgetView RenderPermissionDiagnostics(StackElement header)
+    public static WidgetView RenderPermissionDiagnostics(
+        StackElement header,
+        SettingsPermissionState state)
     {
-        IReadOnlyList<UnknownDeclaration> unknownDetails;
-        IReadOnlyList<HiddenConsentDecision> hiddenDetails;
-        int unknown;
-        int hidden;
-        bool inactiveClassificationAvailable;
-        lock (_stateLock)
-        {
-            unknownDetails = _unknownDeclarationDetails;
-            hiddenDetails = _hiddenConsentDetails;
-            unknown = _unknownDeclarations;
-            hidden = _hiddenConsentEntries;
-            inactiveClassificationAvailable = _inactiveConsentClassificationAvailable;
-        }
+        var projection = state.Projection;
+        var unknownDetails = projection.UnknownDeclarationDetails;
+        var hiddenDetails = projection.HiddenConsentDetails;
+        var unknown = projection.UnknownDeclarations;
+        var hidden = projection.HiddenConsentEntries;
+        var inactiveClassificationAvailable = projection.InactiveConsentClassificationAvailable;
 
         var children = new List<WidgetElement>
         {
@@ -449,7 +149,7 @@ public sealed partial class SettingsWidget
         {
             const string moreId = "permission-diagnostics.more";
             children.Add(ReadOnlyDiagnosticRow(
-                $"{undisplayed} more diagnostics are hidden by the {MaximumPermissionDiagnostics}-item display limit.",
+                $"{undisplayed} more diagnostics are hidden by the {SettingsPermissionProjectionPolicy.MaximumPermissionDiagnostics}-item display limit.",
                 moreId));
             focusableIds.Add(moreId);
         }
@@ -461,29 +161,24 @@ public sealed partial class SettingsWidget
             focusableIds.Add(emptyId);
         }
 
-        LinkVertical(children);
+        SettingsPresentation.LinkVertical(children);
         var scope = UI.VerticalScroll("permission-diagnostics.page", children.ToArray())
             .InputScope("permission-diagnostics.page")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        return View(header, scope, focusableIds[0], "permission-diagnostics.page");
+        return SettingsPresentation.View(header, scope, focusableIds[0], "permission-diagnostics.page");
     }
 
-    private WidgetView RenderPackageCapabilities(StackElement header, bool busy)
+    public static WidgetView RenderPackageCapabilities(
+        StackElement header,
+        bool busy,
+        SettingsPermissionState state)
     {
-        PermissionPackage? package;
-        ConsentDocument consent;
-        bool consentValid;
-        string? diagnostic;
-        string? selectedCapabilityId;
-        lock (_stateLock)
-        {
-            package = SelectedPackageLocked();
-            consent = _consent;
-            consentValid = _consentValid;
-            diagnostic = _permissionDiagnostic;
-            selectedCapabilityId = _selectedCapabilityId;
-        }
+        var package = state.SelectedPackage;
+        var consent = state.Projection.Consent;
+        var consentValid = state.Projection.ConsentValid;
+        var diagnostic = state.Projection.Diagnostic;
+        var selectedCapabilityId = state.SelectedCapabilityId;
         if (package is null)
             return MissingPermissionSelection(header, "Installed package is no longer available.",
                 "capabilities.package");
@@ -523,7 +218,8 @@ public sealed partial class SettingsWidget
         for (var index = 0; index < package.Capabilities.Count; index++)
         {
             var capability = package.Capabilities[index];
-            var decision = FindDecision(consent, package, capability.Id);
+            var decision = SettingsPermissionPolicy.FindDecision(
+                consent, package, capability.Id);
             var label = $"{CapabilityName(capability.Id)} · " +
                         $"{(capability.IsRequired ? "Required" : "Optional")} · {DecisionLabel(decision)}";
             var button = UI.Button(label, $"capability.select.{index}", $"capability.item.{index}")
@@ -534,7 +230,7 @@ public sealed partial class SettingsWidget
         if (package.Capabilities.Count == 0)
             children.Add(UI.Text("This package declares no supported capabilities.",
                 "capabilities.empty", "No supported capabilities").Classes("page-help"));
-        LinkVertical(children);
+        SettingsPresentation.LinkVertical(children);
         var scope = UI.VerticalScroll("capabilities.package", children.ToArray())
             .InputScope("capabilities.package")
             .Shortcut(ControllerButton.B, "back")
@@ -549,26 +245,27 @@ public sealed partial class SettingsWidget
         var initial = package.Capabilities.Count == 0
             ? null
             : $"capability.item.{(hasSelectedCapability ? selectedIndex : 0)}";
-        return View(header, scope, initial, "capabilities.package");
+        return SettingsPresentation.View(header, scope, initial, "capabilities.package");
     }
 
-    private WidgetView RenderCapabilityDecision(StackElement header, bool busy)
+    public static WidgetView RenderCapabilityDecision(
+        StackElement header,
+        bool busy,
+        SettingsPermissionState permissionState)
     {
-        PermissionPackage? package;
-        DeclaredCapability? capability;
-        ConsentDocument consent;
-        bool consentValid;
-        lock (_stateLock)
-        {
-            package = SelectedPackageLocked();
-            capability = package?.Capabilities.FirstOrDefault(item => item.Id == _selectedCapabilityId);
-            consent = _consent;
-            consentValid = _consentValid;
-        }
+        var package = permissionState.SelectedPackage;
+        var capability = package?.Capabilities.FirstOrDefault(item =>
+            string.Equals(
+                item.Id,
+                permissionState.SelectedCapabilityId,
+                StringComparison.Ordinal));
+        var consent = permissionState.Projection.Consent;
+        var consentValid = permissionState.Projection.ConsentValid;
         if (package is null || capability is null || !PlatformCapabilities.TryGet(capability.Id, out _))
             return MissingPermissionSelection(header, "Capability is no longer declared by this package.",
                 "capability.decision");
-        var decision = FindDecision(consent, package, capability.Id);
+        var decision = SettingsPermissionPolicy.FindDecision(
+            consent, package, capability.Id);
         var granted = decision == ConsentDecision.Grant;
         var state = DecisionLabel(decision);
         var requirement = capability.IsRequired ? "Required access" : "Optional access";
@@ -593,7 +290,7 @@ public sealed partial class SettingsWidget
             var recipient = package.ContentDigest is null
                 ? $"{package.Name} from {package.Publisher}"
                 : $"unsigned {package.Name}; declared publisher {package.Publisher} is unverified, " +
-                  $"and this decision is bound to SHA-256 {ShortContentDigest(package.ContentDigest)}…";
+                  $"and this decision is bound to SHA-256 {SettingsPresentation.ShortContentDigest(package.ContentDigest)}…";
             children.Add(UI.Text(
                 $"Confirm granting this {requirement.ToLowerInvariant()} to " +
                 $"{recipient}.",
@@ -604,166 +301,21 @@ public sealed partial class SettingsWidget
         children.Add(UI.Button(granted ? "Revoke access" : "Block access",
                 "capability.deny", "capability.deny")
             .Disabled(!consentValid).Busy(busy).Classes("danger-button"));
-        LinkVertical(children);
+        SettingsPresentation.LinkVertical(children);
         var scope = UI.VerticalScroll("capability.decision", children.ToArray())
             .InputScope("capability.decision")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        return View(header, scope, granted ? "capability.deny" : "capability.grant",
+        return SettingsPresentation.View(header, scope, granted ? "capability.deny" : "capability.grant",
             "capability.decision");
     }
 
     private static WidgetView MissingPermissionSelection(
-        StackElement header, string message, string scopeId) => View(header,
-        PageScope(scopeId,
+        StackElement header, string message, string scopeId) => SettingsPresentation.View(header,
+        SettingsPresentation.PageScope(scopeId,
             UI.Text(message, scopeId + ".error", "Permission selection unavailable")
                 .Classes("diagnostic-error")),
         null, scopeId);
-
-    private async Task ChangeConsentAsync(
-        ConsentDecision decision, CancellationToken cancellationToken)
-    {
-        PermissionPackage? package;
-        DeclaredCapability? capability;
-        bool consentValid;
-        bool confirmationActive;
-        lock (_stateLock)
-        {
-            package = SelectedPackageLocked();
-            capability = package?.Capabilities.FirstOrDefault(item => item.Id == _selectedCapabilityId);
-            consentValid = _consentValid;
-            confirmationActive = _page == SettingsPage.CapabilityDecision;
-        }
-        if (!confirmationActive || !consentValid || package is null || capability is null ||
-            !PlatformCapabilities.TryGet(capability.Id, out _))
-        {
-            SetOperation("Permission change denied; declaration or consent state is unavailable",
-                busy: false, error: true);
-            return;
-        }
-        SetOperation(decision == ConsentDecision.Grant ? "Granting capability…" : "Denying capability…",
-            busy: true, error: false);
-        try
-        {
-            var updated = await _consentStore.SetDecisionAsync(
-                ConsentIdentity(package), capability.Id, decision, cancellationToken)
-                .ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _consent = updated;
-                _busy = false;
-                _error = false;
-                _status = decision == ConsentDecision.Grant
-                    ? $"Granted {CapabilityName(capability.Id)}"
-                    : $"Denied {CapabilityName(capability.Id)}";
-            }
-        }
-        catch (BrokerException exception)
-        {
-            lock (_stateLock)
-            {
-                if (exception.Code is "invalid_consent" or "unsafe_consent_store")
-                    _consentValid = false;
-                _busy = false;
-                _error = true;
-                _status = $"Permission change failed ({exception.Code})";
-            }
-        }
-        Invalidate();
-    }
-
-    private void SelectPermissionPackage(int index)
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.Permissions || !_permissionCatalogValid ||
-                index < 0 || index >= _permissionPackages.Count) return;
-            var package = _permissionPackages[index];
-            _selectedPackageId = package.Id;
-            _selectedPublisherId = package.AuthorityPublisher;
-            _selectedCapabilityId = null;
-            _packageCapabilitiesReturnPage = SettingsPage.Permissions;
-            _permissionDiagnosticsReturnFocus = false;
-            _page = SettingsPage.PackageCapabilities;
-        }
-        Invalidate();
-    }
-
-    private void OpenSelectedInstalledPermissions()
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.InstalledWidgetDetails ||
-                !_installedWidgetCatalogValid || !_permissionCatalogValid)
-                return;
-            var packageId = SelectedInstalledWidgetLocked()?.ActiveVersion.Manifest.Id ??
-                            SelectedBuiltInWidgetLocked()?.Id;
-            var package = packageId is null
-                ? null
-                : _permissionPackages.FirstOrDefault(candidate =>
-                    string.Equals(candidate.Id, packageId, StringComparison.Ordinal));
-            if (package is null)
-            {
-                _status = "This widget does not request host permissions";
-                _error = false;
-            }
-            else
-            {
-                _selectedPackageId = package.Id;
-                _selectedPublisherId = package.AuthorityPublisher;
-                _selectedCapabilityId = null;
-                _permissionDiagnosticsReturnFocus = false;
-                _packageCapabilitiesReturnPage = SettingsPage.InstalledWidgetDetails;
-                _page = SettingsPage.PackageCapabilities;
-            }
-        }
-        Invalidate();
-    }
-
-    private void OpenPermissionDiagnostics()
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.Permissions ||
-                (_unknownDeclarations == 0 && _hiddenConsentEntries == 0 &&
-                 _inactiveConsentClassificationAvailable))
-                return;
-            _permissionDiagnosticsReturnFocus = true;
-            _page = SettingsPage.PermissionDiagnostics;
-        }
-        Invalidate();
-    }
-
-    private void SelectCapability(int index)
-    {
-        lock (_stateLock)
-        {
-            var package = SelectedPackageLocked();
-            if (_page != SettingsPage.PackageCapabilities || !_consentValid ||
-                package is null || index < 0 || index >= package.Capabilities.Count)
-                return;
-            _selectedCapabilityId = package.Capabilities[index].Id;
-            _page = SettingsPage.CapabilityDecision;
-        }
-        Invalidate();
-    }
-
-    private PermissionPackage? SelectedPackageLocked() => _permissionPackages.FirstOrDefault(package =>
-        package.Id == _selectedPackageId &&
-        package.AuthorityPublisher == _selectedPublisherId);
-
-    private static ConsentDecision? FindDecision(
-        ConsentDocument consent, PermissionPackage package, string capabilityId) =>
-        consent.Entries.FirstOrDefault(entry =>
-            entry.PackageId == package.Id &&
-            entry.PublisherId == package.AuthorityPublisher &&
-            entry.CapabilityId == capabilityId)?.Decision;
-
-    private static BrokerWidgetIdentity ConsentIdentity(PermissionPackage package) =>
-        new(package.Id, package.AuthorityPublisher, "settings-consent");
-
-    private static string ConsentKey(string packageId, string publisherId, string capabilityId) =>
-        packageId + "\n" + publisherId + "\n" + capabilityId;
 
     private static ButtonElement ReadOnlyDiagnosticRow(string label, string id)
     {
@@ -836,7 +388,7 @@ public sealed partial class SettingsWidget
         _ => "Not decided — access is blocked",
     };
 
-    private static string CapabilityName(string id)
+    public static string CapabilityName(string id)
     {
         if (PlatformCapabilities.TryGetLoopbackPort(id, out var port))
             return $"Access local app on port {port}";
@@ -971,18 +523,4 @@ public sealed partial class SettingsWidget
         };
     }
 
-    private static void LinkVertical(List<WidgetElement> elements)
-    {
-        var buttonIndexes = elements.Select((element, index) => (element, index))
-            .Where(item => item.element is ButtonElement).Select(item => item.index).ToArray();
-        for (var position = 0; position < buttonIndexes.Length; position++)
-        {
-            var index = buttonIndexes[position];
-            var button = (ButtonElement)elements[index];
-            if (position > 0) button = button.FocusUp(((ButtonElement)elements[buttonIndexes[position - 1]]).Id);
-            if (position + 1 < buttonIndexes.Length)
-                button = button.FocusDown(((ButtonElement)elements[buttonIndexes[position + 1]]).Id);
-            elements[index] = button;
-        }
-    }
 }

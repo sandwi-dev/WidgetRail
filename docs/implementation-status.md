@@ -1304,13 +1304,39 @@ scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. The still-large installed-widget and permission sections remain
-explicit follow-up ownership work; this milestone does not claim that residual
-hotspot closed. Focused dirty-worktree run
+polling. Focused dirty-worktree run
 `20260810T192328Z-f5898174` passes Settings 49/49, PlatformDiagnostics
 15/15, Widget SDK 84/84 after a clean SDK build, and the documentation
 contract across 52 Markdown files in 20.5 seconds; it is scoped milestone
-evidence, not a clean aggregate. Styling and platform settings/themes pass
+evidence, not a clean aggregate.
+
+DLV-044 completes the residual partial-type disposition. The DLV-036 boundary
+started with one 2,324-line logical widget and 44 service, coordination, and
+committed-state fields across a 542-line root plus 794/988-line installed and
+permission partials. It now has one non-partial 1,133-line effect adapter with
+20 fields, including exactly one operation gate, state lock, installed state,
+permission state, lifecycle, and invalidation authority. Installed rules and
+view composition are separate 221/420-line value policy and snapshot
+presenter; permission/consent rules and composition are separate 344/526-line
+policy and presenter. The presenters and policies add no service reference,
+lock, task, cancellation source, lifecycle, or invalidation path. Their only
+mutable dependency is the immutable value supplied by the root, and every
+transition returns a replacement value for that root to commit. Direct tests
+cover selection removal, authority replacement, consent revocation, catalog
+failure, busy presentation, repeated rendering, and canceled refresh, while
+the composed suite retains exact install/version/repair, permission safe-copy,
+focus, and recovery behavior. The remaining greater-than-1,000-line root is a
+cohesive exception: it is the single adapter for settings/theme/catalog/
+consent/diagnostics effects, action serialization, committed-state mutation,
+and invalidation; it contains no section view composition or duplicated
+selection state machine.
+
+Focused dirty-worktree run `20260810T195050Z-0c20315d` passes Settings
+53/53, Widget Catalog 35/35, Platform Broker 51/51, Widget SDK 84/84 after a
+clean SDK build, and the documentation contract across 52 Markdown files in
+32.7 seconds. It is scoped DLV-044 evidence, not a clean aggregate.
+
+Styling and platform settings/themes pass
 23/23 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
 passes 53/53, including an unrelated-directory offline scaffold that builds
