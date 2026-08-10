@@ -55,7 +55,6 @@ public sealed class GamesAppsWidget : Widget
     private GamesAppsToastNotice? _toast;
     private long _generation;
     private long _toastGeneration;
-    private long _presentationRevision;
     private long _stateRevision;
     private GamesAppsLibraryState _persistedLibraryState = new(3, [], null);
 
@@ -86,7 +85,6 @@ public sealed class GamesAppsWidget : Widget
         lock (_gate)
         {
             presentation = new GamesAppsPresentationState(
-                Revision: Interlocked.Increment(ref _presentationRevision),
                 _viewState,
                 _page,
                 _status,

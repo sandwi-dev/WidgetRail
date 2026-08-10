@@ -235,8 +235,14 @@ The bounded focused Release result at
 `artifacts/verification/20260810T102345Z-7c1b0cdd/verification-result.json`
 passes Games & Apps 55/55, generic worker lifecycle 9/9, Windows private state
 10/10, fresh first-party installed-worker/AppContainer conformance 6/6, and 52
-documentation contracts in 84.1 seconds. DLV-027 did not run the canonical
+documentation contracts in 83.4 seconds. DLV-027 did not run the canonical
 aggregate.
+The bounded correction removes the unused render-time presentation counter and
+proves repeated immutable presenter input produces byte-identical serialized
+semantic snapshots after normalizing only the host sequence. Focused result
+`artifacts/verification/20260810T103446Z-d7991b69/verification-result.json`
+passes Games & Apps 56/56 and 52 documentation contracts; unchanged worker,
+private-state, and conformance boundaries were not repeated.
 
 ## Implemented
 

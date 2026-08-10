@@ -60,6 +60,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Leaving during retry cancels and drains the runtime-owned library load", BackgroundCancelsRetry),
     ("Manifest and GBSS package validate", PackageValidates),
     ("Games and Apps internals remain split by stable responsibility", ResponsibilitySplitContract),
+    ("Pure presentation serializes identically for repeated immutable input", PurePresentationIsDeterministic),
 };
 
 var failures = 0;
@@ -2165,7 +2166,6 @@ static Task ResponsibilitySplitContract()
 
     var alpha = App("presented", "Presented");
     var view = GamesAppsPresentation.Render(new GamesAppsPresentationState(
-        Revision: 1,
         GamesAppsViewState.Ready,
         GamesAppsPage.Library,
         "1 saved",
@@ -2181,6 +2181,35 @@ static Task ResponsibilitySplitContract()
         WidgetLifecycleState.Interactive,
         Toast: null));
     Assert.True(view.Root is StackElement);
+    return Task.CompletedTask;
+}
+
+static Task PurePresentationIsDeterministic()
+{
+    var alpha = App("deterministic", "Deterministic");
+    var presentation = new GamesAppsPresentationState(
+        GamesAppsViewState.Ready,
+        GamesAppsPage.Library,
+        "1 saved",
+        [alpha],
+        [alpha.SavedId],
+        new HashSet<string>([alpha.SavedId], StringComparer.Ordinal),
+        alpha.AppId,
+        LaunchingAppId: null,
+        LoadingMore: false,
+        LibraryMutationBusy: false,
+        NextOffset: null,
+        CanLoadPrevious: false,
+        WidgetLifecycleState.Interactive,
+        Toast: null);
+    var widget = new GamesAppsPresentationProbeWidget(presentation);
+    var first = widget.RenderSnapshot("games.presenter", 101) with { Sequence = 0 };
+    var second = widget.RenderSnapshot("games.presenter", 102) with { Sequence = 0 };
+    var firstJson = System.Text.Json.JsonSerializer.Serialize(first);
+    var secondJson = System.Text.Json.JsonSerializer.Serialize(second);
+    Assert.Equal(firstJson, secondJson);
+    Assert.Valid(first);
+    Assert.Valid(second);
     return Task.CompletedTask;
 }
 
@@ -2413,6 +2442,12 @@ static string ProjectDirectory()
         current = current.Parent;
     }
     throw new DirectoryNotFoundException();
+}
+
+file sealed class GamesAppsPresentationProbeWidget(
+    GamesAppsPresentationState presentation) : Widget
+{
+    public override WidgetView Render() => GamesAppsPresentation.Render(presentation);
 }
 
 file sealed class FakeAppLibraryHost

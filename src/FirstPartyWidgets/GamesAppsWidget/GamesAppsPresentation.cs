@@ -16,7 +16,6 @@ internal sealed record GamesAppsToastNotice(
 /// and never reads widget locks, provider services, or persistence state.
 /// </summary>
 internal sealed record GamesAppsPresentationState(
-    long Revision,
     GamesAppsViewState ViewState,
     GamesAppsPage Page,
     string Status,
