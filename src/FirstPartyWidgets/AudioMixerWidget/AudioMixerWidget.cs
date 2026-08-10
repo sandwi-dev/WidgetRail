@@ -58,6 +58,7 @@ public sealed class AudioMixerWidget : Widget
         new(StringComparer.Ordinal);
     private readonly AudioMixerOutputCommandPolicy _outputPending = new();
     private readonly AudioMixerInputCommandPolicy _inputPending = new();
+    private readonly HashSet<Task> _commandWorkers = [];
     private readonly SemaphoreSlim _deviceRetrySignal = new(0, 1);
     private readonly SemaphoreSlim _inputRetrySignal = new(0, 1);
     private CancellationTokenSource? _deviceAttemptLifetime;
@@ -109,6 +110,17 @@ public sealed class AudioMixerWidget : Widget
 
     public int ActivationCount => Volatile.Read(ref _activationCount);
     public int FetchCount => Volatile.Read(ref _fetchCount);
+
+    internal async Task DrainCommandWorkersAsync()
+    {
+        while (true)
+        {
+            Task[] workers;
+            lock (_stateLock) workers = _commandWorkers.ToArray();
+            if (workers.Length == 0) return;
+            await Task.WhenAll(workers).ConfigureAwait(false);
+        }
+    }
 
     public override WidgetView Render()
     {
@@ -292,32 +304,16 @@ public sealed class AudioMixerWidget : Widget
                 var restored = _sessions.ToArray();
                 for (var index = 0; index < restored.Length; index++)
                 {
-                    if (!_sessionPending.TryGetValue(restored[index].SessionId, out var pending) ||
-                        !pending.HasAuthoritative)
-                        continue;
-                    restored[index] = restored[index] with
-                    {
-                        Volume = pending.AuthoritativeVolume,
-                        IsMuted = pending.AuthoritativeMuted,
-                    };
+                    if (_sessionPending.TryGetValue(restored[index].SessionId, out var pending))
+                        restored[index] = pending.RestoreAndReset(restored[index]);
                 }
                 _sessions = restored;
             }
-            if (_output is { } output && _outputPending.HasAuthoritative)
-                _output = output with
-                {
-                    Volume = _outputPending.AuthoritativeVolume,
-                    IsMuted = _outputPending.AuthoritativeMuted,
-                };
-            if (_input is { } input && _inputPending.HasAuthoritative)
-                _input = input with
-                {
-                    Volume = _inputPending.AuthoritativeVolume,
-                    IsMuted = _inputPending.AuthoritativeMuted,
-                };
+            if (_output is { } output) _output = _outputPending.RestoreAndReset(output);
+            else _outputPending.Reset();
+            if (_input is { } input) _input = _inputPending.RestoreAndReset(input);
+            else _inputPending.Reset();
             _sessionPending.Clear();
-            _outputPending.Reset();
-            _inputPending.Reset();
         }
         lifetime?.Cancel();
         lifetime?.Dispose();
@@ -547,11 +543,7 @@ public sealed class AudioMixerWidget : Widget
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
-            normalized = normalized with
-            {
-                Volume = _outputPending.ReconcileVolume(normalized.Volume, VolumesMatch),
-                IsMuted = _outputPending.ReconcileMute(normalized.IsMuted),
-            };
+            normalized = _outputPending.ReconcileProvider(normalized, VolumesMatch);
             _output = normalized;
             UpdateHealthyStateLocked();
         }
@@ -597,11 +589,7 @@ public sealed class AudioMixerWidget : Widget
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
-            normalized = normalized with
-            {
-                Volume = _inputPending.ReconcileVolume(normalized.Volume, VolumesMatch),
-                IsMuted = _inputPending.ReconcileMute(normalized.IsMuted),
-            };
+            normalized = _inputPending.ReconcileProvider(normalized, VolumesMatch);
             _input = normalized;
             _inputState = AudioOptionalSectionState.Healthy;
             UpdateHealthyStateLocked();
@@ -746,19 +734,15 @@ public sealed class AudioMixerWidget : Widget
                 presentIds.Add(session.SessionId);
                 if (!_sessionPending.TryGetValue(session.SessionId, out var pending))
                 {
-                    pending = new AudioMixerSessionCommandPolicy();
+                    pending = new AudioMixerSessionCommandPolicy(session);
                     _sessionPending.Add(session.SessionId, pending);
                 }
-                session = session with
-                {
-                    Volume = pending.ReconcileVolume(session.Volume, VolumesMatch),
-                    IsMuted = pending.ReconcileMute(session.IsMuted),
-                };
+                session = pending.ReconcileProvider(session, VolumesMatch);
                 normalized[index] = session;
             }
 
             foreach (var staleId in _sessionPending.Keys
-                         .Where(id => !presentIds.Contains(id) && !_sessionPending[id].IsSending)
+                         .Where(id => !presentIds.Contains(id) && _sessionPending[id].CanDiscard)
                          .ToArray())
                 _sessionPending.Remove(staleId);
 
@@ -879,15 +863,17 @@ public sealed class AudioMixerWidget : Widget
             var desired = RoundVolume(requestedVolume);
             if (VolumesMatch(desired, session.Volume)) return ValueTask.CompletedTask;
             var pending = GetSessionPendingLocked(session);
-            startWorker = pending.QueueVolume(desired);
-            ReplaceSessionLocked(session with { Volume = desired });
+            var admission = pending.QueueVolume(session, desired);
+            startWorker = admission.StartWorker;
+            ReplaceSessionLocked(admission.State);
             _status = $"Setting {session.DisplayName} to {VolumePercent(desired)}%…";
             _statusIsError = false;
             generation = _runGeneration;
             runToken = _runLifetime?.Token ?? ActiveCancellationToken;
         }
         Invalidate();
-        if (startWorker) _ = RunSessionVolumeQueueAsync(sessionId, generation, runToken);
+        if (startWorker)
+            TrackCommandWorker(RunSessionVolumeQueueAsync(sessionId, generation, runToken));
         return ValueTask.CompletedTask;
     }
 
@@ -904,15 +890,17 @@ public sealed class AudioMixerWidget : Widget
             SelectSessionLocked(session.SessionId);
             var desired = !session.IsMuted;
             var pending = GetSessionPendingLocked(session);
-            startWorker = pending.QueueMute(desired);
-            ReplaceSessionLocked(session with { IsMuted = desired });
+            var admission = pending.QueueMute(session, desired);
+            startWorker = admission.StartWorker;
+            ReplaceSessionLocked(admission.State);
             _status = desired ? $"Muting {session.DisplayName}…" : $"Unmuting {session.DisplayName}…";
             _statusIsError = false;
             generation = _runGeneration;
             runToken = _runLifetime?.Token ?? ActiveCancellationToken;
         }
         Invalidate();
-        if (startWorker) _ = RunSessionMuteQueueAsync(sessionId, generation, runToken);
+        if (startWorker)
+            TrackCommandWorker(RunSessionMuteQueueAsync(sessionId, generation, runToken));
         return ValueTask.CompletedTask;
     }
 
@@ -930,15 +918,16 @@ public sealed class AudioMixerWidget : Widget
             _preferredFocusTarget = AudioMixerPreferredFocusTarget.MasterOutput;
             var desired = RoundVolume(requestedVolume);
             if (VolumesMatch(desired, output.Volume)) return ValueTask.CompletedTask;
-            startWorker = _outputPending.QueueVolume(desired);
-            _output = output with { Volume = desired };
+            var admission = _outputPending.QueueVolume(output, desired);
+            startWorker = admission.StartWorker;
+            _output = admission.State;
             _status = $"Setting master output to {VolumePercent(desired)}%…";
             _statusIsError = false;
             generation = _runGeneration;
             runToken = _runLifetime?.Token ?? ActiveCancellationToken;
         }
         Invalidate();
-        if (startWorker) _ = RunOutputVolumeQueueAsync(generation, runToken);
+        if (startWorker) TrackCommandWorker(RunOutputVolumeQueueAsync(generation, runToken));
         return ValueTask.CompletedTask;
     }
 
@@ -953,15 +942,16 @@ public sealed class AudioMixerWidget : Widget
             if (_output is not { } output) return ValueTask.CompletedTask;
             _preferredFocusTarget = AudioMixerPreferredFocusTarget.MasterOutput;
             var desired = !output.IsMuted;
-            startWorker = _outputPending.QueueMute(desired);
-            _output = output with { IsMuted = desired };
+            var admission = _outputPending.QueueMute(output, desired);
+            startWorker = admission.StartWorker;
+            _output = admission.State;
             _status = desired ? "Muting master output…" : "Unmuting master output…";
             _statusIsError = false;
             generation = _runGeneration;
             runToken = _runLifetime?.Token ?? ActiveCancellationToken;
         }
         Invalidate();
-        if (startWorker) _ = RunOutputMuteQueueAsync(generation, runToken);
+        if (startWorker) TrackCommandWorker(RunOutputMuteQueueAsync(generation, runToken));
         return ValueTask.CompletedTask;
     }
 
@@ -979,15 +969,16 @@ public sealed class AudioMixerWidget : Widget
             _preferredFocusTarget = AudioMixerPreferredFocusTarget.Microphone;
             var desired = RoundVolume(requestedVolume);
             if (VolumesMatch(desired, input.Volume)) return ValueTask.CompletedTask;
-            startWorker = _inputPending.QueueVolume(desired);
-            _input = input with { Volume = desired };
+            var admission = _inputPending.QueueVolume(input, desired);
+            startWorker = admission.StartWorker;
+            _input = admission.State;
             _status = $"Setting microphone to {VolumePercent(desired)}%…";
             _statusIsError = false;
             generation = _runGeneration;
             runToken = _runLifetime?.Token ?? ActiveCancellationToken;
         }
         Invalidate();
-        if (startWorker) _ = RunInputVolumeQueueAsync(generation, runToken);
+        if (startWorker) TrackCommandWorker(RunInputVolumeQueueAsync(generation, runToken));
         return ValueTask.CompletedTask;
     }
 
@@ -1002,16 +993,41 @@ public sealed class AudioMixerWidget : Widget
             if (_input is not { } input) return ValueTask.CompletedTask;
             _preferredFocusTarget = AudioMixerPreferredFocusTarget.Microphone;
             var desired = !input.IsMuted;
-            startWorker = _inputPending.QueueMute(desired);
-            _input = input with { IsMuted = desired };
+            var admission = _inputPending.QueueMute(input, desired);
+            startWorker = admission.StartWorker;
+            _input = admission.State;
             _status = desired ? "Muting microphone…" : "Unmuting microphone…";
             _statusIsError = false;
             generation = _runGeneration;
             runToken = _runLifetime?.Token ?? ActiveCancellationToken;
         }
         Invalidate();
-        if (startWorker) _ = RunInputMuteQueueAsync(generation, runToken);
+        if (startWorker) TrackCommandWorker(RunInputMuteQueueAsync(generation, runToken));
         return ValueTask.CompletedTask;
+    }
+
+    private void TrackCommandWorker(Task worker)
+    {
+        lock (_stateLock) _commandWorkers.Add(worker);
+        _ = ObserveCommandWorkerAsync(worker);
+    }
+
+    private async Task ObserveCommandWorkerAsync(Task worker)
+    {
+        try
+        {
+            await worker.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Command workers sanitize their operation failures. This final
+            // observer still consumes any unexpected terminal fault so a
+            // detached task can never become an unobserved process fault.
+        }
+        finally
+        {
+            lock (_stateLock) _commandWorkers.Remove(worker);
+        }
     }
 
     private async Task RunSessionVolumeQueueAsync(
@@ -1019,22 +1035,16 @@ public sealed class AudioMixerWidget : Widget
     {
         while (true)
         {
-            double target;
-            long revision;
+            AudioMixerCommandWork<double> work;
             lock (_stateLock)
             {
                 _sessionPending.TryGetValue(sessionId, out var pending);
-                if (_runGeneration != generation || pending?.VolumeTarget is not { } pendingTarget)
-                {
-                    if (pending is not null) pending.FinishVolumeWorker();
-                    return;
-                }
-                target = pendingTarget;
-                revision = pending.VolumeRevision;
+                if (_runGeneration != generation || pending is null ||
+                    !pending.TryBeginVolumeWork(out work)) return;
             }
             try
             {
-                await HostServices.Audio.SetSessionVolumeAsync(sessionId, target, cancellationToken)
+                await HostServices.Audio.SetSessionVolumeAsync(sessionId, work.Target, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1044,19 +1054,19 @@ public sealed class AudioMixerWidget : Widget
             }
             catch (WidgetCapabilityUnavailableException)
             {
-                if (TryRollbackSessionVolume(sessionId, generation, revision,
+                if (TryRollbackSessionVolume(sessionId, generation, work.Revision,
                         "Host audio control service unavailable")) return;
                 continue;
             }
             catch (WidgetCapabilityException exception)
             {
-                if (TryRollbackSessionVolume(sessionId, generation, revision,
+                if (TryRollbackSessionVolume(sessionId, generation, work.Revision,
                         MapControlFailure(exception.ErrorCode))) return;
                 continue;
             }
             catch (Exception)
             {
-                if (TryRollbackSessionVolume(sessionId, generation, revision,
+                if (TryRollbackSessionVolume(sessionId, generation, work.Revision,
                         "Volume change failed · previous value restored")) return;
                 continue;
             }
@@ -1066,20 +1076,17 @@ public sealed class AudioMixerWidget : Widget
             {
                 if (_runGeneration != generation || !_sessionPending.TryGetValue(sessionId, out var pending))
                     return;
-                if (pending.VolumeTarget is null)
-                {
-                    pending.FinishVolumeWorker();
-                    return;
-                }
-                if (pending.VolumeRevision != revision) continue;
-                pending.FinishVolumeWorker();
-                pending.VolumeAwaitingConfirmation = true;
-                _status = $"{FindSessionLocked(sessionId)?.DisplayName ?? "Application"} volume {VolumePercent(target)}%";
+                var acknowledgement = pending.AcknowledgeVolume(work.Revision);
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NoPendingCommand) return;
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NewerRevision) continue;
+                _status = $"{FindSessionLocked(sessionId)?.DisplayName ?? "Application"} volume {VolumePercent(work.Target)}%";
                 _statusIsError = false;
-                reconcile = true;
+                reconcile = acknowledgement.StartConfirmation;
             }
             Invalidate();
-            if (reconcile) _ = ConfirmSessionVolumeAsync(sessionId, generation, revision, target, cancellationToken);
+            if (reconcile)
+                TrackCommandWorker(ConfirmSessionVolumeAsync(
+                    sessionId, generation, work.Revision, work.Target, cancellationToken));
             return;
         }
     }
@@ -1089,22 +1096,16 @@ public sealed class AudioMixerWidget : Widget
     {
         while (true)
         {
-            bool target;
-            long revision;
+            AudioMixerCommandWork<bool> work;
             lock (_stateLock)
             {
                 _sessionPending.TryGetValue(sessionId, out var pending);
-                if (_runGeneration != generation || pending?.MuteTarget is not { } pendingTarget)
-                {
-                    if (pending is not null) pending.FinishMuteWorker();
-                    return;
-                }
-                target = pendingTarget;
-                revision = pending.MuteRevision;
+                if (_runGeneration != generation || pending is null ||
+                    !pending.TryBeginMuteWork(out work)) return;
             }
             try
             {
-                await HostServices.Audio.SetSessionMutedAsync(sessionId, target, cancellationToken)
+                await HostServices.Audio.SetSessionMutedAsync(sessionId, work.Target, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1114,19 +1115,19 @@ public sealed class AudioMixerWidget : Widget
             }
             catch (WidgetCapabilityUnavailableException)
             {
-                if (TryRollbackSessionMute(sessionId, generation, revision,
+                if (TryRollbackSessionMute(sessionId, generation, work.Revision,
                         "Host audio control service unavailable")) return;
                 continue;
             }
             catch (WidgetCapabilityException exception)
             {
-                if (TryRollbackSessionMute(sessionId, generation, revision,
+                if (TryRollbackSessionMute(sessionId, generation, work.Revision,
                         MapControlFailure(exception.ErrorCode))) return;
                 continue;
             }
             catch (Exception)
             {
-                if (TryRollbackSessionMute(sessionId, generation, revision,
+                if (TryRollbackSessionMute(sessionId, generation, work.Revision,
                         "Mute change failed · previous state restored")) return;
                 continue;
             }
@@ -1136,22 +1137,19 @@ public sealed class AudioMixerWidget : Widget
             {
                 if (_runGeneration != generation || !_sessionPending.TryGetValue(sessionId, out var pending))
                     return;
-                if (pending.MuteTarget is null)
-                {
-                    pending.FinishMuteWorker();
-                    return;
-                }
-                if (pending.MuteRevision != revision) continue;
-                pending.FinishMuteWorker();
-                pending.MuteAwaitingConfirmation = true;
-                _status = target
+                var acknowledgement = pending.AcknowledgeMute(work.Revision);
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NoPendingCommand) return;
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NewerRevision) continue;
+                _status = work.Target
                     ? $"{FindSessionLocked(sessionId)?.DisplayName ?? "Application"} muted"
                     : $"{FindSessionLocked(sessionId)?.DisplayName ?? "Application"} unmuted";
                 _statusIsError = false;
-                reconcile = true;
+                reconcile = acknowledgement.StartConfirmation;
             }
             Invalidate();
-            if (reconcile) _ = ConfirmSessionMuteAsync(sessionId, generation, revision, target, cancellationToken);
+            if (reconcile)
+                TrackCommandWorker(ConfirmSessionMuteAsync(
+                    sessionId, generation, work.Revision, work.Target, cancellationToken));
             return;
         }
     }
@@ -1160,21 +1158,15 @@ public sealed class AudioMixerWidget : Widget
     {
         while (true)
         {
-            double target;
-            long revision;
+            AudioMixerCommandWork<double> work;
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _outputPending.VolumeTarget is not { } pendingTarget)
-                {
-                    _outputPending.FinishVolumeWorker();
-                    return;
-                }
-                target = pendingTarget;
-                revision = _outputPending.VolumeRevision;
+                if (_runGeneration != generation ||
+                    !_outputPending.TryBeginVolumeWork(out work)) return;
             }
             try
             {
-                await HostServices.Audio.SetOutputVolumeAsync(target, cancellationToken).ConfigureAwait(false);
+                await HostServices.Audio.SetOutputVolumeAsync(work.Target, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -1183,38 +1175,34 @@ public sealed class AudioMixerWidget : Widget
             }
             catch (WidgetCapabilityUnavailableException)
             {
-                if (TryRollbackOutputVolume(generation, revision,
+                if (TryRollbackOutputVolume(generation, work.Revision,
                         "Host master-output control unavailable")) return;
                 continue;
             }
             catch (WidgetCapabilityException exception)
             {
-                if (TryRollbackOutputVolume(generation, revision,
+                if (TryRollbackOutputVolume(generation, work.Revision,
                         MapControlFailure(exception.ErrorCode))) return;
                 continue;
             }
             catch (Exception)
             {
-                if (TryRollbackOutputVolume(generation, revision,
+                if (TryRollbackOutputVolume(generation, work.Revision,
                         "Master volume change failed · previous value restored")) return;
                 continue;
             }
             lock (_stateLock)
             {
                 if (_runGeneration != generation) return;
-                if (_outputPending.VolumeTarget is null)
-                {
-                    _outputPending.FinishVolumeWorker();
-                    return;
-                }
-                if (_outputPending.VolumeRevision != revision) continue;
-                _outputPending.FinishVolumeWorker();
-                _outputPending.VolumeAwaitingConfirmation = true;
-                _status = $"Master output volume {VolumePercent(target)}%";
+                var acknowledgement = _outputPending.AcknowledgeVolume(work.Revision);
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NoPendingCommand) return;
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NewerRevision) continue;
+                _status = $"Master output volume {VolumePercent(work.Target)}%";
                 _statusIsError = false;
             }
             Invalidate();
-            _ = ConfirmOutputVolumeAsync(generation, revision, target, cancellationToken);
+            TrackCommandWorker(ConfirmOutputVolumeAsync(
+                generation, work.Revision, work.Target, cancellationToken));
             return;
         }
     }
@@ -1223,21 +1211,15 @@ public sealed class AudioMixerWidget : Widget
     {
         while (true)
         {
-            bool target;
-            long revision;
+            AudioMixerCommandWork<bool> work;
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _outputPending.MuteTarget is not { } pendingTarget)
-                {
-                    _outputPending.FinishMuteWorker();
-                    return;
-                }
-                target = pendingTarget;
-                revision = _outputPending.MuteRevision;
+                if (_runGeneration != generation ||
+                    !_outputPending.TryBeginMuteWork(out work)) return;
             }
             try
             {
-                await HostServices.Audio.SetOutputMutedAsync(target, cancellationToken).ConfigureAwait(false);
+                await HostServices.Audio.SetOutputMutedAsync(work.Target, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -1246,38 +1228,34 @@ public sealed class AudioMixerWidget : Widget
             }
             catch (WidgetCapabilityUnavailableException)
             {
-                if (TryRollbackOutputMute(generation, revision,
+                if (TryRollbackOutputMute(generation, work.Revision,
                         "Host master-output control unavailable")) return;
                 continue;
             }
             catch (WidgetCapabilityException exception)
             {
-                if (TryRollbackOutputMute(generation, revision,
+                if (TryRollbackOutputMute(generation, work.Revision,
                         MapControlFailure(exception.ErrorCode))) return;
                 continue;
             }
             catch (Exception)
             {
-                if (TryRollbackOutputMute(generation, revision,
+                if (TryRollbackOutputMute(generation, work.Revision,
                         "Master mute change failed · previous state restored")) return;
                 continue;
             }
             lock (_stateLock)
             {
                 if (_runGeneration != generation) return;
-                if (_outputPending.MuteTarget is null)
-                {
-                    _outputPending.FinishMuteWorker();
-                    return;
-                }
-                if (_outputPending.MuteRevision != revision) continue;
-                _outputPending.FinishMuteWorker();
-                _outputPending.MuteAwaitingConfirmation = true;
-                _status = target ? "Master output muted" : "Master output unmuted";
+                var acknowledgement = _outputPending.AcknowledgeMute(work.Revision);
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NoPendingCommand) return;
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NewerRevision) continue;
+                _status = work.Target ? "Master output muted" : "Master output unmuted";
                 _statusIsError = false;
             }
             Invalidate();
-            _ = ConfirmOutputMuteAsync(generation, revision, target, cancellationToken);
+            TrackCommandWorker(ConfirmOutputMuteAsync(
+                generation, work.Revision, work.Target, cancellationToken));
             return;
         }
     }
@@ -1286,21 +1264,15 @@ public sealed class AudioMixerWidget : Widget
     {
         while (true)
         {
-            double target;
-            long revision;
+            AudioMixerCommandWork<double> work;
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _inputPending.VolumeTarget is not { } pendingTarget)
-                {
-                    _inputPending.FinishVolumeWorker();
-                    return;
-                }
-                target = pendingTarget;
-                revision = _inputPending.VolumeRevision;
+                if (_runGeneration != generation ||
+                    !_inputPending.TryBeginVolumeWork(out work)) return;
             }
             try
             {
-                await HostServices.Audio.SetInputVolumeAsync(target, cancellationToken).ConfigureAwait(false);
+                await HostServices.Audio.SetInputVolumeAsync(work.Target, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -1309,31 +1281,28 @@ public sealed class AudioMixerWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                if (TryRollbackInputVolume(generation, revision, MapControlFailure(exception.ErrorCode))) return;
+                if (TryRollbackInputVolume(
+                        generation, work.Revision, MapControlFailure(exception.ErrorCode))) return;
                 continue;
             }
             catch (Exception)
             {
-                if (TryRollbackInputVolume(generation, revision,
+                if (TryRollbackInputVolume(generation, work.Revision,
                         "Microphone level change failed · previous value restored")) return;
                 continue;
             }
             lock (_stateLock)
             {
                 if (_runGeneration != generation) return;
-                if (_inputPending.VolumeTarget is null)
-                {
-                    _inputPending.FinishVolumeWorker();
-                    return;
-                }
-                if (_inputPending.VolumeRevision != revision) continue;
-                _inputPending.FinishVolumeWorker();
-                _inputPending.VolumeAwaitingConfirmation = true;
-                _status = $"Microphone level {VolumePercent(target)}%";
+                var acknowledgement = _inputPending.AcknowledgeVolume(work.Revision);
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NoPendingCommand) return;
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NewerRevision) continue;
+                _status = $"Microphone level {VolumePercent(work.Target)}%";
                 _statusIsError = false;
             }
             Invalidate();
-            _ = ConfirmInputVolumeAsync(generation, revision, target, cancellationToken);
+            TrackCommandWorker(ConfirmInputVolumeAsync(
+                generation, work.Revision, work.Target, cancellationToken));
             return;
         }
     }
@@ -1342,21 +1311,15 @@ public sealed class AudioMixerWidget : Widget
     {
         while (true)
         {
-            bool target;
-            long revision;
+            AudioMixerCommandWork<bool> work;
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _inputPending.MuteTarget is not { } pendingTarget)
-                {
-                    _inputPending.FinishMuteWorker();
-                    return;
-                }
-                target = pendingTarget;
-                revision = _inputPending.MuteRevision;
+                if (_runGeneration != generation ||
+                    !_inputPending.TryBeginMuteWork(out work)) return;
             }
             try
             {
-                await HostServices.Audio.SetInputMutedAsync(target, cancellationToken).ConfigureAwait(false);
+                await HostServices.Audio.SetInputMutedAsync(work.Target, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -1365,31 +1328,28 @@ public sealed class AudioMixerWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                if (TryRollbackInputMute(generation, revision, MapControlFailure(exception.ErrorCode))) return;
+                if (TryRollbackInputMute(
+                        generation, work.Revision, MapControlFailure(exception.ErrorCode))) return;
                 continue;
             }
             catch (Exception)
             {
-                if (TryRollbackInputMute(generation, revision,
+                if (TryRollbackInputMute(generation, work.Revision,
                         "Microphone mute change failed · previous state restored")) return;
                 continue;
             }
             lock (_stateLock)
             {
                 if (_runGeneration != generation) return;
-                if (_inputPending.MuteTarget is null)
-                {
-                    _inputPending.FinishMuteWorker();
-                    return;
-                }
-                if (_inputPending.MuteRevision != revision) continue;
-                _inputPending.FinishMuteWorker();
-                _inputPending.MuteAwaitingConfirmation = true;
-                _status = target ? "Microphone muted" : "Microphone live";
+                var acknowledgement = _inputPending.AcknowledgeMute(work.Revision);
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NoPendingCommand) return;
+                if (acknowledgement.Kind == AudioMixerCommandTransitionKind.NewerRevision) continue;
+                _status = work.Target ? "Microphone muted" : "Microphone live";
                 _statusIsError = false;
             }
             Invalidate();
-            _ = ConfirmInputMuteAsync(generation, revision, target, cancellationToken);
+            TrackCommandWorker(ConfirmInputMuteAsync(
+                generation, work.Revision, work.Target, cancellationToken));
             return;
         }
     }
@@ -1411,26 +1371,24 @@ public sealed class AudioMixerWidget : Widget
             lock (_stateLock)
             {
                 if (_runGeneration != generation ||
-                    !_sessionPending.TryGetValue(sessionId, out var pending) ||
-                    pending.VolumeRevision != revision || pending.VolumeTarget is null)
-                    return;
+                    !_sessionPending.TryGetValue(sessionId, out var pending)) return;
                 var current = FindSessionLocked(sessionId);
                 if (authoritative is null || current is null)
                 {
-                    pending.ConfirmVolumeTarget();
+                    if (!pending.AbandonVolumeConfirmation(revision)) return;
                     _status = "Application audio session ended before its volume could be confirmed";
                     _statusIsError = true;
                 }
                 else
                 {
-                    pending.AuthoritativeVolume = authoritative.Volume;
-                    pending.ConfirmVolumeTarget();
-                    ReplaceSessionLocked(current with { Volume = authoritative.Volume });
-                    var matched = VolumesMatch(authoritative.Volume, target);
-                    _status = matched
+                    var transition = pending.ConfirmVolume(
+                        revision, current, authoritative.Volume, VolumesMatch);
+                    if (transition.Kind != AudioMixerCommandTransitionKind.Applied) return;
+                    ReplaceSessionLocked(transition.State);
+                    _status = transition.Matched
                         ? $"{current.DisplayName} volume {VolumePercent(authoritative.Volume)}%"
                         : $"{current.DisplayName} volume was not applied · current value restored";
-                    _statusIsError = !matched;
+                    _statusIsError = !transition.Matched;
                 }
             }
             Invalidate();
@@ -1460,26 +1418,24 @@ public sealed class AudioMixerWidget : Widget
             lock (_stateLock)
             {
                 if (_runGeneration != generation ||
-                    !_sessionPending.TryGetValue(sessionId, out var pending) ||
-                    pending.MuteRevision != revision || pending.MuteTarget is null)
-                    return;
+                    !_sessionPending.TryGetValue(sessionId, out var pending)) return;
                 var current = FindSessionLocked(sessionId);
                 if (authoritative is null || current is null)
                 {
-                    pending.ConfirmMuteTarget();
+                    if (!pending.AbandonMuteConfirmation(revision)) return;
                     _status = "Application audio session ended before mute could be confirmed";
                     _statusIsError = true;
                 }
                 else
                 {
-                    pending.AuthoritativeMuted = authoritative.IsMuted;
-                    pending.ConfirmMuteTarget();
-                    ReplaceSessionLocked(current with { IsMuted = authoritative.IsMuted });
-                    var matched = authoritative.IsMuted == target;
-                    _status = matched
+                    var transition = pending.ConfirmMute(
+                        revision, current, authoritative.IsMuted);
+                    if (transition.Kind != AudioMixerCommandTransitionKind.Applied) return;
+                    ReplaceSessionLocked(transition.State);
+                    _status = transition.Matched
                         ? target ? $"{current.DisplayName} muted" : $"{current.DisplayName} unmuted"
                         : $"{current.DisplayName} mute was not applied · current state restored";
-                    _statusIsError = !matched;
+                    _statusIsError = !transition.Matched;
                 }
             }
             Invalidate();
@@ -1501,20 +1457,18 @@ public sealed class AudioMixerWidget : Widget
             var authoritative = await HostServices.Audio.GetOutputAsync(cancellationToken).ConfigureAwait(false);
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _outputPending.VolumeRevision != revision ||
-                    _outputPending.VolumeTarget is null)
-                    return;
+                if (_runGeneration != generation || _output is not { } current) return;
                 var normalized = double.IsFinite(authoritative.Volume)
                     ? Math.Clamp(authoritative.Volume, 0, 1)
                     : 0;
-                _outputPending.AuthoritativeVolume = normalized;
-                _outputPending.ConfirmVolumeTarget();
-                if (_output is { } current) _output = current with { Volume = normalized };
-                var matched = VolumesMatch(normalized, target);
-                _status = matched
+                var transition = _outputPending.ConfirmVolume(
+                    revision, current, normalized, VolumesMatch);
+                if (transition.Kind != AudioMixerCommandTransitionKind.Applied) return;
+                _output = transition.State;
+                _status = transition.Matched
                     ? $"Master output volume {VolumePercent(normalized)}%"
                     : "Master volume was not applied · current value restored";
-                _statusIsError = !matched;
+                _statusIsError = !transition.Matched;
             }
             Invalidate();
         }
@@ -1535,17 +1489,15 @@ public sealed class AudioMixerWidget : Widget
             var authoritative = await HostServices.Audio.GetOutputAsync(cancellationToken).ConfigureAwait(false);
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _outputPending.MuteRevision != revision ||
-                    _outputPending.MuteTarget is null)
-                    return;
-                _outputPending.AuthoritativeMuted = authoritative.IsMuted;
-                _outputPending.ConfirmMuteTarget();
-                if (_output is { } current) _output = current with { IsMuted = authoritative.IsMuted };
-                var matched = authoritative.IsMuted == target;
-                _status = matched
+                if (_runGeneration != generation || _output is not { } current) return;
+                var transition = _outputPending.ConfirmMute(
+                    revision, current, authoritative.IsMuted);
+                if (transition.Kind != AudioMixerCommandTransitionKind.Applied) return;
+                _output = transition.State;
+                _status = transition.Matched
                     ? target ? "Master output muted" : "Master output unmuted"
                     : "Master mute was not applied · current state restored";
-                _statusIsError = !matched;
+                _statusIsError = !transition.Matched;
             }
             Invalidate();
         }
@@ -1566,18 +1518,17 @@ public sealed class AudioMixerWidget : Widget
             var authoritative = await HostServices.Audio.GetInputAsync(cancellationToken).ConfigureAwait(false);
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _inputPending.VolumeRevision != revision ||
-                    _inputPending.VolumeTarget is null) return;
+                if (_runGeneration != generation || _input is not { } current) return;
                 var normalized = double.IsFinite(authoritative.Volume)
                     ? Math.Clamp(authoritative.Volume, 0, 1) : 0;
-                _inputPending.AuthoritativeVolume = normalized;
-                _inputPending.ConfirmVolumeTarget();
-                if (_input is { } current) _input = current with { Volume = normalized };
-                var matched = VolumesMatch(normalized, target);
-                _status = matched
+                var transition = _inputPending.ConfirmVolume(
+                    revision, current, normalized, VolumesMatch);
+                if (transition.Kind != AudioMixerCommandTransitionKind.Applied) return;
+                _input = transition.State;
+                _status = transition.Matched
                     ? $"Microphone level {VolumePercent(normalized)}%"
                     : "Microphone level was not applied · current value restored";
-                _statusIsError = !matched;
+                _statusIsError = !transition.Matched;
             }
             Invalidate();
         }
@@ -1598,16 +1549,15 @@ public sealed class AudioMixerWidget : Widget
             var authoritative = await HostServices.Audio.GetInputAsync(cancellationToken).ConfigureAwait(false);
             lock (_stateLock)
             {
-                if (_runGeneration != generation || _inputPending.MuteRevision != revision ||
-                    _inputPending.MuteTarget is null) return;
-                _inputPending.AuthoritativeMuted = authoritative.IsMuted;
-                _inputPending.ConfirmMuteTarget();
-                if (_input is { } current) _input = current with { IsMuted = authoritative.IsMuted };
-                var matched = authoritative.IsMuted == target;
-                _status = matched
+                if (_runGeneration != generation || _input is not { } current) return;
+                var transition = _inputPending.ConfirmMute(
+                    revision, current, authoritative.IsMuted);
+                if (transition.Kind != AudioMixerCommandTransitionKind.Applied) return;
+                _input = transition.State;
+                _status = transition.Matched
                     ? target ? "Microphone muted" : "Microphone live"
                     : "Microphone mute was not applied · current state restored";
-                _statusIsError = !matched;
+                _statusIsError = !transition.Matched;
             }
             Invalidate();
         }
@@ -1621,117 +1571,91 @@ public sealed class AudioMixerWidget : Widget
 
     private bool TryRollbackSessionVolume(
         string sessionId, long generation, long failedRevision, string? status)
-    {
-        var changed = false;
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation || !_sessionPending.TryGetValue(sessionId, out var pending))
-                return true;
-            if (pending.VolumeRevision != failedRevision) return false;
-            pending.FinishVolumeWorker();
-            if (pending.VolumeTarget is null) return true;
-            pending.ConfirmVolumeTarget();
-            if (pending.HasAuthoritative && FindSessionLocked(sessionId) is { } current)
-                ReplaceSessionLocked(current with { Volume = pending.AuthoritativeVolume });
-            SetControlStatusLocked(status);
-            changed = true;
-        }
-        if (changed) Invalidate();
-        return true;
-    }
+        => ApplyCommandFailure<double>(
+            generation,
+            status,
+            () => _sessionPending.TryGetValue(sessionId, out var pending)
+                ? pending.FailVolume(failedRevision)
+                : null,
+            authoritative =>
+            {
+                if (FindSessionLocked(sessionId) is { } current)
+                    ReplaceSessionLocked(current with { Volume = authoritative });
+            });
 
     private bool TryRollbackSessionMute(
         string sessionId, long generation, long failedRevision, string? status)
-    {
-        var changed = false;
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation || !_sessionPending.TryGetValue(sessionId, out var pending))
-                return true;
-            if (pending.MuteRevision != failedRevision) return false;
-            pending.FinishMuteWorker();
-            if (pending.MuteTarget is null) return true;
-            pending.ConfirmMuteTarget();
-            if (pending.HasAuthoritative && FindSessionLocked(sessionId) is { } current)
-                ReplaceSessionLocked(current with { IsMuted = pending.AuthoritativeMuted });
-            SetControlStatusLocked(status);
-            changed = true;
-        }
-        if (changed) Invalidate();
-        return true;
-    }
+        => ApplyCommandFailure<bool>(
+            generation,
+            status,
+            () => _sessionPending.TryGetValue(sessionId, out var pending)
+                ? pending.FailMute(failedRevision)
+                : null,
+            authoritative =>
+            {
+                if (FindSessionLocked(sessionId) is { } current)
+                    ReplaceSessionLocked(current with { IsMuted = authoritative });
+            });
 
     private bool TryRollbackOutputVolume(
         long generation, long failedRevision, string? status)
-    {
-        var changed = false;
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return true;
-            if (_outputPending.VolumeRevision != failedRevision) return false;
-            _outputPending.FinishVolumeWorker();
-            if (_outputPending.VolumeTarget is null) return true;
-            _outputPending.ConfirmVolumeTarget();
-            if (_outputPending.HasAuthoritative && _output is { } current)
-                _output = current with { Volume = _outputPending.AuthoritativeVolume };
-            SetControlStatusLocked(status);
-            changed = true;
-        }
-        if (changed) Invalidate();
-        return true;
-    }
+        => ApplyCommandFailure<double>(
+            generation,
+            status,
+            () => _outputPending.FailVolume(failedRevision),
+            authoritative =>
+            {
+                if (_output is { } current) _output = current with { Volume = authoritative };
+            });
 
     private bool TryRollbackOutputMute(
         long generation, long failedRevision, string? status)
-    {
-        var changed = false;
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return true;
-            if (_outputPending.MuteRevision != failedRevision) return false;
-            _outputPending.FinishMuteWorker();
-            if (_outputPending.MuteTarget is null) return true;
-            _outputPending.ConfirmMuteTarget();
-            if (_outputPending.HasAuthoritative && _output is { } current)
-                _output = current with { IsMuted = _outputPending.AuthoritativeMuted };
-            SetControlStatusLocked(status);
-            changed = true;
-        }
-        if (changed) Invalidate();
-        return true;
-    }
+        => ApplyCommandFailure<bool>(
+            generation,
+            status,
+            () => _outputPending.FailMute(failedRevision),
+            authoritative =>
+            {
+                if (_output is { } current) _output = current with { IsMuted = authoritative };
+            });
 
     private bool TryRollbackInputVolume(long generation, long failedRevision, string? status)
-    {
-        var changed = false;
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return true;
-            if (_inputPending.VolumeRevision != failedRevision) return false;
-            _inputPending.FinishVolumeWorker();
-            if (_inputPending.VolumeTarget is null) return true;
-            _inputPending.ConfirmVolumeTarget();
-            if (_inputPending.HasAuthoritative && _input is { } current)
-                _input = current with { Volume = _inputPending.AuthoritativeVolume };
-            SetControlStatusLocked(status);
-            changed = true;
-        }
-        if (changed) Invalidate();
-        return true;
-    }
+        => ApplyCommandFailure<double>(
+            generation,
+            status,
+            () => _inputPending.FailVolume(failedRevision),
+            authoritative =>
+            {
+                if (_input is { } current) _input = current with { Volume = authoritative };
+            });
 
     private bool TryRollbackInputMute(long generation, long failedRevision, string? status)
+        => ApplyCommandFailure<bool>(
+            generation,
+            status,
+            () => _inputPending.FailMute(failedRevision),
+            authoritative =>
+            {
+                if (_input is { } current) _input = current with { IsMuted = authoritative };
+            });
+
+    private bool ApplyCommandFailure<TValue>(
+        long generation,
+        string? status,
+        Func<AudioMixerCommandTerminal<TValue>?> transitionFactory,
+        Action<TValue> restore)
     {
         var changed = false;
         lock (_stateLock)
         {
             if (_runGeneration != generation) return true;
-            if (_inputPending.MuteRevision != failedRevision) return false;
-            _inputPending.FinishMuteWorker();
-            if (_inputPending.MuteTarget is null) return true;
-            _inputPending.ConfirmMuteTarget();
-            if (_inputPending.HasAuthoritative && _input is { } current)
-                _input = current with { IsMuted = _inputPending.AuthoritativeMuted };
+            var transition = transitionFactory();
+            if (transition is null) return true;
+            if (transition.Value.Kind == AudioMixerCommandTransitionKind.NewerRevision)
+                return false;
+            if (transition.Value.Kind == AudioMixerCommandTransitionKind.NoPendingCommand)
+                return true;
+            if (transition.Value.HasAuthoritative) restore(transition.Value.Authoritative);
             SetControlStatusLocked(status);
             changed = true;
         }
@@ -1740,84 +1664,76 @@ public sealed class AudioMixerWidget : Widget
     }
 
     private void CancelSessionVolumeWorker(string sessionId, long generation)
-    {
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation || !_sessionPending.TryGetValue(sessionId, out var pending)) return;
-            pending.FinishVolumeWorker();
-            pending.ConfirmVolumeTarget();
-            if (pending.HasAuthoritative && FindSessionLocked(sessionId) is { } current)
-                ReplaceSessionLocked(current with { Volume = pending.AuthoritativeVolume });
-            UpdateHealthyStateLocked();
-        }
-        Invalidate();
-    }
+        => ApplyCommandCancellation<double>(
+            generation,
+            () => _sessionPending.TryGetValue(sessionId, out var pending)
+                ? pending.CancelVolume()
+                : null,
+            authoritative =>
+            {
+                if (FindSessionLocked(sessionId) is { } current)
+                    ReplaceSessionLocked(current with { Volume = authoritative });
+            });
 
     private void CancelSessionMuteWorker(string sessionId, long generation)
-    {
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation || !_sessionPending.TryGetValue(sessionId, out var pending)) return;
-            pending.FinishMuteWorker();
-            pending.ConfirmMuteTarget();
-            if (pending.HasAuthoritative && FindSessionLocked(sessionId) is { } current)
-                ReplaceSessionLocked(current with { IsMuted = pending.AuthoritativeMuted });
-            UpdateHealthyStateLocked();
-        }
-        Invalidate();
-    }
+        => ApplyCommandCancellation<bool>(
+            generation,
+            () => _sessionPending.TryGetValue(sessionId, out var pending)
+                ? pending.CancelMute()
+                : null,
+            authoritative =>
+            {
+                if (FindSessionLocked(sessionId) is { } current)
+                    ReplaceSessionLocked(current with { IsMuted = authoritative });
+            });
 
     private void CancelOutputVolumeWorker(long generation)
-    {
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return;
-            _outputPending.FinishVolumeWorker();
-            _outputPending.ConfirmVolumeTarget();
-            if (_outputPending.HasAuthoritative && _output is { } current)
-                _output = current with { Volume = _outputPending.AuthoritativeVolume };
-            UpdateHealthyStateLocked();
-        }
-        Invalidate();
-    }
+        => ApplyCommandCancellation<double>(
+            generation,
+            () => _outputPending.CancelVolume(),
+            authoritative =>
+            {
+                if (_output is { } current) _output = current with { Volume = authoritative };
+            });
 
     private void CancelOutputMuteWorker(long generation)
-    {
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return;
-            _outputPending.FinishMuteWorker();
-            _outputPending.ConfirmMuteTarget();
-            if (_outputPending.HasAuthoritative && _output is { } current)
-                _output = current with { IsMuted = _outputPending.AuthoritativeMuted };
-            UpdateHealthyStateLocked();
-        }
-        Invalidate();
-    }
+        => ApplyCommandCancellation<bool>(
+            generation,
+            () => _outputPending.CancelMute(),
+            authoritative =>
+            {
+                if (_output is { } current) _output = current with { IsMuted = authoritative };
+            });
 
     private void CancelInputVolumeWorker(long generation)
-    {
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return;
-            _inputPending.FinishVolumeWorker();
-            _inputPending.ConfirmVolumeTarget();
-            if (_inputPending.HasAuthoritative && _input is { } current)
-                _input = current with { Volume = _inputPending.AuthoritativeVolume };
-            UpdateHealthyStateLocked();
-        }
-        Invalidate();
-    }
+        => ApplyCommandCancellation<double>(
+            generation,
+            () => _inputPending.CancelVolume(),
+            authoritative =>
+            {
+                if (_input is { } current) _input = current with { Volume = authoritative };
+            });
 
     private void CancelInputMuteWorker(long generation)
+        => ApplyCommandCancellation<bool>(
+            generation,
+            () => _inputPending.CancelMute(),
+            authoritative =>
+            {
+                if (_input is { } current) _input = current with { IsMuted = authoritative };
+            });
+
+    private void ApplyCommandCancellation<TValue>(
+        long generation,
+        Func<AudioMixerCommandTerminal<TValue>?> transitionFactory,
+        Action<TValue> restore)
     {
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
-            _inputPending.FinishMuteWorker();
-            _inputPending.ConfirmMuteTarget();
-            if (_inputPending.HasAuthoritative && _input is { } current)
-                _input = current with { IsMuted = _inputPending.AuthoritativeMuted };
+            var transition = transitionFactory();
+            if (transition is null) return;
+            if (transition.Value.HasAuthoritative) restore(transition.Value.Authoritative);
             UpdateHealthyStateLocked();
         }
         Invalidate();
@@ -1826,12 +1742,7 @@ public sealed class AudioMixerWidget : Widget
     private AudioMixerSessionCommandPolicy GetSessionPendingLocked(WidgetAudioSession session)
     {
         if (_sessionPending.TryGetValue(session.SessionId, out var pending)) return pending;
-        pending = new AudioMixerSessionCommandPolicy
-        {
-            HasAuthoritative = true,
-            AuthoritativeVolume = session.Volume,
-            AuthoritativeMuted = session.IsMuted,
-        };
+        pending = new AudioMixerSessionCommandPolicy(session);
         _sessionPending.Add(session.SessionId, pending);
         return pending;
     }
