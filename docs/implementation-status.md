@@ -61,6 +61,25 @@ minimal package/AppContainer Tier-2 run retained at
 authorize or claim another repository-wide aggregate; packaged physical-
 controller and visual evidence remains in the verification queue.
 
+DLV-003 moves Button leading visuals, labels, and selected/busy/unavailable cues
+onto one native content-placement model. Center alignment now centers the
+complete icon-label group, balanced cue lanes keep state changes from moving it,
+and explicit start/end alignment remains edge-stable with collision-free
+trailing cue space. Intrinsic Button measurement consumes the same icon/gap/cue
+width used by paint before DirectWrite computes wrapped height. Existing shared
+NavigationShell and Spotify navigation recipes that author `justify` on a
+Button leaf now inherit start/center/end content alignment without widget-local
+offsets or protocol changes. The focused Release renderer target passes 4,685
+checks across text-only/icon, selected, busy, disabled, focused, wrapped,
+compact/standard/wide, 100-150% text, and 1.0-1.5 pixel-scale cases; the
+production OverlayHost Release target builds successfully. Retained standalone
+evidence at
+`artifacts/evidence/dlv003/dlv003-shared-geometry-final/manifest.json`
+verifies 12 Games & Apps/Spotify captures and 24 exact retained files with zero
+renderer diagnostics. Its semantic exporter records the existing Settings
+worker startup gap explicitly. Full-shell physical-controller, display, and
+assistive-technology sign-off remains verification-only evidence.
+
 ## Implemented
 
 ### Native overlay and input

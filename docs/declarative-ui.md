@@ -473,9 +473,15 @@ content can exceed the host-clamped viewport must use a semantic Scroll; extra
 spacers or margins are not a reliable overflow mechanism.
 
 Button content uses one shared native placement rule. Text-only labels and
-icon-plus-label groups are centered as a visual group; a trailing selected/
-state cue reserves equal space on both sides so it cannot shift or overlap that
-group. Widgets should use semantic `.Icon(...)`, label, and selected state
+icon-plus-label groups are centered as a visual group. A centered selected,
+busy, or unavailable control uses balanced leading/trailing cue lanes so the
+state cue cannot shift or overlap that group; explicit start/end alignment
+retains the authored edge and reserves the trailing cue lane. The same available
+label width is used for intrinsic measurement and paint, so a wrapped label
+contributes its real height before layout. `text-align` is the explicit Button
+content-alignment property and takes precedence; existing shared component
+recipes that use `justify: start|center|end` on a Button leaf resolve through the
+same placement rule. Widgets should use semantic `.Icon(...)`, label, and state
 instead of compensating with private padding or spacer nodes.
 
 Image fit is `Contain`, `Cover` (default), or `Fill`. General image sources must
