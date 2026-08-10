@@ -183,10 +183,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             break;
         case BridgeMessageTypes.GetSnapshot:
+        {
             var snapshotRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
-            var snapshotResult = await _registry.GetSnapshotAsync(
+            using var snapshotPublication = await _registry.GetSnapshotAsync(
                     snapshotRequest.WidgetId, _sessionCancellation, cancellationToken)
                 .ConfigureAwait(false);
+            var snapshotResult = snapshotPublication.Value;
             var snapshot = snapshotResult.Snapshot;
             var configuredForStyle = snapshotResult.Configured;
             var theme = _appearance is null
@@ -209,20 +211,25 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 }, cancellationToken).ConfigureAwait(false);
             }
             break;
+        }
         case BridgeMessageTypes.RestartWidget:
+        {
             var restartRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
-            var restoredState = await _registry.RestartAsync(
+            using var restartPublication = await _registry.RestartAsync(
                 restartRequest.WidgetId, cancellationToken).ConfigureAwait(false);
+            var restoredState = restartPublication.Value;
             await ReplyAsync(
                 BridgeMessageTypes.Acknowledged,
                 request.RequestId,
                 new { widgetId = restartRequest.WidgetId, state = restoredState },
                 cancellationToken).ConfigureAwait(false);
             break;
+        }
         case BridgeMessageTypes.SetWidgetLifecycle:
+        {
             var lifecycleRequest = BridgeJson.FromElement<BridgeWidgetLifecycleRequest>(request.Payload);
             ValidateHostState(lifecycleRequest.State);
-            await _registry.SetLifecycleAsync(
+            using var lifecyclePublication = await _registry.SetLifecycleAsync(
                     lifecycleRequest.WidgetId,
                     lifecycleRequest.State,
                     _sessionCancellation,
@@ -231,33 +238,41 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
             break;
+        }
         case BridgeMessageTypes.Action:
+        {
             var actionRequest = BridgeJson.FromElement<BridgeActionRequest>(request.Payload);
-            var actionAdmission = await _registry.AdmitActionAsync(
+            using var actionPublication = await _registry.AdmitActionAsync(
                     actionRequest.WidgetId,
                     actionRequest.Action,
                     _sessionCancellation,
                     cancellationToken)
                 .ConfigureAwait(false);
+            var actionAdmission = actionPublication.Value;
             await ReplyActionAdmissionAsync(
                     request.RequestId, actionAdmission, cancellationToken)
                 .ConfigureAwait(false);
             break;
+        }
         case BridgeMessageTypes.ControllerInput:
+        {
             var controllerRequest = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
             ValidateControllerInput(controllerRequest.Input);
-            var handled = await _registry.SendControllerInputAsync(
+            using var controllerPublication = await _registry.SendControllerInputAsync(
                     controllerRequest.WidgetId,
                     controllerRequest.Input,
                     _sessionCancellation,
                     cancellationToken)
                 .ConfigureAwait(false);
+            var handled = controllerPublication.Value;
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,
                     new { handled }, cancellationToken).ConfigureAwait(false);
             break;
+        }
         case BridgeMessageTypes.QuickAction:
+        {
             var quickRequest = BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload);
-            var quickAdmission = await _registry.AdmitQuickActionAsync(
+            using var quickPublication = await _registry.AdmitQuickActionAsync(
                     quickRequest.WidgetId,
                     quickRequest.QuickActionId,
                     quickRequest.Sequence,
@@ -265,9 +280,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     _sessionCancellation,
                     cancellationToken)
                 .ConfigureAwait(false);
+            var quickAdmission = quickPublication.Value;
             await ReplyActionAdmissionAsync(request.RequestId, quickAdmission, cancellationToken)
                 .ConfigureAwait(false);
             break;
+        }
         default:
             throw new BridgeProtocolException($"Unknown bridge request type '{request.Type}'.");
         }
@@ -375,13 +392,13 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         return new WidgetProcessBridgeClient(client);
     }
 
-    private void PublishClientInvalidation(BridgeClientInvalidation invalidation) =>
-        _ = SendEventAsync(
+    private Task PublishClientInvalidation(BridgeClientInvalidation invalidation) =>
+        SendEventAsync(
             BridgeMessageTypes.Invalidation,
             new BridgeInvalidation(invalidation.WidgetId, invalidation.Revision));
 
-    private void PublishClientActionFailure(BridgeClientActionFailure item) =>
-        _ = SendEventAsync(
+    private Task PublishClientActionFailure(BridgeClientActionFailure item) =>
+        SendEventAsync(
             BridgeMessageTypes.Failure,
             new
             {
@@ -394,8 +411,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 canRestart = false,
             });
 
-    private void PublishClientFailure(BridgeClientRuntimeFailure item) =>
-        _ = SendEventAsync(
+    private Task PublishClientFailure(BridgeClientRuntimeFailure item) =>
+        SendEventAsync(
             BridgeMessageTypes.Failure,
             new
             {
@@ -711,16 +728,24 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         BrokerHostEffect effect)
     {
         if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
-        if (!_registry.TryResolveHostEffect(
-                widgetId, expectedWorkerFingerprint, out var descriptor))
-            return;
-        _ = SendEventAsync(
+        _ = PublishHostEffectAsync(widgetId, expectedWorkerFingerprint);
+    }
+
+    private async Task PublishHostEffectAsync(
+        string widgetId,
+        string expectedWorkerFingerprint)
+    {
+        using var publication = _registry.TryAdmitHostEffect(
+            widgetId, expectedWorkerFingerprint);
+        if (publication is null) return;
+        var descriptor = publication.Value;
+        await SendEventAsync(
             BridgeMessageTypes.HostEffect,
             new BridgeHostEffect(
                 widgetId,
                 descriptor.RuntimeGeneration,
                 "closeOverlayAfterAppLaunch",
-                Interlocked.Increment(ref _hostEffectSequence)));
+                Interlocked.Increment(ref _hostEffectSequence))).ConfigureAwait(false);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)

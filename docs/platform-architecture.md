@@ -110,6 +110,18 @@ Canceled idle-unload work is retained, boundedly drained, and observed through
 terminal retirement so a stale generation cannot unload or publish into its
 replacement.
 
+Generation replacement is one registry transition. A retiring registration
+remains the widget's reserved slot until its admitted publications, idle work,
+client, residency lease, and operation gate reach terminal cleanup; concurrent
+requests wait for that slot instead of creating another generation. Snapshot,
+action, lifecycle, controller, restart, host-effect, invalidation, and failure
+results carry an internal exact-generation publication lease through the
+server's actual serialized reply/event send. Replacement can mark the old
+generation closed to new admission, but cannot install or expose its successor
+until those admitted sends release. Detached catalog retirements are tracked
+and observed, and terminal registry disposal attempts every captured client
+before publishing one shared success or aggregate failure outcome.
+
 ## Capability flow
 
 1. A complete validated bridge catalog revision supplies package ID, publisher

@@ -104,10 +104,15 @@ registry owns the current catalog revision and every worker generation,
 including operation serialization, residency admission, cached snapshots,
 idle unload, restart, catalog replacement/removal, and terminal disposal.
 Request handlers consume typed registry operations and immutable results; they
-never retain mutable registration objects. Replacement first removes the old
-generation from publication authority, then terminally cancels and boundedly
-drains its tracked idle work before disposing the client. Late invalidation,
-failure, or idle-unload completion from that generation is therefore ignored.
+never retain mutable registration objects. A retiring generation remains the
+reserved widget slot, closed to new admission, until its exact-generation
+publication leases, tracked idle work, client, and residency lease drain.
+Replies and asynchronous events retain that internal publication lease through
+the server's actual serialized send, so replacement cannot overtake a result
+that already won admission. Restart prepares and lifecycle-restores one fresh
+client before publishing it; every unpublished client is disposed on failure.
+Detached retirements are observed, and terminal disposal attempts every client
+before completing its one shared outcome.
 
 A launched Background worker remains resident under the default `keep-alive`
 policy. Entering Background cancels the shared Visible/Interactive lifetime
