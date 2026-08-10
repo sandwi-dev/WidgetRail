@@ -836,9 +836,10 @@ platform worktree.
 
 ### DLV-032 — Extract the bridge request dispatcher
 
-**State:** Correction required after the already-started DLV-034 preservation
+**State:** Assigned for a separate correction from the accepted DLV-034 branch
 boundary; candidate `8c11a27` is not accepted or integrated
-**Baseline:** accepted DLV-031 closing commit `ffa1edc`
+**Baseline:** accepted-but-not-integrated DLV-034 correction `344ab48`, whose
+history preserves candidate `8c11a27` without rewriting it
 **Dependencies:** DLV-031 when shared broker/bridge test infrastructure changes
 **Owner:** managed `WidgetBridgeServer` request scheduling and direct bridge
 fixtures; framing and session ownership remain in the server
@@ -888,27 +889,32 @@ duplicates client/session authority, or touches native platform work.
 
 ### DLV-034 — Split the Spotify platform backend by stable responsibility
 
-**State:** Correction required; candidate `a5c80ac` is not accepted or
-integrated, and its correction must reach a clean commit before DLV-032 resumes
-**Baseline:** unaccepted DLV-034 candidate `a5c80ac`, preserving its parent
-DLV-032 candidate `8c11a27`; neither milestone can be integrated until both
-corrections are independently accepted
+**State:** Accepted by the reviewer through correction `344ab48`; awaiting an
+accepted DLV-032 correction before contiguous integration
+**Baseline:** unaccepted DLV-032 candidate `8c11a27`
+**Closing commits:** `a5c80ac` (`[DLV-034] Split Spotify backend
+responsibilities`), corrected by `344ab48` (`[DLV-034] Prove refresh
+cancellation and disconnect isolation`)
 **Dependencies:** DLV-023 and DLV-031
 **Owner:** managed Windows Spotify provider internals and injected-transport
 fixtures
 
-**Reviewer correction:** Candidate `a5c80ac` materially reduces the central
-backend and preserves singular identity/vault/token/session authority, but its
-32-test registry does not prove two acceptance cases claimed by the public
-documentation. Add manually controlled backend-level proof that a
-cancellation-ignoring token refresh cannot publish/cache an access token,
-rotate/save refresh credentials, or supply the next request after cancellation;
-and that Disconnect clears cached token plus vault state, stops applicable local
-playback, and prevents later reuse of the disconnected session. Correct only
-DLV-034-owned behavior if either test exposes a defect, keep the proof sleep-free
-and credential-free, and make documentation claims match the retained evidence.
-Commit this as a separate `[DLV-034]` correction without rewriting `a5c80ac`,
-then stop for planner review before DLV-032.
+**Reviewer disposition:** Accepted at code and focused assignment-evidence
+level. The central backend falls from 1,724 lines/81,619 bytes to 1,032
+lines/48,862 bytes while retaining singular package identity, OAuth/PKCE,
+vault, token refresh, 401 replacement, lifecycle, local-player, and event
+authority. Playback/collection endpoints, bounded HTTP retry/rate-limit policy,
+and strict response parsing are narrow internal owners without token/session or
+browser authority. Correction `344ab48` adds manually controlled backend proof
+that a cancellation-ignoring refresh cannot publish/cache an access token,
+rotate/save refresh credentials, or authorize the next request, and that
+Disconnect stops local playback, clears vault and cached-token state, and
+prevents session reuse. Retained runs `20260810T140244Z-2b2f8821` and
+`20260810T141733Z-0e24d4e1` pass provider 32/32 then 34/34; the first also passes
+PlatformBroker 51/51. Documentation run `20260810T141833Z-a8567e3e` passes all
+52 Markdown contracts. These are stable dirty-worktree milestone artifacts,
+not release evidence. No public provider/broker protocol changed, and live
+Spotify remains manual evidence.
 
 **Objective:** Preserve one integration identity and token-session owner while
 making one Spotify endpoint family, retry rule, or response parser changeable
@@ -944,8 +950,9 @@ Spotify widget rather than the platform backend.
 
 ### DLV-035 — Split the Windows network backend by stable responsibility
 
-**State:** Ready after DLV-034
-**Baseline:** closing commit of DLV-034
+**State:** Awaiting reviewer acceptance and integration of the DLV-032
+correction; do not start automatically from the current unintegrated branch
+**Baseline:** future accepted main integration through DLV-032 and DLV-034
 **Dependencies:** DLV-028 and DLV-031
 **Owner:** managed Windows network provider internals and deterministic native-
 adapter fixtures; no widget presentation or native overlay-host files

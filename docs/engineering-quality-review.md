@@ -1980,10 +1980,10 @@ structure is promoted as the public template.
 
 ### EQ-029 — P2 — Managed platform policy remains concentrated in central classes
 
-**Status: DLV-031 accepted; DLV-034 candidate `a5c80ac` returned for bounded
-acceptance-evidence correction; remaining concentration has bounded delivery
-coverage in DLV-032, DLV-035, DLV-036, and DLV-037. Existing EQ-020 and EQ-022
-remain the authoritative liveness and bridge-scheduling findings.**
+**Status: DLV-031 and DLV-034 accepted; remaining concentration has bounded
+delivery coverage in DLV-032, DLV-035, DLV-036, and DLV-037. DLV-034 awaits
+contiguous integration behind the rejected DLV-032 parent. Existing EQ-020 and
+EQ-022 remain the authoritative liveness and bridge-scheduling findings.**
 
 **Evidence.** Before accepted DLV-031, `PlatformCapabilityBroker` spanned about
 2,265 lines inside a 2,377-line file and owned identity/declaration/consent/
@@ -2015,18 +2015,20 @@ sequence counter was added. Retained run `20260810T132445Z-4465b4ae` passes
 PlatformBroker 51/51, Windows app library 31/31, generic worker 9/9, and
 documentation 52.
 
-DLV-034 candidate `a5c80ac` materially separates playback/collection endpoint
+DLV-034 commit `a5c80ac` materially separates playback/collection endpoint
 policy, bounded HTTP retry/rate-limit behavior, and strict response parsing
 from the singular package-identity/OAuth/vault/token/local-player owner. The
 central backend falls from 1,724 lines/81,619 bytes to 1,032 lines/48,862 bytes,
 and retained focused run `20260810T140244Z-2b2f8821` passes the Spotify provider
-32/32 plus PlatformBroker 51/51. It is not accepted yet: the public evidence
-claims deterministic Disconnect and cancellation-ignoring refresh behavior,
-but the committed registry contains no Disconnect scenario and its new
-cancellation test ends at `SpotifyHttpPolicy` rather than proving that the
-backend cannot cache/publish a late refresh result or rotate the vault. A
-separate DLV-034 correction must close those exact lifecycle seams before the
-hotspot disposition advances.
+32/32 plus PlatformBroker 51/51. Correction `344ab48` closes the returned
+lifecycle-evidence gap with manually completed backend cases: a
+cancellation-ignoring refresh cannot publish/cache its access token, rotate the
+vault, reach the API, or supply the next request; Disconnect stops active local
+playback, deletes the vault entry, clears cached authorization, and prevents
+session reuse. Retained provider run `20260810T141733Z-0e24d4e1` passes 34/34
+and documentation run `20260810T141833Z-a8567e3e` passes all 52 Markdown
+contracts. The split is accepted but cannot be integrated until its rejected
+DLV-032 parent is corrected.
 
 **Why it matters.** Adding one capability or changing one scheduling rule
 currently requires understanding distant policy and cleanup regions inside a
@@ -3775,7 +3777,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Action dispatch | DLV-014 (`2a160b4`, integrated by `9060f12`) composes a deterministic YT Music post-admission failure through the real worker/runtime/bridge/native host into painted and polite UIA status. It proves exact generation/action/source, sanitized logging, focus retention, replacement/expiry, Hide/Stop, and no restart; native Release, bridge 47/47, and isolated addon acceptance passed | Retain physical GameInput and packaged assistive-technology evidence; do not reopen implementation unless those gates expose a concrete defect |
 | Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | DLV-032 owns one narrow typed dispatcher with deterministic no-sleep invariant tests and bounded forced drain; DLV-033 owns the later asynchronous native read owner/correlation table |
 | Managed capability broker | Accepted DLV-031 (`ffa1edc`, integrated by `27adec1`) reduces the broker authority owner from 2,377 lines to 837 while retaining singular identity, consent, lifecycle, lease, gesture, subscription, revocation, and event-sequence authority. Seven typed internal domain routes own value-based decoding, validation, backend execution, and projection | Retain the focused authority/domain tests as new capabilities arrive; do not reintroduce distant validators, a generic mediator, or public-protocol churn |
-| Spotify platform provider | DLV-034 candidate `a5c80ac` reduces the singular identity/OAuth/vault/token/local-player owner from 1,724 lines to 1,032 and extracts endpoint, retry/rate-limit, and strict parsing seams; the split is structurally sound but not yet accepted because backend-level cancellation-ignoring refresh and Disconnect lifecycle proof is missing | Complete the bounded DLV-034 correction without adding a second session/token owner; accept only after the documentation claims are matched by deterministic credential-free tests |
+| Spotify platform provider | Accepted DLV-034 (`a5c80ac` plus `344ab48`) reduces the singular identity/OAuth/vault/token/local-player owner from 1,724 lines to 1,032 and extracts endpoint, retry/rate-limit, and strict parsing seams. Provider 34/34 directly covers late canceled refresh non-publication and Disconnect session isolation; no second authority or public protocol appears | Preserve these ownership boundaries and integrate only after the rejected DLV-032 parent is corrected; live-account behavior remains manual evidence |
 | Windows network provider | `WindowsNetworkPlatformBackend` is roughly 1,186 lines and combines an owner thread/command queue, scan and connection timers, committed provider state, reconciliation, equality policy, and three event pumps | DLV-035 follows the broker split and preserves one owner thread/state while extracting directly testable command, timeout, reconciliation, and event-projection policy; the separate 1,297-line native-adapter file is an interop aggregation review signal, not an automatic file-splitting target |
 | Settings widget | The roughly 1,090-line widget combines lifecycle/action orchestration, six page renderers, preference persistence, diagnostics, and exact-token authority-recovery selection/actions | DLV-036 separates snapshot-only page/navigation policy, ordinary preference persistence, and privileged diagnostic/recovery policy while retaining one lifecycle and committed-state owner |
 | Managed worker client | The roughly 1,027-line `WidgetProcessClient` combines worker process and pipe/session lifecycle, request correlation, content/companion leases, failure cleanup, and dashboard-gesture reservation/expiry | DLV-037 follows DLV-032 and gives transport/session, pending requests, leases, and gesture policy named singular owners without changing protocol or authority |
