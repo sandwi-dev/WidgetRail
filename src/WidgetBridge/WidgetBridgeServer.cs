@@ -95,7 +95,8 @@ public sealed class WidgetBridgeServer(
                 var request = await _channel.ReadAsync(sessionCancellation.Token)
                     .ConfigureAwait(false);
                 requestDispatcher.DemandRequestIdAvailable(request.RequestId);
-                if (request.Type == BridgeMessageTypes.Stop)
+                var requestKey = BridgeRequestClassifier.Classify(request);
+                if (requestKey.Kind == BridgeRequestKind.Stop)
                 {
                     await ReplyAsync(
                             BridgeMessageTypes.Acknowledged,
@@ -108,8 +109,8 @@ public sealed class WidgetBridgeServer(
 
                 var dispatch = requestDispatcher.TryDispatch(
                     request.RequestId,
-                    RequestWidgetId(request),
-                    token => DispatchRequestAsync(request, token));
+                    requestKey,
+                    token => DispatchRequestAsync(request, requestKey, token));
                 if (dispatch.Status == BridgeRequestDispatchStatus.CapacityExceeded)
                 {
                     await ReplyAsync(
@@ -309,10 +310,15 @@ public sealed class WidgetBridgeServer(
 
     private async Task DispatchRequestAsync(
         BridgeEnvelope request,
+        BridgeRequestKey requestKey,
         CancellationToken cancellationToken)
     {
         try
         {
+            if (!requestKey.IsKnown)
+                throw new BridgeProtocolException(requestKey.Kind == BridgeRequestKind.Unknown
+                    ? $"Unknown bridge request type '{request.Type}'."
+                    : $"Bridge request '{request.Type}' has an invalid payload.");
             await HandleRequestAsync(request, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -333,15 +339,6 @@ public sealed class WidgetBridgeServer(
             {
             }
         }
-    }
-
-    private static string? RequestWidgetId(BridgeEnvelope request)
-    {
-        if (request.Payload.ValueKind != JsonValueKind.Object ||
-            !request.Payload.TryGetProperty("widgetId", out var widgetId) ||
-            widgetId.ValueKind != JsonValueKind.String)
-            return null;
-        return widgetId.GetString();
     }
 
     private async Task WithResidentClientAsync(

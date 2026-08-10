@@ -83,9 +83,19 @@ The bridge server owns session framing, request decoding, the reserved Stop
 lane, catalog/client lifetime, replies, and the serialized write path. An
 internal request dispatcher owns the independent scheduling policy: unique
 request IDs, the global admitted-request bound, per-widget FIFO tails,
-session-fatal cancellation, and bounded drain. Each admitted entry is removed
-from the active-ID and widget-tail registries on success, failure, or
-cancellation; forced drain leaves no residual request IDs, tails, or tasks.
+session-fatal cancellation, and bounded drain. One closed typed classifier maps
+every known post-handshake request and its strictly decoded payload to a global
+or canonical widget scheduling key; malformed and unknown requests never gain
+an implicit widget key. Each admitted entry is removed from the active-ID and
+widget-tail registries on success, failure, or cancellation.
+
+Drain cancels admitted work and enforces a two-second production deadline. If a
+handler ignores cancellation, the dispatcher releases its request ID, FIFO
+tail, and capacity slot at that deadline, but retains the continuing task in an
+observed quarantine until it actually terminates. The canceled request token
+prevents a late reply, and a quarantined late failure cannot become a fatal for
+the closed or replacement session. This is bounded session teardown, not a
+claim that cancellation can terminate arbitrary managed code.
 
 The per-client operation gate remains a worker-lifecycle and residency mutex.
 It coordinates an admitted operation with idle unload and catalog retirement,

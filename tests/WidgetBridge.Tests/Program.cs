@@ -28,9 +28,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
+    ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
     ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),
-    ("Request dispatcher forced drain cancels and clears every registry", RequestDispatcherForcedDrainIsComplete),
+    ("Request dispatcher deadline quarantines cancellation-ignoring work", RequestDispatcherForcedDrainIsComplete),
     ("Stalled widget admission leaves bounded list and stop control responsive", StalledAdmissionKeepsControlPlaneResponsive),
     ("Pipelined requests preserve per-widget receive order", PipelinedWidgetRequestsStayOrdered),
     ("Duplicate pending request IDs fail the bridge session closed", DuplicatePendingRequestIdsFailClosed),
@@ -442,7 +443,7 @@ static async Task RequestDispatcherCleansTerminalPaths()
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var accepted = dispatcher.TryDispatch(
-            1, "widget-a", _ => completion.Task);
+            1, WidgetRequest("widget-a"), _ => completion.Task);
         Assert.Equal(BridgeRequestDispatchStatus.Accepted, accepted.Status);
         completion.SetResult();
         await accepted.Completion!;
@@ -460,7 +461,7 @@ static async Task RequestDispatcherCleansTerminalPaths()
         exception => failureFatal.TrySetResult(exception)))
     {
         var failed = dispatcher.TryDispatch(
-            2, null, _ => Task.FromException(new InvalidOperationException("fatal")));
+            2, GlobalRequest(), _ => Task.FromException(new InvalidOperationException("fatal")));
         await Assert.ThrowsAsync<InvalidOperationException>(() => failed.Completion!);
         var fatal = await failureFatal.Task.WaitAsync(TimeSpan.FromSeconds(1));
         Assert.Equal("fatal", fatal.Message);
@@ -480,7 +481,7 @@ static async Task RequestDispatcherCleansTerminalPaths()
             TaskCreationOptions.RunContinuationsAsynchronously);
         var canceled = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var request = dispatcher.TryDispatch(3, "widget-a", async token =>
+        var request = dispatcher.TryDispatch(3, WidgetRequest("widget-a"), async token =>
         {
             started.SetResult();
             try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
@@ -499,6 +500,64 @@ static async Task RequestDispatcherCleansTerminalPaths()
     }
 }
 
+static Task RequestClassificationIsClosed()
+{
+    var widget = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.GetSnapshot,
+        RequestId = 1,
+        Payload = BridgeJson.ToElement(new WidgetIdRequest("widget-a")),
+    });
+    Assert.Equal(BridgeRequestKind.GetSnapshot, widget.Kind);
+    Assert.Equal("widget-a", widget.WidgetId);
+    Assert.True(widget.IsKnown, "Known widget request was not classified as known.");
+
+    var global = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ListWidgets,
+        RequestId = 2,
+        Payload = BridgeJson.ToElement(new { }),
+    });
+    Assert.Equal(BridgeRequestKind.ListWidgets, global.Kind);
+    Assert.Equal<string?>(null, global.WidgetId);
+
+    var malformed = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.Action,
+        RequestId = 3,
+        Payload = BridgeJson.ToElement(new
+        {
+            widgetId = "widget-a",
+            unexpected = true,
+        }),
+    });
+    Assert.Equal(BridgeRequestKind.Malformed, malformed.Kind);
+    Assert.Equal<string?>(null, malformed.WidgetId);
+    Assert.False(malformed.IsKnown,
+        "Malformed payload acquired a per-widget scheduling key.");
+
+    var invalidWidget = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.GetSnapshot,
+        RequestId = 4,
+        Payload = BridgeJson.ToElement(new WidgetIdRequest("../widget")),
+    });
+    Assert.Equal(BridgeRequestKind.Malformed, invalidWidget.Kind);
+    Assert.Equal<string?>(null, invalidWidget.WidgetId);
+
+    var unknown = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = "future-request",
+        RequestId = 5,
+        Payload = BridgeJson.ToElement(new { widgetId = "widget-a" }),
+    });
+    Assert.Equal(BridgeRequestKind.Unknown, unknown.Kind);
+    Assert.Equal<string?>(null, unknown.WidgetId);
+    Assert.False(unknown.IsKnown,
+        "Unknown request acquired an implicit scheduling convention.");
+    return Task.CompletedTask;
+}
+
 static async Task RequestDispatcherOwnsWidgetOrdering()
 {
     var order = new List<string>();
@@ -509,19 +568,19 @@ static async Task RequestDispatcherOwnsWidgetOrdering()
     await using (var dispatcher = new BridgeRequestDispatcher(
         CancellationToken.None, _ => { }, maximumConcurrentRequests: 3))
     {
-        var first = dispatcher.TryDispatch(1, "widget-a", async _ =>
+        var first = dispatcher.TryDispatch(1, WidgetRequest("widget-a"), async _ =>
         {
             order.Add("first-start");
             firstStarted.SetResult();
             await releaseFirst.Task;
             order.Add("first-end");
         });
-        var second = dispatcher.TryDispatch(2, "widget-a", _ =>
+        var second = dispatcher.TryDispatch(2, WidgetRequest("widget-a"), _ =>
         {
             order.Add("second");
             return Task.CompletedTask;
         });
-        var otherWidget = dispatcher.TryDispatch(3, "widget-b", _ =>
+        var otherWidget = dispatcher.TryDispatch(3, WidgetRequest("widget-b"), _ =>
         {
             order.Add("other");
             return Task.CompletedTask;
@@ -546,12 +605,12 @@ static async Task RequestDispatcherOwnsWidgetOrdering()
     {
         var releaseFailure = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var predecessor = dispatcher.TryDispatch(10, "widget-a", async _ =>
+        var predecessor = dispatcher.TryDispatch(10, WidgetRequest("widget-a"), async _ =>
         {
             await releaseFailure.Task;
             throw new InvalidOperationException("predecessor failed");
         });
-        var successor = dispatcher.TryDispatch(11, "widget-a", _ =>
+        var successor = dispatcher.TryDispatch(11, WidgetRequest("widget-a"), _ =>
         {
             successorRan = true;
             return Task.CompletedTask;
@@ -574,13 +633,13 @@ static async Task RequestDispatcherBoundsAdmission()
         TaskCreationOptions.RunContinuationsAsynchronously);
     await using var dispatcher = new BridgeRequestDispatcher(
         CancellationToken.None, _ => { }, maximumConcurrentRequests: 2);
-    var first = dispatcher.TryDispatch(1, "widget-a", _ => release.Task);
-    var second = dispatcher.TryDispatch(2, "widget-b", _ => release.Task);
+    var first = dispatcher.TryDispatch(1, WidgetRequest("widget-a"), _ => release.Task);
+    var second = dispatcher.TryDispatch(2, WidgetRequest("widget-b"), _ => release.Task);
     Assert.Equal(0, dispatcher.AvailableSlots);
     Assert.Throws<BridgeProtocolException>(() =>
-        dispatcher.TryDispatch(1, null, _ => Task.CompletedTask));
+        dispatcher.TryDispatch(1, GlobalRequest(), _ => Task.CompletedTask));
     var thirdRan = false;
-    var saturated = dispatcher.TryDispatch(3, null, _ =>
+    var saturated = dispatcher.TryDispatch(3, GlobalRequest(), _ =>
     {
         thirdRan = true;
         return Task.CompletedTask;
@@ -599,30 +658,62 @@ static async Task RequestDispatcherForcedDrainIsComplete()
 {
     var started = new TaskCompletionSource(
         TaskCreationOptions.RunContinuationsAsynchronously);
+    var deadline = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     var starts = 0;
-    var cancellations = 0;
+    var latePublications = 0;
+    var fatalPublications = 0;
     await using var dispatcher = new BridgeRequestDispatcher(
-        CancellationToken.None, _ => { }, maximumConcurrentRequests: 2);
-    for (var requestId = 1L; requestId <= 2; requestId++)
+        CancellationToken.None,
+        _ => Interlocked.Increment(ref fatalPublications),
+        maximumConcurrentRequests: 2,
+        drainDeadline: _ => deadline.Task);
+    Assert.True(BridgeRequestDispatcher.DrainTimeout <= TimeSpan.FromSeconds(2),
+        "The production dispatcher drain deadline is not bounded.");
+
+    var reply = dispatcher.TryDispatch(1, WidgetRequest("widget-1"), async token =>
     {
-        _ = dispatcher.TryDispatch(requestId, $"widget-{requestId}", async token =>
-        {
-            if (Interlocked.Increment(ref starts) == 2) started.SetResult();
-            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
-            catch (OperationCanceledException)
-            {
-                Interlocked.Increment(ref cancellations);
-                throw;
-            }
-        });
-    }
+        if (Interlocked.Increment(ref starts) == 2) started.SetResult();
+        await release.Task.ConfigureAwait(false); // Deliberately ignores cancellation.
+        token.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref latePublications);
+    });
+    _ = dispatcher.TryDispatch(2, GlobalRequest(), async _ =>
+    {
+        if (Interlocked.Increment(ref starts) == 2) started.SetResult();
+        await release.Task.ConfigureAwait(false); // Deliberately ignores cancellation.
+        throw new InvalidOperationException("late fatal");
+    });
     await started.Task;
-    await dispatcher.CancelAndDrainAsync().WaitAsync(TimeSpan.FromSeconds(1));
-    Assert.Equal(2, cancellations);
+    var drain = dispatcher.CancelAndDrainAsync();
+    Assert.False(drain.IsCompleted,
+        "Drain completed before its manually controlled production deadline.");
+    deadline.SetResult();
+    await drain;
     Assert.Equal(0, dispatcher.ActiveCount);
     Assert.Equal(0, dispatcher.WidgetTailCount);
     Assert.Equal(2, dispatcher.AvailableSlots);
+    Assert.Equal(2, dispatcher.QuarantinedCount);
+
+    var quarantineDrained = dispatcher.QuarantineDrained;
+    await dispatcher.DisposeAsync();
+    Assert.Equal(2, dispatcher.QuarantinedCount);
+    release.SetResult();
+    await reply.Completion!;
+    await quarantineDrained;
+    Assert.Equal(0, dispatcher.QuarantinedCount);
+    Assert.Equal(0, latePublications);
+    Assert.Equal(0, fatalPublications);
+    Assert.Equal<Exception?>(null, dispatcher.FatalException);
 }
+
+static BridgeRequestKey WidgetRequest(string widgetId) =>
+    BridgeRequestKey.Widget(BridgeRequestKind.GetSnapshot, widgetId);
+
+static BridgeRequestKey GlobalRequest() =>
+    BridgeRequestKey.Global(BridgeRequestKind.ListWidgets);
 
 static async Task StalledAdmissionKeepsControlPlaneResponsive()
 {
