@@ -52,6 +52,8 @@ internal sealed record ConfiguredWidget
     [JsonIgnore]
     public string? IsolationKey { get; init; }
     [JsonIgnore]
+    public string? AuthorityGeneration { get; init; }
+    [JsonIgnore]
     public IReadOnlyList<string> ReadOnlyPaths { get; init; } = [];
     [JsonIgnore]
     public Func<CancellationToken, IWidgetProcessContentLease>?
@@ -359,6 +361,7 @@ public sealed class BridgeCatalog
                 DeclaredCapabilities = declaredCapabilities,
                 RequiresAppContainer = true,
                 IsolationKey = CommunityIsolationKey(authorityPublisherId, manifest.Id),
+                AuthorityGeneration = manifest.Version,
                 ReadOnlyPaths = [],
                 ContentLeaseFactory = cancellationToken => AcquireInstalledContentLease(
                     installedRoot,
@@ -418,6 +421,7 @@ public sealed class BridgeCatalog
             .. source.DeclaredCapabilities,
             source.RequiresAppContainer ? "appcontainer-required" : "host-trusted-job-only",
             source.IsolationKey ?? string.Empty,
+            source.AuthorityGeneration ?? string.Empty,
             source.ContentLeaseFactory is null
                 ? "broad-read-authority"
                 : "verified-content-lease-v1",

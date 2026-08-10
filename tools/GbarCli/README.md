@@ -25,6 +25,9 @@ gbar version select dev.example.volume-control 1.0.0
 gbar version rollback dev.example.volume-control
 gbar enable dev.example.volume-control
 
+gbar authority-recovery list
+gbar authority-recovery retry <confirmation-token>
+
 gbar theme new "Ocean Night" --id dev.example.ocean-night --publisher dev.example
 gbar theme validate .\OceanNight
 gbar theme preview .\OceanNight
@@ -119,6 +122,16 @@ gbar theme list
   There is no `--force` path and no recursive
   path supplied by the caller. Repeat until the reported quota is satisfied,
   then use normal `list`/Settings validation again.
+- `authority-recovery list` is a local host-control view of interrupted
+  AppContainer content-authority transactions. It prints only a bounded
+  confirmation token, validated AppContainer profile name, target count, and
+  current/legacy format. It never prints journal paths, content paths, file
+  identities, security descriptors, or nested exception details.
+- `authority-recovery retry <confirmation-token>` re-reads and compares the
+  exact pending transaction before restoring and verifying every recorded DACL.
+  Obtain the token from a fresh `authority-recovery list`. Stale or malformed
+  tokens fail closed. The command has no journal-root option, raw clear, force,
+  path argument, or way to supply replacement authority data.
 - `version list <widget-id>` lists every immutable installed version and marks
   the active one. `version select <widget-id> <version>` pins any installed
   canonical dotted numeric version. `version rollback <widget-id>` selects the

@@ -21,6 +21,47 @@ public sealed record PlatformWorkerDiagnostic(
     string? LastFailureCode,
     bool CanRestart);
 
+/// <summary>
+/// Sanitized host-owned recovery state. Raw profile names, SIDs, filesystem
+/// paths, security descriptors, and object identities must never be projected
+/// into this contract.
+/// </summary>
+public enum PlatformAuthorityRecoveryState
+{
+    Pending,
+    Blocked,
+    Unavailable,
+}
+
+public sealed record PlatformAuthorityRecoveryDiagnostic(
+    string RecoveryId,
+    string DisplayName,
+    PlatformAuthorityRecoveryState State,
+    string StatusCode,
+    bool CanRetry,
+    string? ConfirmationToken);
+
+public enum PlatformAuthorityRecoveryRetryStatus
+{
+    Recovered,
+    StillPending,
+    Stale,
+    Unavailable,
+    Refused,
+}
+
+/// <summary>
+/// Closed retry result. The bounded code is intentionally the only diagnostic
+/// text so an authority implementation cannot return raw recovery evidence.
+/// </summary>
+public sealed record PlatformAuthorityRecoveryRetryResult(
+    PlatformAuthorityRecoveryRetryStatus Status,
+    string Code)
+{
+    public static PlatformAuthorityRecoveryRetryResult Refused(string code) =>
+        new(PlatformAuthorityRecoveryRetryStatus.Refused, code);
+}
+
 public sealed record PlatformDiagnosticsSnapshot(
     int SchemaVersion,
     long Revision,
@@ -33,8 +74,19 @@ public sealed record PlatformDiagnosticsSnapshot(
     PlatformDiagnosticArea Guide,
     IReadOnlyList<PlatformWorkerDiagnostic> Workers)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const int MaximumWorkers = 256;
+    public const int MaximumAuthorityRecoveries = 64;
+    public const int RecoveryIdLength = 32;
+    public const int ConfirmationTokenLength = 32;
+    public const int LegacyConfirmationTokenLength = 64;
+
+    /// <summary>
+    /// Bounded sanitized authority-recovery projection. This additive property
+    /// preserves source compatibility for schema-aware snapshot producers.
+    /// </summary>
+    public IReadOnlyList<PlatformAuthorityRecoveryDiagnostic> AuthorityRecoveries
+        { get; init; } = [];
 
     public static PlatformDiagnosticsSnapshot Unavailable(string summary = "Runtime diagnostics are unavailable") =>
         new(
@@ -62,6 +114,24 @@ public interface IPlatformDiagnosticsService
 {
     ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default);
+
+    ValueTask<PlatformAuthorityRecoveryRetryResult> RetryAuthorityRecoveryAsync(
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (confirmationToken is null ||
+            confirmationToken.Length is not (
+                PlatformDiagnosticsSnapshot.ConfirmationTokenLength or
+                PlatformDiagnosticsSnapshot.LegacyConfirmationTokenLength) ||
+            !confirmationToken.All(character =>
+                character is >= '0' and <= '9' or >= 'A' and <= 'F'))
+            throw new ArgumentException(
+                "Authority recovery confirmation token is invalid.",
+                nameof(confirmationToken));
+        return ValueTask.FromResult(
+            PlatformAuthorityRecoveryRetryResult.Refused("retry_unsupported"));
+    }
 }
 
 public sealed class UnavailablePlatformDiagnosticsService : IPlatformDiagnosticsService

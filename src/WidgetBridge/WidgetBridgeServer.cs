@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Runtime.ExceptionServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformDiagnostics;
@@ -42,6 +44,9 @@ public sealed class WidgetBridgeServer(
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
     private bool _disposed;
+
+    internal IAppContainerAuthorityRecoveryService AuthorityRecoveryService { private get; init; } =
+        AppContainerAuthorityRecoveryService.Default;
 
     public int RunningWorkerCount => _clients.Values.Count(registration => registration.Client.IsRunning);
     public WorkerResidencyBudgetSnapshot ResidencyBudget => _residentBudget.Snapshot;
@@ -603,7 +608,9 @@ public sealed class WidgetBridgeServer(
                 ReadOnlyPaths = configured.ReadOnlyPaths,
                 CompanionSessionFactory = IsTrustedSettings(configured)
                     ? context => new DiagnosticsWidgetProcessCompanion(
-                        CreateDiagnosticsSnapshotAsync, context)
+                        CreateDiagnosticsSnapshotAsync,
+                        RetryAuthorityRecoveryAsync,
+                        context)
                     : _consentStore is null || _platformBackend is null
                         ? null
                         : CreateCompanionFactory(configured),
@@ -827,6 +834,23 @@ public sealed class WidgetBridgeServer(
                 : Area("appearance", "Appearance", PlatformDiagnosticState.Degraded,
                     $"Revision {_appearance.Current.Revision}; retained last good after {appearanceErrors} errors");
 
+        // Journal inspection can wait briefly for the global authority lock.
+        // Keep that bounded wait off the diagnostics pipe loop and honor the
+        // authenticated request deadline even if another launch owns the lock.
+        var inspectionTask = Task.Run(
+            () => CreateAuthorityRecoveryDiagnostics(catalog, cancellationToken),
+            CancellationToken.None);
+        IReadOnlyList<PlatformAuthorityRecoveryDiagnostic> authorityRecoveries;
+        try
+        {
+            authorityRecoveries = await inspectionTask.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _ = ObserveCompletionAsync(inspectionTask);
+            throw;
+        }
         return new PlatformDiagnosticsSnapshot(
             PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
             Interlocked.Increment(ref _diagnosticsRevision),
@@ -849,7 +873,172 @@ public sealed class WidgetBridgeServer(
                 "Host telemetry is not reported by this build"),
             Area("guide", "Guide input", PlatformDiagnosticState.Unavailable,
                 "Host telemetry is not reported by this build"),
-            workers);
+            workers)
+        {
+            AuthorityRecoveries = authorityRecoveries,
+        };
+    }
+
+    internal IReadOnlyList<PlatformAuthorityRecoveryDiagnostic>
+        CreateAuthorityRecoveryDiagnostics(
+            BridgeCatalog catalog,
+            CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<AppContainerAuthorityRecoveryCandidate> candidates;
+        try
+        {
+            candidates = AuthorityRecoveryService.ListPending(cancellationToken);
+        }
+        catch (Exception exception) when (exception is
+            AppContainerAuthorityJournalException or
+            PlatformNotSupportedException or
+            IOException or
+            UnauthorizedAccessException)
+        {
+            return
+            [
+                new PlatformAuthorityRecoveryDiagnostic(
+                    RecoveryId("recovery-state-unavailable"),
+                    "Authority recovery unavailable",
+                    PlatformAuthorityRecoveryState.Unavailable,
+                    "recovery_state_unavailable",
+                    CanRetry: false,
+                    ConfirmationToken: null),
+            ];
+        }
+
+        var displayNamesByProfile = catalog.Widgets
+            .Select(descriptor => catalog.GetConfigured(descriptor.Id))
+            .Where(configured =>
+                configured.RequiresAppContainer &&
+                configured.IsolationKey is not null)
+            .GroupBy(
+                configured => WindowsAppContainer.ProfileNameFor(configured.IsolationKey!),
+                StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    return AuthorityRecoveryDisplayName(group.First());
+                },
+                StringComparer.Ordinal);
+
+        return candidates
+            .OrderBy(candidate => candidate.ConfirmationToken, StringComparer.Ordinal)
+            .Take(PlatformDiagnosticsSnapshot.MaximumAuthorityRecoveries)
+            .Select(candidate => new PlatformAuthorityRecoveryDiagnostic(
+                RecoveryId(candidate.ConfirmationToken),
+                displayNamesByProfile.GetValueOrDefault(
+                    candidate.ProfileName,
+                    candidate.IsLegacy
+                        ? "Legacy community widget recovery"
+                        : "Community widget recovery"),
+                PlatformAuthorityRecoveryState.Pending,
+                candidate.IsLegacy
+                    ? "legacy_pending_recovery"
+                    : "pending_recovery",
+                CanRetry: true,
+                candidate.ConfirmationToken))
+            .ToArray();
+    }
+
+    internal async ValueTask<PlatformAuthorityRecoveryRetryResult> RetryAuthorityRecoveryAsync(
+        string confirmationToken,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var commitGate = new AppContainerAuthorityRecoveryCommitGate(cancellationToken);
+        try
+        {
+            var recoveryTask = Task.Run(
+                () => AuthorityRecoveryService.Retry(
+                    confirmationToken, cancellationToken, commitGate),
+                CancellationToken.None);
+            try
+            {
+                await recoveryTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Cancellation can be raised reentrantly by the commit action
+                // itself. Yield once so that action can publish its atomic
+                // commit decision before this request chooses its result.
+                await Task.Yield();
+                if (commitGate.CommitWon)
+                {
+                    _ = ObserveCompletionAsync(recoveryTask);
+                    return new PlatformAuthorityRecoveryRetryResult(
+                        PlatformAuthorityRecoveryRetryStatus.Recovered,
+                        "recovered");
+                }
+                _ = ObserveCompletionAsync(recoveryTask);
+                throw;
+            }
+            return new PlatformAuthorityRecoveryRetryResult(
+                PlatformAuthorityRecoveryRetryStatus.Recovered,
+                "recovered");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AppContainerAuthorityRecoveryException exception)
+        {
+            var result = exception.Code switch
+            {
+                "stale_confirmation" => new PlatformAuthorityRecoveryRetryResult(
+                    PlatformAuthorityRecoveryRetryStatus.Stale,
+                    "stale_confirmation"),
+                "recovery_not_verified" => new PlatformAuthorityRecoveryRetryResult(
+                    PlatformAuthorityRecoveryRetryStatus.StillPending,
+                    "recovery_not_verified"),
+                _ => PlatformAuthorityRecoveryRetryResult.Refused("retry_refused"),
+            };
+            return result;
+        }
+        catch (Exception exception) when (exception is
+            AppContainerAuthorityJournalException or
+            PlatformNotSupportedException or
+            IOException or
+            UnauthorizedAccessException)
+        {
+            return new PlatformAuthorityRecoveryRetryResult(
+                PlatformAuthorityRecoveryRetryStatus.Unavailable,
+                "recovery_state_unavailable");
+        }
+    }
+
+    private static string RecoveryId(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 16));
+
+    private static string AuthorityRecoveryDisplayName(ConfiguredWidget configured)
+    {
+        var generation = configured.AuthorityGeneration is { Length: > 0 }
+            ? configured.AuthorityGeneration
+            : null;
+        var candidate = generation is null
+            ? configured.Name
+            : $"{configured.Name} {generation}";
+        if (IsSafeAuthorityRecoveryLabel(candidate)) return candidate;
+        return generation is not null && IsSafeAuthorityRecoveryLabel(generation)
+            ? $"Community widget {generation}"
+            : "Community widget recovery";
+    }
+
+    private static bool IsSafeAuthorityRecoveryLabel(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 160 &&
+        !value.StartsWith("S-1-", StringComparison.OrdinalIgnoreCase) &&
+        value.All(character =>
+            !char.IsControl(character) && character is not '\\' and not '/' and not ':');
+
+    private static async Task ObserveCompletionAsync(Task task)
+    {
+        try { await task.ConfigureAwait(false); }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // The authenticated caller already received cancellation. Observe
+            // the bounded worker's terminal failure without publishing it.
+        }
     }
 
     private static PlatformDiagnosticArea Area(

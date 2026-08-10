@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.IO.Pipes;
 using System.Text.Json;
 using GameBarAlternative.PlatformBroker;
+using GameBarAlternative.PlatformDiagnostics;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetBridge;
@@ -43,6 +44,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog reconciliation preserves compatible workers and retires changed workers", CatalogReconciliationPreservesCompatibleWorkers),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
+    ("Settings authority recovery diagnostics are sanitized and retryable", AuthorityRecoveryDiagnosticsAreSanitized),
     ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
     ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
@@ -231,6 +233,7 @@ static async Task DiagnosticsAreSettingsOnly()
 
     await using var companion = new DiagnosticsWidgetProcessCompanion(
         _ => ValueTask.FromResult(GameBarAlternative.PlatformDiagnostics.PlatformDiagnosticsSnapshot.Unavailable()),
+        (_, _) => ValueTask.FromResult(PlatformAuthorityRecoveryRetryResult.Refused("test_refused")),
         new WidgetProcessCompanionContext(
             WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null));
     var pidIndex = companion.WorkerArguments.ToList().IndexOf("--diagnostics-server-pid");
@@ -239,6 +242,119 @@ static async Task DiagnosticsAreSettingsOnly()
     Assert.Equal(
         Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
         companion.WorkerArguments[pidIndex + 1]);
+}
+
+static async Task AuthorityRecoveryDiagnosticsAreSanitized()
+{
+    const string token = "0123456789ABCDEF0123456789ABCDEF";
+    const string isolationKey = "publisher.example:widget.example";
+    var profileName = WindowsAppContainer.ProfileNameFor(isolationKey);
+    var recovery = new TestAuthorityRecoveryService(
+    [
+        new AppContainerAuthorityRecoveryCandidate(token, profileName, 3, IsLegacy: false),
+    ]);
+    var catalog = new BridgeCatalog(
+    [
+        DiagnosticCandidate() with
+        {
+            WorkerFingerprint = new string('A', 64),
+            CatalogFingerprint = new string('B', 64),
+        },
+        new ConfiguredWidget
+        {
+            Id = "widget.example",
+            PackageId = "widget.example",
+            PublisherId = "publisher.example",
+            Name = "Tools: Audio",
+            InstanceId = "widget.example@2.1.0",
+            WorkerExecutable = Environment.ProcessPath
+                ?? throw new InvalidOperationException("Test process path is unavailable."),
+            RequiresAppContainer = true,
+            IsolationKey = isolationKey,
+            AuthorityGeneration = "2.1.0",
+            WorkerFingerprint = new string('C', 64),
+            CatalogFingerprint = new string('D', 64),
+        },
+    ]);
+    await using var server = new WidgetBridgeServer(
+        $"gba-authority-test-{Guid.NewGuid():N}", catalog)
+    {
+        AuthorityRecoveryService = recovery,
+    };
+
+    var diagnostic = server.CreateAuthorityRecoveryDiagnostics(catalog).Single();
+    Assert.Equal("Community widget 2.1.0", diagnostic.DisplayName);
+    Assert.Equal(PlatformAuthorityRecoveryState.Pending, diagnostic.State);
+    Assert.Equal("pending_recovery", diagnostic.StatusCode);
+    Assert.True(diagnostic.CanRetry, "The exact pending record was not retryable.");
+    Assert.Equal(token, diagnostic.ConfirmationToken);
+    Assert.Equal(PlatformDiagnosticsSnapshot.RecoveryIdLength, diagnostic.RecoveryId.Length);
+    var serialized = JsonSerializer.Serialize(diagnostic);
+    Assert.True(!serialized.Contains(profileName, StringComparison.Ordinal),
+        "The private AppContainer profile escaped the sanitized diagnostics contract.");
+    Assert.True(!serialized.Contains("S-1-", StringComparison.OrdinalIgnoreCase),
+        "A security principal escaped the sanitized diagnostics contract.");
+
+    var result = await server.RetryAuthorityRecoveryAsync(token, CancellationToken.None);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Recovered, result.Status);
+    Assert.Equal("recovered", result.Code);
+    Assert.Equal(token, recovery.LastRetriedToken);
+
+    recovery.RetryFailure = new AppContainerAuthorityRecoveryException("stale_confirmation");
+    result = await server.RetryAuthorityRecoveryAsync(token, CancellationToken.None);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Stale, result.Status);
+    Assert.Equal("stale_confirmation", result.Code);
+
+    recovery.RetryFailure = new AppContainerAuthorityRecoveryException("recovery_not_verified");
+    result = await server.RetryAuthorityRecoveryAsync(token, CancellationToken.None);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.StillPending, result.Status);
+    Assert.Equal("recovery_not_verified", result.Code);
+
+    recovery.RetryFailure = new AppContainerAuthorityRecoveryException("invalid_confirmation");
+    result = await server.RetryAuthorityRecoveryAsync(token, CancellationToken.None);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Refused, result.Status);
+    Assert.Equal("retry_refused", result.Code);
+
+    recovery.RetryFailure = null;
+    recovery.ListFailure = new AppContainerAuthorityJournalException(
+        "C:\\private\\authority.pending.json");
+    var unavailable = server.CreateAuthorityRecoveryDiagnostics(catalog).Single();
+    Assert.Equal(PlatformAuthorityRecoveryState.Unavailable, unavailable.State);
+    Assert.True(!unavailable.CanRetry, "Unavailable journal state remained retryable.");
+    Assert.Equal<string?>(null, unavailable.ConfirmationToken);
+    Assert.True(!JsonSerializer.Serialize(unavailable).Contains(
+            "C:\\private", StringComparison.OrdinalIgnoreCase),
+        "Unavailable journal state disclosed its private path.");
+
+    var blocking = new BlockingAuthorityRecoveryService();
+    await using var cancellationServer = new WidgetBridgeServer(
+        $"gba-authority-cancel-{Guid.NewGuid():N}", catalog)
+    {
+        AuthorityRecoveryService = blocking,
+    };
+    using var cancellation = new CancellationTokenSource();
+    var cancelledRetry = cancellationServer.RetryAuthorityRecoveryAsync(
+        token, cancellation.Token).AsTask();
+    await blocking.Started.WaitAsync(TimeSpan.FromSeconds(1));
+    cancellation.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() => cancelledRetry);
+    blocking.Release();
+    await blocking.Completed.WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.True(!blocking.Committed,
+        "Cancelled Bridge recovery committed its journal-clear decision.");
+
+    using var commitCancellation = new CancellationTokenSource();
+    var commitWinner = new CommitWinningAuthorityRecoveryService(commitCancellation);
+    await using var commitServer = new WidgetBridgeServer(
+        $"gba-authority-commit-{Guid.NewGuid():N}", catalog)
+    {
+        AuthorityRecoveryService = commitWinner,
+    };
+    result = await commitServer.RetryAuthorityRecoveryAsync(
+        token, commitCancellation.Token);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Recovered, result.Status);
+    Assert.True(commitWinner.Committed,
+        "A verified journal commit did not win its atomic cancellation decision.");
 }
 
 static ConfiguredWidget DiagnosticCandidate() => new()
@@ -2288,6 +2404,92 @@ file sealed class BridgeTestClient : IAsyncDisposable
     }
 
     public async ValueTask DisposeAsync() => await _pipe.DisposeAsync();
+}
+
+file sealed class TestAuthorityRecoveryService(
+    IReadOnlyList<AppContainerAuthorityRecoveryCandidate> candidates)
+    : IAppContainerAuthorityRecoveryService
+{
+    public Exception? ListFailure { get; set; }
+    public Exception? RetryFailure { get; set; }
+    public string? LastRetriedToken { get; private set; }
+
+    public IReadOnlyList<AppContainerAuthorityRecoveryCandidate> ListPending(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (ListFailure is not null) throw ListFailure;
+        return candidates;
+    }
+
+    public void Retry(
+        string confirmationToken,
+        CancellationToken cancellationToken = default,
+        AppContainerAuthorityRecoveryCommitGate? commitGate = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastRetriedToken = confirmationToken;
+        if (RetryFailure is not null) throw RetryFailure;
+        commitGate?.Commit(() => { });
+    }
+}
+
+file sealed class BlockingAuthorityRecoveryService : IAppContainerAuthorityRecoveryService
+{
+    private readonly ManualResetEventSlim _release = new(initialState: false);
+    private readonly TaskCompletionSource _started = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _completed = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public Task Started => _started.Task;
+    public Task Completed => _completed.Task;
+    public bool Committed { get; private set; }
+
+    public IReadOnlyList<AppContainerAuthorityRecoveryCandidate> ListPending(
+        CancellationToken cancellationToken = default) => [];
+
+    public void Retry(
+        string confirmationToken,
+        CancellationToken cancellationToken = default,
+        AppContainerAuthorityRecoveryCommitGate? commitGate = null)
+    {
+        _started.TrySetResult();
+        try
+        {
+            _release.Wait();
+            (commitGate ?? new AppContainerAuthorityRecoveryCommitGate(cancellationToken))
+                .Commit(() => Committed = true);
+        }
+        finally
+        {
+            _completed.TrySetResult();
+        }
+    }
+
+    public void Release() => _release.Set();
+}
+
+file sealed class CommitWinningAuthorityRecoveryService(
+    CancellationTokenSource cancellation) : IAppContainerAuthorityRecoveryService
+{
+    public bool Committed { get; private set; }
+
+    public IReadOnlyList<AppContainerAuthorityRecoveryCandidate> ListPending(
+        CancellationToken cancellationToken = default) => [];
+
+    public void Retry(
+        string confirmationToken,
+        CancellationToken cancellationToken = default,
+        AppContainerAuthorityRecoveryCommitGate? commitGate = null)
+    {
+        (commitGate ?? new AppContainerAuthorityRecoveryCommitGate(cancellationToken))
+            .Commit(() =>
+            {
+                Committed = true;
+                cancellation.Cancel();
+            });
+    }
 }
 
 file static class Assert

@@ -67,6 +67,7 @@ if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Help describes the complete workflow", HelpWorks),
+    ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
     ("New requires a real SDK project outside the source checkout", NewScaffoldsOutsideCheckout),
@@ -140,8 +141,10 @@ static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "repair", "list", "enable", "disable", "version" })
+    foreach (var command in new[] { "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "repair", "authority-recovery", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
+    Assert.Contains("repair manages quarantined installed-catalog generations", result.Output);
+    Assert.Contains("no force-clear", result.Output);
     var version = await RunCli("version", "help");
     Assert.Equal(0, version.Code);
     foreach (var command in new[] { "list", "select", "rollback" })
@@ -150,6 +153,132 @@ static async Task HelpWorks()
     Assert.Equal(0, theme.Code);
     foreach (var command in new[] { "new", "validate", "preview", "pack", "inspect", "install", "list" })
         Assert.Contains($"theme {command}", theme.Output);
+}
+
+static async Task AuthorityRecoveryWorkflow()
+{
+    const string token = "0123456789ABCDEF0123456789ABCDEF";
+    const string legacyToken =
+        "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+    const string profile = "GameBarAlternative.Widget.0123456789ABCDEF";
+    const string sensitivePath = @"C:\Users\private\package\secret.dll";
+    const string sensitiveDescriptor = "D:(A;;FA;;;S-1-5-21-PRIVATE)";
+
+    var empty = await RunAuthorityRecovery(
+        new TestAuthorityRecoveryClient([]), "list");
+    Assert.Equal(0, empty.Code);
+    Assert.Contains("No pending AppContainer authority recovery transactions.",
+        empty.Output);
+
+    var client = new TestAuthorityRecoveryClient(
+        [
+            new AuthorityRecoverySummary(token, profile, 3, IsLegacy: false),
+            new AuthorityRecoverySummary(
+                legacyToken, profile + ".Legacy", 2, IsLegacy: true),
+        ]);
+    var listed = await RunAuthorityRecovery(client, "list");
+    Assert.Equal(0, listed.Code);
+    Assert.Contains(token, listed.Output);
+    Assert.Contains($"profile={profile}", listed.Output);
+    Assert.Contains("targets=3", listed.Output);
+    Assert.Contains("format=current", listed.Output);
+    Assert.Contains(legacyToken, listed.Output);
+    Assert.Contains("targets=2", listed.Output);
+    Assert.Contains("format=legacy", listed.Output);
+    Assert.DoesNotContain(sensitivePath, listed.Output);
+    Assert.DoesNotContain(sensitiveDescriptor, listed.Output);
+
+    foreach (var invalidToken in new[]
+             {
+                 "not-a-token",
+                 new string('A', 31),
+                 new string('A', 33),
+                 new string('A', 63),
+                 new string('A', 65),
+                 new string('a', 32),
+                 new string('G', 32),
+             })
+    {
+        var invalid = await RunAuthorityRecovery(client, "retry", invalidToken);
+        Assert.Equal(2, invalid.Code);
+        Assert.Contains("uppercase hexadecimal token", invalid.Error);
+    }
+    Assert.Equal(0, client.RetryCount);
+
+    var staleClient = new TestAuthorityRecoveryClient(
+        [new AuthorityRecoverySummary(token, profile, 3, IsLegacy: false)],
+        retryFailure: new AuthorityRecoveryClientException(
+            "stale_confirmation",
+            new IOException($"{sensitivePath} {sensitiveDescriptor}")));
+    var stale = await RunAuthorityRecovery(staleClient, "retry", token);
+    Assert.Equal(1, stale.Code);
+    Assert.Contains("stale_confirmation", stale.Error);
+    Assert.DoesNotContain(sensitivePath, stale.Error);
+    Assert.DoesNotContain(sensitiveDescriptor, stale.Error);
+
+    var pendingClient = new TestAuthorityRecoveryClient(
+        [new AuthorityRecoverySummary(token, profile, 3, IsLegacy: false)],
+        retryFailure: new AuthorityRecoveryClientException(
+            "recovery_not_verified",
+            new IOException($"{sensitivePath} {sensitiveDescriptor}")));
+    var pending = await RunAuthorityRecovery(pendingClient, "retry", token);
+    Assert.Equal(1, pending.Code);
+    Assert.Contains("recovery_not_verified", pending.Error);
+    Assert.Equal(token, pendingClient.ListPending().Single().ConfirmationToken);
+    Assert.DoesNotContain(sensitivePath, pending.Error);
+
+    var invalidClient = new TestAuthorityRecoveryClient(
+        retryFailure: new AuthorityRecoveryClientException("invalid_confirmation"));
+    var invalidAdapter = await RunAuthorityRecovery(invalidClient, "retry", token);
+    Assert.Equal(2, invalidAdapter.Code);
+    Assert.Contains("valid confirmation token", invalidAdapter.Error);
+
+    var unavailableClient = new TestAuthorityRecoveryClient(
+        listFailure: new AuthorityRecoveryClientException(
+            "unexpected_internal_code",
+            new IOException($"{sensitivePath} {sensitiveDescriptor}")));
+    var unavailable = await RunAuthorityRecovery(unavailableClient, "list");
+    Assert.Equal(1, unavailable.Code);
+    Assert.Contains("recovery_unavailable", unavailable.Error);
+    Assert.DoesNotContain("unexpected_internal_code", unavailable.Error);
+    Assert.DoesNotContain(sensitivePath, unavailable.Error);
+    Assert.DoesNotContain(sensitiveDescriptor, unavailable.Error);
+
+    var recovered = await RunAuthorityRecovery(client, "retry", token);
+    Assert.Equal(0, recovered.Code);
+    Assert.Equal(1, client.RetryCount);
+    Assert.Equal(token, client.LastRetryToken);
+    Assert.Contains(token, recovered.Output);
+
+    var legacyRecovered = await RunAuthorityRecovery(client, "retry", legacyToken);
+    Assert.Equal(0, legacyRecovered.Code);
+    Assert.Equal(2, client.RetryCount);
+    Assert.Equal(legacyToken, client.LastRetryToken);
+
+    foreach (var rejected in new[]
+             {
+                 new[] { "clear" },
+                 new[] { "list", "--journal", sensitivePath },
+                 new[] { "retry", token, "--force" },
+             })
+    {
+        var result = await RunAuthorityRecovery(client, rejected);
+        Assert.Equal(2, result.Code);
+        Assert.DoesNotContain(sensitivePath, result.Error);
+    }
+
+    using var cancellation = new CancellationTokenSource();
+    cancellation.Cancel();
+    using var cancelledOutput = new StringWriter();
+    using var cancelledError = new StringWriter();
+    var cancelled = await CliApplication.RunAsync(
+        ["authority-recovery", "retry", token],
+        cancelledOutput,
+        cancelledError,
+        remoteHttpHandler: null,
+        cancellation.Token);
+    Assert.Equal(130, cancelled);
+    Assert.Contains("operation cancelled", cancelledError.ToString());
 }
 
 static async Task WidgetConfigWorkflow()
@@ -1705,6 +1834,30 @@ static async Task<CliResult> RunCli(params string[] args)
     return new CliResult(code, output.ToString(), error.ToString());
 }
 
+static async Task<CliResult> RunAuthorityRecovery(
+    IAuthorityRecoveryClient client,
+    params string[] args)
+{
+    using var output = new StringWriter();
+    using var error = new StringWriter();
+    int code;
+    try
+    {
+        code = await AuthorityRecoveryCommand.RunAsync(args, output, client);
+    }
+    catch (CliUsageException exception)
+    {
+        await error.WriteLineAsync($"error: {exception.Message}");
+        code = 2;
+    }
+    catch (CliOperationException exception)
+    {
+        await error.WriteLineAsync($"error: {exception.Message}");
+        code = 1;
+    }
+    return new CliResult(code, output.ToString(), error.ToString());
+}
+
 static async Task<CliResult> RunProcessAsync(
     string executable,
     IReadOnlyList<string> arguments,
@@ -1745,6 +1898,35 @@ static async Task<CliResult> RunCliWithHandler(HttpMessageHandler handler, param
 }
 
 file sealed record CliResult(int Code, string Output, string Error);
+
+file sealed class TestAuthorityRecoveryClient(
+    IReadOnlyList<AuthorityRecoverySummary>? pending = null,
+    AuthorityRecoveryClientException? retryFailure = null,
+    AuthorityRecoveryClientException? listFailure = null)
+    : IAuthorityRecoveryClient
+{
+    public int RetryCount { get; private set; }
+    public string? LastRetryToken { get; private set; }
+
+    public IReadOnlyList<AuthorityRecoverySummary> ListPending(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return listFailure is null
+            ? pending ?? []
+            : throw listFailure;
+    }
+
+    public void Retry(
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RetryCount++;
+        LastRetryToken = confirmationToken;
+        if (retryFailure is not null) throw retryFailure;
+    }
+}
 
 file sealed class StubHttpHandler(
     Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler

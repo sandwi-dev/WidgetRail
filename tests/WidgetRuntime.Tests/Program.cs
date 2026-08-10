@@ -40,6 +40,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Caller cancellation remains cancellation during content admission", ContentAdmissionHonorsCallerCancellation),
     ("Verified content cannot overlap the trusted runtime grant", ContentAuthorityCannotOverlapRuntime),
     ("Content authority transactions restore every attempted DACL", ContentAuthorityTransactionRollsBack),
+    ("Content authority recovery cancellation retains unfinished work", ContentAuthorityRecoveryHonorsCancellation),
     ("Complete content authority rollback clears its write-ahead record", ContentAuthorityRollbackIsRecoverable),
     ("Incomplete content authority rollback recovers before the next launch", ContentAuthorityRollbackRecoversGeneration),
     ("Content authority journal failures happen before ACL mutation", ContentAuthorityJournalFailsBeforeMutation),
@@ -408,6 +409,39 @@ static Task ContentAuthorityTransactionRollsBack()
     return Task.CompletedTask;
 }
 
+static Task ContentAuthorityRecoveryHonorsCancellation()
+{
+    var targets = new[]
+    {
+        new AppContainerAuthorityTarget(
+            "root", AppContainerAuthorityTargetKind.AuthorityRootDirectory),
+        new AppContainerAuthorityTarget(
+            "directory", AppContainerAuthorityTargetKind.VerifiedDirectory),
+        new AppContainerAuthorityTarget(
+            "file", AppContainerAuthorityTargetKind.VerifiedFile),
+    };
+    using var cancellation = new CancellationTokenSource();
+    var operations = new TestAuthorityOperations(
+        afterRestore: count =>
+        {
+            if (count == 1) cancellation.Cancel();
+        });
+    var snapshots = AppContainerAuthorityTransaction.Capture(targets, operations);
+    AppContainerAuthorityTransaction.Apply(snapshots, operations);
+
+    Assert.Throws<OperationCanceledException>(() =>
+        AppContainerAuthorityTransaction.Recover(
+            snapshots, operations, cancellation.Token));
+    Assert.SequenceEqual(new[] { targets[^1] }, operations.RestoreOrder);
+    Assert.Equal(TestAuthorityOperations.Original(targets[^1]),
+        operations.StateFor(targets[^1]));
+    Assert.Equal(TestAuthorityOperations.Granted(targets[0]),
+        operations.StateFor(targets[0]));
+    Assert.Equal(TestAuthorityOperations.Granted(targets[1]),
+        operations.StateFor(targets[1]));
+    return Task.CompletedTask;
+}
+
 static async Task ContentAuthorityRollbackIsRecoverable()
 {
     if (!OperatingSystem.IsWindows()) return;
@@ -716,6 +750,16 @@ static async Task AuthorityRecoveryIsExact()
     Assert.True(!candidate.IsLegacy, "New recovery state was mislabeled as legacy.");
     Assert.True(!candidate.ToString().Contains(package.Path, StringComparison.OrdinalIgnoreCase),
         "Sanitized recovery metadata leaked an authority path.");
+    using (var cancellation = new CancellationTokenSource())
+    {
+        var gate = new AppContainerAuthorityRecoveryCommitGate(
+            cancellation.Token, cancellation.Cancel);
+        Assert.Throws<OperationCanceledException>(() => service.Retry(
+            candidate.ConfirmationToken, cancellation.Token, gate));
+    }
+    var retained = service.ListPending().Single();
+    Assert.Equal(candidate.ConfirmationToken, retained.ConfirmationToken);
+    Assert.Equal(candidate.ProfileName, retained.ProfileName);
     service.Retry(candidate.ConfirmationToken);
     Assert.Equal(0, service.ListPending().Count);
     using (var operations = container.CreateAuthorityOperationsForTesting())
@@ -3292,7 +3336,8 @@ file sealed class TestContentLease(
 file sealed class TestAuthorityOperations(
     int? failApplyAt = null,
     AppContainerAuthorityTargetKind[]? failRestoreKinds = null,
-    Dictionary<AppContainerAuthorityTarget, string>? states = null)
+    Dictionary<AppContainerAuthorityTarget, string>? states = null,
+    Action<int>? afterRestore = null)
     : IAppContainerAuthorityOperations
 {
     private readonly Dictionary<AppContainerAuthorityTarget, string> _states = states ?? [];
@@ -3332,6 +3377,7 @@ file sealed class TestAuthorityOperations(
         if (failRestoreKinds?.Contains(snapshot.Target.Kind) == true)
             throw new IOException($"restore {snapshot.Target.Kind} failed");
         _states[snapshot.Target] = snapshot.AccessDescriptor;
+        afterRestore?.Invoke(RestoreOrder.Count);
     }
 
     public void VerifyRestored(AppContainerAuthoritySnapshot snapshot)

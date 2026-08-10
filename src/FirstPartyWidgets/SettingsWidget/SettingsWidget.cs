@@ -27,6 +27,7 @@ public enum SettingsPage
     PackageCapabilities,
     CapabilityDecision,
     Diagnostics,
+    AuthorityRecovery,
     Reset,
 }
 
@@ -55,6 +56,7 @@ public sealed partial class SettingsWidget : Widget
     private string? _selectedInstalledWidgetId;
     private string? _selectedBuiltInWidgetId;
     private WidgetCatalogRepairCandidate? _selectedRepairCandidate;
+    private string? _selectedAuthorityRecoveryId;
     private SettingsPage _page;
     private int _activationLoadCount;
     private bool _settingsValid = true;
@@ -102,6 +104,7 @@ public sealed partial class SettingsWidget : Widget
         bool error;
         bool settingsValid;
         PlatformDiagnosticsSnapshot diagnostics;
+        string? selectedAuthorityRecoveryId;
         string status;
         lock (_stateLock)
         {
@@ -112,6 +115,7 @@ public sealed partial class SettingsWidget : Widget
             error = _error;
             settingsValid = _settingsValid;
             diagnostics = _diagnostics;
+            selectedAuthorityRecoveryId = _selectedAuthorityRecoveryId;
             status = _status;
         }
 
@@ -138,6 +142,8 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.CapabilityDecision => RenderCapabilityDecision(header, busy),
             SettingsPage.Diagnostics => RenderDiagnostics(
                 header, settings, themes, settingsValid, diagnostics, busy),
+            SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(
+                header, diagnostics, selectedAuthorityRecoveryId, busy),
             SettingsPage.Reset => RenderReset(header, busy),
             _ => RenderRoot(header, settings, busy),
         };
@@ -176,6 +182,9 @@ public sealed partial class SettingsWidget : Widget
                 case "installed.permissions.open": OpenSelectedInstalledPermissions(); break;
                 case "open.permission-diagnostics": OpenPermissionDiagnostics(); break;
                 case "open.diagnostics": Navigate(SettingsPage.Diagnostics); break;
+                case "authority.recovery.retry": await RetrySelectedAuthorityRecoveryAsync(
+                    cancellationToken).ConfigureAwait(false); break;
+                case "authority.recovery.cancel": Navigate(SettingsPage.Diagnostics); break;
                 case "open.reset": Navigate(SettingsPage.Reset); break;
                 case "open.themes": Navigate(SettingsPage.ThemePicker); break;
                 case "back": Navigate(ParentPage(CurrentPage)); break;
@@ -277,6 +286,8 @@ public sealed partial class SettingsWidget : Widget
                         SelectPermissionPackage(index);
                     else if (TryIndexedAction(action.ActionId, "capability.select.", out index))
                         SelectCapability(index);
+                    else if (TryIndexedAction(action.ActionId, "authority.recovery.select.", out index))
+                        SelectAuthorityRecovery(index);
                     break;
             }
         }
@@ -643,14 +654,272 @@ public sealed partial class SettingsWidget : Widget
                 $"diagnostics.worker.{worker.WidgetId}",
                 $"{worker.WidgetName} worker failure").AddClasses("diagnostic-error"));
         }
+        var recoveryOrder = OrderedAuthorityRecoveryIndexes(diagnostics);
+        children.Add(UI.Text(
+            recoveryOrder.Length == 0
+                ? "Content authority recovery: no pending records"
+                : $"Content authority recovery: {recoveryOrder.Length} " +
+                  (recoveryOrder.Length == 1
+                      ? "record requires review"
+                      : "records require review"),
+            "diagnostics.authority.summary",
+            recoveryOrder.Length == 0
+                ? "No content authority recovery records are pending"
+                : $"{recoveryOrder.Length} content authority recovery " +
+                  (recoveryOrder.Length == 1
+                      ? "record requires review"
+                      : "records require review"))
+            .Classes(recoveryOrder.Length == 0 ? "diagnostic-ok" : "diagnostic-error"));
+        for (var displayIndex = 0; displayIndex < recoveryOrder.Length; displayIndex++)
+        {
+            var recovery = diagnostics.AuthorityRecoveries[recoveryOrder[displayIndex]];
+            var button = UI.Button(
+                    $"Review recovery · {recovery.DisplayName} · {recovery.State}",
+                    $"authority.recovery.select.{displayIndex}",
+                    $"diagnostics.authority.item.{displayIndex}")
+                .Busy(busy)
+                .Classes(recovery.CanRetry ? "danger-button" : "secondary-button") with
+                {
+                    AccessibilityLabel =
+                        $"Review content authority recovery {recovery.DisplayName}, " +
+                        $"state {recovery.State}, status {recovery.StatusCode}, " +
+                        (recovery.CanRetry ? "retry available" : "retry unavailable"),
+                };
+            children.Add(button);
+        }
         children.Add(UI.Button("Refresh diagnostics", "refresh", "diagnostics.refresh")
             .Icon(WidgetGlyph.Refresh, "Refresh diagnostics")
-            .FocusDown("diagnostics.back").Busy(busy).Classes("primary-button"));
+            .Busy(busy).Classes("primary-button"));
         children.Add(UI.Button("Back", "back", "diagnostics.back")
-            .FocusUp("diagnostics.refresh").Classes("secondary-button"));
+            .Classes("secondary-button"));
+        LinkVertical(children);
         return View(header,
             PageScope("diagnostics.page", children.ToArray()),
-            "diagnostics.refresh", "diagnostics.page");
+            recoveryOrder.Length == 0 ? "diagnostics.refresh" : "diagnostics.authority.item.0",
+            "diagnostics.page");
+    }
+
+    private static WidgetView RenderAuthorityRecovery(
+        StackElement header,
+        PlatformDiagnosticsSnapshot diagnostics,
+        string? recoveryId,
+        bool busy)
+    {
+        var matches = diagnostics.AuthorityRecoveries
+            .Where(item => string.Equals(
+                item.RecoveryId, recoveryId, StringComparison.Ordinal))
+            .Take(1)
+            .ToArray();
+        if (matches.Length == 0)
+        {
+            var stale = new List<WidgetElement>
+            {
+                UI.Text("Recovery record changed", "authority.recovery.heading",
+                    "Content authority recovery record changed").Classes("page-heading"),
+                UI.Text(
+                    "This recovery record is no longer pending or its confirmation token changed. " +
+                    "Return to diagnostics and review the current bounded list before retrying.",
+                    "authority.recovery.stale", "Recovery record is stale")
+                    .Classes("diagnostic-error"),
+                UI.Button("Review current diagnostics", "authority.recovery.cancel",
+                    "authority.recovery.review-current")
+                    .Busy(busy).Classes("primary-button"),
+                UI.Button("Back", "back", "authority.recovery.back")
+                    .Classes("secondary-button"),
+            };
+            LinkVertical(stale);
+            return View(header, PageScope("authority.recovery.page", stale.ToArray()),
+                "authority.recovery.review-current", "authority.recovery.page");
+        }
+
+        var recovery = matches[0];
+        var children = new List<WidgetElement>
+        {
+            UI.Text("Retry content authority recovery?", "authority.recovery.heading",
+                "Confirm content authority recovery retry").Classes("page-heading"),
+            UI.Text(recovery.DisplayName, "authority.recovery.display-name",
+                $"Recovery {recovery.DisplayName}").Classes("diagnostic-line"),
+            UI.CodeText($"Recovery ID: {recovery.RecoveryId}", "authority.recovery.id",
+                $"Recovery ID {recovery.RecoveryId}").AddClasses("diagnostic-line"),
+            UI.Text($"State: {recovery.State}", "authority.recovery.state",
+                $"Recovery state {recovery.State}").Classes(
+                    recovery.CanRetry ? "diagnostic-error" : "diagnostic-line"),
+            UI.CodeText($"Status: {recovery.StatusCode}", "authority.recovery.status-code",
+                $"Recovery status {recovery.StatusCode}").AddClasses("diagnostic-line"),
+            UI.Text(
+                recovery.CanRetry
+                    ? "The host will retry this exact pending record. It clears the record only after verified recovery; there is no force-clear action."
+                    : "This record cannot currently be retried. Return to diagnostics after resolving the reported condition; there is no force-clear action.",
+                "authority.recovery.help", "Content authority recovery safety")
+                .Classes("page-help"),
+            UI.Button("Retry verified recovery", "authority.recovery.retry",
+                "authority.recovery.retry")
+                .Disabled(!recovery.CanRetry || recovery.ConfirmationToken is null)
+                .Busy(busy).Classes("danger-button"),
+            UI.Button("Cancel", "authority.recovery.cancel", "authority.recovery.cancel")
+                .Classes("secondary-button"),
+        };
+        LinkVertical(children);
+        return View(header, PageScope("authority.recovery.page", children.ToArray()),
+            "authority.recovery.cancel", "authority.recovery.page");
+    }
+
+    private static int[] OrderedAuthorityRecoveryIndexes(PlatformDiagnosticsSnapshot diagnostics) =>
+        Enumerable.Range(0, diagnostics.AuthorityRecoveries.Count)
+            .OrderBy(index => diagnostics.AuthorityRecoveries[index].DisplayName,
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(index => diagnostics.AuthorityRecoveries[index].RecoveryId,
+                StringComparer.Ordinal)
+            .ToArray();
+
+    private void SelectAuthorityRecovery(int displayIndex)
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.Diagnostics) return;
+            var order = OrderedAuthorityRecoveryIndexes(_diagnostics);
+            if (displayIndex < 0 || displayIndex >= order.Length) return;
+            _selectedAuthorityRecoveryId =
+                _diagnostics.AuthorityRecoveries[order[displayIndex]].RecoveryId;
+            _page = SettingsPage.AuthorityRecovery;
+        }
+        Invalidate();
+    }
+
+    private async Task RetrySelectedAuthorityRecoveryAsync(CancellationToken cancellationToken)
+    {
+        string? recoveryId;
+        string? confirmationToken;
+        string? displayName;
+        lock (_stateLock)
+        {
+            recoveryId = _page == SettingsPage.AuthorityRecovery
+                ? _selectedAuthorityRecoveryId
+                : null;
+            var matches = _diagnostics.AuthorityRecoveries
+                .Where(item => string.Equals(
+                    item.RecoveryId, recoveryId, StringComparison.Ordinal))
+                .Take(1)
+                .ToArray();
+            confirmationToken = matches.Length == 0 || !matches[0].CanRetry
+                ? null
+                : matches[0].ConfirmationToken;
+            displayName = matches.Length == 0 ? null : matches[0].DisplayName;
+        }
+        if (recoveryId is null || confirmationToken is null || displayName is null)
+        {
+            lock (_stateLock)
+            {
+                _page = SettingsPage.Diagnostics;
+                _selectedAuthorityRecoveryId = null;
+                _busy = false;
+                _error = true;
+                _status = "Authority recovery request changed; review current diagnostics";
+            }
+            Invalidate();
+            return;
+        }
+
+        SetOperation($"Retrying verified recovery for {displayName}…", busy: true, error: false);
+        PlatformAuthorityRecoveryRetryResult result;
+        try
+        {
+            result = await _diagnosticsService.RetryAuthorityRecoveryAsync(
+                    confirmationToken, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_stateLock)
+            {
+                _busy = false;
+                _error = false;
+                _status =
+                    "Authority recovery was cancelled; review current diagnostics before retrying";
+            }
+            Invalidate();
+            throw;
+        }
+        catch (PlatformDiagnosticsException exception)
+        {
+            PlatformDiagnosticsSnapshot? refreshed = null;
+            try
+            {
+                refreshed = await _diagnosticsService.GetSnapshotAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (PlatformDiagnosticsException)
+            {
+                // Retain the last sanitized snapshot when the follow-up read also fails.
+            }
+            lock (_stateLock)
+            {
+                if (refreshed is not null) _diagnostics = refreshed;
+                var stillPending = _diagnostics.AuthorityRecoveries.Any(item =>
+                    string.Equals(item.RecoveryId, recoveryId, StringComparison.Ordinal));
+                _page = stillPending ? SettingsPage.AuthorityRecovery : SettingsPage.Diagnostics;
+                if (_page == SettingsPage.Diagnostics) _selectedAuthorityRecoveryId = null;
+                _busy = false;
+                _error = true;
+                _status = !stillPending
+                    ? $"Authority recovery request changed ({exception.Code}); review current diagnostics"
+                    : $"Authority recovery failed ({exception.Code}); the record remains pending";
+            }
+            Invalidate();
+            return;
+        }
+
+        PlatformDiagnosticsSnapshot diagnostics;
+        try
+        {
+            diagnostics = await _diagnosticsService.GetSnapshotAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (PlatformDiagnosticsException exception)
+        {
+            lock (_stateLock)
+            {
+                _page = result.Status is PlatformAuthorityRecoveryRetryStatus.Recovered or
+                    PlatformAuthorityRecoveryRetryStatus.Stale
+                    ? SettingsPage.Diagnostics
+                    : SettingsPage.AuthorityRecovery;
+                if (_page == SettingsPage.Diagnostics) _selectedAuthorityRecoveryId = null;
+                _busy = false;
+                _error = true;
+                _status = $"Authority recovery returned {result.Status}; diagnostics refresh failed ({exception.Code})";
+            }
+            Invalidate();
+            return;
+        }
+        lock (_stateLock)
+        {
+            _diagnostics = diagnostics;
+            var stillPending = diagnostics.AuthorityRecoveries.Any(item =>
+                string.Equals(item.RecoveryId, recoveryId, StringComparison.Ordinal));
+            _page = result.Status switch
+            {
+                PlatformAuthorityRecoveryRetryStatus.Recovered => SettingsPage.Diagnostics,
+                PlatformAuthorityRecoveryRetryStatus.Stale => SettingsPage.Diagnostics,
+                _ when !stillPending => SettingsPage.Diagnostics,
+                _ => SettingsPage.AuthorityRecovery,
+            };
+            if (_page == SettingsPage.Diagnostics) _selectedAuthorityRecoveryId = null;
+            _busy = false;
+            _error = result.Status != PlatformAuthorityRecoveryRetryStatus.Recovered;
+            _status = result.Status switch
+            {
+                PlatformAuthorityRecoveryRetryStatus.Recovered =>
+                    $"Recovered content authority for {displayName}",
+                PlatformAuthorityRecoveryRetryStatus.StillPending =>
+                    $"Authority recovery remains pending ({result.Code})",
+                PlatformAuthorityRecoveryRetryStatus.Stale =>
+                    $"Authority recovery request changed ({result.Code}); review current diagnostics",
+                PlatformAuthorityRecoveryRetryStatus.Unavailable =>
+                    $"Authority recovery is unavailable ({result.Code}); the record remains pending",
+                _ => $"Authority recovery was refused ({result.Code})",
+            };
+        }
+        Invalidate();
     }
 
     private static string DiagnosticPrefix(PlatformDiagnosticState state) => state switch
@@ -787,6 +1056,7 @@ public sealed partial class SettingsWidget : Widget
         SettingsPage.PermissionDiagnostics => SettingsPage.Permissions,
         SettingsPage.PackageCapabilities => PackageCapabilitiesReturnPage(),
         SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,
+        SettingsPage.AuthorityRecovery => SettingsPage.Diagnostics,
         SettingsPage.Root => SettingsPage.Root,
         _ => SettingsPage.Root,
     };

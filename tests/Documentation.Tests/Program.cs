@@ -70,6 +70,22 @@ foreach (var contract in requiredCompanionContracts)
     if (!companion.Contains(contract, StringComparison.Ordinal))
         failures.Add($"docs/community-companion-services.md is missing '{contract}'.");
 
+var quickstartPath = Path.Combine(repository, "docs", "widget-quickstart.md");
+var quickstart = File.ReadAllText(quickstartPath);
+string[] requiredAuthorityRecoveryContracts =
+[
+    "gbar authority-recovery retry <confirmation-token-from-list>",
+    "It does not accept a journal path, content path, security",
+    "raw clear, or force option",
+    "Settings → Diagnostics",
+    "initial focus is **Cancel**",
+    "never renders or speaks the opaque confirmation token",
+    "Community widgets cannot request this channel",
+];
+foreach (var contract in requiredAuthorityRecoveryContracts)
+    if (!quickstart.Contains(contract, StringComparison.Ordinal))
+        failures.Add($"docs/widget-quickstart.md is missing '{contract}'.");
+
 RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");

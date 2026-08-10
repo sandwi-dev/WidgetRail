@@ -34,6 +34,10 @@ data-only global themes. Remote install accepts an absolute HTTPS URL or a
 deterministic GitHub Release shorthand. There is no GitHub publisher, signing
 command, automatic updater, or marketplace client.
 
+The host-maintenance group is `authority-recovery list|retry`. It operates only
+on the product-owned local AppContainer authority journal and accepts no
+caller-selected journal path.
+
 ## Create and build a widget
 
 ```powershell
@@ -344,6 +348,30 @@ directory names and catalog state only; it never executes or trusts candidate
 package contents, never removes the selected generation, and can retire inactive
 history while that selected version remains enabled. It has no force or
 caller-supplied recursive path.
+
+If worker admission reports that AppContainer content authority is quarantined,
+inspect the local host journal and retry one exact transaction:
+
+```powershell
+& $gbar authority-recovery list
+& $gbar authority-recovery retry <confirmation-token-from-list>
+```
+
+Listing exposes only the confirmation token, validated AppContainer profile,
+target count, and journal format. Retry compares the token against current
+state, restores and verifies the recorded DACLs, and clears the record only
+after verification. It does not accept a journal path, content path, security
+descriptor, raw clear, or force option. A stale token is expected after another
+host instance has already recovered or replaced that transaction; list again
+instead of bypassing the check.
+
+The trusted **Settings → Diagnostics** page presents the same bounded recovery
+state with a sanitized widget name and generation. Selecting a record opens an
+explicit controller confirmation whose initial focus is **Cancel**. Settings
+never renders or speaks the opaque confirmation token; it sends the current
+token over its private PID- and nonce-authenticated diagnostics channel and
+refreshes authoritative state after the recovered, still-pending, stale,
+unavailable, or refused result. Community widgets cannot request this channel.
 
 The MVP accepts only Pressed shortcuts. A and D-pad are reserved for focused
 activation and navigation. Dashboard quick actions are separate: the host owns

@@ -24,7 +24,21 @@ migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
 uses one lifecycle-owned Active/Latest lane for transport reconciliation; it
 neither retains provider response bodies nor renders unknown exception text.
 Focused Release suites pass Widget SDK 84/84, SDK Gallery 6/6, YT Music 48/48,
-and Gbar CLI 50/50. Packaged controller/companion evidence remains separate.
+and Gbar CLI 52/52. Packaged controller/companion evidence remains separate.
+
+DLV-001 completes the bounded AppContainer authority-recovery operator surface.
+The Runtime retains a profile-owned pending record until every original DACL is
+restored and verified, then makes journal clear versus cancellation one atomic
+decision. PlatformDiagnostics carries only bounded recovery IDs, safe display
+copy, closed status codes, and exact opaque 32-character current or 64-character
+legacy confirmation tokens over the private PID- and nonce-authenticated
+Settings channel. Settings starts explicit controller confirmation on Cancel,
+never renders the token, and refreshes authoritative state after every typed
+result. The separate local `gbar authority-recovery list|retry` workflow has no
+force-clear, caller-selected path, SID, ACL, or replacement-authority input.
+Current focused Release suites pass Runtime 65/65, PlatformDiagnostics 15/15,
+WidgetBridge 47/47, Settings 45/45, and Gbar CLI 52/52; the documentation
+contract passes with the Settings and CLI operator guidance present.
 
 ## Implemented
 
@@ -781,7 +795,7 @@ community AppContainer authority, exact grant replacement, content-generation
 isolation, trusted-runtime/content-root overlap refusal, caller-preserving
 content-admission cancellation, timeouts and session release, bounded intentional
 unload, and private two-clock dashboard-gesture propagation. Its focused Release
-harness passes 64/64. The authority fixtures prove reverse restoration of every
+harness passes 65/65. The authority fixtures prove reverse restoration of every
 attempted root/directory/file DACL including the failing target, retry without
 quarantine after a complete rollback, pre-mutation refusal when journal
 publication fails, cross-profile lock ownership, corrupt/hostile-entry refusal,
@@ -816,14 +830,14 @@ endpoints. The current SDK, SDK Gallery, and YT Music focused suites pass
 84/84, 6/6, and 48/48 respectively, including navigation/resource contracts,
 safe typed companion errors, serialization, and widget recovery for host-side
 rejected-Bearer invalidation without a second widget delete. The current
-Settings Release suite passes 41/41, including
+Settings Release suite passes 45/45, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. Settings passes 42/42; styling and platform settings/themes pass 23/23 and 15/15,
+polling. Styling and platform settings/themes pass 23/23 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 51/51, including unrelated-directory scaffold failure-before-write and
+passes 52/52, including unrelated-directory scaffold failure-before-write and
 an explicit-SDK Release build, bounded data-only snapshot rendering, fail-closed DLL
 and scenario execution, bounded scenario-manifest discovery,
 authenticated candidate/active development readiness,
@@ -1125,10 +1139,11 @@ with C++ installed:
   mismatch, or persistence failure reject before launch. Catalog session handles
   now supply their volume/file identities through one typed bridge lease target
   sequence; runtime requires exact consistent evidence and compares its bound
-  handles before journal publication or DACL mutation. Handle-relative ancestor
-  traversal, an authenticated Settings/CLI route to the host-only sanitized
-  recovery service, and one aggregate ACL/handshake start
-  deadline remain open.
+  handles before journal publication or DACL mutation. The host-only recovery
+  service is reachable only through the exact trusted Settings diagnostics
+  companion or the local CLI; both require a fresh exact confirmation token and
+  expose no force-clear or replacement authority. Handle-relative ancestor
+  traversal and one aggregate ACL/handshake start deadline remain open.
   Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The

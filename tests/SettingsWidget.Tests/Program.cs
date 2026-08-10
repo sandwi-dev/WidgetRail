@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GameBarAlternative.FirstPartyWidgets.Settings;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformDiagnostics;
@@ -22,6 +23,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Saving exposes busy and completion feedback", BusyFeedback),
     ("Diagnostics report invalid theme packages", InvalidThemeDiagnostics),
     ("Runtime diagnostics expose bounded failures and refresh recovery", RuntimeDiagnosticsRecovery),
+    ("Authority recovery diagnostics are deterministic accessible and exact", AuthorityRecoveryDiagnostics),
+    ("Authority recovery retry handles every closed typed result", AuthorityRecoveryResults),
+    ("Authority recovery cancellation clears busy state without another request", AuthorityRecoveryCancellation),
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
@@ -402,6 +406,245 @@ static async Task RuntimeDiagnosticsRecovery()
         "Recovered worker retained a stale failure row.");
     Assert.Equal(2, service.RequestCount);
     Assert.Valid(refreshed);
+}
+
+static async Task AuthorityRecoveryDiagnostics()
+{
+    using var temp = new TemporaryDirectory();
+    var retryable = new PlatformAuthorityRecoveryDiagnostic(
+        new string('B', PlatformDiagnosticsSnapshot.RecoveryIdLength),
+        "Zeta package generation",
+        PlatformAuthorityRecoveryState.Pending,
+        "recovery_pending",
+        true,
+        new string('C', PlatformDiagnosticsSnapshot.ConfirmationTokenLength));
+    var unavailable = new PlatformAuthorityRecoveryDiagnostic(
+        new string('A', PlatformDiagnosticsSnapshot.RecoveryIdLength),
+        "Alpha legacy authority",
+        PlatformAuthorityRecoveryState.Unavailable,
+        "legacy_owner_unavailable",
+        false,
+        null);
+    var diagnostics = PlatformDiagnosticsSnapshot.Unavailable() with
+    {
+        Revision = 14,
+        AuthorityRecoveries = [retryable, unavailable],
+    };
+    var service = new AuthorityRecoveryDiagnosticsService([diagnostics]);
+    var paths = new PlatformSettingsPaths(temp.Path);
+    var widget = new SettingsWidget(
+        new PlatformSettingsStore(paths), new ThemeCatalog(paths), diagnostics: service);
+    await Activate(widget);
+    await Action(widget, "open.diagnostics");
+
+    var list = Snapshot(widget);
+    Assert.Equal("diagnostics.authority.item.0", list.InitialFocusId);
+    Assert.Contains("2 records require review",
+        Text(list.Root, "diagnostics.authority.summary").Text!);
+    var first = Button(list.Root, "diagnostics.authority.item.0");
+    var second = Button(list.Root, "diagnostics.authority.item.1");
+    Assert.Contains("Alpha legacy authority", first.Text!);
+    Assert.Contains("Unavailable", first.Text!);
+    Assert.Contains("retry unavailable", first.AccessibilityLabel!);
+    Assert.Contains("Zeta package generation", second.Text!);
+    Assert.Equal("diagnostics.authority.item.1", first.Focus!.Down);
+    Assert.Equal("diagnostics.authority.item.0", second.Focus!.Up);
+    Assert.Equal("diagnostics.refresh", second.Focus.Down);
+    Assert.Equal("diagnostics.authority.item.1", Button(list.Root, "diagnostics.refresh").Focus!.Up);
+    Assert.Equal("diagnostics.back", Button(list.Root, "diagnostics.refresh").Focus!.Down);
+    Assert.Valid(list);
+
+    await Action(widget, "authority.recovery.select.0");
+    var unavailableConfirmation = Snapshot(widget);
+    Assert.Equal(SettingsPage.AuthorityRecovery, widget.CurrentPage);
+    Assert.Equal("authority.recovery.page", unavailableConfirmation.ActiveInputScopeId);
+    Assert.Equal("authority.recovery.cancel", unavailableConfirmation.InitialFocusId);
+    Assert.HasShortcut(unavailableConfirmation.Root, "authority.recovery.page",
+        ControllerButton.B, "back");
+    Assert.Contains("Alpha legacy authority",
+        Text(unavailableConfirmation.Root, "authority.recovery.display-name").Text!);
+    Assert.Contains("Unavailable",
+        Text(unavailableConfirmation.Root, "authority.recovery.state").Text!);
+    Assert.True(Button(unavailableConfirmation.Root, "authority.recovery.retry").IsDisabled == true,
+        "Unavailable authority recovery remained actionable.");
+    Assert.Valid(unavailableConfirmation);
+
+    await Action(widget, "authority.recovery.cancel");
+    await Action(widget, "authority.recovery.select.1");
+    var confirmation = Snapshot(widget);
+    Assert.Equal("authority.recovery.cancel", confirmation.InitialFocusId);
+    Assert.Contains(retryable.RecoveryId,
+        Text(confirmation.Root, "authority.recovery.id").Text!);
+    Assert.Contains("recovery_pending",
+        Text(confirmation.Root, "authority.recovery.status-code").Text!);
+    Assert.True(Button(confirmation.Root, "authority.recovery.retry").IsDisabled != true,
+        "Retryable authority recovery was disabled.");
+    Assert.Equal("authority.recovery.cancel",
+        Button(confirmation.Root, "authority.recovery.retry").Focus!.Down);
+    Assert.Equal("authority.recovery.retry",
+        Button(confirmation.Root, "authority.recovery.cancel").Focus!.Up);
+    Assert.True(!Nodes(confirmation.Root).Any(node =>
+            node.Text?.Contains(retryable.ConfirmationToken!, StringComparison.Ordinal) == true ||
+            node.AccessibilityLabel?.Contains(
+                retryable.ConfirmationToken!, StringComparison.Ordinal) == true),
+        "Authority recovery confirmation disclosed its opaque confirmation token.");
+    Assert.True(!JsonSerializer.Serialize(confirmation).Contains(
+            retryable.ConfirmationToken!, StringComparison.Ordinal),
+        "Authority recovery confirmation escaped through snapshot metadata.");
+    Assert.Valid(confirmation);
+}
+
+static async Task AuthorityRecoveryResults()
+{
+    static PlatformAuthorityRecoveryDiagnostic Recovery(
+        char id, char token, string status = "recovery_pending") => new(
+            new string(id, PlatformDiagnosticsSnapshot.RecoveryIdLength),
+            $"Package {id}",
+            PlatformAuthorityRecoveryState.Pending,
+            status,
+            true,
+            new string(token, PlatformDiagnosticsSnapshot.ConfirmationTokenLength));
+
+    static PlatformDiagnosticsSnapshot SnapshotWith(
+        long revision, params PlatformAuthorityRecoveryDiagnostic[] recoveries) =>
+        PlatformDiagnosticsSnapshot.Unavailable() with
+        {
+            Revision = revision,
+            AuthorityRecoveries = recoveries,
+        };
+
+    async Task<(SettingsWidget Widget, AuthorityRecoveryDiagnosticsService Service)> CreateCase(
+        string root,
+        PlatformAuthorityRecoveryDiagnostic initial,
+        PlatformAuthorityRecoveryRetryResult result,
+        PlatformDiagnosticsSnapshot after)
+    {
+        var service = new AuthorityRecoveryDiagnosticsService(
+            [SnapshotWith(20, initial), after], [result]);
+        var paths = new PlatformSettingsPaths(root);
+        var widget = new SettingsWidget(
+            new PlatformSettingsStore(paths), new ThemeCatalog(paths), diagnostics: service);
+        await Activate(widget);
+        await Action(widget, "open.diagnostics");
+        await Action(widget, "authority.recovery.select.0");
+        await Action(widget, "authority.recovery.retry");
+        return (widget, service);
+    }
+
+    using var temp = new TemporaryDirectory();
+    var recoveredItem = Recovery('A', 'B');
+    var recovered = await CreateCase(
+        Path.Combine(temp.Path, "recovered"), recoveredItem,
+        new PlatformAuthorityRecoveryRetryResult(
+            PlatformAuthorityRecoveryRetryStatus.Recovered, "recovered"),
+        SnapshotWith(21));
+    var recoveredView = Snapshot(recovered.Widget);
+    Assert.Equal(SettingsPage.Diagnostics, recovered.Widget.CurrentPage);
+    Assert.Contains("Recovered content authority for Package A",
+        Text(recoveredView.Root, "settings.status").Text!);
+    Assert.Contains("no pending records",
+        Text(recoveredView.Root, "diagnostics.authority.summary").Text!);
+    Assert.SequenceEqual(new[] { recoveredItem.ConfirmationToken! }, recovered.Service.RetryTokens);
+    Assert.Equal(2, recovered.Service.SnapshotRequests);
+    Assert.Valid(recoveredView);
+
+    var pendingItem = Recovery('C', 'D');
+    var pendingAfter = pendingItem with
+    {
+        State = PlatformAuthorityRecoveryState.Blocked,
+        StatusCode = "sharing_violation",
+    };
+    var pending = await CreateCase(
+        Path.Combine(temp.Path, "pending"), pendingItem,
+        new PlatformAuthorityRecoveryRetryResult(
+            PlatformAuthorityRecoveryRetryStatus.StillPending, "sharing_violation"),
+        SnapshotWith(22, pendingAfter));
+    var pendingView = Snapshot(pending.Widget);
+    Assert.Equal(SettingsPage.AuthorityRecovery, pending.Widget.CurrentPage);
+    Assert.Contains("remains pending (sharing_violation)",
+        Text(pendingView.Root, "settings.status").Text!);
+    Assert.Contains("sharing_violation",
+        Text(pendingView.Root, "authority.recovery.status-code").Text!);
+    Assert.Equal(2, pending.Service.SnapshotRequests);
+    Assert.Valid(pendingView);
+
+    var staleItem = Recovery('E', 'F');
+    var stale = await CreateCase(
+        Path.Combine(temp.Path, "stale"), staleItem,
+        new PlatformAuthorityRecoveryRetryResult(
+            PlatformAuthorityRecoveryRetryStatus.Stale, "confirmation_stale"),
+        SnapshotWith(23));
+    var staleView = Snapshot(stale.Widget);
+    Assert.Equal(SettingsPage.Diagnostics, stale.Widget.CurrentPage);
+    Assert.Contains("request changed (confirmation_stale)",
+        Text(staleView.Root, "settings.status").Text!);
+    Assert.Equal(2, stale.Service.SnapshotRequests);
+    Assert.Valid(staleView);
+
+    var refusedItem = Recovery('1', '2');
+    var refused = await CreateCase(
+        Path.Combine(temp.Path, "refused"), refusedItem,
+        new PlatformAuthorityRecoveryRetryResult(
+            PlatformAuthorityRecoveryRetryStatus.Refused, "repair_refused"),
+        SnapshotWith(24, refusedItem));
+    var refusedView = Snapshot(refused.Widget);
+    Assert.Equal(SettingsPage.AuthorityRecovery, refused.Widget.CurrentPage);
+    Assert.Contains("was refused (repair_refused)",
+        Text(refusedView.Root, "settings.status").Text!);
+    Assert.Equal(2, refused.Service.SnapshotRequests);
+    Assert.Valid(refusedView);
+
+    var unavailableItem = Recovery('3', '4');
+    var unavailable = await CreateCase(
+        Path.Combine(temp.Path, "unavailable"), unavailableItem,
+        new PlatformAuthorityRecoveryRetryResult(
+            PlatformAuthorityRecoveryRetryStatus.Unavailable, "journal_locked"),
+        SnapshotWith(25, unavailableItem));
+    var unavailableView = Snapshot(unavailable.Widget);
+    Assert.Equal(SettingsPage.AuthorityRecovery, unavailable.Widget.CurrentPage);
+    Assert.Contains("is unavailable (journal_locked)",
+        Text(unavailableView.Root, "settings.status").Text!);
+    Assert.Equal(2, unavailable.Service.SnapshotRequests);
+    Assert.Valid(unavailableView);
+}
+
+static async Task AuthorityRecoveryCancellation()
+{
+    using var temp = new TemporaryDirectory();
+    using var cancellation = new CancellationTokenSource();
+    var recovery = new PlatformAuthorityRecoveryDiagnostic(
+        new string('A', PlatformDiagnosticsSnapshot.RecoveryIdLength),
+        "Cancelled package",
+        PlatformAuthorityRecoveryState.Pending,
+        "pending_recovery",
+        true,
+        new string('B', PlatformDiagnosticsSnapshot.ConfirmationTokenLength));
+    var diagnostics = PlatformDiagnosticsSnapshot.Unavailable() with
+    {
+        Revision = 30,
+        AuthorityRecoveries = [recovery],
+    };
+    var service = new CancelingAuthorityRecoveryDiagnosticsService(
+        diagnostics, cancellation);
+    var paths = new PlatformSettingsPaths(temp.Path);
+    var widget = new SettingsWidget(
+        new PlatformSettingsStore(paths), new ThemeCatalog(paths), diagnostics: service);
+    await Activate(widget);
+    await Action(widget, "open.diagnostics");
+    await Action(widget, "authority.recovery.select.0");
+
+    await Assert.ThrowsAsync<OperationCanceledException>(() =>
+        widget.OnActionAsync(
+            new WidgetActionEvent("authority.recovery.retry", "test"),
+            cancellation.Token).AsTask());
+    var view = Snapshot(widget);
+    Assert.Equal(SettingsPage.AuthorityRecovery, widget.CurrentPage);
+    Assert.Contains("was cancelled", Text(view.Root, "settings.status").Text!);
+    Assert.True(Button(view.Root, "authority.recovery.retry").IsBusy != true,
+        "Cancelled authority recovery left its confirmation action busy.");
+    Assert.Equal(1, service.SnapshotRequests);
+    Assert.Equal(1, service.RetryRequests);
+    Assert.Valid(view);
 }
 
 static async Task ActivationLifecycle()
@@ -1737,6 +1980,75 @@ file sealed class SequenceDiagnosticsService(params PlatformDiagnosticsSnapshot[
     }
 }
 
+file sealed class AuthorityRecoveryDiagnosticsService(
+    PlatformDiagnosticsSnapshot[] snapshots,
+    PlatformAuthorityRecoveryRetryResult[]? results = null) : IPlatformDiagnosticsService
+{
+    private readonly PlatformDiagnosticsSnapshot[] _snapshots = snapshots;
+    private readonly PlatformAuthorityRecoveryRetryResult[] _results = results ?? [];
+    private readonly List<string> _retryTokens = [];
+    private int _snapshotRequests;
+    private int _retryRequests;
+
+    public IReadOnlyList<string> RetryTokens
+    {
+        get { lock (_retryTokens) return _retryTokens.ToArray(); }
+    }
+
+    public int SnapshotRequests => Volatile.Read(ref _snapshotRequests);
+
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = Interlocked.Increment(ref _snapshotRequests);
+        return ValueTask.FromResult(
+            _snapshots[Math.Min(request - 1, _snapshots.Length - 1)]);
+    }
+
+    public ValueTask<PlatformAuthorityRecoveryRetryResult> RetryAuthorityRecoveryAsync(
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_retryTokens) _retryTokens.Add(confirmationToken);
+        var request = Interlocked.Increment(ref _retryRequests);
+        return ValueTask.FromResult(
+            request <= _results.Length
+                ? _results[request - 1]
+                : PlatformAuthorityRecoveryRetryResult.Refused("retry_not_configured"));
+    }
+}
+
+file sealed class CancelingAuthorityRecoveryDiagnosticsService(
+    PlatformDiagnosticsSnapshot snapshot,
+    CancellationTokenSource cancellation) : IPlatformDiagnosticsService
+{
+    private int _snapshotRequests;
+    private int _retryRequests;
+
+    public int SnapshotRequests => Volatile.Read(ref _snapshotRequests);
+    public int RetryRequests => Volatile.Read(ref _retryRequests);
+
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _snapshotRequests);
+        return ValueTask.FromResult(snapshot);
+    }
+
+    public ValueTask<PlatformAuthorityRecoveryRetryResult> RetryAuthorityRecoveryAsync(
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref _retryRequests);
+        cancellation.Cancel();
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new InvalidOperationException("Cancelled recovery unexpectedly continued.");
+    }
+}
+
 file static class Assert
 {
     public static void True(bool condition, string message)
@@ -1761,6 +2073,13 @@ file static class Assert
         if (!expected.SequenceEqual(actual))
             throw new InvalidOperationException(
                 $"Expected [{string.Join(", ", expected)}], got [{string.Join(", ", actual)}].");
+    }
+
+    public static async Task<T> ThrowsAsync<T>(Func<Task> action) where T : Exception
+    {
+        try { await action(); }
+        catch (T exception) { return exception; }
+        throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
     public static void Valid(ViewSnapshot snapshot)

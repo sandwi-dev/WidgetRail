@@ -11,9 +11,13 @@ namespace GameBarAlternative.PlatformDiagnostics;
 public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
 {
     private const int MaximumFrameBytes = 64 * 1024;
+    private const string SnapshotOperation = "snapshot";
+    private const string RetryAuthorityRecoveryOperation = "retry-authority-recovery";
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
+    private readonly Func<string, CancellationToken,
+        ValueTask<PlatformAuthorityRecoveryRetryResult>>? _authorityRecoveryRetry;
     private readonly TimeSpan _requestTimeout;
     private readonly NamedPipeServerStream _pipe;
     private readonly CancellationTokenSource _lifetime = new();
@@ -23,12 +27,15 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     public PlatformDiagnosticsPipeServer(
         string pipeName,
         Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> snapshotProvider,
-        TimeSpan? requestTimeout = null)
+        TimeSpan? requestTimeout = null,
+        Func<string, CancellationToken,
+            ValueTask<PlatformAuthorityRecoveryRetryResult>>? authorityRecoveryRetry = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
         _pipeName = pipeName;
         _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
+        _authorityRecoveryRetry = authorityRecoveryRetry;
         _requestTimeout = ValidateTimeout(
             requestTimeout ?? TimeSpan.FromSeconds(2), nameof(requestTimeout));
         ChannelNonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -116,18 +123,42 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             return;
         }
 
-        var request = await ReadAsync<DiagnosticsRequest>(pipe, cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(request.Operation, "snapshot", StringComparison.Ordinal))
-            throw new PlatformDiagnosticsException("unsupported_operation");
-        var snapshot = await _snapshotProvider(cancellationToken).AsTask()
-            .WaitAsync(cancellationToken).ConfigureAwait(false);
-        ValidateSnapshot(snapshot);
-        await WriteAsync(pipe, snapshot, cancellationToken).ConfigureAwait(false);
+        var request = await ReadAsync<DiagnosticsRequest>(pipe, cancellationToken)
+            .ConfigureAwait(false);
+        string receiptOperation;
+        switch (request.Operation)
+        {
+            case SnapshotOperation when request.ConfirmationToken is null:
+            {
+                var snapshot = await _snapshotProvider(cancellationToken).AsTask()
+                    .WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidateSnapshot(snapshot);
+                await WriteAsync(pipe, snapshot, cancellationToken).ConfigureAwait(false);
+                receiptOperation = SnapshotOperation;
+                break;
+            }
+            case SnapshotOperation:
+                throw new PlatformDiagnosticsException("malformed_request");
+            case RetryAuthorityRecoveryOperation:
+            {
+                ValidateConfirmationToken(request.ConfirmationToken);
+                var result = _authorityRecoveryRetry is null
+                    ? PlatformAuthorityRecoveryRetryResult.Refused("retry_unsupported")
+                    : await _authorityRecoveryRetry(request.ConfirmationToken!, cancellationToken)
+                        .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidateRetryResult(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = RetryAuthorityRecoveryOperation;
+                break;
+            }
+            default:
+                throw new PlatformDiagnosticsException("unsupported_operation");
+        }
         // FlushAsync only transfers the frame to the Windows pipe buffer.
         // Disconnecting immediately can discard it before the client reads it.
         // An async, bounded receipt proves delivery without WaitForPipeDrain(),
         // which is synchronous and can be held forever by a stalled peer.
-        await ReadReceiptAsync(pipe, "snapshot", cancellationToken).ConfigureAwait(false);
+        await ReadReceiptAsync(pipe, receiptOperation, cancellationToken).ConfigureAwait(false);
     }
 
     private static async ValueTask ReadReceiptAsync(
@@ -174,6 +205,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(snapshot);
         if (snapshot.SchemaVersion != PlatformDiagnosticsSnapshot.CurrentSchemaVersion ||
             snapshot.Revision < 0 || snapshot.Workers is null ||
+            snapshot.AuthorityRecoveries is null ||
             snapshot.Workers.Count > PlatformDiagnosticsSnapshot.MaximumWorkers)
             throw new PlatformDiagnosticsException("invalid_snapshot");
         ValidateArea(snapshot.Bridge);
@@ -192,6 +224,39 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 worker.LastFailureCode is { } failure && !IsToken(failure, 64))
                 throw new PlatformDiagnosticsException("invalid_snapshot");
         }
+
+        if (snapshot.AuthorityRecoveries.Count >
+            PlatformDiagnosticsSnapshot.MaximumAuthorityRecoveries)
+            throw new PlatformDiagnosticsException("invalid_snapshot");
+        var recoveryIds = new HashSet<string>(StringComparer.Ordinal);
+        var confirmationTokens = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var recovery in snapshot.AuthorityRecoveries)
+        {
+            if (recovery is null || !Enum.IsDefined(recovery.State) ||
+                !IsExactUpperHex(
+                    recovery.RecoveryId, PlatformDiagnosticsSnapshot.RecoveryIdLength) ||
+                !recoveryIds.Add(recovery.RecoveryId) ||
+                !IsSafeRecoveryLabel(recovery.DisplayName) ||
+                !IsToken(recovery.StatusCode, 64) ||
+                recovery.State == PlatformAuthorityRecoveryState.Unavailable && recovery.CanRetry ||
+                recovery.CanRetry != (recovery.ConfirmationToken is not null) ||
+                recovery.ConfirmationToken is { } token &&
+                    (!IsConfirmationToken(token) ||
+                     !confirmationTokens.Add(token)))
+                throw new PlatformDiagnosticsException("invalid_snapshot");
+        }
+    }
+
+    internal static void ValidateRetryResult(PlatformAuthorityRecoveryRetryResult result)
+    {
+        if (result is null || !Enum.IsDefined(result.Status) || !IsToken(result.Code, 64))
+            throw new PlatformDiagnosticsException("invalid_retry_result");
+    }
+
+    internal static void ValidateConfirmationToken(string? value)
+    {
+        if (!IsConfirmationToken(value))
+            throw new PlatformDiagnosticsException("invalid_confirmation_token");
     }
 
     private static void ValidateArea(PlatformDiagnosticArea area)
@@ -220,6 +285,20 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private static bool IsToken(string? value, int maximumLength) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength &&
         value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.');
+
+    private static bool IsExactUpperHex(string? value, int exactLength) =>
+        value is not null && value.Length == exactLength &&
+        value.All(character => character is >= '0' and <= '9' or >= 'A' and <= 'F');
+
+    private static bool IsConfirmationToken(string? value) =>
+        IsExactUpperHex(value, PlatformDiagnosticsSnapshot.ConfirmationTokenLength) ||
+        IsExactUpperHex(value, PlatformDiagnosticsSnapshot.LegacyConfirmationTokenLength);
+
+    private static bool IsSafeRecoveryLabel(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 160 &&
+        !value.StartsWith("S-1-", StringComparison.OrdinalIgnoreCase) &&
+        value.All(character =>
+            !char.IsControl(character) && character is not '\\' and not '/' and not ':');
 
     internal static TimeSpan ValidateTimeout(TimeSpan value, string parameterName)
     {
@@ -296,7 +375,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint clientProcessId);
 
     private sealed record DiagnosticsHello(string Nonce);
-    private sealed record DiagnosticsRequest(string Operation);
+    private sealed record DiagnosticsRequest(string Operation, string? ConfirmationToken = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 }
@@ -317,6 +396,33 @@ public sealed class PlatformDiagnosticsPipeClient(
 
     public async ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync<PlatformDiagnosticsSnapshot>(
+            new DiagnosticsRequest("snapshot"),
+            "snapshot",
+            PlatformDiagnosticsPipeServer.ValidateSnapshot,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<PlatformAuthorityRecoveryRetryResult> RetryAuthorityRecoveryAsync(
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfirmationToken(confirmationToken))
+            throw new ArgumentException(
+                "Authority recovery confirmation token is invalid.", nameof(confirmationToken));
+        return await ExecuteAsync<PlatformAuthorityRecoveryRetryResult>(
+            new DiagnosticsRequest("retry-authority-recovery", confirmationToken),
+            "retry-authority-recovery",
+            PlatformDiagnosticsPipeServer.ValidateRetryResult,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<T> ExecuteAsync<T>(
+        DiagnosticsRequest request,
+        string receiptOperation,
+        Action<T> validate,
+        CancellationToken cancellationToken)
     {
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         bounded.CancelAfter(_timeout);
@@ -340,16 +446,16 @@ public sealed class PlatformDiagnosticsPipeClient(
                 throw new PlatformDiagnosticsException("authentication_failed");
             }
             await PlatformDiagnosticsPipeServer.WriteAsync(
-                pipe, new DiagnosticsRequest("snapshot"), bounded.Token)
+                pipe, request, bounded.Token)
                 .ConfigureAwait(false);
-            var snapshot = await PlatformDiagnosticsPipeServer
-                .ReadAsync<PlatformDiagnosticsSnapshot>(pipe, bounded.Token)
+            var response = await PlatformDiagnosticsPipeServer
+                .ReadAsync<T>(pipe, bounded.Token)
                 .ConfigureAwait(false);
-            PlatformDiagnosticsPipeServer.ValidateSnapshot(snapshot);
+            validate(response);
             await PlatformDiagnosticsPipeServer.WriteAsync(
-                pipe, new DiagnosticsReceipt("snapshot"), bounded.Token)
+                pipe, new DiagnosticsReceipt(receiptOperation), bounded.Token)
                 .ConfigureAwait(false);
-            return snapshot;
+            return response;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -362,7 +468,7 @@ public sealed class PlatformDiagnosticsPipeClient(
     }
 
     private sealed record DiagnosticsHello(string Nonce);
-    private sealed record DiagnosticsRequest(string Operation);
+    private sealed record DiagnosticsRequest(string Operation, string? ConfirmationToken = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 
@@ -388,6 +494,14 @@ public sealed class PlatformDiagnosticsPipeClient(
             throw new ArgumentException("Diagnostics nonce is invalid.", nameof(value));
         return value;
     }
+
+    private static bool IsExactUpperHex(string? value, int exactLength) =>
+        value is not null && value.Length == exactLength &&
+        value.All(character => character is >= '0' and <= '9' or >= 'A' and <= 'F');
+
+    private static bool IsConfirmationToken(string? value) =>
+        IsExactUpperHex(value, PlatformDiagnosticsSnapshot.ConfirmationTokenLength) ||
+        IsExactUpperHex(value, PlatformDiagnosticsSnapshot.LegacyConfirmationTokenLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

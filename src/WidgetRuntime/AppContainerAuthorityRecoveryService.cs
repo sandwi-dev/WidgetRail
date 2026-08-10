@@ -2,8 +2,42 @@ namespace GameBarAlternative.WidgetRuntime;
 
 internal interface IAppContainerAuthorityRecoveryService
 {
-    IReadOnlyList<AppContainerAuthorityRecoveryCandidate> ListPending();
-    void Retry(string confirmationToken);
+    IReadOnlyList<AppContainerAuthorityRecoveryCandidate> ListPending(
+        CancellationToken cancellationToken = default);
+    void Retry(
+        string confirmationToken,
+        CancellationToken cancellationToken = default,
+        AppContainerAuthorityRecoveryCommitGate? commitGate = null);
+}
+
+/// <summary>
+/// Owns the single commit-versus-cancellation decision for one retry. Once
+/// commit wins, a caller timeout must report the verified recovery rather than
+/// cancellation; when cancellation wins, the journal record is retained.
+/// </summary>
+internal sealed class AppContainerAuthorityRecoveryCommitGate(
+    CancellationToken cancellationToken,
+    Action? beforeCommit = null)
+{
+    private readonly object _gate = new();
+    private bool _commitWon;
+
+    internal bool CommitWon
+    {
+        get { lock (_gate) return _commitWon; }
+    }
+
+    internal void Commit(Action clearPending)
+    {
+        ArgumentNullException.ThrowIfNull(clearPending);
+        lock (_gate)
+        {
+            beforeCommit?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
+            clearPending();
+            _commitWon = true;
+        }
+    }
 }
 
 internal sealed class AppContainerAuthorityRecoveryService(
@@ -16,27 +50,39 @@ internal sealed class AppContainerAuthorityRecoveryService(
 
     internal static AppContainerAuthorityRecoveryService Default => DefaultValue.Value;
 
-    public IReadOnlyList<AppContainerAuthorityRecoveryCandidate> ListPending() =>
-        journal.ListPending()
+    public IReadOnlyList<AppContainerAuthorityRecoveryCandidate> ListPending(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var pending = journal.ListPending();
+        cancellationToken.ThrowIfCancellationRequested();
+        return pending
             .Select(transaction => new AppContainerAuthorityRecoveryCandidate(
                 transaction.ConfirmationToken,
                 transaction.ProfileName,
                 transaction.Snapshots.Count,
                 transaction.IsLegacy))
             .ToArray();
+    }
 
-    public void Retry(string confirmationToken)
+    public void Retry(
+        string confirmationToken,
+        CancellationToken cancellationToken = default,
+        AppContainerAuthorityRecoveryCommitGate? commitGate = null)
     {
         ValidateConfirmationToken(confirmationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         var candidate = journal.ListPending().SingleOrDefault(transaction =>
             string.Equals(
                 transaction.ConfirmationToken,
                 confirmationToken,
                 StringComparison.Ordinal));
+        cancellationToken.ThrowIfCancellationRequested();
         if (candidate is null)
             throw new AppContainerAuthorityRecoveryException("stale_confirmation");
 
         using var lease = journal.Acquire(candidate.ProfileName);
+        cancellationToken.ThrowIfCancellationRequested();
         var current = lease.ReadPending();
         if (current is null ||
             !string.Equals(
@@ -48,8 +94,14 @@ internal sealed class AppContainerAuthorityRecoveryService(
         {
             using var container = WindowsAppContainer.OpenExistingProfile(current.ProfileName);
             using var operations = container.CreateAuthorityOperationsForTesting();
-            AppContainerAuthorityTransaction.Recover(current.Snapshots, operations);
-            lease.ClearPending();
+            AppContainerAuthorityTransaction.Recover(
+                current.Snapshots, operations, cancellationToken);
+            (commitGate ?? new AppContainerAuthorityRecoveryCommitGate(cancellationToken))
+                .Commit(lease.ClearPending);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (AppContainerAuthorityRecoveryException)
         {

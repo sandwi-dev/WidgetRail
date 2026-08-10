@@ -118,7 +118,8 @@ internal static class AppContainerAuthorityTransaction
 
     internal static void Recover(
         IReadOnlyList<AppContainerAuthoritySnapshot> snapshots,
-        IAppContainerAuthorityOperations operations)
+        IAppContainerAuthorityOperations operations,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentNullException.ThrowIfNull(operations);
@@ -126,10 +127,16 @@ internal static class AppContainerAuthorityTransaction
         List<Exception>? failures = null;
         for (var index = snapshots.Count - 1; index >= 0; index--)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 operations.Restore(snapshots[index]);
                 operations.VerifyRestored(snapshots[index]);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {

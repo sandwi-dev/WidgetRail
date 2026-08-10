@@ -7,6 +7,12 @@ using GameBarAlternative.PlatformDiagnostics;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
+    ("Authenticated worker retries only the exact recovery confirmation token", AuthenticatedRecoveryRetry),
+    ("Recovery retry reports stale and refused outcomes without mutation ambiguity", RecoveryRetryStaleAndRefused),
+    ("Recovery retry timeout and caller cancellation fail closed", RecoveryRetryCancellationIsBounded),
+    ("Recovery retry results enforce closed bounded diagnostics", RecoveryRetryResultIsBounded),
+    ("Malformed and unsupported recovery requests fail one connection closed", MalformedRecoveryRequestsRecover),
+    ("Recovery diagnostics enforce bounds and reject authority evidence leakage", RecoveryDiagnosticsAreBoundedAndSanitized),
     ("Client authenticates the kernel-reported server before sending its nonce", FakeServerRejectedBeforeNonce),
     ("Pre-created first pipe instance rejects a squatted endpoint", SquattedEndpointFailsClosed),
     ("Peer withholding delivery receipt is evicted without poisoning recovery", MissingReceiptRecovers),
@@ -42,6 +48,327 @@ static async Task AuthenticatedRoundTrip()
     Assert.Equal(11L, observed.Revision);
     Assert.Equal(PlatformDiagnosticState.Healthy, observed.Catalog.State);
     Assert.Equal("audio-mixer", observed.Workers.Single().WidgetId);
+}
+
+static async Task AuthenticatedRecoveryRetry()
+{
+    var token = ConfirmationToken('A');
+    var calls = 0;
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(31) with
+        {
+            AuthorityRecoveries = [RecoveryDiagnostic('1', token)],
+        }),
+        retry: (observed, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(token, observed);
+            Interlocked.Increment(ref calls);
+            return ValueTask.FromResult(new PlatformAuthorityRecoveryRetryResult(
+                PlatformAuthorityRecoveryRetryStatus.Recovered,
+                "recovered"));
+        });
+
+    var snapshot = await harness.Client.GetSnapshotAsync();
+    Assert.Equal(token, snapshot.AuthorityRecoveries.Single().ConfirmationToken);
+    var result = await harness.Client.RetryAuthorityRecoveryAsync(token);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Recovered, result.Status);
+    Assert.Equal("recovered", result.Code);
+    Assert.Equal(1, calls);
+
+    var wrongNonce = new PlatformDiagnosticsPipeClient(
+        harness.PipeName, new string('0', 64), Environment.ProcessId,
+        TimeSpan.FromSeconds(1));
+    var rejection = await Assert.ThrowsAsync<PlatformDiagnosticsException>(
+        () => wrongNonce.RetryAuthorityRecoveryAsync(token).AsTask());
+    Assert.Equal("authentication_failed", rejection.Code);
+    Assert.Equal(1, calls);
+
+    await Assert.ThrowsAsync<ArgumentException>(() =>
+        harness.Client.RetryAuthorityRecoveryAsync(token.ToLowerInvariant()).AsTask());
+    Assert.Equal(1, calls);
+}
+
+static async Task RecoveryRetryStaleAndRefused()
+{
+    var stale = ConfirmationToken('B');
+    var refused = ConfirmationToken('C', legacy: true);
+    var unavailable = ConfirmationToken('8');
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(32)),
+        retry: (token, _) => ValueTask.FromResult(token switch
+        {
+            var value when string.Equals(value, stale, StringComparison.Ordinal) =>
+                new PlatformAuthorityRecoveryRetryResult(
+                    PlatformAuthorityRecoveryRetryStatus.Stale, "confirmation_stale"),
+            var value when string.Equals(value, refused, StringComparison.Ordinal) =>
+                PlatformAuthorityRecoveryRetryResult.Refused("recovery_refused"),
+            var value when string.Equals(value, unavailable, StringComparison.Ordinal) =>
+                new PlatformAuthorityRecoveryRetryResult(
+                    PlatformAuthorityRecoveryRetryStatus.Unavailable,
+                    "recovery_unavailable"),
+            _ => throw new InvalidOperationException("Unexpected retry token."),
+        }));
+
+    var staleResult = await harness.Client.RetryAuthorityRecoveryAsync(stale);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Stale, staleResult.Status);
+    Assert.Equal("confirmation_stale", staleResult.Code);
+    var refusedResult = await harness.Client.RetryAuthorityRecoveryAsync(refused);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Refused, refusedResult.Status);
+    Assert.Equal("recovery_refused", refusedResult.Code);
+    var unavailableResult = await harness.Client.RetryAuthorityRecoveryAsync(unavailable);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Unavailable, unavailableResult.Status);
+    Assert.Equal("recovery_unavailable", unavailableResult.Code);
+
+    await using var unsupported = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(33)));
+    var unsupportedResult = await unsupported.Client.RetryAuthorityRecoveryAsync(stale);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Refused, unsupportedResult.Status);
+    Assert.Equal("retry_unsupported", unsupportedResult.Code);
+}
+
+static async Task RecoveryRetryCancellationIsBounded()
+{
+    var token = ConfirmationToken('9');
+    var entered = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var cancelled = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(41)),
+        serverTimeout: TimeSpan.FromMilliseconds(100),
+        clientTimeout: TimeSpan.FromSeconds(1),
+        retry: async (_, cancellationToken) =>
+        {
+            entered.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("Cancelled retry unexpectedly resumed.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                cancelled.TrySetResult();
+                throw;
+            }
+        });
+
+    var timeout = await Assert.ThrowsAsync<PlatformDiagnosticsException>(
+        () => harness.Client.RetryAuthorityRecoveryAsync(token).AsTask());
+    Assert.True(timeout.Code is "diagnostics_unavailable" or "diagnostics_timeout");
+    await entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal(41L, (await harness.Client.GetSnapshotAsync()).Revision);
+
+    using var callerCancellation = new CancellationTokenSource();
+    callerCancellation.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() =>
+        harness.Client.RetryAuthorityRecoveryAsync(token, callerCancellation.Token)
+            .AsTask());
+}
+
+static async Task RecoveryRetryResultIsBounded()
+{
+    var invalid = ConfirmationToken('D');
+    var valid = ConfirmationToken('E');
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(40)),
+        retry: (token, _) => ValueTask.FromResult(
+            string.Equals(token, invalid, StringComparison.Ordinal)
+                ? new PlatformAuthorityRecoveryRetryResult(
+                    PlatformAuthorityRecoveryRetryStatus.StillPending,
+                    "C:\\private\\authority.pending.json")
+                : new PlatformAuthorityRecoveryRetryResult(
+                    PlatformAuthorityRecoveryRetryStatus.Recovered,
+                    "recovered")));
+
+    var rejection = await Assert.ThrowsAsync<PlatformDiagnosticsException>(
+        () => harness.Client.RetryAuthorityRecoveryAsync(invalid).AsTask());
+    Assert.True(rejection.Code is "diagnostics_unavailable" or "invalid_retry_result");
+    var recovered = await harness.Client.RetryAuthorityRecoveryAsync(valid);
+    Assert.Equal(PlatformAuthorityRecoveryRetryStatus.Recovered, recovered.Status);
+}
+
+static async Task MalformedRecoveryRequestsRecover()
+{
+    var retries = 0;
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(34)),
+        retry: (_, _) =>
+        {
+            Interlocked.Increment(ref retries);
+            return ValueTask.FromResult(new PlatformAuthorityRecoveryRetryResult(
+                PlatformAuthorityRecoveryRetryStatus.Recovered, "recovered"));
+        });
+
+    await SendRejectedRequestAsync(
+        harness, new { operation = "retry-authority-recovery" });
+    await SendRejectedRequestAsync(
+        harness, new
+        {
+            operation = "retry-authority-recovery",
+            confirmationToken = new string('a', 64),
+        });
+    foreach (var malformed in new[]
+             {
+                 new string('A', 31),
+                 new string('A', 33),
+                 new string('A', 63),
+                 new string('A', 65),
+                 new string('G', 32),
+             })
+        await SendRejectedRequestAsync(
+            harness, new
+            {
+                operation = "retry-authority-recovery",
+                confirmationToken = malformed,
+            });
+    await SendRejectedRequestAsync(
+        harness, new { operation = "unknown-operation" });
+    Assert.Equal(0, retries);
+    Assert.Equal(34L, (await harness.Client.GetSnapshotAsync()).Revision);
+}
+
+static async Task RecoveryDiagnosticsAreBoundedAndSanitized()
+{
+    var valid = HealthySnapshot(35) with
+    {
+        AuthorityRecoveries =
+        [
+            RecoveryDiagnostic('2', ConfirmationToken('D')),
+        ],
+    };
+    await using (var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(valid)))
+    {
+        using var raw = await ReadRawSnapshotAsync(harness);
+        var json = raw.RootElement.GetRawText();
+        Assert.True(!json.Contains("C:\\\\private", StringComparison.Ordinal));
+        Assert.True(!json.Contains("S-1-15-2", StringComparison.Ordinal));
+        Assert.True(!json.Contains("D:(A;;", StringComparison.Ordinal));
+        Assert.True(!json.Contains("accessDescriptor", StringComparison.Ordinal));
+        Assert.True(!json.Contains("objectIdentity", StringComparison.Ordinal));
+    }
+
+    var tooMany = HealthySnapshot(36) with
+    {
+        AuthorityRecoveries = Enumerable.Range(
+                0, PlatformDiagnosticsSnapshot.MaximumAuthorityRecoveries + 1)
+            .Select(index => RecoveryDiagnosticWithId(
+                index.ToString("X32"), (index + 1).ToString("X32")))
+            .ToArray(),
+    };
+    await AssertSnapshotRejectedAsync(tooMany);
+    await AssertSnapshotRejectedAsync(HealthySnapshot(37) with
+    {
+        AuthorityRecoveries =
+        [
+            RecoveryDiagnostic('3', ConfirmationToken('E')) with
+            {
+                DisplayName = new string('x', 161),
+            },
+        ],
+    });
+    await AssertSnapshotRejectedAsync(HealthySnapshot(37) with
+    {
+        AuthorityRecoveries =
+        [
+            RecoveryDiagnostic('3', ConfirmationToken('E')) with
+            {
+                DisplayName = "C:\\private\\authority.pending.json",
+            },
+        ],
+    });
+    await AssertSnapshotRejectedAsync(HealthySnapshot(37) with
+    {
+        AuthorityRecoveries =
+        [
+            RecoveryDiagnostic('3', ConfirmationToken('E')) with
+            {
+                DisplayName = "S-1-15-2-unsafe-profile",
+            },
+        ],
+    });
+    await AssertSnapshotRejectedAsync(HealthySnapshot(38) with
+    {
+        AuthorityRecoveries =
+        [
+            RecoveryDiagnostic('4', ConfirmationToken('F')) with
+            {
+                StatusCode = "D:(A;;raw-descriptor)",
+            },
+        ],
+    });
+    await AssertSnapshotRejectedAsync(HealthySnapshot(39) with
+    {
+        SchemaVersion = PlatformDiagnosticsSnapshot.CurrentSchemaVersion - 1,
+    });
+}
+
+static PlatformAuthorityRecoveryDiagnostic RecoveryDiagnostic(
+    char recoveryIdCharacter,
+    string confirmationToken) => RecoveryDiagnosticWithId(
+        new string(recoveryIdCharacter, PlatformDiagnosticsSnapshot.RecoveryIdLength),
+        confirmationToken);
+
+static PlatformAuthorityRecoveryDiagnostic RecoveryDiagnosticWithId(
+    string recoveryId,
+    string confirmationToken) => new(
+        recoveryId,
+        "Example Widget",
+        PlatformAuthorityRecoveryState.Blocked,
+        "identity_mismatch",
+        CanRetry: true,
+        confirmationToken);
+
+static string ConfirmationToken(char character, bool legacy = false) => new(
+    character,
+    legacy
+        ? PlatformDiagnosticsSnapshot.LegacyConfirmationTokenLength
+        : PlatformDiagnosticsSnapshot.ConfirmationTokenLength);
+
+static async Task SendRejectedRequestAsync<T>(DiagnosticsHarness harness, T request)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    await using var peer = new NamedPipeClientStream(
+        ".", harness.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+    await peer.ConnectAsync(timeout.Token);
+    await WriteTestFrame(peer, new { nonce = harness.ChannelNonce }, timeout.Token);
+    using (var acknowledgement = await ReadTestFrame(peer, timeout.Token))
+        Assert.Equal(true, acknowledgement.RootElement.GetProperty("accepted").GetBoolean());
+    await WriteTestFrame(peer, request, timeout.Token);
+    var oneByte = new byte[1];
+    try
+    {
+        var received = await peer.ReadAsync(oneByte, timeout.Token);
+        Assert.Equal(0, received);
+    }
+    catch (IOException)
+    {
+        // A rejected named-pipe request can surface either EOF or a broken-pipe
+        // IOException depending on which endpoint observes disconnect first.
+    }
+}
+
+static async Task<JsonDocument> ReadRawSnapshotAsync(DiagnosticsHarness harness)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    await using var peer = new NamedPipeClientStream(
+        ".", harness.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+    await peer.ConnectAsync(timeout.Token);
+    await WriteTestFrame(peer, new { nonce = harness.ChannelNonce }, timeout.Token);
+    using (var acknowledgement = await ReadTestFrame(peer, timeout.Token))
+        Assert.Equal(true, acknowledgement.RootElement.GetProperty("accepted").GetBoolean());
+    await WriteTestFrame(peer, new { operation = "snapshot" }, timeout.Token);
+    var snapshot = await ReadTestFrame(peer, timeout.Token);
+    await WriteTestFrame(peer, new { operation = "snapshot" }, timeout.Token);
+    return snapshot;
+}
+
+static async Task AssertSnapshotRejectedAsync(PlatformDiagnosticsSnapshot snapshot)
+{
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(snapshot));
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(
+        () => harness.Client.GetSnapshotAsync().AsTask());
 }
 
 static async Task WrongNonceRecovers()
@@ -259,10 +586,13 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
     public DiagnosticsHarness(
         Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> provider,
         TimeSpan? serverTimeout = null,
-        TimeSpan? clientTimeout = null)
+        TimeSpan? clientTimeout = null,
+        Func<string, CancellationToken,
+            ValueTask<PlatformAuthorityRecoveryRetryResult>>? retry = null)
     {
         PipeName = $"gba-diagnostics-test-{Guid.NewGuid():N}";
-        _server = new PlatformDiagnosticsPipeServer(PipeName, provider, serverTimeout);
+        _server = new PlatformDiagnosticsPipeServer(
+            PipeName, provider, serverTimeout, retry);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,
@@ -286,6 +616,11 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
 
 file static class Assert
 {
+    public static void True(bool condition)
+    {
+        if (!condition) throw new InvalidOperationException("Expected condition to be true.");
+    }
+
     public static void Equal<T>(T expected, T actual)
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))

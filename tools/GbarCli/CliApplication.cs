@@ -38,6 +38,8 @@ public static class CliApplication
                 "install" => await InstallCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
                 "uninstall" => await UninstallCommand.RunAsync(args[1..], output, cancellationToken),
                 "repair" => await RepairCommand.RunAsync(args[1..], output, cancellationToken),
+                "authority-recovery" => await AuthorityRecoveryCommand.RunAsync(
+                    args[1..], output, cancellationToken),
                 "list" => await ListCommand.RunAsync(args[1..], output),
                 "enable" => await EnabledCommand.RunAsync(args[1..], output, enabled: true),
                 "disable" => await EnabledCommand.RunAsync(args[1..], output, enabled: false),
@@ -99,6 +101,8 @@ public static class CliApplication
           gbar uninstall <widget-id> [--catalog <root>]
           gbar repair list [--catalog <root>]
           gbar repair remove <widget-id> <version> [--catalog <root>]
+          gbar authority-recovery list
+          gbar authority-recovery retry <confirmation-token>
           gbar list [--catalog <root>]
           gbar enable <widget-id> [--catalog <root>]
           gbar disable <widget-id> [--catalog <root>]
@@ -120,6 +124,10 @@ public static class CliApplication
 
         render is data-only and never loads widget assemblies. Use gbar dev for
         isolated AppContainer execution of author code.
+
+        repair manages quarantined installed-catalog generations. authority-recovery
+        retries a separate host AppContainer DACL transaction by its fresh exact token;
+        it has no force-clear, journal-path, content-path, SID, or ACL override.
 
         Exit codes: 0 success, 1 validation/runtime failure, 2 command usage error, 130 cancelled.
         """;

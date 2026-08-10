@@ -157,6 +157,21 @@ These files are strict host state, not a user-editing API. Use the CLI or
 `WidgetCatalog` methods so validation, locking, and atomic replacement remain
 in force.
 
+The separate AppContainer authority journal is also host-owned state. When a
+crash leaves an exact DACL transaction pending, use `gbar authority-recovery
+list` and then `gbar authority-recovery retry <confirmation-token>`. Listing is
+bounded and exposes only a confirmation token, validated profile name, target
+count, and current/legacy format. Retry compares the current transaction before
+restoring and verifying it. There is no caller-selected journal root, raw
+clear, force mode, caller-supplied path, or caller-supplied security descriptor;
+failed verification retains the pending record.
+
+The exact trusted Settings worker exposes this workflow under **Diagnostics**.
+Its controller confirmation starts on **Cancel**, never displays the opaque
+confirmation token, and refreshes the bounded host-owned list after each typed
+result. This is a private PID- and nonce-authenticated control channel, not a
+manifest capability or community-widget API.
+
 A pin is authoritative. If its exact immutable version directory is absent,
 discovery reports `active_version_missing`; malformed installed content fails
 with its structural catalog diagnostic. Neither case falls forward or backward
