@@ -214,6 +214,18 @@ catalog replacement, removal, overlay hide, or host stop retires it. Each
 bounded bridge drain schedules the earliest expiry and requests at most one
 repaint; the controller timer performs the same idempotent expiry as a fallback
 if the dedicated Win32 timer cannot be registered.
+The focused production-host fixture exercises this route without live
+credentials. It opens the real YT Music widget, invokes the focused play/pause
+control through the production host action ingress using the deterministic HWND
+keyboard mapping, and lets a command failure travel through the worker runtime
+and managed bridge. The host paints and projects the fixed status `YT Music
+action failed; try again` as a polite UI Automation live region for four seconds
+while retaining focus. A later failure replaces the deadline; Hide and Stop
+retire feedback; the original worker is not restarted; and neither worker
+exception text nor the fixture's private sentinel enters UI or the host log.
+Physical-controller evidence remains separate; the fixture still traverses the
+real host resolver, bridge/runtime/SDK failure path, paint pass, and UI
+Automation provider.
 The host therefore publishes `Visible` for the panel selected while the tray
 owns focus and `Interactive` only while that panel's controls own focus.
 Selecting another tray item moves the prior panel to `Background`, publishes

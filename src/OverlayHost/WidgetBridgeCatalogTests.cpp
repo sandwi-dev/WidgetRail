@@ -306,6 +306,16 @@ int main() {
     assert(actionFailure->runtimeGeneration == L"runtime-2");
     assert(actionFailure->actionId == L"playback.next");
     assert(actionFailure->sourceElementId == L"player.next");
+    assert(actionFailure->code == gba::WidgetActionFailureCode::ControllerActionFailed);
+    assert(gba::WidgetActionFailureCodeValue(actionFailure->code) ==
+        L"controllerActionFailed");
+
+    error.clear();
+    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+        "protocolVersion":1,"type":"widget-failed","requestId":0,
+        "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"providerFailure","actionId":"playback.next","sourceElementId":"player.next","message":"failed","canRestart":false}
+    })json", error));
+    assert(!error.empty());
 
     gba::WidgetActionFailureQueue actionFailures;
     for (int index = 0; index <= 16; ++index) {

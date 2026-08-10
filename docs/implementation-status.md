@@ -93,6 +93,26 @@ pass 107 and 108,547 checks respectively, and the production OverlayHost Release
 target builds. Physical-controller threshold proof remains in the verification
 queue.
 
+DLV-014 composes a real advanced-widget post-admission failure through the
+production OverlayHost process. A credential-free deterministic worker
+constructs the production YT Music widget with a complete connected snapshot,
+then raises a non-lifecycle cancellation from its command client. The worker
+runtime converts that failure to the sanitized action-failure contract; the
+managed bridge binds `controllerActionFailed` to the widget, runtime generation,
+action, and source; and the native host paints `YT Music action failed; try
+again` while projecting the same bounded four-second polite UI Automation
+status. The production-HWND fixture opens the widget and activates
+`widget:play-pause` through the host keyboard mapping, observes
+`LiveRegionChanged` without focus loss, proves replacement extends the deadline,
+Hide prevents resurrection, Stop terminates the original worker, and verifies
+that private exception text never enters `overlay.log`. This covers the real
+host action ingress but not physical GameInput hardware, whose evidence remains
+separate. The canonical native Release script passed, including 305 focused
+feedback checks, 149 accessibility-provider checks, 32 host-accessibility checks,
+and the production-process fixture; the managed bridge suite passed 47/47, and
+the isolated YT Music Community-addon acceptance passed without changing the
+real user catalog.
+
 ## Implemented
 
 ### Native overlay and input
@@ -122,6 +142,10 @@ the renderer, HWND, and bridge transport remain outside it. Its deterministic
 Release target feeds two widgets through one pump, proves offscreen isolation,
 one-shot expiry and controller-timer fallback, rejects a late prior generation,
 and prevents feedback resurrection after hide or Stop.
+This behavior now also has production-process evidence through the real YT Music
+widget, worker runtime, managed bridge, native client drain, painted host surface,
+and Windows UI Automation provider; the worker remains the same process after
+failure.
 
 The renderer can retain bounded visible semantic geometry on demand, and a
 pure native accessibility-tree builder combines it with exact runtime/snapshot

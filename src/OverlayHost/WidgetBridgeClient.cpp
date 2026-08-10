@@ -760,7 +760,12 @@ bool HandleAsyncEvent(
         if (!IsIdentifier(runtimeGeneration) || !IsIdentifier(actionId) ||
             !IsIdentifier(sourceElementId) || !messageIsBounded ||
             payload.GetNamedBoolean(L"canRestart") ||
-            !actionFailures.Push({widgetId, runtimeGeneration, actionId, sourceElementId})) {
+            !actionFailures.Push({
+                widgetId,
+                runtimeGeneration,
+                actionId,
+                sourceElementId,
+                WidgetActionFailureCode::ControllerActionFailed})) {
             status = L"WidgetBridge action failure is invalid.";
             return false;
         }

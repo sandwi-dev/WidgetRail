@@ -93,12 +93,14 @@ $actionFeedbackTestObjectDirectory = Join-Path $outputDirectory 'obj\action-feed
 $accessibilityTreeTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-tree-tests'
 $accessibilityProjectionTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-projection-tests'
 $accessibilityProviderTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-provider-tests'
+$actionFailureHostTestObjectDirectory = Join-Path $outputDirectory 'obj\action-failure-host-tests'
+$actionFailureFixtureOutput = Join-Path $outputDirectory 'obj\action-failure-fixture'
 $trayLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-layout-tests'
 $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-accessibility-tests'
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -686,6 +688,38 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'AccessibilityProviderTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "AccessibilityProviderTests failed with exit code $LASTEXITCODE."
+    }
+
+    $actionFailureHostTestArguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetActionFailureHostTests.cpp'),
+        "/Fo:$actionFailureHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetActionFailureHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $actionFailureHostTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetActionFailureHostTests build failed with exit code $LASTEXITCODE."
+    }
+    if (-not $SkipPackaging) {
+        & dotnet publish `
+            (Join-Path $projectDirectory '..\..\tests\AdvancedActionFailureFixture\AdvancedActionFailureFixture.csproj') `
+            --configuration $Configuration --no-self-contained --nologo `
+            --output $actionFailureFixtureOutput
+        if ($LASTEXITCODE -ne 0) {
+            throw "Advanced action-failure fixture publish failed with exit code $LASTEXITCODE."
+        }
+        $actionFailureFixture = Join-Path $actionFailureFixtureOutput 'AdvancedActionFailureFixture.exe'
+        if (-not (Test-Path -LiteralPath $actionFailureFixture)) {
+            throw "Advanced action-failure fixture publish omitted AdvancedActionFailureFixture.exe."
+        }
+        & (Join-Path $outputDirectory 'WidgetActionFailureHostTests.exe') `
+            --installation $outputDirectory `
+            --fixture-worker $actionFailureFixture
+        if ($LASTEXITCODE -ne 0) {
+            throw "WidgetActionFailureHostTests failed with exit code $LASTEXITCODE."
+        }
     }
 
     $trayLayoutTestArguments = $common + @(

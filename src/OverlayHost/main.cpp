@@ -1233,6 +1233,9 @@ private:
                     }
                     AppendDiagnostic(
                         L"Widget action failed: widget=" + failure.widgetId +
+                        L" generation=" + failure.runtimeGeneration +
+                        L" code=" +
+                        std::wstring(gba::WidgetActionFailureCodeValue(failure.code)) +
                         L" action=" + failure.actionId +
                         L" source=" + failure.sourceElementId);
                 }
