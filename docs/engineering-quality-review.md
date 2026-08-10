@@ -1858,7 +1858,7 @@ show that the dashboard can answer: "what blocks the next build?" without
 reading 1,600 lines. Record EQ-010's correction and fresh evidence while
 keeping the contract-audit closure of EQ-009 out of the defect count.
 
-### Managed logical-type hotspot register — `4630866`
+### Managed logical-type hotspot register — `fdcf5e7`
 
 A Roslyn declaration-span audit on the accepted `main` baseline aggregates all
 partial declarations by logical type. It intentionally does not equate a long
@@ -1866,7 +1866,7 @@ file containing many small records/services with one giant class.
 
 | Logical production type | Approximate declaration lines | Disposition |
 | --- | ---: | --- |
-| `SettingsWidget` | 2,822 across three partial declarations | DLV-036 owns main page/persistence/recovery policy; DLV-044 owns installed-widget and permission sections and must eliminate the partial-type organization. |
+| `SettingsWidget` | 2,324 across three partial declarations | Accepted DLV-036 reduces the root from 1,090 to 542 lines behind tested snapshot presentation, ordinary preference/navigation, and exact-token recovery policies while retaining one lifecycle/state/effect owner. Assigned DLV-044 owns the unchanged 794-line installed-widget and 988-line permission sections and must eliminate the production partial-type organization. |
 | `SpotifyWidget` | 2,040 across four partial declarations | DLV-043 reopens the incomplete DLV-008 architecture disposition and requires real encapsulated boundaries. |
 | `AudioMixerWidget` | 1,643 | Conditional cohesive exception after DLV-029/DLV-042: one committed model, action/effect adapter, selection, status, and invalidation owner; material growth or another coordination domain reopens it. |
 | `UI` SDK facade | 1,471 across seven partial declarations | Cohesive exception: stateless public component-builder facade grouped by component family; it owns no lifecycle, tasks, locks, resources, or mutable model. Reopen if a component family starts sharing hidden state or cannot be tested independently. |
@@ -3998,13 +3998,13 @@ below.
    reproduction. Authorize either a narrowly proven offscreen atomic-present
    design or DirectComposition/swap-chain ownership before platform work
    resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-036 — split Settings page policy and privileged operations.**
-   DLV-041 is accepted through `4630866`. Keep one Settings lifecycle and
-   committed-state owner while separating snapshot-only page/navigation,
-   ordinary preference persistence, diagnostic projection, and exact-token
-   recovery policy. DLV-044 remains the next bounded assignment for installed-
-   widget and permission sections and must eliminate the aggregate partial-type
-   organization rather than merely move files.
+2. **Widgets DLV-044 — replace Settings partial sections with real policy boundaries.**
+   DLV-036 is accepted as `fdcf5e7`: the root remains the sole lifecycle,
+   committed-state, service-effect, and invalidation owner over tested pure
+   presentation, ordinary preference/navigation, and exact-token recovery
+   policies. DLV-044 now owns the unchanged installed-widget and permission
+   sections and must eliminate unrestricted partial-type access through narrow
+   value policies and snapshot-only composition rather than merely move files.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
@@ -4018,7 +4018,8 @@ below.
    DLV-033 native widget-session ownership; DLV-034 the Spotify provider;
    accepted DLV-035 the Windows network backend and accepted DLV-041 its native
    interop owner;
-   DLV-036 and DLV-044 the aggregate Settings partial type; and DLV-037 the
+   accepted DLV-036 and assigned DLV-044 the aggregate Settings partial type;
+   and DLV-037 the
    managed worker client. DLV-039 and DLV-040 then separate residual bridge
    client/residency and diagnostics/recovery ownership. DLV-043 replaces
    Spotify's partial-file organization with real types.

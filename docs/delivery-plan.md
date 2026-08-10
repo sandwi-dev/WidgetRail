@@ -419,6 +419,26 @@ Provider 51/51, Platform Broker 51/51, and all 52 documentation contracts in
 24.827 seconds. No aggregate, live radio mutation, native OverlayHost, or
 unrelated widget suite ran.
 
+### DLV-036 — Split Settings by page policy and privileged operations
+
+**State:** Done
+**Closing commit:** `fdcf5e7` (`[DLV-036] split Settings responsibilities`)
+**Integrated on `main`:** `fdcf5e7`
+
+**Reviewer disposition:** Accepted. The 2,872-line logical partial type is now
+2,324 lines: the root falls from 1,090 to 542 lines while remaining the sole
+lifecycle, operation-gate, committed-state, service-effect, and invalidation
+owner. Snapshot-only presentation, closed navigation and ordinary preference
+policy, and exact-token authority-recovery admission/result projection are
+directly tested non-partial boundaries; ordinary preference actions cannot
+reach privileged recovery, a replaced confirmation token fails closed, and no
+token enters the semantic snapshot. The unchanged 794-line installed-widget
+and 988-line permission sections remain explicit DLV-044 work, so this does not
+claim the aggregate partial hotspot is closed. Retained stable dirty run
+`20260810T192328Z-f5898174` passes Settings 49/49, Platform Diagnostics 15/15,
+Widget SDK 84/84, and all 52 documentation contracts in 20.525 seconds. No
+aggregate, catalog/broker authority change, native suite, or live recovery ran.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -441,8 +461,8 @@ the independent native/shared-scroll correction remains separately reviewable.
 Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
 concentration before dashboard controls add behavior. Accepted DLV-035 and
 DLV-041 separate the Windows network backend and its native interop owner while
-retaining singular lifetime authority; DLV-036 and DLV-044 now disposition the
-aggregate Settings partial type;
+retaining singular lifetime authority; accepted DLV-036 and assigned DLV-044
+now disposition the aggregate Settings partial type;
 DLV-037 continues the platform-policy hotspot queue; DLV-039 and DLV-040 finish
 the residual bridge-server responsibility split; and DLV-043 replaces
 Spotify's partial-file organization with real type boundaries before test-
@@ -1174,9 +1194,10 @@ platform worktree.
 
 ### DLV-036 — Split Settings by page policy and privileged operations
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `fdcf5e7`
 **Baseline:** accepted DLV-041 integration `4630866` plus the reviewer
 control-plane commit assigning this milestone
+**Closing commit:** `fdcf5e7`
 **Dependencies:** DLV-001 and DLV-041 only for queue order
 **Owner:** managed Settings widget internals and direct Settings fixtures
 
@@ -1214,8 +1235,8 @@ SDK/protocol behavior, or requires reopening frozen security work.
 
 ### DLV-044 — Replace Settings partial sections with real policy boundaries
 
-**State:** Ready after DLV-036
-**Baseline:** closing commit of DLV-036
+**State:** Assigned
+**Baseline:** accepted DLV-036 closing commit `fdcf5e7`
 **Dependencies:** DLV-001 and DLV-036
 **Owner:** managed Settings installed-widget and permission/consent internals
 and direct credential-free fixtures; no catalog, broker, protocol, or native-
