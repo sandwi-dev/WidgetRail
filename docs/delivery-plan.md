@@ -307,9 +307,11 @@ the serialized integration queue rather than being patched locally.
 
 The decomposition milestones implement EQ-006 without using file length as a
 mechanical gate: each extraction must reduce shared mutable knowledge or create
-a focused domain-policy seam. Audio Mixer waits for the production scroll
-diagnosis in DLV-026 so managed and native work do not race over an unproven
-owner. DLV-006 must still land before Spotify continuous-list and launcher work.
+a focused domain-policy seam. Audio Mixer follows DLV-037 in this lane and is
+independent of DLV-026: DLV-029 must preserve current focus IDs and navigation
+behavior so the native/shared-scroll correction remains a separately reviewable
+milestone. DLV-006 must still land before Spotify continuous-list and launcher
+work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
