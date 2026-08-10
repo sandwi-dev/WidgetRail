@@ -92,11 +92,26 @@ Maintain:
 - A blocked queue with exact unblocking evidence.
 - A manual/packaged/hardware/authentication verification queue.
 - Recently completed milestones with independent reviewer dispositions.
+- A managed architecture-hotspot register in
+  `docs/engineering-quality-review.md`. Disposition every production type above
+  roughly 1,000 physical lines, and every smaller type that owns several
+  independently testable concerns, as Assigned, Ready, dependency-blocked, or
+  a documented cohesive exception. Treat the threshold as a review trigger,
+  not a target or an automatic demand to split files.
 
 Every assignment must contain a stable DLV ID, lane, baseline, dependencies,
 bounded objective, ownership boundary, in-scope and out-of-scope work,
 acceptance criteria, required verification tier, concurrency constraints, and
 stop/escalation conditions.
+
+Do not accept a new undispositioned architecture hotspot. When an assignment
+touches an existing hotspot, require a before/after responsibility map and do
+not accept material growth unless the assignment demonstrates that the added
+behavior remains within one cohesive owner. Cosmetic partial classes, file
+splitting, wrappers, and pattern-name compliance do not close a hotspot; the
+change must reduce shared mutable knowledge, isolate a policy behind a focused
+test seam, or make a normal maintenance task possible without understanding the
+whole subsystem.
 
 Give each lane multiple pre-authorized tasks, but never manufacture filler work.
 If fewer than three safe independent Ready assignments exist, record why and

@@ -28,6 +28,24 @@ authorize implementation.
 - The planner reviews completed commits in order, returns inadequate work for
   correction, integrates only accepted work, and refills both lane queues.
 
+### Architecture non-regression gate
+
+- Production types above roughly 1,000 physical lines, plus smaller types that
+  own several independently testable concerns, are architecture-review
+  hotspots. Line count triggers review; it is not a design target.
+- Every hotspot must have one explicit disposition in the engineering-quality
+  review: current DLV assignment, ordered Ready work, dependency-blocked work,
+  or a cohesive exception with named retained responsibilities.
+- A milestone that touches a hotspot must report its before/after responsibility
+  map, coordination primitives, and cross-boundary mutable dependencies. It may
+  not add another undispositioned hotspot or materially grow an existing one
+  without demonstrating why the behavior belongs to the same cohesive owner.
+- Partial classes, arbitrary file movement, one-method wrappers, and named
+  patterns do not satisfy this gate by themselves. A successful boundary must
+  reduce shared mutable knowledge, expose a focused deterministic test seam, or
+  let a normal maintenance change be made without understanding the entire
+  subsystem.
+
 ### Branch and integration protocol
 
 - The `widgets` task works only in its Codex worktree on
@@ -840,6 +858,118 @@ unrelated widget suite.
 **Stop/escalate when:** the split requires credentials, public protocol or
 threat-model changes, a second token/session owner, or behavior owned by the
 Spotify widget rather than the platform backend.
+
+### DLV-035 — Split the Windows network backend by stable responsibility
+
+**State:** Ready after DLV-034
+**Baseline:** closing commit of DLV-034
+**Dependencies:** DLV-028 and DLV-031
+**Owner:** managed Windows network provider internals and deterministic native-
+adapter fixtures; no widget presentation or native overlay-host files
+
+**Objective:** Preserve one owner thread and one committed provider state while
+making one scan/connect/radio command rule, timeout, or event projection
+changeable without understanding the complete roughly 1,186-line backend.
+
+**In scope:** a before/after responsibility and coordination inventory; named
+command admission/execution, connection and scan timeout policy, provider-state
+reconciliation, and event projection boundaries where independently testable;
+deletion of superseded queue/timer/equality knowledge; keep the native adapter
+behind its existing bounded interface.
+
+**Out of scope:** new Wi-Fi/Bluetooth features, public capability/protocol
+changes, platform-host work, undocumented Windows APIs, a generic command bus,
+one class per command, or cosmetic movement of P/Invoke declarations.
+
+**Acceptance criteria:** one owner thread and committed-state owner remain;
+commands, timers, and event publication have explicit deterministic ordering;
+one scan/connect/radio rule can be tested without constructing the entire
+backend; cancellation, late timeout, provider churn, degraded recovery,
+disposal, and duplicate event suppression remain exact; the completion report
+quantifies responsibility and cross-boundary mutable-dependency reduction.
+
+**Verification:** Tier 1 Windows Network provider and smallest affected broker
+network-mapping Release suites with manually completed adapter operations. No
+aggregate or unrelated widget suite.
+
+**Stop/escalate when:** correct separation requires a public protocol, changes
+provider authority or Windows behavior, introduces another owner thread/state
+owner, or overlaps the preserved native platform worktree.
+
+### DLV-036 — Split Settings by page policy and privileged operations
+
+**State:** Ready after DLV-035
+**Baseline:** closing commit of DLV-035
+**Dependencies:** DLV-001 and DLV-035 only for queue order
+**Owner:** managed Settings widget internals and direct Settings fixtures
+
+**Objective:** Keep one widget lifecycle and committed settings state while
+making one ordinary settings page, persistence rule, diagnostic projection, or
+authority-recovery workflow changeable without reading the complete roughly
+1,090-line widget.
+
+**In scope:** a before/after ownership map; pure snapshot-only page composition
+and navigation policy; appearance/overlay preference persistence policy;
+diagnostic and exact-token authority-recovery projection/action boundaries;
+focused success, failure, stale-selection, cancellation, and repeated-render
+tests; deletion of duplicated page/action knowledge.
+
+**Out of scope:** new settings, catalog/security-policy changes, authority-
+recovery redesign, public SDK abstractions, a universal view-model/base class,
+partial-class-only splitting, or visual redesign.
+
+**Acceptance criteria:** one lifecycle and committed-state owner remains; pure
+page presentation does not perform I/O; privileged recovery actions cannot be
+reached through ordinary preference policy; one page or persistence/recovery
+rule changes through a named boundary; busy/error/focus/navigation behavior and
+exact-token fail-closed semantics remain deterministic; the completion report
+quantifies the before/after responsibility map.
+
+**Verification:** Tier 1 Settings, exact-token recovery, smallest Widget SDK
+render/navigation, and affected documentation Release suites. No aggregate or
+unrelated installed-widget hardening.
+
+**Stop/escalate when:** the split changes authority, persistence schema, public
+SDK/protocol behavior, or requires reopening frozen security work.
+
+### DLV-037 — Split managed worker-session transport from gesture authority
+
+**State:** Ready after DLV-036
+**Baseline:** closing commit of DLV-036
+**Dependencies:** DLV-032
+**Owner:** managed `WidgetProcessClient` internals and direct runtime fixtures;
+no native host files
+
+**Objective:** Preserve one worker-session/lifecycle authority while making
+process startup/transport, request correlation and drain, content/companion
+leases, or dashboard-gesture reservation changeable and directly testable
+without understanding the complete roughly 1,027-line client.
+
+**In scope:** a before/after responsibility and resource map; one bounded
+session/transport owner; one typed pending-request owner; one dashboard-gesture
+reservation/expiry policy behind the existing broker authority; explicit lease
+cleanup; deterministic connect, exit, Stop/Unload, stale-session, correlation,
+expiry, revocation, and cancellation-ignoring drain fixtures; deletion of
+superseded cross-boundary mutable state.
+
+**Out of scope:** native protocol/framing changes, capability or threat-model
+changes, sandbox redesign, new dashboard gestures, public SDK changes, generic
+event buses, or multiple competing process/lifecycle owners.
+
+**Acceptance criteria:** worker process, pipe/session generation, pending
+requests, leases, and gesture reservations each have one named owner and one
+terminal cleanup path; Stop/Unload remain responsive and bounded; stale process
+exit, response, companion, and gesture results cannot affect a replacement
+session; focused fixtures construct each policy without starting the full
+product; the completion report quantifies fields, tasks, locks, and mutable
+dependencies before and after.
+
+**Verification:** Tier 1 Widget Runtime, smallest bridge correlation/drain, and
+generic-worker Release suites. No native aggregate.
+
+**Stop/escalate when:** separation changes the public protocol/threat model,
+requires native-host edits, weakens sandbox or gesture authority, or creates a
+second lifecycle/session owner.
 
 ## Platform lane
 
