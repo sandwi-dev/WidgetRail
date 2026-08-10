@@ -213,12 +213,13 @@ remains off until the publisher-trust gates in Phase 4.
   macOS defaults, or decorative animation into the controller shell.
 - Integrate the implemented host-granted `HostServices.PrivateState` service
   into widgets that need durable preferences. Games & Apps now persists its
-  curated SavedIds, selection, and recent-first order through revision/CAS and
-  resolves them to fresh launch tokens on activation without enumerating the
-  broad catalog. DLV-017 must add a bounded, non-launchable persisted display
-  projection so the saved Library paints immediately after overlay restart,
-  then reconcile fresh trusted registrations in the background. Launch
-  authority remains short-lived and revalidated. Remaining product work
+  curated SavedIds, selection, recent-first order, and bounded display-only
+  projection through revision/CAS. Accepted DLV-017 renders the saved Library
+  immediately after worker restart as disabled **Checking…** rows, then
+  reconciles fresh trusted registrations in the background without persisting
+  AppIds. Unsupported pre-release schemas reset atomically rather than retaining
+  obsolete compatibility code. Launch authority remains short-lived and
+  revalidated. Remaining product work
   includes per-widget clear-local-data UI, uninstall/retention policy review,
   storage/profile cleanup, and other widget-specific migrations.
 - Continue the public authoring-coordination layer. `WidgetOperations`,
@@ -385,9 +386,14 @@ not irreversible API priority:
    maximum-page, loading, and error states.
    **Accepted in DLV-004 (`7e0b83e`, integrated as `76032bb`) at automated and
    retained-capture level; physical packaged controller/display review remains.**
-   DLV-017 owns restart warm start/reconciliation and DLV-018 owns trusted lazy
-   artwork; those data-plane concerns must not be buried in presentation offsets
-   or base64 row payloads.
+   **DLV-017 is accepted (`24a8944` plus `b844fd8`, integrated as `5aedfe8`):**
+   restart warm start and non-authorizing reconciliation are implemented with
+   focused SDK 84/84, worker 9/9, and Games 49/49 evidence. DLV-018 owns trusted
+   lazy artwork. User testing subsequently exposed a remove-one/Back Library
+   disappearance plus unstable Add applications visibility and low surface
+   density; DLV-024 is the bounded managed-widget correction before the warm-
+   start issue can close. These concerns must not be buried in presentation
+   offsets or base64 row payloads.
 3. **Select input and output devices from Audio Mixer.** Add controller-first
    pickers that show the current defaults and change the intended Windows audio
    endpoint and role with explicit pending, success, denial, disappearance, and

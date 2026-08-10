@@ -24,11 +24,12 @@ to express.
 
 The current cycle is **stronger as an advanced-widget product proof, but still
 flat for external onboarding**. DLV-001 adds no community authority, and DLV-002 deliberately
-implements Games & Apps curation as widget-owned versioned private state over a
-bounded trusted capability. Its pure reconciliation type, explicit automatic
-provenance/exclusions, deterministic lifecycle races, and credential-free
-real-package fixture are useful patterns, but they do not yet simplify the
-public multi-page/remote-state authoring path. Spotify now has one coherent
+implements Games & Apps curation and accepted DLV-017 warm-start projection as
+widget-owned versioned private state over a bounded trusted capability. Its pure
+reconciliation type, explicit automatic provenance/exclusions, whole-state
+pre-release reset, non-authorizing display projection, deterministic lifecycle
+races, and credential-free fixtures are useful patterns, but they do not yet
+simplify the public multi-page/remote-state authoring path. Spotify now has one coherent
 presentation revision, an explicitly keyed playlist-detail owner, and accepted
 named responsibility boundaries. DLV-009 makes YT Music the second lifecycle
 proof, and the external scaffold/package journey receives its own bounded
@@ -248,7 +249,7 @@ between a minimal and an application-like widget:
 | SDK Gallery | About 400 lines | Public components, navigation, responsive shell, and local state |
 | Recent Apps | 340 lines | One event-driven provider surface |
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
-| Games & Apps | 1,150 lines | Navigation, paging, private state, and launch commands |
+| Games & Apps | About 1,970 lines across widget/state files | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, and launch commands |
 | YT Music | About 1,365 lines | SDK-owned lifecycle lanes, one immutable presentation revision, and authored companion confirmation policy |
 | Spotify | About 1,950 lines across four responsibility files | Lifecycle/action wiring and singular state/resource ownership; route data; playback behavior; snapshot-only presentation over four destinations |
 | Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
@@ -260,7 +261,15 @@ Sessions has no `lock` or `SemaphoreSlim` use and owns only its lifecycle
 progress loop after adopting `WidgetModel<State>` and
 `WidgetOptimisticCommand`. DLV-009 gives YT Music SDK-owned Active lanes for
 auto-connect, progress, polling, and Latest transport reconciliation plus one
-immutable presentation record and zero Task/CTS registry fields. It still owns
+immutable presentation record and zero Task/CTS registry fields. DLV-017 proves
+that the existing private-state capability can support bounded warm display and
+current-authority reconciliation, but its schema validation, CAS merge, display
+projection, and lifecycle policy remain roughly 1,970 lines of Games-specific
+production code; one consumer is not evidence for a mandatory public state
+framework. The subsequently reproduced catalog-remove/Back disappearance also
+shows why framework extraction must wait for DLV-024 to establish a correct,
+testable product pattern rather than generalizing the current coordination.
+YT Music still owns
 two narrow semaphores, one state lock, and a manual optimistic confirmation
 policy in the same controller/view class. Spotify
 has adopted paged resources, one immutable presentation projection, an explicit

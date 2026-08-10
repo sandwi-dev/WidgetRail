@@ -81,8 +81,10 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-060 | P1 | Confirmed | Native renderer / shared component geometry | Button text/icon/checkmark alignment remains visibly inconsistent across first-party surfaces including Now Playing; DLV-021 reopens shared end-to-end measurement and paint evidence. |
 | GBA-061 | P0 | Investigating | Spotify lifecycle / provider failure policy | Spotify can randomly replace the usable surface with `Spotify could not be loaded`; manual refresh recovers it. DLV-023 owns typed transient/fatal classification and last-good recovery. |
 | GBA-062 | P1 | Open | Audio Mixer / dashboard gesture authority | The icon tray has no LB/RB master-volume or X master-mute shortcuts; DLV-019 owns the exact-operation authority and widget integration. |
-| GBA-063 | P0 | Confirmed | Games & Apps private state / cold start | Durable IDs/order exist, but a new worker cannot render persisted display rows before provider resolution and appears to reload the full library; DLV-017 owns a bounded non-launchable warm projection. |
+| GBA-063 | P0 | Verifying | Games & Apps private state / cold start | DLV-017 adds a bounded display-only warm projection, revokes cached AppIds across Active lifetimes/failures, resets incompatible pre-release state atomically, and passes focused SDK 84/84, worker 9/9, and Games 49/49; packaged cold-start timing and physical display/controller proof remain. |
 | GBA-064 | P0 | Confirmed | Spotify list/header focus / native navigation | Reverse playlist traversal can oscillate between the header Play action and first row during scroll/load replacement; DLV-006 and DLV-022 own continuous keyed focus and composed verification. |
+| GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
+| GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -1814,10 +1816,14 @@ receive no new dashboard authority.
 
 ## GBA-063 — Games & Apps cold start cannot show persisted rows immediately
 
-**Evidence:** Schema-v2 persists durable IDs, provenance, exclusions, order,
-and selection, but not a bounded display projection. A fresh worker must resolve
-IDs through the provider before it can render names/kinds, which presents as a
-full reload despite persisted user choices.
+**Evidence:** Accepted DLV-017 commits `24a8944` and `b844fd8`, integrated as
+`5aedfe8`, add schema-v3 display-only rows containing bounded SavedId, sanitized
+name prefix, and closed kind. A fresh worker renders those rows disabled as
+**Checking…** before delayed provider resolution; current exact AppIds replace
+them without changing SavedId-derived order or focus. Active-lifetime changes
+and failed refreshes revoke cached AppIds, while Background rejects a
+cancellation-ignoring late provider result. Unsupported or semantically invalid
+pre-release state resets as a whole before authoritative reconciliation.
 
 **Ownership:** Games & Apps private state and lifecycle reconciliation. Launch
 authority remains host/provider-owned and must never be persisted.
@@ -1827,6 +1833,11 @@ before a delayed provider returns, clearly marks them checking/non-launchable,
 then atomically enables exact resolved rows and merges automatic changes without
 focus churn; failure retains last-good display; state remains bounded and
 contains no AppId/path/AUMID/command/provider identity.
+
+**Disposition:** Automated acceptance is complete: Widget SDK passes 84/84,
+worker host 9/9, Games & Apps 49/49, and 52 documentation files validate.
+Packaged cold-start first-paint timing plus physical controller/display proof
+remain, so the issue is Verifying rather than closed.
 
 ## GBA-064 — Reverse Spotify list traversal oscillates at the header boundary
 
@@ -1843,6 +1854,45 @@ generic.
 when spatially intended; Down returns predictably; reverse loading cannot steal
 focus back; Back, refresh, compact/expanded changes, sparse pages, late
 completion, and cache transitions preserve one stable keyed target.
+
+## GBA-065 — Removing one saved application can hide the rest of the Library
+
+**Evidence:** In the accepted DLV-017 build, opening Add applications, removing
+one entry marked Saved, and returning to Library can leave every other saved
+entry absent. The production widget maintains separate catalog-page items,
+Library projection, durable SavedIds/provenance/exclusions, display rows, and
+current-lifetime resolved AppIds; a mutation or state-application path can
+therefore produce a visually empty Library even when durable intent should
+retain the other identities. Current automated DLV-017 evidence did not cover
+this exact catalog-remove/Back/product sequence.
+
+**Ownership:** Games & Apps managed mutation and private-state projection.
+DLV-024 must reproduce the complete action route before deciding whether the
+fault is persistence, in-memory projection, or both. It must not weaken opaque
+launch authority or add legacy-schema compatibility.
+
+**Acceptance:** Removing one row changes exactly its membership and, for an
+automatic Game, its exclusion/provenance state. All unrelated rows, order,
+display projection, selection fallback, and current resolved admissions survive
+Back, invalidation, restart, delayed/failed reconciliation, and CAS conflict.
+
+## GBA-066 — Games & Apps Library density and Add action are unstable
+
+**Evidence:** The accepted Library surface requests 820x430 DIPs and shows too
+few normal rows on available desktop space. The Add applications action also
+disappears and reappears while Library state changes, instead of remaining one
+stable reachable action on the last-good Ready tree.
+
+**Ownership:** Games & Apps managed surface hints and presentation continuity in
+DLV-024. If evidence instead proves a host sizing/transition defect, stop and
+route that narrow finding to the platform lane rather than adding a widget
+workaround.
+
+**Acceptance:** The preferred standard surface shows at least two more normal
+rows than the 430-DIP baseline when safe area permits; compact and 150% layouts
+remain bounded and scrollable. Every Ready Library snapshot contains exactly
+one stable Add applications action through refresh, persistence, and background
+reconciliation.
 
 ## Closed issues
 

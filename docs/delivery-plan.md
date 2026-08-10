@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-09
+Status: reviewer-owned two-lane execution queue, 2026-08-10
 Planning owner: independent review and delivery-planning agent
 Execution owners: `widgets` implementation lane and `platform` implementation lane
 
@@ -192,13 +192,32 @@ registry fields, while the remaining state lock and connection/client gates
 retain narrow domain serialization roles. YT Music passes 51/51; real companion,
 physical controller, and packaged visual evidence remain manual gates.
 
+### DLV-017 — Show a durable Games & Apps warm start
+
+**State:** Done
+**Closing commits:** `24a8944`, corrected by `b844fd8`
+**Integrated on `main`:** `5aedfe8`
+
+**Reviewer disposition:** Accepted. Schema v3 stores only bounded sanitized
+display projection plus durable SavedId membership/provenance/exclusions/order/
+selection; every displayed row remains non-authorizing until the current Active
+lifetime resolves an exact AppId. Unsupported or semantically invalid pre-
+release state resets as a whole before fresh trusted-catalog reconciliation,
+rather than retaining compatibility branches or partially migrating values.
+Focused Release evidence passes Widget SDK 84/84, worker host 9/9, Games & Apps
+49/49, and 52 documentation contracts. Packaged cold-start timing and physical
+controller/display evidence remain in the verification queue. Subsequent user
+testing exposed separate Library mutation/presentation regressions now bounded
+by DLV-024; the accepted authority and whole-state-reset design remains intact.
+
 ## Widgets lane
 
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The ordered widgets queue keeps Games & Apps continuity adjacent to DLV-004,
-then returns to the advanced-widget lifecycle/package path. Spotify list work
+The ordered widgets queue keeps newly reproduced Games & Apps continuity
+regressions adjacent to DLV-017, then returns to the advanced-widget lifecycle/
+package path. Spotify list work
 that depends on shared cursor/append foundations remains in the serialized
 integration queue rather than being patched locally.
 
@@ -305,7 +324,7 @@ different Games & Apps information architecture.
 
 ### DLV-017 — Show a durable Games & Apps warm start
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `5aedfe8`
 **Baseline:** `08d44db`, the accepted widgets-lane DLV-009 closing commit
 **Owner:** Games & Apps private-state projection, lifecycle reconciliation, and
 credential-free fixtures
@@ -378,10 +397,57 @@ existing generic-worker group covering lifecycle serialization. No aggregate.
 **Stop/escalate when:** a missing SDK primitive is genuinely required; report
 the repeated pattern and consumer evidence before changing the public API.
 
+### DLV-024 — Stabilize Games & Apps library continuity and density
+
+**State:** Assigned
+**Baseline:** `b844fd8`, the accepted widgets-lane DLV-017 closing commit
+**Owner:** Games & Apps managed presentation/state mutation, surface hints,
+credential-free fixtures, and directly affected feature documentation
+
+**Objective:** Correct the reproduced post-DLV-017 product regressions: removing
+one saved entry from Add applications must not make the other Library rows
+disappear, the Add applications action must remain visually stable throughout
+Library refresh/reconciliation, and the normal surface should use available
+vertical space to show materially more entries.
+
+**In scope:** a deterministic remove-one-from-catalog/Back/re-render/restart
+reproduction over schema v3; atomic in-memory and persisted mutation;
+membership/provenance/exclusion/display-projection consistency; persistence
+failure and CAS-conflict rollback/reconciliation; last-good Library rendering
+during background work; stable keyed selection/focus after removal; measured
+Library/Catalog preferred-height adjustment within the documented host safe
+area; compact/standard/wide and 100-150% scale semantics/captures.
+
+**Out of scope:** native-host transition or renderer changes, public SDK or
+protocol changes, DLV-006 continuous collections, trusted artwork, new catalog
+authority, storing AppIds, per-widget renderer offsets, or preserving obsolete
+pre-release schemas.
+
+**Acceptance criteria:** removing one explicit or automatic saved row changes
+only that row and its intended exclusion/provenance state; every other row,
+order, display projection, and exact current-lifetime launch admission survives
+Back, invalidation, worker restart, delayed/failed provider reconciliation, and
+one forced CAS conflict. A Ready Library snapshot always contains exactly one
+reachable Add applications action; background work may annotate/disable
+affected controls but cannot replace the last-good Library with a transient
+loading tree. At standard 100% scale the preferred surface shows at least two
+more normal rows than the accepted 430-DIP baseline when the host safe area
+allows it, while compact and 150% layouts remain bounded, scrollable, and
+unclipped. Focus moves to the nearest surviving stable row or the Add action.
+
+**Verification:** Tier 1 Games & Apps and private-state Release suites,
+documentation contracts, a fresh-worker delayed/failing-provider fixture, and
+retained before/during/after semantic plus capture sequences for the three
+reported behaviors. No aggregate.
+
+**Stop/escalate when:** the disappearing rows reproduce outside managed widget
+state, the height/visibility defect requires a native surface-contract change,
+or a correct fix requires public collection/protocol behavior owned by DLV-006.
+
 ### DLV-023 — Keep transient Spotify failures on the last-good surface
 
-**State:** Ready after DLV-017
-**Baseline:** closing commit of DLV-017
+**State:** Ready after DLV-024
+**Baseline:** closing commit of DLV-024
 **Owner:** Spotify managed refresh/polling state, typed provider-failure policy,
 and credential-free tests
 
@@ -688,7 +754,7 @@ serialized design. This is an exact-commit Tier-3 checkpoint.
 
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
-**State:** Awaiting DLV-006 and DLV-017 acceptance
+**State:** Awaiting DLV-006; DLV-017 accepted as `5aedfe8`
 **Intended lead:** planner-selected serialized provider/collection lane
 **Dependencies:** DLV-006, DLV-017
 
