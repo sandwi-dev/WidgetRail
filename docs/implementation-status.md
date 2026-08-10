@@ -44,7 +44,7 @@ contract passes with the Settings and CLI operator guidance present.
 DLV-002 makes Games & Apps reconcile the bounded trusted catalog on initial and
 subsequent activation. Only entries classified `Game` by a reviewed provider
 are added automatically; `Application` and `Unknown` remain explicit opt-ins.
-The widget owns a schema-v2 private-state policy for ordered SavedIds,
+The widget owns a schema-v3 private-state policy for ordered SavedIds,
 automatic-membership provenance, exact SavedId exclusions, and selection.
 Version-1 membership migrates as explicit user choice. Missing identities keep
 their bounded order tombstones, reappearing identities receive fresh launch
@@ -117,6 +117,22 @@ and the 52-file documentation contract. The clean-commit
 capture bundle is published under
 `artifacts/evidence/dlv004/dlv004-product-surface/manifest.json`; packaged
 physical-controller/display evidence remains a separate release gate.
+
+DLV-017 adds a bounded display-only warm-start projection to the Games & Apps
+schema without persisting launch authority. A fresh worker immediately renders
+the saved order, selection, automatic/explicit membership, and exclusions as
+disabled **Checking…** AppTiles containing only SavedId, a sanitized 20-scalar
+name prefix, and closed kind. Fresh resolution atomically replaces them with
+short-lived AppIds while SavedId-derived focus and order remain stable. Missing
+identities stay visible but disabled, reappearance receives new authority,
+authoritative reclassification still hides automatic non-Games, and refresh
+failure retains last-good display with explicit safe status. Active-lifetime
+transitions and failed authority refreshes discard cached AppIds before showing
+the projection, so only a current exact resolution enables launch. The exclusion cap
+is 128 so the proven worst escaped-Unicode schema remains below 64 KiB. Focused
+Release coverage passes 47/47, including delayed fresh-worker resolution,
+stale-launch refusal, CAS/exclusion behavior, failure retention, and a
+cancellation-ignoring completion rejected after Background.
 
 ## Implemented
 
@@ -561,11 +577,12 @@ through the nested vertical Catalog. Library and Catalog entries are full-width 
 rows can place the bounded trusted PNG inside that same Button target. A
 toggles Catalog membership, X removes from Library, and one
 confirmed launch moves that exact item to the front. Curation, selected item,
-automatic provenance, exact Game exclusions, and recent-first order persist
-across worker restart/unload as authority-scoped durable `SavedId` values in
-`HostServices.PrivateState`. Activation reconciles the bounded catalog and
-resolves curated entries to fresh short-lived launch tokens; a cached Library
-remains visible during subsequent lifecycle-owned refresh. Removal of a Game
+automatic provenance, exact Game exclusions, recent-first order, and bounded
+display-only last-good copy persist across worker restart/unload in
+`HostServices.PrivateState`. AppIds never persist. Activation shows the saved
+display immediately, then reconciles the bounded catalog and resolves curated
+entries to fresh short-lived launch tokens; checking or missing rows remain
+disabled while the cached Library stays visible. Removal of a Game
 persists an exclusion, same-identity reappearance stays excluded, and explicit
 Catalog addition clears it. Launch is
 enabled only while Interactive and targets only the opaque ID associated with
