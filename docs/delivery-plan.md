@@ -464,6 +464,37 @@ quality review; material growth or the return of section presentation, section
 selection policy, a second service/lifecycle owner, or independent coordination
 reopens it.
 
+### DLV-037 — Split managed worker-session transport from gesture authority
+
+**State:** Done
+**Closing commits:** `b6a4de3` (`[DLV-037] split worker session transport
+ownership`), corrected by `d339030` (`[DLV-037] linearize worker session
+teardown`)
+**Integrated on `main`:** `8ea0fd5`
+
+**Reviewer disposition:** Accepted after one bounded terminal-ordering
+correction. The 1,027-line client becomes a 964-line singular host lifecycle,
+restart-budget, failure-publication, and public-request adapter over one
+352-line per-generation session plus focused pending-request and gesture-
+reservation owners. The session terminal gate now owns resource transfer,
+process/companion/reader start, publication admission, cancellation, bounded
+drain, and exact cleanup; Stop/Unload either serialize with construction or
+terminalize its exact session so late attachments clean themselves and process
+creation cannot follow terminal admission. Exact current-session publication
+prevents retired response, invalidation, action-failure, process-failure, and
+gesture work from crossing replacement; a cancellation-ignoring old companion
+grant is observed and explicitly revoked. Five manually controlled no-sleep
+fixtures force construction versus Stop, stale notification/failure, stale
+response correlation, gesture replacement, and late grant completion. Stable
+scoped run `20260810T204532Z-3fc406c4` passes Runtime 74/74, generic worker
+9/9, Bridge 52/52, and documentation 52; because that worktree also preserved
+uncommitted DLV-039 Bridge files, exact clean follow-up
+`20260810T205357Z-3e49935e` independently passes Bridge 52/52 at `d339030`.
+No public API, protocol, native host, threat model, or sandbox authority changed.
+The retained root receives the cohesive exception recorded in the engineering-
+quality review; new lifecycle/publication/resource ownership or material
+unrelated growth reopens it.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -487,8 +518,8 @@ Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
 concentration before dashboard controls add behavior. Accepted DLV-035 and
 DLV-041 separate the Windows network backend and its native interop owner while
 retaining singular lifetime authority; accepted DLV-036 and DLV-044 now
-disposition the aggregate Settings partial type; DLV-037 is in bounded
-correction after review of candidate `b6a4de3`; DLV-039 and DLV-040 finish
+disposition the aggregate Settings partial type; accepted DLV-037 gives the
+worker client/session boundary singular terminal owners; DLV-039 and DLV-040 finish
 the residual bridge-server responsibility split; and DLV-043 replaces
 Spotify's partial-file organization with real type boundaries before test-
 harness cleanup. DLV-006 must still land before Spotify continuous-list and
@@ -1308,29 +1339,23 @@ committed-state owner.
 
 ### DLV-037 — Split managed worker-session transport from gesture authority
 
-**State:** Correction requested; candidate `b6a4de3` is not accepted or
-integrated
+**State:** Done; accepted and integrated as `8ea0fd5`
 **Baseline:** accepted DLV-044 closing commit `8599694`
+**Closing commits:** `b6a4de3`, corrected by `d339030`
 **Dependencies:** DLV-032 and DLV-044 only for queue order
 **Owner:** managed `WidgetProcessClient` internals and direct runtime fixtures;
 no native host files
 
-**Reviewer evidence:** Candidate `b6a4de3` gives pending requests, gesture
-reservations, and terminal session resources named owners and retained stable
-dirty evidence passes Widget Runtime 69/69, Bridge 52/52, generic worker 9/9,
-and documentation 52. It does not yet satisfy the terminal/replacement gate.
-`StopCoreAsync` can retire and finish a session while `EnsureConnectedAsync`
-still constructs it under the lifecycle gate, and the extracted session permits
-transport, process/job, companion, lease, and task attachment after terminal
-cleanup. A worker or resource can therefore enter after the sole cleanup path
-has completed. Session identity is also checked before global invalidation,
-action-failure, process-failure, and companion-gesture effects rather than at a
-linearized publication boundary, so replacement can win between the check and
-the old-session effect. The new direct fixtures prove isolated dictionaries but
-do not force these actual client interleavings. The implementation task has
-been told to preserve its uncommitted DLV-039 files, add a separate DLV-037
-correction commit, and prove construction-versus-Stop plus stale publication/
-gesture orderings with manually controlled no-sleep fixtures.
+**Reviewer evidence:** Candidate `b6a4de3` established the named owners but
+allowed Stop to finish while construction could still attach resources, and
+checked session identity before rather than at external publication. Correction
+`d339030` linearizes terminal resource transfer/start and current-session
+publication, explicitly revokes a cancellation-ignoring late gesture grant,
+and adds five manually controlled no-sleep client interleavings. Stable scoped
+evidence passes Runtime 74/74, worker 9/9, Bridge 52/52, and docs 52; exact clean
+follow-up `20260810T205357Z-3e49935e` passes Bridge 52/52 at `d339030` after
+excluding the preserved DLV-039 files. The accepted disposition is recorded
+under Recently completed.
 
 **Objective:** Preserve one worker-session/lifecycle authority while making
 process startup/transport, request correlation and drain, content/companion
@@ -1365,8 +1390,8 @@ second lifecycle/session owner.
 
 ### DLV-039 — Extract bridge client and residency ownership
 
-**State:** Ready after DLV-037
-**Baseline:** closing commit of DLV-037
+**State:** Assigned
+**Baseline:** accepted DLV-037 closing commit `d339030`
 **Dependencies:** DLV-032 and DLV-037
 **Owner:** managed `WidgetBridgeServer` client/catalog/residency internals and
 direct bridge lifecycle fixtures; no native host or public protocol files
