@@ -5,6 +5,15 @@ using GameBarAlternative.WindowsNetworkProvider;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Construction and subscription are inert", ConstructionIsLazy),
+    ("Native interop boundaries retain one lifetime owner", WindowsNetworkNativeAdapterScenarios.NativeLifetimeOwnerIsSingular),
+    ("Injected native lifetime recovery and disposal stay singular", WindowsNetworkNativeAdapterScenarios.LifetimeRecoveryAndDisposalAreSingular),
+    ("Snapshot recovery and disposal linearize every native registration", WindowsNetworkNativeAdapterScenarios.RecoveryAndDisposalAreLinearized),
+    ("Disposal suppresses and drains an admitted native publication", WindowsNetworkNativeAdapterScenarios.DisposalDrainsAdmittedPublication),
+    ("Reentrant native publication disposal remains terminal", WindowsNetworkNativeAdapterScenarios.ReentrantPublicationDisposalIsTerminal),
+    ("Failed WLAN open recovers without a duplicate handle", WindowsNetworkNativeAdapterScenarios.FailedOpenRecoversWithoutDuplicateHandle),
+    ("Connectivity and native buffers remain bounded", WindowsNetworkNativeAdapterScenarios.ConnectivityAndNativeBuffersAreBounded),
+    ("Scan and connect callbacks retain the adapter generation", WindowsNetworkNativeAdapterScenarios.ScanAndConnectCallbacksAreGenerationBound),
+    ("Radio rollback uses one injected native transaction", WindowsNetworkNativeAdapterScenarios.RadioRollbackUsesOneInjectedTransaction),
     ("Command policy owns typed native operation results", WindowsNetworkPolicyScenarios.CommandResultsAreClosed),
     ("Operation policy serializes deadlines and provider outcomes", WindowsNetworkPolicyScenarios.OperationOrderingIsDeterministic),
     ("Manually completed deadlines stay ordered on the provider owner thread", WindowsNetworkPolicyScenarios.ManualDeadlinesAreOwnerSerialized),
@@ -168,13 +177,13 @@ static async Task NetworkStatesAreExplicit()
 static Task RadioAvailabilityIsExplicit()
 {
     Assert.Equal(NetworkWirelessAvailability.Available,
-        WindowsNetworkNativeAdapter.ResolveRadioAvailability([true]));
+        WindowsNetworkRadioPolicy.ResolveRadioAvailability([true]));
     Assert.Equal(NetworkWirelessAvailability.RadioOff,
-        WindowsNetworkNativeAdapter.ResolveRadioAvailability([false, false]));
+        WindowsNetworkRadioPolicy.ResolveRadioAvailability([false, false]));
     Assert.Equal(NetworkWirelessAvailability.Available,
-        WindowsNetworkNativeAdapter.ResolveRadioAvailability([null]));
+        WindowsNetworkRadioPolicy.ResolveRadioAvailability([null]));
     Assert.Equal(NetworkWirelessAvailability.Available,
-        WindowsNetworkNativeAdapter.ResolveRadioAvailability([false, null]));
+        WindowsNetworkRadioPolicy.ResolveRadioAvailability([false, null]));
     return Task.CompletedTask;
 }
 
@@ -182,30 +191,30 @@ static Task NativeConnectionCallbacksAreCorrelated()
 {
     var expectedInterface = Guid.Parse("11111111-1111-1111-1111-111111111111");
     var otherInterface = Guid.Parse("22222222-2222-2222-2222-222222222222");
-    Assert.True(WindowsNetworkNativeAdapter.ConnectionNotificationMatches(
+    Assert.True(WindowsNetworkWlanPolicy.ConnectionNotificationMatches(
         expectedInterface, expectedInterface, "Saved Home", [], "Saved Home", []));
-    Assert.False(WindowsNetworkNativeAdapter.ConnectionNotificationMatches(
+    Assert.False(WindowsNetworkWlanPolicy.ConnectionNotificationMatches(
         expectedInterface, otherInterface, "Saved Home", [], "Saved Home", []));
-    Assert.False(WindowsNetworkNativeAdapter.ConnectionNotificationMatches(
+    Assert.False(WindowsNetworkWlanPolicy.ConnectionNotificationMatches(
         expectedInterface, expectedInterface, "Saved Home", [], "Other profile", []));
 
     byte[] expectedSsid = [0x43, 0x61, 0x66, 0x65];
-    Assert.True(WindowsNetworkNativeAdapter.ConnectionNotificationMatches(
+    Assert.True(WindowsNetworkWlanPolicy.ConnectionNotificationMatches(
         expectedInterface, expectedInterface, null, expectedSsid, "", expectedSsid.ToArray()));
-    Assert.False(WindowsNetworkNativeAdapter.ConnectionNotificationMatches(
+    Assert.False(WindowsNetworkWlanPolicy.ConnectionNotificationMatches(
         expectedInterface, expectedInterface, null, expectedSsid, "", [0x4F, 0x74, 0x68, 0x65, 0x72]));
-    Assert.False(WindowsNetworkNativeAdapter.ConnectionNotificationMatches(
+    Assert.False(WindowsNetworkWlanPolicy.ConnectionNotificationMatches(
         expectedInterface, expectedInterface, null, [], "", []));
 
-    Assert.True(WindowsNetworkNativeAdapter.ShouldExposeAvailableNetwork(
+    Assert.True(WindowsNetworkWlanPolicy.ShouldExposeAvailableNetwork(
         isConnectable: true, isConnected: false, hasSavedProfile: false, ssidLength: 4));
-    Assert.True(WindowsNetworkNativeAdapter.ShouldExposeAvailableNetwork(
+    Assert.True(WindowsNetworkWlanPolicy.ShouldExposeAvailableNetwork(
         isConnectable: false, isConnected: true, hasSavedProfile: false, ssidLength: 4));
-    Assert.False(WindowsNetworkNativeAdapter.ShouldExposeAvailableNetwork(
+    Assert.False(WindowsNetworkWlanPolicy.ShouldExposeAvailableNetwork(
         isConnectable: false, isConnected: false, hasSavedProfile: true, ssidLength: 4));
-    Assert.False(WindowsNetworkNativeAdapter.ShouldExposeAvailableNetwork(
+    Assert.False(WindowsNetworkWlanPolicy.ShouldExposeAvailableNetwork(
         isConnectable: true, isConnected: false, hasSavedProfile: false, ssidLength: 0));
-    Assert.True(WindowsNetworkNativeAdapter.ShouldExposeAvailableNetwork(
+    Assert.True(WindowsNetworkWlanPolicy.ShouldExposeAvailableNetwork(
         isConnectable: true, isConnected: false, hasSavedProfile: true, ssidLength: 0));
     return Task.CompletedTask;
 }
@@ -342,7 +351,7 @@ static Task WifiRadioMultiTargetTransaction()
         new RadioTarget("second", 2, 1),
     };
     var states = targets.ToDictionary(target => target.Id, target => target.Software);
-    var result = WindowsNetworkNativeAdapter.ApplySoftwareRadioTransaction(
+    var result = WindowsNetworkRadioPolicy.ApplySoftwareRadioTransaction(
         targets, true, target => states[target.Id], target => target.Hardware,
         (target, desired) =>
         {
@@ -357,7 +366,7 @@ static Task WifiRadioMultiTargetTransaction()
 
     states["first"] = 2;
     states["second"] = 2;
-    result = WindowsNetworkNativeAdapter.ApplySoftwareRadioTransaction(
+    result = WindowsNetworkRadioPolicy.ApplySoftwareRadioTransaction(
         targets, true, target => states[target.Id], target => target.Hardware,
         (target, desired) =>
         {
