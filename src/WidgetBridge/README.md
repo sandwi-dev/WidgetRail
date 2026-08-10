@@ -116,17 +116,17 @@ admission, until its exact-generation publication leases, tracked idle work,
 client, and residency lease drain. Retirement closes and cancels its
 notification lane before waiting for admitted sends. Lane cancellation may
 withdraw an event while it waits for the server's serialized writer. One
-internal event-write boundary owns writer admission, the fixed four-second
-in-flight deadline, and session abort through one adapter to the real frame
-channel. Once a frame starts, publication cancellation no longer interrupts
-it; a stalled frame terminates the session before another frame can use the
-possibly partial stream. This changes only internal pipe-session behavior, not
-the framing format or public protocol. Registry identity changes
-happen under the catalog gate, while external client cancellation and disposal
-start only after leaving that gate. A cancelled or timed-out restart transfers
-the reserved generation to the same tracked exact-once retirement path, so
-concurrent requests cannot create a competing worker. Replies and admitted
-events retain their internal generation lease through the server's serialized
+internal frame-write boundary owns reply and event writer admission, the fixed
+four-second in-flight deadline, and session abort through one adapter to the
+real frame channel. Once a frame starts, request or publication cancellation
+no longer interrupts it; a stalled frame terminates the session before another
+frame can use the possibly partial stream. This changes only internal pipe-
+session behavior, not the framing format or public protocol. Registry identity
+changes happen under the catalog gate, while external client cancellation and
+disposal start only after leaving that gate. A cancelled or timed-out restart
+transfers the reserved generation to the same tracked exact-once retirement
+path, so concurrent requests cannot create a competing worker. Replies and
+admitted events retain their internal generation lease through the server's serialized
 send. Restart prepares and lifecycle-restores one fresh client before
 publication; every unpublished client is disposed on failure. Terminal
 disposal owns active retirement tasks in one registry set, with each

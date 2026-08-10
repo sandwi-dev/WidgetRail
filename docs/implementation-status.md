@@ -67,8 +67,9 @@ These are scoped implementation runs, not canonical aggregates.
 DLV-039 keeps `WidgetBridgeServer` as the only pipe-session, framing, request-
 routing, reserved-Stop, reply, and serialized-write owner while moving catalog
 and client generations into one internal `BridgeClientRegistry`. The corrected
-server is 891 lines/40,021 bytes, down from 1,312 lines/59,775 bytes, and replaces its
-catalog, revision, registration dictionary, catalog lock, residency budget,
+server is 892 lines/40,160 bytes, down from 1,312 lines/59,775 bytes, and
+replaces its catalog, revision, registration dictionary, catalog lock,
+residency budget,
 nested registration state, idle-unload scheduling, restart, reconciliation,
 and disposal policy with one registry reference. The 1,261-line cohesive
 registry owns configured descriptors, current-generation identity, one catalog
@@ -76,20 +77,20 @@ lock, the existing per-registration operation and idle-state locks, residency
 leases/budget, cached snapshots, dashboard sequence authority, restart,
 replacement/removal, and terminal disposal. A separate 199-line internal
 `BridgeClientNotificationLane` is the registration-owned bounded event policy,
-not a second lifecycle or write owner. A 66-line internal
-`BridgeEventWriteBoundary` owns event writer admission, the fixed in-flight
-deadline, and session abort after a partial-frame timeout through one
+not a second lifecycle or write owner. A 61-line internal
+`BridgeFrameWriteBoundary` owns reply and event writer admission, the fixed
+in-flight deadline, and session abort after a partial-frame timeout through one
 production adapter; it does not change framing bytes or the public protocol.
-Per-registration idle work is now
-retained in an owned task set, canceled at replacement/terminal admission,
-boundedly drained to the existing deadline, and explicitly observed if cancellation is
-ignored. A shared terminal completion makes concurrent registry disposal wait
+Per-registration idle work is now retained in an owned task set, canceled at
+replacement/terminal admission, boundedly drained to the existing deadline,
+and explicitly observed if cancellation is ignored. A shared terminal
+completion makes concurrent registry disposal wait
 for the same exact cleanup boundary. There are no request-dispatcher, public
 protocol/framing-format, capability, authority, sandbox, or native-host contract
 changes. The limited internal pipe-session behavior change withdraws a canceled
-event that is still waiting for the writer; once its frame starts, the unchanged
-four-second deadline either finishes it or terminates the session before a later
-frame can follow a potentially partial stream. Direct value-
+reply or event that is still waiting for the writer; once its frame starts, the
+unchanged four-second deadline either finishes it or terminates the session
+before a later frame can follow a potentially partial stream. Direct value-
 based fixtures exercise compatible descriptor refresh, replacement/removal,
 stale generation events, idle-unload cancellation and drain, restart lifecycle
 restoration, residency refusal/release, failed start, concurrent operation, and
@@ -118,8 +119,8 @@ client disposal begin after that gate is released. Cancelled or deadline-bound
 restart transfers its reserved old generation into the same tracked exact-once
 retirement path. `_activeRetirements` plus each registration's resource and
 terminal completion outcomes are the sole retirement-task owners; the former
-stored-but-unconsumed registration task property has been removed. Event
-cancellation is admitted only while waiting for the
+stored-but-unconsumed registration task property has been removed. Event or
+request cancellation is admitted only while waiting for the
 serialized writer; once a frame starts, a bounded session deadline either
 finishes it or ends the pipe before any subsequent frame. Terminal failures are
 represented by a saturating count plus the first failure rather than an
@@ -146,6 +147,35 @@ frame prefix during teardown. The unchanged bounded repeat
 65/65, including both that pipelined case and the boundary case. Both artifacts
 are retained as focused dirty-worktree provenance; Runtime was intentionally
 not repeated.
+
+DLV-045 names the retained misalignment owner and closes an independent reply-
+write exposure. The pipelined harness waited for two invalidations even though
+the per-generation lane intentionally coalesces queued invalidations. When the
+second event did not exist, `WaitAsync` timed out around a frame read created
+with `CancellationToken.None`; that abandoned read remained active, consumed
+the next Stop reply's header, and made the successor read interpret the first
+JSON-body bytes as decimal length `1919951483`. A manually sequenced stream
+reproduces that exact value. One test-only terminal frame reader now passes its
+deadline into the actual read, aborts and drains that exact connection on
+timeout, rejects overlapping/successor reads, and prevents teardown Stop on a
+terminal stream. The pipelined fixture waits for the one authoritative
+coalesced invalidation before confirming both ordered actions in the snapshot.
+
+Separately, a manually blocked raw frame proves that ordinary reply cancellation
+after its header could previously leave four header bytes and release the
+serialized writer. Replies and events now share `BridgeFrameWriteBoundary`:
+caller cancellation applies only before writer admission, while an admitted
+frame completes under the fixed deadline or aborts the session before another
+frame. The retained DLV-039 event case still proves queued withdrawal and
+partial-frame timeout; the new reply case proves exact completion before its
+successor. Focused dirty-worktree runs `20260810T233739Z-bf5296da` and the
+required unchanged repeat `20260810T233812Z-6b00735c` completed in 21.797 and
+17.997 seconds respectively and both passed WidgetBridge 66/66. Earlier
+DLV-045 runs `20260810T232737Z-88d73425` and
+`20260810T232829Z-91036f97` are retained failure provenance that exposed the
+boundary's propagated cancellation contract and the underlying coalesced-event
+timeout rather than being treated as retry closure. No Runtime, native,
+documentation, or aggregate suite ran.
 
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is

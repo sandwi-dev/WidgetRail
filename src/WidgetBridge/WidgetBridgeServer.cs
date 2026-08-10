@@ -22,7 +22,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeCatalogMonitor? _catalogMonitor;
     private readonly BridgeClientRegistry _registry;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
-    private readonly BridgeEventWriteBoundary _eventWriteBoundary;
+    private readonly BridgeFrameWriteBoundary _frameWriter;
     private long _diagnosticsRevision;
     private long _hostEffectSequence;
     private BridgeFrameChannel? _channel;
@@ -56,8 +56,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             PublishClientInvalidation,
             PublishClientActionFailure,
             PublishClientFailure);
-        _eventWriteBoundary = new BridgeEventWriteBoundary(
-            new ServerEventWriteAdapter(this));
+        _frameWriter = new BridgeFrameWriteBoundary(
+            new ServerFrameWriteAdapter(this));
     }
 
     internal IAppContainerAuthorityRecoveryService AuthorityRecoveryService { private get; init; } =
@@ -779,11 +779,21 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         T payload,
         CancellationToken publicationCancellation)
     {
-        await _eventWriteBoundary.WriteAsync(new BridgeEnvelope
+        try
         {
-            Type = type,
-            Payload = BridgeJson.ToElement(payload),
-        }, publicationCancellation).ConfigureAwait(false);
+            await _frameWriter.WriteAsync(new BridgeEnvelope
+            {
+                Type = type,
+                Payload = BridgeJson.ToElement(payload),
+            }, publicationCancellation).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or
+                                               OperationCanceledException or
+                                               ObjectDisposedException or
+                                               InvalidOperationException)
+        {
+            // The main request loop owns native-host disconnect handling.
+        }
     }
 
     private void OnAppearanceChanged(object? sender, ThemeSnapshot snapshot) =>
@@ -811,20 +821,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
 
     private async Task SendAsync(BridgeEnvelope envelope, CancellationToken cancellationToken)
     {
-        var channel = _channel ?? throw new InvalidOperationException("Native host is not connected.");
-        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await channel.WriteAsync(envelope, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeGate.Release();
-        }
+        await _frameWriter.WriteAsync(envelope, cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed class ServerEventWriteAdapter(WidgetBridgeServer owner)
-        : IBridgeEventWriteAdapter
+    private sealed class ServerFrameWriteAdapter(WidgetBridgeServer owner)
+        : IBridgeFrameWriteAdapter
     {
         public BridgeFrameChannel? Channel => owner._channel;
         public CancellationToken SessionCancellation => owner._sessionCancellation;
