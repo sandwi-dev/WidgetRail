@@ -841,6 +841,38 @@ deadline capacity, greater-than-four delayed callback overflow, cross-type FIFO
 promotion, replacement ordering, and admission-versus-disposal balance; no
 PlatformBroker, aggregate, native adapter, or OverlayHost suite was repeated.
 
+DLV-041 preserves `WindowsNetworkNativeAdapter` as the only WLAN/IP notification
+lifetime, three-handle, three-callback, adapter-generation, event-publication,
+recovery, and disposal owner. Before the split, that owner was 1,297 lines
+(53,028 bytes) and also contained the raw native-call surface, managed interface
+projection, every WLAN list parser and profile/scan/connect transition, and the
+multi-PHY radio transaction. The root is now 330 lines (11,543 bytes). A 438-line stateless
+native-call facade owns P/Invoke and temporary call-local buffers; a 107-line
+connectivity policy projects managed facts and best-route selection; a 537-line
+WLAN policy owns only bounded profile, scan, available-network, and pending-
+connection values; and a 216-line radio policy owns strict buffer projection
+and compensating transactions.
+
+Coordination remains one adapter-owned gate, moved from scan-only state to the
+complete WLAN handle/callback/policy/close boundary. The extracted policies and
+native-call facade add no thread, task, lock, channel, semaphore, cancellation
+source, handle, callback registration, generation, disposal authority, public
+API, capability, or protocol field. The adapter passes its current handle into
+a policy call only while holding that gate; policies return bounded immutable
+snapshots, typed results, or callback projections. Deterministic injected-call
+fixtures prove singular open/register/recovery/unregister/close counts, failed-
+open recovery without duplicate handles, generation-bound scan and connection
+callbacks, late callback suppression after disposal, strict interface/SSID/
+radio bounds with complete buffer release, and compensating radio rollback.
+
+Bounded dirty-worktree Release run `20260810T183528Z-b4084bd8` passed Windows
+Network provider 48/48, PlatformBroker 51/51, and documentation validation
+across 52 Markdown files in 25.906 seconds. Its starting and finishing commit
+and dirty-status fingerprint are identical. This is stable assignment-scoped
+evidence for the managed native-adapter boundary, injected interop fixtures,
+and unchanged broker mapping; no aggregate, live-hardware, native OverlayHost,
+or unrelated widget suite was run.
+
 Games & Apps has replaced Recent Apps in the bundled catalog and first-party
 package conformance path. It is an ordinary public-SDK package in the generic
 AppContainer, requires `system.apps.library.read.v1`, optionally declares the

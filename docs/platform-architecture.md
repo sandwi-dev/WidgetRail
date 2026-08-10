@@ -172,6 +172,23 @@ and disposal therefore all serialize through the same owner thread. These
 boundaries add no capability, protocol, Windows API, or native-adapter
 authority.
 
+The Windows network native adapter is also split behind its unchanged internal
+provider contract. `WindowsNetworkNativeAdapter` remains the sole owner of the
+WLAN, IP-interface, and connectivity-notification handles; their three native
+callbacks; adapter generation; event publication; recovery; and terminal
+disposal. One adapter-owned WLAN gate serializes every handle use, WLAN callback
+projection, bounded WLAN policy transition, and close. The injected native-call
+facade is stateless and retains no handle or callback. Separate connectivity,
+WLAN, and radio policies project managed interface facts, parse bounded native
+buffers, correlate scan/connection generations, and execute compensating
+multi-PHY radio transactions. They receive the current handle only for the
+duration of a serialized call and cannot retain lifetime or synchronization
+authority. Malformed counts, SSIDs, interface identifiers, and radio buffers
+fail closed or are skipped within fixed bounds. Late callbacks re-enter the
+single adapter authority and cannot publish after terminal disposal. This
+managed split adds no capability, protocol, broker authority, Windows API, or
+native OverlayHost behavior.
+
 ## Resource behavior
 
 The overlay starts hidden. It retains the Guide system-button callback but
