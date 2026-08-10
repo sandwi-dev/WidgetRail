@@ -11,4 +11,11 @@
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\samples\YtMusicWidget\YtMusicWidget.cs" Link="source\YtMusicWidget.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YtMusicWidget\YtMusicActionPolicy.cs" Link="source\YtMusicActionPolicy.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YtMusicWidget\YtMusicCompanionPolicy.cs" Link="source\YtMusicCompanionPolicy.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YtMusicWidget\YtMusicConnectionPolicy.cs" Link="source\YtMusicConnectionPolicy.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YtMusicWidget\YtMusicPresentation.cs" Link="source\YtMusicPresentation.cs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

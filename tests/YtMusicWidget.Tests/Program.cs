@@ -21,6 +21,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Every connection state publishes one bounded standard surface", SurfaceContractAcrossConnectionStates),
     ("First activation starts one non-blocking automatic connection", AutoConnectStartsOnce),
     ("Runtime operation lanes replace widget-owned task registries", RuntimeOperationsOwnLifecycleWork),
+    ("YT Music internals remain split by stable responsibility", ResponsibilitySplitContract),
+    ("Closed action and connection policies are directly testable", DirectActionAndConnectionPolicies),
+    ("Companion confirmation timeout and rollback are directly testable", DirectCompanionConfirmationPolicy),
+    ("Repeated immutable presentation is byte deterministic", PurePresentationIsDeterministic),
     ("Lifecycle preserves one visibility lifetime across visible and interactive states", LifecycleVisibilityLifetime),
     ("Late pairing completion cannot survive the active lifetime", LatePairingCannotCommitAfterDeactivation),
     ("Late polling completion cannot publish after deactivation", LatePollCannotCommitAfterDeactivation),
@@ -465,6 +469,174 @@ static Task RuntimeOperationsOwnLifecycleWork()
             "_autoConnectTask" or "_progressLoop" or "_pollLoop" or "_autoConnectStarted")),
         "Superseded widget-local lifecycle coordination remains in the widget.");
     return Task.CompletedTask;
+}
+
+static Task ResponsibilitySplitContract()
+{
+    var sourceRoot = Path.Combine(AppContext.BaseDirectory, "source");
+    var orchestration = File.ReadAllText(Path.Combine(sourceRoot, "YtMusicWidget.cs"));
+    var actions = File.ReadAllText(Path.Combine(sourceRoot, "YtMusicActionPolicy.cs"));
+    var companion = File.ReadAllText(Path.Combine(sourceRoot, "YtMusicCompanionPolicy.cs"));
+    var connection = File.ReadAllText(Path.Combine(sourceRoot, "YtMusicConnectionPolicy.cs"));
+    var presentation = File.ReadAllText(Path.Combine(sourceRoot, "YtMusicPresentation.cs"));
+
+    AssertSourceContains(orchestration, "OnActivatedAsync");
+    AssertSourceContains(orchestration, "OnDeactivatedAsync");
+    AssertSourceContains(orchestration, "OnActionAsync");
+    AssertSourceContains(orchestration, "private readonly object _stateLock");
+    AssertSourceContains(orchestration, "Operations.RunLatest");
+    Assert.True(!orchestration.Contains("UI.VerticalScroll", StringComparison.Ordinal),
+        "Lifecycle orchestration regained semantic view composition.");
+    Assert.True(!orchestration.Contains("MergeExpectedState", StringComparison.Ordinal),
+        "Lifecycle orchestration regained companion confirmation policy.");
+
+    AssertSourceContains(actions, "YtMusicActionRoute Resolve");
+    Assert.True(!actions.Contains("WidgetView", StringComparison.Ordinal),
+        "Closed action routing acquired presentation ownership.");
+    Assert.True(!actions.Contains("IYtMusicClient", StringComparison.Ordinal),
+        "Closed action routing acquired provider ownership.");
+
+    AssertSourceContains(companion, "BeginOptimistic");
+    AssertSourceContains(companion, "ReconcileAuthoritative");
+    AssertSourceContains(companion, "TryRollback");
+    Assert.True(!companion.Contains("lock (", StringComparison.Ordinal),
+        "Companion policy acquired mutable committed-state ownership.");
+    Assert.True(!companion.Contains("Invalidate", StringComparison.Ordinal),
+        "Companion policy acquired widget publication ownership.");
+    Assert.True(!companion.Contains("IYtMusicClient", StringComparison.Ordinal),
+        "Companion policy acquired provider transport ownership.");
+
+    AssertSourceContains(connection, "SafeStatus");
+    AssertSourceContains(connection, "AuthorizationRequired");
+    Assert.True(!connection.Contains("lock (", StringComparison.Ordinal),
+        "Connection policy acquired mutable state ownership.");
+    Assert.True(!connection.Contains("IYtMusicClient", StringComparison.Ordinal),
+        "Connection policy acquired provider transport ownership.");
+
+    AssertSourceContains(presentation, "WidgetView Compose");
+    Assert.True(!presentation.Contains("lock (", StringComparison.Ordinal),
+        "Snapshot-only presentation reads mutable widget state.");
+    Assert.True(!presentation.Contains("HostServices", StringComparison.Ordinal),
+        "Snapshot-only presentation acquired ambient host authority.");
+    Assert.True(!presentation.Contains("IYtMusicClient", StringComparison.Ordinal),
+        "Snapshot-only presentation acquired provider ownership.");
+    return Task.CompletedTask;
+}
+
+static Task DirectActionAndConnectionPolicies()
+{
+    var play = YtMusicActionPolicy.Resolve("toggle-playback");
+    Assert.Equal(YtMusicActionKind.Command, play.Kind);
+    Assert.Equal<YtMusicCommand?>(YtMusicCommand.TogglePlayback, play.Command);
+    Assert.Equal("Toggling playback…", play.Status);
+    Assert.Equal(YtMusicActionKind.Refresh,
+        YtMusicActionPolicy.Resolve("refresh").Kind);
+    Assert.Equal(YtMusicActionKind.None,
+        YtMusicActionPolicy.Resolve("unknown-private-action").Kind);
+
+    var connecting = YtMusicPresentationState.Initial(0) with
+    {
+        ConnectionState = YtMusicWidgetConnectionState.Connecting,
+        Status = "Connecting to YTMDesktop2…",
+        PairingCode = "1234",
+    };
+    var deactivated = YtMusicConnectionPolicy.Deactivate(connecting);
+    Assert.Equal(YtMusicWidgetConnectionState.Disconnected,
+        deactivated.ConnectionState);
+    Assert.Equal("Connection paused · reconnect when visible", deactivated.Status);
+    Assert.Equal<string?>(null, deactivated.PairingCode);
+    var expired = YtMusicConnectionPolicy.AuthorizationRequired(
+        YtMusicPresentationState.Connected(PlayingSnapshot("Policy"), 0));
+    Assert.Equal("Authorization expired · pair device", expired.Status);
+    Assert.Equal(0, expired.PendingOptimistic.Length);
+    Assert.Equal("YTMDesktop2 is busy · try again shortly",
+        YtMusicConnectionPolicy.SafeStatus(new YtMusicServiceException(429)));
+    return Task.CompletedTask;
+}
+
+static Task DirectCompanionConfirmationPolicy()
+{
+    var clock = new ManualTimeProvider();
+    var policy = FastUpdatePolicy();
+    var authoritative = PlayingSnapshot("Direct policy") with
+    {
+        IsShuffleEnabled = false,
+        RepeatMode = YtMusicRepeatMode.Off,
+    };
+    var state = YtMusicPresentationState.Connected(
+        authoritative, clock.GetTimestamp());
+
+    var like = YtMusicCompanionPolicy.BeginOptimistic(
+        state, YtMusicCommand.Like, "Updating like…",
+        clock.GetTimestamp(), policy, clock);
+    Assert.Equal(true, like.Presentation.Snapshot.IsLiked);
+    Assert.Equal(1, like.Presentation.PendingOptimistic.Length);
+    var stale = YtMusicCompanionPolicy.ReconcileAuthoritative(
+        like.Presentation, authoritative, clock.GetTimestamp(), force: false, clock);
+    Assert.Equal(true, stale.Snapshot.IsLiked);
+    Assert.Equal(1, stale.PendingOptimistic.Length);
+
+    clock.Advance(policy.OptimisticConfirmationWindow + TimeSpan.FromMilliseconds(1));
+    var expired = YtMusicCompanionPolicy.ReconcileAuthoritative(
+        stale, authoritative, clock.GetTimestamp(), force: false, clock);
+    Assert.Equal(false, expired.Snapshot.IsLiked);
+    Assert.Equal(0, expired.PendingOptimistic.Length);
+
+    var shuffle = YtMusicCompanionPolicy.BeginOptimistic(
+        expired, YtMusicCommand.Shuffle, "Toggling shuffle…",
+        clock.GetTimestamp(), policy, clock);
+    var confirmed = YtMusicCompanionPolicy.ReconcileAuthoritative(
+        shuffle.Presentation,
+        authoritative with { IsShuffleEnabled = true },
+        clock.GetTimestamp(),
+        force: false,
+        clock);
+    Assert.Equal(true, confirmed.Snapshot.IsShuffleEnabled);
+    Assert.Equal(0, confirmed.PendingOptimistic.Length);
+
+    var dislike = YtMusicCompanionPolicy.BeginOptimistic(
+        confirmed, YtMusicCommand.Dislike, "Updating dislike…",
+        clock.GetTimestamp(), policy, clock);
+    Assert.Equal(true, dislike.Presentation.Snapshot.IsDisliked);
+    Assert.True(YtMusicCompanionPolicy.TryRollback(
+            dislike.Presentation,
+            dislike.Pending,
+            "request failed",
+            clock.GetTimestamp(),
+            clock,
+            out var rolledBack),
+        "Direct companion rollback did not find its exact pending attempt.");
+    Assert.Equal(false, rolledBack.Snapshot.IsDisliked);
+    Assert.Equal(0, rolledBack.PendingOptimistic.Length);
+    Assert.Equal("request failed", rolledBack.Status);
+    return Task.CompletedTask;
+}
+
+static Task PurePresentationIsDeterministic()
+{
+    var state = YtMusicPresentationState.Connected(
+        PlayingSnapshot("Deterministic") with
+        {
+            IsShuffleEnabled = true,
+            RepeatMode = YtMusicRepeatMode.One,
+        },
+        timestamp: 0,
+        status: "Playing through YTMDesktop2");
+    var first = YtMusicPresentation.Compose(state, state.Snapshot)
+        .CreateSnapshot("ytmusic.presentation", 42);
+    var second = YtMusicPresentation.Compose(state, state.Snapshot)
+        .CreateSnapshot("ytmusic.presentation", 42);
+    Assert.True(
+        SnapshotJson.Serialize(first).AsSpan().SequenceEqual(
+            SnapshotJson.Serialize(second)),
+        "Repeated immutable presentation produced different semantic bytes.");
+    return Task.CompletedTask;
+}
+
+static void AssertSourceContains(string source, string expected)
+{
+    Assert.True(source.Contains(expected, StringComparison.Ordinal),
+        $"Expected source boundary marker '{expected}'.");
 }
 
 static async Task LatePairingCannotCommitAfterDeactivation()

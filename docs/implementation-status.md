@@ -23,8 +23,13 @@ open-widget action, protocol-v13 explicit focus persistence, and the responsive
  migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
  uses SDK-owned Active operation lanes for connection, progress, polling, and
  latest-wins transport reconciliation; it neither retains provider response
- bodies nor renders unknown exception text. Focused Release suites pass Widget
- SDK 84/84, SDK Gallery 6/6, YT Music 51/51,
+ bodies nor renders unknown exception text. DLV-030 preserves its single
+ lifecycle/committed-state owner while extracting closed action routing,
+ connection transitions, optimistic confirmation/rollback, progress
+ reconciliation, and snapshot-only presentation as directly tested value
+ seams. It adds no task registry, cancellation source, revision counter, lock,
+ or mutable owner reference. Focused Release suites pass Widget SDK 84/84, SDK
+ Gallery 6/6, YT Music 55/55,
 and Gbar CLI 52/52. Packaged controller/companion evidence remains separate.
 
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
@@ -1073,11 +1078,13 @@ and tests, documentation contracts, and the hidden-overlay smoke test. The run
 recorded 29 artifact digests; it is intentionally not clean-tree release
 evidence because the milestone and unrelated review work were present at both
  endpoints. The current SDK, SDK Gallery, and YT Music focused suites pass
- 84/84, 6/6, and 51/51 respectively, including navigation/resource contracts,
+ 84/84, 6/6, and 55/55 respectively, including navigation/resource contracts,
  safe typed companion errors, serialization, and widget recovery for host-side
  rejected-Bearer invalidation without a second widget delete. YT Music also
- proves late pairing and polling cannot publish after deactivation and that no
- widget-owned Task or CancellationTokenSource registry remains. The current
+ proves late pairing and polling cannot publish after deactivation, direct
+ confirmation-window expiry and exact-feature rollback, closed action and
+ connection transitions, byte-deterministic repeated snapshot composition,
+ and that no widget-owned Task or CancellationTokenSource registry remains. The current
 Settings Release suite passes 45/45, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
