@@ -119,10 +119,44 @@ reselection, late success/failure, refresh, and Active-lifetime cancellation
 and reactivation; Spotify passed 35/35 and the minimal package conformance seam
 passed 6/6. Live Spotify and physical-controller proof remain manual evidence.
 
+### DLV-008 — Split Spotify by stable responsibility
+
+**State:** Done
+**Closing commit:** `2f42ab8` (`[DLV-008] split Spotify by responsibility`)
+**Integrated on `main`:** `80e54af`
+
+**Reviewer disposition:** Accepted. The same partial widget remains the single
+lifecycle, state, resource, and action owner, while named route, playback, and
+snapshot-only presentation files expose stable responsibilities without a new
+public abstraction or behavior change. The source-boundary contract rejects
+provider/lock/resource ownership in presentation. Spotify passed 36/36,
+documentation contracts covered 51 files, and the minimal installed-package
+conformance seam passed 6/6. The accepted package builds and validates, but the
+already-installed immutable `0.2.10` generation was not destructively replaced.
+
+### DLV-005 — Hold Y to refresh the selected tray widget
+
+**State:** Done
+**Closing commit:** `3fc3770` (`[DLV-005] add tray hold refresh`)
+**Integrated on `main`:** `aaf36d9`
+
+**Reviewer disposition:** Accepted. One host-owned five-state recognizer on the
+existing visible controller cadence preserves tap Y for reorder and sends one
+revalidated hold through the F5 restart authority. Threshold/release edges,
+repeat suppression, stale selection, context/device cancellation, reload
+failure, target resolution, guide density, and accessibility help are covered.
+Focused evidence passed 107 controller checks, 108,547 placement checks, the
+Release host build, and 51 documentation contracts. Physical-controller proof
+remains in the verification queue.
+
 ## Widgets lane
 
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
+
+Ready depth is temporarily two after DLV-004. A third independent widgets task
+is not safe yet because DLV-006 changes shared collection/protocol foundations
+and must remain serialized until DLV-004 is accepted.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -156,7 +190,7 @@ native focus semantics, authentication, or a materially different Spotify UX.
 
 ### DLV-008 — Split Spotify by stable responsibility
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `80e54af`
 **Baseline:** `ff706d2`
 **Owner:** Spotify managed widget internals
 
@@ -184,10 +218,51 @@ conformance used by DLV-007. No aggregate.
 **Stop/escalate when:** preserving behavior exposes a real DLV-007 correctness
 gap or requires cross-lane changes.
 
+### DLV-004 — Repair the Games & Apps product surface
+
+**State:** Assigned after clean widgets baseline refresh
+**Baseline:** accepted `main` through `aaf36d9` plus the reviewer dispatch commit
+**Dependencies:** DLV-002, DLV-003, and DLV-008
+**Owner:** Games & Apps managed widget, its credential-free fixtures, and
+directly affected public feature documentation
+**Concurrency:** May run with platform DLV-014; no shared protocol, native
+renderer, catalog authority, or platform-lane files may change
+
+**Objective:** Use the accepted trusted-game curation and shared Button geometry
+to make Library, empty, discovery/loading/error, and Add applications one
+coherent responsive controller surface.
+
+**In scope:** empty, short, long-name, maximum bounded page, loading, error,
+compact/standard/wide, 100-150% text/interface scale, mutation while focused,
+clipping, safe-area, semantic hierarchy, stable focus, and controller
+reachability behavior; shared managed component/style use where already public;
+representative deterministic captures and exact-commit product evidence.
+
+**Out of scope:** public protocol/SDK or native renderer changes, new catalog or
+launch authority, launcher/store expansion, title/path-derived identity,
+undocumented Windows APIs, or unrelated visual redesign.
+
+**Acceptance criteria:** automatically curated Games and explicitly added Apps
+share one professional hierarchy; Add/empty/loading/error/library transitions
+preserve a valid stable focus or deterministic fallback; every essential action
+is reachable without clipping across the named surfaces/scales; long and
+maximum-page data remains bounded; no widget-local geometry workaround appears;
+retained semantics/captures cover the full state matrix.
+
+**Verification:** Tier 1 Games & Apps Release tests, affected managed component
+and documentation contracts, plus the smallest native semantic/capture target
+needed for exact shared-geometry consumption. **Integration checkpoint:** after
+the coherent DLV-004 commit, run the canonical Tier-3 verifier exactly once from
+that clean exact commit and inspect its machine-readable provenance.
+
+**Stop/escalate when:** completion requires native/protocol changes, a new
+catalog/launch contract, physical display/controller action, or a materially
+different Games & Apps information architecture.
+
 ### DLV-009 — Consolidate YT Music lifecycle and render ownership
 
-**State:** Planned; awaiting DLV-004 and the next accepted widgets baseline
-**Baseline:** closing commit of DLV-008
+**State:** Ready after DLV-004
+**Baseline:** closing commit of DLV-004
 **Owner:** YT Music managed widget and existing public SDK primitives
 
 **Objective:** Make YT Music the second advanced proof that supported SDK
@@ -216,7 +291,7 @@ the repeated pattern and consumer evidence before changing the public API.
 
 ### DLV-010 — Prove the external widget package journey
 
-**State:** Planned; awaiting DLV-009
+**State:** Ready after DLV-009
 **Baseline:** closing commit of DLV-009
 **Owner:** managed scaffold/CLI, sample package, and public authoring docs
 
@@ -250,6 +325,10 @@ or weakening package validation/trust boundaries.
 Task identity: `platform`
 Branch: `codex/impl-platform`
 
+Ready depth is temporarily two after DLV-014. A third independent platform task
+is not safe yet because DLV-011 depends on the serialized DLV-006 collection
+baseline and host-owned pinning feasibility must not race shared architecture.
+
 ### DLV-003 — Correct shared button-content geometry
 
 **State:** Done; accepted and integrated as `703c5bb`
@@ -280,7 +359,7 @@ requires incompatible protocol semantics.
 
 ### DLV-005 — Hold Y to refresh the selected tray widget
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `aaf36d9`
 **Baseline:** `27b0319`
 **Owner:** OverlayHost controller gesture state and existing host reload path
 
@@ -307,7 +386,7 @@ requires hidden-overlay polling.
 
 ### DLV-014 — Compose advanced action failure through the production host
 
-**State:** Ready after DLV-005
+**State:** Assigned
 **Baseline:** closing commit of DLV-005
 **Owner:** bridge/native controller ingress, feedback surface, and host tests
 
@@ -399,7 +478,7 @@ one Assigned on an accepted integrated baseline.
 
 ### DLV-004 — Repair the Games & Apps product surface
 
-**State:** Ready for widgets-lane dispatch after DLV-008 at a clean boundary
+**State:** Dispatched to the widgets lane on accepted `main` through `aaf36d9`
 **Intended lead:** widgets lane
 **Dependencies:** DLV-002 and DLV-003
 
@@ -411,7 +490,7 @@ areas, and reachability. This is the next exact-commit Tier-3 checkpoint.
 
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Awaiting DLV-004 and DLV-005 acceptance
+**State:** Awaiting DLV-004 acceptance; DLV-005 is accepted
 **Intended lead:** planner-selected serialized protocol lane
 **Dependencies:** DLV-004 and DLV-005
 

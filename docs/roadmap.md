@@ -377,6 +377,8 @@ not irreversible API priority:
    without icons at every supported scale, including wrapped labels, and retain
    renderer assertions plus packaged Games & Apps, Spotify, and component-
    gallery captures.
+   **Implemented by DLV-003 (`27b0319`, integrated by `703c5bb`); physical
+   full-shell/display evidence remains.**
 5. **Hold Y to refresh the selected widget from the icon tray.** Keep tap Y as
    the existing enter/exit-reorder command, but defer that tap decision long
    enough for a clearly hinted hold gesture. Crossing the bounded hold threshold
@@ -387,6 +389,8 @@ not irreversible API priority:
    Show hold progress and a bounded success/failure result, retain F5 as the
    desktop fallback, and cover threshold boundaries, repeat suppression,
    reorder preservation, stale generations, and failed worker restart.
+   **Implemented by DLV-005 (`3fc3770`, integrated by `aaf36d9`); physical
+   controller threshold proof remains.**
 
 ### Flagship widget investigations and platform prerequisites
 
