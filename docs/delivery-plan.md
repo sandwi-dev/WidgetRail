@@ -229,6 +229,28 @@ private-state, worker, and installed-package boundaries passed their assigned
 focused groups. This is material ownership reduction, not closure of EQ-006 for
 the other application-sized widgets.
 
+### DLV-023 — Keep transient Spotify failures on the last-good surface
+
+**State:** Done
+**Closing commit:** `3cfdd27` (`[DLV-023] Preserve Spotify last-good refresh state`)
+**Integrated on `main`:** `4dc1bd5`
+
+**Reviewer disposition:** Accepted. One widget-private typed policy now
+classifies transient, permission, authorization, and configuration failures;
+transient refresh and polling faults retain the immutable Ready presentation,
+route, focus, and cached collection state with bounded 5/15/30-second backoff,
+while fatal states clear provider-derived playback and select safe actionable
+copy. Manual refresh and polling converge through the same policy, successful
+recovery clears the warning, exception/provider bodies are not rendered, and
+generation checks reject cancellation-ignoring results after Active exit.
+Focused Release evidence passes Spotify 39/39 on the clean closing commit,
+Widget SDK 84/84, generic installed-worker conformance 6/6, and 52
+documentation contracts. The three retained verifier bundles were stable but
+correctly ineligible as release evidence because they captured the dirty
+implementation worktree; no aggregate was required or run. Live Spotify
+recovery remains a product verification gate rather than an implementation
+blocker.
+
 ### DLV-020 — Make widget switching visually continuous
 
 **State:** Done
@@ -546,9 +568,10 @@ changes, duplicates ownership, or cannot preserve the accepted DLV-024 behavior.
 
 ### DLV-023 — Keep transient Spotify failures on the last-good surface
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `4dc1bd5`
 **Baseline:** accepted DLV-027 integration `69e86ef` plus the reviewer
 control-plane commit assigning this milestone
+**Closing commit:** `3cfdd27`
 **Owner:** Spotify managed refresh/polling state, typed provider-failure policy,
 and credential-free tests
 
@@ -581,8 +604,9 @@ error-contract gap, or credential issue rather than widget state policy.
 
 ### DLV-028 — Split Network Controls by stable responsibility
 
-**State:** Ready after DLV-023
-**Baseline:** closing commit of DLV-023
+**State:** Assigned
+**Baseline:** accepted DLV-023 integration `4dc1bd5` plus the reviewer
+control-plane commit assigning this milestone
 **Owner:** Network Controls managed internals and credential-free multi-provider
 fixtures
 

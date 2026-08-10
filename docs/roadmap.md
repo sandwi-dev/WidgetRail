@@ -307,9 +307,10 @@ remains off until the publisher-trust gates in Phase 4.
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
   Before expanding breadth, DLV-022 must repair the explicit responsive focus
   graph and migrate Queue/Playlist traversal onto the continuous keyed-list
-  contract from DLV-006; DLV-023 must keep transient provider/poll failures on
-  the last-good player with bounded warning/backoff while preserving explicit
-  fatal configuration, permission, and authentication states.
+  contract from DLV-006. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
+  now keeps transient provider/poll failures on the last-good player with
+  bounded warning/backoff while preserving explicit fatal configuration,
+  permission, and authentication states; live recurrence testing remains.
 - Discord remains deferred until eligibility and production communications/RPC
   access are confirmed; do not build against undocumented client internals. See
   [Discord integration research](discord-integration.md).

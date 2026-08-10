@@ -79,7 +79,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-058 | P1 | Confirmed | SectionHeader / native text geometry / Spotify | The `LIBRARY` header in Spotify Playlists is vertically clipped in the packaged overlay; DLV-021 owns shared header measurement and DLV-022 verifies Spotify composition. |
 | GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
 | GBA-060 | P1 | Confirmed | Native renderer / shared component geometry | Button text/icon/checkmark alignment remains visibly inconsistent across first-party surfaces including Now Playing; DLV-021 reopens shared end-to-end measurement and paint evidence. |
-| GBA-061 | P0 | Investigating | Spotify lifecycle / provider failure policy | Spotify can randomly replace the usable surface with `Spotify could not be loaded`; manual refresh recovers it. DLV-023 owns typed transient/fatal classification and last-good recovery. |
+| GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Open | Audio Mixer / dashboard gesture authority | The icon tray has no LB/RB master-volume or X master-mute shortcuts; DLV-019 owns the exact-operation authority and widget integration. |
 | GBA-063 | P0 | Verifying | Games & Apps private state / cold start | DLV-017 adds a bounded display-only warm projection, revokes cached AppIds across Active lifetimes/failures, resets incompatible pre-release state atomically, and passes focused SDK 84/84, worker 9/9, and Games 49/49; packaged cold-start timing and physical display/controller proof remain. |
 | GBA-064 | P0 | Confirmed | Spotify list/header focus / native navigation | Reverse playlist traversal can oscillate between the header Play action and first row during scroll/load replacement; DLV-006 and DLV-022 own continuous keyed focus and composed verification. |
@@ -1818,6 +1818,17 @@ crash.
 bounded warning/backoff; refresh and automatic recovery share one policy;
 fatal typed states remain explicit; error copy is safe; lifecycle exit cancels
 retry; repeated forced sequences never restart the worker or lose route/focus.
+
+**Implementation evidence:** DLV-023 commit `3cfdd27`, integrated by
+`4dc1bd5`, adds one widget-private typed failure policy and a warning carried in
+the immutable presentation revision. Focused Release coverage passes Spotify
+39/39 on the clean closing commit, Widget SDK 84/84, installed-worker
+conformance 6/6, and 52 documentation contracts. Forced transient failures
+retain route, focus, playback, and playlist state through 5/15/30-second
+bounded backoff; fatal permission/authorization/configuration states remain
+explicit; recovery and Active-lifetime stale-result rejection are covered.
+Keep this issue Verifying until hands-on live Spotify use shows that the
+reported random full-screen replacement no longer recurs.
 
 ## GBA-062 — Audio Mixer lacks icon-tray master controls
 
