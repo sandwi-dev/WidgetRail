@@ -724,10 +724,25 @@ or weakening package validation/trust boundaries.
 
 ### DLV-030 — Split YT Music by stable responsibility
 
-**State:** Assigned
+**State:** Done
 **Baseline:** accepted DLV-010 closing commit `83cc32d`
+**Closing commit:** `549da57` (`[DLV-030] Split YT Music by stable responsibility`)
+**Integrated on `main`:** `6b9144d`
 **Dependencies:** DLV-009 and DLV-023
 **Owner:** YT Music managed internals and credential-free companion fixtures
+
+**Reviewer disposition:** Accepted. The 1,365-line orchestration owner is now
+677 physical lines and remains the only lifecycle, client, committed-state,
+invalidation, and disposal authority. Closed action routing, immutable
+connection transitions and safe status policy, companion confirmation/rollback
+and progress reconciliation, and snapshot-only presentation are value-based
+directly tested seams. No public API, task registry, cancellation source,
+revision counter, lock, or mutable cross-boundary owner was added. Retained run
+`20260810T125844Z-07e6c6d2` passed YT Music 55/55, Widget SDK 84/84,
+generic worker 9/9, and all 52 documentation contracts in 19.783 seconds; it is
+stable dirty assignment evidence and correctly not release-eligible. Real
+companion, packaged controller, accessibility, and visual proof remain in the
+verification queue.
 
 **Objective:** Preserve DLV-009's single immutable presentation revision and
 SDK-owned Active operation lanes while making one transport-confirmation rule
@@ -762,8 +777,8 @@ or exposes a separate product defect outside this architecture milestone.
 
 ### DLV-031 — Separate capability-domain policy from broker authority
 
-**State:** Ready after DLV-030
-**Baseline:** closing commit of DLV-030
+**State:** Assigned
+**Baseline:** accepted DLV-030 closing commit `549da57`
 **Dependencies:** DLV-023 and DLV-028
 **Owner:** managed `PlatformCapabilityBroker` internals and direct broker policy
 fixtures; no native-host files

@@ -2,8 +2,8 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-10<br>
-Last reassessed: 2026-08-10 against integrated `main` `e68b8be`, including
-accepted work through DLV-010 and DLV-028 plus
+Last reassessed: 2026-08-10 against integrated `main` `6b9144d`, including
+accepted work through DLV-010, DLV-028, and DLV-030 plus
 the retained stable dirty full-gate run `20260810T030727Z-449cac31` and clean
 full-gate result for `0598e5a`<br>
 Scope: architecture, maintainability, correctness, security, performance,
@@ -42,6 +42,13 @@ external temporary-directory fixture proves deterministic package bytes and the
 two-version install/select/rollback/removal lifecycle without checkout paths.
 External publication/API compatibility governance and transactional versioned
 template input remain open rather than being implied by this local proof.
+
+DLV-030 now supplies the missing YT Music responsibility proof: the primary
+owner drops from 1,365 to 677 physical lines while retaining the only lifecycle,
+client, committed-state, invalidation, and disposal authority. Closed action
+routing, connection transitions, companion confirmation/rollback and progress,
+and snapshot-only presentation are directly tested value seams rather than a
+new coordinator graph.
 
 There is substantial good engineering here: the installed-widget runtime uses
 an explicit AppContainer and broker boundary; protocol and package inputs are
@@ -1854,15 +1861,15 @@ keeping the contract-audit closure of EQ-009 out of the defect count.
 ### EQ-006 — P2 — Advanced widgets remain application-sized monoliths
 
 **Status: Open with bounded delivery coverage. Media Sessions, accepted
-DLV-007/008 Spotify, accepted DLV-009 YT Music, accepted DLV-027 Games & Apps,
-and accepted DLV-028 Network Controls prove useful lifecycle, presentation, and
-responsibility boundaries. DLV-029 owns Audio Mixer after DLV-026 proves the
-current scroll defect's native/managed owner, and DLV-030 owns the remaining YT
-Music provider/confirmation/view split.**
+DLV-007/008 Spotify, accepted DLV-009/030 YT Music, accepted DLV-027 Games &
+Apps, and accepted DLV-028 Network Controls prove useful lifecycle,
+presentation, and responsibility boundaries. DLV-029 owns Audio Mixer after
+DLV-026 proves the current scroll defect's native/managed owner.**
 
 **Evidence.** Current primary files are approximately 2,496 lines for Audio
 Mixer, 1,241 for Network Controls after accepted DLV-028, 1,274 for Games &
-Apps after accepted DLV-027, and 1,365 for YT Music. Network Controls now also
+Apps after accepted DLV-027, and 677 for YT Music after accepted DLV-030.
+Network Controls now also
 has a 546-line pure presenter and focused provider, command, action, state, and
 element-identity boundaries. Spotify is split into named responsibility files
 and spans roughly 2,060 lines across its root, presentation, playback, and route
@@ -1876,12 +1883,16 @@ The migrations show three materially different outcomes:
   `lock` or `SemaphoreSlim` use and only the lifecycle progress loop/task.
 - Accepted DLV-009 (`08d44db`, integrated by `304102a`) gives YT Music one
   immutable presentation record and SDK-owned Active lanes for auto-connect,
-  progress, polling, and Latest transport reconciliation. It has zero Task/CTS
-  registry fields and rejects cancellation-ignoring late pairing, polling,
-  ordinary failure, authorization failure, and transport outcomes. The same
-  class still owns two narrow semaphores, a state lock, connection/polling
-  policy, progress projection, the companion-specific optimistic confirmation/
-  rollback algorithm, action routing, and the complete view.
+  progress, polling, and Latest transport reconciliation. Accepted DLV-030
+  (`549da57`, integrated by `6b9144d`) then reduces the primary owner from
+  1,365 to 677 physical lines and moves closed action routing, connection
+  transitions/safe status, companion confirmation/rollback and progress, and
+  complete snapshot-only presentation into directly tested value seams. The
+  widget remains the sole lifecycle, provider-client, committed-state,
+  invalidation, and disposal owner with the same two narrow semaphores, one
+  state lock, SDK operation registry, and zero Task/CTS registry fields. YT
+  Music passes 55/55, Widget SDK 84/84, generic worker 9/9, and documentation
+  52 in retained run `20260810T125844Z-07e6c6d2`.
 - Spotify has successfully moved two offset collections into
   `WidgetPagedResource<TItem>` and one page family into an Active Latest lane.
   The committed action-admission migration also removes its command task
@@ -1936,12 +1947,12 @@ policies are legitimately domain-specific—especially Audio Mixer's
 absolute-value command coalescing and confirmation—but their ownership is not
 separated from rendering.
 
-**Recommended direction.** Treat Media Sessions and DLV-009 YT Music as the
-behavioral lifecycle/state baselines. The next YT Music architecture step is
-not another coordinator: separate its provider/controller adapter, authored
-companion confirmation policy, and pure view composition while preserving the
-accepted immutable revision and SDK-owned lanes. Require each boundary to
-reduce cross-file mutable knowledge or enable focused tests.
+**Recommended direction.** Treat Media Sessions and DLV-009/030 YT Music as
+the behavioral lifecycle/state and responsibility baselines. DLV-030 keeps the
+provider client and committed mutation in one orchestration owner while making
+connection, authored companion confirmation, action routing, and pure view
+policy independently testable. Require another advanced migration to reproduce
+that ownership reduction before promoting it as a mandatory public template.
 
 Spotify's accepted DLV-007/008 responsibility split is the comparison point,
 not unfinished extraction: preserve its singular owner and named route,
@@ -3685,7 +3696,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Installed-widget isolation | Strong execution containment and digest-specific unsigned authority are retained. Commits through `d171dc8` bind verified catalog objects and DACL operations/recovery to opened file identities. `15dbeb0` isolates schema-3 recovery records by profile while keeping one conflict-checking mutation lock, refuses unintended alternate AppContainer authority, and lets disjoint generations proceed. DLV-001 `d0c0420` adds bounded exact-token Settings/CLI remediation with no force-clear or caller-selected authority. The final dirty patch passes both focused boundary groups and stable 41/41 aggregate `20260810T030727Z-449cac31` | **Verification evidence only:** packaged interrupted-mutation recovery with residual-ACE inspection and one clean exact-commit product aggregate at the next scheduled integration checkpoint; installed-widget implementation is frozen absent a reproducible P0 or threat-model violation |
 | Installed catalog scale | Commit `8a46d5f` adds bounded manifest-free health plus exact-version Settings/CLI retirement, protects only the selected generation, and repairs inactive history while Spotify remains enabled; the real catalog is now down from 19 versions to three with 0.2.10 still enabled/selected. Dirty 41-step evidence exercises enabled recovery and a 512-version projection, but final HEAD lacks clean provenance and full discovery still eagerly verifies every accepted version | Retain a clean final-HEAD gate, add sequential/restart/stale-confirmation repair cases, measure cold/reload time and peak memory for full discovery at supported limits, and retain an outer watchdog |
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
-| SDK lifecycle/coordination | DLV-009 (`08d44db`, integrated by `304102a`) makes YT Music the second repeatable lifecycle/state proof: SDK Active lanes own auto-connect/progress/poll/Latest transport work, one immutable presentation record owns rendering, and no Task/CTS registry remains. Spotify DLV-007/008 independently proves coherent keyed presentation and responsibility files | Use the two results to document a narrow operation-migration recipe; keep provider merge, confirmation, rollback, and view composition explicit until another consumer proves a reusable boundary; retain packaged churn evidence |
+| SDK lifecycle/coordination | DLV-009 (`08d44db`, integrated by `304102a`) makes YT Music the second repeatable lifecycle/state proof: SDK Active lanes own auto-connect/progress/poll/Latest transport work, one immutable presentation record owns rendering, and no Task/CTS registry remains. DLV-030 (`549da57`, integrated by `6b9144d`) adds the responsibility proof through value-based connection, confirmation/rollback, action, and snapshot-only presentation seams. Spotify DLV-007/008 independently proves coherent keyed presentation and responsibility files | Document a narrow operation/responsibility migration recipe; keep domain policy private until another consumer proves a reusable public boundary; retain packaged churn evidence |
 | Action dispatch | DLV-014 (`2a160b4`, integrated by `9060f12`) composes a deterministic YT Music post-admission failure through the real worker/runtime/bridge/native host into painted and polite UIA status. It proves exact generation/action/source, sanitized logging, focus retention, replacement/expiry, Hide/Stop, and no restart; native Release, bridge 47/47, and isolated addon acceptance passed | Retain physical GameInput and packaged assistive-technology evidence; do not reopen implementation unless those gates expose a concrete defect |
 | Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | DLV-032 owns one narrow typed dispatcher with deterministic no-sleep invariant tests and bounded forced drain; DLV-033 owns the later asynchronous native read owner/correlation table |
 | Managed capability broker | `PlatformCapabilityBroker` keeps authority singular but also concentrates the central route plus audio, network/Bluetooth, app-library, media/Spotify, loopback, secret, and private-state validation/projection in one roughly 2,377-line class | DLV-031 extracts named internal domain policy while retaining one authorization, lease, lifecycle, gesture, and event authority; no generic mediator or public-protocol churn |
@@ -3697,7 +3708,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Games & Apps | DLV-004 (`7e0b83e`, integrated by `76032bb`) accepts the shared responsive surface and bounded Catalog. DLV-017 (`24a8944` plus `b844fd8`, integrated by `5aedfe8`) adds bounded last-good projection and exact current-lifetime AppId admission. DLV-024 (`d80d9ec`, integrated by `6f401ea`) proves commit-before-publish removal, rollback/CAS continuity, stable focus, and a 600-DIP preferred height. DLV-027 (`df1dc81` plus `69e86ef`, integrated directly as `69e86ef`) then extracts pure presentation, bounded catalog policy, schema-v3 policy, and CAS storage while retaining singular lifecycle/action/state ownership; Games passes 56/56 and docs 52 | Treat the 1,274-line remaining orchestration owner as reviewable but not automatically complete; DLV-018 owns trusted lazy artwork after DLV-006, and packaged/physical evidence remains |
 | Audio Mixer | The roughly 2,496-line widget remains the largest managed first-party orchestration owner. The broker/provider exposes read-only device/default markers and commands for per-session plus current default input/output volume and mute. There is no supported endpoint-selection command or native setter, and version-1 control is Interactive-only | DLV-029 now follows DLV-037 in the widgets queue and is independent of DLV-026: it must preserve exact current focus/navigation behavior while separating audio policies, lifecycle/action orchestration, and pure presentation. DLV-026 remains the shared-scroll correction. DLV-019 may then introduce an exact current-master dashboard authority without promoting broad audio control. Treat endpoint selection as a separate supported-API/role-policy spike; do not use undocumented `PolicyConfig` behavior |
 | Windows accessibility | Commits through `9ec0374` provide real composite UIA and physical-only origin enforcement. `6a079b6` mirrors managed Back semantics across focus/no-focus, disabled/busy, ancestor, stale, and nested-scope cases using allocation-free bounded recursion; separate algorithm ownership and real route proof remain open, typed choices remain open, and exact clean evidence stops at `0598e5a` | Bind native/managed Back through shared conformance or one protocol result, retain clean evidence, then prove full real-client Picker/ActionSheet/Navigator traversal plus packaged Narrator/MSAA/AppContainer evidence |
-| YT Music | DLV-009 (`08d44db`, integrated by `304102a`) removes three lifecycle task fields and the auto-connect flag, adopts SDK Active lanes plus one immutable presentation record, and passes 51/51 including cancellation-ignoring pairing/poll/transport races. The class still owns domain confirmation, action routing, and full view composition | DLV-030 owns the provider/controller/command-policy/view responsibility split without another coordinator; real companion, packaged lifecycle/controller, and visual evidence remain |
+| YT Music | DLV-009 (`08d44db`, integrated by `304102a`) removes three lifecycle task fields and the auto-connect flag and adopts SDK Active lanes plus one immutable presentation record. DLV-030 (`549da57`, integrated by `6b9144d`) reduces the owner from 1,365 to 677 physical lines, preserves singular lifecycle/client/state authority, and directly tests connection, confirmation/rollback, action, and pure presentation seams; retained focused evidence passes 55/55 plus SDK 84/84, worker 9/9, and docs 52 | Real companion, packaged lifecycle/controller/accessibility, and visual evidence remain; use the private seams as a reference, not yet a mandatory public framework |
 | Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while separating lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partials. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy: recoverable refresh/poll faults retain route, focus, playback, and cached list state with bounded 5/15/30-second backoff, fatal permission/auth/configuration remains explicit, recovery clears the warning, and stale Active-generation results are rejected. User evidence still confirms an incomplete seek/nav focus graph, replacement-page jumps, fixed-header oscillation, and clipped Library text | DLV-022 owns the explicit focus graph and continuous-list migration after DLV-006/DLV-021. Keep GBA-061 Verifying until live recurrence testing; retain current credential-free full-state/composed-host visuals and run live auth/playback gates only when authorized |
 | CLI author workflow | DLV-010 (`83cc32d`, integrated by `e68b8be`) provides a cloneable offline SDK dependency, generated lifecycle/state/action snapshot exporter, bounded source build/stage/validate/pack operation, deterministic checkout-path-free package proof, and local two-version install/select/rollback/removal. Focused retained evidence passes 53/53 CLI, 35/35 catalog, and 52 documentation contracts | Transactional manifest-driven template generation with strict inventory/version/binary handling; externally published/versioned SDK/template release and checked-in API-compatibility baseline; isolated semantic scenario execution, native preview, publisher provenance/signing, and automated update/CI evidence |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 with clean retained 45/45 proof for cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget with cancellation-ignoring drain proof and cancellable correlation-safe off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
@@ -3765,17 +3776,18 @@ below.
    reproduction. Authorize either a narrowly proven offscreen atomic-present
    design or DirectComposition/swap-chain ownership before platform work
    resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-030 — split YT Music by stable responsibility.** DLV-010 is
-   accepted as `83cc32d` and integrated as `e68b8be`. Preserve one lifecycle
-   and committed-state owner while extracting directly testable connection,
-   confirmation/rollback, action, and snapshot-only presentation seams.
+2. **Widgets DLV-031 — separate capability-domain policy from broker
+   authority.** DLV-030 is accepted as `549da57` and integrated as `6b9144d`.
+   Keep one broker identity/consent/lease/lifecycle/event authority while
+   extracting value-based domain decoding, validation, and projection seams.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
    imbalance.
 4. **Continue responsibility milestones rather than line-count refactors.**
-   DLV-028 has accepted Network Controls; DLV-029 owns Audio Mixer; DLV-030 YT
-   Music; DLV-031 the managed capability broker; DLV-032 bridge scheduling;
+   DLV-028 has accepted Network Controls; DLV-030 has accepted YT Music;
+   DLV-029 owns Audio Mixer; DLV-031 the managed capability broker; DLV-032
+   bridge scheduling;
    DLV-033 native widget-session ownership; DLV-034 the Spotify provider;
    DLV-035 the Windows network backend; DLV-036 Settings; and DLV-037 the
    managed worker client.

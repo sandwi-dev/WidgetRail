@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof and source-aware packaging, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, transactional versioned template generation, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof and source-aware packaging, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, transactional versioned template generation, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-10<br>
-Reassessed: 2026-08-10 against integrated `main` `e68b8be`, including accepted DLV-010 external package-journey proof, DLV-028 Network responsibility boundaries, and the earlier advanced-widget evidence plus the two-lane delivery plan<br>
+Reassessed: 2026-08-10 against integrated `main` `6b9144d`, including accepted DLV-010 external package-journey proof, DLV-028 Network responsibility boundaries, DLV-030 YT Music responsibility boundaries, and the earlier advanced-widget evidence plus the two-lane delivery plan<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -35,7 +35,9 @@ advanced reference a maintainer can navigate by responsibility, but it does not
 yet simplify the public multi-page/remote-state authoring path. Spotify now has one coherent
 presentation revision, an explicitly keyed playlist-detail owner, and accepted
 named responsibility boundaries. DLV-009 makes YT Music the second lifecycle
-proof. Accepted DLV-010 now gives an unrelated temporary project a matching
+proof, and accepted DLV-030 separates its action, connection, companion-policy,
+and snapshot-only presentation seams without adding another coordinator.
+Accepted DLV-010 now gives an unrelated temporary project a matching
 offline SDK dependency, generated executable lifecycle/state/action snapshot
 proof, source-aware deterministic packaging, and local version
 selection/rollback/removal without checkout references. Externally published
@@ -56,8 +58,8 @@ currently implement too much coordination infrastructure themselves:
 - responsive composition outside the new navigation-shell recipe; and
 - extensive manual invalidation.
 
-This is not unique to Spotify. Similar patterns remain in Audio Mixer, Network
-Controls, the remaining Games & Apps orchestration owner, and YT Music. Media
+This is not unique to Spotify. Similar concentrations remain most strongly in
+Audio Mixer and the remaining Games & Apps/Network orchestration owners. Media
 Sessions now demonstrates that the
 model/command primitives can remove most handwritten synchronization from a
 real widget, but the larger samples show an adoption and composition gap: the
@@ -94,7 +96,10 @@ identity from element and action IDs; the shell emits one shared key only for a
 destination's compact and rail presentations. SDK Gallery is the production-
 style reference for the composition, and accepted DLV-009 moves YT Music
 auto-connect, progress, polling, and transport reconciliation into SDK Active
-operation lanes around one immutable presentation revision.
+operation lanes around one immutable presentation revision. Accepted DLV-030
+then makes its closed action routing, connection transitions, companion
+confirmation/rollback and progress, and snapshot-only view composition direct
+value-based seams.
 Cursor/append resources, additional page recipes, an ID/action analyzer, and
 broader migrations remain open.
 
@@ -249,7 +254,7 @@ between a minimal and an application-like widget:
 | Recent Apps | 340 lines | One event-driven provider surface |
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
 | Games & Apps | About 2,340 lines across five responsibility files; 1,274-line orchestration owner | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, launch commands, and pure presentation/policy seams |
-| YT Music | About 1,365 lines | SDK-owned lifecycle lanes, one immutable presentation revision, and authored companion confirmation policy |
+| YT Music | About 1,560 lines across six responsibility files; 677-line orchestration owner | SDK-owned lifecycle lanes, one immutable presentation revision, closed action/connection policy, authored companion confirmation/rollback, and snapshot-only presentation |
 | Spotify | About 1,950 lines across four responsibility files | Lifecycle/action wiring and singular state/resource ownership; route data; playback behavior; snapshot-only presentation over four destinations |
 | Network Controls | About 2,230 lines across seven responsibility files; 1,241-line orchestration owner | One committed provider state, SDK-owned Active observation, pure provider/command/action policies, and snapshot-only presentation |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
@@ -268,9 +273,11 @@ catalog navigation, schema-v3 policy, and CAS storage while retaining one
 lifecycle/action/committed-state owner. The result is materially easier to
 navigate, but one Games-specific consumer is still not evidence for a mandatory
 public state framework.
-YT Music still owns
-two narrow semaphores, one state lock, and a manual optimistic confirmation
-policy in the same controller/view class. Spotify
+Accepted DLV-030 leaves YT Music with one 677-line lifecycle/client/committed-
+state owner, two narrow provider semaphores, one state lock, and SDK Active
+lanes. Closed action routing, connection transitions, optimistic confirmation/
+rollback plus progress reconciliation, and presentation are now value-based
+directly tested seams with no mutable owner references. Spotify
 has adopted paged resources, one immutable presentation projection, an explicit
 selection generation, and named route/playback/presentation boundaries, but its
 partial owner still contains four task fields, two semaphores, several lock
@@ -1951,14 +1958,15 @@ scenario execution, cursor/append resources, additional page recipes,
 an ID/action analyzer, interactive/native preview and capture, publication, and
 broader migrations remain.
 
-The immediate need is composition proof, not another broad abstraction. Media
-Sessions and DLV-009 YT Music now prove lifecycle/state ownership reduction;
-YT Music still needs provider/controller, authored command-policy, and pure-view
-boundaries before it is a complete teachable reference. Require another advanced
-widget to reproduce any proposed boundary before promoting it into templates.
-For Spotify, coherence comes before extraction:
-one immutable presentation state and an explicitly keyed playlist-detail
-snapshot must replace the current cross-owner render assembly. Network Controls
+The immediate need is broader composition proof, not another broad abstraction.
+Media Sessions and DLV-009/030 YT Music now prove lifecycle/state ownership and
+private responsibility reduction. YT Music is a credible teachable reference
+for one-owner orchestration plus value-based policies and pure presentation;
+require another advanced widget to reproduce a proposed boundary before
+promoting it into public templates or a mandatory application framework.
+For Spotify, preserve the accepted coherent keyed presentation and named
+route/playback/presentation boundaries while DLV-006/DLV-022 replace the
+remaining page-window and focus composition. Network Controls
 now supplies the multi-provider comparison point: its provider and command
 policies remain domain-specific, value-based, and private. Give Audio Mixer its
 own absolute-value confirmation/coalescing design rather than forcing either
