@@ -1855,10 +1855,11 @@ keeping the contract-audit closure of EQ-009 out of the defect count.
 
 ### EQ-006 — P2 — Advanced widgets remain application-sized monoliths
 
-**Status: Partially improving after accepted DLV-009. Media Sessions and YT
-Music now prove repeatable lifecycle/render ownership reduction, but no advanced
-reference yet separates provider/controller, command policy, and pure view
-composition into a readily teachable application structure.**
+**Status: Open with bounded delivery coverage. Media Sessions, accepted
+DLV-007/008 Spotify, and accepted DLV-009 YT Music prove useful lifecycle,
+presentation, and responsibility boundaries. DLV-027 now owns Games & Apps,
+DLV-028 owns Network Controls, and DLV-029 owns Audio Mixer after DLV-026 proves
+the current scroll defect's native/managed owner.**
 
 **Evidence.** Current primary files are approximately 1,365 lines for
 `samples/YtMusicWidget/YtMusicWidget.cs`, 2,023 for

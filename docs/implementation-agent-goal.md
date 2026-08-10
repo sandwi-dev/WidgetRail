@@ -213,6 +213,32 @@ Avoid:
 - Tests dominated by sleeps, setup duplication, or implementation mirroring.
 - Features described as complete without evidence proportional to the claim.
 
+### Responsibility boundaries and large production types
+
+Line count is a review signal, not a design rule: a long contract/DTO file can
+remain cohesive, while a shorter type can still own too much. A production
+class must not simultaneously retain several independently testable concerns
+such as provider/event ingestion, lifecycle scheduling, persisted-state
+reconciliation, optimistic command policy, action routing, and complete view
+composition merely because those concerns belong to one widget or service.
+
+Before materially extending an already application-sized type, identify its
+current responsibilities and either:
+
+- Keep the change within one demonstrably cohesive owner and report why; or
+- Use an assigned decomposition milestone to introduce named responsibility
+  boundaries with focused tests.
+
+Do not treat partial classes, arbitrary file splitting, one-method wrappers, or
+renamed helpers as architecture improvement. An extracted boundary must reduce
+shared mutable knowledge, give one policy a focused test seam, or make one
+common developer change possible without understanding the whole application.
+Preserve one explicit owner for lifecycle and committed render-facing state;
+do not replace a monolith with a graph of coordinators or a universal MVVM/base
+class framework. Completion evidence for decomposition must compare the before
+and after responsibility map, coordination primitives, cross-boundary mutable
+dependencies, and focused failure/lifecycle coverage.
+
 ### Pre-release local-state compatibility
 
 This product currently has one development user and no public persistence-

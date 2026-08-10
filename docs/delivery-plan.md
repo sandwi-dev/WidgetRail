@@ -240,16 +240,17 @@ Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
 The ordered widgets queue keeps newly reproduced Games & Apps continuity
-regressions adjacent to DLV-017, then returns to the advanced-widget lifecycle/
-package path. Spotify list work
-that depends on shared cursor/append foundations remains in the serialized
-integration queue rather than being patched locally.
+regressions adjacent to DLV-017, converts that stabilized implementation into
+named responsibility boundaries, then applies the same evidence-based standard
+to Spotify failure policy, Network Controls, and the external package journey.
+Spotify list work that depends on shared cursor/append foundations remains in
+the serialized integration queue rather than being patched locally.
 
-Only two independent widgets milestones are currently Ready. DLV-006 must land
-the shared collection contract before Spotify continuous-list and launcher work,
-while the remaining planned widget features depend on platform/protocol work or
-third-party authentication. Adding a third widgets-only item now would create
-filler or bypass those dependencies.
+The decomposition milestones implement EQ-006 without using file length as a
+mechanical gate: each extraction must reduce shared mutable knowledge or create
+a focused domain-policy seam. Audio Mixer waits for the production scroll
+diagnosis in DLV-026 so managed and native work do not race over an unproven
+owner. DLV-006 must still land before Spotify continuous-list and launcher work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -474,10 +475,46 @@ reported behaviors. No aggregate.
 state, the height/visibility defect requires a native surface-contract change,
 or a correct fix requires public collection/protocol behavior owned by DLV-006.
 
-### DLV-023 — Keep transient Spotify failures on the last-good surface
+### DLV-027 — Split Games & Apps by stable responsibility
 
 **State:** Ready after DLV-024
 **Baseline:** closing commit of DLV-024
+**Owner:** Games & Apps managed internals and focused credential-free tests
+
+**Objective:** Turn the stabilized Games & Apps implementation into a
+maintainable advanced-widget reference where a developer can change Library
+presentation, catalog navigation, or persistence/reconciliation policy without
+understanding one application-sized class.
+
+**In scope:** document the before/after responsibility map; preserve one
+lifecycle/action orchestration owner and one committed render-facing revision;
+separate pure Library/Catalog/state presentation from schema-v3 membership,
+projection, exclusion, order, CAS, and provider-reconciliation policy; give
+mutation/reconciliation and pure presentation focused seams; remove superseded
+coordination and cross-file mutable knowledge.
+
+**Out of scope:** behavior or visual changes, public SDK/protocol abstractions,
+DLV-006 collection work, new persistence schema, arbitrary partial-class/file
+splitting, one-method wrappers, or a generic widget application framework.
+
+**Acceptance criteria:** DLV-024 behavior and focus remain equivalent; one
+route/view change does not require provider or persistence knowledge; one
+remove/reconcile/CAS rule can be tested without rendering the complete widget;
+lifecycle, action admission, and committed state retain singular owners; the
+completion report quantifies responsibilities, coordination primitives, and
+cross-boundary mutable dependencies before and after.
+
+**Verification:** Tier 1 Games & Apps, private-state, lifecycle, and source-
+boundary Release suites plus the same fresh-worker fixture used by DLV-024. No
+aggregate.
+
+**Stop/escalate when:** a meaningful boundary requires public SDK/protocol
+changes, duplicates ownership, or cannot preserve the accepted DLV-024 behavior.
+
+### DLV-023 — Keep transient Spotify failures on the last-good surface
+
+**State:** Ready after DLV-027
+**Baseline:** closing commit of DLV-027
 **Owner:** Spotify managed refresh/polling state, typed provider-failure policy,
 and credential-free tests
 
@@ -508,10 +545,47 @@ suites plus the smallest generic-worker failure route. No aggregate.
 **Stop/escalate when:** evidence identifies a provider/bridge crash, public
 error-contract gap, or credential issue rather than widget state policy.
 
-### DLV-010 — Prove the external widget package journey
+### DLV-028 — Split Network Controls by stable responsibility
 
 **State:** Ready after DLV-023
 **Baseline:** closing commit of DLV-023
+**Owner:** Network Controls managed internals and credential-free multi-provider
+fixtures
+
+**Objective:** Replace the application-sized Network Controls class with named,
+testable boundaries for multi-provider state merge, command policy, route/action
+orchestration, and pure presentation while retaining one coherent widget state.
+
+**In scope:** map provider snapshots/events and their authoritative merge rules;
+separate Wi-Fi/Bluetooth/connectivity command and reconciliation policy where
+the policies are genuinely independent; isolate snapshot-only view composition;
+retain one lifecycle owner and one immutable render-facing revision; remove
+superseded locks, task/cancellation registries, and duplicated invalidation only
+when focused interleaving tests prove the replacement.
+
+**Out of scope:** new capabilities, Bluetooth/Wi-Fi product features, native
+host work, public generic provider/controller frameworks, cosmetic partial
+files, speculative shared abstractions, or behavior changes.
+
+**Acceptance criteria:** a developer can modify one route, one provider command,
+or one visual state through a named boundary; provider-event versus command
+success/failure interleavings remain deterministic; no lifecycle work survives
+deactivation; state and lifecycle ownership remain singular; the completion
+report compares responsibilities, locks/semaphores/tasks, and cross-boundary
+mutable dependencies before and after.
+
+**Verification:** Tier 1 Network Controls, Widget SDK operation/resource, and
+smallest generic-worker Release suites with forced provider-event/command,
+failure, cancellation, and refresh interleavings. No aggregate.
+
+**Stop/escalate when:** correct separation requires a public capability/protocol
+change, introduces a second state/lifecycle owner, or exposes a product defect
+that needs its own bounded assignment.
+
+### DLV-010 — Prove the external widget package journey
+
+**State:** Ready after DLV-028
+**Baseline:** closing commit of DLV-028
 **Owner:** managed scaffold/CLI, sample package, and public authoring docs
 
 **Objective:** Make the recommended community path reproducible from scaffold
@@ -544,10 +618,10 @@ or weakening package validation/trust boundaries.
 Task identity: `platform`
 Branch: `codex/impl-platform`
 
-The platform queue prioritizes newly reproduced presentation continuity and
-shared geometry defects before broader accessibility/performance evidence.
-Shared collection and dashboard-audio authority changes remain serialized in
-the integration queue.
+The platform queue prioritizes newly reproduced presentation continuity,
+bidirectional controller scrolling, and shared geometry defects before broader
+accessibility/performance evidence. Shared collection and dashboard-audio
+authority changes remain serialized in the integration queue.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -721,10 +795,55 @@ or window technology, materially changes the public protocol/threat model, or
 cannot be evaluated without a user-only physical display. Exhaust automated
 real-product temporal evidence before escalating.
 
-### DLV-021 — Correct shared text and component geometry end to end
+### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
 **State:** Ready after DLV-025
 **Baseline:** closing commit of DLV-025
+**Owner:** native host focus navigation, controller scroll reveal/state, and
+real-product Audio Mixer host fixtures
+
+**Objective:** Correct the reproduced controller trap in Audio Mixer: after
+moving down far enough to scroll the root surface, Up must move focus and the
+viewport back through every preceding control, including the master and device/
+input options that left the visible area.
+
+**In scope:** reproduce the exact production Audio Mixer snapshot at preferred
+and constrained heights with enough sessions to overflow; record focus ID,
+explicit focus target, scroll offset, revealable target, presentation bounds,
+and active input scope for every Down and reverse Up step; correct host-owned
+focus/reveal/state behavior if the emitted graph is valid; stable scroll identity
+across snapshot refresh, session addition/removal, 100-150% scale, compact and
+standard surfaces, analog/D-pad parity, and retained semantic/capture evidence.
+
+**Out of scope:** changing audio capability/provider behavior, dashboard
+LB/RB/X authority from DLV-019, input/output endpoint selection, manual wheel-
+only navigation, per-widget pixel/offset workarounds, DLV-006 cursor pagination,
+or weakening clipping/revealability rules for hidden controls.
+
+**Acceptance criteria:** a real populated Audio Mixer sequence can traverse
+from master output to the final visible session and reverse one control at a
+time to the first control without a dead end, focus teleport, hidden focused
+target, stale offset, or scope escape; the root offset decreases monotonically
+on the reverse path and reaches the true leading boundary; refresh and bounded
+session churn preserve the focused stable control when it still exists and use
+a deterministic nearest fallback otherwise; other representative scroll
+surfaces retain their current behavior.
+
+**Verification:** Tier 1 native focus, declarative renderer, scroll-state, and
+host Release suites plus the production Audio Mixer fixture at preferred,
+constrained, and 150%-scale surfaces with a reviewed down-and-reverse capture
+sequence. No aggregate.
+
+**Stop/escalate when:** the production snapshot lacks or misstates an explicit
+Audio Mixer Up link, the defect requires managed widget source changes, or the
+correction changes the public scroll protocol. Preserve the reproduction and
+return it to the planner for a widgets-lane or serialized reassignment rather
+than adding a native special case.
+
+### DLV-021 — Correct shared text and component geometry end to end
+
+**State:** Ready after DLV-026
+**Baseline:** closing commit of DLV-026
 **Owner:** native declarative measurement/paint, shared Button/ActionSurface/
 SectionHeader styles, and component-level semantic/capture tests
 
@@ -850,11 +969,32 @@ launch, reject stale/malformed/oversized images, and cover missing/change/churn,
 2,000/10,000-item demand, memory/transport bounds, and current Games & Apps
 captures. Do not solve this by embedding hundreds of base64 icons in snapshots.
 
+### DLV-029 — Split Audio Mixer by stable responsibility
+
+**State:** Awaiting DLV-026 diagnosis and accepted baseline
+**Intended lead:** widgets lane after the native/managed scroll owner is proven
+**Dependencies:** DLV-026
+
+Preserve Audio Mixer's domain-specific absolute-value command coalescing,
+authoritative confirmation/rollback, and provider-event reconciliation while
+separating those policies from lifecycle/action orchestration and snapshot-only
+view composition. Begin with a before/after responsibility and coordination
+inventory; name and test output, input, and per-session pending policies without
+inventing a universal optimistic-command framework; retain one committed
+render-facing revision and one Active-lifetime owner. A developer must be able
+to change one audio row, one confirmation rule, or one provider event path
+without reading the entire roughly 2,500-line class. File splitting, partial
+classes, or wrapper-only extraction does not satisfy the milestone. Preserve
+DLV-026's accepted bidirectional scroll/focus behavior and prove provider-event
+versus pending command, cancellation-ignoring completion, timeout/rollback,
+session churn, deactivation, and pure presentation with focused tests. No public
+audio authority or protocol expansion belongs here.
+
 ### DLV-019 — Add Audio Mixer dashboard master controls
 
-**State:** Awaiting planner-selected serialized baseline after DLV-014
+**State:** Awaiting DLV-029 and planner-selected serialized baseline
 **Intended lead:** planner-selected bridge/broker plus widgets integration lane
-**Dependencies:** DLV-014
+**Dependencies:** DLV-014, DLV-029
 
 Expose LB/RB as bounded master-output volume down/up and X as master mute from
 the icon tray. Reuse the exact snapshot-bound dashboard gesture authority; add
