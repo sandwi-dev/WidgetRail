@@ -47,14 +47,27 @@ explicit game-library source, not a guess based on process or executable names.
   actionable focus. Removing a focused item selects the next surviving row, or
   the previous row when the removed item was last.
 - Curation, automatic-membership provenance, exclusions, recent-first order,
-  and selected SavedId are stored in a schema-v2 document through
-  `HostServices.PrivateState`. Version-1 membership migrates as explicit user
-  membership. A bounded compare-and-swap merge reapplies the widget's exact
-  delta to newer state, so a concurrent exclusion is not overwritten.
-- Missing SavedIds remain bounded order tombstones but are omitted from the
-  visible Library. Reappearance with the same SavedId restores the prior order
-  using a fresh short-lived AppId. A different SavedId is an independent new
-  Game even when the display title is identical; no title matching occurs.
+  selected SavedId, and a display-only last-good projection are stored in a
+  schema-v3 document through
+  `HostServices.PrivateState`. During single-user development, v1, v2,
+  unsupported, or invalid documents reset atomically to an empty v3 state before
+  the current trusted catalog reconciles. No legacy membership, exclusion,
+  selection, or display row is partially retained, and no legacy value can
+  authorize launch. A bounded compare-and-swap merge reapplies the widget's
+  exact delta to newer valid v3 state, so a concurrent exclusion is not
+  overwritten.
+- The last-good projection contains only SavedId, a sanitized 20-scalar display
+  prefix, and the closed Game/Application/Unknown kind. It never stores AppId,
+  icon pixels, path, AUMID, Steam ID, command, or other provider identity. A
+  fresh worker renders those rows immediately as disabled **Checking…** tiles.
+  Fresh provider resolution atomically replaces each tile with a short-lived
+  AppId without changing SavedId-derived focus or order; unresolved rows cannot
+  launch. Cached AppIds are discarded on each active-lifetime transition and
+  after a failed authority refresh, so only the current resolution can enable A.
+- Missing SavedIds remain visible as bounded disabled order tombstones.
+  Reappearance with the same SavedId restores launch using a fresh short-lived
+  AppId. A different SavedId is an independent new Game even when the display
+  title is identical; no title matching occurs.
   Auto-added entries that cease to be classified Game are hidden, while an
   explicitly added Application or Unknown entry remains user-owned.
 - A successful launch requests `CloseOnConfirmedSuccess`. The broker emits the
@@ -70,14 +83,17 @@ explicit game-library source, not a guess based on process or executable names.
   existing user order taking precedence over newly discovered Games.
 - Newly committed automatic additions produce one count-only, non-focusable,
   lifecycle-bound toast. An unchanged refresh produces no extra write or
-  repeated notice. Exclusions retain at most 320 IDs so the worst-case schema-v2
+  repeated notice. Exclusions retain at most 128 IDs so the worst-case schema-v3
   document remains below the 64 KiB private-state limit; at that bound a new
   removal is refused without changing visible or durable membership.
 - Permission denied, lifecycle denied, provider unavailable, healthy empty,
   and generic failure states use the shared Card, EmptyState, and Alert
   hierarchy. Recovery remains controller reachable through one explicit retry
   action, while loading is non-focusable and cannot strand controller focus.
-- Moving to Background cancels the active load lifetime. The manifest uses
+- A failed fresh authority refresh retains the display-only Library with an
+  explicit unavailable status; it never promotes stale rows to launchable.
+  Moving to Background cancels the active load lifetime and rejects even a
+  cancellation-ignoring late provider result. The manifest uses
   `unload-after-idle` with a 120-second idle interval; the bridge can recreate
   the worker from its last validated snapshot when it is needed again.
 
@@ -230,11 +246,12 @@ location, and content hash, then opens only
 
 ## Executable evidence
 
-Focused tests cover first and later trusted-Game discovery, idempotence,
-schema-v1 migration, automatic-versus-explicit provenance, bounded exclusions,
-concurrent compare-and-swap exclusion, disappearance/reappearance, same-title
-identity replacement, stable order/focus across AppId rotation, stale action
-rejection, healthy empty and sanitized failure states, Catalog add/remove,
+Focused tests cover first and later trusted-Game discovery, idempotence, atomic
+v1/v2/unsupported/invalid-state reset, current-v3 restart continuity,
+automatic-versus-explicit provenance, bounded exclusions, concurrent
+compare-and-swap exclusion, disappearance/reappearance, same-title identity
+replacement, stable order/focus across AppId rotation, stale action rejection,
+healthy empty and sanitized failure states, Catalog add/remove,
 confirmed recent-first ordering, nearest-row removal focus, opaque selected
 launch, bidirectional 32-row Catalog paging through the 512-item bound,
 64-entry long-name Library snapshots, shared component classes, and responsive

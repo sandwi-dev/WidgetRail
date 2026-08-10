@@ -1,4 +1,5 @@
 using GameBarAlternative.WidgetSdk;
+using System.Text;
 
 namespace GameBarAlternative.FirstPartyWidgets.GamesApps;
 
@@ -9,7 +10,13 @@ internal sealed record GamesAppsLibraryState(
 {
     public IReadOnlyList<string> AutoGameSavedIds { get; init; } = [];
     public IReadOnlyList<string> ExcludedGameSavedIds { get; init; } = [];
+    public IReadOnlyList<GamesAppsPersistedDisplayItem> DisplayItems { get; init; } = [];
 }
+
+internal sealed record GamesAppsPersistedDisplayItem(
+    string SavedId,
+    string DisplayName,
+    WidgetAppLibraryKind Kind);
 
 internal sealed record GamesAppsLibraryReconciliation(
     GamesAppsLibraryState State,
@@ -28,42 +35,20 @@ internal sealed record GamesAppsLibraryMergeResult(
 internal static class GamesAppsLibraryStateReconciler
 {
     internal const int MaximumCuratedItems = WidgetAppLibraryService.MaximumSavedItems;
-    // With 128-character opaque IDs, 64 saved IDs, and the 64-entry automatic
-    // provenance subset, 320 exclusions keep schema-v2 state below 64 KiB.
-    internal const int MaximumExcludedGames = 320;
+    // Schema v3 retains a bounded display projection. With worst-case
+    // 128-character opaque IDs and escaped Unicode display copy, 128 exclusions
+    // keep the complete state below the SDK's 64 KiB private-state ceiling.
+    internal const int MaximumExcludedGames = 128;
+    internal const int MaximumPersistedDisplayRunes = 20;
 
     internal static GamesAppsLibraryState Normalize(GamesAppsLibraryState? state)
     {
-        if (state is null || state.Version is not (1 or 2) || state.SavedIds is null)
-            return new GamesAppsLibraryState(2, [], null);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var saved = state.SavedIds
-            .Where(id => IsOpaqueId(id) && seen.Add(id))
-            .Take(MaximumCuratedItems)
-            .ToArray();
-        var excludedSeen = new HashSet<string>(StringComparer.Ordinal);
-        var excluded = (state.ExcludedGameSavedIds ?? [])
-            .Where(id => IsOpaqueId(id) && excludedSeen.Add(id))
-            .Take(MaximumExcludedGames)
-            .ToArray();
-        var excludedSet = excluded.ToHashSet(StringComparer.Ordinal);
-        saved = saved.Where(id => !excludedSet.Contains(id)).ToArray();
-        var savedSet = saved.ToHashSet(StringComparer.Ordinal);
-        var autoSeen = new HashSet<string>(StringComparer.Ordinal);
-        var automatic = state.Version == 1
-            ? Array.Empty<string>()
-            : (state.AutoGameSavedIds ?? [])
-                .Where(id => savedSet.Contains(id) && autoSeen.Add(id))
-                .Take(MaximumCuratedItems)
-                .ToArray();
-        var selected = state.SelectedSavedId is { } candidate &&
-                       saved.Contains(candidate, StringComparer.Ordinal)
-            ? candidate
-            : saved.FirstOrDefault();
-        return new GamesAppsLibraryState(2, saved, selected)
+        if (!IsValidCurrentState(state)) return EmptyState();
+        return new GamesAppsLibraryState(3, state!.SavedIds.ToArray(), state.SelectedSavedId)
         {
-            AutoGameSavedIds = automatic,
-            ExcludedGameSavedIds = excluded,
+            AutoGameSavedIds = state.AutoGameSavedIds.ToArray(),
+            ExcludedGameSavedIds = state.ExcludedGameSavedIds.ToArray(),
+            DisplayItems = state.DisplayItems.ToArray(),
         };
     }
 
@@ -95,16 +80,33 @@ internal static class GamesAppsLibraryStateReconciler
                 bySaved.TryGetValue(savedId, out var item) &&
                 (!automaticSet.Contains(savedId) || item.Kind == WidgetAppLibraryKind.Game))
             .Select(savedId => bySaved[savedId]).ToArray();
-        var liveIds = visible.Select(item => item.SavedId).ToHashSet(StringComparer.Ordinal);
-        var selected = liveSelectedSavedId is not null && liveIds.Contains(liveSelectedSavedId)
+        var displayBySaved = state.DisplayItems.ToDictionary(
+            item => item.SavedId, StringComparer.Ordinal);
+        foreach (var savedId in savedIds)
+        {
+            if (!bySaved.TryGetValue(savedId, out var item)) continue;
+            if (automaticSet.Contains(savedId) && item.Kind != WidgetAppLibraryKind.Game)
+            {
+                displayBySaved.Remove(savedId);
+                continue;
+            }
+            displayBySaved[savedId] = ToDisplayItem(item);
+        }
+        var display = savedIds.Where(displayBySaved.ContainsKey)
+            .Select(savedId => displayBySaved[savedId])
+            .ToArray();
+        var presentedIds = display.Select(item => item.SavedId)
+            .ToHashSet(StringComparer.Ordinal);
+        var selected = liveSelectedSavedId is not null && presentedIds.Contains(liveSelectedSavedId)
             ? liveSelectedSavedId
-            : state.SelectedSavedId is not null && liveIds.Contains(state.SelectedSavedId)
+            : state.SelectedSavedId is not null && presentedIds.Contains(state.SelectedSavedId)
                 ? state.SelectedSavedId
-                : visible.FirstOrDefault()?.SavedId;
-        var desired = new GamesAppsLibraryState(2, savedIds, selected)
+                : display.FirstOrDefault()?.SavedId;
+        var desired = new GamesAppsLibraryState(3, savedIds, selected)
         {
             AutoGameSavedIds = automaticIds,
             ExcludedGameSavedIds = state.ExcludedGameSavedIds,
+            DisplayItems = display,
         };
         return new GamesAppsLibraryReconciliation(
             desired,
@@ -153,17 +155,57 @@ internal static class GamesAppsLibraryStateReconciler
         if (requestedExclusions.Any(id =>
                 !mergedExcluded.Contains(id, StringComparer.Ordinal)))
             return new GamesAppsLibraryMergeResult(latest, Accepted: false);
+        var mergedExcludedSet = mergedExcluded.ToHashSet(StringComparer.Ordinal);
+        mergedSaved.RemoveAll(mergedExcludedSet.Contains);
+        var mergedSavedSet = mergedSaved.ToHashSet(StringComparer.Ordinal);
+        mergedAutomatic = mergedAutomatic.Where(mergedSavedSet.Contains).ToArray();
         var selected = !string.Equals(
                 baseline.SelectedSavedId, desired.SelectedSavedId, StringComparison.Ordinal)
             ? desired.SelectedSavedId
             : latest.SelectedSavedId;
+        if (selected is not null && !mergedSavedSet.Contains(selected))
+            selected = mergedSaved.FirstOrDefault();
         return new GamesAppsLibraryMergeResult(
-            Normalize(new GamesAppsLibraryState(2, mergedSaved, selected)
+            Normalize(new GamesAppsLibraryState(3, mergedSaved, selected)
             {
                 AutoGameSavedIds = mergedAutomatic,
                 ExcludedGameSavedIds = mergedExcluded,
+                DisplayItems = MergeDisplayItems(
+                    baseline, desired, latest, mergedSaved),
             }),
             Accepted: true);
+    }
+
+    private static GamesAppsLibraryState EmptyState() => new(3, [], null);
+
+    private static bool IsValidCurrentState(GamesAppsLibraryState? state)
+    {
+        if (state is null || state.Version != 3 || state.SavedIds is null ||
+            state.AutoGameSavedIds is null || state.ExcludedGameSavedIds is null ||
+            state.DisplayItems is null || state.SavedIds.Count > MaximumCuratedItems ||
+            state.AutoGameSavedIds.Count > MaximumCuratedItems ||
+            state.ExcludedGameSavedIds.Count > MaximumExcludedGames ||
+            state.DisplayItems.Count > MaximumCuratedItems)
+            return false;
+
+        var saved = new HashSet<string>(StringComparer.Ordinal);
+        if (state.SavedIds.Any(id => !IsOpaqueId(id) || !saved.Add(id))) return false;
+        var automatic = new HashSet<string>(StringComparer.Ordinal);
+        if (state.AutoGameSavedIds.Any(id => !saved.Contains(id) || !automatic.Add(id)))
+            return false;
+        var excluded = new HashSet<string>(StringComparer.Ordinal);
+        if (state.ExcludedGameSavedIds.Any(id => !IsOpaqueId(id) ||
+                saved.Contains(id) || !excluded.Add(id)))
+            return false;
+        if (state.SelectedSavedId is { } selected && !saved.Contains(selected)) return false;
+
+        var displayed = new HashSet<string>(StringComparer.Ordinal);
+        return state.DisplayItems.All(item => item is not null &&
+            saved.Contains(item.SavedId) && displayed.Add(item.SavedId) &&
+            IsDisplayName(item.DisplayName) &&
+            string.Equals(item.DisplayName, NormalizeDisplayName(item.DisplayName),
+                StringComparison.Ordinal) &&
+            Enum.IsDefined(item.Kind));
     }
 
     internal static bool IsOpaqueId(string? value) =>
@@ -171,16 +213,62 @@ internal static class GamesAppsLibraryStateReconciler
         value.All(character => char.IsAsciiLetterOrDigit(character) ||
             character is '.' or '_' or '-');
 
+    internal static GamesAppsPersistedDisplayItem ToDisplayItem(
+        WidgetAppLibraryItem item) => new(
+            item.SavedId,
+            NormalizeDisplayName(item.DisplayName),
+            item.Kind);
+
     private static bool EquivalentRawState(
         GamesAppsLibraryState? raw,
         GamesAppsLibraryState desired) =>
-        raw?.Version == 2 && raw.SavedIds is not null &&
+        raw?.Version == 3 && raw.SavedIds is not null &&
         raw.SavedIds.SequenceEqual(desired.SavedIds, StringComparer.Ordinal) &&
         (raw.AutoGameSavedIds ?? []).SequenceEqual(
             desired.AutoGameSavedIds, StringComparer.Ordinal) &&
         (raw.ExcludedGameSavedIds ?? []).SequenceEqual(
             desired.ExcludedGameSavedIds, StringComparer.Ordinal) &&
+        (raw.DisplayItems ?? []).SequenceEqual(desired.DisplayItems) &&
         string.Equals(raw.SelectedSavedId, desired.SelectedSavedId, StringComparison.Ordinal);
+
+    private static IReadOnlyList<GamesAppsPersistedDisplayItem> MergeDisplayItems(
+        GamesAppsLibraryState baseline,
+        GamesAppsLibraryState desired,
+        GamesAppsLibraryState latest,
+        IReadOnlyList<string> mergedSavedIds)
+    {
+        var baselineById = baseline.DisplayItems.ToDictionary(
+            item => item.SavedId, StringComparer.Ordinal);
+        var desiredById = desired.DisplayItems.ToDictionary(
+            item => item.SavedId, StringComparer.Ordinal);
+        var latestById = latest.DisplayItems.ToDictionary(
+            item => item.SavedId, StringComparer.Ordinal);
+        var merged = new List<GamesAppsPersistedDisplayItem>(mergedSavedIds.Count);
+        foreach (var savedId in mergedSavedIds)
+        {
+            baselineById.TryGetValue(savedId, out var baselineItem);
+            desiredById.TryGetValue(savedId, out var desiredItem);
+            latestById.TryGetValue(savedId, out var latestItem);
+            var changed = !Equals(baselineItem, desiredItem);
+            var selected = changed ? desiredItem : latestItem;
+            if (selected is not null) merged.Add(selected);
+        }
+        return merged;
+    }
+
+    private static bool IsDisplayName(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Trim().Length <= 120 &&
+        value.All(character => !char.IsControl(character));
+
+    private static string NormalizeDisplayName(string value)
+    {
+        var normalized = value.Trim();
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var rune in normalized.EnumerateRunes().Take(MaximumPersistedDisplayRunes))
+            builder.Append(rune);
+        return builder.ToString();
+    }
 
     private static IReadOnlyList<string> MergeListByDelta(
         IReadOnlyList<string> baseline,
