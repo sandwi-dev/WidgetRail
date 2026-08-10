@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a truthful local-SDK scaffold, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and one substantive Games & Apps responsibility split are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof and source-aware packaging, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, transactional versioned template generation, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-10<br>
-Reassessed: 2026-08-10 against integrated `main` `69e86ef`, including accepted DLV-008 Spotify responsibility boundaries, DLV-009 YT Music lifecycle ownership, DLV-024 Games & Apps continuity, and DLV-027 Games & Apps responsibility boundaries plus their focused evidence and the two-lane delivery plan<br>
+Reassessed: 2026-08-10 against integrated `main` `6b9144d`, including accepted DLV-010 external package-journey proof, DLV-028 Network responsibility boundaries, DLV-030 YT Music responsibility boundaries, and the earlier advanced-widget evidence plus the two-lane delivery plan<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -22,8 +22,8 @@ accessibility, permissions, and lifecycle, while isolated C# workers contribute
 renderer-neutral UI and react to typed actions. Simple widgets are already easy
 to express.
 
-The current cycle is **stronger as an advanced-widget product proof, but still
-flat for external onboarding**. DLV-001 adds no community authority, and DLV-002 deliberately
+The current cycle is **stronger for both advanced-widget structure and external
+onboarding, but not yet a public SDK release**. DLV-001 adds no community authority, and DLV-002 deliberately
 implements Games & Apps curation and accepted DLV-017 warm-start projection as
 widget-owned versioned private state over a bounded trusted capability. Its pure
 reconciliation type, explicit automatic provenance/exclusions, whole-state
@@ -35,9 +35,15 @@ advanced reference a maintainer can navigate by responsibility, but it does not
 yet simplify the public multi-page/remote-state authoring path. Spotify now has one coherent
 presentation revision, an explicitly keyed playlist-detail owner, and accepted
 named responsibility boundaries. DLV-009 makes YT Music the second lifecycle
-proof, and the external scaffold/package journey receives its own bounded
-milestone while native geometry, feedback, accessibility, and performance work
-continues independently.
+proof, and accepted DLV-030 separates its action, connection, companion-policy,
+and snapshot-only presentation seams without adding another coordinator.
+Accepted DLV-010 now gives an unrelated temporary project a matching
+offline SDK dependency, generated executable lifecycle/state/action snapshot
+proof, source-aware deterministic packaging, and local version
+selection/rollback/removal without checkout references. Externally published
+SDK/API governance and strict transactional template input remain open while
+native geometry, feedback, accessibility, and performance work continues
+independently.
 
 The framework becomes difficult when a widget has multiple pages, remote state,
 commands, caching, optimistic updates, and lifecycle-sensitive work. Authors
@@ -52,8 +58,8 @@ currently implement too much coordination infrastructure themselves:
 - responsive composition outside the new navigation-shell recipe; and
 - extensive manual invalidation.
 
-This is not unique to Spotify. Similar patterns remain in Audio Mixer, Network
-Controls, the remaining Games & Apps orchestration owner, and YT Music. Media
+This is not unique to Spotify. Similar concentrations remain most strongly in
+Audio Mixer and the remaining Games & Apps/Network orchestration owners. Media
 Sessions now demonstrates that the
 model/command primitives can remove most handwritten synchronization from a
 real widget, but the larger samples show an adoption and composition gap: the
@@ -90,7 +96,10 @@ identity from element and action IDs; the shell emits one shared key only for a
 destination's compact and rail presentations. SDK Gallery is the production-
 style reference for the composition, and accepted DLV-009 moves YT Music
 auto-connect, progress, polling, and transport reconciliation into SDK Active
-operation lanes around one immutable presentation revision.
+operation lanes around one immutable presentation revision. Accepted DLV-030
+then makes its closed action routing, connection transitions, companion
+confirmation/rollback and progress, and snapshot-only view composition direct
+value-based seams.
 Cursor/append resources, additional page recipes, an ID/action analyzer, and
 broader migrations remain open.
 
@@ -115,29 +124,20 @@ Current clean selected run `20260809T152831Z-67b77c73` also retains CLI 49/49
 for documentation-only HEAD `6bd60d3` over implementation baseline `6fc9e01`.
 It selected seven launch/package-oriented steps, so it is current CLI evidence
 but not a complete current 41-step gate.
-The broader tradeoff is an explicit tooling gap: there is no headless isolated
-command that turns widget/scenario code into a snapshot. Authors must currently
-add an author-controlled typed-fake test to persist `SnapshotJson` or use the
-interactive overlay path.
+The broader remaining tooling gap is generic isolated semantic scenario
+execution: DLV-010's generated headless executable now turns one scaffolded
+widget's lifecycle/state/action flow into a snapshot, but arbitrary author
+scenario providers still require an author-controlled typed-fake executable or
+the interactive overlay path.
 
-The scaffold is now an honest repository-contributor path, not yet a standalone
-community authoring product. Inside this checkout, `gbar new widget` discovers
-`WidgetSdk.csproj`; elsewhere it requires an explicit validated `--sdk-project`
-and fails before writing when none is available. A focused unrelated-directory
-test builds that explicit local-project result. The generated README also uses
-`gbar dev` instead of rejected DLL rendering and teaches bounded idle unload.
-That fail-fast/override behavior is the correct interim contract until a
-matching versioned SDK/template release exists. It is still not a cloneable
-standalone dependency, and the new snapshot guidance needs an actual generated
-typed-fake test/exporter; the template currently refers to one but creates
-none. It also lacks a complete package path: the manifest expects
-`payload/<WidgetName>.dll`, ordinary build writes under `bin`, validation does
-not check that file, and the template never stages it for `gbar pack`. The
-implementation agent reports 49/49 CLI cases; this review inspected the new
-external build case, and the clean all-lane bundle now retains its passing CLI
-result. That case still points back to the checkout SDK, executes only the
-build, and proves neither a published dependency nor the advertised package
-workflow.
+The scaffold is now a cloneable offline local authoring product, not yet an
+externally published SDK release. `gbar new widget` writes a matching
+content-addressed SDK package into a relative feed and generates the executable
+snapshot proof; no checkout or `--sdk-project` is required. Focused external-
+directory evidence executes the complete local package lifecycle. Publication,
+API compatibility governance, transactional template generation, and generic
+isolated scenario execution remain the boundaries between this accepted local
+journey and a supported public release.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -254,7 +254,7 @@ between a minimal and an application-like widget:
 | Recent Apps | 340 lines | One event-driven provider surface |
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
 | Games & Apps | About 2,340 lines across five responsibility files; 1,274-line orchestration owner | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, launch commands, and pure presentation/policy seams |
-| YT Music | About 1,365 lines | SDK-owned lifecycle lanes, one immutable presentation revision, and authored companion confirmation policy |
+| YT Music | About 1,560 lines across six responsibility files; 677-line orchestration owner | SDK-owned lifecycle lanes, one immutable presentation revision, closed action/connection policy, authored companion confirmation/rollback, and snapshot-only presentation |
 | Spotify | About 1,950 lines across four responsibility files | Lifecycle/action wiring and singular state/resource ownership; route data; playback behavior; snapshot-only presentation over four destinations |
 | Network Controls | About 2,230 lines across seven responsibility files; 1,241-line orchestration owner | One committed provider state, SDK-owned Active observation, pure provider/command/action policies, and snapshot-only presentation |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
@@ -273,9 +273,11 @@ catalog navigation, schema-v3 policy, and CAS storage while retaining one
 lifecycle/action/committed-state owner. The result is materially easier to
 navigate, but one Games-specific consumer is still not evidence for a mandatory
 public state framework.
-YT Music still owns
-two narrow semaphores, one state lock, and a manual optimistic confirmation
-policy in the same controller/view class. Spotify
+Accepted DLV-030 leaves YT Music with one 677-line lifecycle/client/committed-
+state owner, two narrow provider semaphores, one state lock, and SDK Active
+lanes. Closed action routing, connection transitions, optimistic confirmation/
+rollback plus progress reconciliation, and presentation are now value-based
+directly tested seams with no mutable owner references. Spotify
 has adopted paged resources, one immutable presentation projection, an explicit
 selection generation, and named route/playback/presentation boundaries, but its
 partial owner still contains four task fields, two semaphores, several lock
@@ -649,7 +651,18 @@ bounded integer state, and direct invalidation. A human author can understand
 that code without framework internals. The failure is the surrounding product
 contract, not the C# example.
 
-`gbar new widget` now resolves one explicit dependency contract. Under this
+Accepted DLV-010 (`83cc32d`, integrated by `e68b8be`) materially improves that
+surrounding contract. An unrelated temporary project now receives a matching
+content-addressed SDK package in `.gbar/packages`, restores/builds offline,
+runs a generated lifecycle/state/action snapshot executable, validates,
+renders, replays, and produces byte-identical checkout-path-free packages from
+both directory and project inputs. The same fixture installs two versions,
+selects and rolls back, disables, and removes the package without hand editing.
+Retained focused evidence passes CLI/scaffold 53/53, catalog 35/35, and 52
+documentation contracts. This is now a credible cloneable local repository
+journey, though not yet an externally published SDK release.
+
+At the pre-DLV-010 baseline, `gbar new widget` resolved one explicit dependency contract. Under this
 repository it discovers `WidgetSdk.csproj`; elsewhere `--sdk-project` must name
 an existing non-reparse `WidgetSdk.csproj`. Resolution and MSBuild path escaping
 happen before output creation, and no unpublished package fallback remains. A
@@ -671,61 +684,22 @@ exercise any of those cases. A professional starter should be a strict versioned
 input artifact and publish atomically, not be whatever files happen to exist in
 a directory at enumeration time.
 
-The original generated README was internally incomplete: it asked `gbar render`
-to execute a DLL and then replayed the nonexistent output. Current HEAD
-uses the correct `gbar dev` path and explains that render is data-only. It still
-supplies a replay file but no typed-fake snapshot-export test or static
-snapshot, leaving the advertised deterministic replay loop incomplete.
-The public platform overview makes this gap more confusing by saying
-`gbar new widget` scaffolds a “test/replay” workflow. The generated tree has
-`replays/smoke.json`, but no test project, snapshot exporter, or snapshot input,
-so a new author cannot execute that advertised workflow without designing the
-missing test infrastructure first.
-This does not require a new framework abstraction: `WidgetTestHost`,
-`WidgetTestHostServicesBuilder`, and `SnapshotJson` are already public. The
-starter should generate a small deterministic test executable that attaches
-the widget, exercises at least one action/lifecycle transition, asserts the
-state, and writes the exact `snapshot.json` named by the README. Authors can
-then see and copy the supported credential-free state/testing pattern instead
-of being told to design it themselves.
+DLV-010 closes the prior generated-test and source-to-package breaks. The
+sibling executable uses public `WidgetTestHost` and `SnapshotJson`, exercises
+Interactive/Background lifecycle plus a state-changing action, and writes the
+exact snapshot consumed by render/replay. Source-aware `gbar pack` reuses the
+bounded dev-generation builder with private intermediates, strips symbols and
+worker-owned SDK runtime assemblies, validates the declared entrypoint, and
+hands the accepted immutable generation to the existing deterministic packer.
+Raw directory packing remains the low-level advanced path.
 
-The source-to-package path has a second concrete break. The generated manifest
-declares `payload/<WidgetName>.dll`, but the generated README's `dotnet build`
-writes beneath `bin`; `gbar validate .` checks manifest and GBSS semantics, not
-entrypoint existence. `gbar dev` succeeds because it privately builds a
-temporary package generation at the declared payload path. It does not publish
-that generation, and the template creates no release staging step. As a result,
-the CLI README's later `gbar pack <generated-source>` command correctly fails
-with `missing_entrypoint`. A new author gets a green build and validation before
-discovering that development and distribution use different, undocumented
-artifact flows.
-
-That test should be a sibling project generated with the widget, or created by
-an explicit `gbar test init` command. It should use a normal portable
-`dotnet test` adapter or a published minimal Widget SDK test runner, include one fake-
-provider example and one deterministic lifecycle/snapshot scenario, and run in
-an ordinary external repository CI job. The repository's custom `PASS`-line
-protocol is an internal compatibility concern; community authors should not
-have to reproduce it or edit the platform's private verification manifest.
-
-The framework should still treat CLI, template, SDK package, compatibility
-contract, and generated README as one versioned deliverable. The current
-explicit local-SDK path is truthful contributor tooling, not the production
-distribution model. The production milestone is a clean-directory test that
-uses only the released CLI/feed, builds the generated project, executes every
-README command, validates and packages it, and leaves a standalone repository
-that another developer can clone and build. The generated source is already a
-credible human starter; publishing and testing the complete dependency/tooling
-loop is what turns it into a platform authoring experience.
-
-Make one bounded source-to-package operation own Release build, dependency
-publication, style/asset staging, complete-package validation, and deterministic
-packing using the same generation semantics as `gbar dev` without launching the
-overlay. Keep raw directory packing as the low-level deterministic primitive.
-The generated README and CI should use the higher-level operation, and a single
-external-repository test should execute build, validate, generated snapshot
-tests/replay, package, inspect, install-disabled, and isolated launch from the
-result. This is tooling composition, not another widget SDK abstraction.
+The remaining distribution milestone is narrower: ship CLI, template, SDK,
+and compatibility metadata as one externally published versioned release,
+exercise the generated commands from that packaged distribution in ordinary
+external CI, and include a generic-worker launch proof. A normal test adapter
+may improve IDE discovery later, but the generated executable is already a
+small portable fixture and authors do not need the repository's private
+verification manifest or internal result protocol.
 
 The same release should parse a strict template manifest listing each relative
 file, text/binary mode, and packaged digest; reject unsupported versions,
@@ -1984,14 +1958,15 @@ scenario execution, cursor/append resources, additional page recipes,
 an ID/action analyzer, interactive/native preview and capture, publication, and
 broader migrations remain.
 
-The immediate need is composition proof, not another broad abstraction. Media
-Sessions and DLV-009 YT Music now prove lifecycle/state ownership reduction;
-YT Music still needs provider/controller, authored command-policy, and pure-view
-boundaries before it is a complete teachable reference. Require another advanced
-widget to reproduce any proposed boundary before promoting it into templates.
-For Spotify, coherence comes before extraction:
-one immutable presentation state and an explicitly keyed playlist-detail
-snapshot must replace the current cross-owner render assembly. Network Controls
+The immediate need is broader composition proof, not another broad abstraction.
+Media Sessions and DLV-009/030 YT Music now prove lifecycle/state ownership and
+private responsibility reduction. YT Music is a credible teachable reference
+for one-owner orchestration plus value-based policies and pure presentation;
+require another advanced widget to reproduce a proposed boundary before
+promoting it into public templates or a mandatory application framework.
+For Spotify, preserve the accepted coherent keyed presentation and named
+route/playback/presentation boundaries while DLV-006/DLV-022 replace the
+remaining page-window and focus composition. Network Controls
 now supplies the multi-provider comparison point: its provider and command
 policies remain domain-specific, value-based, and private. Give Audio Mixer its
 own absolute-value confirmation/coalescing design rather than forcing either

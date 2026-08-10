@@ -28,6 +28,30 @@ authorize implementation.
 - The planner reviews completed commits in order, returns inadequate work for
   correction, integrates only accepted work, and refills both lane queues.
 
+### Architecture non-regression gate
+
+- Production types above roughly 1,000 physical lines, plus smaller types that
+  own several independently testable concerns, are architecture-review
+  hotspots. Line count triggers review; it is not a design target.
+- Every hotspot must have one explicit disposition in the engineering-quality
+  review: current DLV assignment, ordered Ready work, dependency-blocked work,
+  or a cohesive exception with named retained responsibilities.
+- A milestone that touches a hotspot must report its before/after responsibility
+  map, coordination primitives, and cross-boundary mutable dependencies. It may
+  not add another undispositioned hotspot or materially grow an existing one
+  without demonstrating why the behavior belongs to the same cohesive owner.
+- Partial classes, arbitrary file movement, one-method wrappers, and named
+  patterns do not satisfy this gate by themselves. A successful boundary must
+  reduce shared mutable knowledge, expose a focused deterministic test seam, or
+  let a normal maintenance change be made without understanding the entire
+  subsystem.
+- Managed test programs above roughly 1,500 physical lines, or smaller harnesses
+  that mix unrelated scenario setup, process control, assertions, and domain
+  fixtures, are test-architecture hotspots. They require a named disposition,
+  but must not interrupt the production-hotspot queue merely to reduce line
+  count. A valid cleanup leaves a thin stable runner and cohesive scenario/
+  fixture owners; a test-framework migration is not closure by itself.
+
 ### Branch and integration protocol
 
 - The `widgets` task works only in its Codex worktree on
@@ -289,9 +313,11 @@ the serialized integration queue rather than being patched locally.
 
 The decomposition milestones implement EQ-006 without using file length as a
 mechanical gate: each extraction must reduce shared mutable knowledge or create
-a focused domain-policy seam. Audio Mixer waits for the production scroll
-diagnosis in DLV-026 so managed and native work do not race over an unproven
-owner. DLV-006 must still land before Spotify continuous-list and launcher work.
+a focused domain-policy seam. Audio Mixer follows DLV-037 in this lane and is
+independent of DLV-026: DLV-029 must preserve current focus IDs and navigation
+behavior so the native/shared-scroll correction remains a separately reviewable
+milestone. DLV-006 must still land before Spotify continuous-list and launcher
+work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -657,10 +683,25 @@ that needs its own bounded assignment.
 
 ### DLV-010 — Prove the external widget package journey
 
-**State:** Assigned
+**State:** Done
 **Baseline:** accepted DLV-028 integration `4ec931b` plus the reviewer
 control-plane commit assigning this milestone
+**Closing commit:** `83cc32d` (`[DLV-010] Prove external widget package journey`)
+**Integrated on `main`:** `e68b8be`
 **Owner:** managed scaffold/CLI, sample package, and public authoring docs
+
+**Reviewer disposition:** Accepted. A generated project now carries a
+content-addressed matching SDK package in a relative offline feed, compiles and
+runs a generated lifecycle/state/action snapshot test outside the checkout,
+and uses one source-aware bounded build/stage/validate/pack path without
+publishing compiler symbols or checkout paths. The retained external fixture
+validates, renders, replays, produces byte-identical packages from directory
+and project inputs, installs two versions, selects/rolls back, and removes them.
+Focused run `20260810T123758Z-6ca1bb73` passed CLI/scaffold 53/53, catalog 35/35,
+and 52 Markdown contracts in 45.536 seconds; it is correctly dirty-worktree
+assignment evidence rather than clean release evidence. External SDK
+publication/API governance and transactional versioned template input remain
+separate open work.
 
 **Objective:** Make the recommended community path reproducible from scaffold
 through build, semantic validation, package creation, local install, version
@@ -689,10 +730,25 @@ or weakening package validation/trust boundaries.
 
 ### DLV-030 — Split YT Music by stable responsibility
 
-**State:** Ready after DLV-010
-**Baseline:** closing commit of DLV-010
+**State:** Done
+**Baseline:** accepted DLV-010 closing commit `83cc32d`
+**Closing commit:** `549da57` (`[DLV-030] Split YT Music by stable responsibility`)
+**Integrated on `main`:** `6b9144d`
 **Dependencies:** DLV-009 and DLV-023
 **Owner:** YT Music managed internals and credential-free companion fixtures
+
+**Reviewer disposition:** Accepted. The 1,365-line orchestration owner is now
+677 physical lines and remains the only lifecycle, client, committed-state,
+invalidation, and disposal authority. Closed action routing, immutable
+connection transitions and safe status policy, companion confirmation/rollback
+and progress reconciliation, and snapshot-only presentation are value-based
+directly tested seams. No public API, task registry, cancellation source,
+revision counter, lock, or mutable cross-boundary owner was added. Retained run
+`20260810T125844Z-07e6c6d2` passed YT Music 55/55, Widget SDK 84/84,
+generic worker 9/9, and all 52 documentation contracts in 19.783 seconds; it is
+stable dirty assignment evidence and correctly not release-eligible. Real
+companion, packaged controller, accessibility, and visual proof remain in the
+verification queue.
 
 **Objective:** Preserve DLV-009's single immutable presentation revision and
 SDK-owned Active operation lanes while making one transport-confirmation rule
@@ -727,11 +783,24 @@ or exposes a separate product defect outside this architecture milestone.
 
 ### DLV-031 — Separate capability-domain policy from broker authority
 
-**State:** Ready after DLV-030
-**Baseline:** closing commit of DLV-030
+**State:** Done
+**Baseline:** accepted DLV-030 closing commit `549da57`
+**Closing commit:** `ffa1edc` (`[DLV-031] Separate capability domain policy`)
+**Integrated on `main`:** `27adec1`
 **Dependencies:** DLV-023 and DLV-028
 **Owner:** managed `PlatformCapabilityBroker` internals and direct broker policy
 fixtures; no native-host files
+
+**Reviewer disposition:** Accepted. The broker remains the sole identity,
+declaration, consent, lifecycle, request-lease, dashboard-gesture, revocation,
+subscription, and event-sequence authority. Seven closed internal domain routes
+move typed decoding, validation, backend execution, and projection out of the
+central class; the authority owner falls from 2,377 lines/117,433 bytes to 837
+lines/36,377 bytes without public API or protocol changes. The app-library cache
+and its serialization gate move together, while the broker state lock and
+loopback authority gate remain singular. Retained stable dirty assignment run
+`20260810T132445Z-4465b4ae` passes PlatformBroker 51/51, Windows app library
+31/31, generic worker 9/9, and documentation 52 in 22.649 seconds.
 
 **Objective:** Keep one broker authority for identity, declarations, consent,
 lifecycle, request leases, event sequence, and dashboard gestures while making
@@ -767,11 +836,28 @@ platform worktree.
 
 ### DLV-032 — Extract the bridge request dispatcher
 
-**State:** Ready after DLV-031
-**Baseline:** closing commit of DLV-031
+**State:** Assigned for a separate correction from the accepted DLV-034 branch
+boundary; candidate `8c11a27` is not accepted or integrated
+**Baseline:** accepted-but-not-integrated DLV-034 correction `344ab48`, whose
+history preserves candidate `8c11a27` without rewriting it
 **Dependencies:** DLV-031 when shared broker/bridge test infrastructure changes
 **Owner:** managed `WidgetBridgeServer` request scheduling and direct bridge
 fixtures; framing and session ownership remain in the server
+
+**Reviewer correction:** Candidate `8c11a27` creates a cohesive internal
+dispatcher and removes the server's scheduling registries, but it does not meet
+the bounded-drain acceptance boundary. Production `CancelAndDrainAsync` awaits
+`Task.WhenAll` without a deadline, while the direct forced-drain test covers only
+handlers that honor cancellation. It also retains raw `JsonElement` `widgetId`
+extraction as an implicit scheduling convention rather than one closed typed
+request-classification/key seam. After DLV-034 reaches its already-started clean
+commit, a separate DLV-032 correction must add a production-enforced drain
+deadline, safely observe/quarantine cancellation-ignoring late completions with
+no late reply/fatal publication into a closed or replacement session, clear all
+dispatcher IDs/slots/tails at the deadline, and add deterministic manually
+controlled deadline plus malformed/unknown classification tests. Stop if this
+requires a wider lifecycle/protocol change; do not fake closure by dropping
+references to harmful continuing work.
 
 **Objective:** Give global/per-widget request admission, duplicate IDs, FIFO
 tails, completion cleanup, fatal-session cancellation, and bounded drain one
@@ -803,11 +889,32 @@ duplicates client/session authority, or touches native platform work.
 
 ### DLV-034 — Split the Spotify platform backend by stable responsibility
 
-**State:** Ready after DLV-032
-**Baseline:** closing commit of DLV-032
+**State:** Accepted by the reviewer through correction `344ab48`; awaiting an
+accepted DLV-032 correction before contiguous integration
+**Baseline:** unaccepted DLV-032 candidate `8c11a27`
+**Closing commits:** `a5c80ac` (`[DLV-034] Split Spotify backend
+responsibilities`), corrected by `344ab48` (`[DLV-034] Prove refresh
+cancellation and disconnect isolation`)
 **Dependencies:** DLV-023 and DLV-031
 **Owner:** managed Windows Spotify provider internals and injected-transport
 fixtures
+
+**Reviewer disposition:** Accepted at code and focused assignment-evidence
+level. The central backend falls from 1,724 lines/81,619 bytes to 1,032
+lines/48,862 bytes while retaining singular package identity, OAuth/PKCE,
+vault, token refresh, 401 replacement, lifecycle, local-player, and event
+authority. Playback/collection endpoints, bounded HTTP retry/rate-limit policy,
+and strict response parsing are narrow internal owners without token/session or
+browser authority. Correction `344ab48` adds manually controlled backend proof
+that a cancellation-ignoring refresh cannot publish/cache an access token,
+rotate/save refresh credentials, or authorize the next request, and that
+Disconnect stops local playback, clears vault and cached-token state, and
+prevents session reuse. Retained runs `20260810T140244Z-2b2f8821` and
+`20260810T141733Z-0e24d4e1` pass provider 32/32 then 34/34; the first also passes
+PlatformBroker 51/51. Documentation run `20260810T141833Z-a8567e3e` passes all
+52 Markdown contracts. These are stable dirty-worktree milestone artifacts,
+not release evidence. No public provider/broker protocol changed, and live
+Spotify remains manual evidence.
 
 **Objective:** Preserve one integration identity and token-session owner while
 making one Spotify endpoint family, retry rule, or response parser changeable
@@ -840,6 +947,204 @@ unrelated widget suite.
 **Stop/escalate when:** the split requires credentials, public protocol or
 threat-model changes, a second token/session owner, or behavior owned by the
 Spotify widget rather than the platform backend.
+
+### DLV-035 — Split the Windows network backend by stable responsibility
+
+**State:** Awaiting reviewer acceptance and integration of the DLV-032
+correction; do not start automatically from the current unintegrated branch
+**Baseline:** future accepted main integration through DLV-032 and DLV-034
+**Dependencies:** DLV-028 and DLV-031
+**Owner:** managed Windows network provider internals and deterministic native-
+adapter fixtures; no widget presentation or native overlay-host files
+
+**Objective:** Preserve one owner thread and one committed provider state while
+making one scan/connect/radio command rule, timeout, or event projection
+changeable without understanding the complete roughly 1,186-line backend.
+
+**In scope:** a before/after responsibility and coordination inventory; named
+command admission/execution, connection and scan timeout policy, provider-state
+reconciliation, and event projection boundaries where independently testable;
+deletion of superseded queue/timer/equality knowledge; keep the native adapter
+behind its existing bounded interface.
+
+**Out of scope:** new Wi-Fi/Bluetooth features, public capability/protocol
+changes, platform-host work, undocumented Windows APIs, a generic command bus,
+one class per command, or cosmetic movement of P/Invoke declarations.
+
+**Acceptance criteria:** one owner thread and committed-state owner remain;
+commands, timers, and event publication have explicit deterministic ordering;
+one scan/connect/radio rule can be tested without constructing the entire
+backend; cancellation, late timeout, provider churn, degraded recovery,
+disposal, and duplicate event suppression remain exact; the completion report
+quantifies responsibility and cross-boundary mutable-dependency reduction.
+
+**Verification:** Tier 1 Windows Network provider and smallest affected broker
+network-mapping Release suites with manually completed adapter operations. No
+aggregate or unrelated widget suite.
+
+**Stop/escalate when:** correct separation requires a public protocol, changes
+provider authority or Windows behavior, introduces another owner thread/state
+owner, or overlaps the preserved native platform worktree.
+
+### DLV-036 — Split Settings by page policy and privileged operations
+
+**State:** Ready after DLV-035
+**Baseline:** closing commit of DLV-035
+**Dependencies:** DLV-001 and DLV-035 only for queue order
+**Owner:** managed Settings widget internals and direct Settings fixtures
+
+**Objective:** Keep one widget lifecycle and committed settings state while
+making one ordinary settings page, persistence rule, diagnostic projection, or
+authority-recovery workflow changeable without reading the complete roughly
+1,090-line widget.
+
+**In scope:** a before/after ownership map; pure snapshot-only page composition
+and navigation policy; appearance/overlay preference persistence policy;
+diagnostic and exact-token authority-recovery projection/action boundaries;
+focused success, failure, stale-selection, cancellation, and repeated-render
+tests; deletion of duplicated page/action knowledge.
+
+**Out of scope:** new settings, catalog/security-policy changes, authority-
+recovery redesign, public SDK abstractions, a universal view-model/base class,
+partial-class-only splitting, or visual redesign.
+
+**Acceptance criteria:** one lifecycle and committed-state owner remains; pure
+page presentation does not perform I/O; privileged recovery actions cannot be
+reached through ordinary preference policy; one page or persistence/recovery
+rule changes through a named boundary; busy/error/focus/navigation behavior and
+exact-token fail-closed semantics remain deterministic; the completion report
+quantifies the before/after responsibility map.
+
+**Verification:** Tier 1 Settings, exact-token recovery, smallest Widget SDK
+render/navigation, and affected documentation Release suites. No aggregate or
+unrelated installed-widget hardening.
+
+**Stop/escalate when:** the split changes authority, persistence schema, public
+SDK/protocol behavior, or requires reopening frozen security work.
+
+### DLV-037 — Split managed worker-session transport from gesture authority
+
+**State:** Ready after DLV-036
+**Baseline:** closing commit of DLV-036
+**Dependencies:** DLV-032
+**Owner:** managed `WidgetProcessClient` internals and direct runtime fixtures;
+no native host files
+
+**Objective:** Preserve one worker-session/lifecycle authority while making
+process startup/transport, request correlation and drain, content/companion
+leases, or dashboard-gesture reservation changeable and directly testable
+without understanding the complete roughly 1,027-line client.
+
+**In scope:** a before/after responsibility and resource map; one bounded
+session/transport owner; one typed pending-request owner; one dashboard-gesture
+reservation/expiry policy behind the existing broker authority; explicit lease
+cleanup; deterministic connect, exit, Stop/Unload, stale-session, correlation,
+expiry, revocation, and cancellation-ignoring drain fixtures; deletion of
+superseded cross-boundary mutable state.
+
+**Out of scope:** native protocol/framing changes, capability or threat-model
+changes, sandbox redesign, new dashboard gestures, public SDK changes, generic
+event buses, or multiple competing process/lifecycle owners.
+
+**Acceptance criteria:** worker process, pipe/session generation, pending
+requests, leases, and gesture reservations each have one named owner and one
+terminal cleanup path; Stop/Unload remain responsive and bounded; stale process
+exit, response, companion, and gesture results cannot affect a replacement
+session; focused fixtures construct each policy without starting the full
+product; the completion report quantifies fields, tasks, locks, and mutable
+dependencies before and after.
+
+**Verification:** Tier 1 Widget Runtime, smallest bridge correlation/drain, and
+generic-worker Release suites. No native aggregate.
+
+**Stop/escalate when:** separation changes the public protocol/threat model,
+requires native-host edits, weakens sandbox or gesture authority, or creates a
+second lifecycle/session owner.
+
+### DLV-029 — Split Audio Mixer by stable responsibility
+
+**State:** Ready after DLV-037
+**Baseline:** closing commit of DLV-037
+**Dependencies:** DLV-037 for managed-lane queue order; DLV-026 is independent
+**Owner:** managed Audio Mixer internals and direct widget fixtures; no native
+host, broker, capability, or protocol files
+
+**Objective:** Preserve Audio Mixer's domain-specific absolute-value command
+coalescing, authoritative confirmation/rollback, and provider-event
+reconciliation while making one audio row, confirmation rule, or provider event
+path changeable without reading the complete roughly 2,496-line widget.
+
+**In scope:** a before/after responsibility and coordination inventory; named
+output, input, and per-session pending-command policies; provider-event versus
+pending-command reconciliation; lifecycle/action orchestration with one Active-
+lifetime owner; one immutable committed render-facing revision; snapshot-only
+view composition; deletion of superseded locks, tasks, generations, and cross-
+boundary mutable knowledge when focused interleaving tests prove the replacement.
+
+**Out of scope:** fixing or masking DLV-026's reverse-scroll defect; changing
+focus IDs or shared scroll semantics; endpoint selection, dashboard shortcuts,
+new audio capabilities, public SDK/protocol changes, a universal optimistic-
+command framework, partial-class-only splitting, or visual redesign.
+
+**Acceptance criteria:** one lifecycle and committed-state owner remains;
+output, input, and session policies are directly testable without constructing
+the complete widget; success, failure, cancellation-ignoring completion,
+timeout/rollback, provider churn, session removal, and deactivation remain
+deterministic; existing focus IDs and current navigation behavior are preserved
+for DLV-026 to diagnose and correct separately; the completion report quantifies
+responsibilities, locks/semaphores/tasks, and cross-boundary mutable dependencies
+before and after.
+
+**Verification:** Tier 1 Audio Mixer, Widget SDK operation/lifecycle, and the
+smallest affected audio-provider/broker mapping Release suites with manually
+completed provider operations. No native, aggregate, or unrelated security
+suite.
+
+**Stop/escalate when:** correct separation requires public capability/protocol
+or authority changes, touches the shared native scroll owner, introduces a
+second lifecycle/committed-state owner, or exposes a product defect that needs
+its own bounded assignment.
+
+### DLV-038 — Modularize the largest managed test harnesses by responsibility
+
+**State:** Ready after DLV-029
+**Baseline:** closing commit of DLV-029
+**Dependencies:** DLV-031, DLV-032, DLV-037, and DLV-029 so active production
+architecture work has already stabilized the affected suites
+**Owner:** managed test-only source organization and narrow reusable fixture
+support; no production, public SDK, protocol, native-host, or product behavior
+
+**Objective:** Make one broker, runtime, bridge, SDK, or flagship-widget scenario
+family changeable without reading a 2,000-3,300-line top-level `Program.cs`,
+while preserving the repository's bounded executable-test and verifier contract.
+
+**In scope:** a before/after inventory of the largest managed test programs;
+thin per-project runners with stable ordered test names and exit semantics;
+cohesive scenario groups and fixtures for the three largest currently active
+suites; deletion of duplicated setup/assertion/process helpers only where the
+replacement has at least two real consumers; deterministic discovery/inventory
+coverage and unchanged verifier/JUnit extraction.
+
+**Out of scope:** production changes, changing tested behavior to simplify the
+harness, a repository-wide rewrite, mandatory xUnit/NUnit/MSTest adoption,
+reflection-based discovery, generated test cases that hide scenario intent, or
+splitting every method into a separate class/file.
+
+**Acceptance criteria:** each pilot runner is a small explicit registry over
+named scenario owners; one scenario family can be located and changed without
+reading the entire suite; setup, assertions, clocks, cancellation, and process
+fixtures have one clear owner; test names/order, pass/fail exit codes, bounded
+timeouts, verifier case extraction, and focused coverage remain exact; the
+completion report identifies remaining test hotspots and gives each a cohesive
+exception or later bounded disposition.
+
+**Verification:** the three reorganized Release suites, verifier runner self-
+tests/inventory checks, and documentation contracts. No product aggregate and no
+unrelated native suite.
+
+**Stop/escalate when:** cleanup requires production/public API changes, changes
+test semantics or ordering, weakens timeouts/process containment, or expands into
+a whole-repository framework migration.
 
 ## Platform lane
 
@@ -1208,27 +1513,6 @@ trusted local artwork. Revalidate artwork with the same provider identity as
 launch, reject stale/malformed/oversized images, and cover missing/change/churn,
 2,000/10,000-item demand, memory/transport bounds, and current Games & Apps
 captures. Do not solve this by embedding hundreds of base64 icons in snapshots.
-
-### DLV-029 — Split Audio Mixer by stable responsibility
-
-**State:** Awaiting DLV-026 diagnosis and accepted baseline
-**Intended lead:** widgets lane after the native/managed scroll owner is proven
-**Dependencies:** DLV-026
-
-Preserve Audio Mixer's domain-specific absolute-value command coalescing,
-authoritative confirmation/rollback, and provider-event reconciliation while
-separating those policies from lifecycle/action orchestration and snapshot-only
-view composition. Begin with a before/after responsibility and coordination
-inventory; name and test output, input, and per-session pending policies without
-inventing a universal optimistic-command framework; retain one committed
-render-facing revision and one Active-lifetime owner. A developer must be able
-to change one audio row, one confirmation rule, or one provider event path
-without reading the entire roughly 2,500-line class. File splitting, partial
-classes, or wrapper-only extraction does not satisfy the milestone. Preserve
-DLV-026's accepted bidirectional scroll/focus behavior and prove provider-event
-versus pending command, cancellation-ignoring completion, timeout/rollback,
-session churn, deactivation, and pure presentation with focused tests. No public
-audio authority or protocol expansion belongs here.
 
 ### DLV-033 — Establish a host-owned widget session coordinator
 
