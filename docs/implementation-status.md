@@ -80,6 +80,19 @@ renderer diagnostics. Its semantic exporter records the existing Settings
 worker startup gap explicitly. Full-shell physical-controller, display, and
 assistive-technology sign-off remains verification-only evidence.
 
+DLV-005 adds deterministic tray-Y tap/hold arbitration without adding a reload
+authority or hidden polling. Release before 700 ms retains reorder; crossing the
+threshold revalidates tray focus, reorder state, and the selected worker ID and
+then invokes the same current-widget restart function used by F5 and the recovery
+chord exactly once. Any accepted shell transition, focus loss, overlay hide, or
+controller loss cancels progress, and a winning or canceled gesture consumes its
+stale release. Tray chrome shows bounded percentage progress, all guide densities
+retain a Y tap/hold affordance, and UI Automation help expands the meanings. The
+focused Release `ControllerNavigationTests` and `OverlayPlacementTests` targets
+pass 107 and 108,547 checks respectively, and the production OverlayHost Release
+target builds. Physical-controller threshold proof remains in the verification
+queue.
+
 ## Implemented
 
 ### Native overlay and input
@@ -87,7 +100,8 @@ assistive-technology sign-off remains verification-only evidence.
 `src/OverlayHost` starts hidden, uses a GameInput Guide callback, stops ordinary
 polling/rendering while hidden, and presents a Win32/Direct2D controller
 dashboard. It supports reorder mode, last-widget/order persistence, focus
-routing for the reference widget, managed bridge startup, bounded HTTPS
+routing for the reference widget, deterministic tray-Y hold refresh through the
+shared F5 path, managed bridge startup, bounded HTTPS
 artwork, fixed native semantic icon geometry, responsive logical viewports,
 and per-monitor placement.
 

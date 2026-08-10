@@ -1124,9 +1124,12 @@ private:
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_KILLFOCUS:
             accessibilityProvider_.SetWindowFocused(false);
+            trayYGesture_.Cancel();
+            InvalidateRect(window_, nullptr, FALSE);
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_SHOWWINDOW:
             accessibilityProvider_.SetWindowVisible(wParam != FALSE);
+            if (wParam == FALSE) trayYGesture_.Reset();
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_GETOBJECT:
             if (static_cast<LONG>(lParam) == UiaRootObjectId) {
@@ -1502,6 +1505,10 @@ private:
         if (!mutation()) {
             return;
         }
+        // Any accepted shell transition changes focus, selection, presentation,
+        // reorder, or lifecycle authority. A pending Y must never survive it;
+        // the gesture's own tap action has already retired its capture here.
+        if (trayYGesture_.capturing()) trayYGesture_.Cancel();
         if (priorSurface != state_.surface() || priorActive != state_.activeWidget() ||
             priorFocusRegion != state_.focusRegion()) {
             sliderInteraction_.DeactivateAll();
@@ -2180,6 +2187,7 @@ private:
 
     void HideOverlay() {
         KillTimer(window_, kControllerTimer);
+        trayYGesture_.Reset();
         actionFailureFeedback_.Hide();
         ClearAccessibilityTree();
         visibleControllerReadLease_ = false;
@@ -2690,6 +2698,7 @@ private:
         const WORD pressed = static_cast<WORD>(buttons & ~previousButtons_);
         const WORD released = static_cast<WORD>(previousButtons_ & ~buttons);
         previousButtons_ = buttons;
+        const ULONGLONG now = GetTickCount64();
         constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
         if (recoveryChordDown && !reloadChordHeld_) RestartCurrentWidget();
@@ -2702,7 +2711,6 @@ private:
         releaseButton(XINPUT_GAMEPAD_A, L"a");
         releaseButton(XINPUT_GAMEPAD_B, L"b");
         releaseButton(XINPUT_GAMEPAD_X, L"x");
-        releaseButton(XINPUT_GAMEPAD_Y, L"y");
         releaseButton(XINPUT_GAMEPAD_LEFT_SHOULDER, L"leftBumper");
         releaseButton(XINPUT_GAMEPAD_RIGHT_SHOULDER, L"rightBumper");
         releaseButton(XINPUT_GAMEPAD_LEFT_THUMB, L"leftStick");
@@ -2710,7 +2718,6 @@ private:
         releaseButton(XINPUT_GAMEPAD_BACK, L"view");
         releaseButton(XINPUT_GAMEPAD_START, L"menu");
 
-        const ULONGLONG now = GetTickCount64();
         if (sliderReconcileAt_ != 0 && now >= sliderReconcileAt_) {
             sliderReconcileAt_ = 0;
             InvalidateRect(window_, nullptr, FALSE);
@@ -2735,9 +2742,6 @@ private:
         }
         if (pressed & XINPUT_GAMEPAD_B) {
             DispatchControllerAction(L"B", true);
-        }
-        if (pressed & XINPUT_GAMEPAD_Y) {
-            DispatchControllerAction(L"Y", true);
         }
         if (pressed & XINPUT_GAMEPAD_X) {
             DispatchControllerAction(L"X", true);
@@ -2776,6 +2780,49 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
         leftTriggerPressed_ = leftTriggerPressed;
         rightTriggerPressed_ = rightTriggerPressed;
+
+        // Resolve every other button and direction first. If one changes tray
+        // focus, selection, overlay, reorder, or lifecycle on this same sample,
+        // the central state transition cancels Y before it can win.
+        if (!connected && trayYGesture_.capturing()) {
+            trayYGesture_.Cancel();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        if (connected && (pressed & XINPUT_GAMEPAD_Y) != 0) {
+            if (trayYGesture_.capturing()) {
+                // Device reconnect while a canceled capture is waiting for its
+                // physical release must not create a second gesture.
+            } else if (state_.focusRegion() == gba::FocusRegion::Tray) {
+                trayYGesture_.Press(
+                    state_.selectedWidget(), TrayYRefreshEligible(), now);
+                InvalidateRect(window_, nullptr, FALSE);
+            } else {
+                DispatchControllerAction(L"Y", true);
+            }
+        }
+        if (connected && trayYGesture_.capturing() &&
+            (buttons & XINPUT_GAMEPAD_Y) != 0) {
+            ApplyTrayYGestureAction(trayYGesture_.Update(
+                state_.selectedWidget(), TrayYRefreshEligible(), now));
+            if (trayYGesture_.pendingRefresh())
+                InvalidateRect(window_, nullptr, FALSE);
+        }
+        if (connected && (released & XINPUT_GAMEPAD_Y) != 0) {
+            if (trayYGesture_.capturing()) {
+                ApplyTrayYGestureAction(trayYGesture_.Release(
+                    state_.selectedWidget(), TrayYRefreshEligible(), now));
+                InvalidateRect(window_, nullptr, FALSE);
+            } else {
+                releaseButton(XINPUT_GAMEPAD_Y, L"y");
+            }
+        } else if (connected && trayYGesture_.capturing() &&
+                   (buttons & XINPUT_GAMEPAD_Y) == 0) {
+            // A device can reconnect after the synthetic loss edge. Retire the
+            // canceled capture only after its physical Y is observed released.
+            ApplyTrayYGestureAction(trayYGesture_.Release(
+                state_.selectedWidget(), TrayYRefreshEligible(), now));
+            InvalidateRect(window_, nullptr, FALSE);
+        }
         // The visible overlay already polls controller state at 60 Hz. Reuse
         // that bounded wakeup rather than owning an animation timer; settled
         // declarative content performs no paint invalidations, and this timer
@@ -3230,9 +3277,33 @@ private:
         if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
     }
 
+    [[nodiscard]] bool TrayYRefreshEligible() const noexcept {
+        return state_.surface() != gba::Surface::Hidden &&
+               state_.focusRegion() == gba::FocusRegion::Tray &&
+               !state_.reorderMode() &&
+               IsBridgeWidget(state_.selectedWidget());
+    }
+
+    void ApplyTrayYGestureAction(const gba::input::TrayYGestureAction action) {
+        switch (action) {
+        case gba::input::TrayYGestureAction::ToggleReorder:
+            Dispatch(gba::Command::ToggleReorder);
+            break;
+        case gba::input::TrayYGestureAction::RefreshSelectedWidget:
+            // Update() revalidated the selected ID and tray context on this UI
+            // thread. Resolve it once more inside the shared F5 authority.
+            RestartCurrentWidget();
+            break;
+        case gba::input::TrayYGestureAction::None:
+            break;
+        }
+    }
+
     void RestartCurrentWidget() {
-        if (state_.surface() != gba::Surface::Widget) return;
-        const std::wstring widgetId{state_.activeWidget()};
+        const std::wstring widgetId{gba::input::ResolveCurrentWidgetReloadTarget(
+            state_.surface() != gba::Surface::Hidden,
+            state_.focusRegion() == gba::FocusRegion::Tray,
+            state_.selectedWidget(), state_.activeWidget())};
         if (!IsBridgeWidget(widgetId)) return;
         if (!bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
@@ -3986,6 +4057,13 @@ private:
     }
 
     std::wstring DashboardHint(const float availableWidth) const {
+        if (trayYGesture_.pendingRefresh()) {
+            return L"Hold Y to refresh " +
+                std::wstring(DisplayWidgetName(trayYGesture_.selectedWidget())) +
+                L" — " +
+                std::to_wstring(trayYGesture_.progressPercent(GetTickCount64())) +
+                L"%";
+        }
         std::vector<gba::ControllerGuideAction> quickActions;
         const auto* snapshot = SnapshotFor(state_.selectedWidget());
         if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
@@ -4001,6 +4079,14 @@ private:
             gba::ResolveControllerGuideDensity(
                 availableWidth, CurrentTextScale()),
             state_.reorderMode(), quickActions);
+    }
+
+    std::wstring DashboardAccessibilityHint(const std::wstring_view visualHint) const {
+        if (trayYGesture_.pendingRefresh()) return std::wstring{visualHint};
+        if (state_.reorderMode() || !IsBridgeWidget(state_.selectedWidget()))
+            return std::wstring{visualHint};
+        return std::wstring{visualHint} +
+            L". Tap Y to reorder. Hold Y to refresh the selected widget.";
     }
 
     void DrawDashboard(const float width, const float height) {
@@ -4020,6 +4106,7 @@ private:
             : DisplayWidgetName(state_.selectedWidget());
         const auto status = DashboardStatus();
         const std::wstring help = DashboardHint(contentRight - contentLeft);
+        const std::wstring accessibleHelp = DashboardAccessibilityHint(help);
         const std::wstring displayedHint = status ? *status : help;
         const gba::declarative::Rect hintBounds{
             contentLeft, hintTop, contentRight - contentLeft, hintBottom - hintTop,
@@ -4027,7 +4114,7 @@ private:
         const gba::accessibility::DashboardSemantics dashboard{
             std::wstring{title},
             {contentLeft, titleTop, contentRight - contentLeft, titleBottom - titleTop},
-            status ? std::wstring{} : help,
+            status ? std::wstring{} : accessibleHelp,
             hintBounds,
             status ? *status : std::wstring{},
             hintBounds,
@@ -4120,13 +4207,14 @@ private:
         if (state_.focusRegion() == gba::FocusRegion::Tray) {
             const auto status = DashboardStatus();
             const std::wstring help = DashboardHint(contentRight - contentLeft);
+            const std::wstring accessibleHelp = DashboardAccessibilityHint(help);
             const std::wstring footer = status ? *status : help;
             openWidgetAccessibility_.closeBounds = footerBounds;
             if (status) {
                 openWidgetAccessibility_.status = *status;
                 openWidgetAccessibility_.statusBounds = footerBounds;
             } else {
-                openWidgetAccessibility_.help = help;
+                openWidgetAccessibility_.help = accessibleHelp;
                 openWidgetAccessibility_.helpBounds = footerBounds;
             }
             DrawTextLine(footer, hintFormat_.Get(),
@@ -4454,6 +4542,7 @@ private:
     bool leftTriggerPressed_{};
     bool rightTriggerPressed_{};
     bool reloadChordHeld_{};
+    gba::input::TrayYGesture trayYGesture_;
     bool visibleControllerReadLease_{};
     std::optional<gba::input::ControllerReadPath> lastControllerReadPath_;
     std::optional<bool> lastControllerForegroundExclusive_;

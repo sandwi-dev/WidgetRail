@@ -173,10 +173,12 @@ worker executable.
 ### Dashboard card (hovered, not open)
 
 The host reserves Guide/Home, D-pad and horizontal left-stick navigation, `A`
-to open, `B` to close, and `Y` to enter/exit reorder. A selected card may expose up to three
-quick actions on `X`, `LB`, `RB`, `LT`, `RT`, either stick click, Menu, or
-View. The mapping comes from the widget snapshot; it is not hard-coded by the
-shell:
+to open, `B` to close, and tray `Y`. A `Y` tap enters/exits reorder; a fixed
+700 ms hold refreshes the exact revalidated selected worker once through the
+host's F5 reload path. Neither gesture is a widget input. A selected card may
+expose up to three quick actions on `X`, `LB`, `RB`, `LT`, `RT`, either stick
+click, Menu, or View. The mapping comes from the widget snapshot; it is not
+hard-coded by the shell:
 
 ```csharp
 return new WidgetView(

@@ -19,10 +19,12 @@ Visible controls:
 - Open-widget D-pad or two-dimensional left stick: move focus
 - A: open a card or confirm reorder mode
 - B: return from the sample widget; it never closes the overlay
-- Y: enter or leave reorder mode
+- Tray Y: tap to enter/leave reorder mode; hold for 700 ms to refresh the
+  selected worker widget once
 - X, LB, RB, triggers, or stick clicks: run a selected card's declared quick action, when present
 - Guide: show/hide from any state
-- Keyboard fallback: arrows navigate, Enter selects, Escape goes Back; F1 toggles
+- Keyboard fallback: arrows navigate, Enter selects, Escape goes Back; F1
+  toggles and F5 refreshes the current tray/open widget through the same path
 
 The widget order and last activated widget are atomically persisted under
 `%LOCALAPPDATA%\GameBarAlternative`. B returning from the placeholder widget is
@@ -33,7 +35,10 @@ keeps navigation working through diagnosed background-shared GameInput. If
 GameInput is unavailable, the compatibility path uses non-exclusive XInput. Stick
 navigation uses engage/release hysteresis and repeat timing; explicit focus
 neighbors fall back to deterministic geometry when no usable target is
-declared.
+declared. A tray Y hold shows bounded progress and is canceled by any accepted
+shell transition, focus loss, overlay hide, or controller loss. A winning hold
+consumes the eventual Y release, so it neither toggles reorder nor reaches
+widget code.
 
 GameInput is the primary Guide path. For Xbox-360-class drivers observed to omit
 Guide callbacks, the host also contains a quarantined compatibility adapter for

@@ -324,14 +324,19 @@ std::wstring BuildTrayControllerGuide(
     }
 
     const std::size_t characterBudget =
-        density == ControllerGuideDensity::Full ? 78U :
-        density == ControllerGuideDensity::Compact ? 60U : 28U;
+        density == ControllerGuideDensity::Full ? 92U :
+        density == ControllerGuideDensity::Compact ? 78U : 28U;
     const std::size_t labelBudget =
         density == ControllerGuideDensity::Full ? 14U :
         density == ControllerGuideDensity::Compact ? 8U : 6U;
     const std::size_t actionBudget =
         density == ControllerGuideDensity::Minimal ? 1U : 3U;
-    constexpr std::wstring_view suffix = L"↑/A Enter   B Close";
+    const std::wstring_view suffix =
+        density == ControllerGuideDensity::Full
+            ? L"↑/A Enter   Y Tap reorder / Hold refresh   B Close"
+            : density == ControllerGuideDensity::Compact
+                ? L"↑/A Enter   Y Tap/Hold   B Close"
+                : L"Y Tap/Hold   B Close";
 
     const auto sanitize = [](const std::wstring_view value,
                              const std::size_t limit) {
@@ -380,9 +385,9 @@ std::wstring BuildTrayControllerGuide(
 
     switch (density) {
     case ControllerGuideDensity::Full:
-        return L"←→ Switch   ↑/A Enter   Y Reorder   B Close";
+        return L"←→ Switch   ↑/A Enter   Y Tap reorder / Hold refresh   B Close";
     case ControllerGuideDensity::Compact:
-        return L"←→ Switch   ↑/A Enter   B Close";
+        return L"←→ Switch   ↑/A Enter   Y Tap/Hold   B Close";
     case ControllerGuideDensity::Minimal:
         return std::wstring{suffix};
     }
