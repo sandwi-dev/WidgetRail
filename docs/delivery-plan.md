@@ -439,6 +439,31 @@ claim the aggregate partial hotspot is closed. Retained stable dirty run
 Widget SDK 84/84, and all 52 documentation contracts in 20.525 seconds. No
 aggregate, catalog/broker authority change, native suite, or live recovery ran.
 
+### DLV-044 — Replace Settings partial sections with real policy boundaries
+
+**State:** Done
+**Closing commit:** `8599694` (`[DLV-044] replace Settings partial ownership`)
+**Integrated on `main`:** `316ecb8`
+
+**Reviewer disposition:** Accepted. The roughly 2,324-line logical partial
+widget is replaced by one non-partial 1,133-line Settings adapter plus closed
+installed-widget and permission policy/presentation owners. The root retains
+the only lifecycle, state lock, operation gate, service effects, committed
+state, and invalidation authority; extracted policies and presenters consume
+and return narrow values and own no host services, lock, task, cancellation,
+lifecycle, or invalidation state. Direct tests cover stale installed selection,
+catalog failure, exact package-authority replacement, consent grant/revocation,
+busy-safe repeatable composition, and pre-admission cancellation while the
+existing suite retains activation and authority-recovery lifecycle coverage.
+Retained stable dirty run `20260810T195050Z-0c20315d` passes Settings 53/53,
+Widget SDK 84/84, Widget Catalog 35/35, Platform Broker 51/51, and all 52
+documentation contracts in 32.721 seconds. It is correctly not release-
+eligible because it records the stable dirty implementation worktree. The
+1,133-line root receives the cohesive exception recorded in the engineering-
+quality review; material growth or the return of section presentation, section
+selection policy, a second service/lifecycle owner, or independent coordination
+reopens it.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -461,9 +486,9 @@ the independent native/shared-scroll correction remains separately reviewable.
 Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
 concentration before dashboard controls add behavior. Accepted DLV-035 and
 DLV-041 separate the Windows network backend and its native interop owner while
-retaining singular lifetime authority; accepted DLV-036 and assigned DLV-044
-now disposition the aggregate Settings partial type;
-DLV-037 continues the platform-policy hotspot queue; DLV-039 and DLV-040 finish
+retaining singular lifetime authority; accepted DLV-036 and DLV-044 now
+disposition the aggregate Settings partial type; assigned DLV-037 continues the
+platform-policy hotspot queue; DLV-039 and DLV-040 finish
 the residual bridge-server responsibility split; and DLV-043 replaces
 Spotify's partial-file organization with real type boundaries before test-
 harness cleanup. DLV-006 must still land before Spotify continuous-list and
@@ -1235,8 +1260,9 @@ SDK/protocol behavior, or requires reopening frozen security work.
 
 ### DLV-044 — Replace Settings partial sections with real policy boundaries
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `316ecb8`
 **Baseline:** accepted DLV-036 closing commit `fdcf5e7`
+**Closing commit:** `8599694`
 **Dependencies:** DLV-001 and DLV-036
 **Owner:** managed Settings installed-widget and permission/consent internals
 and direct credential-free fixtures; no catalog, broker, protocol, or native-
@@ -1282,8 +1308,8 @@ committed-state owner.
 
 ### DLV-037 — Split managed worker-session transport from gesture authority
 
-**State:** Ready after DLV-044
-**Baseline:** closing commit of DLV-044
+**State:** Assigned
+**Baseline:** accepted DLV-044 closing commit `8599694`
 **Dependencies:** DLV-032 and DLV-044 only for queue order
 **Owner:** managed `WidgetProcessClient` internals and direct runtime fixtures;
 no native host files
