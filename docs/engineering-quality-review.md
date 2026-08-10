@@ -1870,7 +1870,7 @@ file containing many small records/services with one giant class.
 | `SpotifyWidget` | 2,040 across four partial declarations | DLV-043 reopens the incomplete DLV-008 architecture disposition and requires real encapsulated boundaries. |
 | `AudioMixerWidget` | 1,643 | Conditional cohesive exception after DLV-029/DLV-042: one committed model, action/effect adapter, selection, status, and invalidation owner; material growth or another coordination domain reopens it. |
 | `UI` SDK facade | 1,471 across seven partial declarations | Cohesive exception: stateless public component-builder facade grouped by component family; it owns no lifecycle, tasks, locks, resources, or mutable model. Reopen if a component family starts sharing hidden state or cannot be tested independently. |
-| `WidgetBridgeServer` | 891 after accepted DLV-039; `BridgeClientRegistry` is 1,261 lines plus a 199-line bounded notification lane | Conditional cohesive exception after DLV-039: the server retains pipe session, framing, handshake, request routing, Stop, and serialized-write authority; the registry is the singular configured/current worker-generation, catalog mutation, residency, restart, replacement/removal, cached snapshot, dashboard sequence, and terminal-retirement owner. Reopen the registry if diagnostics, pipe/session/write, dispatcher, another independent coordination policy, or material unrelated growth enters it. DLV-045 owns one retained framing reliability signal before DLV-040 extracts diagnostics/recovery. |
+| `WidgetBridgeServer` | 892 after accepted DLV-045; `BridgeClientRegistry` is 1,261 lines plus a 199-line bounded notification lane and 61-line frame boundary | Conditional cohesive exception after DLV-039/DLV-045: the server retains pipe session, framing, handshake, request routing, Stop, and one serialized complete-or-abort reply/event write adapter; the registry is the singular configured/current worker-generation, catalog mutation, residency, restart, replacement/removal, cached snapshot, dashboard sequence, and terminal-retirement owner. DLV-045 names the retained misalignment as an abandoned test read and closes the independent production reply-cancellation exposure. Reopen the registry if diagnostics, pipe/session/write, dispatcher, another independent coordination policy, or material unrelated growth enters it; DLV-040 remains deferred diagnostics/recovery work. |
 | `GamesAppsWidget` | 1,246 | Conditional cohesive exception after DLV-027: one lifecycle, provider-effect, action-admission, and committed-state adapter over separate presentation, catalog, persistence, and reconciliation policies. Reopen for store/collection/domain growth. |
 | `NetworkControlsWidget` | 1,206 | Conditional cohesive exception after DLV-028: one lifecycle, host-command, committed-state, and invalidation adapter over separate provider, command, action, identity, and presentation policies. Reopen for another provider or coordination domain. |
 | `WindowsNetworkNativeAdapter` | 404 | Conditional cohesive exception after DLV-041: the singular three-handle/three-callback/generation/publication/disposal adapter over value-based connectivity, WLAN, radio, and injected native-call policies. Reopen if another native lifetime, gate, callback-registration owner, or independent operation policy returns. |
@@ -3920,7 +3920,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | SDK lifecycle/coordination | DLV-009 (`08d44db`, integrated by `304102a`) makes YT Music the second repeatable lifecycle/state proof: SDK Active lanes own auto-connect/progress/poll/Latest transport work, one immutable presentation record owns rendering, and no Task/CTS registry remains. DLV-030 (`549da57`, integrated by `6b9144d`) adds the responsibility proof through value-based connection, confirmation/rollback, action, and snapshot-only presentation seams. Spotify DLV-007 proves coherent keyed presentation; DLV-008 makes regions findable but remains one partial type, now dispositioned by DLV-043 | Document a narrow operation/responsibility migration recipe; keep domain policy private until another consumer proves a reusable public boundary; retain packaged churn evidence |
 | Action dispatch | DLV-014 (`2a160b4`, integrated by `9060f12`) composes a deterministic YT Music post-admission failure through the real worker/runtime/bridge/native host into painted and polite UIA status. It proves exact generation/action/source, sanitized logging, focus retention, replacement/expiry, Hide/Stop, and no restart; native Release, bridge 47/47, and isolated addon acceptance passed | Retain physical GameInput and packaged assistive-technology evidence; do not reopen implementation unless those gates expose a concrete defect |
 | Bridge scheduling | Accepted DLV-032 (`8c11a27` plus `9abdc6b`, integrated through `a92378a`) gives one typed dispatcher duplicate-ID, global-bound, per-widget FIFO, fatal-cancellation, cleanup, and two-second drain ownership. Deadline-expired work releases IDs/tails/slots but remains observed in quarantine; final Bridge passes 52/52 after retaining and correcting a predecessor-failure regression | Scheduling is closed. The shipping native client still cannot pipeline; DLV-033 owns its later asynchronous read/correlation boundary. The retained 1,312-line server's client/catalog/residency and diagnostics/recovery responsibilities are explicitly assigned to DLV-039 and DLV-040 |
-| Bridge client lifecycle | Accepted DLV-039 (`57befdd`, `57f3e951`, `e1df09c`, and `a43efc7`, integrated through `2daae2a`) reduces the server to 891 lines and places configured/current generation, catalog, residency, restart, replacement/removal, cached snapshot, dashboard sequence, and retirement behind one 1,261-line registry plus a 199-line bounded notification lane. Corrections close generation/publication, cancellation, lock-order, resource-bound, and terminal-fault gaps. One 66-line production event-write boundary directly proves zero-byte queued cancellation and complete-or-abort behavior after frame start. Scoped evidence reaches Runtime 74/74, Bridge 65/65 on the unchanged final repeat, and docs 52; the preceding 64/65 run retained a pre-existing pipelined-test Stop-frame misalignment that the rerun did not explain. | **Conditional cohesive exception at the accepted boundary:** retain the registry as the singular worker-generation state/transition owner and the server as the singular session/framing/write owner. Reopen the registry if diagnostics, pipe/session/write, dispatcher, another independent coordination policy, or material unrelated growth enters it. DLV-045 must identify whether the retained frame signal belongs to production reply cancellation or overlapping timed-out test reads before DLV-040 changes the same server; DLV-040 remains the separate diagnostics/recovery extraction. |
+| Bridge client lifecycle | Accepted DLV-039 (`57befdd`, `57f3e951`, `e1df09c`, and `a43efc7`, integrated through `2daae2a`) reduces the server and establishes the singular registry/notification owners. Accepted DLV-045 (`67df1d9`, integrated through `dfbe02d`) deterministically attributes decimal length `1919951483` to an abandoned timed-out test read consuming the Stop header, makes that reader terminal and exactly drained, and replaces the event-only write boundary with one 61-line complete-or-abort reply/event frame owner after forced proof that ordinary reply cancellation could leave a header-only stream. Two retained WidgetBridge runs pass 66/66; public framing bytes and protocol are unchanged. | **Conditional cohesive exception at the accepted boundary:** retain the registry as the singular worker-generation state/transition owner and the server as the singular session/framing/write owner. Reopen if diagnostics, another pipe/session/write or dispatcher policy, another independent coordination concern, or material unrelated growth enters either owner. DLV-040 remains deferred diagnostics/recovery work and must not displace the visible queue. |
 | Managed capability broker | Accepted DLV-031 (`ffa1edc`, integrated by `27adec1`) reduces the broker authority owner from 2,377 lines to 837 while retaining singular identity, consent, lifecycle, lease, gesture, subscription, revocation, and event-sequence authority. Seven typed internal domain routes own value-based decoding, validation, backend execution, and projection | Retain the focused authority/domain tests as new capabilities arrive; do not reintroduce distant validators, a generic mediator, or public-protocol churn |
 | Spotify platform provider | Accepted DLV-034 (`a5c80ac` plus `344ab48`, integrated through `a92378a`) reduces the singular identity/OAuth/vault/token/local-player owner from 1,724 lines to 1,032 and extracts endpoint, retry/rate-limit, and strict parsing seams. Provider 34/34 directly covers late canceled refresh non-publication and Disconnect session isolation; no second authority or public protocol appears | **Cohesive exception at the accepted boundary:** the retained owner exclusively holds package identity, OAuth/PKCE, vault/token-session replacement, local-player lifecycle, and provider-event authority. Preserve those singular responsibilities and reopen decomposition if another independently testable policy or material growth enters that owner. Live-account behavior remains manual evidence |
 | Windows network provider | Accepted DLV-035 (`51a6ec4` plus `f9df9b9`, integrated by `d151173`) reduces the provider root from roughly 1,186 to 836 lines and retains one MTA lifecycle/native-adapter/committed-state/publication adapter over separate command, deadline/operation, reconciliation, event-projection, and bounded queue-admission owners. Accepted DLV-041 (`3e6d779` plus `4060f4b`, integrated by `4630866`) reduces the native adapter from 1,297 to 404 lines while retaining exactly one three-handle/three-callback/generation/publication/disposal lifetime owner over connectivity, WLAN, radio, and injected native-call policies. The correction closes recovery-versus-disposal, callback-publication, reentrant-disposal, and concurrent-disposer races. Final focused evidence passes provider 51/51, Platform Broker 51/51, and docs 52 | **Conditional cohesive exceptions at both accepted boundaries:** retain the provider's sole thread, adapter, committed snapshot, channels, and publication authority, and the adapter's sole native lifetime gate/handles/callbacks/generation/disposal authority. Reopen either boundary if policy or coordination returns to the provider, or another native lifetime, callback-registration owner, gate, or independent operation policy enters the adapter. Live hardware remains manual evidence. |
@@ -3991,55 +3991,38 @@ claim from becoming an unlimited implementation program.
 Continue enforcing EQ-024's path-ownership rule: `ddb66c2`, `7c8a5b8`,
 `0be052b`, `dc30be9`, `0ff403a`, and `d171dc8` correctly left both review
 documents untouched, and the implementation stream must continue to leave them
-unstaged. This workflow boundary does not replace the three product actions
+unstaged. This workflow boundary does not replace the visible-first sequence
 below.
 
-1. **Decide DLV-025's atomic presentation architecture.** The current HWND
-   render-target path failed the real temporal gate after exhaustive bounded
-   reproduction. Authorize either a narrowly proven offscreen atomic-present
-   design or DirectComposition/swap-chain ownership before platform work
-   resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-045 — identify the retained Bridge frame misalignment.**
-   DLV-039 is accepted through `a43efc7` and integrated by `2daae2a`; its
-   registry and residual server now have explicit cohesive dispositions. The
-   first final Bridge run retained a 64/65 failure during pipelined-test Stop
-   teardown with JSON-body bytes interpreted as a frame length, while the
-   unchanged repeat passed 65/65. Force and identify whether ordinary reply
-   cancellation can split a production frame or a timed-out harness read can
-   overlap its successor. Fix only the proven owner, retain direct event-boundary
-   coverage, and do not rerun unchanged Runtime or documentation suites.
-3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
-   Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
-   including the reported clipped Spotify header and cross-widget alignment
-   imbalance.
-4. **Continue responsibility milestones rather than line-count refactors.**
-   DLV-028 has accepted Network Controls; DLV-030 has accepted YT Music;
-   accepted DLV-029 owns Audio Mixer presentation/command policy and accepted
-   DLV-042 its provider-session lifecycle plus the residual cohesive exception;
-   accepted DLV-031 owns the managed capability broker;
-   DLV-032 bridge scheduling;
-   DLV-033 native widget-session ownership; DLV-034 the Spotify provider;
-   accepted DLV-035 the Windows network backend and accepted DLV-041 its native
-   interop owner;
-   accepted DLV-036 and DLV-044 the aggregate Settings partial type; and
-   accepted DLV-037 the managed worker client and accepted DLV-039 the bridge
-   client/residency owner. DLV-045 closes the retained framing signal before
-   DLV-040 separates diagnostics/recovery ownership. DLV-043 replaces
-   Spotify's partial-file organization with real types.
-   DLV-038 then pilots responsibility-based organization for the largest managed
-   test harnesses without delaying the production train. Each milestone must
-   reduce shared mutable knowledge or expose a focused policy seam—cosmetic files
-   do not qualify.
-5. **Keep shared foundations serialized.** DLV-006 remains the named continuous
-   keyed collection/lazy-artwork checkpoint; DLV-019 and DLV-022 wait on their
-   documented accepted dependencies.
+1. **Finish platform DLV-026, then DLV-021.** Restore reverse Audio Mixer
+   scrolling first, then correct the clipped Spotify `LIBRARY` header and
+   cross-widget Button/ActionSurface/SectionHeader alignment through shared
+   native geometry. Both are current user-visible defects and outrank further
+   behavior-preserving decomposition.
+2. **Deliver widgets DLV-019.** Add the requested visible Audio Mixer tray
+   actions: LB/RB adjust bounded master volume and X toggles master mute through
+   the existing exact dashboard-gesture authority. DLV-045 is accepted and
+   integrated; backend framing work must not delay this successor.
+3. **Serialize DLV-006 after those lane milestones.** Continuous keyed cursor/
+   append collections, bounded retention, stable viewport anchoring, and lazy
+   artwork handles are the shared visible foundation for Spotify page jumps,
+   header/list oscillation, Games artwork, and the future game launcher.
+4. **Preserve DLV-025 until the compositor decision is authorized.** The
+   current HWND render-target path failed the real temporal gate. Keep its dirty
+   evidence untouched while other visible work proceeds; resume only with a
+   bounded offscreen atomic-present or DirectComposition/swap-chain decision.
+5. **Keep internal debt dispositioned, not dominant.** DLV-040, DLV-043, and
+   DLV-038 remain valid deferred ownership/test-architecture work. Promote at
+   most one while the other lane is delivering visible behavior or when it is
+   the immediate named prerequisite for a visible outcome. Hotspot size alone
+   does not outrank a reproduced product bug.
 
 **Later backlog.** Audio endpoint switching should begin with a supported
 Windows API/role-policy spike rather than undocumented `PolicyConfig` behavior.
 Spotify's composed live paging proof, the advanced-widget reference
 architecture, native session extraction, accessibility completion, and
 performance baselines remain valuable, but they should be scheduled as named
-milestones rather than allowed to interrupt the two user-facing actions above.
+milestones rather than allowed to interrupt the visible outcomes above.
 
 **Verification evidence only.** DLV-004 retained its named focused exact-commit
 and capture evidence without repeating the six-minute aggregate. The next full

@@ -519,15 +519,33 @@ The retained root receives the cohesive exception recorded in the engineering-
 quality review; new lifecycle/publication/resource ownership or material
 unrelated growth reopens it.
 
+### DLV-045 — Diagnose bridge frame ownership under timeout and teardown
+
+**State:** Done
+**Closing commit:** `67df1d9` (`[DLV-045] close bridge frame ownership`)
+**Integrated on `main`:** `dfbe02d`
+
+**Reviewer disposition:** Accepted. The retained decimal length
+`1919951483` is deterministically reproduced when a test timeout abandons its
+underlying frame read: that read consumes the successor Stop header and the
+next read interprets JSON-body bytes as a length. The test client now owns one
+cancelable read and terminally aborts/drains that exact connection on timeout.
+Independent forced proof also showed ordinary reply cancellation could split a
+frame after its header, so one internal `BridgeFrameWriteBoundary` now owns
+serialized reply and event admission; after admission the exact frame either
+completes under the fixed four-second deadline or aborts the session before a
+successor. Public protocol and framing bytes are unchanged. Two retained
+stable dirty-worktree runs pass WidgetBridge 66/66, the integrated Release
+package rebuilt successfully, and all 52 documentation contracts pass.
+
 ## Widgets lane
 
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The widgets lane now follows the visible-outcome gate. DLV-045 is allowed to
-finish because it is an already-active bounded reliability audit triggered by
-retained frame corruption evidence. DLV-019 is the next executable milestone
-and delivers requested tray controls. DLV-006 then supplies the shared visible
+The widgets lane now follows the visible-outcome gate. DLV-045 is accepted and
+integrated. DLV-019 is the current executable milestone and delivers requested
+tray controls. DLV-006 then supplies the shared visible
 collection behavior needed by Spotify focus fixes, Games artwork, and the game
 launcher. DLV-040, DLV-043, and DLV-038 remain valid architecture debt but are
 not automatic Ready work; the planner may promote one only while the other lane
@@ -1476,8 +1494,9 @@ ownership, or overlaps native platform work.
 
 ### DLV-045 — Diagnose bridge frame ownership under timeout and teardown
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `dfbe02d`
 **Baseline:** accepted DLV-039 integration commit `2daae2a`
+**Closing commit:** `67df1d9`
 **Dependencies:** DLV-032 and DLV-039
 **Owner:** managed WidgetBridge server framing/session internals and direct
 WidgetBridge fixtures; no native host, public protocol, or capability files
@@ -1528,8 +1547,8 @@ production and harness hypotheses without materially broadening scope.
 
 ### DLV-019 — Add Audio Mixer dashboard master controls
 
-**State:** Ready after DLV-045
-**Baseline:** closing commit of DLV-045 after planner acceptance and integration
+**State:** Assigned
+**Baseline:** accepted DLV-045 integration commit `dfbe02d`
 **Dependencies:** DLV-014, DLV-029, DLV-042, and DLV-045 only for lane order
 **Owner:** widgets lead over Audio Mixer presentation/action state and the
 existing managed dashboard-gesture broker route; native host changes require a
