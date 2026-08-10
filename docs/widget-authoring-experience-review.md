@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a truthful local-SDK scaffold, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, and one coherent advanced-widget presentation state are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
-Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against integrated `main` `aaf36d9`, including accepted DLV-008 Spotify responsibility boundaries and accepted DLV-005 tray hold refresh, their focused Release evidence, stable dirty full run `20260810T030727Z-449cac31`, the retained clean full-gate result for `0598e5a`, and the two-lane delivery plan<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a truthful local-SDK scaffold, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and one substantive Games & Apps responsibility split are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Date: 2026-08-10<br>
+Reassessed: 2026-08-10 against integrated `main` `69e86ef`, including accepted DLV-008 Spotify responsibility boundaries, DLV-009 YT Music lifecycle ownership, DLV-024 Games & Apps continuity, and DLV-027 Games & Apps responsibility boundaries plus their focused evidence and the two-lane delivery plan<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -28,8 +28,11 @@ implements Games & Apps curation and accepted DLV-017 warm-start projection as
 widget-owned versioned private state over a bounded trusted capability. Its pure
 reconciliation type, explicit automatic provenance/exclusions, whole-state
 pre-release reset, non-authorizing display projection, deterministic lifecycle
-races, and credential-free fixtures are useful patterns, but they do not yet
-simplify the public multi-page/remote-state authoring path. Spotify now has one coherent
+races, and credential-free fixtures are useful patterns. DLV-027 now separates
+pure presentation, bounded catalog policy, schema-v3 reconciliation, and CAS
+storage from one lifecycle/action/state owner; this is the first Games-specific
+advanced reference a maintainer can navigate by responsibility, but it does not
+yet simplify the public multi-page/remote-state authoring path. Spotify now has one coherent
 presentation revision, an explicitly keyed playlist-detail owner, and accepted
 named responsibility boundaries. DLV-009 makes YT Music the second lifecycle
 proof, and the external scaffold/package journey receives its own bounded
@@ -50,7 +53,8 @@ currently implement too much coordination infrastructure themselves:
 - extensive manual invalidation.
 
 This is not unique to Spotify. Similar patterns remain in Audio Mixer, Network
-Controls, Games & Apps, and YT Music. Media Sessions now demonstrates that the
+Controls, the remaining Games & Apps orchestration owner, and YT Music. Media
+Sessions now demonstrates that the
 model/command primitives can remove most handwritten synchronization from a
 real widget, but the larger samples show an adoption and composition gap: the
 helpers exist without one advanced reference architecture that teaches how to
@@ -249,7 +253,7 @@ between a minimal and an application-like widget:
 | SDK Gallery | About 400 lines | Public components, navigation, responsive shell, and local state |
 | Recent Apps | 340 lines | One event-driven provider surface |
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
-| Games & Apps | About 1,970 lines across widget/state files | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, and launch commands |
+| Games & Apps | About 2,340 lines across five responsibility files; 1,274-line orchestration owner | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, launch commands, and pure presentation/policy seams |
 | YT Music | About 1,365 lines | SDK-owned lifecycle lanes, one immutable presentation revision, and authored companion confirmation policy |
 | Spotify | About 1,950 lines across four responsibility files | Lifecycle/action wiring and singular state/resource ownership; route data; playback behavior; snapshot-only presentation over four destinations |
 | Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
@@ -263,12 +267,12 @@ progress loop after adopting `WidgetModel<State>` and
 auto-connect, progress, polling, and Latest transport reconciliation plus one
 immutable presentation record and zero Task/CTS registry fields. DLV-017 proves
 that the existing private-state capability can support bounded warm display and
-current-authority reconciliation, but its schema validation, CAS merge, display
-projection, and lifecycle policy remain roughly 1,970 lines of Games-specific
-production code; one consumer is not evidence for a mandatory public state
-framework. The subsequently reproduced catalog-remove/Back disappearance also
-shows why framework extraction must wait for DLV-024 to establish a correct,
-testable product pattern rather than generalizing the current coordination.
+current-authority reconciliation. DLV-024 then establishes correct mutation/
+rollback continuity, and accepted DLV-027 separates Games presentation,
+catalog navigation, schema-v3 policy, and CAS storage while retaining one
+lifecycle/action/committed-state owner. The result is materially easier to
+navigate, but one Games-specific consumer is still not evidence for a mandatory
+public state framework.
 YT Music still owns
 two narrow semaphores, one state lock, and a manual optimistic confirmation
 policy in the same controller/view class. Spotify

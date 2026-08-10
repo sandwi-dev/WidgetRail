@@ -210,6 +210,25 @@ controller/display evidence remain in the verification queue. Subsequent user
 testing exposed separate Library mutation/presentation regressions now bounded
 by DLV-024; the accepted authority and whole-state-reset design remains intact.
 
+### DLV-027 — Split Games & Apps by stable responsibility
+
+**State:** Done
+**Closing commits:** `df1dc81`, corrected by `69e86ef`
+**Integrated on `main`:** `69e86ef`
+
+**Reviewer disposition:** Accepted. The 1,861-line widget no longer owns its
+complete presentation, catalog-window policy, schema-v3 mutation/reconciliation,
+and CAS storage mechanics. Pure presentation, bounded catalog navigation,
+library policy, and storage now have named focused seams while the 1,274-line
+widget remains the single lifecycle, action-admission, provider, and committed-
+state owner. The correction removed a synthetic render-time revision counter
+and proves repeated immutable presentation input serializes identically after
+normalizing only the host sequence. Retained focused evidence passes Games &
+Apps 56/56 and 52 documentation contracts; the original unchanged lifecycle,
+private-state, worker, and installed-package boundaries passed their assigned
+focused groups. This is material ownership reduction, not closure of EQ-006 for
+the other application-sized widgets.
+
 ### DLV-020 — Make widget switching visually continuous
 
 **State:** Done
@@ -490,7 +509,7 @@ or a correct fix requires public collection/protocol behavior owned by DLV-006.
 
 ### DLV-027 — Split Games & Apps by stable responsibility
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `69e86ef`
 **Baseline:** accepted `main` integration `6f401ea` plus the reviewer
 control-plane commit assigning this milestone
 **Owner:** Games & Apps managed internals and focused credential-free tests
@@ -527,8 +546,9 @@ changes, duplicates ownership, or cannot preserve the accepted DLV-024 behavior.
 
 ### DLV-023 — Keep transient Spotify failures on the last-good surface
 
-**State:** Ready after DLV-027
-**Baseline:** closing commit of DLV-027
+**State:** Assigned
+**Baseline:** accepted DLV-027 integration `69e86ef` plus the reviewer
+control-plane commit assigning this milestone
 **Owner:** Spotify managed refresh/polling state, typed provider-failure policy,
 and credential-free tests
 
@@ -1015,6 +1035,77 @@ DLV-026's accepted bidirectional scroll/focus behavior and prove provider-event
 versus pending command, cancellation-ignoring completion, timeout/rollback,
 session churn, deactivation, and pure presentation with focused tests. No public
 audio authority or protocol expansion belongs here.
+
+### DLV-030 — Split YT Music by stable responsibility
+
+**State:** Awaiting a free widgets-lane baseline after DLV-028
+**Intended lead:** widgets lane
+**Dependencies:** DLV-009 and DLV-023
+
+Preserve DLV-009's single immutable presentation revision and SDK-owned Active
+operation lanes while separating provider/connection policy, companion-specific
+optimistic confirmation and rollback, action/route orchestration, and pure view
+composition. Begin with a before/after ownership inventory and require a
+developer to change one transport confirmation rule or one screen without
+reading the complete roughly 1,365-line class. Retain one lifecycle and
+committed-state owner; do not replace the class with coordinator chains,
+cosmetic partials, or a public abstraction based on one provider. Prove late
+success/failure rejection, confirmation timeout/rollback, deactivate/destroy
+drain, and deterministic repeated presentation through focused credential-free
+tests.
+
+### DLV-031 — Separate capability-domain policy from broker authority
+
+**State:** Awaiting a planner-selected serialized managed-platform baseline
+**Intended lead:** planner-selected managed platform lane
+**Dependencies:** DLV-023 and DLV-028
+
+Keep `PlatformCapabilityBroker` as the singular identity, declaration, consent,
+lifecycle, request-lease, event-sequence, and dashboard-gesture authority, but
+move independently testable audio, network/Bluetooth, app-library, media/
+Spotify, loopback, secret, and private-state decoding/validation/projection into
+named internal domain handlers or policies. The current roughly 2,265-line
+broker class must no longer require edits across one central switch and distant
+validation regions to add or change one capability. Avoid a service locator,
+reflection dispatch, generic mediator, duplicated authorization, or public
+protocol changes. Preserve exact fail-closed bounds and add direct policy plus
+broker-routing tests for malformed, oversized, stale, revoked, and cancelled
+requests.
+
+### DLV-032 — Extract the bridge request dispatcher
+
+**State:** Awaiting a planner-selected serialized bridge baseline
+**Intended lead:** planner-selected managed platform lane
+**Dependencies:** DLV-031 only when both assignments touch broker/bridge test
+infrastructure; otherwise the planner may baseline it independently
+
+Implement EQ-022's narrow internal `BridgeRequestDispatcher`: one owner for
+global/per-widget admission, duplicate request IDs, FIFO tails, completion
+cleanup, fatal-session cancellation, and bounded drain. Leave framing, strict
+envelope decoding, the reserved Stop lane, catalog/client ownership, and writes
+with `WidgetBridgeServer`. Decide and document whether
+`ClientRegistration.OperationGate` remains authoritative instead of retaining
+two implicit serialization policies. Require deterministic no-sleep tests with
+manually completed handlers and zero residual IDs, slots, tails, or tasks after
+every success, failure, cancellation, predecessor-failure, and forced-drain
+case. This is ownership extraction, not a generic task framework.
+
+### DLV-033 — Establish a host-owned widget session coordinator
+
+**State:** Awaiting DLV-025 architecture decision and accepted bridge baseline
+**Intended lead:** platform lane with serialized managed-bridge prerequisite
+**Dependencies:** DLV-025 and DLV-032
+
+Implement EQ-003/EQ-020's first native ownership boundary above
+`WidgetBridgeClient`. A directly tested `WidgetSessionCoordinator` should own
+descriptor/snapshot collections, catalog retry state, tracked lifecycle target,
+runtime/presentation generation, typed per-widget session status, and bounded
+asynchronous request completion. `OverlayApp` remains the Win32, focus,
+renderer, D2D/DWrite, and presentation adapter. Do not pass HWND/renderer state
+into the coordinator or create a generic event bus. Prove runtime versus
+presentation replacement, removal of active/hovered widgets, last-good retry,
+stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
+drain, and Close/Guide responsiveness while another request stalls.
 
 ### DLV-019 — Add Audio Mixer dashboard master controls
 
