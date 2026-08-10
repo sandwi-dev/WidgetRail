@@ -64,6 +64,32 @@ contracts across 52 Markdown files in 54.7 seconds. Final correction run
 host 9/9, Bridge 52/52, and 52-file documentation contract in 49.6 seconds.
 These are scoped implementation runs, not canonical aggregates.
 
+DLV-039 keeps `WidgetBridgeServer` as the only pipe-session, framing, request-
+routing, reserved-Stop, reply, and serialized-write owner while moving catalog
+and client generations into one internal `BridgeClientRegistry`. The server
+falls from 1,312 lines/59,775 bytes to 825 lines/37,681 bytes and replaces its
+catalog, revision, registration dictionary, catalog lock, residency budget,
+nested registration state, idle-unload scheduling, restart, reconciliation,
+and disposal policy with one registry reference. The 863-line cohesive
+registry owns configured descriptors, current-generation identity, one catalog
+lock, the existing per-registration operation and idle-state locks, residency
+leases/budget, cached snapshots, dashboard sequence authority, restart,
+replacement/removal, and terminal disposal. Per-registration idle work is now
+retained in an owned task set, canceled at replacement/terminal admission,
+boundedly drained to the existing deadline, and explicitly observed if cancellation is
+ignored. A shared terminal completion makes concurrent registry disposal wait
+for the same exact cleanup boundary. No request-dispatcher, pipe, public
+protocol, capability, sandbox, or native-host behavior changes. Direct value-
+based fixtures exercise compatible descriptor refresh, replacement/removal,
+stale generation events, idle-unload cancellation and drain, restart lifecycle
+restoration, residency refusal/release, failed start, concurrent operation, and
+terminal disposal without constructing the server transport. Focused Release
+run `20260810T212025Z-194406ce` completed in 47.4 seconds and passed Widget
+Runtime 74/74 plus WidgetBridge 57/57; it is scoped dirty-worktree evidence, not
+a canonical aggregate. After the final restart-retirement task-observation
+correction, focused run `20260810T212257Z-08e1d8b0` completed in 16.9 seconds
+and passed WidgetBridge 57/57; the unchanged Runtime result was not repeated.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic

@@ -98,6 +98,17 @@ widget, and `background` before hiding or switching it. Requesting Background
 for an unstarted worker remains lazy and does not launch it. Duplicate stable
 transitions are idempotent.
 
+`WidgetBridgeServer` owns only the pipe session, framing, request routing,
+reserved Stop handling, replies, and serialized writes. One internal client
+registry owns the current catalog revision and every worker generation,
+including operation serialization, residency admission, cached snapshots,
+idle unload, restart, catalog replacement/removal, and terminal disposal.
+Request handlers consume typed registry operations and immutable results; they
+never retain mutable registration objects. Replacement first removes the old
+generation from publication authority, then terminally cancels and boundedly
+drains its tracked idle work before disposing the client. Late invalidation,
+failure, or idle-unload completion from that generation is therefore ignored.
+
 A launched Background worker remains resident under the default `keep-alive`
 policy. Entering Background cancels the shared Visible/Interactive lifetime
 used by presentation work, but explicitly permitted widget-lifetime background
