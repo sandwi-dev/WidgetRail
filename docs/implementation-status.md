@@ -1384,6 +1384,16 @@ with C++ installed:
   ownership, incremental `streaming` consent, Premium/EME/autoplay live proof,
   and any applicable Spotify streaming approval remain. See [Spotify
   integration status](spotify-integration.md).
+  DLV-034 preserves one package-identity/OAuth/vault/token-refresh/lifecycle/
+  local-playback/event authority while extracting narrow playback and collection
+  endpoint families, bounded HTTP retry/rate-limit policy, and strict response
+  parsing. The authority type decreased from 1,724 lines (81,619 bytes) to 1,032
+  lines (48,862 bytes); extracted owners are 368, 103, and 564 lines
+  respectively and receive no browser, vault, token-session, local-player, or
+  event authority. Injected-response bounds now match the production 512 KiB
+  transport limit. Retained focused Release run
+  `20260810T140244Z-2b2f8821` completed in 12.5 seconds: Windows Spotify provider
+  32/32 and PlatformBroker 51/51. Live-account evidence remains separate.
 - The code clears unused native client pixels to the layered color key,
   separates Now Playing snapshot reads from live-subscription failures, loads
   the Games catalog only after Add, and preserves measured intrinsic height for
