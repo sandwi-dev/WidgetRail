@@ -636,9 +636,13 @@ themes also use non-shrinking fixed regions, a thin native Slider
  cancellation-ignoring page, joined repeated edge input, cached reverse pages,
  absolute visible IDs, and exact provider call counts. Matching native tests use the
  exact Spotify scroll/rail IDs and five-row final topology. Focused Release
- coverage passes 24 widget-surface focus checks, 47 focus-navigation checks, and
- Spotify 32/32; packaged physical-controller evidence and a live retest remain
- open. The controller guide is
+ coverage passes 24 widget-surface focus checks and 47 focus-navigation checks.
+ DLV-007 now captures Spotify rendering through one private immutable
+ presentation revision and keys playlist detail by playlist ID plus selection
+ generation. Forced Release interleavings cover Back, rapid reselection, late
+ success and failure, refresh, and Active-lifetime cancellation/reactivation;
+ Spotify passes 35/35. Packaged physical-controller evidence and a live retest
+ remain open. The controller guide is
  density-aware and no-wrap, the widget viewport has a
  host-owned rounded clip, and size-changing widget swaps commit one synchronous
  complete repaint after a no-redraw move to avoid an intermediate black frame.
