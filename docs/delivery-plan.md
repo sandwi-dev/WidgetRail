@@ -1841,7 +1841,11 @@ a whole-repository framework migration.
 ## Platform lane
 
 Task identity: `platform`
-Branch: `codex/impl-platform`
+Active branch: `codex/impl-platform-visible`
+Active worktree: `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`
+Preserved blocked branch/worktree: `codex/impl-platform` at
+`C:\Users\dwive\.codex\worktrees\d9b7\GameBarAlternative`; do not edit,
+commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
@@ -2036,11 +2040,9 @@ real-product temporal evidence before escalating.
 
 ### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
-**State:** Highest-priority visible platform assignment; awaiting planner
-provision of a clean platform worktree while preserved DLV-025 evidence remains
-untouched
-**Baseline:** accepted main containing the visible-priority control-plane commit;
-independent of DLV-025 implementation
+**State:** Assigned
+**Baseline:** accepted visible-priority main commit `8028b83`
+**Dependencies:** DLV-003 and DLV-029; independent of blocked DLV-025
 **Owner:** native host focus navigation, controller scroll reveal/state, and
 real-product Audio Mixer host fixtures
 

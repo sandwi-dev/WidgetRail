@@ -283,8 +283,12 @@ Then repeat the loop.
 
 - Widgets implementation uses an isolated Codex worktree and
   `codex/impl-widgets`.
-- Platform implementation uses an isolated Codex worktree and
-  `codex/impl-platform`.
+- Active platform implementation uses the clean isolated worktree
+  `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative` on
+  `codex/impl-platform-visible` while visible work proceeds. The original
+  `codex/impl-platform` worktree remains preserved with uncommitted DLV-025
+  compositor evidence and is not an active implementation surface until the
+  user authorizes that architecture milestone.
 - Local `main` is the planner-owned integration branch.
 - Implementation tasks never edit reviewer-owned documents and never push.
 - The planner never authors implementation code in any branch.
