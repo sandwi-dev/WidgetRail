@@ -1,6 +1,6 @@
 # Widget quickstart
 
-Status: implemented developer workflow inside this repository
+Status: implemented offline scaffold and local package workflow
 
 This guide creates a controller-first C# widget, validates its manifest and
 GBSS, lists bounded scenario declarations, renders a protocol snapshot, and
@@ -10,11 +10,11 @@ replays input without opening the native overlay.
 
 - Windows and PowerShell
 - .NET 8 SDK
-- A checkout of this repository
+- A `gbar` build or installation that includes the controller template
 
-The SDK is not currently published as a supported public NuGet package. Run
-the quickstart inside this checkout so the generated project can use the local
-`WidgetSdk.csproj` reference.
+The scaffold contains a matching local SDK package and a `NuGet.Config` that
+clears external feeds. Once `gbar new` has created the project, its build and
+generated tests are offline and do not require this repository.
 
 ## Build the developer CLI
 
@@ -46,15 +46,18 @@ caller-selected journal path.
   --id dev.example.volume-control `
   --publisher dev.example
 
-dotnet build .\scratch\VolumeControl\VolumeControl.csproj
+dotnet build .\scratch\VolumeControl\VolumeControl.csproj -c Release
+dotnet run --project .\scratch\VolumeControl\tests\VolumeControl.Tests.csproj `
+  -c Release -- `
+  .\scratch\VolumeControl\fixtures\ready.snapshot.json
 ```
 
-From this source checkout, `gbar new` discovers
-`src\WidgetSdk\WidgetSdk.csproj`. If the CLI/templates are copied elsewhere,
-pass `--sdk-project C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj`.
-No supported SDK package is published yet, so unresolved SDK input fails before
-the output directory is created instead of generating an unbuildable package
-reference.
+`gbar new` writes `GameBarAlternative.WidgetSdk` to the relative
+`.gbar\packages` feed and never writes an absolute checkout path. The generated
+test proves Created/Interactive/Background lifecycle transitions, a
+state-changing action, retained state, and the snapshot used below. This local
+dependency bundle is an offline scaffold contract, not a public NuGet release
+or a publisher-trust claim.
 
 For the normal edit/build/overlay loop, replace the manual build with:
 
@@ -114,7 +117,8 @@ The starter contains:
 - controller shortcuts and bounded disabled states;
 - optional closed semantic button icons through `.Icon(WidgetGlyph.Refresh)`;
 - a safe `styles/default.gbss` file; and
-- a deterministic controller replay.
+- a deterministic controller replay; and
+- a sibling lifecycle/state/action test that exports a bounded snapshot.
 
 The generated widget uses the root input scope. For a nested modal or component
 surface, call `.InputScope("scope-id")` on its Stack/Row, bind focus-independent
@@ -169,23 +173,13 @@ safe numeric clamping do not fail validation; malformed or unsafe input does.
 
 ## Inspect a data-only snapshot
 
-An author-controlled typed-fake test can persist the same validated protocol
-tree it already asserts:
-
-```csharp
-using GameBarAlternative.WidgetProtocol;
-
-var snapshot = new VolumeControl().Render()
-    .CreateSnapshot("development.preview", sequence: 0);
-await File.WriteAllBytesAsync(
-    @".\scratch\VolumeControl\snapshot.json",
-    SnapshotJson.Serialize(snapshot));
-```
-
-Then inspect or canonicalize only that data file:
+The generated test above persists the same validated protocol tree it asserts.
+Inspect or canonicalize only that data file:
 
 ```powershell
-& $gbar render .\scratch\VolumeControl\snapshot.json
+& $gbar render `
+  .\scratch\VolumeControl\fixtures\ready.snapshot.json `
+  --output .\scratch\VolumeControl\fixtures\ready.canonical.json
 ```
 
 `gbar render` bounds and validates snapshot JSON; it never loads a widget DLL.
@@ -202,7 +196,7 @@ states for the future isolated preview runner:
 ```json
 {
   "version": 1,
-  "assembly": "bin/Debug/net8.0/VolumeControl.dll",
+  "assembly": "bin/Release/net8.0/VolumeControl.dll",
   "providerType": "Dev.Example.VolumeControl.VolumeControlScenarios",
   "scenarios": [
     { "name": "muted", "factory": "Muted", "description": "Muted local fixture" }
@@ -235,7 +229,7 @@ for the complete contract.
 
 ```powershell
 & $gbar replay `
-  .\scratch\VolumeControl\snapshot.json `
+  .\scratch\VolumeControl\fixtures\ready.snapshot.json `
   .\scratch\VolumeControl\replays\smoke.json
 ```
 
@@ -263,16 +257,24 @@ The host supplies the current viewport and owns monitor placement. See
 
 ## Install and review locally
 
-First stage a clean package root containing `manifest.json`, the published
-assembly at the manifest's exact entrypoint path, and GBSS. The complete staging
-example is in [publishing and installation](publishing-and-installation.md).
-Then use the deterministic pack/install commands:
+Pack the source project directly. Source mode validates manifest and GBSS,
+runs a bounded Release build with private intermediates, omits compiler symbols
+and machine-specific PDB paths, stages the declared entrypoint and dependencies,
+and then applies the deterministic package contract:
 
 ```powershell
-& $gbar pack $packageRoot `
-  --output .\scratch\VolumeControl.gbarwidget
-& $gbar install .\scratch\VolumeControl.gbarwidget
+& $gbar pack .\scratch\VolumeControl `
+  --configuration Release `
+  --output .\scratch\dev.example.volume-control-0.1.0.gbarwidget
+& $gbar install .\scratch\dev.example.volume-control-0.1.0.gbarwidget
 ```
+
+An already-staged package directory remains a supported low-level `pack`
+input; in that mode every bounded file under the directory is included. Do not
+pass a source tree that lacks a project: stage only intended release content.
+If a source build does not produce the manifest's exact entrypoint, `pack`
+names that path and tells you to align `AssemblyName` or
+`entrypoint.assembly`; it never publishes a partial archive.
 
 New widget IDs are disabled. Open the overlay's Settings → Installed widgets
 page to review the package ID, publisher, version, runtime, and required versus

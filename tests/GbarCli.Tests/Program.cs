@@ -70,7 +70,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
-    ("New requires a real SDK project outside the source checkout", NewScaffoldsOutsideCheckout),
+    ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
     ("Theme validation rejects unsafe content and unreachable styles", ThemeValidationSafety),
@@ -94,6 +94,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Scenario manifests are bounded and execution fails closed", ScenarioPreviewTests.Run),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
+    ("Source pack failures identify the required author action", SourcePackFailureIsActionable),
     ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced),
     ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
     ("Uninstall is explicit disabled-only and cleans every package version", UninstallWorkflow),
@@ -325,11 +326,26 @@ static async Task NewScaffolds()
     Assert.True(File.Exists(Path.Combine(destination, "MediaDeck.csproj")), "Project was not created.");
     Assert.True(File.Exists(Path.Combine(destination, "src", "MediaDeck.cs")), "Widget source was not created.");
     var allText = string.Join('\n', Directory.EnumerateFiles(destination, "*", SearchOption.AllDirectories)
+        .Where(path => !path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase))
         .Select(File.ReadAllText));
     Assert.DoesNotContain("{{", allText);
     Assert.Contains("dev.test.media-deck", allText);
     Assert.Contains("ControllerButton.LeftBumper", allText);
-    Assert.Contains("ProjectReference", File.ReadAllText(Path.Combine(destination, "MediaDeck.csproj")));
+    var project = File.ReadAllText(Path.Combine(destination, "MediaDeck.csproj"));
+    Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"", project);
+    Assert.DoesNotContain("ProjectReference", project);
+    var expectedSdk = LocalWidgetSdkPackage.Create();
+    var sdkPackage = Path.Combine(destination, ".gbar", "packages",
+        expectedSdk.FileName);
+    Assert.True(File.Exists(sdkPackage), "The offline SDK package was not scaffolded.");
+    Assert.SequenceEqual(
+        await File.ReadAllBytesAsync(sdkPackage), expectedSdk.Content);
+    await AssertArchiveHasNoPathsAsync(sdkPackage, Environment.CurrentDirectory);
+    var nuget = await File.ReadAllTextAsync(Path.Combine(destination, "NuGet.Config"));
+    Assert.Contains("<clear />", nuget);
+    Assert.Contains(".gbar/packages", nuget);
+    Assert.True(File.Exists(Path.Combine(destination, "tests", "MediaDeck.Tests.csproj")),
+        "The generated lifecycle scenario was not created.");
     var manifest = ManifestJson.Deserialize(
         await File.ReadAllBytesAsync(Path.Combine(destination, "manifest.json")));
     Assert.Equal(WidgetGlyph.Connection, manifest.Presentation.Icon);
@@ -342,9 +358,6 @@ static async Task NewScaffoldsOutsideCheckout()
     using var temp = new TemporaryDirectory();
     var originalDirectory = Environment.CurrentDirectory;
     var originalTemplateRoot = Environment.GetEnvironmentVariable("GBAR_TEMPLATE_ROOT");
-    var sdkProject = Path.GetFullPath(Path.Combine(originalDirectory,
-        "src", "WidgetSdk", "WidgetSdk.csproj"));
-    Assert.True(File.Exists(sdkProject), "Repository WidgetSdk project is unavailable.");
     var sourceTemplate = Path.Combine(originalDirectory, "templates", "ControllerWidget");
     var externalRoot = Path.Combine(temp.Path, "external");
     var externalTemplate = Path.Combine(externalRoot, "templates", "ControllerWidget");
@@ -360,30 +373,85 @@ static async Task NewScaffoldsOutsideCheckout()
     {
         Environment.CurrentDirectory = externalRoot;
         Environment.SetEnvironmentVariable("GBAR_TEMPLATE_ROOT", externalTemplate);
-        var rejectedTarget = Path.Combine(externalRoot, "RejectedWidget");
-        var rejected = await RunCli(
-            "new", "widget", "RejectedWidget", "--output", rejectedTarget);
-        Assert.Equal(2, rejected.Code);
-        Assert.Contains("WidgetSdk is not published as a supported package", rejected.Error);
-        Assert.True(!Directory.Exists(rejectedTarget),
-            "Missing SDK resolution wrote a partial scaffold.");
-
         var destination = Path.Combine(externalRoot, "ExternalWidget");
         var created = await RunCli(
             "new", "widget", "ExternalWidget",
             "--output", destination,
             "--id", "dev.test.external-widget",
-            "--publisher", "dev.test",
-            "--sdk-project", sdkProject);
+            "--publisher", "dev.test");
         Assert.Equal(0, created.Code);
         var project = Path.Combine(destination, "ExternalWidget.csproj");
         var projectText = await File.ReadAllTextAsync(project);
-        Assert.Contains("ProjectReference", projectText);
-        Assert.DoesNotContain("PackageReference", projectText);
+        Assert.Contains("PackageReference", projectText);
+        Assert.DoesNotContain(originalDirectory, projectText);
+        Assert.DoesNotContain("WidgetSdk.csproj", projectText);
         var build = await RunProcessAsync(
             "dotnet", ["build", project, "--configuration", "Release", "--nologo"],
-            TimeSpan.FromSeconds(90));
+            TimeSpan.FromSeconds(90), destination);
         Assert.Equal(0, build.Code);
+
+        var snapshot = Path.Combine(destination, "fixtures", "ready.snapshot.json");
+        var scenario = await RunProcessAsync(
+            "dotnet",
+            ["run", "--project", Path.Combine(destination, "tests", "ExternalWidget.Tests.csproj"),
+             "--configuration", "Release", "--", snapshot],
+            TimeSpan.FromSeconds(90), destination);
+        Assert.Equal(0, scenario.Code);
+        Assert.Contains("PASS lifecycle, state, actions, and snapshot", scenario.Output);
+        Assert.True(File.Exists(snapshot), "Generated scenario did not export its snapshot.");
+
+        Assert.Equal(0, (await RunCli("validate", destination)).Code);
+        var canonical = Path.Combine(destination, "fixtures", "ready.canonical.json");
+        Assert.Equal(0, (await RunCli(
+            "render", snapshot, "--output", canonical)).Code);
+        Assert.Equal(0, (await RunCli(
+            "replay", snapshot, Path.Combine(destination, "replays", "smoke.json"))).Code);
+
+        var packageOne = Path.Combine(externalRoot, "ExternalWidget-0.1.0-a.gbarwidget");
+        var packageOneRepeat = Path.Combine(externalRoot, "ExternalWidget-0.1.0-b.gbarwidget");
+        Assert.Equal(0, (await RunCli(
+            "pack", destination, "--configuration", "Release", "--output", packageOne)).Code);
+        Assert.Equal(0, (await RunCli(
+            "pack", project, "--configuration", "Release", "--output", packageOneRepeat)).Code);
+        Assert.SequenceEqual(
+            await File.ReadAllBytesAsync(packageOne),
+            await File.ReadAllBytesAsync(packageOneRepeat));
+        await AssertPackageIsPortableAsync(packageOne, originalDirectory, externalRoot);
+
+        var catalog = Path.Combine(externalRoot, "catalog");
+        Assert.Equal(0, (await RunCli(
+            "install", packageOne, "--catalog", catalog)).Code);
+
+        var manifestPath = Path.Combine(destination, "manifest.json");
+        var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(manifestPath));
+        await File.WriteAllBytesAsync(
+            manifestPath, ManifestJson.Serialize(manifest with { Version = "0.2.0" }));
+        var packageTwo = Path.Combine(externalRoot, "ExternalWidget-0.2.0.gbarwidget");
+        Assert.Equal(0, (await RunCli(
+            "pack", destination, "--output", packageTwo)).Code);
+        Assert.Equal(0, (await RunCli(
+            "install", packageTwo, "--catalog", catalog)).Code);
+        var versions = await RunCli(
+            "version", "list", "dev.test.external-widget", "--catalog", catalog);
+        Assert.Contains("active version 0.1.0", versions.Output);
+        Assert.Contains("       0.2.0", versions.Output);
+        Assert.Equal(0, (await RunCli(
+            "version", "select", "dev.test.external-widget", "0.2.0",
+            "--catalog", catalog)).Code);
+        Assert.Equal(0, (await RunCli(
+            "enable", "dev.test.external-widget", "--catalog", catalog)).Code);
+        Assert.Equal(0, (await RunCli(
+            "disable", "dev.test.external-widget", "--catalog", catalog)).Code);
+        Assert.Equal(0, (await RunCli(
+            "version", "rollback", "dev.test.external-widget", "--catalog", catalog)).Code);
+        Assert.Equal(0, (await RunCli(
+            "version", "select", "dev.test.external-widget", "0.2.0",
+            "--catalog", catalog)).Code);
+        Assert.Equal(0, (await RunCli(
+            "uninstall", "dev.test.external-widget", "--catalog", catalog)).Code);
+        Assert.True(!Directory.Exists(Path.Combine(
+                catalog, "packages", "dev.test.external-widget")),
+            "Uninstall retained generated package versions.");
     }
     finally
     {
@@ -391,6 +459,45 @@ static async Task NewScaffoldsOutsideCheckout()
         Environment.SetEnvironmentVariable("GBAR_TEMPLATE_ROOT", originalTemplateRoot);
     }
 }
+
+static async Task AssertPackageIsPortableAsync(
+    string package,
+    params string[] forbiddenPaths)
+{
+    using (var archive = ZipFile.OpenRead(package))
+    {
+        Assert.True(archive.Entries.Any(entry => entry.FullName == "payload/ExternalWidget.dll"),
+            "Source packing omitted the declared entrypoint.");
+        Assert.True(archive.Entries.All(entry =>
+                !entry.FullName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)),
+            "Source packing published compiler symbols.");
+    }
+    await AssertArchiveHasNoPathsAsync(package, forbiddenPaths);
+}
+
+static async Task AssertArchiveHasNoPathsAsync(
+    string package,
+    params string[] forbiddenPaths)
+{
+    using var archive = ZipFile.OpenRead(package);
+    foreach (var entry in archive.Entries.Where(item => item.Length > 0))
+    {
+        await using var stream = entry.Open();
+        using var content = new MemoryStream();
+        await stream.CopyToAsync(content);
+        foreach (var forbidden in forbiddenPaths)
+        {
+            Assert.True(!ContainsBytes(content.GetBuffer().AsSpan(0, checked((int)content.Length)),
+                    Encoding.UTF8.GetBytes(forbidden)) &&
+                !ContainsBytes(content.GetBuffer().AsSpan(0, checked((int)content.Length)),
+                    Encoding.Unicode.GetBytes(forbidden)),
+                $"Package entry {entry.FullName} leaked the absolute source path '{forbidden}'.");
+        }
+    }
+}
+
+static bool ContainsBytes(ReadOnlySpan<byte> content, ReadOnlySpan<byte> value) =>
+    value.Length != 0 && content.IndexOf(value) >= 0;
 
 static async Task NewRejectsIdentity()
 {
@@ -1115,6 +1222,37 @@ static async Task PackIsReproducible()
     Assert.True(archive.Entries.All(entry => entry.LastWriteTime.DateTime == new DateTime(1980, 1, 1, 0, 0, 0)),
         "Archive timestamps must be fixed for reproducibility.");
     Assert.SequenceEqual(["manifest.json", "payload/Widget.dll", "styles/default.gbss"], paths);
+
+    var sourceOnlyOption = await RunCli(
+        "pack", source, "--configuration", "Release",
+        "--output", Path.Combine(temp.Path, "ignored.gbarwidget"));
+    Assert.Equal(2, sourceOnlyOption.Code);
+    Assert.Contains("apply only to a source project", sourceOnlyOption.Error);
+}
+
+static async Task SourcePackFailureIsActionable()
+{
+    using var temp = new TemporaryDirectory();
+    var source = Path.Combine(temp.Path, "BrokenSourceWidget");
+    Assert.Equal(0, (await RunCli(
+        "new", "widget", "BrokenSourceWidget", "--output", source,
+        "--id", "dev.test.broken-source", "--publisher", "dev.test")).Code);
+    var manifestPath = Path.Combine(source, "manifest.json");
+    var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(manifestPath));
+    await File.WriteAllBytesAsync(manifestPath, ManifestJson.Serialize(manifest with
+    {
+        Entrypoint = manifest.Entrypoint with
+        {
+            Assembly = "payload/DeclaredButMissing.dll",
+        },
+    }));
+    var package = Path.Combine(temp.Path, "must-not-exist.gbarwidget");
+    var result = await RunCli("pack", source, "--output", package);
+    Assert.Equal(1, result.Code);
+    Assert.Contains("Build succeeded but did not produce the declared entrypoint", result.Error);
+    Assert.Contains("Set AssemblyName to match the manifest", result.Error);
+    Assert.True(!File.Exists(package),
+        "A failed source build published a partial package.");
 }
 
 static async Task LocalDistributionWorkflow()
@@ -1861,7 +1999,8 @@ static async Task<CliResult> RunAuthorityRecovery(
 static async Task<CliResult> RunProcessAsync(
     string executable,
     IReadOnlyList<string> arguments,
-    TimeSpan timeout)
+    TimeSpan timeout,
+    string? workingDirectory = null)
 {
     var start = new ProcessStartInfo(executable)
     {
@@ -1870,6 +2009,7 @@ static async Task<CliResult> RunProcessAsync(
         RedirectStandardOutput = true,
         RedirectStandardError = true,
     };
+    if (workingDirectory is not null) start.WorkingDirectory = workingDirectory;
     foreach (var argument in arguments) start.ArgumentList.Add(argument);
     using var process = Process.Start(start) ??
         throw new InvalidOperationException($"Could not start {executable}.");

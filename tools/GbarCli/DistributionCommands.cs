@@ -9,18 +9,141 @@ namespace GameBarAlternative.GbarCli;
 
 internal static class PackCommand
 {
-    public static async Task<int> RunAsync(string[] args, TextWriter output)
+    public static async Task<int> RunAsync(
+        string[] args,
+        TextWriter output,
+        TextWriter error,
+        CancellationToken cancellationToken)
     {
-        var parsed = new CommandArguments(args, "--output");
+        var parsed = new CommandArguments(
+            args, "--output", "--configuration", "--build-timeout-seconds");
         if (parsed.Positionals.Count != 1)
-            throw new CliUsageException("Usage: gbar pack <widget-directory> [--output <file.gbarwidget>]");
+            throw new CliUsageException(
+                "Usage: gbar pack <widget-directory|widget.csproj> " +
+                "[--output <file.gbarwidget>] [--configuration <name>] " +
+                "[--build-timeout-seconds <10-600>]");
 
-        var result = await WidgetPackagePacker.PackAsync(parsed.Positionals[0], parsed.Option("--output"));
-        await output.WriteLineAsync(
-            $"Packed {result.Inspection.Id} {result.Inspection.Version} to {result.PackagePath} " +
-            $"({result.Inspection.EntryCount} files, {result.Inspection.TotalUncompressedBytes} bytes).");
-        return 0;
+        var source = DevWidgetSource.Discover(parsed.Positionals[0]);
+        if (source.Kind == DevWidgetSourceKind.PackageArchive)
+            throw new CliUsageException(
+                "gbar pack expects source or a package directory, not an existing .gbarwidget.");
+        if (source.Kind == DevWidgetSourceKind.PackageDirectory)
+        {
+            if (parsed.Option("--configuration") is not null ||
+                parsed.Option("--build-timeout-seconds") is not null)
+                throw new CliUsageException(
+                    "--configuration and --build-timeout-seconds apply only to a source project; " +
+                    "a staged package directory is packed as-is.");
+            var raw = await WidgetPackagePacker.PackAsync(
+                source.Root, parsed.Option("--output")).ConfigureAwait(false);
+            await WriteResultAsync(raw.PackagePath, raw.Inspection, output).ConfigureAwait(false);
+            return 0;
+        }
+
+        var configuration = parsed.Option("--configuration") ?? "Release";
+        if (configuration.Length is < 1 or > 64 ||
+            configuration.Any(ch => !char.IsAsciiLetterOrDigit(ch) && ch is not '-' and not '_'))
+            throw new CliUsageException(
+                "--configuration must be a simple 1-64 character name.");
+        var timeout = ParseBuildTimeout(parsed.Option("--build-timeout-seconds"));
+        var generation = Path.Combine(
+            Path.GetTempPath(), "GameBarAlternative", "gbar-pack",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(generation);
+        try
+        {
+            var prepared = await DevGenerationBuilder.PreparePackageAsync(
+                source, generation, configuration, timeout, output, error,
+                cancellationToken).ConfigureAwait(false);
+            var inspection = await new CatalogService(
+                    Path.Combine(generation, "published-validation"))
+                .CreateInstaller().ValidateAsync(
+                    prepared.PackagePath, cancellationToken)
+                .ConfigureAwait(false);
+            var destination = ResolveOutput(
+                source.Root, prepared.Manifest, parsed.Option("--output"));
+            await PublishAsync(prepared.PackagePath, destination, cancellationToken)
+                .ConfigureAwait(false);
+            await WriteResultAsync(destination, inspection, output).ConfigureAwait(false);
+            return 0;
+        }
+        finally
+        {
+            if (!await DevSession.DeleteTreeWithRetriesAsync(generation).ConfigureAwait(false))
+                await error.WriteLineAsync(
+                    "warning: temporary package build output could not be removed; " +
+                    "close processes using the system temporary directory and retry.");
+        }
     }
+
+    private static TimeSpan ParseBuildTimeout(string? value)
+    {
+        if (value is null) return TimeSpan.FromSeconds(120);
+        if (!int.TryParse(value, out var seconds) || seconds is < 10 or > 600)
+            throw new CliUsageException(
+                "--build-timeout-seconds must be between 10 and 600.");
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static string ResolveOutput(
+        string sourceRoot,
+        WidgetManifest manifest,
+        string? requested)
+    {
+        var destination = requested is null
+            ? Path.Combine(
+                Directory.GetParent(sourceRoot)?.FullName ?? sourceRoot,
+                $"{manifest.Id}-{manifest.Version}.gbarwidget")
+            : Path.GetFullPath(requested);
+        if (!Path.GetExtension(destination).Equals(
+                ".gbarwidget", StringComparison.OrdinalIgnoreCase))
+            throw new CliUsageException(
+                "Package output must use the .gbarwidget extension.");
+        if (Directory.Exists(destination))
+            throw new CliUsageException($"Package output is a directory: {destination}");
+        if (File.Exists(destination) &&
+            (File.GetAttributes(destination) & FileAttributes.ReparsePoint) != 0)
+            throw new WidgetPackageException(
+                "reparse_point", "Package output cannot be a reparse point.");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        return destination;
+    }
+
+    private static async Task PublishAsync(
+        string source,
+        string destination,
+        CancellationToken cancellationToken)
+    {
+        var temporary = Path.Combine(
+            Path.GetDirectoryName(destination)!,
+            $".{Path.GetFileName(destination)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using (var input = new FileStream(
+                source, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            await using (var output = new FileStream(
+                temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                64 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            File.Move(temporary, destination, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+
+    private static Task WriteResultAsync(
+        string packagePath,
+        WidgetPackageInspection inspection,
+        TextWriter output) =>
+        output.WriteLineAsync(
+            $"Packed {inspection.Id} {inspection.Version} to {packagePath} " +
+            $"({inspection.EntryCount} files, {inspection.TotalUncompressedBytes} bytes).");
 }
 
 internal static class InstallCommand

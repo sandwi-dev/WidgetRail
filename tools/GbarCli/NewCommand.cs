@@ -6,11 +6,11 @@ internal static partial class NewCommand
 {
     public static async Task<int> RunAsync(string[] args, TextWriter output)
     {
-        var parsed = new CommandArguments(args, "--output", "--id", "--publisher", "--sdk-project");
+        var parsed = new CommandArguments(args, "--output", "--id", "--publisher");
         if (parsed.Positionals.Count != 2 || parsed.Positionals[0] != "widget")
             throw new CliUsageException(
                 "Usage: gbar new widget <Name> [--output <directory>] [--id <id>] " +
-                "[--publisher <id>] [--sdk-project <WidgetSdk.csproj>]");
+                "[--publisher <id>]");
 
         var name = parsed.Positionals[1];
         if (!TypeNameRegex().IsMatch(name))
@@ -27,14 +27,14 @@ internal static partial class NewCommand
             throw new CliUsageException($"Output directory is not empty: {target}");
 
         var templateRoot = TemplateLocator.Find();
-        var sdkProject = ResolveSdkProject(parsed.Option("--sdk-project"), templateRoot);
+        var sdkPackage = LocalWidgetSdkPackage.Create();
         Directory.CreateDirectory(target);
         var replacements = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["{{WidgetName}}"] = name,
             ["{{WidgetId}}"] = id,
             ["{{Publisher}}"] = publisher,
-            ["{{SdkReference}}"] = BuildSdkReference(target, sdkProject),
+            ["{{SdkVersion}}"] = sdkPackage.Version,
         };
 
         var created = 0;
@@ -51,62 +51,19 @@ internal static partial class NewCommand
             created++;
         }
 
+        var feed = Path.Combine(target, ".gbar", "packages");
+        Directory.CreateDirectory(feed);
+        await File.WriteAllBytesAsync(
+            Path.Combine(feed, sdkPackage.FileName), sdkPackage.Content);
+        created++;
+
         await output.WriteLineAsync($"Created {name} in {target}");
         await output.WriteLineAsync($"  ID: {id}");
+        await output.WriteLineAsync(
+            $"  SDK: GameBarAlternative.WidgetSdk {sdkPackage.Version} (local offline feed)");
         await output.WriteLineAsync($"  Files: {created}");
         await output.WriteLineAsync($"Next: dotnet build \"{Path.Combine(target, name + ".csproj")}\"");
         return 0;
-    }
-
-    private static string ResolveSdkProject(string? requested, string templateRoot)
-    {
-        if (requested is not null)
-        {
-            try
-            {
-                var fullPath = Path.GetFullPath(requested);
-                if (!File.Exists(fullPath) ||
-                    !string.Equals(Path.GetFileName(fullPath), "WidgetSdk.csproj", StringComparison.OrdinalIgnoreCase))
-                    throw new CliUsageException(
-                        "--sdk-project must name an existing WidgetSdk.csproj file.");
-                if ((File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
-                    throw new CliUsageException("--sdk-project cannot be a reparse point.");
-                return fullPath;
-            }
-            catch (Exception exception) when (exception is ArgumentException or
-                                                   NotSupportedException or
-                                                   PathTooLongException or
-                                                   IOException or
-                                                   UnauthorizedAccessException)
-            {
-                throw new CliUsageException("--sdk-project is not a readable SDK project path.");
-            }
-        }
-
-        return FindSdkProject(templateRoot) ?? FindSdkProject(Environment.CurrentDirectory) ??
-            throw new CliUsageException(
-                "WidgetSdk is not published as a supported package. Run from the source checkout " +
-                "or pass --sdk-project <path-to-WidgetSdk.csproj>; no files were created.");
-    }
-
-    private static string BuildSdkReference(string target, string sdkProject)
-    {
-        var relative = Path.GetRelativePath(target, sdkProject).Replace('/', '\\');
-        var escaped = System.Security.SecurityElement.Escape(relative) ??
-            throw new CliUsageException("The SDK project path could not be encoded safely.");
-        return $"<ProjectReference Include=\"{escaped}\" />";
-    }
-
-    private static string? FindSdkProject(string start)
-    {
-        var directory = new DirectoryInfo(start);
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, "src", "WidgetSdk", "WidgetSdk.csproj");
-            if (File.Exists(candidate)) return candidate;
-            directory = directory.Parent;
-        }
-        return null;
     }
 
     private static string ToKebabCase(string value) =>

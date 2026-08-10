@@ -814,6 +814,31 @@ internal static class DevGenerationBuilder
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
+        => await PrepareAsync(
+            source, generationRoot, configuration, buildTimeout, output, error,
+            includeDebugSymbols: true, cancellationToken).ConfigureAwait(false);
+
+    internal static async Task<PreparedDevGeneration> PreparePackageAsync(
+        DevWidgetSource source,
+        string generationRoot,
+        string configuration,
+        TimeSpan buildTimeout,
+        TextWriter output,
+        TextWriter error,
+        CancellationToken cancellationToken)
+        => await PrepareAsync(
+            source, generationRoot, configuration, buildTimeout, output, error,
+            includeDebugSymbols: false, cancellationToken).ConfigureAwait(false);
+
+    private static async Task<PreparedDevGeneration> PrepareAsync(
+        DevWidgetSource source,
+        string generationRoot,
+        string configuration,
+        TimeSpan buildTimeout,
+        TextWriter output,
+        TextWriter error,
+        bool includeDebugSymbols,
+        CancellationToken cancellationToken)
     {
         if (source.Kind == DevWidgetSourceKind.PackageArchive)
         {
@@ -839,8 +864,10 @@ internal static class DevGenerationBuilder
             throw new CliOperationException("Manifest entrypoint escapes the package root.");
         var outputDirectory = Path.GetDirectoryName(entrypoint)!;
         Directory.CreateDirectory(outputDirectory);
-        await RunBuildAsync(source.ProjectPath!, configuration, outputDirectory, buildTimeout,
-            output, error, cancellationToken).ConfigureAwait(false);
+        await RunBuildAsync(
+            source.ProjectPath!, configuration, outputDirectory, buildTimeout,
+            output, error, includeDebugSymbols, Path.Combine(generationRoot, "obj"),
+            cancellationToken).ConfigureAwait(false);
         if (!File.Exists(entrypoint))
             throw new CliOperationException(
                 $"Build succeeded but did not produce the declared entrypoint '{manifest.Entrypoint.Assembly}'. " +
@@ -891,9 +918,13 @@ internal static class DevGenerationBuilder
         TimeSpan timeout,
         TextWriter output,
         TextWriter error,
+        bool includeDebugSymbols,
+        string intermediateDirectory,
         CancellationToken cancellationToken)
     {
-        var start = CreateBuildStartInfo(project, configuration, outputDirectory);
+        var start = CreateBuildStartInfo(
+            project, configuration, outputDirectory, includeDebugSymbols,
+            intermediateDirectory);
         using var process = Process.Start(start)
             ?? throw new CliOperationException("dotnet build could not be started.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -924,7 +955,9 @@ internal static class DevGenerationBuilder
     internal static ProcessStartInfo CreateBuildStartInfo(
         string project,
         string configuration,
-        string outputDirectory)
+        string outputDirectory,
+        bool includeDebugSymbols = true,
+        string? intermediateDirectory = null)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -946,6 +979,18 @@ internal static class DevGenerationBuilder
                      "--property:BuildInParallel=false",
                      "--property:MSBuildNodeReuse=false",
                  }) start.ArgumentList.Add(argument);
+        intermediateDirectory = Path.GetFullPath(intermediateDirectory ?? Path.Combine(
+            Directory.GetParent(outputDirectory)?.FullName ?? outputDirectory,
+            ".gbar-obj")) + Path.DirectorySeparatorChar;
+        start.ArgumentList.Add(
+            $"--property:IntermediateOutputPath={intermediateDirectory}");
+        start.ArgumentList.Add(
+            $"--property:MSBuildProjectExtensionsPath={intermediateDirectory}");
+        if (!includeDebugSymbols)
+        {
+            start.ArgumentList.Add("--property:DebugSymbols=false");
+            start.ArgumentList.Add("--property:DebugType=None");
+        }
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         return start;
     }

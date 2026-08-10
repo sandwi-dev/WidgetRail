@@ -1,16 +1,29 @@
 # {{WidgetName}}
 
 `{{WidgetId}}` is a controller-first Game Bar Alternative widget generated from
-the standard starter. It demonstrates stable semantic IDs, an explicit focus
-graph, bumper shortcuts, invalidation, GBSS styling, and deterministic input
-replay.
+the standard starter. It demonstrates lifecycle-aware presentation, retained
+state, stable semantic IDs, an explicit focus graph, controller shortcuts,
+invalidation, GBSS styling, and deterministic snapshot replay.
 
-## Build and validate
+The scaffold carries its matching `GameBarAlternative.WidgetSdk` dependency in
+the project-local `.gbar/packages` feed. Restore is offline, requires no source
+checkout or absolute machine path, and `NuGet.Config` clears external feeds.
+
+## Build, exercise, and validate
 
 ```powershell
-dotnet build .\\{{WidgetName}}.csproj
+dotnet build .\{{WidgetName}}.csproj --configuration Release
+dotnet run --project .\tests\{{WidgetName}}.Tests.csproj --configuration Release -- .\fixtures\ready.snapshot.json
 gbar validate .
+gbar render .\fixtures\ready.snapshot.json --output .\fixtures\ready.canonical.json
+gbar replay .\fixtures\ready.snapshot.json .\replays\smoke.json
 ```
+
+The generated test drives initialization, Interactive and Background lifecycle
+transitions, a state-changing action, retained state, and snapshot export. The
+replay begins on `apply`, moves left, activates `lower`, then exercises the `RB`
+and `X` shortcuts. `Home/Guide` is reserved by the shell; all other controller
+inputs remain available to the active widget.
 
 Run the compiled widget through the production AppContainer worker boundary:
 
@@ -18,21 +31,35 @@ Run the compiled widget through the production AppContainer worker boundary:
 gbar dev .
 ```
 
-`gbar render` accepts existing bounded snapshot JSON only; it never loads a
-widget DLL. Add a typed-fake test that exports deterministic snapshots when you
-need data-only render/replay fixtures.
+## Package and install locally
 
-After that test has exported `snapshot.json`, replay controller input without
-launching the overlay:
+Source-aware packing owns a bounded Release build, validation, payload staging,
+and reproducible archive creation. It omits compiler symbols so local source
+paths are not published. Raw, already-staged package directories remain valid
+inputs for advanced workflows.
 
 ```powershell
-gbar replay .\\snapshot.json .\\replays\\smoke.json
+gbar pack . --configuration Release --output .\{{WidgetName}}-0.1.0.gbarwidget
+gbar install .\{{WidgetName}}-0.1.0.gbarwidget
+gbar list
+gbar enable {{WidgetId}}
+gbar disable {{WidgetId}}
+gbar uninstall {{WidgetId}}
 ```
 
-The replay begins on `apply`, moves left, activates `lower`, then exercises the
-`RB` and `X` shortcuts. `Home/Guide` is reserved by the shell and is
-intentionally absent from the widget API. `B`, `LB`, `RB`, and every other
-non-Home control remain available to the active widget.
+To exercise explicit version selection and rollback, change `version` in
+`manifest.json`, pack and install the new archive while the widget is disabled,
+then run:
+
+```powershell
+gbar version list {{WidgetId}}
+gbar version select {{WidgetId}} 0.2.0
+gbar version rollback {{WidgetId}}
+```
+
+Locally generated community packages are unsigned development artifacts. The
+installer still enforces the normal manifest, archive, catalog, and launch
+contracts; this workflow does not grant additional trust or capabilities.
 
 ## Development rules
 
@@ -45,12 +72,10 @@ non-Home control remain available to the active widget.
 - Keep `Render()` deterministic for the current state.
 - Call `Invalidate()` only after visible state changes.
 - Put visible work under `ActiveCancellationToken` and respond to lifecycle
-  callbacks. The scaffold unloads a Background process after five idle minutes;
+  callbacks. Background processes unload after the configured idle deadline;
   persist durable state and expect a later launch to create a fresh widget.
-  Choose `keep-alive` only for a real documented Background requirement; it
-  still does not make presentation work valid in Background.
 - Request no capability until the widget needs it.
-- Treat the manifest's resource request as a budget, not an entitlement.
+- Treat manifest resource requests as budgets, not entitlements.
 
 GBSS is declarative. It cannot execute scripts or load network/file URLs.
 Accessibility rules applied by the host always override widget styles.
