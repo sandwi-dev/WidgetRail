@@ -478,7 +478,7 @@ internal static class SettingsPresentation
         return stepper with { Children = children };
     }
 
-    private static void LinkVertical(List<WidgetElement> elements)
+    public static void LinkVertical(List<WidgetElement> elements)
     {
         var focusable = elements
             .Select((element, index) => (element, index))
@@ -509,6 +509,11 @@ internal static class SettingsPresentation
 
     private static string Percent(double value) =>
         $"{Math.Round(value * 100, MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture)}%";
+
+    public static string ShortContentDigest(string digest) =>
+        digest.Length >= 12
+            ? digest[..12].ToLowerInvariant()
+            : "invalid-digest";
 }
 
 internal static class SettingsNavigationPolicy

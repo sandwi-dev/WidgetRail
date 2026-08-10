@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformDiagnostics;
@@ -31,8 +32,13 @@ public enum SettingsPage
     Reset,
 }
 
-public sealed partial class SettingsWidget : Widget
+public sealed class SettingsWidget : Widget
 {
+    public const int InstalledWidgetsPerPage = 5;
+    public const int InstalledVersionsPerPage = 5;
+    private const int MaximumBundledDirectories = 64;
+    private const int MaximumManifestBytes = 1024 * 1024;
+
     private readonly PlatformSettingsStore _store;
     private readonly ThemeCatalog _catalog;
     private readonly CatalogService _widgetCatalog;
@@ -44,16 +50,8 @@ public sealed partial class SettingsWidget : Widget
     private PlatformSettingsDocument _settings = PlatformSettingsDocument.Default;
     private ThemeCatalogSnapshot _themes;
     private PlatformDiagnosticsSnapshot _diagnostics = PlatformDiagnosticsSnapshot.Unavailable();
-    private WidgetCatalogSnapshot _installedWidgets = new([]);
-    private WidgetCatalogHealthSnapshot _installedCatalogHealth = new(null, []);
-    private IReadOnlyList<WidgetManifest> _builtInWidgets = [];
-    private bool _installedWidgetCatalogValid = true;
-    private string? _installedWidgetDiagnostic;
-    private int _installedWidgetPage;
-    private int _installedVersionPage;
-    private string? _selectedInstalledWidgetId;
-    private string? _selectedBuiltInWidgetId;
-    private WidgetCatalogRepairCandidate? _selectedRepairCandidate;
+    private SettingsInstalledWidgetState _installedState = SettingsInstalledWidgetState.Empty;
+    private SettingsPermissionState _permissionState = SettingsPermissionState.Empty;
     private SettingsAuthorityRecoverySelection? _selectedAuthorityRecovery;
     private SettingsPage _page;
     private int _activationLoadCount;
@@ -102,6 +100,8 @@ public sealed partial class SettingsWidget : Widget
         bool error;
         bool settingsValid;
         PlatformDiagnosticsSnapshot diagnostics;
+        SettingsInstalledWidgetState installedState;
+        SettingsPermissionState permissionState;
         string? selectedAuthorityRecoveryId;
         string status;
         lock (_stateLock)
@@ -113,6 +113,8 @@ public sealed partial class SettingsWidget : Widget
             error = _error;
             settingsValid = _settingsValid;
             diagnostics = _diagnostics;
+            installedState = _installedState;
+            permissionState = _permissionState;
             selectedAuthorityRecoveryId = _selectedAuthorityRecovery?.RecoveryId;
             status = _status;
         }
@@ -131,14 +133,30 @@ public sealed partial class SettingsWidget : Widget
         var header = SettingsPresentation.Header(presentation);
         return page switch
         {
-            SettingsPage.InstalledWidgets => RenderInstalledWidgets(header, busy),
-            SettingsPage.InstalledWidgetDetails => RenderInstalledWidgetDetails(header, busy),
-            SettingsPage.InstalledWidgetVersions => RenderInstalledWidgetVersions(header, busy),
-            SettingsPage.InstalledWidgetRecovery => RenderInstalledWidgetRecovery(header, busy),
-            SettingsPage.Permissions => RenderPermissionPackages(header, busy),
-            SettingsPage.PermissionDiagnostics => RenderPermissionDiagnostics(header),
-            SettingsPage.PackageCapabilities => RenderPackageCapabilities(header, busy),
-            SettingsPage.CapabilityDecision => RenderCapabilityDecision(header, busy),
+            SettingsPage.InstalledWidgets =>
+                SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
+                    header, busy, installedState),
+            SettingsPage.InstalledWidgetDetails =>
+                SettingsInstalledWidgetPresentation.RenderInstalledWidgetDetails(
+                    header, busy, installedState, permissionState),
+            SettingsPage.InstalledWidgetVersions =>
+                SettingsInstalledWidgetPresentation.RenderInstalledWidgetVersions(
+                    header, busy, installedState),
+            SettingsPage.InstalledWidgetRecovery =>
+                SettingsInstalledWidgetPresentation.RenderInstalledWidgetRecovery(
+                    header, busy, installedState),
+            SettingsPage.Permissions =>
+                SettingsPermissionPresentation.RenderPermissionPackages(
+                    header, busy, permissionState),
+            SettingsPage.PermissionDiagnostics =>
+                SettingsPermissionPresentation.RenderPermissionDiagnostics(
+                    header, permissionState),
+            SettingsPage.PackageCapabilities =>
+                SettingsPermissionPresentation.RenderPackageCapabilities(
+                    header, busy, permissionState),
+            SettingsPage.CapabilityDecision =>
+                SettingsPermissionPresentation.RenderCapabilityDecision(
+                    header, busy, permissionState),
             _ => throw new InvalidOperationException($"Unsupported Settings page {page}."),
         };
     }
@@ -484,16 +502,6 @@ public sealed partial class SettingsWidget : Widget
         _status = transition.Status;
     }
 
-    private static ScrollElement PageScope(string id, params WidgetElement[] children) =>
-        SettingsPresentation.PageScope(id, children);
-
-    private static WidgetView View(
-        StackElement header,
-        WidgetElement content,
-        string? initialFocus,
-        string activeScope) =>
-        SettingsPresentation.View(header, content, initialFocus, activeScope);
-
     private void Navigate(SettingsPage page)
     {
         lock (_stateLock)
@@ -502,7 +510,7 @@ public sealed partial class SettingsWidget : Widget
             _page = page;
             if (page == SettingsPage.Permissions &&
                 previousPage != SettingsPage.PermissionDiagnostics)
-                _permissionDiagnosticsReturnFocus = false;
+                _permissionState = _permissionState with { DiagnosticsReturnFocus = false };
         }
         Invalidate();
     }
@@ -520,7 +528,590 @@ public sealed partial class SettingsWidget : Widget
 
     private SettingsPage PackageCapabilitiesReturnPage()
     {
-        lock (_stateLock) return _packageCapabilitiesReturnPage;
+        lock (_stateLock) return _permissionState.PackageCapabilitiesReturnPage;
+    }
+
+    private async Task<string?> ReloadPermissionsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<SettingsPermissionPackage> packages = [];
+        var catalogValid = true;
+        var catalogComplete = true;
+        string? catalogDiagnostic = null;
+        var unknownDeclarations = new SettingsUnknownDeclarationAccumulator();
+        try
+        {
+            var catalog = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            var discovered = new Dictionary<string, SettingsPermissionPackage>(StringComparer.Ordinal);
+            if (_bundledWidgetRoot is not null)
+            {
+                foreach (var manifest in DiscoverBundledManifests(_bundledWidgetRoot))
+                {
+                    var package = SettingsPermissionProjectionPolicy.CreatePackage(
+                        manifest, manifest.Publisher, unknownDeclarations);
+                    if (package.Capabilities.Count != 0)
+                        discovered.TryAdd(package.Id, package);
+                }
+            }
+            foreach (var widget in catalog.Widgets.Take(
+                         SettingsPermissionProjectionPolicy.MaximumPermissionPackages))
+            {
+                var manifest = widget.ActiveVersion.Manifest;
+                var package = SettingsPermissionProjectionPolicy.CreatePackage(
+                    manifest,
+                    InstalledWidgetAuthority.PublisherId(widget.ActiveVersion),
+                    unknownDeclarations,
+                    widget.ActiveVersion.ContentDigest);
+                if (package.Capabilities.Count != 0)
+                    discovered.TryAdd(package.Id, package);
+            }
+            packages = discovered.Values
+                .OrderBy(package => package.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(package => package.Id, StringComparer.Ordinal)
+                .Take(SettingsPermissionProjectionPolicy.MaximumPermissionPackages)
+                .ToArray();
+            if (catalog.Widgets.Count > SettingsPermissionProjectionPolicy.MaximumPermissionPackages ||
+                discovered.Count > SettingsPermissionProjectionPolicy.MaximumPermissionPackages)
+            {
+                catalogComplete = false;
+                catalogDiagnostic = $"Installed package list is limited to {SettingsPermissionProjectionPolicy.MaximumPermissionPackages} entries";
+            }
+        }
+        catch (WidgetPackageException exception)
+        {
+            catalogValid = false;
+            catalogComplete = false;
+            catalogDiagnostic = $"Catalog unavailable ({exception.Code})";
+        }
+        catch (IOException)
+        {
+            catalogValid = false;
+            catalogComplete = false;
+            catalogDiagnostic = "Catalog unavailable (io_error)";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            catalogValid = false;
+            catalogComplete = false;
+            catalogDiagnostic = "Catalog unavailable (access_denied)";
+        }
+
+        ConsentDocument consent = ConsentDocument.Empty;
+        var consentValid = true;
+        string? consentDiagnostic = null;
+        try
+        {
+            consent = await _consentStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (BrokerException exception)
+        {
+            consentValid = false;
+            consentDiagnostic = $"Consent unavailable ({exception.Code})";
+        }
+        catch (IOException)
+        {
+            consentValid = false;
+            consentDiagnostic = "Consent unavailable (io_error)";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            consentValid = false;
+            consentDiagnostic = "Consent unavailable (access_denied)";
+        }
+
+        var projection = SettingsPermissionProjectionPolicy.Compose(
+            packages,
+            consent,
+            catalogValid,
+            catalogComplete,
+            consentValid,
+            catalogDiagnostic,
+            consentDiagnostic,
+            unknownDeclarations);
+        lock (_stateLock)
+        {
+            var transition = SettingsPermissionPolicy.Reconcile(
+                _permissionState, projection, _page);
+            _permissionState = transition.State;
+            _page = transition.Page;
+        }
+        return !catalogValid || !consentValid ? projection.Diagnostic : null;
+    }
+
+    private static IReadOnlyList<WidgetManifest> DiscoverBundledManifests(string root)
+    {
+        if (!Directory.Exists(root)) return [];
+        RejectReparsePoint(root);
+        var manifests = new List<WidgetManifest>();
+        var directories = Directory.EnumerateDirectories(root)
+            .Order(StringComparer.Ordinal)
+            .Take(MaximumBundledDirectories + 1)
+            .ToArray();
+        if (directories.Length > MaximumBundledDirectories)
+            throw new IOException("Bundled widget directory limit exceeded.");
+        foreach (var directory in directories)
+        {
+            RejectReparsePoint(directory);
+            var manifestPath = Path.Combine(directory, "manifest.json");
+            if (!File.Exists(manifestPath)) continue;
+            RejectReparsePoint(manifestPath);
+            if (new FileInfo(manifestPath).Length > MaximumManifestBytes)
+                throw new IOException("Bundled widget manifest exceeds its bound.");
+            WidgetManifest manifest;
+            try { manifest = ManifestJson.Deserialize(File.ReadAllBytes(manifestPath)); }
+            catch (JsonException exception)
+            {
+                throw new WidgetPackageException(
+                    "invalid_bundled_manifest", "Bundled widget manifest is invalid.", exception);
+            }
+            if (WidgetManifestValidator.Validate(manifest).Count != 0)
+                throw new WidgetPackageException(
+                    "invalid_bundled_manifest", "Bundled widget manifest failed validation.");
+            manifests.Add(manifest);
+        }
+        return manifests;
+    }
+
+    private static void RejectReparsePoint(string path)
+    {
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            throw new WidgetPackageException(
+                "unsafe_bundled_catalog", "Bundled widget catalog path is unsafe.");
+    }
+
+    private async Task ChangeConsentAsync(
+        ConsentDecision decision, CancellationToken cancellationToken)
+    {
+        SettingsPermissionPackage? package;
+        SettingsDeclaredCapability? capability;
+        bool consentValid;
+        bool confirmationActive;
+        lock (_stateLock)
+        {
+            package = _permissionState.SelectedPackage;
+            capability = package?.Capabilities.FirstOrDefault(item => string.Equals(
+                item.Id, _permissionState.SelectedCapabilityId, StringComparison.Ordinal));
+            consentValid = _permissionState.Projection.ConsentValid;
+            confirmationActive = _page == SettingsPage.CapabilityDecision;
+        }
+        if (!confirmationActive || !consentValid || package is null || capability is null ||
+            !PlatformCapabilities.TryGet(capability.Id, out _))
+        {
+            SetOperation("Permission change denied; declaration or consent state is unavailable",
+                busy: false, error: true);
+            return;
+        }
+        SetOperation(decision == ConsentDecision.Grant ? "Granting capability…" : "Denying capability…",
+            busy: true, error: false);
+        try
+        {
+            var updated = await _consentStore.SetDecisionAsync(
+                SettingsPermissionPolicy.ConsentIdentity(package),
+                capability.Id,
+                decision,
+                cancellationToken)
+                .ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _permissionState = _permissionState with
+                {
+                    Projection = _permissionState.Projection with { Consent = updated },
+                };
+                _busy = false;
+                _error = false;
+                _status = decision == ConsentDecision.Grant
+                    ? $"Granted {SettingsPermissionPresentation.CapabilityName(capability.Id)}"
+                    : $"Denied {SettingsPermissionPresentation.CapabilityName(capability.Id)}";
+            }
+        }
+        catch (BrokerException exception)
+        {
+            lock (_stateLock)
+            {
+                if (exception.Code is "invalid_consent" or "unsafe_consent_store")
+                    _permissionState = _permissionState with
+                    {
+                        Projection = _permissionState.Projection with { ConsentValid = false },
+                    };
+                _busy = false;
+                _error = true;
+                _status = $"Permission change failed ({exception.Code})";
+            }
+        }
+        Invalidate();
+    }
+
+    private void SelectPermissionPackage(int index)
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.Permissions ||
+                !SettingsPermissionPolicy.TrySelectPackage(
+                    _permissionState, index, out var transition)) return;
+            _permissionState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private void OpenSelectedInstalledPermissions()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails)
+                return;
+            var packageId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
+                            _installedState.SelectedBuiltIn?.Id;
+            if (!SettingsPermissionPolicy.TryOpenInstalledPackage(
+                    _permissionState,
+                    _installedState.CatalogValid,
+                    packageId,
+                    out var transition))
+            {
+                _status = "This widget does not request host permissions";
+                _error = false;
+            }
+            else
+            {
+                _permissionState = transition.State;
+                _page = transition.Page;
+            }
+        }
+        Invalidate();
+    }
+
+    private void OpenPermissionDiagnostics()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.Permissions ||
+                !SettingsPermissionPolicy.TryOpenDiagnostics(
+                    _permissionState, out var transition))
+                return;
+            _permissionState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private void SelectCapability(int index)
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.PackageCapabilities ||
+                !SettingsPermissionPolicy.TrySelectCapability(
+                    _permissionState, index, out var transition))
+                return;
+            _permissionState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private async Task<string?> ReloadInstalledWidgetsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            var builtIn = _bundledWidgetRoot is null
+                ? []
+                : DiscoverBundledManifests(_bundledWidgetRoot)
+                    .GroupBy(manifest => manifest.Id, StringComparer.Ordinal)
+                    .Select(group => group.First())
+                    .OrderBy(manifest => manifest.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(manifest => manifest.Id, StringComparer.Ordinal)
+                    .ToArray();
+            lock (_stateLock)
+            {
+                var transition = SettingsInstalledWidgetPolicy.Reconcile(
+                    _installedState, snapshot, builtIn, _page);
+                _installedState = transition.State;
+                _page = transition.Page;
+            }
+            return null;
+        }
+        catch (WidgetPackageException exception)
+        {
+            WidgetCatalogHealthSnapshot health;
+            try
+            {
+                health = await _widgetCatalog.InspectHealthAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception inspectionException) when (inspectionException is
+                WidgetPackageException or IOException or UnauthorizedAccessException)
+            {
+                health = new WidgetCatalogHealthSnapshot(exception.Code, []);
+            }
+            return SetInstalledWidgetCatalogFailure(
+                $"Installed widget catalog unavailable ({exception.Code})", health);
+        }
+        catch (IOException)
+        {
+            return SetInstalledWidgetCatalogFailure("Installed widget catalog unavailable (io_error)");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return SetInstalledWidgetCatalogFailure("Installed widget catalog unavailable (access_denied)");
+        }
+    }
+
+    private string SetInstalledWidgetCatalogFailure(
+        string diagnostic,
+        WidgetCatalogHealthSnapshot? health = null)
+    {
+        lock (_stateLock)
+        {
+            var transition = SettingsInstalledWidgetPolicy.Failure(
+                diagnostic,
+                health ?? new WidgetCatalogHealthSnapshot(null, []),
+                _page);
+            _installedState = transition.State;
+            _page = transition.Page;
+        }
+        return diagnostic;
+    }
+
+    private void SelectRepairCandidate(int index)
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgets ||
+                !SettingsInstalledWidgetPolicy.TrySelectRepair(
+                    _installedState, index, out var transition)) return;
+            _installedState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private async Task RemoveSelectedRepairCandidateAsync(CancellationToken cancellationToken)
+    {
+        WidgetCatalogRepairCandidate? candidate;
+        lock (_stateLock)
+            candidate = _page == SettingsPage.InstalledWidgetRecovery
+                ? _installedState.SelectedRepair
+                : null;
+        if (candidate is null || !candidate.CanRemove) return;
+        SetOperation($"Removing {candidate.Id} {candidate.Version}…", busy: true, error: false);
+        try
+        {
+            var result = await _widgetCatalog.RemoveInactiveVersionAsync(
+                candidate.Id, candidate.Version, cancellationToken).ConfigureAwait(false);
+            var warning = await ReloadInstalledWidgetsAsync(cancellationToken).ConfigureAwait(false);
+            if (warning is null)
+                warning = await ReloadPermissionsAsync(cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _page = SettingsPage.InstalledWidgets;
+                _installedState = _installedState with { SelectedRepair = null };
+                _busy = false;
+                _error = warning is not null;
+                _status = warning ??
+                    $"Removed inactive {result.Id} {result.Version}" +
+                    (result.CleanupPending ? "; staging cleanup is pending" : string.Empty);
+            }
+        }
+        catch (WidgetPackageException exception)
+        {
+            SetOperation($"Catalog repair failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        catch (KeyNotFoundException)
+        {
+            SetOperation("Catalog repair failed (package_not_found)", busy: false, error: true);
+            return;
+        }
+        catch (IOException)
+        {
+            SetOperation("Catalog repair failed (io_error)", busy: false, error: true);
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            SetOperation("Catalog repair failed (access_denied)", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private void ChangeInstalledWidgetPage(int delta)
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgets) return;
+            _installedState = SettingsInstalledWidgetPolicy.ChangeCatalogPage(
+                _installedState, delta);
+        }
+        Invalidate();
+    }
+
+    private void SelectInstalledWidget(int index)
+    {
+        lock (_stateLock)
+        {
+            if (!SettingsInstalledWidgetPolicy.TrySelectInstalled(
+                    _installedState, index, out var transition)) return;
+            _installedState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private void SelectBuiltInWidget(int index)
+    {
+        lock (_stateLock)
+        {
+            if (!SettingsInstalledWidgetPolicy.TrySelectBuiltIn(
+                    _installedState, index, out var transition)) return;
+            _installedState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private void OpenInstalledWidgetVersions()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails ||
+                !SettingsInstalledWidgetPolicy.TryOpenVersions(
+                    _installedState, out var transition))
+                return;
+            _installedState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private void ChangeInstalledVersionPage(int delta)
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetVersions) return;
+            if (_installedState.SelectedInstalled is null) return;
+            _installedState = SettingsInstalledWidgetPolicy.ChangeVersionPage(
+                _installedState, delta);
+        }
+        Invalidate();
+    }
+
+    private async Task SelectInstalledVersionAsync(int index, CancellationToken cancellationToken)
+    {
+        CatalogWidget? selected;
+        InstalledWidgetVersion? requested;
+        lock (_stateLock)
+        {
+            selected = _installedState.CatalogValid ? _installedState.SelectedInstalled : null;
+            requested = selected is not null && index >= 0 && index < selected.Versions.Count
+                ? selected.Versions[index]
+                : null;
+        }
+        if (selected is null || requested is null) return;
+        if (selected.Enabled)
+        {
+            SetOperation("Disable the widget before changing versions", busy: false, error: true);
+            return;
+        }
+        if (requested.Version == selected.ActiveVersion.Version) return;
+
+        SetOperation($"Selecting {requested.Version}…", busy: true, error: false);
+        try
+        {
+            await _widgetCatalog.SetActiveVersionAsync(
+                selected.Id, requested.Version, cancellationToken).ConfigureAwait(false);
+            var refreshed = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            // Version changes can replace declarations and always replace the
+            // installed package authority. Refresh the permission projection
+            // before reporting success so this still-visible Settings worker
+            // can never grant against the previously selected version.
+            var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
+                .ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                var transition = SettingsInstalledWidgetPolicy.Reconcile(
+                    _installedState, refreshed, _installedState.BuiltIns, _page);
+                _installedState = transition.State;
+                _page = transition.Page;
+                _busy = false;
+                _error = permissionWarning is not null;
+                _status = permissionWarning ??
+                    $"{selected.Name} {requested.Version} selected; review its unsigned digest and capabilities before enabling";
+            }
+        }
+        catch (WidgetPackageException exception)
+        {
+            SetOperation($"Version change failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        catch (KeyNotFoundException)
+        {
+            SetOperation("Version change failed (package_not_found)", busy: false, error: true);
+            return;
+        }
+        catch (IOException)
+        {
+            SetOperation("Version change failed (io_error)", busy: false, error: true);
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            SetOperation("Version change failed (access_denied)", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private async Task ToggleSelectedInstalledWidgetAsync(CancellationToken cancellationToken)
+    {
+        CatalogWidget? selected;
+        lock (_stateLock)
+            selected = _installedState.CatalogValid ? _installedState.SelectedInstalled : null;
+        if (selected is null) return;
+
+        var nextEnabled = !selected.Enabled;
+        if (nextEnabled && !WidgetHostCompatibility.Evaluate(selected.ActiveVersion.Manifest).IsSupported)
+        {
+            SetOperation("Widget cannot be enabled because it is incompatible with this host",
+                busy: false, error: true);
+            return;
+        }
+        SetOperation(nextEnabled ? "Enabling widget…" : "Disabling widget…", busy: true, error: false);
+        try
+        {
+            await _widgetCatalog.SetEnabledAsync(selected.Id, nextEnabled, cancellationToken).ConfigureAwait(false);
+            var refreshed = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                var transition = SettingsInstalledWidgetPolicy.Reconcile(
+                    _installedState, refreshed, _installedState.BuiltIns, _page);
+                _installedState = transition.State;
+                _page = transition.Page;
+                _busy = false;
+                _error = false;
+                _status = nextEnabled ? $"{selected.Name} enabled" : $"{selected.Name} disabled";
+            }
+        }
+        catch (WidgetPackageException exception)
+        {
+            SetOperation($"Widget change failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        catch (KeyNotFoundException)
+        {
+            SetOperation("Widget change failed (package_not_found)", busy: false, error: true);
+            return;
+        }
+        catch (IOException)
+        {
+            SetOperation("Widget change failed (io_error)", busy: false, error: true);
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            SetOperation("Widget change failed (access_denied)", busy: false, error: true);
+            return;
+        }
+        Invalidate();
     }
 
     private static bool TryThemeIndex(string action, out int index)
