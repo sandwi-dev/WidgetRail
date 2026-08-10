@@ -688,6 +688,31 @@ been adopted.
 Broader hardware/churn coverage and end-to-end hidden/visible performance evidence
 remain open; this is not yet an end-user release claim.
 
+The DLV-029 Audio Mixer split keeps `AudioMixerWidget` as the only lifecycle,
+host-service, committed-state, selection, action-routing, and invalidation
+owner. Before the split, its roughly 2,496-line class also owned all view
+composition and the nested output/input/session pending-command mechanics.
+After the split, the widget is 1,969 lines; a 135-line internal command-policy
+boundary names output, input, and per-session absolute-target admission plus
+provider-event reconciliation, and a 351-line snapshot-only presenter owns the
+unchanged controller view/focus graph. The presenter and policies contain no
+locks, semaphores, cancellation sources, task roots, or lifecycle generations.
+Coordination therefore remains one widget state lock, two optional-section
+retry semaphores, one active-run generation, and the same three widget-owned
+cancellation-source slots; no second committed-state or lifecycle owner was
+introduced. Direct deterministic coverage now exercises repeated presentation,
+independent policy coalescing/reconciliation, failure and timeout rollback,
+cancellation-ignoring late completion, provider churn, session removal, and
+deactivation while preserving every existing `audio.*` focus ID and navigation
+edge. This is an internal responsibility split only: it adds no public SDK,
+protocol, broker, provider, native, endpoint-selection, or shared-Scroll
+surface.
+Bounded dirty-worktree Release run `20260810T152503Z-d11fafee` passed Audio
+Mixer 33/33, Widget SDK 84/84, Platform Broker 51/51, Windows Audio provider
+15/15, and documentation validation across 52 Markdown files in 19.5 seconds.
+This is assignment-scoped implementation evidence, not a canonical aggregate
+or release-eligible clean-worktree result.
+
 The current Network Controls reference slice runs as a manifest-backed bundled
 package through the generic community worker/AppContainer path. It requires
 coarse network and available-Wi-Fi read grants,
