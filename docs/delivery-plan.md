@@ -149,6 +149,34 @@ Focused evidence passed 107 controller checks, 108,547 placement checks, the
 Release host build, and 51 documentation contracts. Physical-controller proof
 remains in the verification queue.
 
+### DLV-004 — Repair the Games & Apps product surface
+
+**State:** Done
+**Closing commit:** `7e0b83e` (`[DLV-004] repair Games and Apps surface`)
+**Integrated on `main`:** `76032bb`
+
+**Reviewer disposition:** Accepted. The managed widget now composes Library,
+Catalog, loading, empty, and failure states from shared components; bounds the
+Catalog to one 32-row semantic page with explicit Previous/Next actions; and
+revalidates route plus stable SavedId-derived source before using a current
+short-lived AppId. Focused evidence covers 42 widget cases, the 6/6 installed
+generic-worker/AppContainer group, 52 documentation contracts, and retained
+compact/standard/150%-accessible/wide-high-contrast captures. Physical packaged
+controller/display review remains verification evidence.
+
+### DLV-014 — Compose advanced action failure through the production host
+
+**State:** Done
+**Closing commit:** `2a160b4` (`[DLV-014] compose advanced action failure route`)
+**Integrated on `main`:** `9060f12`
+
+**Reviewer disposition:** Accepted. A deterministic YT Music worker now drives
+the real production host action ingress through worker runtime, managed bridge,
+native failure drain, painted status, and UI Automation live-region projection.
+The bounded fixture proves exact generation/action/source diagnostics, sanitized
+copy/logging, focus retention, replacement/expiry, Hide non-resurrection, Stop
+cleanup, and no worker restart. Physical GameInput remains manual evidence.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -221,7 +249,7 @@ gap or requires cross-lane changes.
 
 ### DLV-004 — Repair the Games & Apps product surface
 
-**State:** Assigned after clean widgets baseline refresh
+**State:** Done; accepted and integrated as `76032bb`
 **Baseline:** accepted `main` through `aaf36d9` plus the reviewer dispatch commit
 **Dependencies:** DLV-002, DLV-003, and DLV-008
 **Owner:** Games & Apps managed widget, its credential-free fixtures, and
@@ -262,8 +290,8 @@ different Games & Apps information architecture.
 
 ### DLV-017 — Show a durable Games & Apps warm start
 
-**State:** Ready after DLV-004
-**Baseline:** closing commit of DLV-004
+**State:** Ready after DLV-009
+**Baseline:** closing commit of DLV-009
 **Owner:** Games & Apps private-state projection, lifecycle reconciliation, and
 credential-free fixtures
 
@@ -300,8 +328,8 @@ a public protocol change.
 
 ### DLV-009 — Consolidate YT Music lifecycle and render ownership
 
-**State:** Ready after DLV-004
-**Baseline:** closing commit of DLV-004
+**State:** Assigned
+**Baseline:** `7e0b83e`, the accepted widgets-lane DLV-004 closing commit
 **Owner:** YT Music managed widget and existing public SDK primitives
 
 **Objective:** Make YT Music the second advanced proof that supported SDK
@@ -330,8 +358,8 @@ the repeated pattern and consumer evidence before changing the public API.
 
 ### DLV-023 — Keep transient Spotify failures on the last-good surface
 
-**State:** Ready after DLV-009
-**Baseline:** closing commit of DLV-009
+**State:** Ready after DLV-017
+**Baseline:** closing commit of DLV-017
 **Owner:** Spotify managed refresh/polling state, typed provider-failure policy,
 and credential-free tests
 
@@ -460,7 +488,7 @@ requires hidden-overlay polling.
 
 ### DLV-014 — Compose advanced action failure through the production host
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `9060f12`
 **Baseline:** closing commit of DLV-005
 **Owner:** bridge/native controller ingress, feedback surface, and host tests
 
@@ -489,8 +517,8 @@ by the widgets lane or a public protocol change not already represented.
 
 ### DLV-020 — Make widget switching visually continuous
 
-**State:** Ready after DLV-014
-**Baseline:** closing commit of DLV-014
+**State:** Assigned
+**Baseline:** `2a160b4`, the accepted platform-lane DLV-014 closing commit
 **Owner:** OverlayHost presentation, invalidation, rounded clipping, render
 target lifecycle, and transition tests
 
@@ -620,21 +648,9 @@ game/hardware choice, or a product budget decision not already documented.
 These are planned but are not executable by either lane until the planner marks
 one Assigned on an accepted integrated baseline.
 
-### DLV-004 — Repair the Games & Apps product surface
-
-**State:** Dispatched to the widgets lane on accepted `main` through `aaf36d9`
-**Intended lead:** widgets lane
-**Dependencies:** DLV-002 and DLV-003
-
-Use the corrected shared geometry to make Library, empty, discovery/loading/
-error, and Add applications one coherent responsive controller surface. Cover
-empty, short, long-name, maximum bounded page, loading, error,
-compact/standard/wide, 100-150% scale, mutation while focused, clipping, safe
-areas, and reachability. This is the next exact-commit Tier-3 checkpoint.
-
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Awaiting DLV-004 acceptance; DLV-005 is accepted
+**State:** Dependencies accepted; awaiting planner-selected free lane/baseline
 **Intended lead:** planner-selected serialized protocol lane
 **Dependencies:** DLV-004 and DLV-005
 

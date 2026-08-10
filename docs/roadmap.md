@@ -372,9 +372,11 @@ not irreversible API priority:
    Library changes. Close this item with semantic layout assertions plus
    packaged screenshots and controller traversal for empty, short, long,
    maximum-page, loading, and error states.
-   DLV-004 owns this immediate surface pass. DLV-017 then owns restart warm
-   start/reconciliation and DLV-018 owns trusted lazy artwork; those data-plane
-   concerns must not be buried in presentation offsets or base64 row payloads.
+   **Accepted in DLV-004 (`7e0b83e`, integrated as `76032bb`) at automated and
+   retained-capture level; physical packaged controller/display review remains.**
+   DLV-017 owns restart warm start/reconciliation and DLV-018 owns trusted lazy
+   artwork; those data-plane concerns must not be buried in presentation offsets
+   or base64 row payloads.
 3. **Select input and output devices from Audio Mixer.** Add controller-first
    pickers that show the current defaults and change the intended Windows audio
    endpoint and role with explicit pending, success, denial, disappearance, and

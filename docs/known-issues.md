@@ -56,7 +56,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
 | GBA-036 | P1 | Verifying | OverlayHost / native composition / declarative surface | The native client clears unused pixels to the layered color key and one packaged standard-viewport capture shows no opaque canvas; the broader paint/scale/contrast matrix remains. |
 | GBA-037 | P0 | Verifying | Now Playing / media provider / retry | Current-state reads are independent from live subscription failure and Retry creates a fresh generation; packaged provider-failure recovery remains to verify visually. |
-| GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | Activation resolves only durable saved entries and Catalog loads only on Add; `final-schema-v2-20260808-final` proves retained-package empty/catalog/populated standalone widget-body captures, while loading/failure/long/max-page, shell, and controller evidence remain. |
+| GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | DLV-004 adds shared loading/empty/failure surfaces, bounded Previous/Next Catalog pages, long/max-library coverage, exact installed conformance, and a retained multi-profile capture matrix; physical packaged shell/controller review remains. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
 | GBA-040 | P0 | Verifying | Native declarative layout / Spotify / responsive text | Intrinsic leaves now measure height against their authored width/max-width before layout, with exact Spotify state/setup regressions at compact and 150% text scales; packaged visual verification remains. |
 | GBA-041 | P0 | Verifying | OverlayHost / controller input ownership | A visibility-scoped GameInput lease keeps navigation alive when foreground activation is denied and uses exclusivity when confirmed; packaged backend/game evidence remains. |
@@ -1177,7 +1177,16 @@ the simulated broker. Six native WIC PNGs cover empty, catalog, and populated
 snapshots across compact/default, 150%-text/reduced-transparency, standard,
 and wide/high-contrast profiles with production computed styles and recorded
 SHA-256s. Loading, failure, long-name, maximum-page, focus traversal, and a
-hands-on packaged overlay pass remain outstanding, so status stays Verifying.
+hands-on packaged overlay pass were originally outstanding. Accepted DLV-004
+`7e0b83e` now uses shared SectionHeader/StatusBadge/Card/EmptyState/Alert/AppTile/
+Toast composition, retains only one 32-row Catalog page with explicit bounded
+Previous/Next traversal, revalidates actions against the current route and
+stable SavedId-derived element, covers shared state surfaces, a 64-entry
+long-name Library, maximum Catalog traversal, reverse focus, and mutation, and
+retains compact/standard/150%-accessible/wide-high-contrast captures. Its exact
+focused groups pass Games & Apps 42/42, installed generic-worker/AppContainer
+6/6, and 52 documentation contracts. Physical packaged shell/controller/display
+review remains outstanding, so status stays Verifying.
 
 **Acceptance:**
 
