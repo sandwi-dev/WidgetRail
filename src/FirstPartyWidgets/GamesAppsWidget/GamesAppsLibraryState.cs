@@ -267,7 +267,7 @@ internal static class GamesAppsLibraryStateReconciler
         var builder = new StringBuilder(normalized.Length);
         foreach (var rune in normalized.EnumerateRunes().Take(MaximumPersistedDisplayRunes))
             builder.Append(rune);
-        return builder.ToString();
+        return builder.ToString().TrimEnd();
     }
 
     private static IReadOnlyList<string> MergeListByDelta(

@@ -45,14 +45,13 @@ public sealed class GamesAppsWidget : Widget
     {
         Mode = WidgetSurfaceMode.Standard,
         PreferredWidth = 820,
-        PreferredHeight = 430,
+        PreferredHeight = 600,
         MinimumWidth = 420,
         MinimumHeight = 300,
     };
 
     private static readonly WidgetSurfaceHints CatalogSurface = LibrarySurface with
     {
-        PreferredHeight = 450,
         MinimumHeight = 320,
     };
 
@@ -76,6 +75,7 @@ public sealed class GamesAppsWidget : Widget
     private string? _selectedAppId;
     private string? _launchingAppId;
     private bool _loadingMore;
+    private bool _libraryMutationBusy;
     private bool _hasLibrarySnapshot;
     private int? _nextOffset;
     private int _catalogOffset;
@@ -121,6 +121,7 @@ public sealed class GamesAppsWidget : Widget
         string? selectedAppId;
         string? launchingAppId;
         bool loadingMore;
+        bool libraryMutationBusy;
         int? nextOffset;
         bool canLoadPrevious;
         GamesAppsPage page;
@@ -135,6 +136,7 @@ public sealed class GamesAppsWidget : Widget
             selectedAppId = _selectedAppId;
             launchingAppId = _launchingAppId;
             loadingMore = _loadingMore;
+            libraryMutationBusy = _libraryMutationBusy;
             nextOffset = _nextOffset;
             canLoadPrevious = _catalogBackOffsets.Count != 0;
             page = _page;
@@ -171,9 +173,10 @@ public sealed class GamesAppsWidget : Widget
 
         return page == GamesAppsPage.Catalog
             ? RenderCatalog(header, items, curatedAppIds, selectedAppId, launchingAppId,
-                loadingMore, nextOffset, canLoadPrevious)
+                loadingMore || libraryMutationBusy, nextOffset, canLoadPrevious)
             : RenderLibrary(
-                header, items, curatedAppIds, resolvedSavedIds, selectedAppId, launchingAppId);
+                header, items, curatedAppIds, resolvedSavedIds, selectedAppId, launchingAppId,
+                libraryMutationBusy);
     }
 
     private WidgetView RenderLibrary(
@@ -182,7 +185,8 @@ public sealed class GamesAppsWidget : Widget
         IReadOnlyList<string> curatedAppIds,
         IReadOnlySet<string> resolvedSavedIds,
         string? selectedAppId,
-        string? launchingAppId)
+        string? launchingAppId,
+        bool libraryMutationBusy)
     {
         var byId = items.ToDictionary(item => item.SavedId, StringComparer.Ordinal);
         var curated = curatedAppIds.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
@@ -195,7 +199,7 @@ public sealed class GamesAppsWidget : Widget
                     new ComponentAction(
                         "Add applications", "games.open-catalog", WidgetGlyph.Play),
                     WidgetGlyph.Play),
-                LifecycleState != WidgetLifecycleState.Interactive);
+                libraryMutationBusy || LifecycleState != WidgetLifecycleState.Interactive);
             var emptyRoot = UI.Stack("games.root",
                     header,
                     UI.Stack("games.content", empty).Classes("games-content", "games-state-shell"))
@@ -225,7 +229,7 @@ public sealed class GamesAppsWidget : Widget
                         $"{item.DisplayName}, {AppKindLabel(item.Kind)}, {tileState}")
                 .Shortcut(ControllerButton.X, actionId: "games.remove")
                 .Busy(isOpening)
-                .Disabled(!isResolved || launchingAppId is not null ||
+                .Disabled(!isResolved || launchingAppId is not null || libraryMutationBusy ||
                     LifecycleState != WidgetLifecycleState.Interactive)
                 .Selected(string.Equals(selectedAppId, item.AppId, StringComparison.Ordinal))
                 .FocusUp(index == 0 ? id : elementIds[index - 1])
@@ -241,7 +245,7 @@ public sealed class GamesAppsWidget : Widget
 
         rows.Add(UI.Button("Add applications", "games.open-catalog", "games.open-catalog")
             .Icon(WidgetGlyph.Play, $"Browse {items.Count} available applications")
-            .Disabled(launchingAppId is not null ||
+            .Disabled(launchingAppId is not null || libraryMutationBusy ||
                 LifecycleState != WidgetLifecycleState.Interactive)
             .FocusUp(elementIds[^1])
             .FocusDown("games.open-catalog")
@@ -481,165 +485,244 @@ public sealed class GamesAppsWidget : Widget
     private async Task ToggleCuratedAsync(string appId, CancellationToken cancellationToken)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
-        IReadOnlyList<string>? savedIds = null;
-        IReadOnlyList<string>? autoGameSavedIds = null;
-        IReadOnlyList<string>? excludedGameSavedIds = null;
-        string? selectedSavedId = null;
-        string? toastMessage = null;
-        var toastTone = ToastTone.Success;
-        var persist = true;
-        IReadOnlyList<WidgetAppLibraryItem>? candidateItems = null;
-        lock (_gate)
+        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        var acquired = false;
+        try
         {
-            var item = _items.FirstOrDefault(candidate =>
-                string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
-            if (item is null) return;
-            candidateItems = _libraryItems.Append(item)
-                .DistinctBy(candidate => candidate.SavedId, StringComparer.Ordinal).ToArray();
-            _selectedAppId = item.AppId;
-            var isVisibleMember = _libraryItems.Any(candidate => string.Equals(
-                candidate.SavedId, item.SavedId, StringComparison.Ordinal));
-            if (isVisibleMember)
+            acquired = await _commandGate.WaitAsync(0, commandLifetime.Token)
+                .ConfigureAwait(false);
+            if (!acquired || LifecycleState != WidgetLifecycleState.Interactive) return;
+            long generation;
+            long revision;
+            GamesAppsLibraryState baseline;
+            WidgetAppLibraryItem? item;
+            IReadOnlyList<string> savedIds;
+            IReadOnlyList<string> autoGameSavedIds;
+            IReadOnlyList<string> excludedGameSavedIds;
+            string? selectedSavedId;
+            string toastMessage;
+            IReadOnlyList<WidgetAppLibraryItem> candidateItems;
+            var toastTone = ToastTone.Success;
+            var rejected = false;
+            lock (_gate)
             {
-                if (item.Kind == WidgetAppLibraryKind.Game &&
-                    !TryAddExcludedGameLocked(item.SavedId))
+                if (_page != GamesAppsPage.Catalog) return;
+                item = _items.FirstOrDefault(candidate =>
+                    string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
+                if (item is null) return;
+                generation = Interlocked.Read(ref _generation);
+                revision = _stateRevision;
+                baseline = _persistedLibraryState;
+                var desiredSaved = _curatedSavedIds.ToList();
+                var desiredAutomatic = _autoGameSavedIds.ToList();
+                var desiredExcluded = _excludedGameSavedIds.ToList();
+                candidateItems = _libraryItems.Concat(_items)
+                    .DistinctBy(candidate => candidate.SavedId, StringComparer.Ordinal).ToArray();
+                var isVisibleMember = _libraryItems.Any(candidate => string.Equals(
+                    candidate.SavedId, item.SavedId, StringComparison.Ordinal));
+                if (isVisibleMember)
                 {
-                    _status = "Game exclusion storage is full";
-                    toastMessage = "Add a previously excluded game back before removing another";
-                    toastTone = ToastTone.Warning;
-                    persist = false;
+                    if (item.Kind == WidgetAppLibraryKind.Game &&
+                        !TryAddExcludedGame(desiredExcluded, item.SavedId))
+                    {
+                        rejected = true;
+                        toastMessage =
+                            "Add a previously excluded game back before removing another";
+                        toastTone = ToastTone.Warning;
+                        selectedSavedId = baseline.SelectedSavedId;
+                    }
+                    else
+                    {
+                        desiredSaved.Remove(item.SavedId);
+                        desiredAutomatic.Remove(item.SavedId);
+                        selectedSavedId = NearestSurvivingSavedIdLocked(
+                            item.SavedId, desiredSaved);
+                        toastMessage = $"Removed {item.DisplayName}";
+                    }
                 }
                 else
                 {
-                    _curatedSavedIds.Remove(item.SavedId);
-                    _autoGameSavedIds.Remove(item.SavedId);
-                    _libraryItems = _libraryItems
-                        .Where(candidate => !string.Equals(
-                            candidate.SavedId, item.SavedId, StringComparison.Ordinal)).ToArray();
-                    _status = $"Removed {item.DisplayName} from your library";
-                    toastMessage = _status;
+                    if (desiredSaved.Count >= MaximumCuratedItems)
+                    {
+                        rejected = true;
+                        toastMessage = $"Your library can hold {MaximumCuratedItems} items";
+                        toastTone = ToastTone.Warning;
+                        selectedSavedId = baseline.SelectedSavedId;
+                    }
+                    else
+                    {
+                        desiredExcluded.Remove(item.SavedId);
+                        desiredAutomatic.Remove(item.SavedId);
+                        if (!desiredSaved.Contains(item.SavedId, StringComparer.Ordinal))
+                            desiredSaved.Add(item.SavedId);
+                        selectedSavedId = item.SavedId;
+                        toastMessage = $"Added {item.DisplayName} to your library";
+                    }
                 }
+                savedIds = desiredSaved;
+                autoGameSavedIds = desiredAutomatic;
+                excludedGameSavedIds = desiredExcluded;
+                _libraryMutationBusy = !rejected;
             }
-            else
+            Invalidate();
+            if (rejected)
             {
-                if (!_curatedSavedIds.Contains(item.SavedId, StringComparer.Ordinal) &&
-                    _curatedSavedIds.Count >= MaximumCuratedItems)
-                {
-                    _status = $"Your library can hold {MaximumCuratedItems} items";
-                    toastMessage = _status;
-                    toastTone = ToastTone.Warning;
-                    persist = false;
-                }
-                else
-                {
-                    _excludedGameSavedIds.Remove(item.SavedId);
-                    _autoGameSavedIds.Remove(item.SavedId);
-                    if (!_curatedSavedIds.Contains(item.SavedId, StringComparer.Ordinal))
-                        _curatedSavedIds.Add(item.SavedId);
-                    if (!_libraryItems.Any(candidate => string.Equals(
-                            candidate.SavedId, item.SavedId, StringComparison.Ordinal)))
-                        _libraryItems = _libraryItems.Append(item).ToArray();
-                    _status = $"Added {item.DisplayName} to your library";
-                    toastMessage = _status;
-                }
+                ShowToast("Library unchanged", toastMessage, toastTone);
+                return;
             }
-            savedIds = _curatedSavedIds.ToArray();
-            autoGameSavedIds = _autoGameSavedIds.ToArray();
-            excludedGameSavedIds = _excludedGameSavedIds.ToArray();
-            selectedSavedId = item.SavedId;
+            var persistence = await PersistLibraryAsync(
+                    savedIds, autoGameSavedIds, excludedGameSavedIds,
+                    selectedSavedId, commandLifetime.Token, candidateItems,
+                    generation, baseline, revision)
+                .ConfigureAwait(false);
+            commandLifetime.Token.ThrowIfCancellationRequested();
+            if (persistence.Saved)
+            {
+                lock (_gate) _status = toastMessage;
+            }
+            ShowToast(
+                persistence.Saved ? "Library updated" : "Library not saved",
+                persistence.Saved
+                    ? toastMessage
+                    : persistence.Rejected
+                        ? "Add a previously excluded game back before removing another"
+                        : "The durable library could not be updated",
+                persistence.Saved ? toastTone : ToastTone.Danger);
         }
-        if (!persist)
+        catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
         {
-            ShowToast("Library unchanged", toastMessage!, toastTone);
-            return;
+            if (cancellationToken.IsCancellationRequested) throw;
         }
-        var persistence = await PersistLibraryAsync(
-            savedIds, autoGameSavedIds, excludedGameSavedIds,
-            selectedSavedId, cancellationToken, candidateItems).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        ShowToast(
-            persistence.Saved ? "Library updated" : "Library not saved",
-            persistence.Saved
-                ? toastMessage!
-                : persistence.Rejected
-                    ? "Add a previously excluded game back before removing another"
-                    : "The durable library could not be updated",
-            persistence.Saved ? toastTone : ToastTone.Danger);
+        finally
+        {
+            if (acquired)
+            {
+                lock (_gate) _libraryMutationBusy = false;
+                _commandGate.Release();
+                Invalidate();
+            }
+        }
     }
 
     private async Task RemoveCuratedAsync(string appId, CancellationToken cancellationToken)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
-        IReadOnlyList<string>? savedIds = null;
-        IReadOnlyList<string>? autoGameSavedIds = null;
-        IReadOnlyList<string>? excludedGameSavedIds = null;
-        string? selectedSavedId = null;
-        string? toastMessage = null;
-        var exclusionRefused = false;
-        IReadOnlyList<WidgetAppLibraryItem>? candidateItems = null;
-        lock (_gate)
+        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        var acquired = false;
+        try
         {
-            var item = _items.FirstOrDefault(candidate =>
-                string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
-            if (item is null || !_curatedSavedIds.Contains(
-                    item.SavedId, StringComparer.Ordinal)) return;
-            var visibleBefore = ResolveCuratedItemsLocked();
-            var removedIndex = visibleBefore.ToList().FindIndex(candidate => string.Equals(
-                candidate.SavedId, item.SavedId, StringComparison.Ordinal));
-            candidateItems = _libraryItems.ToArray();
-            if (item.Kind == WidgetAppLibraryKind.Game &&
-                !TryAddExcludedGameLocked(item.SavedId))
+            acquired = await _commandGate.WaitAsync(0, commandLifetime.Token)
+                .ConfigureAwait(false);
+            if (!acquired || LifecycleState != WidgetLifecycleState.Interactive) return;
+            long generation;
+            long revision;
+            GamesAppsLibraryState baseline;
+            WidgetAppLibraryItem? item;
+            IReadOnlyList<string> savedIds;
+            IReadOnlyList<string> autoGameSavedIds;
+            IReadOnlyList<string> excludedGameSavedIds;
+            string? selectedSavedId;
+            IReadOnlyList<WidgetAppLibraryItem> candidateItems;
+            string toastMessage;
+            var rejected = false;
+            lock (_gate)
             {
-                _status = "Game exclusion storage is full";
-                toastMessage = "Add a previously excluded game back before removing another";
-                exclusionRefused = true;
+                if (_page != GamesAppsPage.Library) return;
+                item = _items.FirstOrDefault(candidate =>
+                    string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
+                if (item is null || !_curatedSavedIds.Contains(
+                        item.SavedId, StringComparer.Ordinal)) return;
+                generation = Interlocked.Read(ref _generation);
+                revision = _stateRevision;
+                baseline = _persistedLibraryState;
+                var desiredSaved = _curatedSavedIds.ToList();
+                var desiredAutomatic = _autoGameSavedIds.ToList();
+                var desiredExcluded = _excludedGameSavedIds.ToList();
+                candidateItems = _libraryItems.ToArray();
+                if (item.Kind == WidgetAppLibraryKind.Game &&
+                    !TryAddExcludedGame(desiredExcluded, item.SavedId))
+                {
+                    rejected = true;
+                    selectedSavedId = baseline.SelectedSavedId;
+                    toastMessage =
+                        "Add a previously excluded game back before removing another";
+                }
+                else
+                {
+                    desiredSaved.Remove(item.SavedId);
+                    desiredAutomatic.Remove(item.SavedId);
+                    selectedSavedId = NearestSurvivingSavedIdLocked(
+                        item.SavedId, desiredSaved);
+                    toastMessage = $"Removed {item.DisplayName}";
+                }
+                savedIds = desiredSaved;
+                autoGameSavedIds = desiredAutomatic;
+                excludedGameSavedIds = desiredExcluded;
+                _libraryMutationBusy = !rejected;
             }
-            if (!exclusionRefused)
+            Invalidate();
+            if (rejected)
             {
-                _curatedSavedIds.Remove(item.SavedId);
-                _autoGameSavedIds.Remove(item.SavedId);
-                _libraryItems = _libraryItems
-                    .Where(candidate => !string.Equals(
-                        candidate.SavedId, item.SavedId, StringComparison.Ordinal)).ToArray();
-                _items = _libraryItems;
-                var visibleAfter = ResolveCuratedItemsLocked();
-                _selectedAppId = visibleAfter.Count == 0
-                    ? null
-                    : visibleAfter[Math.Clamp(removedIndex, 0, visibleAfter.Count - 1)].AppId;
-                _status = $"Removed {item.DisplayName} from your library";
-                toastMessage = _status;
+                ShowToast("Library unchanged", toastMessage, ToastTone.Warning);
+                return;
             }
-            savedIds = _curatedSavedIds.ToArray();
-            autoGameSavedIds = _autoGameSavedIds.ToArray();
-            excludedGameSavedIds = _excludedGameSavedIds.ToArray();
-            selectedSavedId = _libraryItems.FirstOrDefault(candidate => string.Equals(
-                candidate.AppId, _selectedAppId, StringComparison.Ordinal))?.SavedId;
+            var persistence = await PersistLibraryAsync(
+                    savedIds, autoGameSavedIds, excludedGameSavedIds,
+                    selectedSavedId, commandLifetime.Token, candidateItems,
+                    generation, baseline, revision)
+                .ConfigureAwait(false);
+            commandLifetime.Token.ThrowIfCancellationRequested();
+            if (persistence.Saved)
+            {
+                lock (_gate) _status = toastMessage;
+            }
+            ShowToast(
+                persistence.Saved ? "Library updated" : "Library not saved",
+                persistence.Saved
+                    ? toastMessage
+                    : persistence.Rejected
+                        ? "Add a previously excluded game back before removing another"
+                        : "The durable library could not be updated",
+                persistence.Saved ? ToastTone.Success : ToastTone.Danger);
         }
-        if (exclusionRefused)
+        catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
         {
-            ShowToast("Library unchanged", toastMessage!, ToastTone.Warning);
-            return;
+            if (cancellationToken.IsCancellationRequested) throw;
         }
-        var persistence = await PersistLibraryAsync(
-            savedIds, autoGameSavedIds, excludedGameSavedIds,
-            selectedSavedId, cancellationToken, candidateItems).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        ShowToast(
-            persistence.Saved ? "Library updated" : "Library not saved",
-            persistence.Saved
-                ? toastMessage!
-                : persistence.Rejected
-                    ? "Add a previously excluded game back before removing another"
-                    : "The durable library could not be updated",
-            persistence.Saved ? ToastTone.Success : ToastTone.Danger);
+        finally
+        {
+            if (acquired)
+            {
+                lock (_gate) _libraryMutationBusy = false;
+                _commandGate.Release();
+                Invalidate();
+            }
+        }
     }
 
-    private bool TryAddExcludedGameLocked(string savedId)
+    private static bool TryAddExcludedGame(List<string> excludedSavedIds, string savedId)
     {
-        if (_excludedGameSavedIds.Contains(savedId, StringComparer.Ordinal)) return true;
-        if (_excludedGameSavedIds.Count == MaximumExcludedGames) return false;
-        _excludedGameSavedIds.Add(savedId);
+        if (excludedSavedIds.Contains(savedId, StringComparer.Ordinal)) return true;
+        if (excludedSavedIds.Count == MaximumExcludedGames) return false;
+        excludedSavedIds.Add(savedId);
         return true;
+    }
+
+    private string? NearestSurvivingSavedIdLocked(
+        string removedSavedId,
+        IReadOnlyList<string> survivingSavedIds)
+    {
+        var visible = ResolveCuratedItemsLocked();
+        var removedIndex = visible.ToList().FindIndex(item => string.Equals(
+            item.SavedId, removedSavedId, StringComparison.Ordinal));
+        var surviving = visible.Where(item => survivingSavedIds.Contains(
+                item.SavedId, StringComparer.Ordinal))
+            .Select(item => item.SavedId)
+            .ToArray();
+        if (surviving.Length == 0) return survivingSavedIds.FirstOrDefault();
+        return surviving[Math.Clamp(removedIndex, 0, surviving.Length - 1)];
     }
 
     private IReadOnlyList<WidgetAppLibraryItem> ResolveCuratedItemsLocked()
@@ -781,6 +864,7 @@ public sealed class GamesAppsWidget : Widget
             }
             _launchingAppId = null;
             _loadingMore = false;
+            _libraryMutationBusy = false;
             hasLibrarySnapshot = _hasLibrarySnapshot;
         }
         _ = Operations.RunLatest(
@@ -843,9 +927,14 @@ public sealed class GamesAppsWidget : Widget
             var generation = Interlocked.Increment(ref _generation);
             lock (_gate)
             {
-                _viewState = GamesAppsViewState.Loading;
+                _viewState = _hasLibrarySnapshot
+                    ? GamesAppsViewState.Ready
+                    : GamesAppsViewState.Loading;
                 _page = GamesAppsPage.Library;
-                _status = "Reloading your saved library…";
+                _items = _libraryItems;
+                _status = _hasLibrarySnapshot
+                    ? LibraryStatusLocked() + " · refreshing"
+                    : "Reloading your saved library…";
                 _launchingAppId = null;
                 _loadingMore = false;
             }
@@ -877,6 +966,7 @@ public sealed class GamesAppsWidget : Widget
         {
             _launchingAppId = null;
             _loadingMore = false;
+            _libraryMutationBusy = false;
         }
     }
 
@@ -1096,8 +1186,10 @@ public sealed class GamesAppsWidget : Widget
         string? selectedSavedId,
         string? liveSelectedSavedId) =>
         items.FirstOrDefault(item => string.Equals(
-            item.SavedId, liveSelectedSavedId ?? selectedSavedId,
-            StringComparison.Ordinal))?.AppId ?? items.FirstOrDefault()?.AppId;
+            item.SavedId, selectedSavedId, StringComparison.Ordinal))?.AppId ??
+        items.FirstOrDefault(item => string.Equals(
+            item.SavedId, liveSelectedSavedId, StringComparison.Ordinal))?.AppId ??
+        items.FirstOrDefault()?.AppId;
 
     private async Task OpenCatalogAsync(CancellationToken cancellationToken)
     {
@@ -1515,7 +1607,7 @@ public sealed class GamesAppsWidget : Widget
         }
         catch (Exception)
         {
-            lock (_gate) _status = "Library changed for this session · saving failed";
+            lock (_gate) _status = "Library update was not saved";
             Invalidate();
             return new LibraryPersistenceResult(Saved: false, Rejected: false);
         }

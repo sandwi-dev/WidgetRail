@@ -32,7 +32,14 @@ explicit game-library source, not a guess based on process or executable names.
   Library X removes the focused entry. Removing a Game records its exact
   authority-scoped SavedId as an exclusion, so the same identity stays absent
   after restart, disappearance, and reappearance. Adding it explicitly clears
-  that exclusion.
+  that exclusion. Catalog and Library removal first build one immutable state
+  delta, then publish it only after the bounded private-state compare-and-swap
+  succeeds. A write failure leaves the complete prior Library visible; a CAS
+  conflict reapplies only the requested delta to the newer durable state, so
+  unrelated membership, order, display rows, and exclusions do not disappear.
+  The bounded display projection is canonical before validation, including
+  trimming whitespace exposed by the 20-rune truncation boundary; one long
+  label therefore cannot invalidate and reset an otherwise valid Library.
 - Both surfaces use stable hashed UI IDs; widget snapshots contain only display
   names, conservative kinds, broker-issued short-lived AppIds, and
   authority-scoped SavedIds. Resolved Library entries may also contain a
@@ -92,6 +99,11 @@ explicit game-library source, not a guess based on process or executable names.
   action, while loading is non-focusable and cannot strand controller focus.
 - A failed fresh authority refresh retains the display-only Library with an
   explicit unavailable status; it never promotes stale rows to launchable.
+  Initial activation, reactivation, and explicit Y refresh keep that last-good
+  Library tree in place while reconciliation runs, including exactly one
+  reachable **Add applications** action. Background work may change status or
+  disable a row while its authority is checked, but it does not replace a Ready
+  Library with a transient loading tree.
   Moving to Background cancels the active load lifetime and rejects even a
   cancellation-ignoring late provider result. The manifest uses
   `unload-after-idle` with a 120-second idle interval; the bridge can recreate
@@ -114,6 +126,10 @@ essential action. Names are sanitized to 120 characters and remain a two-line,
 ellipsis-bounded part of the one focusable AppTile. High-contrast captures and
 semantic labels provide non-color state evidence; physical display,
 controller, and assistive-technology sign-off remains manual release evidence.
+The Library and Catalog now request a safe 600-DIP preferred height, up from the
+430-DIP Library baseline. That adds more than two normal 78-DIP row pitches when
+the host safe area allows it; the existing minimums and Scroll behavior still
+bound compact and 150% layouts.
 
 ## Public SDK contract
 
@@ -249,7 +265,9 @@ location, and content hash, then opens only
 Focused tests cover first and later trusted-Game discovery, idempotence, atomic
 v1/v2/unsupported/invalid-state reset, current-v3 restart continuity,
 automatic-versus-explicit provenance, bounded exclusions, concurrent
-compare-and-swap exclusion, disappearance/reappearance, same-title identity
+compare-and-swap exclusion, exact one-row Catalog removal across Back,
+invalidation, delayed and failed fresh-worker reconciliation, write failure,
+and a forced CAS conflict, disappearance/reappearance, same-title identity
 replacement, stable order/focus across AppId rotation, stale action rejection,
 healthy empty and sanitized failure states, Catalog add/remove,
 confirmed recent-first ordering, nearest-row removal focus, opaque selected

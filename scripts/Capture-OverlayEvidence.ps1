@@ -235,6 +235,10 @@ $cases = @(
     [ordered]@{ id = 'games-catalog-wide'; packageId = 'org.gbar.firstparty.games-apps'; state = 'catalog'; profile = 'wide-high-contrast' },
     [ordered]@{ id = 'games-populated-standard'; packageId = 'org.gbar.firstparty.games-apps'; state = 'populated'; profile = 'standard-default' },
     [ordered]@{ id = 'games-populated-wide'; packageId = 'org.gbar.firstparty.games-apps'; state = 'populated'; profile = 'wide-high-contrast' },
+    [ordered]@{ id = 'games-removing-standard'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removing'; profile = 'standard-default' },
+    [ordered]@{ id = 'games-removed-compact'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removed'; profile = 'compact-default' },
+    [ordered]@{ id = 'games-removed-accessible'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removed'; profile = 'compact-accessible' },
+    [ordered]@{ id = 'games-removed-wide'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removed'; profile = 'wide-high-contrast' },
     [ordered]@{ id = 'spotify-client-id-compact'; packageId = 'org.gbar.samples.spotify'; state = 'initial'; profile = 'compact-default' },
     [ordered]@{ id = 'spotify-client-id-accessible'; packageId = 'org.gbar.samples.spotify'; state = 'initial'; profile = 'compact-accessible' },
     [ordered]@{ id = 'spotify-setup-compact'; packageId = 'org.gbar.samples.spotify'; state = 'setup'; profile = 'compact-default' },
@@ -452,7 +456,7 @@ try {
         semanticInvariants = $manifestInvariants
         gaps = $index.gaps
         limitations = @($index.limitations) + @(
-            'The current 12-capture matrix covers automatic, catalog, and mixed Games & Apps surfaces plus Spotify setup surfaces; managed suites retain the full loading, empty, failure, mutation, and bounded-page semantic matrix.',
+            'The retained capture matrix covers automatic, catalog, mixed, removing, and removed Games & Apps surfaces plus Spotify setup surfaces; managed suites retain the full loading, empty, failure, mutation, and bounded-page semantic matrix.',
             'Settings permission-detail capture remains an explicit gap.',
             'Hardware/window evidence for controller suppression and overlay z-order is outside this standalone auth-free artifact set.')
         retainedFiles = $null
