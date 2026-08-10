@@ -470,6 +470,30 @@ Up/Down navigation.
   control-plane slot, invalidation/failure events, no-poll platform-appearance revisions,
   globally layered widget themes, bounded shell appearance, and computed GBSS
   styles.
+  Request scheduling is now isolated behind one internal dispatcher that owns
+  unique request IDs, the global admitted-request bound, per-widget FIFO tails,
+  session-fatal cancellation, and a production-enforced two-second drain
+  deadline. One closed typed classifier maps strictly decoded known requests to
+  global or canonical widget keys; malformed and unknown requests receive no
+  implicit widget scheduling key. Deadline-expired cancellation-ignoring tasks
+  lose their request IDs, tails, and capacity slots but remain explicitly
+  observed in quarantine until termination, with late reply and session-fatal
+  publication suppressed. The server retains framing, decoding, the reserved
+  Stop lane, catalog/client lifetime, replies, and the serialized write path.
+  The existing per-client operation gate remains only a
+  worker-lifecycle/residency mutex for coordination with idle unload and catalog
+  retirement; it does not duplicate request admission or FIFO ordering. The
+  server authority surface decreased from 1,380 lines (62,914 bytes) to 1,312
+  lines (59,775 bytes), with the 327-line dispatcher and 118-line classifier
+  replacing the server's
+  semaphore, active-ID/task registries, ordering gate, per-widget tails, fatal
+  exception slot, and scheduling continuation. Retained focused Release run
+  `20260810T133940Z-18b2982e` completed in 21.5 seconds: WidgetBridge 51/51,
+  WidgetWorkerHost 9/9, and the documentation contract over 52 Markdown files.
+  Correction run `20260810T144506Z-bbd2dbe6` retained WorkerHost 9/9 and exposed
+  one predecessor-failure regression in Bridge (51/52); after narrowing late-
+  failure suppression to handlers started under dispatcher-owned drain, final
+  focused run `20260810T145134Z-be1c9952` passed Bridge 52/52 in 14.3 seconds.
 - `WidgetBridge` and the native declarative renderer preserve the distinct
   `loadingIndicator` render role (rather than treating it as a container) and
   understand protocol-v7 ActionSurface orientation, computed style, bounded
@@ -1371,6 +1395,23 @@ with C++ installed:
   ownership, incremental `streaming` consent, Premium/EME/autoplay live proof,
   and any applicable Spotify streaming approval remain. See [Spotify
   integration status](spotify-integration.md).
+  DLV-034 preserves one package-identity/OAuth/vault/token-refresh/lifecycle/
+  local-playback/event authority while extracting narrow playback and collection
+  endpoint families, bounded HTTP retry/rate-limit policy, and strict response
+  parsing. The authority type decreased from 1,724 lines (81,619 bytes) to 1,032
+  lines (48,862 bytes); extracted owners are 368, 103, and 564 lines
+  respectively and receive no browser, vault, token-session, local-player, or
+  event authority. Injected-response bounds now match the production 512 KiB
+  transport limit. Retained focused Release run
+  `20260810T140244Z-2b2f8821` completed in 12.5 seconds: Windows Spotify provider
+  32/32 and PlatformBroker 51/51. Follow-up focused Release run
+  `20260810T141733Z-0e24d4e1` completed in 5.3 seconds with Windows Spotify
+  provider 34/34. Its manually gated backend cases prove that a
+  cancellation-ignoring refresh cannot publish/cache an access token, rotate
+  or save a refresh credential, or authorize the next request, and that
+  disconnect stops local playback, deletes the vault entry, clears the cached
+  token, and prevents later use of the disconnected session. Live-account
+  evidence remains separate.
 - The code clears unused native client pixels to the layered color key,
   separates Now Playing snapshot reads from live-subscription failures, loads
   the Games catalog only after Add, and preserves measured intrinsic height for

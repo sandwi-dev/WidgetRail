@@ -259,8 +259,15 @@ mode publicly.
 The Community addon must be equivalent to an independent developer package. It
 must not receive a trusted worker exception or ambient Internet access.
 
-- A trusted Spotify provider owns HTTPS, PKCE, refresh, tokens, rate limiting,
-  response validation, and the generated Web API client.
+- One trusted Spotify integration backend owns package identity, OAuth/PKCE,
+  the credential vault, access-token refresh/401 replacement, lifecycle, local
+  playback, and event publication. It supplies only an exact method/URI/scope/
+  body authenticated-request seam to internal playback and collection endpoint
+  families. A separate bounded HTTP policy owns retry and retained rate limits;
+  a strict response parser owns wire validation and sanitized projection. Those
+  endpoint/policy/parser owners have no browser, vault, token, integration-
+  session, local-player, or event authority. Transport and parser boundaries
+  both enforce the 512 KiB response limit, including injected test transports.
 - Pin a reviewed copy/digest of Spotify's [official OpenAPI
   schema](https://developer.spotify.com/reference/web-api/open-api-schema.yaml),
   generate only the endpoint subset used by the provider, and review schema
@@ -293,6 +300,20 @@ must not receive a trusted worker exception or ambient Internet access.
 The public SDK shape is not frozen until provider contract tests prove auth
 loss, refresh rotation, scope denial, no active device, restrictions, stale
 responses, and rate limiting without leaking Spotify wire models.
+
+DLV-034 reduced the integration/token owner from 1,724 lines (81,619 bytes) to
+1,032 lines (48,862 bytes). The extracted internal owners are the playback plus
+collection endpoint boundary (368 lines), HTTP retry/rate-limit policy (103),
+and strict response parsing (564). Direct fixtures construct endpoint families
+without browser, vault, token session, or local-player dependencies and cover
+explicit scopes, concurrent token demand, 401 refresh, 429/backoff, malformed
+and oversized responses, and stale client identity. A manually gated backend
+fixture also completes a refresh transport after caller cancellation and proves
+that its access token and rotated refresh credential are neither published nor
+reused; the next request performs a fresh exchange. A credential-free local-host
+fixture proves disconnect stops playback, deletes the vault entry, clears the
+cached access token, and prevents a later request from reaching Spotify with the
+pre-disconnect session. No public provider/broker protocol changed.
 
 ## Rate limiting and recovery
 

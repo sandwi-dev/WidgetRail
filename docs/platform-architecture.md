@@ -38,7 +38,7 @@ flowchart LR
 | `src/PlatformBroker` | Version-1 audio/network/Bluetooth/recent-activity/app-library/media/companion capability contracts plus the separate host-granted private-state service; nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for master/per-session volume/mute, sanitized default-device visibility, and current default-microphone volume/mute. It does not switch default devices or capture audio samples. |
 | `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse state, explicit nearby scans, opaque saved/open connection, and software-radio control. It does not handle credentials/profile XML or query current SSID/signal automatically. |
-| `src/WindowsSpotifyProvider` | Composed trusted Spotify Web API provider: exact-loopback PKCE, Windows credential-vault refresh tokens, package identity scoping, player snapshot/control projection, bounded rate-limit handling, and sanitized errors. The separately packaged Community widget uses only its typed SDK surface; the isolated Web Playback SDK host remains a separately gated later slice. |
+| `src/WindowsSpotifyProvider` | Composed trusted Spotify Web API provider: one package-identity/OAuth/vault/token-refresh owner supplies a narrow authenticated-request seam to separate playback and collection endpoint families; a bounded HTTP retry/rate-limit policy and strict response parser have no token or lifecycle authority. Exact-loopback PKCE, response/request byte limits, cancellation, 401 refresh, player projection, and sanitized errors remain host-owned. The separately packaged Community widget uses only its typed SDK surface; the isolated Web Playback SDK host remains a separately gated later slice. |
 | `src/WindowsBluetoothProvider` | Lazy WinRT software-radio and sanitized bounded device discovery, explicit association pairing for one current opaque ID, and a separately granted Windows Settings management fallback. Native IDs remain host-only. It does not unpair or offer generic/profile-agnostic device connection. |
 | `src/WindowsActivityProvider` | Lazy WinEvent foreground/destroy observation with bounded opaque read-only running-app summaries; no polling, registry history, public process identifiers, switching, or relaunch. |
 | `src/WindowsAppLibraryProvider` | Lazy bounded Start Menu plus current-user AppsFolder catalog on a process-wide Shell STA lane, with sanitized names, deduplication, short-lived launch IDs, host-only identities, and authority-scoped durable SavedIds. Launch re-enumerates the exact shortcut or canonical AUMID before constrained Shell open/null-argument packaged activation; paths, AUMIDs, arguments, PIDs, and raw identities never enter widget payloads. |
@@ -76,6 +76,32 @@ valid and can use a Stack/Row/Scroll-level shortcut such as modal B.
 All transport messages have explicit size limits, protocol versions, strict
 camel-case JSON, and unknown-member rejection. The native process never loads
 third-party managed assemblies.
+
+### Bridge request scheduling
+
+The bridge server owns session framing, request decoding, the reserved Stop
+lane, catalog/client lifetime, replies, and the serialized write path. An
+internal request dispatcher owns the independent scheduling policy: unique
+request IDs, the global admitted-request bound, per-widget FIFO tails,
+session-fatal cancellation, and bounded drain. One closed typed classifier maps
+every known post-handshake request and its strictly decoded payload to a global
+or canonical widget scheduling key; malformed and unknown requests never gain
+an implicit widget key. Each admitted entry is removed from the active-ID and
+widget-tail registries on success, failure, or cancellation.
+
+Drain cancels admitted work and enforces a two-second production deadline. If a
+handler ignores cancellation, the dispatcher releases its request ID, FIFO
+tail, and capacity slot at that deadline, but retains the continuing task in an
+observed quarantine until it actually terminates. The canceled request token
+prevents a late reply, and a quarantined late failure cannot become a fatal for
+the closed or replacement session. This is bounded session teardown, not a
+claim that cancellation can terminate arbitrary managed code.
+
+The per-client operation gate remains a worker-lifecycle and residency mutex.
+It coordinates an admitted operation with idle unload and catalog retirement,
+which do not enter the request dispatcher; it is not a second FIFO or request-
+admission mechanism. This keeps request ordering in one owner while preserving
+one bridge owner for worker and lease mutation.
 
 ## Capability flow
 
