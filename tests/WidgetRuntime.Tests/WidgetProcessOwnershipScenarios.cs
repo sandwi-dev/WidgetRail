@@ -60,7 +60,7 @@ internal static class WidgetProcessOwnershipScenarios
         session.AttachContentLease(contentLease);
         session.AttachCompanion(companion);
         session.StartCompanion();
-        session.AttachReader(Task.CompletedTask);
+        session.StartReader(_ => Task.CompletedTask);
 
         var first = session.DisposeAsync();
         var second = session.DisposeAsync();
@@ -101,6 +101,295 @@ internal static class WidgetProcessOwnershipScenarios
         retired.GestureReservations.Clear();
         Equal(authority, replacement.GestureReservations.Take(Activation(22, 44)));
         return Task.CompletedTask;
+    }
+
+    internal static async Task StopDuringConstructionRejectsLateResources()
+    {
+        var processStartReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseProcessStart = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var terminalStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var lease = new CountingLease();
+        var companion = new TrackingCompanion();
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            LifecycleDrainTimeout = TimeSpan.Zero,
+            BeforeProcessStartAsync = _ =>
+            {
+                processStartReached.TrySetResult();
+                return releaseProcessStart.Task;
+            },
+            SessionTerminalStarted = () => terminalStarted.TrySetResult(),
+        };
+        await using var client = CreateClient(hooks, companion, () => lease);
+
+        var connect = client.GetSnapshotAsync();
+        await processStartReached.Task;
+        var stop = client.StopAsync();
+        await terminalStarted.Task;
+        await stop;
+        releaseProcessStart.TrySetResult();
+        await ThrowsAnyAsync(async () => await connect);
+
+        Equal(0, client.Starts);
+        False(client.IsRunning, "Stop allowed a paused construction to start a worker.");
+        Equal(1, lease.DisposeCount);
+        Equal(1, companion.DisposeCount);
+        Equal(0, companion.RunCount);
+    }
+
+    internal static async Task StaleNotificationsCannotCrossReplacement()
+    {
+        await AssertStalePublicationSuppressedAsync(
+            "invalidated",
+            async client =>
+            {
+                await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+                await client.AdmitActionAsync(new WidgetActionEvent("invalidate", "button"));
+            });
+        await AssertStalePublicationSuppressedAsync(
+            "action-failed",
+            async client =>
+            {
+                await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+                await client.AdmitActionAsync(new WidgetActionEvent("queued-fail", "direct"));
+            });
+        await AssertStalePublicationSuppressedAsync(
+            "worker-failed",
+            async client =>
+            {
+                await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+                await client.AdmitActionAsync(new WidgetActionEvent("crash", "button"));
+            });
+    }
+
+    internal static async Task StaleResponseCannotCompleteAfterReplacement()
+    {
+        using var responseRelease = new ManualResetEventSlim();
+        var responseReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var responseCompleted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var terminalStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstSnapshot = 0;
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            BeforeResponseCorrelation = kind =>
+            {
+                if (!string.Equals(kind, MessageTypes.Snapshot, StringComparison.Ordinal) ||
+                    Interlocked.Increment(ref firstSnapshot) != 1)
+                    return;
+                responseReached.TrySetResult();
+                responseRelease.Wait();
+            },
+            ResponseCorrelationCompleted = (kind, completed) =>
+            {
+                if (string.Equals(kind, MessageTypes.Snapshot, StringComparison.Ordinal) &&
+                    !completed)
+                    responseCompleted.TrySetResult(completed);
+            },
+            SessionTerminalStarted = () => terminalStarted.TrySetResult(),
+        };
+        await using var client = CreateClient(hooks);
+        var staleSnapshot = client.GetSnapshotAsync();
+        await responseReached.Task;
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await client.StopAsync(canceled.Token);
+        await terminalStarted.Task;
+        var replacementSnapshot = await client.GetSnapshotAsync();
+        responseRelease.Set();
+        False(await responseCompleted.Task,
+            "A retired response completed after the replacement session won.");
+        await ThrowsAnyAsync(async () => await staleSnapshot);
+        True(replacementSnapshot.Sequence > 0,
+            "The replacement session did not return its own snapshot.");
+    }
+
+    internal static async Task StaleGestureCannotGrantReplacementAuthority()
+    {
+        using var publicationRelease = new ManualResetEventSlim();
+        var publicationReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var terminalStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var publicationCompleted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var companion = new TrackingCompanion();
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            BeforePublicationAdmission = kind =>
+            {
+                if (!string.Equals(kind, "gesture", StringComparison.Ordinal)) return;
+                publicationReached.TrySetResult();
+                publicationRelease.Wait();
+            },
+            SessionTerminalStarted = () => terminalStarted.TrySetResult(),
+            PublicationAdmissionCompleted = (kind, admitted) =>
+            {
+                if (string.Equals(kind, "gesture", StringComparison.Ordinal))
+                    publicationCompleted.TrySetResult(admitted);
+            },
+        };
+        await using var client = CreateClient(
+            hooks, companion, extraArguments: ["--gesture-custom-probe"]);
+        var snapshot = await client.GetSnapshotAsync();
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+        var authority = new WidgetDashboardGestureAuthority(
+            WidgetMediaCapabilities.Control.CapabilityId,
+            WidgetMediaCapabilities.Control.OperationId,
+            91,
+            snapshot.Sequence,
+            TimeSpan.FromSeconds(2));
+        var input = client.SendControllerInputAsync(
+            new ControllerInputEvent(
+                ControllerButton.X,
+                ControllerEventPhase.Pressed,
+                ControllerInputContext.DashboardQuickAction,
+                Sequence: 91,
+                SnapshotSequence: snapshot.Sequence),
+            authority);
+        await publicationReached.Task;
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await client.StopAsync(canceled.Token);
+        await terminalStarted.Task;
+        _ = await client.GetSnapshotAsync();
+        publicationRelease.Set();
+        False(await publicationCompleted.Task,
+            "A retired gesture publication was admitted after replacement.");
+        await ThrowsAnyAsync(async () => await input);
+        Equal(0, companion.GrantedAuthorities.Count);
+    }
+
+    internal static async Task CancellationIgnoringGestureGrantIsRevoked()
+    {
+        var terminalStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var companion = new TrackingCompanion { HoldGestureGrant = true };
+        var replacementCompanion = new TrackingCompanion();
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            SessionTerminalStarted = () => terminalStarted.TrySetResult(),
+        };
+        await using var client = CreateClient(
+            hooks, companion, extraArguments: ["--gesture-custom-probe"],
+            replacementCompanion: replacementCompanion);
+        var snapshot = await client.GetSnapshotAsync();
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+        var authority = new WidgetDashboardGestureAuthority(
+            WidgetMediaCapabilities.Control.CapabilityId,
+            WidgetMediaCapabilities.Control.OperationId,
+            92,
+            snapshot.Sequence,
+            TimeSpan.FromSeconds(2));
+        var input = client.SendControllerInputAsync(
+            new ControllerInputEvent(
+                ControllerButton.X,
+                ControllerEventPhase.Pressed,
+                ControllerInputContext.DashboardQuickAction,
+                Sequence: 92,
+                SnapshotSequence: snapshot.Sequence),
+            authority);
+        await companion.GrantStarted.Task;
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await client.StopAsync(canceled.Token);
+        await terminalStarted.Task;
+        _ = await client.GetSnapshotAsync();
+        companion.ReleaseGrant();
+        await companion.Revoked.Task;
+        await ThrowsAnyAsync(async () => await input);
+        Equal(1, companion.GrantedAuthorities.Count);
+        Equal(92L, companion.RevokedInputSequences.Single());
+    }
+
+    private static async Task AssertStalePublicationSuppressedAsync(
+        string publicationKind,
+        Func<WidgetProcessClient, Task> trigger)
+    {
+        using var publicationRelease = new ManualResetEventSlim();
+        var publicationReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var terminalStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var publicationCompleted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            BeforePublicationAdmission = kind =>
+            {
+                var matches = publicationKind == "worker-failed"
+                    ? kind is "process-exited" or "transport-failed"
+                    : string.Equals(kind, publicationKind, StringComparison.Ordinal);
+                if (!matches) return;
+                publicationReached.TrySetResult();
+                publicationRelease.Wait();
+            },
+            SessionTerminalStarted = () => terminalStarted.TrySetResult(),
+            PublicationAdmissionCompleted = (kind, admitted) =>
+            {
+                var matches = publicationKind == "worker-failed"
+                    ? kind is "process-exited" or "transport-failed"
+                    : string.Equals(kind, publicationKind, StringComparison.Ordinal);
+                if (matches) publicationCompleted.TrySetResult(admitted);
+            },
+        };
+        await using var client = CreateClient(hooks);
+        var published = 0;
+        if (publicationKind == "invalidated") client.Invalidated += (_, _) => published++;
+        else if (publicationKind == "action-failed") client.ActionFailed += (_, _) => published++;
+        else client.Failed += (_, _) => published++;
+
+        var triggerTask = trigger(client);
+        await publicationReached.Task;
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await client.StopAsync(canceled.Token);
+        await terminalStarted.Task;
+        _ = await client.GetSnapshotAsync();
+        publicationRelease.Set();
+        False(await publicationCompleted.Task,
+            "A retired notification was admitted after replacement.");
+        try { await triggerTask; }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        Equal(0, published);
+    }
+
+    private static WidgetProcessClient CreateClient(
+        WidgetProcessClientTestHooks hooks,
+        IWidgetProcessCompanionSession? companion = null,
+        Func<IDisposable>? processLeaseFactory = null,
+        IReadOnlyList<string>? extraArguments = null,
+        IWidgetProcessCompanionSession? replacementCompanion = null)
+    {
+        var executable = Environment.ProcessPath ??
+            throw new InvalidOperationException("Test process path is unavailable.");
+        var companionGeneration = 0;
+        return new WidgetProcessClient(new WidgetProcessOptions
+        {
+            ExecutablePath = executable,
+            Arguments = extraArguments ?? [],
+            WidgetInstanceId = "runtime.test",
+            ConnectTimeout = TimeSpan.FromSeconds(3),
+            RequestTimeout = TimeSpan.FromSeconds(2),
+            MaximumRestartAttempts = 2,
+            MaximumMessageBytes = 64 * 1024,
+            MemoryLimitBytes = 64L * 1024 * 1024,
+            CompanionSessionFactory = companion is null
+                ? null
+                : _ => Interlocked.Increment(ref companionGeneration) == 1 ||
+                    replacementCompanion is null
+                        ? companion
+                        : replacementCompanion,
+            ProcessLeaseFactory = processLeaseFactory,
+            IsolationPolicy = WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
+        }, TimeProvider.System, hooks);
     }
 
     private static RuntimeEnvelope Response(long requestId, string type) => new()
@@ -156,6 +445,13 @@ internal static class WidgetProcessOwnershipScenarios
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
+    private static async Task ThrowsAnyAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch { return; }
+        throw new InvalidOperationException("Expected an exception.");
+    }
+
     private sealed class OwnershipTimeProvider : TimeProvider
     {
         private long _timestamp;
@@ -201,5 +497,58 @@ internal static class WidgetProcessOwnershipScenarios
         }
 
         internal void ReleaseDispose() => _dispose.TrySetResult();
+    }
+
+    private sealed class TrackingCompanion : IWidgetProcessCompanionSession
+    {
+        private readonly TaskCompletionSource _grantRelease = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        public IReadOnlyList<string> WorkerArguments { get; } = [];
+        internal int RunCount { get; private set; }
+        internal int DisposeCount { get; private set; }
+        internal List<WidgetDashboardGestureAuthority> GrantedAuthorities { get; } = [];
+        internal List<long> RevokedInputSequences { get; } = [];
+        internal bool HoldGestureGrant { get; init; }
+        internal TaskCompletionSource GrantStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Revoked { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task RunAsync(CancellationToken cancellationToken)
+        {
+            RunCount++;
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        }
+
+        public Task SetLifecycleStateAsync(
+            WidgetLifecycleState state,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public async Task GrantDashboardGestureAuthorityAsync(
+            WidgetDashboardGestureAuthority authority,
+            CancellationToken cancellationToken = default)
+        {
+            GrantStarted.TrySetResult();
+            if (HoldGestureGrant) await _grantRelease.Task;
+            GrantedAuthorities.Add(authority);
+        }
+
+        public Task RevokeDashboardGestureAuthorityAsync(
+            long inputSequence,
+            CancellationToken cancellationToken = default)
+        {
+            RevokedInputSequences.Add(inputSequence);
+            Revoked.TrySetResult();
+            return Task.CompletedTask;
+        }
+
+        internal void ReleaseGrant() => _grantRelease.TrySetResult();
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
     }
 }

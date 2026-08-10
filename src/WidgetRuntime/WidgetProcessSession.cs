@@ -11,6 +11,8 @@ internal sealed class WidgetProcessSession(
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly object _terminalGate = new();
     private Task? _terminalTask;
+    private int _activePublications;
+    private TaskCompletionSource? _publicationsDrained;
 
     internal WidgetPendingRequests PendingRequests { get; } = new();
     internal WidgetDashboardGestureReservations GestureReservations { get; } =
@@ -57,11 +59,35 @@ internal sealed class WidgetProcessSession(
         }
     }
 
-    internal void AttachProcessLease(IDisposable lease) =>
-        _processLease = lease ?? throw new ArgumentNullException(nameof(lease));
+    internal void AttachProcessLease(IDisposable lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_terminalGate)
+        {
+            if (_terminalTask is null)
+            {
+                _processLease = lease;
+                return;
+            }
+        }
+        lease.Dispose();
+        throw new ObjectDisposedException(nameof(WidgetProcessSession));
+    }
 
-    internal void AttachContentLease(IWidgetProcessContentLease lease) =>
-        _contentLease = lease ?? throw new ArgumentNullException(nameof(lease));
+    internal void AttachContentLease(IWidgetProcessContentLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        lock (_terminalGate)
+        {
+            if (_terminalTask is null)
+            {
+                _contentLease = lease;
+                return;
+            }
+        }
+        lease.Dispose();
+        throw new ObjectDisposedException(nameof(WidgetProcessSession));
+    }
 
     internal IWidgetProcessContentLease? ContentLease => _contentLease;
 
@@ -69,25 +95,83 @@ internal sealed class WidgetProcessSession(
         NamedPipeServerStream pipe,
         LengthPrefixedJsonChannel channel)
     {
-        Pipe = pipe ?? throw new ArgumentNullException(nameof(pipe));
-        Channel = channel ?? throw new ArgumentNullException(nameof(channel));
-        _cancellation = new CancellationTokenSource();
+        ArgumentNullException.ThrowIfNull(pipe);
+        ArgumentNullException.ThrowIfNull(channel);
+        lock (_terminalGate)
+        {
+            if (_terminalTask is null)
+            {
+                Pipe = pipe;
+                Channel = channel;
+                _cancellation = new CancellationTokenSource();
+                return;
+            }
+        }
+        pipe.Dispose();
+        throw new ObjectDisposedException(nameof(WidgetProcessSession));
     }
 
-    internal void AttachCompanion(IWidgetProcessCompanionSession companion) =>
-        Companion = companion ?? throw new ArgumentNullException(nameof(companion));
-
-    internal void AttachProcess(Process process, WindowsWorkerJob? windowsJob)
+    internal void AttachCompanion(IWidgetProcessCompanionSession companion)
     {
-        Process = process ?? throw new ArgumentNullException(nameof(process));
-        WindowsJob = windowsJob;
+        ArgumentNullException.ThrowIfNull(companion);
+        lock (_terminalGate)
+        {
+            if (_terminalTask is null)
+            {
+                Companion = companion;
+                return;
+            }
+        }
+        _ = ObserveCleanupAsync(companion.DisposeAsync().AsTask());
+        throw new ObjectDisposedException(nameof(WidgetProcessSession));
     }
 
-    internal void StartCompanion() =>
-        _companionTask = Companion?.RunAsync(CancellationToken);
+    internal void StartProcess(Func<(Process Process, WindowsWorkerJob? WindowsJob)> start)
+    {
+        ArgumentNullException.ThrowIfNull(start);
+        lock (_terminalGate)
+        {
+            ObjectDisposedException.ThrowIf(_terminalTask is not null, this);
+            var started = start();
+            Process = started.Process ??
+                throw new WidgetProcessException("Worker process did not start.");
+            WindowsJob = started.WindowsJob;
+        }
+    }
 
-    internal void AttachReader(Task readerTask) =>
-        _readerTask = readerTask ?? throw new ArgumentNullException(nameof(readerTask));
+    internal void StartCompanion()
+    {
+        lock (_terminalGate)
+        {
+            ObjectDisposedException.ThrowIf(_terminalTask is not null, this);
+            _companionTask = Companion?.RunAsync(CancellationToken);
+        }
+    }
+
+    internal void StartReader(Func<CancellationToken, Task> start)
+    {
+        ArgumentNullException.ThrowIfNull(start);
+        lock (_terminalGate)
+        {
+            ObjectDisposedException.ThrowIf(_terminalTask is not null, this);
+            _readerTask = start(CancellationToken);
+        }
+    }
+
+    internal bool TryBeginPublication(out IDisposable admission)
+    {
+        lock (_terminalGate)
+        {
+            if (_terminalTask is not null)
+            {
+                admission = null!;
+                return false;
+            }
+            _activePublications++;
+            admission = new PublicationAdmission(this);
+            return true;
+        }
+    }
 
     internal async Task WriteAsync(RuntimeEnvelope message, CancellationToken cancellationToken)
     {
@@ -142,8 +226,31 @@ internal sealed class WidgetProcessSession(
 
     internal Task DisposeAsync(CancellationToken cancellationToken = default)
     {
+        TaskCompletionSource completion;
         lock (_terminalGate)
-            return _terminalTask ??= DisposeCoreAsync(cancellationToken);
+        {
+            if (_terminalTask is not null) return _terminalTask;
+            completion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _terminalTask = completion.Task;
+        }
+        _ = CompleteDisposeAsync(completion, cancellationToken);
+        return completion.Task;
+    }
+
+    private async Task CompleteDisposeAsync(
+        TaskCompletionSource completion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DisposeCoreAsync(cancellationToken).ConfigureAwait(false);
+            completion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
     }
 
     private async Task DisposeCoreAsync(CancellationToken cancellationToken)
@@ -163,7 +270,16 @@ internal sealed class WidgetProcessSession(
             catch (Exception exception) when (exception is not OutOfMemoryException) { }
         }
 
-        var cleanupTasks = new[] { companionDisposeTask, _companionTask, _readerTask }
+        Task publicationDrain;
+        lock (_terminalGate)
+        {
+            publicationDrain = _activePublications == 0
+                ? Task.CompletedTask
+                : (_publicationsDrained ??= new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+        var cleanupTasks = new[]
+            { companionDisposeTask, _companionTask, _readerTask, publicationDrain }
             .Where(task => task is not null)
             .Cast<Task>()
             .Select(ObserveCleanupAsync)
@@ -212,5 +328,25 @@ internal sealed class WidgetProcessSession(
     {
         try { await task.ConfigureAwait(false); }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
+    }
+
+    private void EndPublication()
+    {
+        TaskCompletionSource? drained = null;
+        lock (_terminalGate)
+        {
+            if (--_activePublications == 0)
+            {
+                drained = _publicationsDrained;
+                _publicationsDrained = null;
+            }
+        }
+        drained?.TrySetResult();
+    }
+
+    private sealed class PublicationAdmission(WidgetProcessSession owner) : IDisposable
+    {
+        private WidgetProcessSession? _owner = owner;
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndPublication();
     }
 }
