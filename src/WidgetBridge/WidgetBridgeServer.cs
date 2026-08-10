@@ -14,7 +14,6 @@ namespace GameBarAlternative.WidgetBridge;
 
 public sealed class WidgetBridgeServer : IAsyncDisposable
 {
-    private static readonly TimeSpan EventWriteDeadline = TimeSpan.FromSeconds(4);
     private readonly string _pipeName;
     private readonly int _maximumMessageBytes;
     private readonly PlatformAppearanceService? _appearance;
@@ -23,6 +22,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeCatalogMonitor? _catalogMonitor;
     private readonly BridgeClientRegistry _registry;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private readonly BridgeEventWriteBoundary _eventWriteBoundary;
     private long _diagnosticsRevision;
     private long _hostEffectSequence;
     private BridgeFrameChannel? _channel;
@@ -56,6 +56,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             PublishClientInvalidation,
             PublishClientActionFailure,
             PublishClientFailure);
+        _eventWriteBoundary = new BridgeEventWriteBoundary(
+            new ServerEventWriteAdapter(this));
     }
 
     internal IAppContainerAuthorityRecoveryService AuthorityRecoveryService { private get; init; } =
@@ -777,45 +779,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         T payload,
         CancellationToken publicationCancellation)
     {
-        var gateEntered = false;
-        try
+        await _eventWriteBoundary.WriteAsync(new BridgeEnvelope
         {
-            using var admission = CancellationTokenSource.CreateLinkedTokenSource(
-                _sessionCancellation, publicationCancellation);
-            await _writeGate.WaitAsync(admission.Token).ConfigureAwait(false);
-            gateEntered = true;
-            admission.Token.ThrowIfCancellationRequested();
-            var channel = _channel ?? throw new InvalidOperationException(
-                "Native host is not connected.");
-            using var writeDeadline = CancellationTokenSource.CreateLinkedTokenSource(
-                _sessionCancellation);
-            writeDeadline.CancelAfter(EventWriteDeadline);
-            try
-            {
-                await channel.WriteAsync(new BridgeEnvelope
-                {
-                    Type = type,
-                    Payload = BridgeJson.ToElement(payload),
-                }, writeDeadline.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (
-                !_sessionCancellation.IsCancellationRequested &&
-                writeDeadline.IsCancellationRequested)
-            {
-                // A canceled in-flight frame may be partial. End the session
-                // before any later frame can be written to the same stream.
-                Volatile.Read(ref _activeSessionCancellation)?.Cancel();
-                throw;
-            }
-        }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
-        {
-            // The main request loop owns native-host disconnect handling.
-        }
-        finally
-        {
-            if (gateEntered) _writeGate.Release();
-        }
+            Type = type,
+            Payload = BridgeJson.ToElement(payload),
+        }, publicationCancellation).ConfigureAwait(false);
     }
 
     private void OnAppearanceChanged(object? sender, ThemeSnapshot snapshot) =>
@@ -853,6 +821,25 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             _writeGate.Release();
         }
+    }
+
+    private sealed class ServerEventWriteAdapter(WidgetBridgeServer owner)
+        : IBridgeEventWriteAdapter
+    {
+        public BridgeFrameChannel? Channel => owner._channel;
+        public CancellationToken SessionCancellation => owner._sessionCancellation;
+        public Task AcquireWriterAsync(CancellationToken cancellationToken) =>
+            owner._writeGate.WaitAsync(cancellationToken);
+        public void ReleaseWriter() => owner._writeGate.Release();
+        public CancellationTokenSource CreateDeadline(TimeSpan timeout)
+        {
+            var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+                owner._sessionCancellation);
+            deadline.CancelAfter(timeout);
+            return deadline;
+        }
+        public void AbortSession() =>
+            Volatile.Read(ref owner._activeSessionCancellation)?.Cancel();
     }
 
 

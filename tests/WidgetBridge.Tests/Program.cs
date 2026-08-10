@@ -17,6 +17,7 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
+    ("Event cancellation preserves the serialized frame boundary", BridgeEventWriteBoundaryScenarios.CancellationPreservesFrameBoundary),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
     ("Settings reviews the same catalog selected by the bridge", SettingsUsesSelectedCatalog),

@@ -124,9 +124,12 @@ invalidation, while at most 32 non-coalescible action/runtime failures retain
 FIFO order. Full, closed, and coalesced results create no new publication
 lease; an accepted item owns exactly one lease until send, cancellation, or
 retirement drain. Lane cancellation can withdraw a queued event before writer
-admission. After frame writing begins, the server uses its bounded session
-write deadline instead; timeout ends that pipe session before any subsequent
-frame can follow a possibly partial write.
+admission. One internal event-write boundary owns that admission, the unchanged
+four-second in-flight deadline, and session abort through one server adapter to
+the real frame channel. After frame writing begins, publication cancellation no
+longer interrupts the frame; timeout ends that pipe session before any
+subsequent frame can follow a possibly partial write. Framing bytes and the
+public protocol are unchanged.
 
 Catalog identity mutation only reserves retirement under the registry gate;
 notification cancellation, operation drain, and external client disposal start
@@ -134,7 +137,9 @@ after that gate is released. Cancellation or the internal restart deadline
 abandons fresh-worker publication but leaves the old reserved generation in
 the same tracked exact-once retirement path. Once that path finishes, waiters
 may create one successor. Terminal disposal waits those resource paths and
-active restart owners, attempts every captured client, and retains a bounded
+active retirement tasks, while per-registration resource/terminal completion
+outcomes carry the result to every waiter. Terminal disposal attempts every
+captured client and retains a bounded
 saturating failure count plus the first terminal failure for its shared
 outcome.
 

@@ -677,8 +677,13 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         return true;
     }
 
-    private void StartRetirement(ClientRegistration registration) =>
-        registration.SetRetirementTask(RetireRegistrationAsync(registration));
+    private void StartRetirement(ClientRegistration registration)
+    {
+        // The method catches every terminal exception and publishes completion
+        // through ResourceRetired/RetirementCompletion. _activeRetirements is
+        // the bounded owner used by terminal registry disposal.
+        _ = RetireRegistrationAsync(registration);
+    }
 
     private async Task RetireRegistrationAsync(ClientRegistration registration)
     {
@@ -1095,7 +1100,6 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         internal bool IsRetiring { get; private set; }
         internal bool RetirementStarted { get; set; }
         internal bool RestartReserved { get; set; }
-        internal Task? RetirementTask { get; private set; }
         internal Exception? RetirementFailure { get; set; }
         internal Task RetirementCompletion => _retirementCompletion.Task;
         internal Task ResourceRetired => _resourceRetired.Task;
@@ -1130,13 +1134,6 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
         internal void CompleteResourceRetirementLocked() =>
             _resourceRetired.TrySetResult();
-
-        internal void SetRetirementTask(Task task)
-        {
-            if (RetirementTask is not null)
-                throw new InvalidOperationException("Retirement task was assigned twice.");
-            RetirementTask = task;
-        }
 
         internal void AdmitPublicationLocked()
         {
