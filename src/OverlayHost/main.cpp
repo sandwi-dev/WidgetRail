@@ -10,6 +10,7 @@
 #include "HostAccessibility.h"
 #include "NativeIcons.h"
 #include "NativeStyle.h"
+#include "OverlayChrome.h"
 #include "OverlayPlacement.h"
 #include "OverlayTargeting.h"
 #include "OverlayTransition.h"
@@ -1166,7 +1167,7 @@ private:
                 // state check also closes the race if Win32 timer creation is
                 // temporarily unavailable; it never repaints unless state changed.
                 actionFailureFeedback_.OnControllerTimer();
-                if (overlayTransition_.active()) {
+                if (overlayTransition_.active() || extentTransition_.active()) {
                     AdvanceOverlayTransition(now);
                 }
                 if (awaitingSuccessfulOpenPaint_ &&
@@ -1320,17 +1321,36 @@ private:
             Paint();
             return 0;
         case WM_SIZE:
-            if (renderTarget_ && wParam != SIZE_MINIMIZED &&
-                LOWORD(lParam) != 0 && HIWORD(lParam) != 0) {
-                // The viewport is an input to shell style resolution and
-                // declarative responsive layout, not merely a bitmap extent.
-                // Recreate on the next paint so vw/vh and pixel snapping use
-                // the new client geometry atomically.
-                DiscardGraphicsResources();
+        {
+            const auto width = static_cast<unsigned int>(LOWORD(lParam));
+            const auto height = static_cast<unsigned int>(HIWORD(lParam));
+            const auto resize = gba::PlanRenderTargetResize(
+                static_cast<bool>(renderTarget_), wParam == SIZE_MINIMIZED,
+                width, height);
+            if (resize.resizeInPlace) {
+                // Resize keeps the HWND target allocation/lifecycle stable;
+                // viewport-derived brushes, text formats, renderer resources,
+                // focus geometry, and semantics are rebuilt by the committed
+                // paint at the new extent.
+                DiscardGraphicsResources(false);
+                const HRESULT result = renderTarget_->Resize(D2D1::SizeU(width, height));
+                if (FAILED(result)) {
+                    AppendDiagnostic(
+                        L"Overlay render target resize failed; recreating target hresult=" +
+                        std::to_wstring(static_cast<unsigned long>(result)));
+                    DiscardGraphicsResources();
+                } else {
+                    AppendDiagnostic(
+                        L"Overlay render target resized in place width=" +
+                        std::to_wstring(width) + L" height=" +
+                        std::to_wstring(height));
+                }
             }
             if (accessibilityActive_) ClearAccessibilityTree();
             (void)ReconcileResponsiveFocusPersistence();
+            if (resize.invalidate) InvalidateRect(window_, nullptr, FALSE);
             return 0;
+        }
         case WM_DPICHANGED:
             if (accessibilityActive_) ClearAccessibilityTree();
             QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::Dpi);
@@ -1499,8 +1519,11 @@ private:
         const auto priorSurface = state_.surface();
         const auto priorFocusRegion = state_.focusRegion();
         const auto priorExtent = DesiredPresentationExtentDip();
+        const auto priorPresentedExtent = PresentedPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
+        if (priorSurface == gba::Surface::Widget)
+            CommitAdmittedWidgetPresentation(priorActive);
         if (priorSurface == gba::Surface::Widget && IsBridgeWidget(priorActive)) {
             RememberCurrentFocus(priorActive);
         }
@@ -1548,10 +1571,11 @@ private:
             }
             AdvanceOverlayTransition(now);
         }
-        if (gba::ShouldRevealWidgetContent(
+        const bool revealWidgetContent = gba::ShouldRevealWidgetContent(
                 priorSurface == gba::Surface::Widget, priorActive,
                 state_.surface() == gba::Surface::Widget,
-                state_.activeWidget())) {
+                state_.activeWidget());
+        if (revealWidgetContent) {
             RequestWidgetContentReveal(state_.activeWidget());
         }
         if (gba::ShouldSnapWidgetContentVisible(
@@ -1563,6 +1587,11 @@ private:
         if (state_.surface() == gba::Surface::Hidden) {
             pendingContentRevealWidget_.clear();
         }
+
+        const bool awaitingIncomingSnapshot =
+            state_.surface() == gba::Surface::Widget &&
+            IsBridgeWidget(state_.activeWidget()) &&
+            SnapshotFor(state_.activeWidget()) == nullptr;
 
         if (state_.surface() != gba::Surface::Hidden) {
             const bool enteredBridgeWidget =
@@ -1579,11 +1608,59 @@ private:
                 PostMessageW(window_, kSnapshotRefreshMessage, 0, 0);
             }
         }
-        ApplyPresentation(gba::DecideOverlayPresentation(
+        const auto nextExtent = DesiredPresentationExtentDip();
+        const bool animateWidgetExtent =
+            priorSurface == gba::Surface::Widget &&
+            state_.surface() == gba::Surface::Widget &&
+            priorPresentedExtent != nextExtent;
+        if (animateWidgetExtent) {
+            BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
+        } else if (state_.surface() != gba::Surface::Widget) {
+            extentTransition_.Begin(
+                now, static_cast<float>(nextExtent.widthDip),
+                static_cast<float>(nextExtent.heightDip),
+                static_cast<float>(nextExtent.widthDip),
+                static_cast<float>(nextExtent.heightDip), true);
+            animatedExtentDip_.reset();
+        }
+        const auto presentation = gba::DecideOverlayPresentation(
             priorSurface != gba::Surface::Hidden,
             state_.surface() != gba::Surface::Hidden,
-            priorExtent,
-            DesiredPresentationExtentDip()));
+            priorPresentedExtent,
+            nextExtent);
+        if (priorSurface == gba::Surface::Widget &&
+            state_.surface() == gba::Surface::Widget &&
+            (priorActive != state_.activeWidget() || priorExtent != nextExtent)) {
+            const bool identityChanged = priorActive != state_.activeWidget();
+            const bool extentChanged = priorExtent != nextExtent;
+            AppendDiagnostic(
+                L"Widget presentation transition from=" + priorActive +
+                L" extent=" + std::to_wstring(priorPresentedExtent.widthDip) + L"x" +
+                std::to_wstring(priorPresentedExtent.heightDip) + L" to=" +
+                std::wstring(state_.activeWidget()) + L" extent=" +
+                std::to_wstring(nextExtent.widthDip) + L"x" +
+                std::to_wstring(nextExtent.heightDip) + L" cause=" +
+                (identityChanged && extentChanged
+                    ? L"identity-and-extent"
+                    : identityChanged ? L"identity" : L"extent") +
+                L" target=" +
+                (animateWidgetExtent
+                    ? (CurrentAccessibilityPolicy().reducedMotion
+                        ? L"resize-in-place"
+                        : L"animated-resize-in-place")
+                    : L"retained") +
+                L" content=" +
+                (awaitingIncomingSnapshot && committedWidgetPresentationSnapshot_
+                    ? L"retained-until-snapshot"
+                    : revealWidgetContent ? L"reveal" : L"stable") +
+                L" sizing=" + (awaitingIncomingSnapshot
+                    ? L"retained-until-snapshot"
+                    : L"snapshot-admitted") +
+                (awaitingIncomingSnapshot && !committedWidgetPresentationWidget_.empty()
+                    ? L" retained-from=" + committedWidgetPresentationWidget_
+                    : L""));
+        }
+        ApplyPresentation(presentation);
         (void)ReconcileResponsiveFocusPersistence();
     }
 
@@ -1917,6 +1994,10 @@ private:
         if (!runtimeRevealWidget.empty() &&
             state_.surface() == gba::Surface::Widget &&
             state_.activeWidget() == runtimeRevealWidget) {
+            AppendDiagnostic(
+                L"Widget presentation transition from=" + runtimeRevealWidget +
+                L" to=" + runtimeRevealWidget +
+                L" cause=runtime-replaced target=retained content=reveal");
             RequestWidgetContentReveal(runtimeRevealWidget);
         }
         return true;
@@ -2042,8 +2123,27 @@ private:
     void AdvanceOverlayTransition(const ULONGLONG timestamp) {
         const auto previousContentOpacity =
             overlayTransitionSample_.contentOpacity;
+        const auto previousExtent = PresentedPresentationExtentDip();
         overlayTransitionSample_ = overlayTransition_.Sample(
             timestamp, CurrentAccessibilityPolicy().reducedMotion);
+        if (extentTransition_.active() || animatedExtentDip_) {
+            const auto extent = extentTransition_.Sample(
+                timestamp, CurrentAccessibilityPolicy().reducedMotion);
+            animatedExtentDip_ = gba::OverlayPresentationExtent{
+                static_cast<int>(std::lround(extent.widthDip)),
+                static_cast<int>(std::lround(extent.heightDip)),
+            };
+            const auto nextExtent = PresentedPresentationExtentDip();
+            if (state_.surface() != gba::Surface::Hidden &&
+                previousExtent != nextExtent) {
+                const auto result = ShowOverlay(true);
+                if (result == OverlayShowResult::Shown) {
+                    RedrawWindow(window_, nullptr, nullptr,
+                        RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+                }
+            }
+            if (!extent.active) animatedExtentDip_.reset();
+        }
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
         if (state_.surface() != gba::Surface::Hidden &&
             std::abs(previousContentOpacity -
@@ -2064,9 +2164,9 @@ private:
                 GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
         } else {
             pendingContentRevealWidget_ = widgetId;
-            // A loading placeholder is host feedback, not the incoming
-            // immutable widget snapshot. Keep it stable and reveal only once
-            // the requested runtime publishes content.
+            // Retained content (or first-open startup status) is host
+            // presentation, not the incoming immutable widget snapshot. Keep
+            // it stable and reveal only once that runtime publishes content.
             overlayTransition_.SnapContentVisible();
         }
         AdvanceOverlayTransition(GetTickCount64());
@@ -2129,20 +2229,9 @@ private:
         float desiredWidthDip = static_cast<float>(kPanelWidth);
         float desiredHeightDip = static_cast<float>(kDashboardHeight);
         if (state_.surface() == gba::Surface::Widget) {
-            const auto resolved = gba::ResolveWidgetSurface(
-                CurrentWidgetSurfaceRequest(),
-                gba::WidgetSurfaceConstraints{
-                    {work.left, work.top, work.right, work.bottom},
-                    dpi,
-                    interfaceScale,
-                    CurrentTextScale(),
-                });
-            if (!resolved) {
-                AppendDiagnostic(L"Unable to resolve a safe widget surface");
-                return OverlayShowResult::Failed;
-            }
-            desiredWidthDip = resolved->windowWidthDip;
-            desiredHeightDip = resolved->windowHeightDip;
+            const auto presented = PresentedPresentationExtentDip();
+            desiredWidthDip = static_cast<float>(presented.widthDip);
+            desiredHeightDip = static_cast<float>(presented.heightDip);
         }
         const auto placement = gba::ComputeOverlayPlacement(
             {work.left, work.top, work.right, work.bottom}, dpi,
@@ -2253,22 +2342,15 @@ private:
     }
 
     [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
-    CurrentWidgetSurfaceRequest() const {
-        if (!IsBridgeWidget(state_.activeWidget())) return std::nullopt;
-        const auto* snapshot = SnapshotFor(state_.activeWidget());
-        if (!snapshot) {
-            // Startup is host UI rather than a protocol-v1 view. Keep it
-            // compact until the worker publishes its authoritative surface.
-            return gba::WidgetSurfaceRequest{gba::WidgetSurfaceMode::Compact};
-        }
-        if (!snapshot->surface) return std::nullopt;
+    WidgetSurfaceRequestForSnapshot(const gba::WidgetSnapshot& snapshot) const {
+        if (!snapshot.surface) return std::nullopt;
 
         gba::WidgetSurfaceRequest request;
-        if (snapshot->surface->mode == L"compact") {
+        if (snapshot.surface->mode == L"compact") {
             request.mode = gba::WidgetSurfaceMode::Compact;
-        } else if (snapshot->surface->mode == L"standard") {
+        } else if (snapshot.surface->mode == L"standard") {
             request.mode = gba::WidgetSurfaceMode::Standard;
-        } else if (snapshot->surface->mode == L"wide") {
+        } else if (snapshot.surface->mode == L"wide") {
             request.mode = gba::WidgetSurfaceMode::Wide;
         } else {
             // Unknown and empty values fail safely to Adaptive. The managed
@@ -2282,11 +2364,37 @@ private:
                 *value < -std::numeric_limits<float>::max()) return std::nullopt;
             return static_cast<float>(*value);
         };
-        request.preferredWidthDip = toFloat(snapshot->surface->preferredWidth);
-        request.preferredHeightDip = toFloat(snapshot->surface->preferredHeight);
-        request.minimumWidthDip = toFloat(snapshot->surface->minimumWidth);
-        request.minimumHeightDip = toFloat(snapshot->surface->minimumHeight);
+        request.preferredWidthDip = toFloat(snapshot.surface->preferredWidth);
+        request.preferredHeightDip = toFloat(snapshot.surface->preferredHeight);
+        request.minimumWidthDip = toFloat(snapshot.surface->minimumWidth);
+        request.minimumHeightDip = toFloat(snapshot.surface->minimumHeight);
         return request;
+    }
+
+    void CommitAdmittedWidgetPresentation(const std::wstring_view widgetId) {
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!snapshot) return;
+        committedWidgetSurfaceRequest_ = WidgetSurfaceRequestForSnapshot(*snapshot);
+        committedWidgetSurfaceAvailable_ = true;
+        committedWidgetPresentationWidget_ = widgetId;
+        committedWidgetPresentationSnapshot_ = *snapshot;
+        committedWidgetPresentationFocusId_ = focusedElementId_;
+    }
+
+    [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
+    CurrentWidgetSurfaceRequest() const {
+        if (!IsBridgeWidget(state_.activeWidget())) return std::nullopt;
+        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        switch (gba::ResolveWidgetExtentAuthority(
+            snapshot != nullptr, committedWidgetSurfaceAvailable_)) {
+        case gba::WidgetExtentAuthority::AdmittedSnapshot:
+            return WidgetSurfaceRequestForSnapshot(*snapshot);
+        case gba::WidgetExtentAuthority::RetainedCommittedSurface:
+            return committedWidgetSurfaceRequest_;
+        case gba::WidgetExtentAuthority::CompactStartupFallback:
+            return gba::WidgetSurfaceRequest{gba::WidgetSurfaceMode::Compact};
+        }
+        return gba::WidgetSurfaceRequest{gba::WidgetSurfaceMode::Compact};
     }
 
     [[nodiscard]] gba::ResolvedWidgetSurface DesiredWidgetSurfaceTarget() const {
@@ -2302,6 +2410,29 @@ private:
         return {
             static_cast<int>(std::lround(target.windowWidthDip)),
             static_cast<int>(std::lround(target.windowHeightDip)),
+        };
+    }
+
+    [[nodiscard]] gba::OverlayPresentationExtent
+    PresentedPresentationExtentDip() const {
+        return animatedExtentDip_.value_or(DesiredPresentationExtentDip());
+    }
+
+    void BeginWidgetExtentTransition(
+        const gba::OverlayPresentationExtent from,
+        const gba::OverlayPresentationExtent target) {
+        extentTransition_.Begin(
+            GetTickCount64(),
+            static_cast<float>(from.widthDip),
+            static_cast<float>(from.heightDip),
+            static_cast<float>(target.widthDip),
+            static_cast<float>(target.heightDip),
+            CurrentAccessibilityPolicy().reducedMotion);
+        const auto initial = extentTransition_.Sample(
+            GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+        animatedExtentDip_ = gba::OverlayPresentationExtent{
+            static_cast<int>(std::lround(initial.widthDip)),
+            static_cast<int>(std::lround(initial.heightDip)),
         };
     }
 
@@ -2355,10 +2486,38 @@ private:
     void RefreshAndApplyPresentation(Refresh&& refresh) {
         const bool wasVisible = state_.surface() != gba::Surface::Hidden;
         const auto priorExtent = DesiredPresentationExtentDip();
+        const auto priorPresentedExtent = PresentedPresentationExtentDip();
+        const std::wstring priorWidget = state_.surface() == gba::Surface::Widget
+            ? std::wstring(state_.activeWidget())
+            : std::wstring(state_.selectedWidget());
         std::forward<Refresh>(refresh)();
         const bool isVisible = state_.surface() != gba::Surface::Hidden;
-        ApplyPresentation(gba::DecideOverlayPresentation(
-            wasVisible, isVisible, priorExtent, DesiredPresentationExtentDip()));
+        const auto nextExtent = DesiredPresentationExtentDip();
+        const bool animateWidgetExtent =
+            wasVisible && isVisible &&
+            state_.surface() == gba::Surface::Widget &&
+            priorPresentedExtent != nextExtent;
+        if (animateWidgetExtent)
+            BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
+        const auto presentation = gba::DecideOverlayPresentation(
+            wasVisible, isVisible, priorPresentedExtent, nextExtent);
+        if (wasVisible && isVisible && priorExtent != nextExtent) {
+            const std::wstring currentWidget = state_.surface() == gba::Surface::Widget
+                ? std::wstring(state_.activeWidget())
+                : std::wstring(state_.selectedWidget());
+            AppendDiagnostic(
+                L"Widget presentation extent refresh widget=" + currentWidget +
+                L" from=" + std::to_wstring(priorPresentedExtent.widthDip) + L"x" +
+                std::to_wstring(priorPresentedExtent.heightDip) + L" to=" +
+                std::to_wstring(nextExtent.widthDip) + L"x" +
+                std::to_wstring(nextExtent.heightDip) + L" identity=" +
+                (priorWidget == currentWidget ? L"retained" : L"changed") +
+                L" target=" +
+                (CurrentAccessibilityPolicy().reducedMotion
+                    ? L"resize-in-place"
+                    : L"animated-resize-in-place"));
+        }
+        ApplyPresentation(presentation);
         (void)ReconcileResponsiveFocusPersistence();
     }
 
@@ -3322,6 +3481,7 @@ private:
         const auto descriptor = std::find_if(
             widgetDescriptors_.begin(), widgetDescriptors_.end(),
             [&](const gba::WidgetDescriptor& candidate) { return candidate.id == widgetId; });
+        CommitAdmittedWidgetPresentation(widgetId);
         if (descriptor != widgetDescriptors_.end()) {
             if (declarativeRenderer_ && !descriptor->instanceId.empty())
                 declarativeRenderer_->ForgetWidgetState(descriptor->instanceId);
@@ -3393,6 +3553,7 @@ private:
             : state_.selectedWidget();
         if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
         widgetSnapshots_.insert_or_assign(std::wstring(widgetId), std::move(*snapshot));
+        if (currentWidget == widgetId) CommitAdmittedWidgetPresentation(widgetId);
         if (currentWidget == widgetId &&
             pendingContentRevealWidget_ == widgetId) {
             pendingContentRevealWidget_.clear();
@@ -3695,20 +3856,28 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
+    [[nodiscard]] bool GraphicsResourcesReady() const noexcept {
+        return backgroundBrush_ && cardBrush_ && textBrush_ && secondaryBrush_ &&
+               dashboardSecondaryBrush_ && dashboardTextBrush_ && accentBrush_ &&
+               successBrush_ && trayItemBrush_ && trayItemTextBrush_ &&
+               selectedTextBrush_ && focusBrush_ && titleFormat_ && bodyFormat_ &&
+               hintFormat_ && iconFormat_;
+    }
+
     bool EnsureGraphicsResources() {
-        if (renderTarget_) {
-            return true;
-        }
+        if (renderTarget_ && GraphicsResourcesReady()) return true;
         RECT client{};
         GetClientRect(window_, &client);
         const auto size = D2D1::SizeU(
             static_cast<UINT32>(client.right - client.left),
             static_cast<UINT32>(client.bottom - client.top));
-        if (FAILED(d2dFactory_->CreateHwndRenderTarget(
-                D2D1::RenderTargetProperties(),
-                D2D1::HwndRenderTargetProperties(window_, size),
-                renderTarget_.ReleaseAndGetAddressOf()))) {
-            return false;
+        if (!renderTarget_) {
+            if (FAILED(d2dFactory_->CreateHwndRenderTarget(
+                    D2D1::RenderTargetProperties(),
+                    D2D1::HwndRenderTargetProperties(window_, size),
+                    renderTarget_.ReleaseAndGetAddressOf()))) {
+                return false;
+            }
         }
         const float windowDpi = static_cast<float>(GetDpiForWindow(window_));
         renderTarget_->SetDpi(windowDpi > 0 ? windowDpi : 96.0F,
@@ -3871,14 +4040,10 @@ private:
             ? trayItemSelectedFocusedStyle_.outlineWidthPx()
             : hasProperty(L"tray-item:focused", L"outline-width")
                 ? trayItemFocusedStyle_.outlineWidthPx() : 2.0F;
-        return backgroundBrush_ && cardBrush_ && textBrush_ && secondaryBrush_ &&
-               dashboardTextBrush_ && dashboardSecondaryBrush_ && trayItemTextBrush_ &&
-               accentBrush_ && successBrush_ && titleFormat_ && bodyFormat_ &&
-               hintFormat_ && iconFormat_ && trayItemBrush_ && selectedTextBrush_ &&
-               focusBrush_;
+        return GraphicsResourcesReady();
     }
 
-    void DiscardGraphicsResources() {
+    void DiscardGraphicsResources(const bool discardRenderTarget = true) {
         if (declarativeRenderer_) declarativeRenderer_->DiscardTargetResources();
         // Hit and focus rectangles are valid only for the render target's
         // logical viewport. Never dispatch controller focus through geometry
@@ -3900,7 +4065,7 @@ private:
         dashboardTextBrush_.Reset();
         cardBrush_.Reset();
         backgroundBrush_.Reset();
-        renderTarget_.Reset();
+        if (discardRenderTarget) renderTarget_.Reset();
     }
 
     void DrawTextLine(std::wstring_view text,
@@ -3989,7 +4154,8 @@ private:
                 stripBounds.x + stripBounds.width,
                 stripBounds.y + stripBounds.height),
             trayCornerRadius_, trayCornerRadius_};
-        renderTarget_->FillRoundedRectangle(strip, backgroundBrush_.Get());
+        gba::shell::FillColorKeyRoundedRectangle(
+            renderTarget_.Get(), strip, backgroundBrush_.Get());
 
         for (const auto& tileLayout : layout->tiles) {
             const std::size_t slot = tileLayout.slot;
@@ -4323,7 +4489,8 @@ private:
         const D2D1_ROUNDED_RECT panel{
             D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, visualPanelBottom),
             panelCornerRadius_, panelCornerRadius_};
-        renderTarget_->FillRoundedRectangle(panel, cardBrush_.Get());
+        gba::shell::FillColorKeyRoundedRectangle(
+            renderTarget_.Get(), panel, cardBrush_.Get());
 
         if (bridgeWidget) {
             ComPtr<ID2D1Layer> contentLayer;
@@ -4342,7 +4509,24 @@ private:
                 renderTarget_->PushLayer(layerParameters, contentLayer.Get());
                 contentLayerPushed = true;
             }
-            const auto* snapshot = SnapshotFor(widget);
+            const auto* admittedSnapshot = SnapshotFor(widget);
+            const auto contentAuthority = gba::ResolveWidgetContentAuthority(
+                admittedSnapshot != nullptr,
+                committedWidgetPresentationSnapshot_.has_value() &&
+                    !committedWidgetPresentationWidget_.empty());
+            const bool retainedCommittedSnapshot =
+                contentAuthority == gba::WidgetContentAuthority::RetainedCommittedSnapshot;
+            const auto* snapshot = retainedCommittedSnapshot
+                ? &*committedWidgetPresentationSnapshot_
+                : admittedSnapshot;
+            const std::wstring_view renderedWidget = retainedCommittedSnapshot
+                ? std::wstring_view{committedWidgetPresentationWidget_}
+                : widget;
+            const std::wstring_view renderedFocusId = retainedCommittedSnapshot
+                ? std::wstring_view{committedWidgetPresentationFocusId_}
+                : state_.focusRegion() == gba::FocusRegion::Widget
+                    ? std::wstring_view{focusedElementId_}
+                    : std::wstring_view{};
             if (snapshot && declarativeRenderer_) {
                 const gba::declarative::Rect viewport{
                     geometry->widgetViewportX,
@@ -4352,8 +4536,8 @@ private:
                 };
                 const auto descriptor = std::find_if(
                     widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                    [widget](const gba::WidgetDescriptor& candidate) {
-                        return candidate.id == widget;
+                    [renderedWidget](const gba::WidgetDescriptor& candidate) {
+                        return candidate.id == renderedWidget;
                     });
                 const auto accessibilityPolicy = appearanceState_.current()
                     ? CurrentAccessibilityPolicy()
@@ -4372,14 +4556,12 @@ private:
                 };
                 collectSliderOverrides(collectSliderOverrides, snapshot->root);
                 const gba::accessibility::ProjectionKey projectionKey{
-                    std::wstring{widget},
+                    std::wstring{renderedWidget},
                     descriptor != widgetDescriptors_.end()
                         ? descriptor->runtimeGeneration
                         : std::wstring{},
                     snapshot->activeInputScopeId,
-                    state_.focusRegion() == gba::FocusRegion::Widget
-                        ? focusedElementId_
-                        : std::wstring{},
+                    std::wstring{renderedFocusId},
                     snapshot->sequence,
                     sliderInteraction_.presentationRevision(),
                     appearanceState_.current() ? appearanceState_.current()->revision : 0,
@@ -4395,7 +4577,8 @@ private:
                     accessibilityPolicy.reducedMotion,
                     accessibilityPolicy.reducedTransparency,
                 };
-                const bool collectAccessibility = accessibilityActive_ &&
+                const bool collectAccessibility = !retainedCommittedSnapshot &&
+                    accessibilityActive_ &&
                     descriptor != widgetDescriptors_.end() &&
                     widgetAccessibilityProjection_.ShouldCollect(projectionKey);
                 gba::DeclarativeRenderOptions options;
@@ -4414,18 +4597,15 @@ private:
                     options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
                 options.sliderValueOverrides = presentedSliderValues;
-                sliderInteraction_.RetainAdjustmentMode(
-                    snapshot->instanceId,
-                    snapshot->activeInputScopeId,
-                    state_.focusRegion() == gba::FocusRegion::Widget
-                        ? std::wstring_view(focusedElementId_)
-                        : std::wstring_view{});
-                options.pressedElementId = pressedInteraction_.ActiveElementId(
-                    *snapshot,
-                    state_.focusRegion() == gba::FocusRegion::Widget
-                        ? std::wstring_view(focusedElementId_)
-                        : std::wstring_view{});
-                if (options.pressedElementId.empty() &&
+                if (!retainedCommittedSnapshot) {
+                    sliderInteraction_.RetainAdjustmentMode(
+                        snapshot->instanceId,
+                        snapshot->activeInputScopeId,
+                        renderedFocusId);
+                    options.pressedElementId = pressedInteraction_.ActiveElementId(
+                        *snapshot, renderedFocusId);
+                }
+                if (!retainedCommittedSnapshot && options.pressedElementId.empty() &&
                     state_.focusRegion() == gba::FocusRegion::Widget) {
                     if (const auto* focused = gba::input::FindNodeInInputScope(
                             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
@@ -4437,25 +4617,30 @@ private:
                 }
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot,
-                    state_.focusRegion() == gba::FocusRegion::Widget
-                        ? std::wstring_view(focusedElementId_)
-                        : std::wstring_view{},
+                    renderedFocusId,
                     viewport, options);
-                declarativeMotionActive_ = result.animationActive;
-                if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
+                declarativeMotionActive_ = !retainedCommittedSnapshot && result.animationActive;
+                if (!retainedCommittedSnapshot) {
+                    if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
                         focusedElementId_, snapshot->activeInputScopeId, result);
-                    visibleFocus && *visibleFocus != focusedElementId_) {
-                    (void)pressedInteraction_.Clear();
-                    focusedElementId_ = *visibleFocus;
-                    focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-                    // The completed pass used the old focus state. Schedule one
-                    // more paint so the recovered target receives its ring.
-                    InvalidateRect(window_, nullptr, FALSE);
+                        visibleFocus && *visibleFocus != focusedElementId_) {
+                        (void)pressedInteraction_.Clear();
+                        focusedElementId_ = *visibleFocus;
+                        focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+                        // The completed pass used the old focus state. Schedule one
+                        // more paint so the recovered target receives its ring.
+                        InvalidateRect(window_, nullptr, FALSE);
+                    }
                 }
-                lastWidgetRenderResult_ = result;
-                if (accessibilityActive_ && !result.succeeded) {
+                if (retainedCommittedSnapshot) {
                     ClearAccessibilityTree();
-                } else if (collectAccessibility) {
+                } else if (accessibilityActive_ && !result.succeeded) {
+                    lastWidgetRenderResult_ = result;
+                    ClearAccessibilityTree();
+                } else {
+                    lastWidgetRenderResult_ = result;
+                }
+                if (!retainedCommittedSnapshot && collectAccessibility) {
                     widgetAccessibilityTree_ = gba::accessibility::BuildWidgetTree(
                         std::wstring{widget}, descriptor->runtimeGeneration,
                         *snapshot, result,
@@ -4466,12 +4651,13 @@ private:
                     ++widgetAccessibilityRevision_;
                     widgetAccessibilityProjection_.Published(projectionKey);
                 }
-                if (accessibilityActive_ &&
+                if (!retainedCommittedSnapshot && accessibilityActive_ &&
                     widgetAccessibilityProjection_.ObserveFrame(result.animationActive))
                     InvalidateRect(window_, nullptr, FALSE);
                 const auto lastSequence = renderedSnapshotSequences_.find(std::wstring(widget));
-                if (lastSequence == renderedSnapshotSequences_.end() ||
-                    lastSequence->second != snapshot->sequence) {
+                if (!retainedCommittedSnapshot &&
+                    (lastSequence == renderedSnapshotSequences_.end() ||
+                     lastSequence->second != snapshot->sequence)) {
                     for (const auto& diagnostic : result.diagnostics) {
                         AppendDiagnostic(
                             L"Renderer " + std::wstring(widget) + L" " + diagnostic.code + L" [" + diagnostic.nodeId +
@@ -4605,10 +4791,17 @@ private:
     gba::RenderResult lastWidgetRenderResult_;
     bool declarativeMotionActive_{};
     gba::OverlayTransitionTimeline overlayTransition_;
+    gba::OverlayExtentTransitionTimeline extentTransition_;
     gba::OverlayTransitionSample overlayTransitionSample_{};
+    std::optional<gba::OverlayPresentationExtent> animatedExtentDip_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;
+    bool committedWidgetSurfaceAvailable_{};
+    std::optional<gba::WidgetSurfaceRequest> committedWidgetSurfaceRequest_;
+    std::wstring committedWidgetPresentationWidget_;
+    std::optional<gba::WidgetSnapshot> committedWidgetPresentationSnapshot_;
+    std::wstring committedWidgetPresentationFocusId_;
     BYTE targetOverlayOpacity_{248};
     BYTE targetBackdropOpacity_{kBackdropOpacity};
     std::optional<BYTE> appliedOverlayOpacity_;

@@ -39,8 +39,9 @@ host responds without a polling loop:
   DPI, work area, panel, and backdrop placement;
 - `WM_SETTINGCHANGE` reapplies appearance/accessibility policy, recreates
   graphics, and recomputes work-area placement, including taskbar changes;
-- `WM_SIZE` recreates the render target atomically so viewport-relative styles
-  use the new client extent; and
+- `WM_SIZE` resizes an existing Direct2D HWND target in place, rebuilds only
+  viewport-dependent resources, and falls back to full target recreation only
+  when Direct2D rejects that resize; and
 - a valid external foreground change closes the overlay; the next open resolves
   the new target monitor.
 
@@ -139,10 +140,24 @@ responsive layout and semantic Scroll rather than treating either pair as a
 guaranteed measurement.
 
 Snapshots without `Surface` retain the package-API-1 compatibility canvas
-(1180×700 shell with an 880-DIP panel). A worker-starting placeholder is
-host-owned and compact; it can resize once when the first authoritative
-snapshot arrives. Unknown, partial, non-finite, and out-of-range native hint
-data cannot escape the sizing policy and falls back to bounded mode defaults.
+(1180×700 shell with an 880-DIP panel). A worker-starting message is never
+sizing authority. When another widget presentation has already been admitted,
+the host keeps that one bounded snapshot and its exact surface painted as
+visual-only content until the destination publishes a valid snapshot. Input
+and accessibility authority still transfer immediately to the destination;
+the retained controls are neither actionable nor projected to UI Automation.
+Only the first widget open, where no committed presentation exists, uses the
+stable compact startup surface.
+
+After snapshot admission, full motion eases the host-owned logical extent from
+the currently presented size to the destination size over 140 ms on the
+existing controller cadence. Interrupted switches retarget from that presented
+size rather than restarting from stale geometry. Reduced motion snaps to the
+destination immediately. Each integer extent is applied by resizing the current
+HWND render target in place and synchronously committing a complete frame; no
+ambient or additional idle frame source is introduced. Unknown, partial,
+non-finite, and out-of-range native hint data cannot escape the sizing policy
+and falls back to bounded mode defaults.
 
 ## Deterministic evidence
 
@@ -164,17 +179,31 @@ The native Release suite currently proves these policy/math seams:
   extent stability across identical snapshots;
 - 1280×720, portrait, offset-ultrawide, and combined 200%-DPI/125%-interface/
   150%-text surface clamping with host tray/footer/controller reservations;
-- 108,545 placement checks across dense logical boundaries for
+- 108,547 placement checks across dense logical boundaries for
   panel, widget viewport, adaptive footer, and persistent tray geometry;
 - declarative compact/clipping behavior for constrained viewports, including
   portrait cases and non-integer physical-pixel scale;
 - deterministic controller-focus recovery when resize/reflow clips the
   preferred control, with hidden controls excluded from explicit navigation
   and action dispatch; and
+- targeting checks covering admitted/retained/first-open content and extent
+  authority plus in-place render-target resize planning;
+- transition checks covering the 140 ms extent curve, exact endpoint, reduced
+  motion, interrupted retargeting from presented geometry, and the existing
+  shell/content timeline;
+- exact color-key rounded-chrome raster checks at 1.0 and 1.5 pixel scale; and
 - targeting checks covering foreground self-ignore, invalid-target fallback,
   Alt+Tab close policy, duplicate suppression, DPI-placement reentrancy
   coalescing, display-notification burst coalescing, and visible-versus-hidden
   DPI/topology/settings refresh policy.
+
+The production `WidgetSwitchHostTests` fixture drives the real OverlayHost HWND
+through Audio Mixer, Network Controls, Spotify, and Games & Apps. Its isolated
+Spotify and Games workers signal and delay their first render so captures occur
+during—not after—the startup interval. The matrix asserts retained source
+content and source extent before admission, coherent destination reveal and
+host-side resizing afterward, rapid reversal, same-identity refresh, persistent
+tray chrome, and the absence of a cleared black or unmasked square frame.
 
 Run the native contract suite with:
 

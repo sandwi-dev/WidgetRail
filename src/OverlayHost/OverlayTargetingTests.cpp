@@ -63,6 +63,47 @@ int main() {
               true, OverlayPresentationDirective::Repaint),
           "same-extent widget switch remains repaint-only");
 
+    Check(gba::PlanRenderTargetResize(true, false, 952, 698) ==
+              gba::RenderTargetResizePlan{true, true},
+          "visible extent changes resize the existing HWND target in place");
+    Check(gba::PlanRenderTargetResize(false, false, 952, 698) ==
+              gba::RenderTargetResizePlan{false, true},
+          "first valid size invalidates for lazy target creation");
+    Check(gba::PlanRenderTargetResize(true, true, 952, 698) ==
+              gba::RenderTargetResizePlan{},
+          "minimization never resizes or invalidates presentation resources");
+    Check(gba::PlanRenderTargetResize(true, false, 0, 698) ==
+              gba::RenderTargetResizePlan{} &&
+              gba::PlanRenderTargetResize(true, false, 952, 0) ==
+              gba::RenderTargetResizePlan{},
+          "zero-area size messages cannot disturb the retained target");
+
+    Check(gba::ResolveWidgetExtentAuthority(true, true) ==
+              gba::WidgetExtentAuthority::AdmittedSnapshot,
+          "admitted snapshot owns extent even when a prior surface exists");
+    Check(gba::ResolveWidgetExtentAuthority(true, false) ==
+              gba::WidgetExtentAuthority::AdmittedSnapshot,
+          "admitted snapshot does not require retained geometry");
+    Check(gba::ResolveWidgetExtentAuthority(false, true) ==
+              gba::WidgetExtentAuthority::RetainedCommittedSurface,
+          "worker-start copy retains the previously committed widget extent");
+    Check(gba::ResolveWidgetExtentAuthority(false, false) ==
+              gba::WidgetExtentAuthority::CompactStartupFallback,
+          "compact fallback is reserved for the first widget open");
+
+    Check(gba::ResolveWidgetContentAuthority(true, true) ==
+              gba::WidgetContentAuthority::AdmittedSnapshot,
+          "an admitted destination snapshot owns visible widget content");
+    Check(gba::ResolveWidgetContentAuthority(true, false) ==
+              gba::WidgetContentAuthority::AdmittedSnapshot,
+          "first-open content uses its admitted snapshot directly");
+    Check(gba::ResolveWidgetContentAuthority(false, true) ==
+              gba::WidgetContentAuthority::RetainedCommittedSnapshot,
+          "worker startup keeps one previously admitted snapshot painted");
+    Check(gba::ResolveWidgetContentAuthority(false, false) ==
+              gba::WidgetContentAuthority::StableStartupStatus,
+          "startup status is reserved for an open with no committed content");
+
     Check(gba::DecideDisplayRefresh(false, DisplayEnvironmentChange::Dpi) ==
               DisplayRefreshPlan{},
           "hidden DPI changes defer work until the next authoritative show");

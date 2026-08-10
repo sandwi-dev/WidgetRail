@@ -102,6 +102,66 @@ private:
     return wasWindowVisible && directive == OverlayPresentationDirective::Place;
 }
 
+struct RenderTargetResizePlan final {
+    bool resizeInPlace{};
+    bool invalidate{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const RenderTargetResizePlan&,
+        const RenderTargetResizePlan&) noexcept = default;
+};
+
+/// A valid non-minimized WM_SIZE always invalidates viewport-derived geometry.
+/// When an HWND target already exists, resize that target in place and rebuild
+/// only its dependent resources. Destroying the target during a visible
+/// SetWindowPos exposes an uncommitted color-key/back-buffer interval to DWM.
+[[nodiscard]] constexpr RenderTargetResizePlan PlanRenderTargetResize(
+    const bool hasRenderTarget,
+    const bool minimized,
+    const unsigned int width,
+    const unsigned int height) noexcept {
+    if (minimized || width == 0 || height == 0) return {};
+    return {hasRenderTarget, true};
+}
+
+enum class WidgetExtentAuthority {
+    AdmittedSnapshot,
+    RetainedCommittedSurface,
+    CompactStartupFallback,
+};
+
+/// A worker-start placeholder is presentation copy, never sizing authority.
+/// Retain the last committed surface until the incoming immutable snapshot is
+/// admitted. Compact fallback is reserved for the first widget open only.
+[[nodiscard]] constexpr WidgetExtentAuthority ResolveWidgetExtentAuthority(
+    const bool snapshotAdmitted,
+    const bool committedSurfaceAvailable) noexcept {
+    if (snapshotAdmitted) return WidgetExtentAuthority::AdmittedSnapshot;
+    if (committedSurfaceAvailable)
+        return WidgetExtentAuthority::RetainedCommittedSurface;
+    return WidgetExtentAuthority::CompactStartupFallback;
+}
+
+enum class WidgetContentAuthority {
+    AdmittedSnapshot,
+    RetainedCommittedSnapshot,
+    StableStartupStatus,
+};
+
+/// The host-generated worker-start copy must not replace already-painted
+/// widget content for a single frame. Keep one bounded, previously admitted
+/// snapshot as visual-only presentation until the destination snapshot is
+/// available. A stable startup status is reserved for the first widget open,
+/// when there is no prior content to retain.
+[[nodiscard]] constexpr WidgetContentAuthority ResolveWidgetContentAuthority(
+    const bool snapshotAdmitted,
+    const bool committedSnapshotAvailable) noexcept {
+    if (snapshotAdmitted) return WidgetContentAuthority::AdmittedSnapshot;
+    if (committedSnapshotAvailable)
+        return WidgetContentAuthority::RetainedCommittedSnapshot;
+    return WidgetContentAuthority::StableStartupStatus;
+}
+
 // Pure foreground-target state used by the HWND host and deterministic tests.
 // Native window validity remains an OS concern supplied at each boundary.
 class ForegroundTargetTracker final {

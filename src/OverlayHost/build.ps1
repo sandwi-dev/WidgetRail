@@ -81,6 +81,7 @@ $motionTestObjectDirectory = Join-Path $outputDirectory 'obj\motion-tests'
 $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
 $targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
 $transitionTestObjectDirectory = Join-Path $outputDirectory 'obj\transition-tests'
+$chromeTestObjectDirectory = Join-Path $outputDirectory 'obj\chrome-tests'
 $guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
 $inputOwnershipTestObjectDirectory = Join-Path $outputDirectory 'obj\input-ownership-tests'
 $navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
@@ -95,12 +96,14 @@ $accessibilityProjectionTestObjectDirectory = Join-Path $outputDirectory 'obj\ac
 $accessibilityProviderTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-provider-tests'
 $actionFailureHostTestObjectDirectory = Join-Path $outputDirectory 'obj\action-failure-host-tests'
 $actionFailureFixtureOutput = Join-Path $outputDirectory 'obj\action-failure-fixture'
+$widgetSwitchHostTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-switch-host-tests'
+$widgetSwitchFixtureOutput = Join-Path $outputDirectory 'obj\widget-switch-fixture'
 $trayLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-layout-tests'
 $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-accessibility-tests'
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -129,6 +132,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
     (Join-Path $projectDirectory 'NativeIcons.cpp'),
     (Join-Path $projectDirectory 'NativeStyle.cpp'),
+    (Join-Path $projectDirectory 'OverlayChrome.cpp'),
     (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
     (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
     (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
@@ -498,6 +502,22 @@ if (-not $SkipTests) {
         throw "OverlayTransitionTests failed with exit code $LASTEXITCODE."
     }
 
+    $chromeTestArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayChromeTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayChrome.cpp'),
+        "/Fo:$chromeTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayChromeTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib')
+    & $cl $chromeTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayChromeTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayChromeTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayChromeTests failed with exit code $LASTEXITCODE."
+    }
+
     $guideTestArguments = $common + @(
         (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
         (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
@@ -719,6 +739,39 @@ if (-not $SkipTests) {
             --fixture-worker $actionFailureFixture
         if ($LASTEXITCODE -ne 0) {
             throw "WidgetActionFailureHostTests failed with exit code $LASTEXITCODE."
+        }
+    }
+
+    $widgetSwitchHostTestArguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetSwitchHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$widgetSwitchHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetSwitchHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'gdi32.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $widgetSwitchHostTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetSwitchHostTests build failed with exit code $LASTEXITCODE."
+    }
+    if (-not $SkipPackaging) {
+        & dotnet publish `
+            (Join-Path $projectDirectory '..\..\tests\WidgetSwitchFixture\WidgetSwitchFixture.csproj') `
+            --configuration $Configuration --no-self-contained --nologo `
+            --output $widgetSwitchFixtureOutput
+        if ($LASTEXITCODE -ne 0) {
+            throw "Widget switch fixture publish failed with exit code $LASTEXITCODE."
+        }
+        $widgetSwitchFixture = Join-Path $widgetSwitchFixtureOutput 'WidgetSwitchFixture.exe'
+        if (-not (Test-Path -LiteralPath $widgetSwitchFixture)) {
+            throw "Widget switch fixture publish omitted WidgetSwitchFixture.exe."
+        }
+        & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
+            --installation $outputDirectory `
+            --fixture-worker $widgetSwitchFixture
+        if ($LASTEXITCODE -ne 0) {
+            throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
         }
     }
 

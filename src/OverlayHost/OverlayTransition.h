@@ -13,6 +13,44 @@ struct OverlayTransitionSample final {
     bool contentActive{};
 };
 
+struct OverlayExtentTransitionSample final {
+    float widthDip{};
+    float heightDip{};
+    bool active{};
+};
+
+/// Bounded host-owned geometry interpolation. It shares the visible host's
+/// existing controller cadence and never owns a timer or compositor resource.
+class OverlayExtentTransitionTimeline final {
+public:
+    static constexpr std::uint64_t DurationMilliseconds = 140;
+    static constexpr std::uint64_t MaximumDurationMilliseconds = 200;
+    static_assert(DurationMilliseconds <= MaximumDurationMilliseconds);
+
+    void Begin(
+        std::uint64_t timestampMilliseconds,
+        float fromWidthDip,
+        float fromHeightDip,
+        float targetWidthDip,
+        float targetHeightDip,
+        bool reducedMotion) noexcept;
+    [[nodiscard]] OverlayExtentTransitionSample Sample(
+        std::uint64_t timestampMilliseconds,
+        bool reducedMotion) noexcept;
+    [[nodiscard]] bool active() const noexcept { return active_; }
+
+private:
+    float fromWidthDip_{};
+    float fromHeightDip_{};
+    float targetWidthDip_{};
+    float targetHeightDip_{};
+    float widthDip_{};
+    float heightDip_{};
+    std::uint64_t startedAt_{};
+    std::uint64_t timestampMilliseconds_{};
+    bool active_{};
+};
+
 /// Pure, bounded shell/content transition state. The Win32 host supplies a
 /// monotonic timestamp and owns the one existing visible-controller timer;
 /// this type never owns a thread, timer, callback, HWND, or render resource.

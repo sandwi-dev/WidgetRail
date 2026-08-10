@@ -23,6 +23,7 @@ add_executable(OverlayHost WIN32
     DeclarativeLayout.cpp
     NativeIcons.cpp
     NativeStyle.cpp
+    OverlayChrome.cpp
     DeclarativeMotion.cpp
     OverlayPlacement.cpp
     OverlayTargeting.cpp
@@ -123,6 +124,14 @@ if(GBA_BUILD_TESTS)
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME OverlayTransitionTests COMMAND OverlayTransitionTests)
 
+    add_executable(OverlayChromeTests OverlayChromeTests.cpp OverlayChrome.cpp)
+    target_compile_features(OverlayChromeTests PRIVATE cxx_std_20)
+    target_compile_options(OverlayChromeTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(OverlayChromeTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(OverlayChromeTests PRIVATE d2d1 windowscodecs ole32)
+    add_test(NAME OverlayChromeTests COMMAND OverlayChromeTests)
+
     add_executable(GuideInputCompatibilityTests
         GuideInputCompatibilityTests.cpp GuideInputCompatibility.cpp)
     target_compile_features(GuideInputCompatibilityTests PRIVATE cxx_std_20)
@@ -214,6 +223,17 @@ if(GBA_BUILD_TESTS)
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(WidgetActionFailureHostTests PRIVATE
         user32 ole32 oleaut32 uiautomationcore)
+
+    # Product-geometry switch coverage runs against a packaged production host
+    # and a deterministic managed worker, so build.ps1 supplies those paths.
+    add_executable(WidgetSwitchHostTests
+        WidgetSwitchHostTests.cpp OverlayHostTestSupport.cpp)
+    target_compile_features(WidgetSwitchHostTests PRIVATE cxx_std_20)
+    target_compile_options(WidgetSwitchHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(WidgetSwitchHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(WidgetSwitchHostTests PRIVATE
+        user32 gdi32 windowscodecs ole32)
 
     add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
     target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)

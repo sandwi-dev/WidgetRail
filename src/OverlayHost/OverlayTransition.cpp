@@ -11,7 +11,67 @@ namespace {
     return std::isfinite(value) ? std::clamp(value, 0.0F, 1.0F) : 1.0F;
 }
 
+[[nodiscard]] float SanitizeExtent(const float value) noexcept {
+    return std::isfinite(value) ? std::clamp(value, 1.0F, 10000.0F) : 1.0F;
+}
+
 } // namespace
+
+void OverlayExtentTransitionTimeline::Begin(
+    const std::uint64_t timestampMilliseconds,
+    const float fromWidthDip,
+    const float fromHeightDip,
+    const float targetWidthDip,
+    const float targetHeightDip,
+    const bool reducedMotion) noexcept {
+    timestampMilliseconds_ = std::max(timestampMilliseconds_, timestampMilliseconds);
+    fromWidthDip_ = SanitizeExtent(fromWidthDip);
+    fromHeightDip_ = SanitizeExtent(fromHeightDip);
+    targetWidthDip_ = SanitizeExtent(targetWidthDip);
+    targetHeightDip_ = SanitizeExtent(targetHeightDip);
+    startedAt_ = timestampMilliseconds_;
+    widthDip_ = reducedMotion ? targetWidthDip_ : fromWidthDip_;
+    heightDip_ = reducedMotion ? targetHeightDip_ : fromHeightDip_;
+    active_ = !reducedMotion &&
+        (std::abs(fromWidthDip_ - targetWidthDip_) > 0.01F ||
+         std::abs(fromHeightDip_ - targetHeightDip_) > 0.01F);
+    if (!active_) {
+        widthDip_ = targetWidthDip_;
+        heightDip_ = targetHeightDip_;
+    }
+}
+
+OverlayExtentTransitionSample OverlayExtentTransitionTimeline::Sample(
+    const std::uint64_t timestampMilliseconds,
+    const bool reducedMotion) noexcept {
+    timestampMilliseconds_ = std::max(timestampMilliseconds_, timestampMilliseconds);
+    if (reducedMotion) {
+        widthDip_ = targetWidthDip_;
+        heightDip_ = targetHeightDip_;
+        active_ = false;
+    } else if (active_) {
+        const auto elapsed = timestampMilliseconds_ >= startedAt_
+            ? timestampMilliseconds_ - startedAt_
+            : std::uint64_t{0};
+        if (elapsed >= DurationMilliseconds) {
+            widthDip_ = targetWidthDip_;
+            heightDip_ = targetHeightDip_;
+            active_ = false;
+        } else {
+            const auto linear = std::clamp(
+                static_cast<float>(elapsed) /
+                    static_cast<float>(DurationMilliseconds),
+                0.0F, 1.0F);
+            const auto inverse = 1.0F - linear;
+            const auto progress = 1.0F - inverse * inverse * inverse;
+            widthDip_ = fromWidthDip_ +
+                (targetWidthDip_ - fromWidthDip_) * progress;
+            heightDip_ = fromHeightDip_ +
+                (targetHeightDip_ - fromHeightDip_) * progress;
+        }
+    }
+    return {SanitizeExtent(widthDip_), SanitizeExtent(heightDip_), active_};
+}
 
 void OverlayTransitionTimeline::BeginOpen(
     const std::uint64_t timestampMilliseconds,

@@ -142,6 +142,51 @@ void RepeatedContentRevealIsContinuous() {
           "retargeted content reveal remains bounded animation work");
 }
 
+void ExtentTransitionIsBoundedAndRetargetable() {
+    gba::OverlayExtentTransitionTimeline timeline;
+    timeline.Begin(10, 620.0F, 520.0F, 980.0F, 560.0F, false);
+    auto frame = timeline.Sample(10, false);
+    Near(frame.widthDip, 620.0F, "extent transition starts at committed width");
+    Near(frame.heightDip, 520.0F, "extent transition starts at committed height");
+    Check(frame.active, "extent transition requests bounded visible frames");
+
+    frame = timeline.Sample(80, false);
+    Check(frame.widthDip > 620.0F && frame.widthDip < 980.0F,
+          "extent transition interpolates between committed and target widths");
+    const auto presentedWidth = frame.widthDip;
+    const auto presentedHeight = frame.heightDip;
+    timeline.Begin(
+        80, presentedWidth, presentedHeight, 820.0F, 430.0F, false);
+    frame = timeline.Sample(80, false);
+    Near(frame.widthDip, presentedWidth,
+         "rapid reversal retargets from the presented width");
+    Near(frame.heightDip, presentedHeight,
+         "rapid reversal retargets from the presented height");
+
+    frame = timeline.Sample(
+        80 + gba::OverlayExtentTransitionTimeline::DurationMilliseconds, false);
+    Near(frame.widthDip, 820.0F, "retargeted extent reaches final width");
+    Near(frame.heightDip, 430.0F, "retargeted extent reaches final height");
+    Check(!frame.active, "settled extent owns no idle frames");
+}
+
+void ReducedMotionExtentSnapsImmediately() {
+    gba::OverlayExtentTransitionTimeline timeline;
+    timeline.Begin(0, 520.0F, 520.0F, 980.0F, 560.0F, true);
+    auto frame = timeline.Sample(0, true);
+    Near(frame.widthDip, 980.0F, "reduced motion snaps destination width");
+    Near(frame.heightDip, 560.0F, "reduced motion snaps destination height");
+    Check(!frame.active, "reduced extent owns no frame loop");
+
+    timeline.Begin(10, 980.0F, 560.0F, 820.0F, 430.0F, false);
+    frame = timeline.Sample(45, false);
+    Check(frame.active, "full-motion extent can be active before preference change");
+    frame = timeline.Sample(46, true);
+    Near(frame.widthDip, 820.0F, "mid-flight reduced motion snaps final width");
+    Near(frame.heightDip, 430.0F, "mid-flight reduced motion snaps final height");
+    Check(!frame.active, "mid-flight reduced preference cancels extent work");
+}
+
 void ClockAndDecisionsAreStable() {
     gba::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
@@ -177,6 +222,8 @@ int main() {
     ReducedMotionSnapsAtStartAndMidFlight();
     ContentRevealIsBoundedAndSnappable();
     RepeatedContentRevealIsContinuous();
+    ExtentTransitionIsBoundedAndRetargetable();
+    ReducedMotionExtentSnapsImmediately();
     ClockAndDecisionsAreStable();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;

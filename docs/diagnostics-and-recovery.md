@@ -93,6 +93,17 @@ could destroy legitimate background work. A future recovery action must be a
 typed host operation with exact target identity, lifecycle rules, confirmation,
 and deterministic crash-loop tests before appearing here.
 
+## Presentation-transition log records
+
+`overlay.log` records one bounded line when a visible widget transition changes
+identity or extent. It identifies the public source/destination widget IDs, the
+currently presented and requested logical extents, the identity/extent cause,
+the in-place resize strategy, content reveal or retained-content authority, and
+whether sizing came from an admitted snapshot or the last committed surface.
+These fields diagnose the former one-frame worker-start surface and render-target
+recreation path without logging snapshot content, focus text, process identity,
+worker arguments, filesystem paths, or provider data.
+
 ## Action-failure log records
 
 `overlay.log` may retain one bounded record for an accepted post-admission

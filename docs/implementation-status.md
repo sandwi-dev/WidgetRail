@@ -113,6 +113,33 @@ and the production-process fixture; the managed bridge suite passed 47/47, and
 the isolated YT Music Community-addon acceptance passed without changing the
 real user catalog.
 
+DLV-020 makes open-widget switching one host-owned presentation transaction.
+The last admitted snapshot and surface remain painted as visual-only content
+while a newly selected isolated worker has not produced its first snapshot;
+controller and accessibility authority already belong to the destination, so
+the retained controls cannot receive actions or enter the UI Automation tree.
+This removes the transient `Starting isolated Spotify widget…` / Games & Apps
+surface from ordinary switches without delaying snapshot admission. Once the
+destination snapshot is valid, the existing host cadence reveals it and eases
+the logical extent from the currently presented size over a bounded 140 ms;
+reduced motion snaps immediately, and a reversal retargets from the presented
+extent. `WM_SIZE` resizes the existing Direct2D HWND target in place and rebuilds
+only dependent resources, while aliased color-key rounded fills prevent a dark
+blended fringe. The production-HWND fixture delays Spotify for 240 ms and Games
+& Apps for 320 ms, proves the prior content and exact extent remain intact for
+that interval, then captures both size transitions, rapid reversal, and a
+same-identity Games refresh with no blank shell, tray loss, or black-border
+frame. Physical display and controller evidence remains separate.
+The canonical Release script passed the 108,547-check placement suite, the
+54-check targeting suite, the 56-check transition suite, the 25-check chrome
+suite, the 4,685-check renderer suite, and both production-host fixtures. The
+bounded DLV-020 run passed with 44 retained frames under
+`artifacts/evidence/dlv020-final8/manifest.json`; representative startup frames
+show Network continuously painted through Spotify admission and Spotify
+continuously painted through Games & Apps admission, while the Games reload
+retains the same 981x668 host extent and Games content. The documentation
+contract passed across all 51 Markdown files.
+
 ## Implemented
 
 ### Native overlay and input
@@ -123,7 +150,8 @@ dashboard. It supports reorder mode, last-widget/order persistence, focus
 routing for the reference widget, deterministic tray-Y hold refresh through the
 shared F5 path, managed bridge startup, bounded HTTPS
 artwork, fixed native semantic icon geometry, responsive logical viewports,
-and per-monitor placement.
+per-monitor placement, and snapshot-gated visual/extent transitions that retain
+host chrome and the last admitted widget presentation across worker startup.
 
 Asynchronous widget action failures are retained as fixed generic copy in a
 host-owned, 256-widget-bounded controller keyed by widget ID and runtime generation.
