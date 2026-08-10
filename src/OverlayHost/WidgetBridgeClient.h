@@ -55,11 +55,25 @@ private:
     std::unordered_set<std::wstring> known_;
 };
 
+enum class WidgetActionFailureCode {
+    ControllerActionFailed,
+};
+
+[[nodiscard]] constexpr std::wstring_view WidgetActionFailureCodeValue(
+    const WidgetActionFailureCode code) noexcept {
+    switch (code) {
+    case WidgetActionFailureCode::ControllerActionFailed:
+        return L"controllerActionFailed";
+    }
+    return L"controllerActionFailed";
+}
+
 struct WidgetActionFailure final {
     std::wstring widgetId;
     std::wstring runtimeGeneration;
     std::wstring actionId;
     std::wstring sourceElementId;
+    WidgetActionFailureCode code{WidgetActionFailureCode::ControllerActionFailed};
 };
 
 /// Bounded FIFO for post-admission action failures. Runtime generation is

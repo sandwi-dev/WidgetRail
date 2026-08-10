@@ -93,6 +93,16 @@ could destroy legitimate background work. A future recovery action must be a
 typed host operation with exact target identity, lifecycle rules, confirmation,
 and deterministic crash-loop tests before appearing here.
 
+## Action-failure log records
+
+`overlay.log` may retain one bounded record for an accepted post-admission
+controller failure: public widget ID, opaque runtime generation, stable
+`controllerActionFailed` code, action ID, and source element ID. The
+bridge-supplied presentation message, worker exception type or text, provider
+response bodies, credentials, and private fixture sentinels are never logged.
+Painted and accessibility-visible feedback uses separate fixed host copy rather
+than replaying diagnostic fields.
+
 ## Verification
 
 Run the focused suites from the repository root:

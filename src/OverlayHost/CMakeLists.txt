@@ -204,6 +204,17 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(AccessibilityProviderTests PRIVATE user32 ole32 oleaut32 uiautomationcore)
     add_test(NAME AccessibilityProviderTests COMMAND AccessibilityProviderTests)
 
+    # Cross-process production-host coverage. This target is invoked by
+    # build.ps1 with an isolated managed YT Music fixture and packaged host
+    # directory; CTest deliberately omits it because those paths are required.
+    add_executable(WidgetActionFailureHostTests WidgetActionFailureHostTests.cpp)
+    target_compile_features(WidgetActionFailureHostTests PRIVATE cxx_std_20)
+    target_compile_options(WidgetActionFailureHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(WidgetActionFailureHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(WidgetActionFailureHostTests PRIVATE
+        user32 ole32 oleaut32 uiautomationcore)
+
     add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
     target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)
     target_compile_options(TrayLayoutTests PRIVATE /W4 /permissive- /EHsc)
