@@ -51,6 +51,11 @@ authorize implementation.
   but must not interrupt the production-hotspot queue merely to reduce line
   count. A valid cleanup leaves a thin stable runner and cohesive scenario/
   fixture owners; a test-framework migration is not closure by itself.
+- A decomposition milestone does not automatically close the hotspot it
+  touched. If the retained production owner remains above the review threshold
+  or still owns several independently testable concerns, the planner must give
+  that residual owner an explicit cohesive exception with named responsibilities
+  or a new bounded DLV disposition before accepting later material growth.
 
 ### Branch and integration protocol
 
@@ -313,11 +318,13 @@ the serialized integration queue rather than being patched locally.
 
 The decomposition milestones implement EQ-006 without using file length as a
 mechanical gate: each extraction must reduce shared mutable knowledge or create
-a focused domain-policy seam. Audio Mixer follows DLV-037 in this lane and is
-independent of DLV-026: DLV-029 must preserve current focus IDs and navigation
-behavior so the native/shared-scroll correction remains a separately reviewable
-milestone. DLV-006 must still land before Spotify continuous-list and launcher
-work.
+a focused domain-policy seam. After DLV-032 and DLV-034 are accepted and
+integrated, Audio Mixer is the next managed production decomposition because it
+remains the largest first-party monolith and DLV-037 was only a queue-order
+dependency. DLV-029 must preserve current focus IDs and navigation behavior so
+the independent native/shared-scroll correction remains separately reviewable.
+DLV-035, DLV-036, and DLV-037 then continue the platform-policy hotspot queue.
+DLV-006 must still land before Spotify continuous-list and launcher work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -950,9 +957,8 @@ Spotify widget rather than the platform backend.
 
 ### DLV-035 — Split the Windows network backend by stable responsibility
 
-**State:** Awaiting reviewer acceptance and integration of the DLV-032
-correction; do not start automatically from the current unintegrated branch
-**Baseline:** future accepted main integration through DLV-032 and DLV-034
+**State:** Ready after DLV-029
+**Baseline:** closing commit of DLV-029
 **Dependencies:** DLV-028 and DLV-031
 **Owner:** managed Windows network provider internals and deterministic native-
 adapter fixtures; no widget presentation or native overlay-host files
@@ -1063,9 +1069,10 @@ second lifecycle/session owner.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
-**State:** Ready after DLV-037
-**Baseline:** closing commit of DLV-037
-**Dependencies:** DLV-037 for managed-lane queue order; DLV-026 is independent
+**State:** Awaiting reviewer acceptance and integration of the DLV-032
+correction and DLV-034; next managed production assignment after that boundary
+**Baseline:** future accepted main integration through DLV-032 and DLV-034
+**Dependencies:** DLV-031; DLV-026 is independent
 **Owner:** managed Audio Mixer internals and direct widget fixtures; no native
 host, broker, capability, or protocol files
 
@@ -1107,8 +1114,8 @@ its own bounded assignment.
 
 ### DLV-038 — Modularize the largest managed test harnesses by responsibility
 
-**State:** Ready after DLV-029
-**Baseline:** closing commit of DLV-029
+**State:** Ready after DLV-037
+**Baseline:** closing commit of DLV-037
 **Dependencies:** DLV-031, DLV-032, DLV-037, and DLV-029 so active production
 architecture work has already stabilized the affected suites
 **Owner:** managed test-only source organization and narrow reusable fixture
