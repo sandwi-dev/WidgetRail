@@ -888,13 +888,27 @@ duplicates client/session authority, or touches native platform work.
 
 ### DLV-034 — Split the Spotify platform backend by stable responsibility
 
-**State:** Assigned under the preserve-in-progress rule; finish one coherent
-commit, then stop for the separate DLV-032 correction before DLV-035
-**Baseline:** unaccepted DLV-032 candidate `8c11a27`; this commit and DLV-034
-cannot be integrated until the DLV-032 correction is accepted
+**State:** Correction required; candidate `a5c80ac` is not accepted or
+integrated, and its correction must reach a clean commit before DLV-032 resumes
+**Baseline:** unaccepted DLV-034 candidate `a5c80ac`, preserving its parent
+DLV-032 candidate `8c11a27`; neither milestone can be integrated until both
+corrections are independently accepted
 **Dependencies:** DLV-023 and DLV-031
 **Owner:** managed Windows Spotify provider internals and injected-transport
 fixtures
+
+**Reviewer correction:** Candidate `a5c80ac` materially reduces the central
+backend and preserves singular identity/vault/token/session authority, but its
+32-test registry does not prove two acceptance cases claimed by the public
+documentation. Add manually controlled backend-level proof that a
+cancellation-ignoring token refresh cannot publish/cache an access token,
+rotate/save refresh credentials, or supply the next request after cancellation;
+and that Disconnect clears cached token plus vault state, stops applicable local
+playback, and prevents later reuse of the disconnected session. Correct only
+DLV-034-owned behavior if either test exposes a defect, keep the proof sleep-free
+and credential-free, and make documentation claims match the retained evidence.
+Commit this as a separate `[DLV-034]` correction without rewriting `a5c80ac`,
+then stop for planner review before DLV-032.
 
 **Objective:** Preserve one integration identity and token-session owner while
 making one Spotify endpoint family, retry rule, or response parser changeable
