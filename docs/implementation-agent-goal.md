@@ -239,6 +239,16 @@ class framework. Completion evidence for decomposition must compare the before
 and after responsibility map, coordination primitives, cross-boundary mutable
 dependencies, and focused failure/lifecycle coverage.
 
+Apply the same maintainability standard to test code. A large executable
+`Program.cs` is acceptable only while it remains a thin registry/runner over
+cohesive scenario groups and shared fixtures. Do not keep adding unrelated test
+cases, duplicated setup, process helpers, assertions, and domain fixtures to one
+application-sized test file. When an assigned test-architecture milestone owns
+the area, split by behavior and fixture responsibility, keep test discovery and
+failure names stable, and prove that one scenario family can change without
+reading the complete harness. Do not migrate test frameworks or split files
+solely to reduce line count.
+
 ### Pre-release local-state compatibility
 
 This product currently has one development user and no public persistence-

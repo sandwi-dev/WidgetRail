@@ -1980,16 +1980,16 @@ structure is promoted as the public template.
 
 ### EQ-029 — P2 — Managed platform policy remains concentrated in central classes
 
-**Status: Open with bounded delivery coverage in DLV-031, DLV-032, and DLV-034.
-Existing EQ-020 and EQ-022 remain the authoritative liveness and bridge-
-scheduling findings.**
+**Status: DLV-031 accepted; remaining concentration has bounded delivery coverage
+in DLV-032, DLV-034, DLV-035, DLV-036, and DLV-037. Existing EQ-020 and EQ-022
+remain the authoritative liveness and bridge-scheduling findings.**
 
-**Evidence.** `PlatformCapabilityBroker` spans about 2,265 lines inside a
-2,377-line file and owns identity/declaration/consent/lifecycle authority,
-request leases, dashboard gestures, subscriptions, the central capability
-switch, app-library caching, domain request execution, and validation/
-projection for audio, network/Bluetooth, app library, media/Spotify, loopback,
-secrets, and private state. `WidgetBridgeServer` is one roughly 1,380-line class
+**Evidence.** Before accepted DLV-031, `PlatformCapabilityBroker` spanned about
+2,265 lines inside a 2,377-line file and owned identity/declaration/consent/
+lifecycle authority, request leases, dashboard gestures, subscriptions, the
+central capability switch, app-library caching, domain request execution, and
+validation/projection for audio, network/Bluetooth, app library, media/Spotify,
+loopback, secrets, and private state. `WidgetBridgeServer` is one roughly 1,380-line class
 that combines pipe-session/framing ownership with request scheduling, worker
 residency/client lifecycle, catalog and diagnostics publication, authority-
 recovery operations, host effects, and failure projection. `WidgetProcessClient`
@@ -2001,6 +2001,18 @@ not because it contains one comparable monolith.
 class owns configuration, OAuth/PKCE callbacks, token refresh/vault state,
 retry/rate-limit policy, playback/devices/queue/playlists, local-player transfer,
 response parsing, validation, and broker mapping.
+
+Accepted DLV-031 (`ffa1edc`, integrated by `27adec1`) reduces the broker
+authority type from 2,377 physical lines/117,433 bytes to 837 lines/36,377 bytes.
+Seven internal typed domain routes now own value-based decoding, validation,
+backend execution, and projection for audio, network/Bluetooth/activity, app
+library, media/Spotify, loopback, private secrets, and private state. The broker
+retains the only identity/declaration/consent/lifecycle/request-lease/dashboard-
+gesture/revocation/subscription/event-sequence authority. No public API,
+protocol, task registry, cancellation source, lifecycle owner, lease owner, or
+sequence counter was added. Retained run `20260810T132445Z-4465b4ae` passes
+PlatformBroker 51/51, Windows app library 31/31, generic worker 9/9, and
+documentation 52.
 
 **Why it matters.** Adding one capability or changing one scheduling rule
 currently requires understanding distant policy and cleanup regions inside a
@@ -2024,6 +2036,39 @@ bridge admission/order rule through deterministic no-sleep dispatcher tests.
 Authorization, request leases, event sequencing, framing, Stop, and outbound
 writes retain one documented owner, with zero leaked tasks/IDs/slots/tails after
 every tested failure and cancellation path.
+
+### EQ-030 — P2 — Managed test suites are application-sized harnesses
+
+**Status: Open with a bounded pilot in DLV-038 after the production-hotspot
+queue. The executable-harness choice and absence of `Microsoft.NET.Test.Sdk` are
+not themselves defects.**
+
+**Evidence.** The largest managed test programs are currently about 3,360 lines
+for Widget SDK, 3,338 for Widget Runtime, 3,234 for Platform Broker, 2,377 for
+Games & Apps, 2,339 for Widget Bridge, 2,118 for YT Music, and 2,065 for the CLI.
+They provide valuable deterministic coverage, but top-level registries, scenario
+logic, process/clock/cancellation fixtures, setup, and assertions remain in the
+same translation units. New focused production tests therefore keep increasing
+the amount of unrelated test code a maintainer must scan.
+
+**Why it matters.** Test code is production engineering infrastructure. A
+developer changing one scheduling, capability, or lifecycle rule should be able
+to locate the relevant scenarios and fixtures without understanding several
+thousand lines, and reviewers should be able to distinguish changed behavior
+from harness plumbing.
+
+**Recommended direction.** Preserve the bounded executable runner, stable
+ordered test names, exit semantics, verifier/JUnit extraction, and explicit
+scenario registration. Pilot cohesive scenario and fixture owners in the three
+largest active suites only after their production decomposition milestones land.
+Extract a shared helper only when at least two suites prove identical semantics;
+do not adopt a framework or reflection discovery merely to make files shorter.
+
+**Resolution evidence.** Each pilot has a thin explicit runner; one scenario
+family and its setup can change through a named owner; duplicated helper state
+is reduced; names/order, deterministic timing, process containment, failures,
+and focused case counts remain exact. Remaining large suites receive an explicit
+cohesive exception or later bounded assignment.
 
 ### EQ-007 — P2 — Copyable documentation examples are not API-checked
 
@@ -3699,7 +3744,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | SDK lifecycle/coordination | DLV-009 (`08d44db`, integrated by `304102a`) makes YT Music the second repeatable lifecycle/state proof: SDK Active lanes own auto-connect/progress/poll/Latest transport work, one immutable presentation record owns rendering, and no Task/CTS registry remains. DLV-030 (`549da57`, integrated by `6b9144d`) adds the responsibility proof through value-based connection, confirmation/rollback, action, and snapshot-only presentation seams. Spotify DLV-007/008 independently proves coherent keyed presentation and responsibility files | Document a narrow operation/responsibility migration recipe; keep domain policy private until another consumer proves a reusable public boundary; retain packaged churn evidence |
 | Action dispatch | DLV-014 (`2a160b4`, integrated by `9060f12`) composes a deterministic YT Music post-admission failure through the real worker/runtime/bridge/native host into painted and polite UIA status. It proves exact generation/action/source, sanitized logging, focus retention, replacement/expiry, Hide/Stop, and no restart; native Release, bridge 47/47, and isolated addon acceptance passed | Retain physical GameInput and packaged assistive-technology evidence; do not reopen implementation unless those gates expose a concrete defect |
 | Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | DLV-032 owns one narrow typed dispatcher with deterministic no-sleep invariant tests and bounded forced drain; DLV-033 owns the later asynchronous native read owner/correlation table |
-| Managed capability broker | `PlatformCapabilityBroker` keeps authority singular but also concentrates the central route plus audio, network/Bluetooth, app-library, media/Spotify, loopback, secret, and private-state validation/projection in one roughly 2,377-line class | DLV-031 extracts named internal domain policy while retaining one authorization, lease, lifecycle, gesture, and event authority; no generic mediator or public-protocol churn |
+| Managed capability broker | Accepted DLV-031 (`ffa1edc`, integrated by `27adec1`) reduces the broker authority owner from 2,377 lines to 837 while retaining singular identity, consent, lifecycle, lease, gesture, subscription, revocation, and event-sequence authority. Seven typed internal domain routes own value-based decoding, validation, backend execution, and projection | Retain the focused authority/domain tests as new capabilities arrive; do not reintroduce distant validators, a generic mediator, or public-protocol churn |
 | Spotify platform provider | One roughly 1,724-line class owns OAuth/PKCE and token/vault state, HTTP retry/rate-limit behavior, playback/devices/queue/playlists, local-player transfer, parsing/validation, and broker mapping | DLV-034 follows DLV-023/DLV-031 so provider ownership is separated only after transient widget-state failures are distinguished from transport/auth defects |
 | Windows network provider | `WindowsNetworkPlatformBackend` is roughly 1,186 lines and combines an owner thread/command queue, scan and connection timers, committed provider state, reconciliation, equality policy, and three event pumps | DLV-035 follows the broker split and preserves one owner thread/state while extracting directly testable command, timeout, reconciliation, and event-projection policy; the separate 1,297-line native-adapter file is an interop aggregation review signal, not an automatic file-splitting target |
 | Settings widget | The roughly 1,090-line widget combines lifecycle/action orchestration, six page renderers, preference persistence, diagnostics, and exact-token authority-recovery selection/actions | DLV-036 separates snapshot-only page/navigation policy, ordinary preference persistence, and privileged diagnostic/recovery policy while retaining one lifecycle and committed-state owner |
@@ -3776,23 +3821,26 @@ below.
    reproduction. Authorize either a narrowly proven offscreen atomic-present
    design or DirectComposition/swap-chain ownership before platform work
    resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-031 — separate capability-domain policy from broker
-   authority.** DLV-030 is accepted as `549da57` and integrated as `6b9144d`.
-   Keep one broker identity/consent/lease/lifecycle/event authority while
-   extracting value-based domain decoding, validation, and projection seams.
+2. **Widgets DLV-032 — extract the bridge request dispatcher.** DLV-031 is
+   accepted as `ffa1edc` and integrated as `27adec1`. Keep framing, strict
+   decoding, client/catalog/session ownership, Stop authority, and response
+   writes in `WidgetBridgeServer` while one typed dispatcher owns admission,
+   duplicate IDs, FIFO tails, slots, cleanup, cancellation, and drain.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
    imbalance.
 4. **Continue responsibility milestones rather than line-count refactors.**
    DLV-028 has accepted Network Controls; DLV-030 has accepted YT Music;
-   DLV-029 owns Audio Mixer; DLV-031 the managed capability broker; DLV-032
-   bridge scheduling;
+   DLV-029 owns Audio Mixer; accepted DLV-031 owns the managed capability broker;
+   DLV-032 bridge scheduling;
    DLV-033 native widget-session ownership; DLV-034 the Spotify provider;
    DLV-035 the Windows network backend; DLV-036 Settings; and DLV-037 the
    managed worker client.
-   Each must reduce shared mutable
-   knowledge or expose a focused policy seam—cosmetic files do not qualify.
+   DLV-038 then pilots responsibility-based organization for the largest managed
+   test harnesses without delaying the production train. Each milestone must
+   reduce shared mutable knowledge or expose a focused policy seam—cosmetic files
+   do not qualify.
 5. **Keep shared foundations serialized.** DLV-006 remains the named continuous
    keyed collection/lazy-artwork checkpoint; DLV-019 and DLV-022 wait on their
    documented accepted dependencies.

@@ -45,6 +45,12 @@ authorize implementation.
   reduce shared mutable knowledge, expose a focused deterministic test seam, or
   let a normal maintenance change be made without understanding the entire
   subsystem.
+- Managed test programs above roughly 1,500 physical lines, or smaller harnesses
+  that mix unrelated scenario setup, process control, assertions, and domain
+  fixtures, are test-architecture hotspots. They require a named disposition,
+  but must not interrupt the production-hotspot queue merely to reduce line
+  count. A valid cleanup leaves a thin stable runner and cohesive scenario/
+  fixture owners; a test-framework migration is not closure by itself.
 
 ### Branch and integration protocol
 
@@ -777,11 +783,24 @@ or exposes a separate product defect outside this architecture milestone.
 
 ### DLV-031 — Separate capability-domain policy from broker authority
 
-**State:** Assigned
+**State:** Done
 **Baseline:** accepted DLV-030 closing commit `549da57`
+**Closing commit:** `ffa1edc` (`[DLV-031] Separate capability domain policy`)
+**Integrated on `main`:** `27adec1`
 **Dependencies:** DLV-023 and DLV-028
 **Owner:** managed `PlatformCapabilityBroker` internals and direct broker policy
 fixtures; no native-host files
+
+**Reviewer disposition:** Accepted. The broker remains the sole identity,
+declaration, consent, lifecycle, request-lease, dashboard-gesture, revocation,
+subscription, and event-sequence authority. Seven closed internal domain routes
+move typed decoding, validation, backend execution, and projection out of the
+central class; the authority owner falls from 2,377 lines/117,433 bytes to 837
+lines/36,377 bytes without public API or protocol changes. The app-library cache
+and its serialization gate move together, while the broker state lock and
+loopback authority gate remain singular. Retained stable dirty assignment run
+`20260810T132445Z-4465b4ae` passes PlatformBroker 51/51, Windows app library
+31/31, generic worker 9/9, and documentation 52 in 22.649 seconds.
 
 **Objective:** Keep one broker authority for identity, declarations, consent,
 lifecycle, request leases, event sequence, and dashboard gestures while making
@@ -817,8 +836,8 @@ platform worktree.
 
 ### DLV-032 — Extract the bridge request dispatcher
 
-**State:** Ready after DLV-031
-**Baseline:** closing commit of DLV-031
+**State:** Assigned
+**Baseline:** accepted DLV-031 closing commit `ffa1edc`
 **Dependencies:** DLV-031 when shared broker/bridge test infrastructure changes
 **Owner:** managed `WidgetBridgeServer` request scheduling and direct bridge
 fixtures; framing and session ownership remain in the server
@@ -1046,6 +1065,47 @@ suite.
 or authority changes, touches the shared native scroll owner, introduces a
 second lifecycle/committed-state owner, or exposes a product defect that needs
 its own bounded assignment.
+
+### DLV-038 — Modularize the largest managed test harnesses by responsibility
+
+**State:** Ready after DLV-029
+**Baseline:** closing commit of DLV-029
+**Dependencies:** DLV-031, DLV-032, DLV-037, and DLV-029 so active production
+architecture work has already stabilized the affected suites
+**Owner:** managed test-only source organization and narrow reusable fixture
+support; no production, public SDK, protocol, native-host, or product behavior
+
+**Objective:** Make one broker, runtime, bridge, SDK, or flagship-widget scenario
+family changeable without reading a 2,000-3,300-line top-level `Program.cs`,
+while preserving the repository's bounded executable-test and verifier contract.
+
+**In scope:** a before/after inventory of the largest managed test programs;
+thin per-project runners with stable ordered test names and exit semantics;
+cohesive scenario groups and fixtures for the three largest currently active
+suites; deletion of duplicated setup/assertion/process helpers only where the
+replacement has at least two real consumers; deterministic discovery/inventory
+coverage and unchanged verifier/JUnit extraction.
+
+**Out of scope:** production changes, changing tested behavior to simplify the
+harness, a repository-wide rewrite, mandatory xUnit/NUnit/MSTest adoption,
+reflection-based discovery, generated test cases that hide scenario intent, or
+splitting every method into a separate class/file.
+
+**Acceptance criteria:** each pilot runner is a small explicit registry over
+named scenario owners; one scenario family can be located and changed without
+reading the entire suite; setup, assertions, clocks, cancellation, and process
+fixtures have one clear owner; test names/order, pass/fail exit codes, bounded
+timeouts, verifier case extraction, and focused coverage remain exact; the
+completion report identifies remaining test hotspots and gives each a cohesive
+exception or later bounded disposition.
+
+**Verification:** the three reorganized Release suites, verifier runner self-
+tests/inventory checks, and documentation contracts. No product aggregate and no
+unrelated native suite.
+
+**Stop/escalate when:** cleanup requires production/public API changes, changes
+test semantics or ordering, weakens timeouts/process containment, or expands into
+a whole-repository framework migration.
 
 ## Platform lane
 
