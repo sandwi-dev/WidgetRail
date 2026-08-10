@@ -833,6 +833,15 @@ static async Task ExportEvidenceAsync(string outputDirectory)
 
         if (package.Manifest.Id == "org.gbar.firstparty.games-apps")
         {
+            Assert.True(Nodes(initial.Root).Any(node =>
+                string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
+                string.Equals(node.AccessibilityLabel,
+                    "Conformance Trusted Game, Game, Ready", StringComparison.Ordinal)),
+                "The trusted Game was not auto-curated in the real package path.");
+            Assert.True(!Nodes(initial.Root).Any(node =>
+                (node.Text ?? string.Empty).Contains(
+                    "Conformance Library App", StringComparison.Ordinal)),
+                "An Application was auto-curated even though it remains opt-in.");
             var open = Nodes(initial.Root).Single(node =>
                 string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
             await client.SendActionAsync(new WidgetActionEvent("games.open-catalog", open.Id));
@@ -840,7 +849,9 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 client, "games.toggle-curation", "Conformance Library App");
             await ExportSnapshotAsync(package, configured, "catalog", catalog);
             var add = Nodes(catalog.Root).Single(node =>
-                string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal));
+                string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal) &&
+                (node.AccessibilityLabel ?? string.Empty).Contains(
+                    "Conformance Library App", StringComparison.Ordinal));
             await client.SendActionAsync(new WidgetActionEvent("games.toggle-curation", add.Id));
             var selected = await WaitForActionSnapshotAsync(
                 client, "games.toggle-curation", "Conformance Library App", selected: true);
@@ -854,7 +865,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 authority = "real installed package in AppContainer with simulated broker",
                 steps = new[]
                 {
-                    new { action = "visible", invariant = "root exposes games.open-catalog without catalog enumeration" },
+                    new { action = "visible", invariant = "trusted Game is automatically curated while Application remains absent" },
                     new { action = "games.open-catalog", invariant = "catalog exposes Conformance Library App" },
                     new { action = "games.toggle-curation", invariant = "selected state becomes true" },
                     new { action = "back", invariant = "curated root exposes games.launch" },
@@ -1139,7 +1150,9 @@ static async Task ExerciseControlAsync(
             snapshot = await WaitForActionSnapshotAsync(
                 client, "games.toggle-curation", "Conformance Library App");
             var add = Nodes(snapshot.Root).Single(node =>
-                string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal));
+                string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal) &&
+                (node.AccessibilityLabel ?? string.Empty).Contains(
+                    "Conformance Library App", StringComparison.Ordinal));
             await client.SendActionAsync(new WidgetActionEvent(
                 "games.toggle-curation", add.Id));
             await WaitForActionSnapshotAsync(
@@ -1238,6 +1251,8 @@ static SimulatedPlatformBrokerBackend CreateBackend(bool spotifyReady = false)
     ]);
     backend.SetAppLibrary(
     [
+        new AppLibraryItemSummary(
+            "game-conformance", "Conformance Trusted Game", AppLibraryKind.Game),
         new AppLibraryItemSummary(
             "app-conformance", "Conformance Library App", AppLibraryKind.Application),
     ]);
@@ -1392,7 +1407,7 @@ file sealed class Deployment : IDisposable
                 new PackageSpec("media-sessions", "src/FirstPartyWidgets/MediaSessionsWidget", "MediaSessions", WidgetGlyph.Music,
                     typeof(MediaSessionsWidget), "Conformance Song"),
                 new PackageSpec("games-apps", "src/FirstPartyWidgets/GamesAppsWidget", "GamesApps", WidgetGlyph.Play,
-                    typeof(GamesAppsWidget), "Build your library"),
+                    typeof(GamesAppsWidget), "Conformance Trusted Game"),
                 new PackageSpec("audio-mixer", "src/FirstPartyWidgets/AudioMixerWidget", "AudioMixer", WidgetGlyph.Volume,
                     typeof(AudioMixerWidget), "Conformance Game"),
                 new PackageSpec("network-controls", "src/FirstPartyWidgets/NetworkControlsWidget", "NetworkControls", WidgetGlyph.Wifi,

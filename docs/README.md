@@ -67,10 +67,10 @@ guarantees that are available now.
   integration, explicit available-Wi-Fi scan/current saved-open connection,
   controller UX, privacy/location
   gates, event-driven authoring, tests, and remaining release evidence.
-- [Games & Apps reference](games-and-apps.md) — implemented durable curated
-  Library/Catalog slice, opaque paged SDK, separately consented exact launch,
-  controller UX, provider security boundary, lazy catalog discovery,
-  close-after-confirmed-launch, and current source/icon/classification limits.
+- [Games & Apps reference](games-and-apps.md) — implemented trusted-Game
+  auto-curation with durable exclusions, opt-in Applications/Unknown entries,
+  stable opaque identity reconciliation, paged SDK, separately consented exact
+  launch, controller UX, and current source/icon/classification limits.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.

@@ -40,6 +40,27 @@ Current focused Release suites pass Runtime 65/65, PlatformDiagnostics 15/15,
 WidgetBridge 47/47, Settings 45/45, and Gbar CLI 52/52; the documentation
 contract passes with the Settings and CLI operator guidance present.
 
+DLV-002 makes Games & Apps reconcile the bounded trusted catalog on initial and
+subsequent activation. Only entries classified `Game` by a reviewed provider
+are added automatically; `Application` and `Unknown` remain explicit opt-ins.
+The widget owns a schema-v2 private-state policy for ordered SavedIds,
+automatic-membership provenance, exact SavedId exclusions, and selection.
+Version-1 membership migrates as explicit user choice. Missing identities keep
+their bounded order tombstones, reappearing identities receive fresh launch
+tokens without focus drift, and a different SavedId remains a distinct game
+even when its display title is identical. A bounded CAS merge preserves a
+concurrent exclusion, and count-only automatic-add notices never take focus.
+Final focused Release verification retained at
+`artifacts/verification/20260810T040923Z-1a5ccb27` passes the Windows provider
+31/31, broker 49/49, Games & Apps 39/39, and the documentation contract across
+51 Markdown files. The final widget cases include bounded page-two discovery,
+authoritative reclassification, deterministic focus fallback, and cancellation
+and drain of cached background reconciliation before Catalog paging. The
+minimal package/AppContainer Tier-2 run retained at
+`artifacts/verification/20260810T040949Z-b933b8f2` passes 6/6. DLV-002 does not
+authorize or claim another repository-wide aggregate; packaged physical-
+controller and visual evidence remains in the verification queue.
+
 ## Implemented
 
 ### Native overlay and input
@@ -476,15 +497,19 @@ Games & Apps has replaced Recent Apps in the bundled catalog and first-party
 package conformance path. It is an ordinary public-SDK package in the generic
 AppContainer, requires `system.apps.library.read.v1`, optionally declares the
 separate `system.apps.library.launch.v1`, and loads bounded 32-item pages. Its
-default Library shows only entries the user adds from a nested vertical
-Catalog. Library and Catalog entries are full-width single-focus rows; curated
+default Library automatically appends trusted `Game` entries up to the existing
+64-SavedId curated limit. Applications and Unknown entries are available only
+through the nested vertical Catalog. Library and Catalog entries are full-width single-focus rows; curated
 rows can place the bounded trusted PNG inside that same Button target. A
 toggles Catalog membership, X removes from Library, and one
 confirmed launch moves that exact item to the front. Curation, selected item,
-and recent-first order persist across worker restart/unload as authority-scoped
-durable `SavedId` values in `HostServices.PrivateState`; activation resolves
-only those saved entries to fresh short-lived launch tokens. The broad provider
-catalog is loaded only after the explicit **Add applications** action. Launch is
+automatic provenance, exact Game exclusions, and recent-first order persist
+across worker restart/unload as authority-scoped durable `SavedId` values in
+`HostServices.PrivateState`. Activation reconciles the bounded catalog and
+resolves curated entries to fresh short-lived launch tokens; a cached Library
+remains visible during subsequent lifecycle-owned refresh. Removal of a Game
+persists an exclusion, same-identity reappearance stays excluded, and explicit
+Catalog addition clears it. Launch is
 enabled only while Interactive and targets only the opaque ID associated with
 the exact action source. Permission, lifecycle, healthy-empty, unavailable,
 stale-item, and generic failure states remain controller reachable and
@@ -501,19 +526,21 @@ cancellation during retry, and the real generic-worker/AppContainer path passed
 three consecutive lifecycle conformance runs.
 
 The trusted `WindowsAppLibraryProvider` lazily merges the bounded current-user/
-all-user Start Menu Programs roots with the current user's Shell AppsFolder on
-one process-wide bounded STA lane. It skips shortcut reparse points, accepts
-canonical AUMIDs, deduplicates trusted descriptors, and exposes only sanitized
-names, conservative kinds, short-lived random launch IDs, and broker-derived
+all-user Start Menu Programs roots, the current user's Shell AppsFolder, and
+registered Steam libraries on one process-wide bounded STA lane. It skips
+shortcut reparse points, accepts canonical AUMIDs and bounded Steam manifests,
+deduplicates trusted descriptors, classifies only reviewed Steam registrations
+as Games, and exposes only sanitized names, conservative kinds, short-lived random launch IDs, and broker-derived
 authority-scoped durable SavedIds. Raw paths, AUMIDs, stable provider identity,
 arguments, and returned activation PIDs remain host-only. Before launch it
 re-enumerates the exact source. A shortcut must retain its scope, target,
 path, and fingerprint before constrained Shell open; an AppsFolder entry must
 retain exactly one canonical AUMID/revalidation identity before null-argument
-`ActivateApplication`. For curated entries it rasterizes the trusted shortcut
-or AppsFolder Shell icon into a bounded inline PNG; broad Catalog discovery
-stays text-only. Launcher libraries and authoritative game classification
-remain open. Recent Apps remains only as a read-only
+`ActivateApplication`; Steam launch revalidates the exact numeric AppId,
+manifest location, and content before opening its constrained URI. For curated
+entries it rasterizes the trusted shortcut or AppsFolder Shell icon into a
+bounded inline PNG; broad Catalog discovery stays text-only. Additional
+launcher libraries and classification sources remain open. Recent Apps remains only as a read-only
 foreground-activity API/test reference and is not packaged in the current
 overlay. See [Games & Apps](games-and-apps.md).
 

@@ -1,8 +1,9 @@
 # Games & Apps reference
 
-Status: durable authority-scoped curation and trusted close-on-confirmed-launch
-implemented. A bounded Steam launcher adapter is also implemented; packaged
-hands-on verification and additional sources remain.
+Status: automatic trusted-Game reconciliation, durable authority-scoped user
+curation, and trusted close-on-confirmed-launch are implemented. A bounded
+Steam launcher adapter supplies the current evidence-backed Game classification;
+packaged hands-on verification and additional sources remain.
 
 Games & Apps replaces Recent Apps in the bundled overlay catalog. It is a
 manifest-backed first-party package that uses the public SDK, generic
@@ -18,13 +19,18 @@ explicit game-library source, not a guess based on process or executable names.
 
 ## Current user experience
 
-- Entering Visible or Interactive reads package-private state and resolves only
-  the SavedIds the user already added. It does not enumerate the broad catalog.
-  The bounded first catalog page loads only after **Add applications**.
-- The default Library contains only entries the user has added. **Add
-  applications** opens a nested Catalog backed by a vertical controller
+- Entering Visible or Interactive reads package-private state and reconciles a
+  bounded current catalog. Entries classified `Game` by the trusted provider
+  are appended automatically; `Application` and `Unknown` remain opt-in.
+  Reactivation shows the last-good Library immediately while a lifecycle-owned
+  reconciliation refreshes it in the background. Y requests the same bounded
+  refresh explicitly.
+- **Add applications** opens a nested Catalog backed by a vertical controller
   Scroll; A toggles the focused entry in/out of the Library and B returns.
-  Library X removes the focused entry.
+  Library X removes the focused entry. Removing a Game records its exact
+  authority-scoped SavedId as an exclusion, so the same identity stays absent
+  after restart, disappearance, and reappearance. Adding it explicitly clears
+  that exclusion.
 - Both surfaces use stable hashed UI IDs; widget snapshots contain only display
   names, conservative kinds, broker-issued short-lived AppIds, and
   authority-scoped SavedIds. Resolved Library entries may also contain a
@@ -37,17 +43,31 @@ explicit game-library source, not a guess based on process or executable names.
   widget is Interactive. After confirmed provider success, that item moves to
   the front and the new order is persisted; failure preserves order and
   actionable focus.
-- Curation, recent-first order, and selected SavedId are stored through
-  `HostServices.PrivateState` with compare-and-swap conflict handling. On a new
-  worker or host run, the widget resolves the authority-scoped SavedIds to fresh
-  short-lived AppIds and silently drops registrations that no longer exist.
+- Curation, automatic-membership provenance, exclusions, recent-first order,
+  and selected SavedId are stored in a schema-v2 document through
+  `HostServices.PrivateState`. Version-1 membership migrates as explicit user
+  membership. A bounded compare-and-swap merge reapplies the widget's exact
+  delta to newer state, so a concurrent exclusion is not overwritten.
+- Missing SavedIds remain bounded order tombstones but are omitted from the
+  visible Library. Reappearance with the same SavedId restores the prior order
+  using a fresh short-lived AppId. A different SavedId is an independent new
+  Game even when the display title is identical; no title matching occurs.
+  Auto-added entries that cease to be classified Game are hidden, while an
+  explicitly added Application or Unknown entry remains user-owned.
 - A successful launch requests `CloseOnConfirmedSuccess`. The broker emits the
   host effect only after the exact trusted provider call succeeds, and the
   native host accepts it only for the current widget and runtime generation.
   Enqueueing, timeout, stale generation, denial, or failure leaves the overlay
   visible with focus and an actionable status.
 - Catalog `Load more` requests another bounded page and moves selection to the
-  first newly appended item. The widget retains at most 512 items.
+  first newly appended item. Discovery retains at most 512 catalog items. The
+  curated order remains capped at the public 64-SavedId resolver limit, with
+  existing user order taking precedence over newly discovered Games.
+- Newly committed automatic additions produce one count-only, non-focusable,
+  lifecycle-bound toast. An unchanged refresh produces no extra write or
+  repeated notice. Exclusions retain at most 320 IDs so the worst-case schema-v2
+  document remains below the 64 KiB private-state limit; at that bound a new
+  removal is refused without changing visible or durable membership.
 - Permission denied, lifecycle denied, provider unavailable, healthy empty,
   and generic failure states remain controller reachable and provide an
   explicit retry action.
@@ -166,8 +186,8 @@ location, and content hash, then opens only
   are not integrated; AppsFolder coverage is not a promise that every package,
   alias, launcher-owned game, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,
-  authoritative game classification, source-aware grouping, and broader source
-  reconciliation remain tracked as [GBA-033](known-issues.md).
+  source-aware grouping, additional evidence-backed game sources, and broader
+  source reconciliation remain tracked as [GBA-033](known-issues.md).
 - Shell icons are available only for resolved curated Start Menu or AppsFolder
   entries.
   Missing, malformed, or over-budget icons use the host semantic Play glyph;
@@ -178,19 +198,21 @@ location, and content hash, then opens only
 - There is no search, grouping, install/uninstall,
   game history, foreground switching, running-program capture, file picker, or
   arbitrary executable/path launch.
-- Catalog refresh is currently lazy/cached for the provider lifetime; broader
-  source-change observation and packaged performance evidence remain open.
+- Reconciliation occurs on activation and explicit refresh; event-driven source
+  change observation and packaged performance evidence remain open.
 - Responsive intrinsic-height and Catalog-only loading regressions are green;
   the refreshed packaged visual/controller pass remains tracked as
   [GBA-038](known-issues.md).
 
 ## Executable evidence
 
-Focused tests cover empty curated Library, Catalog-on-demand and empty-Catalog
-recovery, nested Catalog add/remove, B return, vertical controller focus,
-confirmed recent-first ordering, failed-launch order retention, durable
-SavedIds across fresh worker instances, opaque selected launch, bounded paging,
-sanitized failure states, and manifest/GBSS validation. Provider tests cover
+Focused tests cover first and later trusted-Game discovery, idempotence,
+schema-v1 migration, automatic-versus-explicit provenance, bounded exclusions,
+concurrent compare-and-swap exclusion, disappearance/reappearance, same-title
+identity replacement, stable order/focus across AppId rotation, stale action
+rejection, healthy empty and sanitized failure states, Catalog add/remove,
+confirmed recent-first ordering, opaque selected launch, bounded paging, and
+manifest/GBSS validation. Provider tests cover
 lazy refresh, sanitization and bounds, opaque-ID lifetime, payload privacy,
 on-demand icon caching and bounds, exact shortcut/AUMID revalidation,
 constrained Shell/packaged/Steam activation, STA queue cancellation,
