@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace gba::input {
@@ -9,6 +10,64 @@ namespace gba::input {
 enum class NavigationDirection { None, Left, Right, Up, Down };
 
 enum class NavigationEventPhase { Pressed, Repeated };
+
+inline constexpr std::uint64_t kTrayWidgetRefreshHoldMilliseconds = 700;
+
+enum class TrayYGestureAction {
+    None,
+    ToggleReorder,
+    RefreshSelectedWidget,
+};
+
+/// Resolves the widget owned by the current host surface. Both F5/recovery and
+/// a successfully revalidated tray hold pass through this resolver before the
+/// single restart implementation.
+[[nodiscard]] constexpr std::wstring_view ResolveCurrentWidgetReloadTarget(
+    const bool overlayVisible,
+    const bool trayFocused,
+    const std::wstring_view selectedWidget,
+    const std::wstring_view activeWidget) noexcept {
+    if (!overlayVisible) return {};
+    return trayFocused ? selectedWidget : activeWidget;
+}
+
+/// Host-owned tap/hold arbitration for tray Y. A canceled gesture retains the
+/// physical release until the button comes up, preventing a stale focus or
+/// selection from turning that release into a reorder action.
+class TrayYGesture final {
+public:
+    void Press(
+        std::wstring_view selectedWidget,
+        bool refreshEligible,
+        std::uint64_t now) noexcept;
+    [[nodiscard]] TrayYGestureAction Update(
+        std::wstring_view selectedWidget,
+        bool refreshEligible,
+        std::uint64_t now) noexcept;
+    [[nodiscard]] TrayYGestureAction Release(
+        std::wstring_view selectedWidget,
+        bool refreshEligible,
+        std::uint64_t now) noexcept;
+    void Cancel() noexcept;
+    void Reset() noexcept;
+
+    [[nodiscard]] bool capturing() const noexcept;
+    [[nodiscard]] bool pendingRefresh() const noexcept;
+    [[nodiscard]] std::wstring_view selectedWidget() const noexcept;
+    [[nodiscard]] unsigned int progressPercent(std::uint64_t now) const noexcept;
+
+private:
+    enum class State { Idle, PendingTap, PendingRefresh, RefreshWon, Canceled };
+
+    [[nodiscard]] bool TargetIsCurrent(
+        std::wstring_view selectedWidget,
+        bool refreshEligible) const noexcept;
+    [[nodiscard]] TrayYGestureAction CrossThreshold(std::uint64_t now) noexcept;
+
+    State state_{State::Idle};
+    std::wstring selectedWidget_;
+    std::uint64_t pressedAt_{};
+};
 
 struct StickNavigationEvent final {
     NavigationDirection direction{NavigationDirection::None};

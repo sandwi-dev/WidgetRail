@@ -247,9 +247,11 @@ public sealed class ClockWidget : Widget
 ## Controller and focus contract
 
 - Guide is handled only by the shell and is never sent to workers.
-- On the dashboard, the shell owns A activation, B close, Y reorder,
-  D-pad/analog navigation, and Guide. A widget card may expose at most three
-  quick actions on X, bumpers, triggers, stick clicks, Menu, or View.
+- On the dashboard/tray, the shell owns A activation, B close, Y tap/hold,
+  D-pad/analog navigation, and Guide. Tap Y toggles reorder; a fixed 700 ms hold
+  refreshes the revalidated selected worker exactly once through the host's F5
+  reload path. A widget card may expose at most three quick actions on X,
+  bumpers, triggers, stick clicks, Menu, or View; tray Y never reaches a worker.
 - In an open widget, the shell owns D-pad/analog focus navigation and A focused
   activation. B, X, Y, bumpers, triggers, stick clicks, Menu, and View are
   available to the active widget input scope.

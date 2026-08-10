@@ -93,9 +93,11 @@ This is test evidence, not a supported Microsoft API or universal 8BitDo claim.
 Internal routing is deterministic:
 
 - Hidden: listen only for the Guide system-button callback.
-- Dashboard: shell owns Guide, D-pad/analog navigation, A activation, B close,
-  and Y reorder; a selected card may expose bounded X/bumper/trigger/stick-click/
-  Menu/View quick actions.
+- Dashboard/tray focus: shell owns Guide, D-pad/analog navigation, A activation,
+  B close, and Y tap/hold arbitration. Tap Y toggles reorder; a fixed 700 ms
+  hold revalidates and refreshes the selected worker through the F5 reload path.
+  A selected card may expose bounded X/bumper/trigger/stick-click/Menu/View quick
+  actions, but never receives tray Y.
 - Widget active: the shell owns D-pad/analog focus movement and A activation;
   the active widget scope owns the remaining non-Guide semantic buttons.
 - Guide release is quarantined across a visibility transition to prevent double activation.

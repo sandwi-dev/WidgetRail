@@ -28,6 +28,104 @@ bool Horizontal(const NavigationDirection direction) noexcept {
 
 } // namespace
 
+void TrayYGesture::Press(
+    const std::wstring_view selectedWidget,
+    const bool refreshEligible,
+    const std::uint64_t now) noexcept {
+    if (state_ != State::Idle || selectedWidget.empty()) return;
+    selectedWidget_ = selectedWidget;
+    pressedAt_ = now;
+    state_ = refreshEligible ? State::PendingRefresh : State::PendingTap;
+}
+
+TrayYGestureAction TrayYGesture::Update(
+    const std::wstring_view selectedWidget,
+    const bool refreshEligible,
+    const std::uint64_t now) noexcept {
+    if (state_ == State::PendingRefresh) {
+        if (!TargetIsCurrent(selectedWidget, refreshEligible)) {
+            Cancel();
+            return TrayYGestureAction::None;
+        }
+        return CrossThreshold(now);
+    }
+    if (state_ == State::PendingTap && selectedWidget != selectedWidget_) Cancel();
+    return TrayYGestureAction::None;
+}
+
+TrayYGestureAction TrayYGesture::Release(
+    const std::wstring_view selectedWidget,
+    const bool refreshEligible,
+    const std::uint64_t now) noexcept {
+    if (state_ == State::PendingRefresh) {
+        if (!TargetIsCurrent(selectedWidget, refreshEligible)) {
+            Reset();
+            return TrayYGestureAction::None;
+        }
+        if (CrossThreshold(now) == TrayYGestureAction::RefreshSelectedWidget) {
+            Reset();
+            return TrayYGestureAction::RefreshSelectedWidget;
+        }
+    }
+    if (state_ == State::PendingTap && selectedWidget == selectedWidget_) {
+        Reset();
+        return TrayYGestureAction::ToggleReorder;
+    }
+    if (state_ == State::PendingRefresh) {
+        Reset();
+        return TrayYGestureAction::ToggleReorder;
+    }
+    Reset();
+    return TrayYGestureAction::None;
+}
+
+void TrayYGesture::Cancel() noexcept {
+    if (state_ != State::Idle) state_ = State::Canceled;
+}
+
+void TrayYGesture::Reset() noexcept {
+    state_ = State::Idle;
+    selectedWidget_.clear();
+    pressedAt_ = 0;
+}
+
+bool TrayYGesture::capturing() const noexcept {
+    return state_ != State::Idle;
+}
+
+bool TrayYGesture::pendingRefresh() const noexcept {
+    return state_ == State::PendingRefresh;
+}
+
+std::wstring_view TrayYGesture::selectedWidget() const noexcept {
+    return selectedWidget_;
+}
+
+unsigned int TrayYGesture::progressPercent(const std::uint64_t now) const noexcept {
+    if (state_ != State::PendingRefresh) return 0;
+    if (now <= pressedAt_) return 0;
+    const auto elapsed = now - pressedAt_;
+    if (elapsed >= kTrayWidgetRefreshHoldMilliseconds) return 100;
+    return static_cast<unsigned int>(
+        elapsed * 100 / kTrayWidgetRefreshHoldMilliseconds);
+}
+
+bool TrayYGesture::TargetIsCurrent(
+    const std::wstring_view selectedWidget,
+    const bool refreshEligible) const noexcept {
+    return refreshEligible && !selectedWidget.empty() &&
+           selectedWidget == selectedWidget_;
+}
+
+TrayYGestureAction TrayYGesture::CrossThreshold(const std::uint64_t now) noexcept {
+    if (state_ != State::PendingRefresh || now < pressedAt_ ||
+        now - pressedAt_ < kTrayWidgetRefreshHoldMilliseconds) {
+        return TrayYGestureAction::None;
+    }
+    state_ = State::RefreshWon;
+    return TrayYGestureAction::RefreshSelectedWidget;
+}
+
 StickNavigator::StickNavigator(StickNavigationOptions options) noexcept
     : options_(options) {
     options_.engageThreshold = std::clamp(options_.engageThreshold, 1, 32'767);

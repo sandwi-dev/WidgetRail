@@ -108,9 +108,10 @@ int main() {
               contextualGuide.find(L"RB ") != std::wstring::npos,
           "compact YT guide keeps all three hover quick actions discoverable");
     Check(contextualGuide.find(L"↑/A Enter") != std::wstring::npos &&
+              contextualGuide.find(L"Y Tap/Hold") != std::wstring::npos &&
               contextualGuide.find(L"B Close") != std::wstring::npos,
-          "contextual guide retains enter and escape affordances");
-    Check(contextualGuide.size() <= 60U &&
+          "contextual guide retains enter, tap-hold, and escape affordances");
+    Check(contextualGuide.size() <= 78U &&
               contextualGuide.find_first_of(L"\r\n") == std::wstring::npos,
           "compact contextual guide is sanitized to one bounded line");
     const std::array hostileAction{
@@ -121,6 +122,14 @@ int main() {
     Check(hostileGuide.size() <= 28U &&
               hostileGuide.find_first_of(L"\r\n") == std::wstring::npos,
           "untrusted widget hint text cannot wrap or overflow minimal chrome");
+    Check(BuildTrayControllerGuide(
+              ControllerGuideDensity::Full, false).find(
+                  L"Y Tap reorder / Hold refresh") != std::wstring::npos,
+          "full tray guide explains both sides of the Y gesture");
+    Check(BuildTrayControllerGuide(
+              ControllerGuideDensity::Minimal, false) ==
+              L"Y Tap/Hold   B Close",
+          "minimal tray guide keeps the gesture and escape discoverable");
 
     const auto legacySurface = ResolveWidgetSurfaceTarget(std::nullopt, 1.0F);
     CheckNear(legacySurface.windowWidthDip, 1180.0F,
