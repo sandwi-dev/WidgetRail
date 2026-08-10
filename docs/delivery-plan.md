@@ -971,6 +971,50 @@ generic-worker Release suites. No native aggregate.
 requires native-host edits, weakens sandbox or gesture authority, or creates a
 second lifecycle/session owner.
 
+### DLV-029 — Split Audio Mixer by stable responsibility
+
+**State:** Ready after DLV-037
+**Baseline:** closing commit of DLV-037
+**Dependencies:** DLV-037 for managed-lane queue order; DLV-026 is independent
+**Owner:** managed Audio Mixer internals and direct widget fixtures; no native
+host, broker, capability, or protocol files
+
+**Objective:** Preserve Audio Mixer's domain-specific absolute-value command
+coalescing, authoritative confirmation/rollback, and provider-event
+reconciliation while making one audio row, confirmation rule, or provider event
+path changeable without reading the complete roughly 2,496-line widget.
+
+**In scope:** a before/after responsibility and coordination inventory; named
+output, input, and per-session pending-command policies; provider-event versus
+pending-command reconciliation; lifecycle/action orchestration with one Active-
+lifetime owner; one immutable committed render-facing revision; snapshot-only
+view composition; deletion of superseded locks, tasks, generations, and cross-
+boundary mutable knowledge when focused interleaving tests prove the replacement.
+
+**Out of scope:** fixing or masking DLV-026's reverse-scroll defect; changing
+focus IDs or shared scroll semantics; endpoint selection, dashboard shortcuts,
+new audio capabilities, public SDK/protocol changes, a universal optimistic-
+command framework, partial-class-only splitting, or visual redesign.
+
+**Acceptance criteria:** one lifecycle and committed-state owner remains;
+output, input, and session policies are directly testable without constructing
+the complete widget; success, failure, cancellation-ignoring completion,
+timeout/rollback, provider churn, session removal, and deactivation remain
+deterministic; existing focus IDs and current navigation behavior are preserved
+for DLV-026 to diagnose and correct separately; the completion report quantifies
+responsibilities, locks/semaphores/tasks, and cross-boundary mutable dependencies
+before and after.
+
+**Verification:** Tier 1 Audio Mixer, Widget SDK operation/lifecycle, and the
+smallest affected audio-provider/broker mapping Release suites with manually
+completed provider operations. No native, aggregate, or unrelated security
+suite.
+
+**Stop/escalate when:** correct separation requires public capability/protocol
+or authority changes, touches the shared native scroll owner, introduces a
+second lifecycle/committed-state owner, or exposes a product defect that needs
+its own bounded assignment.
+
 ## Platform lane
 
 Task identity: `platform`
@@ -1338,27 +1382,6 @@ trusted local artwork. Revalidate artwork with the same provider identity as
 launch, reject stale/malformed/oversized images, and cover missing/change/churn,
 2,000/10,000-item demand, memory/transport bounds, and current Games & Apps
 captures. Do not solve this by embedding hundreds of base64 icons in snapshots.
-
-### DLV-029 — Split Audio Mixer by stable responsibility
-
-**State:** Awaiting DLV-026 diagnosis and accepted baseline
-**Intended lead:** widgets lane after the native/managed scroll owner is proven
-**Dependencies:** DLV-026
-
-Preserve Audio Mixer's domain-specific absolute-value command coalescing,
-authoritative confirmation/rollback, and provider-event reconciliation while
-separating those policies from lifecycle/action orchestration and snapshot-only
-view composition. Begin with a before/after responsibility and coordination
-inventory; name and test output, input, and per-session pending policies without
-inventing a universal optimistic-command framework; retain one committed
-render-facing revision and one Active-lifetime owner. A developer must be able
-to change one audio row, one confirmation rule, or one provider event path
-without reading the entire roughly 2,500-line class. File splitting, partial
-classes, or wrapper-only extraction does not satisfy the milestone. Preserve
-DLV-026's accepted bidirectional scroll/focus behavior and prove provider-event
-versus pending command, cancellation-ignoring completion, timeout/rollback,
-session churn, deactivation, and pure presentation with focused tests. No public
-audio authority or protocol expansion belongs here.
 
 ### DLV-033 — Establish a host-owned widget session coordinator
 
