@@ -1959,9 +1959,9 @@ structure is promoted as the public template.
 
 ### EQ-029 — P2 — Managed platform policy remains concentrated in central classes
 
-**Status: Open with bounded delivery coverage in DLV-031 and DLV-032. Existing
-EQ-020 and EQ-022 remain the authoritative liveness and bridge-scheduling
-findings.**
+**Status: Open with bounded delivery coverage in DLV-031, DLV-032, and DLV-034.
+Existing EQ-020 and EQ-022 remain the authoritative liveness and bridge-
+scheduling findings.**
 
 **Evidence.** `PlatformCapabilityBroker` spans about 2,265 lines inside a
 2,377-line file and owns identity/declaration/consent/lifecycle authority,
@@ -1976,6 +1976,10 @@ is roughly 1,026 lines, but its process-session/pipe/companion ownership may be
 cohesive; length alone does not justify splitting it. `PlatformServices.cs` is
 1,342 lines because it groups many small contracts and bounded service facades,
 not because it contains one comparable monolith.
+`WindowsSpotifyPlatformBackend` is a different case: one roughly 1,724-line
+class owns configuration, OAuth/PKCE callbacks, token refresh/vault state,
+retry/rate-limit policy, playback/devices/queue/playlists, local-player transfer,
+response parsing, validation, and broker mapping.
 
 **Why it matters.** Adding one capability or changing one scheduling rule
 currently requires understanding distant policy and cleanup regions inside a
@@ -1988,9 +1992,10 @@ singular while extracting typed capability-domain decoding, validation, and
 projection policies under DLV-031. Extract only the bridge concurrency kernel
 under DLV-032, leaving framing and session ownership explicit. Do not introduce
 reflection dispatch, a service locator, a generic mediator, or one base class
-per capability. Reassess `WidgetProcessClient` after those boundaries and the
-native asynchronous-client work land; do not schedule a cosmetic split from its
-line count.
+per capability. DLV-034 separates Spotify provider session/transport/domain
+policy only after DLV-023 identifies the failure owner. Reassess
+`WidgetProcessClient` after those boundaries and the native asynchronous-client
+work land; do not schedule a cosmetic split from its line count.
 
 **Resolution evidence.** A developer can add or change one capability through
 one named domain policy plus the explicit authorized route, and can change one
@@ -3674,6 +3679,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Action dispatch | DLV-014 (`2a160b4`, integrated by `9060f12`) composes a deterministic YT Music post-admission failure through the real worker/runtime/bridge/native host into painted and polite UIA status. It proves exact generation/action/source, sanitized logging, focus retention, replacement/expiry, Hide/Stop, and no restart; native Release, bridge 47/47, and isolated addon acceptance passed | Retain physical GameInput and packaged assistive-technology evidence; do not reopen implementation unless those gates expose a concrete defect |
 | Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | DLV-032 owns one narrow typed dispatcher with deterministic no-sleep invariant tests and bounded forced drain; DLV-033 owns the later asynchronous native read owner/correlation table |
 | Managed capability broker | `PlatformCapabilityBroker` keeps authority singular but also concentrates the central route plus audio, network/Bluetooth, app-library, media/Spotify, loopback, secret, and private-state validation/projection in one roughly 2,265-line class | DLV-031 extracts named internal domain policy while retaining one authorization, lease, lifecycle, gesture, and event authority; no generic mediator or public-protocol churn |
+| Spotify platform provider | One roughly 1,724-line class owns OAuth/PKCE and token/vault state, HTTP retry/rate-limit behavior, playback/devices/queue/playlists, local-player transfer, parsing/validation, and broker mapping | DLV-034 follows DLV-023/DLV-031 so provider ownership is separated only after transient widget-state failures are distinguished from transport/auth defects |
 | Responsive/controller UI | DLV-003 (`27b0319`, integrated by `703c5bb`) owns the narrow Button placement slice. DLV-005 (`3fc3770`, integrated by `aaf36d9`) adds one host-owned 700 ms tray-Y recognizer. DLV-020 (`b0c95ca`, integrated by `7cda335`) retains one admitted visual-only surface through destination startup, but its static production-HWND evidence did not predict real temporal behavior. DLV-025 then measured real populated first paints near 31 ms, six successful Spotify paints over 674 ms for 14 inputs, and five consecutive corrected captures with an exposed dark band. Removing repeated HWND interpolation was insufficient: resizing the current Direct2D HWND target exposes undefined content before successful draw, and a later `DwmFlush` cannot undo already composed frames | DLV-025 is blocked at its documented new-compositor stop condition. Resume only after a bounded user-authorized offscreen atomic-present or DirectComposition/swap-chain design. DLV-021 then owns shared component geometry; DLV-026 owns Audio Mixer reverse scrolling; DLV-006 plus DLV-022 own continuous list/focus composition. |
 | Games & Apps | DLV-004 (`7e0b83e`, integrated by `76032bb`) accepts the shared responsive surface and bounded Catalog. DLV-017 (`24a8944` plus `b844fd8`, integrated by `5aedfe8`) adds bounded last-good projection and exact current-lifetime AppId admission. DLV-024 (`d80d9ec`, integrated by `6f401ea`) proves commit-before-publish removal, rollback/CAS continuity, stable focus, and a 600-DIP preferred height. DLV-027 (`df1dc81` plus `69e86ef`, integrated directly as `69e86ef`) then extracts pure presentation, bounded catalog policy, schema-v3 policy, and CAS storage while retaining singular lifecycle/action/state ownership; Games passes 56/56 and docs 52 | Treat the 1,274-line remaining orchestration owner as reviewable but not automatically complete; DLV-018 owns trusted lazy artwork after DLV-006, and packaged/physical evidence remains |
 | Audio Mixer | The broker/provider exposes read-only device/default markers and commands for per-session plus current default input/output volume and mute. There is no supported endpoint-selection command or native setter, and version-1 control is Interactive-only | DLV-019 may introduce an exact current-master dashboard authority for fixed LB/RB volume steps and X mute without promoting broad audio control. Treat endpoint selection as a separate supported-API/role-policy spike; do not use undocumented `PolicyConfig` behavior |
@@ -3756,8 +3762,9 @@ below.
    imbalance.
 4. **Continue responsibility milestones rather than line-count refactors.**
    DLV-028 owns Network Controls; DLV-029 Audio Mixer; DLV-030 YT Music;
-   DLV-031 the managed capability broker; DLV-032 bridge scheduling; and
-   DLV-033 native widget-session ownership. Each must reduce shared mutable
+   DLV-031 the managed capability broker; DLV-032 bridge scheduling;
+   DLV-033 native widget-session ownership; and DLV-034 the Spotify provider.
+   Each must reduce shared mutable
    knowledge or expose a focused policy seam—cosmetic files do not qualify.
 5. **Keep shared foundations serialized.** DLV-006 remains the named continuous
    keyed collection/lazy-artwork checkpoint; DLV-019 and DLV-022 wait on their

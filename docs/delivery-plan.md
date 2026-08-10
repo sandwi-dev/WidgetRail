@@ -1107,6 +1107,26 @@ presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
 
+### DLV-034 — Split the Spotify platform backend by stable responsibility
+
+**State:** Awaiting DLV-023 failure classification and DLV-031 broker boundary
+**Intended lead:** planner-selected managed platform lane
+**Dependencies:** DLV-023 and DLV-031
+
+Preserve one integration identity/token-session owner while separating OAuth/
+PKCE and vault policy, bounded HTTP retry/rate-limit policy, playback/device/
+local-transfer commands, collection queries, and strict Spotify response parsing
+from the roughly 1,724-line `WindowsSpotifyPlatformBackend`. The split must make
+one endpoint family or parser change directly testable without constructing the
+complete authorization/browser/local-playback stack. Keep provider error codes,
+scope checks, request/response bounds, token refresh serialization, and event
+publication exact; do not create one class per endpoint, a generic REST client,
+or duplicate token authority. Use DLV-023 evidence to distinguish widget
+transient-state policy from provider transport/auth defects before moving code.
+Prove cancellation-ignoring refresh, concurrent token demand, 401 refresh,
+429/backoff, malformed/oversized payloads, disconnect, and stale integration
+identity through deterministic injected-transport tests.
+
 ### DLV-019 — Add Audio Mixer dashboard master controls
 
 **State:** Awaiting DLV-029 and planner-selected serialized baseline
