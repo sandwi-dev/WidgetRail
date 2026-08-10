@@ -123,6 +123,57 @@ Give each lane multiple pre-authorized tasks, but never manufacture filler work.
 If fewer than three safe independent Ready assignments exist, record why and
 prioritize creating sound prerequisite or evidence milestones.
 
+## Visible product outcome priority
+
+User-visible product progress has higher scheduling priority than internal
+refactoring, architecture cleanup, test reorganization, documentation-only
+cleanup, or speculative hardening. A user-visible outcome is behavior the user
+can observe and evaluate in the freshly launched Release overlay: a reported
+bug is fixed, an explicitly requested feature works, an interaction becomes
+more usable or accessible, or a measured performance problem visibly improves.
+
+Apply this priority order when selecting and ordering work:
+
+1. Reproduced user-visible P0/P1 defects and explicitly requested product
+   features.
+2. The smallest shared framework or platform prerequisite that directly
+   unlocks named visible defects or features.
+3. Packaged usability, accessibility, responsiveness, reliability, and
+   performance work with a concrete observable product outcome.
+4. Internal architecture, backend decomposition, test-harness organization,
+   and documentation cleanup that does not change current product behavior.
+
+Maintain the following scheduling invariants:
+
+- Whenever any safe visible milestone is unblocked, at least one implementation
+  lane works on a visible milestone or its immediate named prerequisite.
+- Never run backend/refactoring-only milestones in both lanes at the same time
+  while an unblocked visible milestone exists.
+- Do not schedule more than one consecutive internal-only milestone before a
+  visible milestone unless the internal work fixes a reproduced P0, blocks the
+  next visible milestone, or is required for the next public release. Record
+  that exact reason and the named visible successor in the delivery plan.
+- The first three executable assignments across the two lanes should contain at
+  least two visible outcomes. If dependencies make that impossible, document
+  the precise dependency and use the free lane for another visible issue.
+- A large class or review finding does not automatically outrank a product bug.
+  Keep it in the hotspot register with a bounded disposition or cohesive
+  exception until changing it is necessary for visible work or release.
+- When a visible milestone is blocked by a material architecture decision,
+  preserve its evidence and continue other visible work in the free lane rather
+  than chaining unrelated backend refactors.
+- User testing of the launched product outranks synthetic captures or narrow
+  fixtures. A user-reproduced regression remains open until the corrected
+  packaged Release path has proportional evidence; an unchanged rerun or an
+  offscreen-only capture is not closure.
+
+At each heartbeat and accepted integration, report both implementation progress
+and the delta in user-visible bugs/features. If there was no visible delta, say
+so plainly and verify that the next executable queue still obeys this policy.
+Architecture and correctness standards remain mandatory inside visible work;
+visible priority is not permission for hacks, duplicated authority, or
+unbounded behavior.
+
 ## Automatic operating loop
 
 On every continuation, perform the following loop in order:
@@ -134,6 +185,9 @@ On every continuation, perform the following loop in order:
   assignment.
 - Detect whether a task is active, completed, awaiting review, blocked, or has
   incorrectly crossed a lane/scope boundary.
+- Confirm that at least one active or next executable assignment has a named
+  visible outcome whenever such work is unblocked; replan before an internal-
+  only queue can monopolize both lanes.
 - Do not interrupt coherent in-progress work merely because a heartbeat ran.
 
 ### 2. Review completed work

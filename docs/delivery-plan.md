@@ -28,6 +28,27 @@ authorize implementation.
 - The planner reviews completed commits in order, returns inadequate work for
   correction, integrates only accepted work, and refills both lane queues.
 
+### Visible-outcome priority gate
+
+- Reproduced user-visible P0/P1 defects and explicitly requested features
+  outrank backend decomposition, test organization, documentation cleanup, and
+  other behavior-preserving refactors.
+- At least one lane must execute a visible product milestone or its immediate
+  named prerequisite whenever safe visible work is unblocked. Both lanes may
+  not execute internal-only refactors concurrently in that condition.
+- No lane may automatically take more than one consecutive internal-only
+  milestone before a visible one unless the internal milestone fixes a
+  reproduced P0, directly blocks the named visible successor, or is required
+  for the next public release.
+- An internal milestone must state the exact visible successor it unlocks.
+  Architecture-hotspot status alone is not sufficient scheduling authority.
+- User-visible acceptance requires the freshly built Release overlay or a
+  proportional production-host fixture. User reproduction overrides synthetic
+  or body-only evidence and reopens the affected issue.
+- If a top visible item requires a user architecture choice, preserve that
+  work and advance another visible item in the free lane. Do not fill the gap
+  with a chain of unrelated backend refactors.
+
 ### Architecture non-regression gate
 
 - Production types above roughly 1,000 physical lines, plus smaller types that
@@ -500,30 +521,15 @@ unrelated growth reopens it.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The ordered widgets queue keeps newly reproduced Games & Apps continuity
-regressions adjacent to DLV-017, converts that stabilized implementation into
-named responsibility boundaries, then applies the same evidence-based standard
-to Spotify failure policy, Network Controls, and the external package journey.
-Spotify list work that depends on shared cursor/append foundations remains in
-the serialized integration queue rather than being patched locally.
-
-The decomposition milestones implement EQ-006 without using file length as a
-mechanical gate: each extraction must reduce shared mutable knowledge or create
-a focused domain-policy seam. After DLV-032 and DLV-034 are accepted and
-integrated, Audio Mixer is the next managed production decomposition because it
-remains the largest first-party monolith and DLV-037 was only a queue-order
-dependency. DLV-029 must preserve current focus IDs and navigation behavior so
-the independent native/shared-scroll correction remains separately reviewable.
-Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
-concentration before dashboard controls add behavior. Accepted DLV-035 and
-DLV-041 separate the Windows network backend and its native interop owner while
-retaining singular lifetime authority; accepted DLV-036 and DLV-044 now
-disposition the aggregate Settings partial type; accepted DLV-037 gives the
-worker client/session boundary singular terminal owners; DLV-039 and DLV-040 finish
-the residual bridge-server responsibility split; and DLV-043 replaces
-Spotify's partial-file organization with real type boundaries before test-
-harness cleanup. DLV-006 must still land before Spotify continuous-list and
-launcher work.
+The widgets lane now follows the visible-outcome gate. DLV-045 is allowed to
+finish because it is an already-active bounded reliability audit triggered by
+retained frame corruption evidence. DLV-019 is the next executable milestone
+and delivers requested tray controls. DLV-006 then supplies the shared visible
+collection behavior needed by Spotify focus fixes, Games artwork, and the game
+launcher. DLV-040, DLV-043, and DLV-038 remain valid architecture debt but are
+not automatic Ready work; the planner may promote one only while the other lane
+is delivering a visible milestone or when it becomes the immediate prerequisite
+for named visible work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1517,10 +1523,61 @@ native, or aggregate suites unless production scope actually expands into them.
 native-host edits, a second session/write owner, or cannot distinguish the
 production and harness hypotheses without materially broadening scope.
 
-### DLV-040 — Extract bridge diagnostics and recovery projection
+### DLV-019 — Add Audio Mixer dashboard master controls
 
 **State:** Ready after DLV-045
-**Baseline:** closing commit of DLV-045
+**Baseline:** closing commit of DLV-045 after planner acceptance and integration
+**Dependencies:** DLV-014, DLV-029, DLV-042, and DLV-045 only for lane order
+**Owner:** widgets lead over Audio Mixer presentation/action state and the
+existing managed dashboard-gesture broker route; native host changes require a
+separate planner-approved serialized correction
+**Concurrency:** May run while the platform lane executes DLV-026 or DLV-021;
+do not touch native renderer, focus, scroll, or compositor files
+
+**Visible outcome:** On the Audio Mixer icon-tray card, LB/RB change master
+output volume by a documented bounded step and X toggles master mute, with
+current values and action labels visible before activation.
+
+**Objective:** Deliver the requested controller shortcuts through the existing
+snapshot-bound dashboard gesture authority without granting broad audio access
+or creating a second command/state owner.
+
+**In scope:** exact master-output set-volume and set-mute gesture declarations;
+visible labels and current mute/volume state; bounded clamping and rapid-input
+coalescing; authoritative reread/reconciliation; rollback and safe feedback;
+stale snapshot, lifecycle, selection, consent, authority, replay, and expiry
+rejection; preservation of open-widget Slider behavior; credential-free
+production-route fixtures.
+
+**Out of scope:** application-session or microphone tray controls, input/output
+device selection, new audio capabilities, native input redesign, undocumented
+Windows APIs, broad audio authority, polling while hidden, or unrelated Audio
+Mixer refactoring.
+
+**Acceptance criteria:** the selected Audio Mixer tray card advertises LB/RB/X
+with accurate accessible labels and state; each accepted action holds authority
+only for the exact existing master operation and current snapshot generation;
+rapid volume input coalesces without stale rollback; mute/volume reconcile to
+the provider result; failures retain the authoritative value and show bounded
+feedback; unselected, hidden, Background, expired, replayed, revoked, or
+wrong-generation actions perform no control; opening Audio Mixer immediately
+shows the reconciled result.
+
+**Verification:** Tier 1 Audio Mixer and Platform Broker dashboard-gesture
+Release suites plus the smallest generic-worker route. Tier 2 exact managed
+worker/bridge/broker action path; no aggregate, native suite, or unrelated audio
+provider suite unless the existing route cannot prove the product boundary.
+
+**Stop/escalate when:** delivery requires native-host behavior, a public
+protocol/capability change, broader audio authority, physical hardware, or a
+second Audio Mixer command/committed-state owner.
+
+### DLV-040 — Extract bridge diagnostics and recovery projection
+
+**State:** Deferred behind the visible product queue; not Ready for automatic
+selection
+**Baseline:** planner-selected accepted main after DLV-019 or another visible
+milestone is actively assigned in the platform lane
 **Dependencies:** DLV-001, DLV-031, DLV-039, and DLV-045
 **Owner:** managed bridge diagnostics/recovery internals and direct typed
 diagnostic fixtures; no Settings presentation or installed-widget policy work
@@ -1562,8 +1619,10 @@ duplicates catalog/client state from DLV-039.
 
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
-**State:** Ready after DLV-040
-**Baseline:** closing commit of DLV-040
+**State:** Deferred behind DLV-006/DLV-022 visible Spotify work; not Ready for
+automatic selection
+**Baseline:** planner-selected accepted main after the visible Spotify focus and
+collection corrections
 **Dependencies:** DLV-007, DLV-008, DLV-023, and DLV-040 only for queue order
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
 provider, broker, public SDK/protocol, or native-host files
@@ -1738,8 +1797,9 @@ recorded under Recently completed.
 
 ### DLV-038 — Modularize the largest managed test harnesses by responsibility
 
-**State:** Ready after DLV-043
-**Baseline:** closing commit of DLV-043
+**State:** Deferred behind the visible product queue; not Ready for automatic
+selection
+**Baseline:** planner-selected accepted main at a later architecture checkpoint
 **Dependencies:** DLV-031, DLV-032, DLV-037, DLV-029, DLV-040, DLV-041,
 DLV-042, DLV-043, and DLV-044 so active
 production architecture work has already stabilized the affected suites
@@ -1783,10 +1843,12 @@ a whole-repository framework migration.
 Task identity: `platform`
 Branch: `codex/impl-platform`
 
-The platform queue prioritizes newly reproduced presentation continuity,
-bidirectional controller scrolling, and shared geometry defects before broader
-accessibility/performance evidence. Shared collection and dashboard-audio
-authority changes remain serialized in the integration queue.
+The platform queue prioritizes visible controller and geometry defects even
+while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
+not be reset or overwritten; the planner must provision a clean accepted-main
+platform boundary for DLV-026, then DLV-021. A blocked compositor milestone
+does not authorize idling the platform lane or switching both lanes to backend
+refactors.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -1974,8 +2036,11 @@ real-product temporal evidence before escalating.
 
 ### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
-**State:** Ready after DLV-025
-**Baseline:** closing commit of DLV-025
+**State:** Highest-priority visible platform assignment; awaiting planner
+provision of a clean platform worktree while preserved DLV-025 evidence remains
+untouched
+**Baseline:** accepted main containing the visible-priority control-plane commit;
+independent of DLV-025 implementation
 **Owner:** native host focus navigation, controller scroll reveal/state, and
 real-product Audio Mixer host fixtures
 
@@ -2117,7 +2182,8 @@ one Assigned on an accepted integrated baseline.
 
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Dependencies accepted; awaiting planner-selected free lane/baseline
+**State:** Highest-priority serialized visible foundation after DLV-019 and
+DLV-021; awaiting planner-selected lead/baseline
 **Intended lead:** planner-selected serialized protocol lane
 **Dependencies:** DLV-004 and DLV-005
 
@@ -2162,23 +2228,6 @@ into the coordinator or create a generic event bus. Prove runtime versus
 presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
-
-### DLV-019 — Add Audio Mixer dashboard master controls
-
-**State:** Awaiting planner-selected serialized baseline; DLV-042 accepted
-**Intended lead:** planner-selected bridge/broker plus widgets integration lane
-**Dependencies:** DLV-014, DLV-029, DLV-042
-
-Expose LB/RB as bounded master-output volume down/up and X as master mute from
-the icon tray. Reuse the exact snapshot-bound dashboard gesture authority; add
-dashboard permission only for the existing master-output set-volume/set-mute
-operations, not session/input/device controls or the whole audio subsystem.
-The widget must publish visible labels/current mute/volume state, clamp a
-documented step, re-read/reconcile authoritative output, coalesce rapid input,
-reject stale snapshot/lifecycle/consent/authority, roll back failures, preserve
-open-widget slider behavior, and prove no control occurs from an unselected,
-hidden, Background, replayed, or expired action. This is a Tier-2 cross-process
-authority milestone, not a speculative security program.
 
 ### DLV-022 — Repair Spotify spatial and continuous-list focus
 
