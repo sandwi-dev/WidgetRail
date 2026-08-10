@@ -93,6 +93,30 @@ third-party managed assemblies.
    newest pending event; returning Visible/Interactive releases it. Destroying,
    disposal, or reconciled consent revocation terminates the subscription.
 
+`PlatformCapabilityBroker` remains the singular authority and linearization
+point for authenticated identity, declarations, consent, lifecycle, request
+leases, dashboard gestures, secondary Spotify-scope/loopback-secret admission,
+event sequence, revocation, and subscription publication. After an operation is
+authorized, an explicit closed capability-domain route delegates only strict
+payload decoding, bounded backend projection, and domain effects:
+
+- audio and network/Bluetooth/activity handlers receive only the fixed backend;
+- app-library handling receives the fixed backend, authenticated identity, and
+  SavedId issuer, and owns the existing bounded session catalog/token cache;
+- media/Spotify handling receives the fixed backend and identity plus one
+  narrow callback that asks the broker to authorize requested Spotify scopes;
+- loopback request/response policy is value-only, while the broker retains the
+  concurrency gate and dependent private-secret request lease;
+- private-secret and private-state handlers receive only the fixed backend and
+  authenticated identity.
+
+The handlers have no consent store, broker lifecycle, request lease,
+subscription, gesture, or event-sequence state. Invalid backend events are
+projected by the same domain policies before the broker assigns a sequence and
+publishes them. This keeps authorization singular while allowing a domain's
+closed decoding and validation to change without editing a multipurpose central
+operation switch.
+
 The worker cannot send broker lifecycle transitions or elevate itself. The
 runtime propagates only host-owned states to the companion server. The trusted
 bridge composes the real Core Audio, Windows network, Start Menu app-library,

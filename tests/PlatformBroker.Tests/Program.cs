@@ -10,6 +10,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing and explicit consent fail closed", ConsentFailsClosed),
     ("Authenticated channel identity cannot be substituted", IdentityMismatchIsDenied),
     ("Request JSON is strict and bounded", RequestsAreStrictAndBounded),
+    ("Capability domains keep broker authority singular", CapabilityDomainAuthorityIsSingular),
+    ("Capability domain policies are directly bounded and fail closed", CapabilityDomainPoliciesAreBounded),
     ("Audio operations expose sanitized task-shaped DTOs", AudioOperationsAreSanitized),
     ("Master output capability validates payload lifecycle and events", MasterOutputContracts),
     ("Audio device and input permissions are granular opaque and lifecycle-gated", AudioDeviceInputContracts),
@@ -73,6 +75,119 @@ foreach (var (name, run) in tests)
 
 if (failures != 0) Environment.Exit(1);
 Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
+
+static Task CapabilityDomainAuthorityIsSingular()
+{
+    var rootFields = typeof(PlatformCapabilityBroker).GetFields(
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic |
+        System.Reflection.BindingFlags.DeclaredOnly);
+    Assert.True(rootFields.Any(field => field.Name == "_requestLeases"));
+    Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
+    Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
+    Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
+    Assert.Equal(6, rootFields.Count(field =>
+        field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
+
+    Type[] domainTypes =
+    [
+        typeof(AudioCapabilityDomain),
+        typeof(NetworkCapabilityDomain),
+        typeof(AppLibraryCapabilityDomain),
+        typeof(MediaSpotifyCapabilityDomain),
+        typeof(PrivateSecretCapabilityDomain),
+        typeof(PrivateStateCapabilityDomain),
+    ];
+    foreach (var domainType in domainTypes)
+    {
+        var fields = domainType.GetFields(
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.DeclaredOnly);
+        Assert.True(fields.All(field =>
+                field.FieldType != typeof(ConsentStore) &&
+                field.FieldType != typeof(BrokerLifecycleState) &&
+                field.FieldType != typeof(BrokerEventSubscription) &&
+                !field.FieldType.Name.Contains("RequestLease", StringComparison.Ordinal)),
+            $"{domainType.Name} acquired broker authorization or lifecycle authority.");
+    }
+
+    Assert.Equal(BrokerCapabilityDomain.Audio,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Equal(BrokerCapabilityDomain.Network,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.NetworkBluetoothReadV1));
+    Assert.Equal(BrokerCapabilityDomain.AppLibrary,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.AppLibraryReadV1));
+    Assert.Equal(BrokerCapabilityDomain.MediaSpotify,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.SpotifyPlaybackReadV1));
+    Assert.Equal(BrokerCapabilityDomain.Loopback,
+        BrokerCapabilityDomains.Resolve("network.loopback:13091"));
+    Assert.Equal(BrokerCapabilityDomain.PrivateSecrets,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.PrivateSecretsV1));
+    Assert.Equal(BrokerCapabilityDomain.PrivateState,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.PrivateStateV1));
+    return Task.CompletedTask;
+}
+
+static async Task CapabilityDomainPoliciesAreBounded()
+{
+    Assert.Throws<BrokerException>(
+        () => BrokerCapabilityDomains.Resolve("system.unknown.v1"),
+        "unsupported_operation");
+    Assert.Throws<BrokerException>(
+        () => AudioCapabilityDomain.ValidateSessions(null),
+        "invalid_backend_data");
+    await Assert.ThrowsAsync<BrokerException>(
+        () => new AudioCapabilityDomain(AudioBackend()).ExecuteAsync(
+            "audio.unknown", BrokerJson.ToElement(new { }), CancellationToken.None),
+        "unsupported_operation");
+
+    var tooManyBluetoothDevices = Enumerable.Range(0, BrokerJson.MaximumArrayItems + 1)
+        .Select(index => new BluetoothDeviceSummary(
+            $"device-{index}", $"Device {index}", false, false, true))
+        .ToArray();
+    Assert.Throws<BrokerException>(
+        () => NetworkCapabilityDomain.ValidateBluetooth(new BluetoothSummary(
+            BluetoothRadioState.On,
+            true,
+            BluetoothDiscoveryState.Ready,
+            tooManyBluetoothDevices)),
+        "invalid_backend_data");
+
+    var tooManyApps = Enumerable.Range(
+            0, PlatformCapabilityBroker.MaximumAppLibraryItems + 1)
+        .Select(index => new AppLibraryBackendItemSummary(
+            $"provider-{index}", $"stable-{index}", $"App {index}",
+            AppLibraryKind.Application))
+        .ToArray();
+    Assert.Throws<BrokerException>(
+        () => AppLibraryCapabilityDomain.ValidateItems(tooManyApps),
+        "invalid_backend_data");
+
+    var tooManyMediaSessions = Enumerable.Range(0, 33)
+        .Select(index => new MediaSessionSummary(
+            $"session-{index}", "Player", "Track", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1, 0, 1, false,
+            true, true, true, true, true))
+        .ToArray();
+    Assert.Throws<BrokerException>(
+        () => MediaSpotifyCapabilityDomain.ValidateMediaSessions(
+            tooManyMediaSessions),
+        "invalid_backend_data");
+
+    Assert.Throws<BrokerException>(() => LoopbackCapabilityPolicy.ValidateRequest(
+        new LoopbackJsonRequest(
+            "http://127.0.0.1/escape", [], null, null, 1_000),
+        isPost: false), "invalid_payload");
+    Assert.Throws<BrokerException>(
+        () => PrivateSecretCapabilityDomain.ValidateSlot(
+            new string('a', CommunityPlatformLimits.MaximumPrivateSecretSlotCharacters + 1)),
+        "invalid_payload");
+    Assert.Throws<BrokerException>(
+        () => PrivateStateCapabilityDomain.ValidateSnapshot(
+            new PrivateStateSnapshotSummary(false, "e30=", 0)),
+        "invalid_backend_data");
+}
 
 static async Task AppLibraryIconsAreBounded()
 {

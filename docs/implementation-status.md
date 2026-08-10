@@ -516,6 +516,17 @@ Up/Down navigation.
   `HostServices`; the trusted bridge composes the real Windows audio, network,
   Bluetooth, foreground-activity, Start Menu app-library, media, and community-
   companion backends.
+  DLV-031 keeps `PlatformCapabilityBroker` as the only identity, declaration,
+  consent, lifecycle, request-lease, dashboard-gesture, revocation,
+  event-sequence, and subscription authority. Its former per-operation switch
+  and distant domain validators are replaced by seven explicit internal domain
+  routes for audio, network/Bluetooth/activity, app library, media/Spotify,
+  loopback, private secrets, and private state. The 2,377-line, 117,433-byte
+  authority type is now 837 lines and 36,377 bytes. The existing app-library
+  serialization gate/cache moved together into its handler; the broker state
+  lock and loopback gate remain in the authority. No lock, task registry,
+  cancellation source, lifecycle owner, request-lease owner, or sequence
+  counter was added.
 - `WindowsAudioProvider`: an event-driven Core Audio backend for sanitized
   per-application sessions on the current default multimedia render endpoint.
   A dedicated MTA owns native objects; callbacks only enqueue coalesced refresh
@@ -1238,7 +1249,7 @@ dirty at both endpoints; the exact reasons are `starting_worktree_dirty` and
 `finished_worktree_dirty`.
 
 PlatformBroker focused coverage passes
-48/48 and includes closed isolated-
+51/51 and includes direct domain routing/boundary fixtures plus closed isolated-
 client SID/
 pipe scopes, nonce/full-identity authentication, bounded requests/events,
 consent/lifecycle gates, revocation, and cancellation of already in-flight
