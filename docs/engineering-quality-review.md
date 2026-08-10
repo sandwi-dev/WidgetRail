@@ -1863,12 +1863,13 @@ keeping the contract-audit closure of EQ-009 out of the defect count.
 **Status: Open with bounded delivery coverage. Media Sessions, accepted
 DLV-007/008 Spotify, accepted DLV-009/030 YT Music, accepted DLV-027 Games &
 Apps, and accepted DLV-028 Network Controls prove useful lifecycle,
-presentation, and responsibility boundaries. DLV-029 owns Audio Mixer after
-accepted DLV-032/DLV-034 integration while preserving the current focus graph;
-DLV-026 independently owns the shared reverse-scroll defect.**
+presentation, and responsibility boundaries. Accepted DLV-029 gives Audio
+Mixer real presentation and command-transition seams while DLV-042 owns its
+residual provider-session concentration. DLV-026 independently owns the shared
+reverse-scroll defect.**
 
-**Evidence.** Current primary files are approximately 2,496 lines for Audio
-Mixer, 1,241 for Network Controls after accepted DLV-028, 1,274 for Games &
+**Evidence.** Current primary files are approximately 1,880 lines for Audio
+Mixer after accepted DLV-029, 1,241 for Network Controls after accepted DLV-028, 1,274 for Games &
 Apps after accepted DLV-027, and 677 for YT Music after accepted DLV-030.
 Network Controls now also
 has a 546-line pure presenter and focused provider, command, action, state, and
@@ -1903,11 +1904,23 @@ The migrations show three materially different outcomes:
   state/cache fields, action routing, and all view composition in the same
   roughly 1,914-line class. Its existing widget tests call `OnActionAsync`
   directly, so production worker/bridge adoption is not yet demonstrated.
-  Audio Mixer has not adopted the new model/resource/operation primitives: its
-  primary file contains roughly 61 textual lock sites while retaining
-  handwritten pending/authoritative state and lifecycle coordination. That
-  count is not a quality score; it identifies where shared mutable ownership
-  remains concentrated.
+  Accepted DLV-029 (`9647718`, corrected by `091ec51`, integrated through
+  `6fc8d73`) moves complete snapshot-only presentation into a 351-line pure
+  owner and output/input/session absolute-target transitions into a 354-line
+  closed policy boundary. The first candidate exposed mutable targets,
+  revisions, worker flags, and confirmation flags to the root and relied on
+  one scheduling yield; review returned it. The correction makes transition
+  state private, exposes immutable admission/work/acknowledgement/projection/
+  terminal results, directly tests distinct domain paths, and proves
+  cancellation-ignoring completion through a transitive task drain. The root
+  falls from 2,496 to 1,880 lines and remains the only state lock, lifecycle,
+  host-service/task, committed-state, selection/action, status, and invalidation
+  owner. Retained run `20260810T155016Z-d0427e67` passes Audio Mixer 35/35,
+  Widget SDK 84/84, Platform Broker 51/51, Windows Audio 15/15, and docs 52.
+  This is material ownership reduction, but the root still owns four provider
+  pumps plus initial snapshot, optional retry/attempt, and Active-lifetime
+  coordination; DLV-042 dispositions that residual rather than declaring a
+  nearly 1,900-line application root closed.
 - Accepted DLV-027 (`df1dc81`, corrected by `69e86ef`) reduces the 1,861-line
   `GamesAppsWidget` to 1,274 lines and gives pure presentation (392 lines),
   schema-v3 policy (500), bounded catalog navigation (105), and CAS storage
@@ -1944,9 +1957,10 @@ production migrations have mostly been local substitutions rather than a
 defined adoption architecture. Authors can discover useful primitives, yet no
 advanced reference shows how state, provider/event merge, lifecycle work,
 commands, navigation, and pure view composition fit together. Some remaining
-policies are legitimately domain-specific—especially Audio Mixer's
-absolute-value command coalescing and confirmation—but their ownership is not
-separated from rendering.
+policies are legitimately domain-specific. DLV-029 now separates Audio Mixer's
+absolute-value command coalescing/confirmation and rendering, but its provider-
+session lifecycle still shares the application root with committed state,
+actions, status, and invalidation.
 
 **Recommended direction.** Treat Media Sessions and DLV-009/030 YT Music as
 the behavioral lifecycle/state and responsibility baselines. DLV-030 keeps the
@@ -1959,11 +1973,12 @@ Spotify's accepted DLV-007/008 responsibility split is the comparison point,
 not unfinished extraction: preserve its singular owner and named route,
 playback, lifecycle/action, and snapshot-only presentation files while DLV-006/
 DLV-022 replace the list/focus composition and later operation lanes remove only
-demonstrated coordination. Do not force Audio Mixer or Network
-Controls through a generic abstraction prematurely. First name and test their
-domain policies—absolute-value/coalesced audio commands with authoritative
-confirmation, and multi-provider event/source merge—then extract narrow
-coordinators that can be reused only if a second consumer proves the shape.
+demonstrated coordination. Do not force Audio Mixer or Network Controls through
+a generic abstraction prematurely. DLV-029 keeps its scalar transition machine
+private to the audio domain. DLV-042 must move all provider subscription/fetch/
+retry/drain ownership together behind one Active session, not create four stream
+wrappers or another committed-state owner. Extract a reusable coordinator only
+if a second consumer later proves the same shape.
 
 **Tradeoff.** File splitting alone is churn and can make navigation worse.
 Require each extracted type to reduce shared mutable state or enable focused
@@ -3827,7 +3842,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Responsive/controller UI | DLV-003 (`27b0319`, integrated by `703c5bb`) owns the narrow Button placement slice. DLV-005 (`3fc3770`, integrated by `aaf36d9`) adds one host-owned 700 ms tray-Y recognizer. DLV-020 (`b0c95ca`, integrated by `7cda335`) retains one admitted visual-only surface through destination startup, but its static production-HWND evidence did not predict real temporal behavior. DLV-025 then measured real populated first paints near 31 ms, six successful Spotify paints over 674 ms for 14 inputs, and five consecutive corrected captures with an exposed dark band. Removing repeated HWND interpolation was insufficient: resizing the current Direct2D HWND target exposes undefined content before successful draw, and a later `DwmFlush` cannot undo already composed frames | DLV-025 is blocked at its documented new-compositor stop condition. Resume only after a bounded user-authorized offscreen atomic-present or DirectComposition/swap-chain design. DLV-021 then owns shared component geometry; DLV-026 owns Audio Mixer reverse scrolling; DLV-006 plus DLV-022 own continuous list/focus composition. |
 | Games & Apps | DLV-004 (`7e0b83e`, integrated by `76032bb`) accepts the shared responsive surface and bounded Catalog. DLV-017 (`24a8944` plus `b844fd8`, integrated by `5aedfe8`) adds bounded last-good projection and exact current-lifetime AppId admission. DLV-024 (`d80d9ec`, integrated by `6f401ea`) proves commit-before-publish removal, rollback/CAS continuity, stable focus, and a 600-DIP preferred height. DLV-027 (`df1dc81` plus `69e86ef`, integrated directly as `69e86ef`) then extracts pure presentation, bounded catalog policy, schema-v3 policy, and CAS storage while retaining singular lifecycle/action/state ownership; Games passes 56/56 and docs 52 | **Cohesive exception at the accepted boundary:** the 1,274-line root retains only lifecycle, action admission, provider orchestration, and committed render-facing state; presentation, catalog navigation, schema policy, and CAS storage have focused value seams. DLV-018 may not add another root concern when it adds trusted lazy artwork; reopen decomposition if that work materially grows or couples the retained owner. Packaged/physical evidence remains |
 | Network Controls | Accepted DLV-028 (`4ec931b`) reduces the root from 2,020 to 1,241 lines and moves provider normalization/reconciliation, command policy, action vocabulary, stable element identity, and complete presentation into value-based focused seams. The root remains the singular lifecycle, host-command, committed-state, and invalidation owner with one SDK-owned Active latest-operation lane | **Cohesive exception at the accepted boundary:** retain those four orchestration responsibilities together while the extracted policies remain state-free. Reopen decomposition if new provider policy, view composition, task ownership, or another mutable coordination domain returns to the root |
-| Audio Mixer | The roughly 2,496-line widget remains the largest managed first-party orchestration owner. The broker/provider exposes read-only device/default markers and commands for per-session plus current default input/output volume and mute. There is no supported endpoint-selection command or native setter, and version-1 control is Interactive-only | DLV-029 is now the next managed production assignment after accepted DLV-032/DLV-034 integration; DLV-037 was only a queue-order dependency. It must preserve exact current focus/navigation behavior while separating audio policies, lifecycle/action orchestration, and pure presentation. DLV-026 remains the independent shared-scroll correction. DLV-019 may then introduce an exact current-master dashboard authority without promoting broad audio control. Treat endpoint selection as a separate supported-API/role-policy spike; do not use undocumented `PolicyConfig` behavior |
+| Audio Mixer | Accepted DLV-029 (`9647718` plus `091ec51`, integrated through `6fc8d73`) reduces the root from 2,496 to 1,880 lines, moves complete snapshot-only presentation and closed output/input/session command transitions into direct test seams, preserves all 42 `audio.*` literals, and proves cancellation-ignoring completion through a transitive widget-owned task drain. The root remains the only lock, lifecycle, service/task, committed-state, action, status, and invalidation owner, but still contains subscription-before-snapshot, four provider pumps, optional retry/attempt, and Active-lifetime drain policy | DLV-042 now owns that residual provider-session concentration before DLV-019 adds dashboard behavior; it must move linked lifetime, subscriptions, initial fetch ordering, retry attempts, stream termination, and drain together without moving committed state or creating a generic event bus. DLV-026 remains the independent shared-scroll correction. Treat endpoint selection as a separate supported-API/role-policy spike; do not use undocumented `PolicyConfig` behavior |
 | Windows accessibility | Commits through `9ec0374` provide real composite UIA and physical-only origin enforcement. `6a079b6` mirrors managed Back semantics across focus/no-focus, disabled/busy, ancestor, stale, and nested-scope cases using allocation-free bounded recursion; separate algorithm ownership and real route proof remain open, typed choices remain open, and exact clean evidence stops at `0598e5a` | Bind native/managed Back through shared conformance or one protocol result, retain clean evidence, then prove full real-client Picker/ActionSheet/Navigator traversal plus packaged Narrator/MSAA/AppContainer evidence |
 | YT Music | DLV-009 (`08d44db`, integrated by `304102a`) removes three lifecycle task fields and the auto-connect flag and adopts SDK Active lanes plus one immutable presentation record. DLV-030 (`549da57`, integrated by `6b9144d`) reduces the owner from 1,365 to 677 physical lines, preserves singular lifecycle/client/state authority, and directly tests connection, confirmation/rollback, action, and pure presentation seams; retained focused evidence passes 55/55 plus SDK 84/84, worker 9/9, and docs 52 | Real companion, packaged lifecycle/controller/accessibility, and visual evidence remain; use the private seams as a reference, not yet a mandatory public framework |
 | Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while separating lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partials. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy: recoverable refresh/poll faults retain route, focus, playback, and cached list state with bounded 5/15/30-second backoff, fatal permission/auth/configuration remains explicit, recovery clears the warning, and stale Active-generation results are rejected. User evidence still confirms an incomplete seek/nav focus graph, replacement-page jumps, fixed-header oscillation, and clipped Library text | DLV-022 owns the explicit focus graph and continuous-list migration after DLV-006/DLV-021. Keep GBA-061 Verifying until live recurrence testing; retain current credential-free full-state/composed-host visuals and run live auth/playback gates only when authorized |
@@ -3897,19 +3912,18 @@ below.
    reproduction. Authorize either a narrowly proven offscreen atomic-present
    design or DirectComposition/swap-chain ownership before platform work
    resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-029 — split Audio Mixer by stable responsibility.** Accepted
-   DLV-032/DLV-034 integration `a92378a` is now the baseline. Separate output,
-   input, per-session confirmation/reconciliation, lifecycle/action, immutable
-   committed state, and pure presentation without changing current focus IDs or
-   masking the independent DLV-026 scroll defect.
+2. **Widgets DLV-042 — extract Audio Mixer active provider-session ownership.**
+   DLV-029 is accepted through `6fc8d73`; now move subscription-before-snapshot,
+   four provider pumps, optional retry/attempt, and Active drain into one typed
+   session while the widget keeps singular committed state/action/invalidation.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
    imbalance.
 4. **Continue responsibility milestones rather than line-count refactors.**
    DLV-028 has accepted Network Controls; DLV-030 has accepted YT Music;
-   DLV-029 now immediately follows accepted DLV-032/DLV-034 integration and owns
-   Audio Mixer; accepted DLV-031 owns the managed capability broker;
+   accepted DLV-029 owns Audio Mixer presentation/command policy and DLV-042 its
+   residual provider-session lifecycle; accepted DLV-031 owns the managed capability broker;
    DLV-032 bridge scheduling;
    DLV-033 native widget-session ownership; DLV-034 the Spotify provider;
    DLV-035 the Windows network backend; DLV-041 its native interop owner;
