@@ -32,6 +32,10 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Length framing rejects oversized input before allocation", OversizedFrameIsRejected),
+    ("Pending worker requests correlate and drain through one typed owner", WidgetProcessOwnershipScenarios.PendingRequestsCorrelateExactly),
+    ("Dashboard gesture reservations match and expire through one policy", WidgetProcessOwnershipScenarios.GestureReservationsAreExactAndExpire),
+    ("Worker session terminal cleanup is shared and exact", WidgetProcessOwnershipScenarios.SessionTerminalCleanupIsShared),
+    ("Replacement sessions share no request or gesture state", WidgetProcessOwnershipScenarios.ReplacementSessionsDoNotShareMutableAuthority),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
     ("Process admission failures stay pre-launch and are not worker failures", ProcessAdmissionFailsBeforeLaunch),
     ("Process residency leases follow exact worker sessions", ProcessLeaseFollowsSession),
