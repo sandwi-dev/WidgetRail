@@ -48,6 +48,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Handle-bound authority cannot be redirected by path replacement", AuthorityHandlesResistPathReplacement),
     ("Pending authority recovery rejects changed object identity", AuthorityRecoveryRejectsIdentityChange),
     ("Broad AppContainer group authority fails before mutation", AlternateAppContainerAuthorityFailsClosed),
+    ("Content leases require exact object identity evidence", ContentLeaseRequiresObjectIdentity),
+    ("Catalog identity mismatch rejects before authority mutation", ContentLeaseIdentityMismatchFailsClosed),
     ("Verified content leases follow exact worker sessions", ContentLeaseFollowsSession),
     ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
     ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
@@ -370,7 +372,8 @@ static Task ContentAuthorityTransactionRollsBack()
 {
     var targets = new[]
     {
-        new AppContainerAuthorityTarget("root", AppContainerAuthorityTargetKind.AuthorityRoot),
+        new AppContainerAuthorityTarget(
+            "root", AppContainerAuthorityTargetKind.AuthorityRootDirectory),
         new AppContainerAuthorityTarget("directory", AppContainerAuthorityTargetKind.VerifiedDirectory),
         new AppContainerAuthorityTarget("file", AppContainerAuthorityTargetKind.VerifiedFile),
     };
@@ -446,7 +449,7 @@ static async Task ContentAuthorityRollbackRecoversGeneration()
     var journal = new TestAuthorityJournal();
     var operations = new TestAuthorityOperations(
         failApplyAt: 1,
-        failRestoreKinds: [AppContainerAuthorityTargetKind.AuthorityRoot],
+        failRestoreKinds: [AppContainerAuthorityTargetKind.AuthorityRootDirectory],
         states: states);
     await using (var client = CreateClient(
         contentLeaseFactory: _ => new TestContentLease(
@@ -474,9 +477,9 @@ static async Task ContentAuthorityRollbackRecoversGeneration()
         new[]
         {
             new AppContainerAuthorityTarget(
-                temp.Path, AppContainerAuthorityTargetKind.VerifiedDirectory),
+                verified, AppContainerAuthorityTargetKind.VerifiedFile),
             new AppContainerAuthorityTarget(
-                temp.Path, AppContainerAuthorityTargetKind.AuthorityRoot),
+                temp.Path, AppContainerAuthorityTargetKind.AuthorityRootDirectory),
         },
         operations.RestoreOrder);
 
@@ -628,9 +631,7 @@ static async Task AuthorityJournalRecoversAfterHostTermination()
     var targets = new[]
     {
         new AppContainerAuthorityTarget(
-            package.Path, AppContainerAuthorityTargetKind.AuthorityRoot),
-        new AppContainerAuthorityTarget(
-            package.Path, AppContainerAuthorityTargetKind.VerifiedDirectory),
+            package.Path, AppContainerAuthorityTargetKind.AuthorityRootDirectory),
         new AppContainerAuthorityTarget(
             verified, AppContainerAuthorityTargetKind.VerifiedFile),
     };
@@ -699,9 +700,8 @@ static void RunAuthorityCrashProbe(string[] arguments)
     using var operations = new TerminatingAuthorityOperations(
         container.CreateAuthorityOperationsForTesting(), terminateAfterApply: 2);
     container.ReplaceReadAndExecuteGrant(
-        [packageRoot],
-        [packageRoot],
-        [verifiedFile],
+        TestFileObjectIdentity.Targets(
+            packageRoot, [packageRoot], [verifiedFile]),
         operations,
         new FileAppContainerAuthorityJournal(journalRoot));
     throw new InvalidOperationException(
@@ -773,7 +773,9 @@ static Task AuthorityRecoveryRejectsIdentityChange()
 
     var failure = Assert.Throws<WidgetProcessAdmissionException>(() =>
         container.ReplaceReadAndExecuteGrant(
-            [package.Path], [package.Path], [originalPath], journal: journal));
+            TestFileObjectIdentity.Targets(
+                package.Path, [package.Path], [originalPath]),
+            journal: journal));
     Assert.Equal(
         "Worker content authority is quarantined pending host recovery.",
         failure.Message);
@@ -842,6 +844,113 @@ static async Task AlternateAppContainerAuthorityFailsClosed()
         restore.SetSecurityDescriptorSddlForm(original, AccessControlSections.Access);
         directory.SetAccessControl(restore);
     }
+}
+
+static async Task ContentLeaseRequiresObjectIdentity()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var package = new TemporaryDirectory();
+    var verified = Path.Combine(package.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var valid = TestFileObjectIdentity.Targets(
+        package.Path, [package.Path], [verified]).ToArray();
+    var malformed = valid.ToArray();
+    malformed[^1] = malformed[^1] with
+    {
+        ObjectIdentity = new AppContainerAuthorityObjectIdentity(
+            0, "00000000000000000000000000000000"),
+    };
+    var cases = new[]
+    {
+        (Name: "missing", Targets: Array.Empty<AppContainerAuthorityExpectedTarget>(),
+            Message: "Worker content admission returned invalid authority bounds."),
+        (Name: "malformed", Targets: malformed,
+            Message: "Worker content admission returned invalid object identity evidence."),
+        (Name: "duplicate", Targets: valid.Append(valid[0]).ToArray(),
+            Message: "Worker content admission returned conflicting object identity evidence."),
+    };
+    foreach (var item in cases)
+    {
+        var released = 0;
+        var residencyReleased = 0;
+        var operations = new TestAuthorityOperations();
+        var journal = new TestAuthorityJournal();
+        await using var client = CreateClient(
+            processLeaseFactory: () => new CallbackDisposable(
+                () => Interlocked.Increment(ref residencyReleased)),
+            contentLeaseFactory: _ => new TestContentLease(
+                package.Path,
+                [package.Path],
+                [verified],
+                () => Interlocked.Increment(ref released),
+                item.Targets),
+            contentIsolationKey:
+                $"runtime-content-identity-{item.Name}-{Guid.NewGuid():N}",
+            contentAuthorityOperations: operations,
+            contentAuthorityJournal: journal);
+
+        var failure = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+            () => client.GetSnapshotAsync());
+        Assert.Equal(item.Message, failure.Message);
+        Assert.Equal(0, client.Starts);
+        Assert.Equal(1, released);
+        Assert.Equal(1, residencyReleased);
+        Assert.Equal(0, operations.CaptureCount);
+        Assert.True(journal.Pending is null,
+            $"Invalid {item.Name} identity evidence reached journal publication.");
+    }
+}
+
+static async Task ContentLeaseIdentityMismatchFailsClosed()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var package = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var originalDirectory = Path.Combine(package.Path, "assets");
+    var movedDirectory = Path.Combine(package.Path, "moved-assets");
+    Directory.CreateDirectory(originalDirectory);
+    var originalPath = Path.Combine(originalDirectory, "verified.txt");
+    await File.WriteAllTextAsync(originalPath, "byte-identical");
+    var expectedIdentities = TestFileObjectIdentity.Capture(
+        [package.Path, originalDirectory, originalPath]);
+    Directory.Move(originalDirectory, movedDirectory);
+    Directory.CreateDirectory(originalDirectory);
+    await File.WriteAllTextAsync(originalPath, "byte-identical");
+    var replacement = new FileInfo(originalPath);
+    var replacementDescriptor = replacement.GetAccessControl(AccessControlSections.Access)
+        .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+    var released = 0;
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(controlPlane.Path, "journal"));
+    await using var client = CreateClient(
+        contentLeaseFactory: _ => new TestContentLease(
+            package.Path,
+            [package.Path, originalDirectory],
+            [originalPath],
+            () => Interlocked.Increment(ref released),
+            TestFileObjectIdentity.Targets(
+                package.Path,
+                [package.Path, originalDirectory],
+                [originalPath],
+                expectedIdentities)),
+        contentIsolationKey: $"runtime-content-identity-mismatch-{Guid.NewGuid():N}",
+        contentAuthorityJournal: journal);
+
+    var failure = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+        () => client.GetSnapshotAsync());
+    Assert.Equal("Worker content authority could not be established.", failure.Message);
+    Assert.True(failure.InnerException is IOException,
+        "Catalog identity mismatch lost its host diagnostic cause.");
+    Assert.Equal(0, client.Starts);
+    Assert.Equal(1, released);
+    Assert.Equal(
+        replacementDescriptor,
+        replacement.GetAccessControl(AccessControlSections.Access)
+            .GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+    using var lease = journal.Acquire(
+        $"GameBarAlternative.Widget.{Guid.NewGuid():N}");
+    Assert.True(lease.ReadPending() is null,
+        "Catalog identity mismatch published a pending authority record.");
 }
 
 static async Task ContentAdmissionHonorsCallerCancellation()
@@ -2990,13 +3099,15 @@ file sealed class TestContentLease(
     string authorityRoot,
     IReadOnlyList<string> readOnlyDirectories,
     IReadOnlyList<string> readOnlyFiles,
-    Action release) : IWidgetProcessContentLease
+    Action release,
+    IReadOnlyList<AppContainerAuthorityExpectedTarget>? targets = null)
+    : IWidgetProcessContentLease
 {
     private Action? _release = release;
 
-    public IReadOnlyList<string> AuthorityRoots { get; } = [authorityRoot];
-    public IReadOnlyList<string> ReadOnlyDirectories { get; } = readOnlyDirectories;
-    public IReadOnlyList<string> ReadOnlyFiles { get; } = readOnlyFiles;
+    public IReadOnlyList<AppContainerAuthorityExpectedTarget> Targets { get; } =
+        targets ?? TestFileObjectIdentity.Targets(
+            authorityRoot, readOnlyDirectories, readOnlyFiles);
 
     public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
 }
@@ -3012,9 +3123,11 @@ file sealed class TestAuthorityOperations(
 
     public List<AppContainerAuthorityTarget> RestoreOrder { get; } = [];
     public int ApplyCount => _applyIndex;
+    public int CaptureCount { get; private set; }
 
     public AppContainerAuthoritySnapshot Capture(AppContainerAuthorityTarget target)
     {
+        CaptureCount++;
         if (!_states.TryGetValue(target, out var descriptor))
         {
             descriptor = Original(target);
@@ -3059,10 +3172,12 @@ file sealed class TestAuthorityOperations(
         $"granted:{target.Kind}:{target.Path}";
 
     public static AppContainerAuthorityObjectIdentity Identity(
-        AppContainerAuthorityTarget target) =>
-        new(
-            1,
-            $"{((int)target.Kind + 1):X32}");
+        AppContainerAuthorityTarget target) => OperatingSystem.IsWindows() &&
+            (File.Exists(target.Path) || Directory.Exists(target.Path))
+                ? TestFileObjectIdentity.Read(
+                    target.Path,
+                    target.Kind != AppContainerAuthorityTargetKind.VerifiedFile)
+                : new(1, "00000000000000000000000000000001");
 
     public void Dispose() { }
 }
@@ -3143,4 +3258,144 @@ file sealed class TerminatingAuthorityOperations(
         inner.VerifyRestored(snapshot);
 
     public void Dispose() => inner.Dispose();
+}
+
+file static class TestFileObjectIdentity
+{
+    private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+    private const uint FileFlagOpenReparsePoint = 0x00200000;
+    private const int FileAttributeTagInfoClass = 9;
+    private const int FileIdInfoClass = 18;
+
+    internal static IReadOnlyDictionary<string, AppContainerAuthorityObjectIdentity> Capture(
+        IEnumerable<string> paths)
+    {
+        var identities = new Dictionary<string, AppContainerAuthorityObjectIdentity>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var value in paths.Select(Path.GetFullPath).Distinct(
+                     StringComparer.OrdinalIgnoreCase))
+            identities.Add(value, Read(value, Directory.Exists(value)));
+        return identities;
+    }
+
+    internal static IReadOnlyList<AppContainerAuthorityExpectedTarget> Targets(
+        string authorityRoot,
+        IReadOnlyList<string> directories,
+        IReadOnlyList<string> files,
+        IReadOnlyDictionary<string, AppContainerAuthorityObjectIdentity>? identities = null)
+    {
+        identities ??= Capture(
+            new[] { authorityRoot }.Concat(directories).Concat(files));
+        AppContainerAuthorityExpectedTarget Expected(
+            string path,
+            AppContainerAuthorityTargetKind kind)
+        {
+            var fullPath = Path.GetFullPath(path);
+            return new AppContainerAuthorityExpectedTarget(
+                new AppContainerAuthorityTarget(fullPath, kind),
+                identities[fullPath]);
+        }
+        return new[]
+            {
+                Expected(
+                    authorityRoot,
+                    AppContainerAuthorityTargetKind.AuthorityRootDirectory),
+            }
+            .Concat(directories
+                .Where(path => !string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(authorityRoot),
+                    StringComparison.OrdinalIgnoreCase))
+                .Select(path =>
+                    Expected(path, AppContainerAuthorityTargetKind.VerifiedDirectory)))
+            .Concat(files.Select(path =>
+                Expected(path, AppContainerAuthorityTargetKind.VerifiedFile)))
+            .ToArray();
+    }
+
+    internal static AppContainerAuthorityObjectIdentity Read(
+        string path,
+        bool expectDirectory)
+    {
+        using var handle = CreateFile(
+            path,
+            0,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagOpenReparsePoint |
+                (expectDirectory ? FileFlagBackupSemantics : 0),
+            IntPtr.Zero);
+        if (handle.IsInvalid ||
+            !GetFileAttributeTagInfo(
+                handle,
+                FileAttributeTagInfoClass,
+                out var attributes,
+                Marshal.SizeOf<FileAttributeTagInfo>()) ||
+            (attributes.FileAttributes & FileAttributes.ReparsePoint) != 0 ||
+            ((attributes.FileAttributes & FileAttributes.Directory) != 0) != expectDirectory ||
+            !GetFileIdInfo(
+                handle,
+                FileIdInfoClass,
+                out var information,
+                Marshal.SizeOf<FileIdInfo>()))
+            throw new IOException("Test object identity could not be captured.");
+        return new AppContainerAuthorityObjectIdentity(
+            information.VolumeSerialNumber,
+            $"{information.FileId.Low:X16}{information.FileId.High:X16}");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileAttributeTagInfo
+    {
+        internal FileAttributes FileAttributes;
+        internal uint ReparseTag;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileId128
+    {
+        internal ulong Low;
+        internal ulong High;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileIdInfo
+    {
+        internal ulong VolumeSerialNumber;
+        internal FileId128 FileId;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern SafeFileHandle CreateFile(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        IntPtr securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        IntPtr templateFile);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileAttributeTagInfo(
+        SafeFileHandle file,
+        int informationClass,
+        out FileAttributeTagInfo information,
+        int bufferSize);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileIdInfo(
+        SafeFileHandle file,
+        int informationClass,
+        out FileIdInfo information,
+        int bufferSize);
 }

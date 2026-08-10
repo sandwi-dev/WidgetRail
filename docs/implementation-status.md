@@ -781,7 +781,7 @@ community AppContainer authority, exact grant replacement, content-generation
 isolation, trusted-runtime/content-root overlap refusal, caller-preserving
 content-admission cancellation, timeouts and session release, bounded intentional
 unload, and private two-clock dashboard-gesture propagation. Its focused Release
-harness passes 58/58. The authority fixtures prove reverse restoration of every
+harness passes 60/60. The authority fixtures prove reverse restoration of every
 attempted root/directory/file DACL including the failing target, retry without
 quarantine after a complete rollback, pre-mutation refusal when journal
 publication fails, cross-profile lock ownership, corrupt/hostile-entry refusal,
@@ -794,8 +794,10 @@ file, prove handle-bound apply changes only the original object, reject a
 different volume/file identity during fresh-host recovery without touching the
 replacement or clearing the journal, and refuse broad AppContainer-group
 authority before mutation. All failure paths reject before process launch and
-release the content lease. The bounded 512-file exact-grant fixture completes
-in 371.101 ms in the current focused Release run;
+release the content lease. New cases reject missing, malformed, duplicate, and
+byte-identical replacement identity evidence before authority capture or journal
+publication, while releasing both residency and content leases. The bounded
+512-file exact-grant fixture completes in 426.742 ms in the current focused Release run;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
@@ -827,7 +829,7 @@ scaffold, production validation/computed preview, deterministic
 packaging/inspection, pinned-GitHub installation, per-package and aggregate
 catalog limits, data-only exact-version recovery, immutable versions, rejection of a 1,025-directory package
 before pack output or installed-byte publication, and adversarial package cases. Catalog
-passes 34/34, including
+passes 35/35, including
 schema-1 state migration, exact active-version pins and enabled-history repair,
 linearizable concurrent rollback/first-install operations, public-API
 disabled-update enforcement, lock-free reads during atomic state replacement,
@@ -837,10 +839,13 @@ misreported and changing-length rejection, verified manifest-byte capture,
 session byte pinning, pre-start mutation and late-insertion refusal,
 prospective ID/version/file/byte refusal, per-entry/per-64-KiB cancellation and
 deadline checks, pre-extraction refusal when implicit file paths would require
-more than 1,024 exact authority directories, unexpected-entry rejection, plus
-content-bound unsigned authority.
+more than 1,024 exact authority directories, pre-walk launch refusal for 1,025
+verified files, unexpected-entry rejection, plus
+content-bound unsigned authority. The same focused run proves the catalog's
+typed target identities cover every pinned directory/file, block file and root
+renames during the lease, and release those locks deterministically.
 The maximum-inventory fixtures retain 512 verified files: current local Release
-evidence acquires and hashes the pinned-file lease in 325.283 ms and applies the
+evidence acquires and hashes the pinned-file lease in 350.128 ms and applies the
 exact AppContainer grants plus lazy activation in 360.426 ms. Clean eligible
 run `20260809T152831Z-67b77c73` retains the seven affected Release steps for
 commit `6bd60d3` (implementation baseline `6fc9e01`). Focused tests use
@@ -850,13 +855,15 @@ remain open.
 The exact accepted namespace edge is also exercised through the public
 pack/install/enable path and a real first-party AppContainer worker: 1,024
 authority directories and 258 verified files pack in 376.140 ms and reach a
-first validated render in 2,528.883 ms on the current machine. Clean retained
+first validated render in 2,528.883 ms in the retained clean measurement. The
+current focused Release run packs in 348.583 ms and activates in 2,647.495 ms.
+Clean retained
 selected run `20260809T155221Z-ae6e5d8d` passed CLI 50/50, Documentation 1/1,
 and First-Party Conformance 6/6 for documentation commit `b2956ab` over
 implementation `4f903b0`. This is a focused one-machine measurement, not a
 production startup budget or a complete all-manifest verification run.
 Bridge
-passes 45/45, including bounded 16-request correlated dispatch, stable
+passes 46/46, including bounded 16-request correlated dispatch, stable
 `bridge_busy` saturation, cooperative stalled-admission list/Stop
 responsiveness and cleanup, duplicate-active-ID refusal, per-widget receive
 ordering, aggregate count/declared-memory admission, exact crash/
@@ -867,7 +874,9 @@ trusted Job-only exceptions, manifest-backed bundled packages, mandatory
 installed-package isolation metadata, lifecycle residency, and exact dashboard
 gesture derivation, including trusted-only publication and worker retirement
 when installed state/integrity fails, pre-launch content-race rejection, and
-live-byte pinning until asynchronous worker teardown completes. Clean retained
+live-byte pinning until asynchronous worker teardown completes. Its installed
+lease now transports one typed path/role/identity sequence and proves consistent
+object identity for package-root, traversal-directory, and file roles. Clean retained
 selected run `20260809T161934Z-5d0bee6a` passes Bridge 45/45, Documentation 1/1,
 and First-Party Conformance 6/6 in 75.643 seconds for commit `fdcf253`; its
 provenance records a clean tree, release eligibility, and zero stderr or output
@@ -938,6 +947,17 @@ attempt `20260810T001859Z-b601e2d3` reached Conformance 6/6 but failed native
 linking because an existing workspace `OverlayHost.exe --show` held the exact
 output file. That PID was identity-checked and exited through `WM_CLOSE`; the
 successful rerun left no OverlayHost process behind.
+
+Catalog-identity handoff run `20260810T014706Z-852d0250` passes 41/41 Release
+steps in 367.882 seconds, including WidgetRuntime 60/60, WidgetCatalog 35/35,
+Bridge 46/46, First-Party Conformance 6/6, the full native build and tests,
+hidden-host smoke, and the 49-file documentation contract. Schema-v2
+provenance records identical start/end commit `0ff403a`, an unchanged dirty
+status fingerprint, 29 final package digests, and
+`repositoryStateStable: true`. It is integration evidence rather than a
+release-eligible bundle because the milestone and reviewer-owned ledgers were
+dirty at both endpoints; the exact reasons are `starting_worktree_dirty` and
+`finished_worktree_dirty`.
 
 PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
@@ -1093,10 +1113,12 @@ with C++ installed:
   before mutation, every apply/restore uses one bound non-reparse handle, and a
   pending transaction must reopen the same identity before any later community
   start. Broad application-package group grants, journal corruption, identity
-  mismatch, or persistence failure reject before launch. This does not yet pass
-  the catalog's pinned identities into runtime capture, provide a privileged
-  repair UI, or place ACL application and handshake under one aggregate start
-  deadline.
+  mismatch, or persistence failure reject before launch. Catalog session handles
+  now supply their volume/file identities through one typed bridge lease target
+  sequence; runtime requires exact consistent evidence and compares its bound
+  handles before journal publication or DACL mutation. Handle-relative ancestor
+  traversal, a privileged repair UI, and one aggregate ACL/handshake start
+  deadline remain open.
   Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The

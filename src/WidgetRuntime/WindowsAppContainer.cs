@@ -125,29 +125,11 @@ internal sealed class WindowsAppContainer : IDisposable
     /// inherit this AppContainer's authority.
     /// </summary>
     internal void ReplaceReadAndExecuteGrant(
-        IEnumerable<string> authorityRoots,
-        IEnumerable<string> directories,
-        IEnumerable<string> files,
+        IEnumerable<AppContainerAuthorityExpectedTarget> expectedTargets,
         IAppContainerAuthorityOperations? operations = null,
         IAppContainerAuthorityJournal? journal = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var targets = authorityRoots
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(path => new AppContainerAuthorityTarget(
-                path, AppContainerAuthorityTargetKind.AuthorityRoot))
-            .Concat(directories
-                .Select(Path.GetFullPath)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(path => new AppContainerAuthorityTarget(
-                    path, AppContainerAuthorityTargetKind.VerifiedDirectory)))
-            .Concat(files
-                .Select(Path.GetFullPath)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(path => new AppContainerAuthorityTarget(
-                    path, AppContainerAuthorityTargetKind.VerifiedFile)))
-            .ToArray();
         using var ownedAuthorityOperations = operations is null
             ? new WindowsAuthorityOperations(_identity)
             : null;
@@ -173,8 +155,17 @@ internal sealed class WindowsAppContainer : IDisposable
                 }
             }
 
+            var normalizedTargets =
+                WidgetProcessContentTargets.NormalizeAndValidate(expectedTargets);
+            var targets = normalizedTargets.Select(target => target.Target).ToArray();
             var snapshots = AppContainerAuthorityTransaction.Capture(
                 targets, authorityOperations);
+            if (snapshots.Count != normalizedTargets.Count ||
+                snapshots.Where((snapshot, index) =>
+                    snapshot.Target != normalizedTargets[index].Target ||
+                    snapshot.ObjectIdentity != normalizedTargets[index].ObjectIdentity).Any())
+                throw new IOException(
+                    "An AppContainer content-authority target changed after catalog verification.");
             journalLease.WritePending(snapshots);
             try
             {
@@ -356,9 +347,7 @@ internal sealed class WindowsAppContainer : IDisposable
                 .Cast<FileSystemAccessRule>()
                 .Where(rule => identity.Equals(rule.IdentityReference))
                 .ToArray();
-            var valid = snapshot.Target.Kind == AppContainerAuthorityTargetKind.AuthorityRoot
-                ? rules.Length == 0
-                : rules.Length == 1 &&
+            var valid = rules.Length == 1 &&
                   !rules[0].IsInherited &&
                   rules[0].AccessControlType == AccessControlType.Allow &&
                   rules[0].InheritanceFlags == InheritanceFlags.None &&
@@ -632,15 +621,12 @@ internal sealed class WindowsAppContainer : IDisposable
         {
             var security = CreateDirectorySecurity(snapshot.AccessDescriptor);
             security.PurgeAccessRules(identity);
-            if (snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedDirectory)
-            {
-                security.AddAccessRule(new FileSystemAccessRule(
-                    identity,
-                    FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
-                    InheritanceFlags.None,
-                    PropagationFlags.None,
-                    AccessControlType.Allow));
-            }
+            security.AddAccessRule(new FileSystemAccessRule(
+                identity,
+                FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+                InheritanceFlags.None,
+                PropagationFlags.None,
+                AccessControlType.Allow));
             return security;
         }
     }

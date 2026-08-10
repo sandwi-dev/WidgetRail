@@ -38,6 +38,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Integrity verification parses the manifest bytes it hashed", VerificationReturnsHashedManifest),
     ("Launch leases pin verified bytes until session release", LaunchLeasePinsVerifiedBytes),
     ("Launch leases reject pre-start mutation and late namespace insertion", LaunchLeaseRejectsRaces),
+    ("Launch leases reject runtime-incompatible file inventories", LaunchLeaseRejectsExcessFiles),
     ("Maximum package launch lease stays within its startup budget", MaximumLaunchLeaseIsBounded),
     ("Bounded reads reject bytes beyond a reported length", BoundedReadsRejectMisreportedLengths),
     ("Integrity hashing rejects early EOF and trailing bytes", IntegrityHashingRequiresExactLength),
@@ -859,20 +860,61 @@ static async Task LaunchLeasePinsVerifiedBytes()
         "Discovery did not retain the complete verified file inventory.");
 
     var entrypoint = Path.Combine(installed.InstallPath, "payload", "Widget.dll");
+    var movedEntrypoint = entrypoint + ".moved";
+    var movedRoot = installed.InstallPath + ".moved";
     using (var lease = InstalledPackageLaunchLease.Acquire(root, installed))
     {
         Assert.Equal(installed.ContentDigest, lease.ContentDigest);
-        Assert.Equal(installed.VerifiedFiles.Count, lease.ReadOnlyFiles.Count);
-        Assert.True(lease.ReadOnlyDirectories.Contains(installed.InstallPath,
-                StringComparer.OrdinalIgnoreCase),
+        var fileTargets = lease.Targets.Where(target =>
+            target.Kind == InstalledPackageContentTargetKind.ReadOnlyFile).ToArray();
+        var rootTargets = lease.Targets.Where(target =>
+            target.Kind == InstalledPackageContentTargetKind.AuthorityRootDirectory).ToArray();
+        var directoryTargets = lease.Targets.Where(target =>
+            target.Kind == InstalledPackageContentTargetKind.ReadOnlyDirectory).ToArray();
+        Assert.Equal(installed.VerifiedFiles.Count, fileTargets.Length);
+        Assert.True(rootTargets.Length == 1 && string.Equals(
+                rootTargets[0].Path,
+                installed.InstallPath,
+                StringComparison.OrdinalIgnoreCase),
             "Launch authority omitted the package-root traversal grant.");
         if (OperatingSystem.IsWindows())
         {
+            Assert.Equal(
+                1 + directoryTargets.Length + fileTargets.Length,
+                lease.Targets.Count);
+            var identitiesByPath = new Dictionary<string, InstalledPackageObjectIdentity>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var target in lease.Targets)
+            {
+                Assert.True(target.ObjectIdentity is not null,
+                    "Windows launch target omitted object identity evidence.");
+                var identity = target.ObjectIdentity!.Value;
+                if (identitiesByPath.TryGetValue(target.Path, out var prior))
+                    Assert.Equal(prior, identity);
+                else
+                    identitiesByPath.Add(target.Path, identity);
+            }
+            Assert.True(lease.Targets.All(target =>
+                    target.ObjectIdentity is { } identity &&
+                    identity.FileId.Length == 32 &&
+                    identity.FileId.Any(character => character != '0') &&
+                    identity.FileId.All(character =>
+                        character is >= '0' and <= '9' or >= 'A' and <= 'F')),
+                "Launch lease returned malformed Windows object identities.");
             _ = Assert.Throws<IOException>(() => File.WriteAllText(entrypoint, "changed"));
             _ = Assert.Throws<IOException>(() => File.Delete(entrypoint));
+            _ = Assert.Throws<IOException>(() => File.Move(entrypoint, movedEntrypoint));
+            _ = Assert.Throws<IOException>(() => Directory.Move(installed.InstallPath, movedRoot));
         }
     }
 
+    if (OperatingSystem.IsWindows())
+    {
+        File.Move(entrypoint, movedEntrypoint);
+        File.Move(movedEntrypoint, entrypoint);
+        Directory.Move(installed.InstallPath, movedRoot);
+        Directory.Move(movedRoot, installed.InstallPath);
+    }
     await File.WriteAllTextAsync(entrypoint, "released");
     Assert.Equal("released", await File.ReadAllTextAsync(entrypoint));
 }
@@ -927,11 +969,40 @@ static async Task MaximumLaunchLeaseIsBounded()
     var stopwatch = System.Diagnostics.Stopwatch.StartNew();
     using var lease = InstalledPackageLaunchLease.Acquire(root, installed);
     stopwatch.Stop();
-    Assert.Equal(512, lease.ReadOnlyFiles.Count);
+    Assert.Equal(512, lease.Targets.Count(target =>
+        target.Kind == InstalledPackageContentTargetKind.ReadOnlyFile));
     Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
         $"Maximum launch lease acquisition exceeded five seconds ({stopwatch.Elapsed.TotalMilliseconds:0} ms).");
     Console.WriteLine(
         $"METRIC package_launch_lease files=512 milliseconds={stopwatch.Elapsed.TotalMilliseconds:F3}");
+}
+
+static async Task LaunchLeaseRejectsExcessFiles()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var options = new WidgetCatalogOptions
+    {
+        MaximumArchiveEntries = InstalledPackageLaunchLease.MaximumReadOnlyFiles + 1,
+    };
+    var catalog = new WidgetCatalog(root, options);
+    var extras = Enumerable.Range(0, InstalledPackageLaunchLease.MaximumReadOnlyFiles - 1)
+        .Select(index => new ExtraEntry($"assets/entry-{index:0000}.txt", "x"))
+        .ToArray();
+    await catalog.InstallAsync(CreatePackage(
+        temp.Path,
+        "dev.test.excess-launch-files",
+        "dev.test",
+        "1.0.0",
+        extras));
+    var installed = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+    Assert.Equal(
+        InstalledPackageLaunchLease.MaximumReadOnlyFiles + 1,
+        installed.VerifiedFiles.Count);
+
+    var failure = Assert.Throws<WidgetPackageException>(() =>
+        InstalledPackageLaunchLease.Acquire(root, installed));
+    Assert.Equal("package_launch_integrity", failure.Code);
 }
 
 static Task BoundedReadsRejectMisreportedLengths()

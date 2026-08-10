@@ -23,6 +23,8 @@ internal interface IAppContainerAuthorityJournalLease : IDisposable
 internal sealed class FileAppContainerAuthorityJournal : IAppContainerAuthorityJournal
 {
     private const int SchemaVersion = 2;
+    // Schema-two records created before the root-directory role was consolidated
+    // may contain one root plus 1,024 directory and 1,024 file snapshots.
     private const int MaximumTargets = 2_049;
     private const int MaximumPathCharacters = 32_767;
     private const int MaximumDescriptorCharacters = 65_536;
@@ -347,11 +349,7 @@ internal sealed class FileAppContainerAuthorityJournal : IAppContainerAuthorityJ
                         StringComparison.OrdinalIgnoreCase) ||
                     string.IsNullOrWhiteSpace(snapshot.AccessDescriptor) ||
                     snapshot.AccessDescriptor.Length > MaximumDescriptorCharacters ||
-                    snapshot.ObjectIdentity.FileId is null ||
-                    snapshot.ObjectIdentity.FileId.Length != 32 ||
-                    snapshot.ObjectIdentity.FileId.All(character => character == '0') ||
-                    snapshot.ObjectIdentity.FileId.Any(character =>
-                        !(character is >= '0' and <= '9' or >= 'A' and <= 'F')) ||
+                    !snapshot.ObjectIdentity.HasValidFormat() ||
                     !unique.Add(snapshot.Target))
                 {
                     throw new AppContainerAuthorityJournalException(

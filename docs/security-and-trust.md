@@ -167,9 +167,11 @@ planned. A structurally valid package is not necessarily trustworthy.
   the same identity before restoring it. Broad `ALL APPLICATION PACKAGES` and
   `ALL RESTRICTED APPLICATION PACKAGES` read/execute grants fail before
   mutation. Corrupt, unknown, reparse-shaped, unavailable, or identity-mismatched
-  journal state fails closed before process launch. The catalog does not yet
-  transport its pinned identities into runtime capture, and there is not yet a
-  controller-accessible privileged repair surface.
+  journal state fails closed before process launch. The catalog captures object
+  identities from its pinned session handles, the bridge carries them with each
+  typed authority target, and runtime rejects a different object before journal
+  publication or DACL mutation. There is not yet a controller-accessible
+  privileged repair surface, and ancestor traversal is not yet handle-relative.
 
 ## Not yet a production guarantee
 
@@ -189,7 +191,7 @@ The following are **not implemented as a complete public security boundary**:
 - a general OAuth/account broker, readable credential API, or internet/LAN
   authority beyond the narrow implemented local-companion services;
 - automatic update discovery/review, version removal, or crash-quarantine UI;
-- catalog-to-runtime object-identity handoff and a privileged authority-journal
+- handle-relative catalog-root traversal and a privileged authority-journal
   inspection/repair UI;
 - a graphical/file-picker installer and safe automatic updates;
 - universal anti-cheat or controller-containment compatibility.

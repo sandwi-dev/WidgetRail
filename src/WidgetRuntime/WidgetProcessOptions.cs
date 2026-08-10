@@ -49,15 +49,109 @@ public interface IWidgetProcessCompanionSession : IAsyncDisposable
 /// </summary>
 internal interface IWidgetProcessContentLease : IDisposable
 {
-    IReadOnlyList<string> AuthorityRoots { get; }
-    IReadOnlyList<string> ReadOnlyDirectories { get; }
-    IReadOnlyList<string> ReadOnlyFiles { get; }
+    IReadOnlyList<AppContainerAuthorityExpectedTarget> Targets { get; }
 }
 
 internal static class WidgetProcessContentLimits
 {
     internal const int MaximumDirectories = 1_024;
     internal const int MaximumFiles = 1_024;
+    internal const int MaximumTargets = MaximumDirectories + MaximumFiles;
+}
+
+internal static class WidgetProcessContentTargets
+{
+    internal static IReadOnlyList<AppContainerAuthorityExpectedTarget> NormalizeAndValidate(
+        IEnumerable<AppContainerAuthorityExpectedTarget>? targets)
+    {
+        if (targets is null)
+            throw new WidgetProcessAdmissionException(
+                "Worker content admission returned no object identity evidence.");
+        var boundedTargets = targets
+            .Take(WidgetProcessContentLimits.MaximumTargets + 1)
+            .ToArray();
+        if (boundedTargets.Length is < 2 or > WidgetProcessContentLimits.MaximumTargets)
+            throw new WidgetProcessAdmissionException(
+                "Worker content admission returned invalid authority bounds.");
+
+        var normalized = new List<AppContainerAuthorityExpectedTarget>(boundedTargets.Length);
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var expected in boundedTargets)
+        {
+            if (!Enum.IsDefined(expected.Target.Kind) ||
+                string.IsNullOrWhiteSpace(expected.Target.Path) ||
+                !expected.ObjectIdentity.HasValidFormat())
+                throw new WidgetProcessAdmissionException(
+                    "Worker content admission returned invalid object identity evidence.");
+            string fullPath;
+            try { fullPath = Path.GetFullPath(expected.Target.Path); }
+            catch (Exception exception) when (exception is ArgumentException or
+                                               NotSupportedException or
+                                               PathTooLongException)
+            {
+                throw new WidgetProcessAdmissionException(
+                    "Worker content admission returned an invalid exact path.", exception);
+            }
+            if (!paths.Add(fullPath))
+                throw new WidgetProcessAdmissionException(
+                    "Worker content admission returned conflicting object identity evidence.");
+            normalized.Add(new AppContainerAuthorityExpectedTarget(
+                expected.Target with { Path = fullPath }, expected.ObjectIdentity));
+        }
+
+        var roots = normalized
+            .Where(target => target.Target.Kind ==
+                AppContainerAuthorityTargetKind.AuthorityRootDirectory)
+            .Select(target => target.Target.Path)
+            .ToArray();
+        var directories = normalized
+            .Where(target => target.Target.Kind ==
+                AppContainerAuthorityTargetKind.VerifiedDirectory)
+            .Select(target => target.Target.Path)
+            .ToArray();
+        var files = normalized
+            .Where(target => target.Target.Kind == AppContainerAuthorityTargetKind.VerifiedFile)
+            .Select(target => target.Target.Path)
+            .ToArray();
+        if (roots.Length != 1 ||
+            roots.Length + directories.Length > WidgetProcessContentLimits.MaximumDirectories ||
+            files.Length is < 1 or > WidgetProcessContentLimits.MaximumFiles ||
+            normalized.Count != roots.Length + directories.Length + files.Length ||
+            !Directory.Exists(roots[0]) || IsReparsePoint(roots[0]))
+            throw new WidgetProcessAdmissionException(
+                "Worker content admission returned invalid authority bounds.");
+
+        ValidateExactPaths(directories, roots[0], expectDirectory: true);
+        ValidateExactPaths(files, roots[0], expectDirectory: false);
+        return normalized.AsReadOnly();
+    }
+
+    private static void ValidateExactPaths(
+        IReadOnlyList<string> paths,
+        string root,
+        bool expectDirectory)
+    {
+        foreach (var fullPath in paths)
+        {
+            if (!IsWithinOrEqual(root, fullPath) ||
+                (expectDirectory ? !Directory.Exists(fullPath) : !File.Exists(fullPath)) ||
+                IsReparsePoint(fullPath))
+                throw new WidgetProcessAdmissionException(
+                    "Worker content admission returned an invalid exact path.");
+        }
+    }
+
+    private static bool IsWithinOrEqual(string root, string path)
+    {
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(root);
+        return string.Equals(normalizedRoot, path, StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith(
+                normalizedRoot + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsReparsePoint(string path) =>
+        (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 }
 
 /// <summary>

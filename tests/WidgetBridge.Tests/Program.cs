@@ -497,11 +497,34 @@ static async Task InstalledWidgetsJoinCatalog()
         WidgetProcessContentLimits.MaximumDirectories);
     using (var contentLease = installed.ContentLeaseFactory!(CancellationToken.None))
     {
-        Assert.SequenceEqual([installed.WorkerArguments[1]], contentLease.AuthorityRoots);
-        Assert.Equal(installedVersion.VerifiedFiles.Count, contentLease.ReadOnlyFiles.Count);
-        Assert.True(contentLease.ReadOnlyDirectories.Contains(
-                installed.WorkerArguments[1], StringComparer.OrdinalIgnoreCase),
+        var roots = contentLease.Targets.Where(target => target.Target.Kind ==
+            AppContainerAuthorityTargetKind.AuthorityRootDirectory).ToArray();
+        var directories = contentLease.Targets.Where(target => target.Target.Kind ==
+            AppContainerAuthorityTargetKind.VerifiedDirectory).ToArray();
+        var files = contentLease.Targets.Where(target => target.Target.Kind ==
+            AppContainerAuthorityTargetKind.VerifiedFile).ToArray();
+        Assert.SequenceEqual(
+            [installed.WorkerArguments[1]], roots.Select(target => target.Target.Path));
+        Assert.Equal(installedVersion.VerifiedFiles.Count, files.Length);
+        Assert.True(string.Equals(
+                roots.Single().Target.Path,
+                installed.WorkerArguments[1],
+                StringComparison.OrdinalIgnoreCase),
             "The exact content lease omitted package-root traversal authority.");
+        Assert.Equal(roots.Length + directories.Length + files.Length,
+            contentLease.Targets.Count);
+        Assert.True(contentLease.Targets.All(target =>
+                target.ObjectIdentity.HasValidFormat()),
+            "The bridge returned malformed object identity evidence.");
+        var identitiesByPath = new Dictionary<string, AppContainerAuthorityObjectIdentity>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var target in contentLease.Targets)
+        {
+            if (identitiesByPath.TryGetValue(target.Target.Path, out var prior))
+                Assert.Equal(prior, target.ObjectIdentity);
+            else
+                identitiesByPath.Add(target.Target.Path, target.ObjectIdentity);
+        }
     }
     Assert.SequenceEqual(
         ["--package-root", installed.WorkerArguments[1], "--widget-assembly",
@@ -826,8 +849,12 @@ static async Task InstalledPackageTamperRetiresLiveWorker()
         Assert.Equal(1, server.RunningWorkerCount);
 
         var entrypoint = Path.Combine(installed.InstallPath, "payload", "Widget.dll");
+        var payloadDirectory = Path.GetDirectoryName(entrypoint)!;
+        var movedPayloadDirectory = payloadDirectory + ".moved";
         _ = await Assert.ThrowsAsync<IOException>(() =>
             File.AppendAllTextAsync(entrypoint, "tampered"));
+        _ = Assert.Throws<IOException>(() =>
+            Directory.Move(payloadDirectory, movedPayloadDirectory));
         Assert.Equal(1, server.RunningWorkerCount);
 
         await catalog.SetEnabledAsync("dev.example.tamper", false);
@@ -848,6 +875,8 @@ static async Task InstalledPackageTamperRetiresLiveWorker()
                 return false;
             }
         }, TimeSpan.FromSeconds(3));
+        Directory.Move(payloadDirectory, movedPayloadDirectory);
+        Directory.Move(movedPayloadDirectory, payloadDirectory);
 
         var failedClosed = await monitor.ReloadNowAsync();
         Assert.False(failedClosed.RetainedLastGood, "Tampered package retained stale authority.");

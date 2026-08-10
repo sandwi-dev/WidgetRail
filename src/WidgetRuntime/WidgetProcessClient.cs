@@ -390,7 +390,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 var executableDirectory = Path.GetDirectoryName(
                     Path.GetFullPath(_options.ExecutablePath))
                     ?? throw new WidgetProcessException("Worker executable directory is unavailable.");
-                if (_contentLease is not null && _contentLease.AuthorityRoots.Any(root =>
+                if (_contentLease is not null && _contentLease.Targets
+                    .Where(target => target.Target.Kind ==
+                        AppContainerAuthorityTargetKind.AuthorityRootDirectory)
+                    .Select(target => target.Target.Path)
+                    .Any(root =>
                         IsWithinOrEqual(executableDirectory, root) ||
                         IsWithinOrEqual(root, executableDirectory)))
                     throw new WidgetProcessAdmissionException(
@@ -399,9 +403,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     new[] { executableDirectory }.Concat(_options.ReadOnlyPaths));
                 if (_contentLease is not null)
                     appContainer.ReplaceReadAndExecuteGrant(
-                        _contentLease.AuthorityRoots,
-                        _contentLease.ReadOnlyDirectories,
-                        _contentLease.ReadOnlyFiles,
+                        _contentLease.Targets,
                         _options.ContentAuthorityOperations,
                         _options.ContentAuthorityJournal);
             }
@@ -768,48 +770,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     }
 
     private static void ValidateContentLease(IWidgetProcessContentLease lease)
-    {
-        if (lease.AuthorityRoots is null || lease.ReadOnlyDirectories is null ||
-            lease.ReadOnlyFiles is null || lease.AuthorityRoots.Count is < 1 or > 8 ||
-            lease.ReadOnlyDirectories.Count is < 1 or
-                > WidgetProcessContentLimits.MaximumDirectories ||
-            lease.ReadOnlyFiles.Count is < 1 or > WidgetProcessContentLimits.MaximumFiles)
-            throw new WidgetProcessAdmissionException(
-                "Worker content admission returned invalid authority bounds.");
-
-        var roots = lease.AuthorityRoots
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (roots.Length != lease.AuthorityRoots.Count ||
-            roots.Any(root => !Directory.Exists(root) || IsReparsePoint(root)))
-            throw new WidgetProcessAdmissionException(
-                "Worker content admission returned an invalid authority root.");
-
-        ValidateExactPaths(lease.ReadOnlyDirectories, roots, expectDirectory: true);
-        ValidateExactPaths(lease.ReadOnlyFiles, roots, expectDirectory: false);
-    }
-
-    private static void ValidateExactPaths(
-        IReadOnlyList<string> paths,
-        IReadOnlyList<string> roots,
-        bool expectDirectory)
-    {
-        var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var value in paths)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                throw new WidgetProcessAdmissionException(
-                    "Worker content admission returned a blank path.");
-            var fullPath = Path.GetFullPath(value);
-            if (!distinct.Add(fullPath) ||
-                !roots.Any(root => IsWithinOrEqual(root, fullPath)) ||
-                (expectDirectory ? !Directory.Exists(fullPath) : !File.Exists(fullPath)) ||
-                IsReparsePoint(fullPath))
-                throw new WidgetProcessAdmissionException(
-                    "Worker content admission returned an invalid exact path.");
-        }
-    }
+        => _ = WidgetProcessContentTargets.NormalizeAndValidate(lease.Targets);
 
     private static bool IsWithinOrEqual(string root, string path)
     {
@@ -820,9 +781,6 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 normalizedRoot + Path.DirectorySeparatorChar,
                 StringComparison.OrdinalIgnoreCase);
     }
-
-    private static bool IsReparsePoint(string path) =>
-        (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 
     private static async Task ObserveCompanionCleanupAsync(Task task)
     {

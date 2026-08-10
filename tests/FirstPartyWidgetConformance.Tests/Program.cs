@@ -207,7 +207,10 @@ static async Task InstalledPackagesMerge()
             $"Installed {package.Manifest.Name} omitted exact launch authority.");
         using var contentLease = configured.ContentLeaseFactory!(CancellationToken.None);
         AssertWorkerArguments(
-            configured, contentLease.AuthorityRoots.Single(), package.Manifest);
+            configured,
+            contentLease.Targets.Single(target => target.Target.Kind ==
+                AppContainerAuthorityTargetKind.AuthorityRootDirectory).Target.Path,
+            package.Manifest);
         AssertResidency(package.Manifest, configured.ResidencyPolicy);
     }
     var community = deployment.YtMusicPackage ??
@@ -282,8 +285,11 @@ static async Task MaximumDirectoryPackageRunsIsolated()
         "The exact directory-bound package omitted content admission.");
     using (var lease = configured.ContentLeaseFactory!(CancellationToken.None))
     {
-        Assert.Equal(1_024, lease.ReadOnlyDirectories.Count);
-        Assert.Equal(258, lease.ReadOnlyFiles.Count);
+        Assert.Equal(1_024, lease.Targets.Count(target => target.Target.Kind is
+            AppContainerAuthorityTargetKind.AuthorityRootDirectory or
+            AppContainerAuthorityTargetKind.VerifiedDirectory));
+        Assert.Equal(258, lease.Targets.Count(target => target.Target.Kind ==
+            AppContainerAuthorityTargetKind.VerifiedFile));
     }
 
     TimeSpan activationElapsed = default;

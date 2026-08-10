@@ -740,12 +740,36 @@ public sealed class BridgeCatalog
     private sealed class BridgeContentLease(InstalledPackageLaunchLease lease)
         : IWidgetProcessContentLease
     {
-        public IReadOnlyList<string> AuthorityRoots { get; } = [lease.PackageRoot];
-        public IReadOnlyList<string> ReadOnlyDirectories { get; } =
-            lease.ReadOnlyDirectories;
-        public IReadOnlyList<string> ReadOnlyFiles { get; } = lease.ReadOnlyFiles;
+        public IReadOnlyList<AppContainerAuthorityExpectedTarget> Targets { get; } =
+            lease.Targets.Select(MapTarget)
+                .ToArray();
 
         public void Dispose() => lease.Dispose();
+
+        private static AppContainerAuthorityExpectedTarget MapTarget(
+            InstalledPackageContentTarget target)
+        {
+            var identity = target.ObjectIdentity ??
+                throw new PlatformNotSupportedException(
+                    "Installed content object identity requires Windows.");
+            return new AppContainerAuthorityExpectedTarget(
+                new AppContainerAuthorityTarget(
+                    target.Path,
+                    target.Kind switch
+                    {
+                        InstalledPackageContentTargetKind.AuthorityRootDirectory =>
+                            AppContainerAuthorityTargetKind.AuthorityRootDirectory,
+                        InstalledPackageContentTargetKind.ReadOnlyDirectory =>
+                            AppContainerAuthorityTargetKind.VerifiedDirectory,
+                        InstalledPackageContentTargetKind.ReadOnlyFile =>
+                            AppContainerAuthorityTargetKind.VerifiedFile,
+                        _ => throw new InvalidOperationException(
+                            "Installed content target kind is unsupported."),
+                    }),
+                new AppContainerAuthorityObjectIdentity(
+                    identity.VolumeSerialNumber,
+                    identity.FileId));
+        }
     }
 
     private static string SafeDiagnostic(string value)

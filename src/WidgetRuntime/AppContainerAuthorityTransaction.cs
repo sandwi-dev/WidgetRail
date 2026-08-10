@@ -4,7 +4,7 @@ namespace GameBarAlternative.WidgetRuntime;
 
 internal enum AppContainerAuthorityTargetKind
 {
-    AuthorityRoot,
+    AuthorityRootDirectory,
     VerifiedDirectory,
     VerifiedFile,
 }
@@ -15,7 +15,17 @@ internal readonly record struct AppContainerAuthorityTarget(
 
 internal readonly record struct AppContainerAuthorityObjectIdentity(
     ulong VolumeSerialNumber,
-    string FileId);
+    string FileId)
+{
+    internal bool HasValidFormat() =>
+        FileId is { Length: 32 } &&
+        FileId.Any(character => character != '0') &&
+        FileId.All(character => character is >= '0' and <= '9' or >= 'A' and <= 'F');
+}
+
+internal readonly record struct AppContainerAuthorityExpectedTarget(
+    AppContainerAuthorityTarget Target,
+    AppContainerAuthorityObjectIdentity ObjectIdentity);
 
 internal readonly record struct AppContainerAuthoritySnapshot(
     AppContainerAuthorityTarget Target,

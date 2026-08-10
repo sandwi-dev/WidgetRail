@@ -279,10 +279,14 @@ unwritable, or unflushable journal state
 fails before mutation. A production AppContainer-token fixture proves the
 sandboxed profile cannot read or overwrite this host journal. Pre-existing
 read/execute grants for `ALL APPLICATION PACKAGES` or `ALL RESTRICTED
-APPLICATION PACKAGES` also fail before journal publication. The catalog's
-pinned file identities are not yet handed to runtime authority capture, so a
-namespace replacement before those handles open remains unproven. A user-facing
-privileged repair surface remains open.
+APPLICATION PACKAGES` also fail before journal publication. The catalog reads
+Windows volume/file identities from the same handles that pin verified
+directories and files, and the bridge carries a single bounded typed target
+sequence into runtime. Runtime authority handles must match those identities
+before the pending record or any DACL mutation. This evidence is session-local,
+not persisted installation metadata. Ancestor path components are still checked
+by pathname rather than opened handle-relative, and a user-facing privileged
+repair surface remains open.
 
 The runtime separately
 grants the generic worker executable, supplies a stripped environment, and

@@ -288,7 +288,10 @@ On first use, every installed/community package is launched in a mandatory
 package-specific AppContainer selected by trusted host policy. It is Low
 integrity, has no OS capability SIDs or network access, receives a stripped
 environment, and can read/execute only the generic worker runtime and its exact
-immutable package root. Job Object policy limits memory, active processes,
+verified files and traversal directories. A session lease pins those objects,
+and runtime compares their catalog-captured Windows identities before granting
+authority; this is not a claim that the user-owned package root is physically
+immutable. Job Object policy limits memory, active processes,
 desktop UI access, and cleanup. A manifest or widget
 argument cannot opt into the temporary Job-only policy used by trusted bundled
 Settings. YT Music is an ordinary Community addon and cannot opt out either. If

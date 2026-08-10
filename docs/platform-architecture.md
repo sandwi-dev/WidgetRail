@@ -169,10 +169,17 @@ failure.
 
 The runtime also rejects pre-existing read/execute grants for `ALL APPLICATION
 PACKAGES` or `ALL RESTRICTED APPLICATION PACKAGES` before journal publication.
-The catalog's already-pinned file identities are not yet carried through the
-bridge lease into this runtime capture, so namespace replacement before the
-runtime opens its authority handles remains an explicit gap. A user-facing
-privileged recovery/repair surface also remains open. The lease is released only after
+The catalog records the Windows volume/file identity from every directory and
+file handle that pins the verified session content. The bridge transports one
+bounded typed target list containing path, authority role, and identity; runtime
+requires exact bounds, one unique canonical path per target, and a valid identity
+for every target. Its authority
+handles must match that evidence before journal publication or DACL mutation.
+This closes pathname replacement between catalog capture and runtime authority
+capture without persisting volatile file IDs in catalog state. Absolute-path
+opens still rely on separately checked ancestors rather than handle-relative
+component traversal, and a user-facing privileged recovery/repair surface also
+remains open. The lease is released only after
 the pipe, process, and Job are detached, and every
 crash, restart, intentional unload, disable, or shutdown must reacquire it. Exact
 ACL application and the subsequent handshake do not yet share that five-second

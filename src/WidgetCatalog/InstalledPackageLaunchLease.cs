@@ -6,18 +6,39 @@ using Microsoft.Win32.SafeHandles;
 
 namespace GameBarAlternative.WidgetCatalog;
 
+internal readonly record struct InstalledPackageObjectIdentity(
+    ulong VolumeSerialNumber,
+    string FileId);
+
+internal enum InstalledPackageContentTargetKind
+{
+    AuthorityRootDirectory,
+    ReadOnlyDirectory,
+    ReadOnlyFile,
+}
+
+internal readonly record struct InstalledPackageContentTarget(
+    string Path,
+    InstalledPackageContentTargetKind Kind,
+    InstalledPackageObjectIdentity? ObjectIdentity);
+
 /// <summary>
 /// Pins the exact verified package files used by one worker session. Existing
-/// bytes cannot be replaced or deleted while the lease is alive; callers must
-/// expose only <see cref="ReadOnlyDirectories"/> and <see cref="ReadOnlyFiles"/>
-/// to the worker so later namespace additions receive no runtime authority.
+/// bytes cannot be replaced or deleted while the lease is alive. On Windows,
+/// each target carries identity evidence from its retained handle so callers can
+/// grant authority only to those objects; later namespace additions receive no
+/// runtime authority.
 /// </summary>
 internal sealed class InstalledPackageLaunchLease : IDisposable
 {
     internal const int MaximumReadOnlyDirectories = 1_024;
+    internal const int MaximumReadOnlyFiles = 1_024;
     private const uint GenericRead = 0x80000000;
     private const uint OpenExisting = 3;
     private const uint FileFlagBackupSemantics = 0x02000000;
+    private const uint FileFlagOpenReparsePoint = 0x00200000;
+    private const int FileAttributeTagInfoClass = 9;
+    private const int FileIdInfoClass = 18;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly IReadOnlyList<FileStream> _files;
     private readonly IReadOnlyList<SafeFileHandle> _directories;
@@ -26,23 +47,20 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
     private InstalledPackageLaunchLease(
         string packageRoot,
         string contentDigest,
-        IReadOnlyList<string> readOnlyDirectories,
-        IReadOnlyList<string> readOnlyFiles,
+        IReadOnlyList<InstalledPackageContentTarget> targets,
         IReadOnlyList<FileStream> files,
         IReadOnlyList<SafeFileHandle> directories)
     {
         PackageRoot = packageRoot;
         ContentDigest = contentDigest;
-        ReadOnlyDirectories = readOnlyDirectories;
-        ReadOnlyFiles = readOnlyFiles;
+        Targets = targets;
         _files = files;
         _directories = directories;
     }
 
     internal string PackageRoot { get; }
     internal string ContentDigest { get; }
-    internal IReadOnlyList<string> ReadOnlyDirectories { get; }
-    internal IReadOnlyList<string> ReadOnlyFiles { get; }
+    internal IReadOnlyList<InstalledPackageContentTarget> Targets { get; }
 
     internal static InstalledPackageLaunchLease Acquire(
         string catalogRoot,
@@ -54,7 +72,8 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
         ArgumentNullException.ThrowIfNull(version);
         version.VerificationOptions.Validate();
         if (version.VerifiedFiles.Count is < 2 ||
-            version.VerifiedFiles.Count > version.VerificationOptions.MaximumArchiveEntries)
+            version.VerifiedFiles.Count > version.VerificationOptions.MaximumArchiveEntries ||
+            version.VerifiedFiles.Count > MaximumReadOnlyFiles)
             throw AdmissionFailure();
 
         var fullCatalogRoot = Path.GetFullPath(catalogRoot);
@@ -77,6 +96,8 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
 
         var fileStreams = new List<FileStream>(expected.Length);
         var directoryHandles = new List<SafeFileHandle>();
+        var objectIdentities = new Dictionary<string, InstalledPackageObjectIdentity>(
+            StringComparer.OrdinalIgnoreCase);
         var directoryPaths = RequiredDirectories(packageRoot, expected);
         var filePaths = expected.Select(file => Resolve(packageRoot, file.RelativePath)).ToArray();
         try
@@ -88,20 +109,9 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
                 if (!Directory.Exists(directory)) throw AdmissionFailure();
                 if (OperatingSystem.IsWindows())
                 {
-                    var handle = CreateFile(
-                        directory,
-                        GenericRead,
-                        (uint)FileShare.Read,
-                        IntPtr.Zero,
-                        OpenExisting,
-                        FileFlagBackupSemantics,
-                        IntPtr.Zero);
-                    if (handle.IsInvalid)
-                    {
-                        handle.Dispose();
-                        throw AdmissionFailure();
-                    }
+                    var handle = OpenPinnedHandle(directory, expectDirectory: true);
                     directoryHandles.Add(handle);
+                    objectIdentities.Add(directory, GetObjectIdentity(handle));
                 }
             }
 
@@ -116,13 +126,32 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
                     checkpoint?.Invoke();
                     var fullPath = Resolve(packageRoot, file.RelativePath);
                     FileSystemSafety.EnsureNoReparsePoints(fullCatalogRoot, fullPath);
-                    var stream = new FileStream(
-                        fullPath,
-                        FileMode.Open,
-                        FileAccess.Read,
-                        FileShare.Read,
-                        buffer.Length,
-                        FileOptions.SequentialScan);
+                    FileStream stream;
+                    if (OperatingSystem.IsWindows())
+                    {
+                        var handle = OpenPinnedHandle(fullPath, expectDirectory: false);
+                        try
+                        {
+                            objectIdentities.Add(fullPath, GetObjectIdentity(handle));
+                            stream = new FileStream(
+                                handle, FileAccess.Read, buffer.Length, isAsync: false);
+                        }
+                        catch
+                        {
+                            handle.Dispose();
+                            throw;
+                        }
+                    }
+                    else
+                    {
+                        stream = new FileStream(
+                            fullPath,
+                            FileMode.Open,
+                            FileAccess.Read,
+                            FileShare.Read,
+                            buffer.Length,
+                            FileOptions.SequentialScan);
+                    }
                     fileStreams.Add(stream);
                     if (stream.Length != file.Length ||
                         file.Length < 0 ||
@@ -164,8 +193,7 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
             return new InstalledPackageLaunchLease(
                 packageRoot,
                 version.ContentDigest,
-                directoryPaths,
-                filePaths,
+                CreateTargets(packageRoot, directoryPaths, filePaths, objectIdentities),
                 fileStreams,
                 directoryHandles);
         }
@@ -302,6 +330,106 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
         "package_launch_integrity",
         "Installed widget content changed before its worker could start.");
 
+    private static IReadOnlyList<InstalledPackageContentTarget> CreateTargets(
+        string packageRoot,
+        IReadOnlyList<string> directoryPaths,
+        IReadOnlyList<string> filePaths,
+        IReadOnlyDictionary<string, InstalledPackageObjectIdentity> objectIdentities)
+    {
+        InstalledPackageObjectIdentity? Identity(string path) =>
+            objectIdentities.TryGetValue(path, out var identity) ? identity : null;
+        return new[]
+            {
+                new InstalledPackageContentTarget(
+                    packageRoot,
+                    InstalledPackageContentTargetKind.AuthorityRootDirectory,
+                    Identity(packageRoot)),
+            }
+            .Concat(directoryPaths
+                .Where(path => !string.Equals(
+                    path, packageRoot, StringComparison.OrdinalIgnoreCase))
+                .Select(path => new InstalledPackageContentTarget(
+                    path,
+                    InstalledPackageContentTargetKind.ReadOnlyDirectory,
+                    Identity(path))))
+            .Concat(filePaths.Select(path => new InstalledPackageContentTarget(
+                path,
+                InstalledPackageContentTargetKind.ReadOnlyFile,
+                Identity(path))))
+            .ToArray();
+    }
+
+    private static SafeFileHandle OpenPinnedHandle(string path, bool expectDirectory)
+    {
+        var handle = CreateFile(
+            path,
+            GenericRead,
+            (uint)FileShare.Read,
+            IntPtr.Zero,
+            OpenExisting,
+            FileFlagOpenReparsePoint |
+                (expectDirectory ? FileFlagBackupSemantics : 0),
+            IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            handle.Dispose();
+            throw AdmissionFailure();
+        }
+        try
+        {
+            if (!GetFileAttributeTagInfo(
+                    handle,
+                    FileAttributeTagInfoClass,
+                    out var information,
+                    Marshal.SizeOf<FileAttributeTagInfo>()))
+                throw AdmissionFailure();
+            var isDirectory = (information.FileAttributes & FileAttributes.Directory) != 0;
+            if ((information.FileAttributes & FileAttributes.ReparsePoint) != 0 ||
+                isDirectory != expectDirectory)
+                throw AdmissionFailure();
+            return handle;
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    private static InstalledPackageObjectIdentity GetObjectIdentity(SafeFileHandle handle)
+    {
+        if (!GetFileIdInfo(
+                handle,
+                FileIdInfoClass,
+                out var information,
+                Marshal.SizeOf<FileIdInfo>()))
+            throw AdmissionFailure();
+        return new InstalledPackageObjectIdentity(
+            information.VolumeSerialNumber,
+            $"{information.FileId.Low:X16}{information.FileId.High:X16}");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileAttributeTagInfo
+    {
+        internal FileAttributes FileAttributes;
+        internal uint ReparseTag;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileId128
+    {
+        internal ulong Low;
+        internal ulong High;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileIdInfo
+    {
+        internal ulong VolumeSerialNumber;
+        internal FileId128 FileId;
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFile(
         string fileName,
@@ -311,4 +439,22 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
         uint creationDisposition,
         uint flagsAndAttributes,
         IntPtr templateFile);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileAttributeTagInfo(
+        SafeFileHandle file,
+        int informationClass,
+        out FileAttributeTagInfo information,
+        int bufferSize);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileIdInfo(
+        SafeFileHandle file,
+        int informationClass,
+        out FileIdInfo information,
+        int bufferSize);
 }
