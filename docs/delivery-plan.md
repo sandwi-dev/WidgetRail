@@ -1390,8 +1390,8 @@ second lifecycle/session owner.
 
 ### DLV-039 — Extract bridge client and residency ownership
 
-**State:** Further correction requested; candidate `57befdd` and correction
-`57f3e951` are not accepted or integrated
+**State:** Narrow correction requested; candidate `57befdd` and corrections
+`57f3e951` and `e1df09c` are not accepted or integrated
 **Baseline:** accepted DLV-037 closing commit `d339030`
 **Dependencies:** DLV-032 and DLV-037
 **Owner:** managed `WidgetBridgeServer` client/catalog/residency internals and
@@ -1438,6 +1438,25 @@ once retirement, start external cleanup outside `_gate`, and preserve every
 terminal fault through one bounded shared outcome with deterministic stalled-
 writer/burst/cancellation/reentrant-disposer proof.
 
+Correction `e1df09c` supplies the bounded per-generation notification owner,
+explicit 34-publication maximum, saturating failure-overflow count, canceled-
+restart retirement transfer, outside-gate external cleanup, and bounded shared
+terminal failure outcome. Stable scoped evidence passes Widget Runtime 74/74,
+WidgetBridge 64/64, and documentation contracts over 52 Markdown files. Review
+accepts those lifecycle corrections but not the commit yet. Its verifier also
+exposed a real partial-frame risk when event cancellation lands after the frame
+header but before its body; the correction keeps serialized-write ownership in
+the server and changes internal session behavior so cancellation can withdraw a
+queued event, while an in-flight write completes under a four-second deadline
+or terminates the pipe before another frame. That necessary safety dependency
+needs a named deterministic production-bridge regression fixture and accurate
+documentation; the current status text incorrectly says pipe behavior did not
+change. The correction also stores a `RetirementTask` that is never read,
+awaited, or used for terminal ownership. One final narrow correction must prove
+the two cancellation sides of the writer boundary directly, describe the
+limited internal pipe-session change without implying a protocol change, and
+remove the unused task property or make it the actual consumed terminal owner.
+
 **Objective:** Keep `WidgetBridgeServer` as the pipe-session, framing,
 handshake, reserved-Stop, request-routing, and serialized-write owner while
 making catalog reconciliation, worker registration/replacement, residency,
@@ -1453,10 +1472,13 @@ the server's duplicated client/catalog mutable knowledge; deterministic
 replacement, removal, idle/unload race, restart, failed start, stale generation,
 budget refusal/release, concurrent operation, and disposal cases.
 
-**Out of scope:** pipe framing or write-path changes, DLV-032 dispatcher changes,
-diagnostic/recovery projection owned by DLV-040, public protocol/capability
-changes, native host work, a service locator, generic repository/unit-of-work
-framework, or more than one client-lifecycle authority.
+**Out of scope:** pipe framing-format changes or write-path changes beyond the
+bounded frame-integrity correction required to withdraw queued retired-
+generation events without leaving a partial frame followed by another frame;
+DLV-032 dispatcher changes; diagnostic/recovery projection owned by DLV-040;
+public protocol/capability changes; native host work; a service locator;
+generic repository/unit-of-work framework; or more than one client-lifecycle
+authority.
 
 **Acceptance criteria:** the server has no direct registration dictionary,
 catalog mutation lock, residency budget mutation, idle-unload task ownership,
