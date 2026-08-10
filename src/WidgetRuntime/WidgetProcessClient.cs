@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
@@ -15,7 +14,6 @@ namespace GameBarAlternative.WidgetRuntime;
 /// </summary>
 public sealed class WidgetProcessClient : IAsyncDisposable
 {
-    private static readonly TimeSpan CompanionCleanupTimeout = TimeSpan.FromSeconds(1);
     // A dormant reservation is not broker authority. It exists only long
     // enough for bounded serial widget work to reach its exact capability call.
     // The separate broker lease remains at most two seconds and starts only then.
@@ -23,41 +21,30 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         TimeSpan.FromSeconds(10);
     private readonly WidgetProcessOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly WidgetProcessClientTestHooks? _testHooks;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
-    private readonly SemaphoreSlim _writeGate = new(1, 1);
-    private readonly ConcurrentDictionary<long, TaskCompletionSource<RuntimeEnvelope>> _pending = new();
-    private readonly object _dashboardGestureGate = new();
-    private readonly Dictionary<DashboardGestureKey, PendingDashboardGesture>
-        _pendingDashboardGestures = [];
-    private NamedPipeServerStream? _pipe;
-    private LengthPrefixedJsonChannel? _channel;
-    private Process? _process;
-    private WindowsWorkerJob? _windowsJob;
-    private IDisposable? _processLease;
-    private IWidgetProcessContentLease? _contentLease;
-    private CancellationTokenSource? _sessionCancellation;
-    private Task? _readerTask;
-    private IWidgetProcessCompanionSession? _companion;
-    private Task? _companionTask;
+    private WidgetProcessSession? _session;
     private WidgetLifecycleState _hostLifecycle = WidgetLifecycleState.Background;
-    private long _requestId;
     private int _starts;
     private int _restartAttempts;
-    private int _sessionId;
     private int _failureReported;
     private bool _residencyUnloaded;
     private bool _stopping;
     private bool _disposed;
 
     public WidgetProcessClient(WidgetProcessOptions options)
-        : this(options, TimeProvider.System)
+        : this(options, TimeProvider.System, testHooks: null)
     {
     }
 
-    internal WidgetProcessClient(WidgetProcessOptions options, TimeProvider timeProvider)
+    internal WidgetProcessClient(
+        WidgetProcessOptions options,
+        TimeProvider timeProvider,
+        WidgetProcessClientTestHooks? testHooks = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _testHooks = testHooks;
         _options.Validate();
     }
 
@@ -70,20 +57,22 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     {
         get
         {
-            var process = _process;
-            try { return process is { HasExited: false } && _pipe?.IsConnected == true; }
-            catch (InvalidOperationException) { return false; }
+            return Volatile.Read(ref _session)?.IsRunning == true;
         }
     }
 
     public int Starts => Volatile.Read(ref _starts);
-    internal int? WorkerProcessId => _process?.Id;
-    internal long? AppliedJobMemoryLimitBytes => _windowsJob?.MemoryLimitBytes;
-    internal uint? AppliedJobActiveProcessLimit => _windowsJob?.ActiveProcessLimit;
+    internal int? WorkerProcessId => Volatile.Read(ref _session)?.Process?.Id;
+    internal long? AppliedJobMemoryLimitBytes =>
+        Volatile.Read(ref _session)?.WindowsJob?.MemoryLimitBytes;
+    internal uint? AppliedJobActiveProcessLimit =>
+        Volatile.Read(ref _session)?.WindowsJob?.ActiveProcessLimit;
 
     public async Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
     {
-        var response = await RequestAsync(MessageTypes.Render, new { }, cancellationToken).ConfigureAwait(false);
+        var request = await RequestWithSessionAsync(
+            MessageTypes.Render, new { }, cancellationToken).ConfigureAwait(false);
+        var response = request.Response;
         if (response.Type != MessageTypes.Snapshot)
             throw new WidgetProtocolViolationException($"Expected snapshot, received '{response.Type}'.");
         var bytes = Encoding.UTF8.GetBytes(response.Payload.GetRawText());
@@ -96,8 +85,13 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         catch (Exception exception) when (exception is JsonException or ProtocolValidationException)
         {
-            ReportFailure(WidgetFailureReason.ProtocolViolation, exception);
-            TerminateWorker();
+            if (TryBeginCurrentPublication(
+                    request.Session, "snapshot-invalid", out var publication))
+            {
+                using (publication)
+                    ReportFailure(WidgetFailureReason.ProtocolViolation, exception);
+            }
+            request.Session.Terminate();
             throw new WidgetProtocolViolationException("Worker returned an invalid snapshot.", exception);
         }
     }
@@ -111,16 +105,19 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidateHostState(state);
-        if (state != _hostLifecycle) ClearPendingDashboardGestures();
+        if (state != _hostLifecycle)
+            Volatile.Read(ref _session)?.GestureReservations.Clear();
         if (state == WidgetLifecycleState.Background && !IsRunning)
         {
             _hostLifecycle = state;
             return;
         }
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        await SetCompanionLifecycleAsync(state, cancellationToken).ConfigureAwait(false);
+        var session = Volatile.Read(ref _session) ??
+            throw new IOException("Widget pipe disconnected.");
+        await SetCompanionLifecycleAsync(session, state, cancellationToken).ConfigureAwait(false);
         var response = await RequestConnectedAsync(
-            MessageTypes.SetWidgetLifecycle,
+            session, MessageTypes.SetWidgetLifecycle,
             new WidgetLifecyclePayload(state),
             cancellationToken).ConfigureAwait(false);
         if (response.Type != MessageTypes.Acknowledged)
@@ -185,12 +182,14 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 nameof(input), input.Origin, "Controller input origin is invalid.");
         ObjectDisposedException.ThrowIf(_disposed, this);
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        var session = Volatile.Read(ref _session) ??
+            throw new IOException("Widget pipe disconnected.");
         var authorityMayRemain = false;
-        if (authority is not null) ReserveDashboardGesture(input, authority);
+        if (authority is not null) session.GestureReservations.Reserve(input, authority);
         try
         {
             var response = await RequestConnectedAsync(
-                    MessageTypes.ControllerInput, input, cancellationToken)
+                    session, MessageTypes.ControllerInput, input, cancellationToken)
                 .ConfigureAwait(false);
             if (response.Type != MessageTypes.ControllerInputResult)
                 throw new WidgetProtocolViolationException(
@@ -203,9 +202,10 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         {
             if (authority is not null && !authorityMayRemain)
             {
-                RemovePendingDashboardGesture(
+                session.GestureReservations.Remove(
                     authority.InputSequence, authority.SnapshotSequence);
-                await RevokeCompanionGestureAuthorityAsync(authority.InputSequence)
+                await RevokeCompanionGestureAuthorityAsync(
+                        session, authority.InputSequence)
                     .ConfigureAwait(false);
             }
         }
@@ -233,12 +233,24 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         _stopping = true;
+        var lifecycleEntered = false;
+        var lifecycleDrainTimeout = _testHooks?.LifecycleDrainTimeout ?? TimeSpan.FromSeconds(6);
+        using var lifecycleDeadline = new CancellationTokenSource(lifecycleDrainTimeout);
+        try
+        {
+            lifecycleEntered = await _lifecycleGate.WaitAsync(
+                lifecycleDrainTimeout, lifecycleDeadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
         var stopAcknowledged = false;
-        if (_companion is not null)
+        var session = Volatile.Read(ref _session);
+        if (lifecycleEntered && session?.Companion is not null)
         {
             try
             {
-                await _companion.SetLifecycleStateAsync(
+                await session.Companion.SetLifecycleStateAsync(
                     WidgetLifecycleState.Destroying, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -246,28 +258,36 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 // Worker teardown remains bounded even if its companion already disconnected.
             }
         }
-        if (IsRunning)
+        if (lifecycleEntered && session?.IsRunning == true)
         {
             try
             {
-                var response = await RequestAsync(MessageTypes.Stop, new { }, cancellationToken)
+                var response = await RequestConnectedAsync(
+                        session, MessageTypes.Stop, new { }, cancellationToken)
                     .ConfigureAwait(false);
                 if (response.Type != MessageTypes.Acknowledged)
                     throw new WidgetProtocolViolationException(
                         $"Expected stop acknowledgement, received '{response.Type}'.");
                 stopAcknowledged = true;
-                var process = _process;
+                var process = session.Process;
                 if (process is not null)
                     await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                TerminateWorker();
+                session.Terminate();
             }
         }
-        await DisposeSessionAsync(cancellationToken).ConfigureAwait(false);
-        _hostLifecycle = WidgetLifecycleState.Background;
-        _residencyUnloaded = markResidencyUnload && stopAcknowledged;
+        try
+        {
+            await DisposeSessionAsync(session, cancellationToken).ConfigureAwait(false);
+            _hostLifecycle = WidgetLifecycleState.Background;
+            _residencyUnloaded = markResidencyUnload && stopAcknowledged;
+        }
+        finally
+        {
+            if (lifecycleEntered) _lifecycleGate.Release();
+        }
     }
 
     public void ResetCrashLoop() => Interlocked.Exchange(ref _restartAttempts, 0);
@@ -279,62 +299,56 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         await StopAsync(cancellation.Token).ConfigureAwait(false);
         _disposed = true;
         _lifecycleGate.Dispose();
-        _writeGate.Dispose();
     }
 
     private async Task<RuntimeEnvelope> RequestAsync<T>(
         string type, T payload, CancellationToken cancellationToken)
+        => (await RequestWithSessionAsync(type, payload, cancellationToken)
+            .ConfigureAwait(false)).Response;
+
+    private async Task<(WidgetProcessSession Session, RuntimeEnvelope Response)>
+        RequestWithSessionAsync<T>(
+            string type, T payload, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        return await RequestConnectedAsync(type, payload, cancellationToken).ConfigureAwait(false);
+        var session = Volatile.Read(ref _session) ??
+            throw new IOException("Widget pipe disconnected.");
+        var response = await RequestConnectedAsync(session, type, payload, cancellationToken)
+            .ConfigureAwait(false);
+        return (session, response);
     }
 
     private async Task<RuntimeEnvelope> RequestConnectedAsync<T>(
+        WidgetProcessSession session,
         string type, T payload, CancellationToken cancellationToken)
     {
-        var requestId = Interlocked.Increment(ref _requestId);
-        var completion = new TaskCompletionSource<RuntimeEnvelope>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_pending.TryAdd(requestId, completion))
-            throw new InvalidOperationException("Duplicate request ID.");
+        using var request = session.PendingRequests.Register();
+        await session.WriteAsync(new RuntimeEnvelope
+        {
+            Type = type,
+            RequestId = request.RequestId,
+            Payload = RuntimeJson.ToElement(payload),
+        }, cancellationToken).ConfigureAwait(false);
 
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_options.RequestTimeout);
         try
         {
-            await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                var channel = _channel ?? throw new IOException("Widget pipe disconnected.");
-                await channel.WriteAsync(new RuntimeEnvelope
-                {
-                    Type = type,
-                    RequestId = requestId,
-                    Payload = RuntimeJson.ToElement(payload),
-                }, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                _writeGate.Release();
-            }
-
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(_options.RequestTimeout);
-            try
-            {
-                return await completion.Task.WaitAsync(timeout.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                var exception = new TimeoutException(
-                    $"Widget request '{type}' exceeded {_options.RequestTimeout.TotalMilliseconds:0} ms.");
-                ReportFailure(WidgetFailureReason.RequestTimedOut, exception);
-                TerminateWorker();
-                throw exception;
-            }
+            return await request.Response.WaitAsync(timeout.Token).ConfigureAwait(false);
         }
-        finally
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _pending.TryRemove(requestId, out _);
+            var exception = new TimeoutException(
+                $"Widget request '{type}' exceeded {_options.RequestTimeout.TotalMilliseconds:0} ms.");
+            if (TryBeginCurrentPublication(
+                    session, "request-timeout", out var publication))
+            {
+                using (publication)
+                    ReportFailure(WidgetFailureReason.RequestTimedOut, exception);
+            }
+            session.Terminate();
+            throw exception;
         }
     }
 
@@ -352,11 +366,17 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 _restartAttempts >= _options.MaximumRestartAttempts)
                 throw new WidgetProcessException("Widget restart limit has been reached.");
 
-            TerminateWorker();
-            await DisposeSessionAsync(cancellationToken).ConfigureAwait(false);
+            var previousSession = Volatile.Read(ref _session);
+            previousSession?.Terminate();
+            await DisposeSessionAsync(previousSession, cancellationToken).ConfigureAwait(false);
+            var currentSession = new WidgetProcessSession(
+                _timeProvider,
+                MaximumDashboardGestureReservationLifetime);
+            Volatile.Write(ref _session, currentSession);
             if (_options.ProcessLeaseFactory is { } leaseFactory)
-                _processLease = leaseFactory() ?? throw new WidgetProcessAdmissionException(
-                    "Worker process admission returned no lease.");
+                currentSession.AttachProcessLease(
+                    leaseFactory() ?? throw new WidgetProcessAdmissionException(
+                        "Worker process admission returned no lease."));
             if (_options.ContentLeaseFactory is { } contentLeaseFactory)
             {
                 using var contentTimeout = CancellationTokenSource.CreateLinkedTokenSource(
@@ -364,11 +384,12 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 contentTimeout.CancelAfter(_options.ContentLeaseTimeout);
                 try
                 {
-                    _contentLease = contentLeaseFactory(contentTimeout.Token) ??
+                    var contentLease = contentLeaseFactory(contentTimeout.Token) ??
                         throw new WidgetProcessAdmissionException(
                             "Worker content admission returned no lease.");
+                    currentSession.AttachContentLease(contentLease);
                     contentTimeout.Token.ThrowIfCancellationRequested();
-                    ValidateContentLease(_contentLease);
+                    ValidateContentLease(contentLease);
                 }
                 catch (OperationCanceledException) when (
                     !cancellationToken.IsCancellationRequested &&
@@ -380,7 +401,6 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             }
             _stopping = false;
             Interlocked.Exchange(ref _failureReported, 0);
-            var currentSession = Interlocked.Increment(ref _sessionId);
             using var appContainer = _options.IsolationPolicy ==
                 WidgetWorkerIsolationPolicy.RequireAppContainer
                     ? WindowsAppContainer.OpenOrCreate(_options.IsolationKey!)
@@ -390,7 +410,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 var executableDirectory = Path.GetDirectoryName(
                     Path.GetFullPath(_options.ExecutablePath))
                     ?? throw new WidgetProcessException("Worker executable directory is unavailable.");
-                if (_contentLease is not null && _contentLease.Targets
+                if (currentSession.ContentLease is not null &&
+                    currentSession.ContentLease.Targets
                     .Where(target => target.Target.Kind ==
                         AppContainerAuthorityTargetKind.AuthorityRootDirectory)
                     .Select(target => target.Target.Path)
@@ -401,23 +422,23 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         "Worker content authority overlaps the trusted runtime directory.");
                 appContainer.GrantReadAndExecute(
                     new[] { executableDirectory }.Concat(_options.ReadOnlyPaths));
-                if (_contentLease is not null)
+                if (currentSession.ContentLease is not null)
                     appContainer.ReplaceReadAndExecuteGrant(
-                        _contentLease.Targets,
+                        currentSession.ContentLease.Targets,
                         _options.ContentAuthorityOperations,
                         _options.ContentAuthorityJournal);
             }
             var pipeSuffix = $"gba-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
             var pipeName = pipeSuffix;
             var serverPipeName = pipeName;
-            _pipe = appContainer is null
+            var pipe = appContainer is null
                 ? new NamedPipeServerStream(
                     serverPipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
                     4096, 4096)
                 : appContainer.CreatePipe(serverPipeName, 4096);
-            _channel = new LengthPrefixedJsonChannel(_pipe, _options.MaximumMessageBytes);
-            _sessionCancellation = new CancellationTokenSource();
+            var channel = new LengthPrefixedJsonChannel(pipe, _options.MaximumMessageBytes);
+            currentSession.AttachTransport(pipe, channel);
 
             if (_options.CompanionSessionFactory is not null)
             {
@@ -425,9 +446,10 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     _options.IsolationPolicy,
                     _options.IsolationKey,
                     appContainer?.Sid);
-                _companion = _options.CompanionSessionFactory(companionContext)
+                var companion = _options.CompanionSessionFactory(companionContext)
                     ?? throw new WidgetProcessException("Companion session factory returned null.");
-                ValidateCompanionArguments(_companion.WorkerArguments, companionContext);
+                ValidateCompanionArguments(companion.WorkerArguments, companionContext);
+                currentSession.AttachCompanion(companion);
             }
 
             var startInfo = new ProcessStartInfo(_options.ExecutablePath)
@@ -438,9 +460,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             };
             foreach (var argument in _options.Arguments)
                 startInfo.ArgumentList.Add(argument);
-            if (_companion is not null)
+            if (currentSession.Companion is not null)
             {
-                foreach (var argument in _companion.WorkerArguments)
+                foreach (var argument in currentSession.Companion.WorkerArguments)
                     startInfo.ArgumentList.Add(argument);
             }
             startInfo.ArgumentList.Add("--widget-pipe");
@@ -450,60 +472,61 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             startInfo.ArgumentList.Add("--max-message-bytes");
             startInfo.ArgumentList.Add(_options.MaximumMessageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-            if (OperatingSystem.IsWindows())
+            if (_testHooks?.BeforeProcessStartAsync is { } beforeProcessStart)
+                await beforeProcessStart(cancellationToken).ConfigureAwait(false);
+            currentSession.StartProcess(() =>
             {
+                if (!OperatingSystem.IsWindows())
+                    return (
+                        Process.Start(startInfo) ??
+                            throw new WidgetProcessException("Worker process did not start."),
+                        null);
                 var job = WindowsWorkerJob.Create(_options.MemoryLimitBytes);
-                try
-                {
-                    _process = job.StartProcess(startInfo, appContainer);
-                    _windowsJob = job;
-                }
+                try { return (job.StartProcess(startInfo, appContainer), job); }
                 catch
                 {
                     job.Dispose();
                     throw;
                 }
-            }
-            else
+            });
+            if (currentSession.Companion is not null)
             {
-                _process = Process.Start(startInfo)
-                    ?? throw new WidgetProcessException("Worker process did not start.");
+                currentSession.Companion.BindWorkerProcess(currentSession.Process!.Id);
+                currentSession.StartCompanion();
             }
-            if (_companion is not null)
-            {
-                _companion.BindWorkerProcess(_process.Id);
-                _companionTask = _companion.RunAsync(_sessionCancellation.Token);
-            }
-            _process.EnableRaisingEvents = true;
-            _process.Exited += (_, _) => OnProcessExited(currentSession);
+            currentSession.Process!.EnableRaisingEvents = true;
+            currentSession.Process.Exited += (_, _) => OnProcessExited(currentSession);
             if (isRestart && !isResidencyResume)
                 Interlocked.Increment(ref _restartAttempts);
             Interlocked.Increment(ref _starts);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(_options.ConnectTimeout);
-            await _pipe.WaitForConnectionAsync(timeout.Token).ConfigureAwait(false);
+            await pipe.WaitForConnectionAsync(timeout.Token).ConfigureAwait(false);
             if (OperatingSystem.IsWindows())
                 WindowsAppContainer.VerifyPipeClientProcess(
-                    _pipe,
-                    _process?.Id ?? throw new WidgetProcessException("Worker process identity is unavailable."));
-            var hello = await _channel.ReadAsync(timeout.Token).ConfigureAwait(false);
+                    pipe,
+                    currentSession.Process?.Id ??
+                        throw new WidgetProcessException("Worker process identity is unavailable."));
+            var hello = await channel.ReadAsync(timeout.Token).ConfigureAwait(false);
             if (hello.Type != MessageTypes.Hello || hello.RequestId != 0)
                 throw new WidgetProtocolViolationException("Worker handshake was malformed.");
             var helloPayload = RuntimeJson.FromElement<HelloPayload>(hello.Payload);
             if (!string.Equals(helloPayload.WidgetInstanceId, _options.WidgetInstanceId, StringComparison.Ordinal))
                 throw new WidgetProtocolViolationException("Worker handshake used the wrong instance ID.");
-            await _channel.WriteAsync(new RuntimeEnvelope
+            await currentSession.WriteAsync(new RuntimeEnvelope
             {
                 Type = MessageTypes.HelloAccepted,
                 Payload = RuntimeJson.ToElement(new { }),
             }, timeout.Token).ConfigureAwait(false);
-            _readerTask = ReadResponsesAsync(currentSession, _channel, _sessionCancellation.Token);
+            currentSession.StartReader(token =>
+                ReadResponsesAsync(currentSession, channel, token));
             if (_hostLifecycle != WidgetLifecycleState.Background)
             {
-                await SetCompanionLifecycleAsync(_hostLifecycle, timeout.Token).ConfigureAwait(false);
+                await SetCompanionLifecycleAsync(
+                    currentSession, _hostLifecycle, timeout.Token).ConfigureAwait(false);
                 var lifecycleResponse = await RequestConnectedAsync(
-                    MessageTypes.SetWidgetLifecycle,
+                    currentSession, MessageTypes.SetWidgetLifecycle,
                     new WidgetLifecyclePayload(_hostLifecycle),
                     timeout.Token).ConfigureAwait(false);
                 if (lifecycleResponse.Type != MessageTypes.Acknowledged)
@@ -513,13 +536,15 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            TerminateWorker();
-            await DisposeSessionAsync(CancellationToken.None).ConfigureAwait(false);
+            var session = Volatile.Read(ref _session);
+            session?.Terminate();
+            await DisposeSessionAsync(session, CancellationToken.None).ConfigureAwait(false);
             throw;
         }
         catch (WidgetProcessAdmissionException)
         {
-            await DisposeSessionAsync(CancellationToken.None).ConfigureAwait(false);
+            await DisposeSessionAsync(
+                Volatile.Read(ref _session), CancellationToken.None).ConfigureAwait(false);
             throw;
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -527,16 +552,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             int? exitCode = null;
             try
             {
-                if (_process?.HasExited == true) exitCode = _process.ExitCode;
+                exitCode = Volatile.Read(ref _session)?.ExitCode;
             }
             catch (InvalidOperationException)
             {
             }
-            ReportFailure(exception is WidgetProtocolViolationException
-                ? WidgetFailureReason.ProtocolViolation
-                : WidgetFailureReason.ConnectionFailed, exception);
-            TerminateWorker();
-            await DisposeSessionAsync(cancellationToken).ConfigureAwait(false);
+            if (!_stopping)
+                ReportFailure(exception is WidgetProtocolViolationException
+                    ? WidgetFailureReason.ProtocolViolation
+                    : WidgetFailureReason.ConnectionFailed, exception);
+            var session = Volatile.Read(ref _session);
+            session?.Terminate();
+            await DisposeSessionAsync(session, cancellationToken).ConfigureAwait(false);
             throw new WidgetProcessException(
                 exitCode is null
                     ? "Widget worker connection failed."
@@ -550,7 +577,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     }
 
     private async Task ReadResponsesAsync(
-        int session,
+        WidgetProcessSession session,
         LengthPrefixedJsonChannel channel,
         CancellationToken cancellationToken)
     {
@@ -559,6 +586,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 var message = await channel.ReadAsync(cancellationToken).ConfigureAwait(false);
+                if (!ReferenceEquals(session, Volatile.Read(ref _session)) || session.IsTerminal)
+                    return;
                 if (message.Type == MessageTypes.Invalidated)
                 {
                     if (message.RequestId != 0)
@@ -566,7 +595,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     var payload = RuntimeJson.FromElement<InvalidationPayload>(message.Payload);
                     if (payload.Revision <= 0)
                         throw new WidgetProtocolViolationException("Invalidation revision must be positive.");
-                    Invalidated?.Invoke(this, payload.Revision);
+                    if (!TryBeginCurrentPublication(
+                            session, "invalidated", out var publication)) return;
+                    using (publication) Invalidated?.Invoke(this, payload.Revision);
                     continue;
                 }
 
@@ -577,9 +608,15 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     var payload = RuntimeJson.FromElement<ControllerActionFailurePayload>(message.Payload);
                     var actionFailure = new WidgetActionFailure(
                         payload.ActionId, payload.SourceElementId, payload.Message);
-                    ActionFailed?.Invoke(this, actionFailure);
-                    ControllerActionFailed?.Invoke(this, new WidgetControllerActionFailure(
-                        actionFailure.ActionId, actionFailure.SourceElementId, actionFailure.Message));
+                    if (!TryBeginCurrentPublication(
+                            session, "action-failed", out var publication)) return;
+                    using (publication)
+                    {
+                        ActionFailed?.Invoke(this, actionFailure);
+                        ControllerActionFailed?.Invoke(this, new WidgetControllerActionFailure(
+                            actionFailure.ActionId, actionFailure.SourceElementId,
+                            actionFailure.Message));
+                    }
                     continue;
                 }
 
@@ -590,23 +627,23 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                             "Dashboard gesture activation must be a notification.");
                     var activation = RuntimeJson.FromElement<
                         DashboardGestureActivationRequestPayload>(message.Payload);
-                    await ActivatePendingDashboardGestureAsync(activation, cancellationToken)
+                    await ActivatePendingDashboardGestureAsync(
+                            session, activation, cancellationToken)
                         .ConfigureAwait(false);
                     continue;
                 }
 
-                if (message.RequestId == 0 || !_pending.TryRemove(message.RequestId, out var completion))
+                _testHooks?.BeforeResponseCorrelation?.Invoke(message.Type);
+                if (!ReferenceEquals(session, Volatile.Read(ref _session)) ||
+                    session.IsTerminal)
+                {
+                    _testHooks?.ResponseCorrelationCompleted?.Invoke(message.Type, false);
+                    return;
+                }
+                var completed = session.PendingRequests.TryComplete(message);
+                _testHooks?.ResponseCorrelationCompleted?.Invoke(message.Type, completed);
+                if (!completed)
                     throw new WidgetProtocolViolationException("Response has an unknown request ID.");
-                if (message.Type == MessageTypes.Error)
-                {
-                    var error = RuntimeJson.FromElement<ErrorPayload>(message.Payload);
-                    completion.TrySetException(new WidgetProcessException(
-                        $"Worker rejected the request ({error.Code}): {error.Message}"));
-                }
-                else
-                {
-                    completion.TrySetResult(message);
-                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -614,12 +651,17 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         catch (Exception exception) when (exception is IOException or EndOfStreamException or JsonException or WidgetProtocolViolationException)
         {
-            if (session == Volatile.Read(ref _sessionId) && !_stopping)
+            if (ReferenceEquals(session, Volatile.Read(ref _session)) && !_stopping)
             {
-                ReportFailure(exception is WidgetProtocolViolationException
-                    ? WidgetFailureReason.ProtocolViolation
-                    : WidgetFailureReason.TransportFailure, exception);
-                FailPending(exception);
+                if (TryBeginCurrentPublication(
+                        session, "transport-failed", out var publication))
+                {
+                    using (publication)
+                        ReportFailure(exception is WidgetProtocolViolationException
+                            ? WidgetFailureReason.ProtocolViolation
+                            : WidgetFailureReason.TransportFailure, exception);
+                }
+                session.PendingRequests.FailAll(exception);
             }
         }
     }
@@ -645,14 +687,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         return admission;
     }
 
-    private void OnProcessExited(int session)
+    private void OnProcessExited(WidgetProcessSession session)
     {
-        if (session != Volatile.Read(ref _sessionId) || _stopping) return;
-        ReleaseSessionLeases();
-        ReportFailure(WidgetFailureReason.ProcessExited, null);
-        FailPending(new WidgetProcessException("Widget worker exited unexpectedly."));
-        ClearPendingDashboardGestures();
-        _sessionCancellation?.Cancel();
+        if (!ReferenceEquals(session, Volatile.Read(ref _session)) || _stopping) return;
+        session.ReleaseLeases();
+        if (TryBeginCurrentPublication(session, "process-exited", out var publication))
+        {
+            using (publication) ReportFailure(WidgetFailureReason.ProcessExited, null);
+        }
+        session.PendingRequests.FailAll(
+            new WidgetProcessException("Widget worker exited unexpectedly."));
+        session.GestureReservations.Clear();
+        session.Cancel();
     }
 
     private void ReportFailure(WidgetFailureReason reason, Exception? exception)
@@ -661,7 +707,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         int? exitCode = null;
         try
         {
-            if (_process?.HasExited == true) exitCode = _process.ExitCode;
+            exitCode = Volatile.Read(ref _session)?.ExitCode;
         }
         catch (InvalidOperationException)
         {
@@ -672,101 +718,15 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             restartsUsed < _options.MaximumRestartAttempts));
     }
 
-    private void FailPending(Exception exception)
+    private async Task DisposeSessionAsync(
+        WidgetProcessSession? session,
+        CancellationToken cancellationToken = default)
     {
-        foreach (var entry in _pending.ToArray())
-        {
-            if (_pending.TryRemove(entry.Key, out var completion))
-                completion.TrySetException(exception);
-        }
-    }
-
-    private void TerminateWorker()
-    {
-        if (_windowsJob is not null)
-        {
-            try { _windowsJob.Terminate(); }
-            catch (System.ComponentModel.Win32Exception) { }
-        }
-        try
-        {
-            if (_process is { HasExited: false }) _process.Kill(entireProcessTree: true);
-        }
-        catch (InvalidOperationException)
-        {
-        }
-        _sessionCancellation?.Cancel();
-    }
-
-    private async Task DisposeSessionAsync(CancellationToken cancellationToken = default)
-    {
-        ClearPendingDashboardGestures();
-        var sessionCancellation = _sessionCancellation;
-        var pipe = _pipe;
-        var process = _process;
-        var windowsJob = _windowsJob;
-        var processLease = Interlocked.Exchange(ref _processLease, null);
-        var contentLease = Interlocked.Exchange(ref _contentLease, null);
-        var companion = _companion;
-        var companionTask = _companionTask;
-
-        // Detach first so a timed-out companion cleanup cannot retain or
-        // mutate the next lazy worker session.
-        _sessionCancellation = null;
-        _readerTask = null;
-        _pipe = null;
-        _channel = null;
-        _process = null;
-        _windowsJob = null;
-        _companion = null;
-        _companionTask = null;
-
-        sessionCancellation?.Cancel();
-        pipe?.Dispose();
-        process?.Dispose();
-        windowsJob?.Dispose();
-        try { contentLease?.Dispose(); }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { }
-        try { processLease?.Dispose(); }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { }
-
-        Task? disposeTask = null;
-        if (companion is not null)
-        {
-            try { disposeTask = companion.DisposeAsync().AsTask(); }
-            catch (Exception exception) when (exception is not OutOfMemoryException) { }
-        }
-
-        var cleanupTasks = new[] { disposeTask, companionTask }
-            .Where(task => task is not null)
-            .Cast<Task>()
-            .Select(ObserveCompanionCleanupAsync)
-            .ToArray();
-        if (cleanupTasks.Length != 0)
-        {
-            var cleanup = Task.WhenAll(cleanupTasks);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(CompanionCleanupTimeout);
-            try { await cleanup.WaitAsync(timeout.Token).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
-            {
-                // The host-owned session has already been detached and its
-                // process/pipe/Job resources released. Observe late completion
-                // without allowing faulty companion cleanup to block teardown.
-                _ = ObserveCompanionCleanupAsync(cleanup);
-            }
-        }
-        sessionCancellation?.Dispose();
-    }
-
-    private void ReleaseSessionLeases()
-    {
-        var contentLease = Interlocked.Exchange(ref _contentLease, null);
-        try { contentLease?.Dispose(); }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { }
-        var lease = Interlocked.Exchange(ref _processLease, null);
-        try { lease?.Dispose(); }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        if (session is null) return;
+        Interlocked.CompareExchange(ref _session, null, session);
+        var terminal = session.DisposeAsync(cancellationToken);
+        _testHooks?.SessionTerminalStarted?.Invoke();
+        await terminal.ConfigureAwait(false);
     }
 
     private static void ValidateContentLease(IWidgetProcessContentLease lease)
@@ -782,20 +742,16 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task ObserveCompanionCleanupAsync(Task task)
-    {
-        try { await task.ConfigureAwait(false); }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { }
-    }
-
     private async Task SetCompanionLifecycleAsync(
+        WidgetProcessSession session,
         WidgetLifecycleState state,
         CancellationToken cancellationToken)
     {
-        if (_companion is null) return;
+        if (session.Companion is null) return;
         try
         {
-            await _companion.SetLifecycleStateAsync(state, cancellationToken).ConfigureAwait(false);
+            await session.Companion.SetLifecycleStateAsync(state, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -803,17 +759,23 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            ReportFailure(WidgetFailureReason.TransportFailure, exception);
-            TerminateWorker();
+            if (TryBeginCurrentPublication(
+                    session, "companion-failed", out var publication))
+            {
+                using (publication)
+                    ReportFailure(WidgetFailureReason.TransportFailure, exception);
+            }
+            session.Terminate();
             throw new WidgetProcessException("Widget companion lifecycle update failed.", exception);
         }
     }
 
     private async Task GrantCompanionGestureAuthorityAsync(
+        WidgetProcessSession session,
         WidgetDashboardGestureAuthority authority,
         CancellationToken cancellationToken)
     {
-        var companion = _companion ?? throw new WidgetProcessException(
+        var companion = session.Companion ?? throw new WidgetProcessException(
             "Dashboard capability authority requires a broker companion.");
         try
         {
@@ -831,40 +793,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
     }
 
-    private void ReserveDashboardGesture(
-        ControllerInputEvent input,
-        WidgetDashboardGestureAuthority authority)
-    {
-        if (input.Context != ControllerInputContext.DashboardQuickAction ||
-            input.Origin != ControllerInputOrigin.PhysicalController ||
-            input.Sequence != authority.InputSequence ||
-            input.SnapshotSequence != authority.SnapshotSequence ||
-            authority.InputSequence <= 0 || authority.SnapshotSequence <= 0 ||
-            string.IsNullOrWhiteSpace(authority.CapabilityId) ||
-            string.IsNullOrWhiteSpace(authority.OperationId) ||
-            authority.ValidFor <= TimeSpan.Zero ||
-            authority.ValidFor > PlatformCapabilityBroker.MaximumDashboardGestureLifetime)
-            throw new WidgetProcessException(
-                "Dashboard gesture authority does not match its controller input.");
-        var key = new DashboardGestureKey(
-            authority.InputSequence, authority.SnapshotSequence);
-        lock (_dashboardGestureGate)
-        {
-            var nowTimestamp = _timeProvider.GetTimestamp();
-            PurgeExpiredDashboardGesturesNoLock(nowTimestamp);
-            if (_pendingDashboardGestures.Count >= Widget.ControllerActionQueueCapacity)
-                throw new WidgetProcessException(
-                    "Dashboard gesture reservation capacity was reached.");
-            if (!_pendingDashboardGestures.TryAdd(
-                    key,
-                    new PendingDashboardGesture(
-                        authority, nowTimestamp)))
-                throw new WidgetProcessException(
-                    "Dashboard gesture authority was already reserved.");
-        }
-    }
-
     private async Task ActivatePendingDashboardGestureAsync(
+        WidgetProcessSession session,
         DashboardGestureActivationRequestPayload activation,
         CancellationToken cancellationToken)
     {
@@ -875,102 +805,98 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             throw new WidgetProtocolViolationException(
                 "Dashboard gesture activation payload is invalid.");
 
-        WidgetDashboardGestureAuthority? authority = null;
-        var key = new DashboardGestureKey(
-            activation.InputSequence, activation.SnapshotSequence);
-        lock (_dashboardGestureGate)
+        if (!TryBeginCurrentPublication(session, "gesture", out var publication)) return;
+        using (publication)
         {
-            PurgeExpiredDashboardGesturesNoLock(_timeProvider.GetTimestamp());
-            if (_pendingDashboardGestures.TryGetValue(key, out var pending) &&
-                string.Equals(
-                    pending.Authority.CapabilityId, activation.CapabilityId, StringComparison.Ordinal) &&
-                string.Equals(
-                    pending.Authority.OperationId, activation.OperationId, StringComparison.Ordinal))
-            {
-                _pendingDashboardGestures.Remove(key);
-                authority = pending.Authority;
-            }
-        }
+            var authority = session.GestureReservations.Take(activation);
 
-        var authorized = false;
-        if (authority is not null)
-        {
-            try
+            var authorized = false;
+            if (authority is not null)
             {
-                await GrantCompanionGestureAuthorityAsync(authority, cancellationToken)
-                    .ConfigureAwait(false);
-                authorized = true;
+                var grantCompanion = session.Companion;
+                var grant = GrantCompanionGestureAuthorityAsync(
+                    session, authority, cancellationToken);
+                try
+                {
+                    await grant.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    authorized = true;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _ = RevokeLateGestureGrantAsync(
+                        grant, grantCompanion, authority.InputSequence);
+                    return;
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    authorized = false;
+                }
             }
-            catch (Exception exception) when (exception is not OutOfMemoryException &&
-                                               !cancellationToken.IsCancellationRequested)
-            {
-                authorized = false;
-            }
+            await SendConnectedNotificationAsync(
+                session, MessageTypes.DashboardGestureActivationResult,
+                new DashboardGestureActivationResultPayload(
+                    activation.ActivationId, authorized),
+                cancellationToken).ConfigureAwait(false);
         }
-        await SendConnectedNotificationAsync(
-            MessageTypes.DashboardGestureActivationResult,
-            new DashboardGestureActivationResultPayload(
-                activation.ActivationId, authorized),
-            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task RevokeLateGestureGrantAsync(
+        Task grant,
+        IWidgetProcessCompanionSession? companion,
+        long inputSequence)
+    {
+        try { await grant.ConfigureAwait(false); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { return; }
+        await RevokeCompanionGestureAuthorityAsync(companion, inputSequence).ConfigureAwait(false);
+    }
+
+    private bool TryBeginCurrentPublication(
+        WidgetProcessSession session,
+        string kind,
+        out IDisposable publication)
+    {
+        publication = null!;
+        _testHooks?.BeforePublicationAdmission?.Invoke(kind);
+        if (!ReferenceEquals(session, Volatile.Read(ref _session)) ||
+            !session.TryBeginPublication(out publication))
+        {
+            _testHooks?.PublicationAdmissionCompleted?.Invoke(kind, false);
+            return false;
+        }
+        if (ReferenceEquals(session, Volatile.Read(ref _session)))
+        {
+            _testHooks?.PublicationAdmissionCompleted?.Invoke(kind, true);
+            return true;
+        }
+        publication.Dispose();
+        publication = null!;
+        _testHooks?.PublicationAdmissionCompleted?.Invoke(kind, false);
+        return false;
     }
 
     private async Task SendConnectedNotificationAsync<T>(
+        WidgetProcessSession session,
         string type,
         T payload,
         CancellationToken cancellationToken)
     {
-        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        await session.WriteAsync(new RuntimeEnvelope
         {
-            var channel = _channel ?? throw new IOException("Widget pipe disconnected.");
-            await channel.WriteAsync(new RuntimeEnvelope
-            {
-                Type = type,
-                Payload = RuntimeJson.ToElement(payload),
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeGate.Release();
-        }
+            Type = type,
+            Payload = RuntimeJson.ToElement(payload),
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    private void RemovePendingDashboardGesture(
-        long inputSequence,
-        long snapshotSequence)
+    private async Task RevokeCompanionGestureAuthorityAsync(
+        WidgetProcessSession session,
+        long inputSequence) =>
+        await RevokeCompanionGestureAuthorityAsync(session.Companion, inputSequence)
+            .ConfigureAwait(false);
+
+    private static async Task RevokeCompanionGestureAuthorityAsync(
+        IWidgetProcessCompanionSession? companion,
+        long inputSequence)
     {
-        lock (_dashboardGestureGate)
-            _pendingDashboardGestures.Remove(
-                new DashboardGestureKey(inputSequence, snapshotSequence));
-    }
-
-    private void ClearPendingDashboardGestures()
-    {
-        lock (_dashboardGestureGate) _pendingDashboardGestures.Clear();
-    }
-
-    private void PurgeExpiredDashboardGesturesNoLock(long nowTimestamp)
-    {
-        foreach (var expired in _pendingDashboardGestures
-                     .Where(item => _timeProvider.GetElapsedTime(
-                         item.Value.ReservedAtTimestamp, nowTimestamp) >=
-                         MaximumDashboardGestureReservationLifetime)
-                     .Select(item => item.Key)
-                     .ToArray())
-            _pendingDashboardGestures.Remove(expired);
-    }
-
-    private readonly record struct DashboardGestureKey(
-        long InputSequence,
-        long SnapshotSequence);
-
-    private sealed record PendingDashboardGesture(
-        WidgetDashboardGestureAuthority Authority,
-        long ReservedAtTimestamp);
-
-    private async Task RevokeCompanionGestureAuthorityAsync(long inputSequence)
-    {
-        var companion = _companion;
         if (companion is null) return;
         try
         {
@@ -1021,6 +947,17 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(state), state,
                 "Hosts may request only Background, Visible, or Interactive.");
     }
+}
+
+internal sealed class WidgetProcessClientTestHooks
+{
+    internal TimeSpan LifecycleDrainTimeout { get; init; } = TimeSpan.FromSeconds(6);
+    internal Func<CancellationToken, Task>? BeforeProcessStartAsync { get; init; }
+    internal Action? SessionTerminalStarted { get; init; }
+    internal Action<string>? BeforePublicationAdmission { get; init; }
+    internal Action<string, bool>? PublicationAdmissionCompleted { get; init; }
+    internal Action<string>? BeforeResponseCorrelation { get; init; }
+    internal Action<string, bool>? ResponseCorrelationCompleted { get; init; }
 }
 
 public sealed class WidgetProcessException(string message, Exception? innerException = null)

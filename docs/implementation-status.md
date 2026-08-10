@@ -32,6 +32,38 @@ open-widget action, protocol-v13 explicit focus persistence, and the responsive
  Gallery 6/6, YT Music 55/55,
 and Gbar CLI 52/52. Packaged controller/companion evidence remains separate.
 
+DLV-037 keeps `WidgetProcessClient` as the only host lifecycle, restart-budget,
+failure-reporting, and public request owner while moving each generation's
+transport/resources into one internal `WidgetProcessSession`. The client falls
+from 1,027 to 964 lines and from 26 transport/lifecycle mutable fields to 12
+lifecycle/policy fields plus one session reference and internal test hooks.
+The 352-line session owns the pipe/channel writer, process/Job, cancellation,
+reader/companion tasks, and
+process/content leases behind one shared bounded terminal task and attachment/
+publication gate. Separate 65-line pending-request and 103-line dashboard-
+reservation owners contain the
+only correlation table and gesture table respectively. Direct fixtures prove
+exact/unknown response correlation and drain, expiry and operation matching,
+shared exact-once terminal cleanup, and same-numbered request/gesture isolation
+across replacement sessions. Manually controlled process-backed fixtures now
+also stop a launch paused before process creation, replace sessions while
+Invalidated/ActionFailed/process-exit publication and gesture activation are
+paused before admission, hold an actual response before correlation, and
+complete a cancellation-ignoring old companion grant after replacement. They
+prove transfer-time lease/companion cleanup, zero late worker starts or host
+failures, correlation/admission refusal for stale effects, and explicit late-
+grant revocation. The existing process-backed suite continues to
+cover lazy connect, exit/restart, Stop, Background unload, companion recreation,
+cancellation-ignoring bounded companion cleanup, lease release, and dashboard
+revocation without changing framing, broker authority, or sandbox policy.
+The original bounded dirty-worktree Release run
+`20260810T200924Z-3320d271` passed Runtime 69/69, generic worker host 9/9,
+Bridge correlation/drain and installed-session coverage 52/52, and documentation
+contracts across 52 Markdown files in 54.7 seconds. Final correction run
+`20260810T204532Z-3fc406c4` passed the expanded Runtime 74/74, generic worker
+host 9/9, Bridge 52/52, and 52-file documentation contract in 49.6 seconds.
+These are scoped implementation runs, not canonical aggregates.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic
@@ -1249,7 +1281,9 @@ community AppContainer authority, exact grant replacement, content-generation
 isolation, trusted-runtime/content-root overlap refusal, caller-preserving
 content-admission cancellation, timeouts and session release, bounded intentional
 unload, and private two-clock dashboard-gesture propagation. Its focused Release
-harness passes 65/65. The authority fixtures prove reverse restoration of every
+harness passes 74/74, including direct session, pending-request, gesture-
+reservation, construction-stop, stale-response/publication, and late-grant revocation
+fixtures. The authority fixtures prove reverse restoration of every
 attempted root/directory/file DACL including the failing target, retry without
 quarantine after a complete rollback, pre-mutation refusal when journal
 publication fails, cross-profile lock ownership, corrupt/hostile-entry refusal,

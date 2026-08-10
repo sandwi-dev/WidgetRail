@@ -226,6 +226,32 @@ memory ceiling; the job permits one active process and terminates the worker on
 job close, rejects unhandled-exception continuation, and applies the complete
 basic UI-restriction set.
 
+The managed runtime keeps host lifecycle, restart-budget, and failure policy in
+one `WidgetProcessClient`. Each lazy launch creates one `WidgetProcessSession`
+which exclusively owns that generation's pipe/channel, serialized writer,
+process and Job handles, cancellation, reader and companion tasks, and process/
+content leases. Its single shared terminal task detaches and cancels those
+resources, fails pending work, observes bounded late cleanup, and releases each
+lease exactly once. Resource attachment and process/reader/companion start
+admission use the same terminal gate: if Stop wins, a later lease or companion
+is disposed at transfer, and process creation cannot begin after that terminal
+decision. Stop/Unload serialize with ordinary construction through the one
+client lifecycle gate; a bounded fallback terminalizes the session so an
+uncooperative prelaunch operation still cannot attach authority later.
+A replacement receives a new session object: reader, process-exit, response,
+companion, and gesture work must still reference that exact object and acquire
+its publication admission before invoking a host event or companion grant.
+Terminal disposal closes admission and drains admitted publication. A
+cancellation-ignoring grant completion is observed through the old companion
+reference and explicitly revoked; it cannot be committed as replacement-session
+authority. `WidgetPendingRequests`
+owns request IDs and response correlation within one session, while
+`WidgetDashboardGestureReservations` owns bounded exact-operation matching and
+monotonic expiry within that same session. Request IDs and gesture sequences
+may repeat in a later generation without sharing either mutable table. These
+are internal ownership boundaries only; worker framing, public protocol,
+broker authority, sandbox policy, and native host behavior are unchanged.
+
 Installed/community workers additionally require a package-content-specific
 AppContainer. Until signing exists, installation seals the complete normalized
 content tree and the host derives a separate unsigned authority ID from that
