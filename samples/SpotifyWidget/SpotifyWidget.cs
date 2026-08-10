@@ -87,6 +87,8 @@ public sealed partial class SpotifyWidget : Widget
     private long _presentationCaptureSequence;
     private WidgetSpotifyPlaybackOperation? _pendingOperation;
     private string _status = "Spotify loads when this widget becomes visible";
+    private SpotifyRefreshWarning? _refreshWarning;
+    private int _consecutiveRefreshFailures;
     private bool _showSetup;
     private long _setupViewGeneration;
     private long _activeGeneration;
@@ -489,6 +491,7 @@ public sealed partial class SpotifyWidget : Widget
     {
         lock (_gate)
         {
+            if (_refreshWarning is { } warning) return warning.RetryDelay;
             if (_viewState is SpotifyWidgetViewState.Error or
                 SpotifyWidgetViewState.ServiceUnavailable or
                 SpotifyWidgetViewState.PermissionDenied or
@@ -521,29 +524,9 @@ public sealed partial class SpotifyWidget : Widget
                     playback);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-            catch (WidgetCapabilityUnavailableException)
+            catch (Exception exception)
             {
-                SetState(generation, SpotifyWidgetViewState.ServiceUnavailable,
-                    "Spotify provider unavailable", null);
-            }
-            catch (WidgetCapabilityException exception)
-            {
-                var permission = exception.ErrorCode is "permission_denied" or
-                    "capability_revoked";
-                var disconnected = exception.ErrorCode is "authorization_expired" or
-                    "authorization_scope_required";
-                SetState(generation,
-                    permission ? SpotifyWidgetViewState.PermissionDenied :
-                    disconnected ? SpotifyWidgetViewState.Disconnected :
-                    SpotifyWidgetViewState.Error,
-                    SafeMessage(exception, permission ? "Spotify permission is off" :
-                        disconnected ? "Spotify needs you to reconnect" :
-                        "Spotify update failed"), disconnected ? null : Playback);
-            }
-            catch (Exception)
-            {
-                SetState(generation, SpotifyWidgetViewState.Error,
-                    "Spotify update failed", Playback);
+                ApplyRefreshFailure(generation, exception);
             }
         }
         finally
@@ -629,27 +612,9 @@ public sealed partial class SpotifyWidget : Widget
                 playback);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (WidgetCapabilityUnavailableException)
+        catch (Exception exception)
         {
-            SetState(generation, SpotifyWidgetViewState.ServiceUnavailable,
-                "Spotify provider unavailable", null);
-        }
-        catch (WidgetCapabilityException exception)
-        {
-            var permission = exception.ErrorCode is "permission_denied" or "capability_revoked";
-            var disconnected = exception.ErrorCode is "authorization_expired" or
-                "authorization_scope_required";
-            SetState(generation,
-                permission ? SpotifyWidgetViewState.PermissionDenied :
-                disconnected ? SpotifyWidgetViewState.Disconnected : SpotifyWidgetViewState.Error,
-                SafeMessage(exception, permission ? "Spotify permission is off" :
-                    disconnected ? "Spotify needs you to reconnect" : "Spotify update failed"),
-                disconnected ? null : Playback);
-        }
-        catch (Exception)
-        {
-            SetState(generation, SpotifyWidgetViewState.Error,
-                "Spotify update failed", Playback);
+            ApplyRefreshFailure(generation, exception);
         }
     }
 
@@ -737,6 +702,7 @@ public sealed partial class SpotifyWidget : Widget
                 ProjectPlayback(_playback),
                 _pendingOperation,
                 _status,
+                _refreshWarning,
                 _showSetup,
                 _setupViewGeneration,
                 _destination,

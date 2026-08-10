@@ -1149,6 +1149,25 @@ static async Task RunCatalogAsync(
 
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
             await ExerciseControlAsync(package, client, snapshot, backend, route);
+            if (package.Manifest.Id == "org.gbar.samples.spotify")
+            {
+                await consent.SetDecisionAsync(
+                    identity,
+                    WidgetSpotifyCapabilities.PlaybackReadCapabilityId,
+                    ConsentDecision.Deny);
+                var refresh = Nodes(snapshot.Root).First(node =>
+                    string.Equals(node.ActionId, "spotify.refresh", StringComparison.Ordinal));
+                await client.SendActionAsync(new WidgetActionEvent(
+                    "spotify.refresh", refresh.Id));
+                var denied = await WaitForSnapshotAsync(client, "Spotify permission is off");
+                Assert.True(Nodes(denied.Root).Any(node =>
+                        string.Equals(node.ActionId, "spotify.retry", StringComparison.Ordinal)),
+                    "Spotify permission revocation did not expose the safe retry state.");
+                Assert.True(!Nodes(denied.Root).Any(node =>
+                        string.Equals(node.Text, "Conformance Spotify Song",
+                            StringComparison.Ordinal)),
+                    "Spotify permission revocation retained provider-derived playback data.");
+            }
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
             await client.StopAsync();
         }

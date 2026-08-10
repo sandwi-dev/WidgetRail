@@ -309,6 +309,21 @@ preferences. Optimistic play/like/shuffle/repeat feedback must reconcile with
 the next authoritative response and roll back on failure, following the same
 stable-focus pattern as YT Music.
 
+The Community widget now classifies every playback refresh and poll failure
+without inspecting provider messages. `permission_denied`/`capability_revoked`,
+authorization expiry/scope loss, and incompatible capability declarations are
+fatal presentation changes: they clear provider-derived data and select the
+permission, reconnect, or compatibility screen. Provider unavailability,
+malformed/invalid responses, and unexpected request failures are transient when
+a `Ready` revision already exists. They retain the last accepted playback,
+route, collection detail, and focus; render one warning containing only a
+widget-owned diagnostic code; and move automatic polling through bounded 5,
+15, and 30 second delays. Repeated failures saturate at 30 seconds rather than
+spinning. Y/manual refresh uses the same classification and can recover
+immediately. The next successful authoritative playback response clears the
+warning without navigating. Poll work, delay, and late completion remain owned
+by the Active widget generation and cannot publish after deactivation.
+
 ## Terms, attribution, and product limits
 
 Before any packaged release, review Spotify's current [Developer

@@ -823,7 +823,17 @@ themes also use non-shrinking fixed regions, a thin native Slider
  DLV-008 keeps that one widget/resource owner while separating lifecycle and
  action wiring, route data, playback behavior, and snapshot-only presentation
  into named internal partials; a source-boundary contract prevents duplicated
- coordination or mutable reads in view composition. Spotify passes 36/36.
+ coordination or mutable reads in view composition. DLV-023 adds one typed
+ refresh-failure policy shared by Y/manual refresh and Active polling. Transient
+ provider, malformed-response, and unexpected failures retain the last accepted
+ Ready playback, route, collection state, and focus behind one safe diagnostic
+ warning; automatic retry saturates through 5/15/30-second delays. Permission,
+ authorization, and compatibility faults still clear provider-derived data and
+ select their explicit safe states. Forced Release coverage passes Spotify
+ 39/39, Widget SDK 84/84, and the installed generic AppContainer route 6/6,
+ including broker-enforced playback-read revocation. Retained SDK and installed
+ worker results are `20260810T110052Z-75e0b660` and
+ `20260810T110105Z-7025cb34`.
  Packaged physical-controller evidence and a live retest remain open. The
  controller guide is
  density-aware and no-wrap, the widget viewport has a
@@ -1305,7 +1315,7 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. Community package 0.1.7
+  setup guidance without opening OAuth automatically. Community package 0.2.10
   uses a compact responsive layout, puts the complete setup instructions in a
   controller VerticalScroll, and uses shared centered icon/label button
   placement rather than widget-specific offsets. Setup now shows the
@@ -1328,8 +1338,9 @@ with C++ installed:
   malformed/early-close local probes inside the same fifteen-minute listener,
   while requiring loopback origin, exact host, GET/HTTP/1.1, callback path,
   and OAuth state before accepting the real callback. There is no live
-  allowlisted-account evidence. Devices/queue/search/recent/library/
-  playlists/albums/artists remain staged work. A separately trusted singleton
+  allowlisted-account evidence. Devices, queue, and playlists are implemented;
+  controller-native search/text entry and broader recent/library/album/artist
+  discovery remain staged work. A separately trusted singleton
   Web Playback SDK/WebView2 host now implements a bounded, hardened process and
   protocol with offline tests. Provider orchestration, PID-reuse-safe parent
   ownership, incremental `streaming` consent, Premium/EME/autoplay live proof,
