@@ -45,6 +45,14 @@ struct RenderAccessibilityRegion final {
     declarative::Rect rect;
 };
 
+/// Exact shared geometry for a Button's optional leading visual, label, and
+/// trailing semantic state cue. Empty rectangles represent absent content.
+struct ButtonContentPlacement final {
+    declarative::Rect leading;
+    declarative::Rect text;
+    declarative::Rect trailingStateCue;
+};
+
 struct RenderResult final {
     bool succeeded{};
     /// True only while at least one paint-only node transition requires a
@@ -62,6 +70,7 @@ struct RenderResult final {
     std::map<std::wstring, declarative::Rect, std::less<>> elementRects;
     std::map<std::wstring, declarative::Rect, std::less<>> elementVisibleRects;
     std::map<std::wstring, float, std::less<>> sliderThumbXs;
+    std::map<std::wstring, ButtonContentPlacement, std::less<>> buttonContentPlacements;
 #endif
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
     // Full logical controller geometry includes offscreen descendants of a
@@ -81,14 +90,6 @@ struct RenderResult final {
 struct ImagePlacement final {
     declarative::Rect destination;
     declarative::Rect source;
-};
-
-/// Button content treats an optional leading icon plus label as one visual
-/// group for edge alignment. Center alignment keeps the primary label itself
-/// centered and places the leading icon beside it when space permits.
-struct ButtonContentPlacement final {
-    declarative::Rect leading;
-    declarative::Rect text;
 };
 
 struct DeclarativeRenderOptions final {

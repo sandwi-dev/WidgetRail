@@ -11,6 +11,7 @@
 #include <iterator>
 #include <limits>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -34,8 +35,12 @@ void Check(const bool condition, const std::string_view message) {
     }
 }
 
-void Near(const float actual, const float expected, const std::string_view message) {
-    Check(std::abs(actual - expected) <= 0.01F, message);
+void Near(
+    const float actual,
+    const float expected,
+    const std::string_view message,
+    const float tolerance = 0.01F) {
+    Check(std::abs(actual - expected) <= tolerance, message);
 }
 
 WidgetNode Node(const wchar_t* id, const wchar_t* kind) {
@@ -104,33 +109,37 @@ void ImagePlacementMath() {
     Near(invalid.source.width, 0.0F, "invalid source is empty");
 }
 
-void ButtonContentPlacementCentersThePrimaryLabel() {
+void ButtonContentPlacementUsesSharedOpticalGeometry() {
     const Rect content{0.0F, 0.0F, 170.0F, 60.0F};
     const auto iconAndText = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 28.0F, 56.0F, true, true, false);
-    Near(iconAndText.leading.x, 21.0F,
-         "leading icon sits immediately before the centered label");
-    Near(iconAndText.text.x, 57.0F,
-         "button label starts from its exact centered visual bound");
-    Near(iconAndText.text.x + iconAndText.text.width * 0.5F,
-         85.0F,
-         "button label is centered in the complete button");
+    Near(iconAndText.leading.x, 39.0F,
+         "center alignment begins the complete icon-label group symmetrically");
+    Near(iconAndText.text.x, 75.0F,
+         "leading icon and optical gap precede the centered label");
+    Near((iconAndText.leading.x + iconAndText.text.x + iconAndText.text.width) * 0.5F,
+         85.0F, "complete icon-label group is centered in the button");
     Near(iconAndText.leading.y, 16.0F,
          "leading icon is vertically centered in the content box");
 
     const auto withCue = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 28.0F, 56.0F, true, true, true);
-    Near(withCue.leading.x, 21.0F,
-         "trailing state cue does not reserve nonexistent leading space");
-    Near(withCue.text.x, 57.0F,
-         "state cue preserves the centered button label when it does not collide");
+    Near(withCue.leading.x, iconAndText.leading.x,
+         "balanced state lanes preserve the centered icon-label group");
+    Near(withCue.text.x, iconAndText.text.x,
+         "state cue does not move centered button content");
+    Near(withCue.trailingStateCue.x, 148.0F,
+         "state cue uses the shared trailing optical lane");
+    Near(withCue.trailingStateCue.y, 19.0F,
+         "state cue is vertically centered with the label and leading icon");
 
     const auto compactWithCue = DeclarativeRenderer::ComputeButtonContentPlacement(
         {0.0F, 0.0F, 122.0F, 44.0F}, 28.0F, 45.0F, true, true, true);
-    Near(compactWithCue.text.width, 45.0F,
-         "compact disabled icon-label button retains the complete measured label");
-    Check(compactWithCue.text.x + compactWithCue.text.width <= 91.5F,
-         "compact button label remains clear of the trailing state cue");
+    Near(compactWithCue.text.width, 26.0F,
+         "compact stateful button gives wrapping or trimming a collision-free width");
+    Check(compactWithCue.text.x + compactWithCue.text.width + 8.0F <=
+              compactWithCue.trailingStateCue.x,
+          "compact label retains the optical gap before its state cue");
 
     const auto textOnly = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 0.0F, 40.0F, false, true, false);
@@ -140,10 +149,28 @@ void ButtonContentPlacementCentersThePrimaryLabel() {
     const auto start = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 28.0F, 56.0F, true, true, false, gba::NativeTextAlign::Start);
     Near(start.leading.x, 0.0F, "explicit start aligns the complete visual group");
+    const auto selectedStart = DeclarativeRenderer::ComputeButtonContentPlacement(
+        content, 28.0F, 56.0F, true, true, true, gba::NativeTextAlign::Start);
+    Near(selectedStart.leading.x, start.leading.x,
+         "trailing state does not move start-aligned selection-row content");
     const auto end = DeclarativeRenderer::ComputeButtonContentPlacement(
         content, 28.0F, 56.0F, true, true, false, gba::NativeTextAlign::End);
     Near(end.text.x + end.text.width, 170.0F,
          "explicit end aligns the complete visual group");
+    const auto busyEnd = DeclarativeRenderer::ComputeButtonContentPlacement(
+        content, 28.0F, 56.0F, true, true, true, gba::NativeTextAlign::End);
+    Near(busyEnd.text.x + busyEnd.text.width, 140.0F,
+         "end-aligned busy content clears the shared trailing cue lane");
+    Near(busyEnd.trailingStateCue.x - (busyEnd.text.x + busyEnd.text.width), 8.0F,
+         "end-aligned content retains the optical cue gap");
+
+    const auto belowPreferred = DeclarativeRenderer::ComputeButtonContentPlacement(
+        {0.0F, 0.0F, 20.0F, 20.0F}, 18.0F, 40.0F, true, true, true);
+    Near(belowPreferred.text.width, 0.0F,
+         "below-preferred geometry collapses label content before overlapping the cue");
+    Check(belowPreferred.trailingStateCue.x >= 10.0F &&
+            belowPreferred.trailingStateCue.x + belowPreferred.trailingStateCue.width <= 20.0F,
+         "below-preferred state cue remains inside the content bounds");
 
     const auto invalid = DeclarativeRenderer::ComputeButtonContentPlacement(
         {0.0F, 0.0F, -1.0F, 40.0F}, 28.0F, 40.0F, true, true, false);
@@ -2164,6 +2191,12 @@ void RealDirect2DSmoke() {
     const auto startRect = alignedResult.elementRects.at(L"align-start");
     const auto centerRect = alignedResult.elementRects.at(L"align-center");
     const auto endRect = alignedResult.elementRects.at(L"align-end");
+    const auto& centerPlacement =
+        alignedResult.buttonContentPlacements.at(L"align-center");
+    Near((centerPlacement.leading.x + centerPlacement.text.x +
+            centerPlacement.text.width) * 0.5F,
+        centerRect.x + centerRect.width * 0.5F,
+        "center alignment places the measured icon-label group at the exact control center");
     const auto startBounds = brightBounds(startRect);
     const auto centerBounds = brightBounds(centerRect);
     const auto endBounds = brightBounds(endRect);
@@ -2183,16 +2216,110 @@ void RealDirect2DSmoke() {
         "authored alignment translates the icon-label group without splitting it");
     const auto leadingToCenter = centerBounds.minimumX - startBounds.minimumX;
     const auto centerToTrailing = endBounds.minimumX - centerBounds.minimumX;
-    Check(leadingToCenter < centerToTrailing,
-        "centered labels leave the leading icon on the label's leading side");
-    Check(visualCenter(centerBounds) <
-            centerRect.x + centerRect.width * 0.5F,
-        "centering the primary label intentionally places the complete icon-label group left of center");
+    Check(std::abs(leadingToCenter - centerToTrailing) <= 1,
+        "start, center, and end translate the complete icon-label group symmetrically");
+    Check(std::abs(visualCenter(centerBounds) -
+            (centerRect.x + centerRect.width * 0.5F)) <= 8.0F,
+        "asymmetric icon-label pixels remain within the bounded optical-center tolerance");
     Check(startBounds.maximumX < static_cast<int>(startRect.x + startRect.width * 0.5F),
         "explicit start paints the complete group in the leading half");
     Check(endBounds.minimumX > static_cast<int>(endRect.x + endRect.width * 0.5F),
         "explicit end paints the complete group in the trailing half");
     alignmentLock.Reset();
+
+    const auto matrixButton = [](const wchar_t* id, const wchar_t* text) {
+        auto result = Node(id, L"button");
+        result.text = text;
+        result.glyph = L"refresh";
+        result.baseStyle = {
+            {L"width", Length(220)},
+            {L"min-height", Length(44)},
+            {L"padding", LengthList(L"10px")},
+            {L"font-size", Length(15)},
+            {L"line-height", Number(1.3)},
+            {L"max-lines", Number(2)},
+        };
+        return result;
+    };
+    const auto geometryCenter = [](const gba::ButtonContentPlacement& placement) {
+        const auto left = placement.leading.width > 0.0F
+            ? placement.leading.x
+            : placement.text.x;
+        return (left + placement.text.x + placement.text.width) * 0.5F;
+    };
+    for (const auto& [surfaceWidth, pixelScale, textScale] : {
+             std::tuple{240.0F, 1.0F, 1.0F},
+             std::tuple{360.0F, 1.25F, 1.15F},
+             std::tuple{540.0F, 1.5F, 1.5F},
+         }) {
+        WidgetSnapshot matrix;
+        matrix.instanceId = L"button-geometry-matrix.runtime";
+        matrix.root = Node(L"button-geometry-matrix.root", L"stack");
+        matrix.root.baseStyle = {{L"gap", LengthList(L"4px")}};
+        auto plain = matrixButton(L"matrix.plain", L"Refresh library");
+        auto selected = matrixButton(L"matrix.selected", L"Selected row");
+        selected.isSelected = true;
+        selected.baseStyle.insert_or_assign(L"justify", Keyword(L"start"));
+        auto busy = matrixButton(L"matrix.busy", L"Refreshing library");
+        busy.isBusy = true;
+        auto disabled = matrixButton(L"matrix.disabled", L"Unavailable action");
+        disabled.isDisabled = true;
+        auto wrapped = matrixButton(
+            L"matrix.wrapped",
+            L"Refresh the selected collection after checking every available source");
+        for (auto* candidate : {&plain, &selected, &busy, &disabled, &wrapped})
+            candidate->baseStyle.insert_or_assign(L"width", Length(surfaceWidth - 20.0F));
+        matrix.root.children = {
+            std::move(plain), std::move(selected), std::move(busy),
+            std::move(disabled), std::move(wrapped),
+        };
+
+        gba::DeclarativeRenderOptions matrixOptions;
+        matrixOptions.pixelScale = pixelScale;
+        matrixOptions.accessibility.textScale = textScale;
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto matrixResult = renderer.Render(
+            target.Get(), matrix, L"matrix.plain",
+            {0.0F, 0.0F, surfaceWidth, 360.0F}, matrixOptions);
+        Check(SUCCEEDED(target->EndDraw()),
+            "button geometry profile completes a real Direct2D frame");
+        Check(matrixResult.succeeded && matrixResult.buttonContentPlacements.size() == 5,
+            "button geometry profile records every shared content placement");
+
+        for (const auto* id : {L"matrix.plain", L"matrix.busy", L"matrix.disabled",
+                 L"matrix.wrapped"}) {
+            const auto& placement = matrixResult.buttonContentPlacements.at(id);
+            const auto& rect = matrixResult.elementRects.at(id);
+            Near(geometryCenter(placement), rect.x + rect.width * 0.5F,
+                "centered button group remains centered across surface and scale profiles",
+                0.51F);
+        }
+        const auto& selectedPlacement =
+            matrixResult.buttonContentPlacements.at(L"matrix.selected");
+        const auto& selectedRect = matrixResult.elementRects.at(L"matrix.selected");
+        Near(selectedPlacement.leading.x, selectedRect.x + 10.0F,
+            "authored justify-start aligns selection-row content at the shared leading inset",
+            0.51F);
+        for (const auto* id : {L"matrix.selected", L"matrix.busy", L"matrix.disabled"}) {
+            const auto& placement = matrixResult.buttonContentPlacements.at(id);
+            const auto& rect = matrixResult.elementRects.at(id);
+            Near(placement.trailingStateCue.y + placement.trailingStateCue.height * 0.5F,
+                rect.y + rect.height * 0.5F,
+                "selected, busy, and disabled cues share vertical centering",
+                0.51F);
+            Check(placement.text.x + placement.text.width + 7.5F <=
+                    placement.trailingStateCue.x,
+                "stateful label remains clear of the shared cue lane");
+        }
+        if (textScale == 1.5F) {
+            Check(matrixResult.elementRects.at(L"matrix.wrapped").height > 44.0F,
+                "150-percent wrapped label contributes its measured intrinsic height");
+        } else if (textScale == 1.0F) {
+            Near(matrixResult.elementRects.at(L"matrix.plain").height, 44.0F,
+                "standard single-line button applies the outer interaction minimum once");
+        }
+    }
 
     slider.baseStyle = {
         {L"background", Color(L"#00ff00")},
@@ -2357,7 +2484,7 @@ int main() {
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
     ImagePlacementMath();
-    ButtonContentPlacementCentersThePrimaryLabel();
+    ButtonContentPlacementUsesSharedOpticalGeometry();
     AccessibleStatePresentation();
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();

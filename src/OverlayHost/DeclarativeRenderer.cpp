@@ -29,6 +29,11 @@ constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 32;
 constexpr std::size_t kMaximumTextCharacters = 4096;
 constexpr float kMinimumControlSize = 44.0F;
+constexpr float kButtonIconLabelGap = 8.0F;
+constexpr float kButtonStateCueGap = 8.0F;
+constexpr float kButtonStateCueMinimumSize = 14.0F;
+constexpr float kButtonStateCueMaximumSize = 22.0F;
+constexpr float kButtonStateCueHeightFactor = 0.72F;
 constexpr std::size_t kMaximumScrollStateEntries = 4096;
 constexpr std::size_t kMaximumFocusFollowPasses = 32;
 constexpr float kRevealEpsilon = 0.01F;
@@ -217,6 +222,58 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
     return (pressed && node.pressedStyle.contains(std::wstring{property})) ||
         (focused && node.focusedStyle.contains(std::wstring{property})) ||
         node.baseStyle.contains(std::wstring{property});
+}
+
+[[nodiscard]] NativeTextAlign ResolveButtonContentAlignment(
+    const WidgetNode& node,
+    const NativeRenderStyle& style,
+    const bool focused,
+    const bool pressed) noexcept {
+    if (HasComputedProperty(node, L"text-align", focused, pressed))
+        return style.textAlign();
+    if (!HasComputedProperty(node, L"justify", focused, pressed))
+        return NativeTextAlign::Center;
+    switch (style.justify()) {
+    case NativeJustify::Start: return NativeTextAlign::Start;
+    case NativeJustify::End: return NativeTextAlign::End;
+    case NativeJustify::Center: return NativeTextAlign::Center;
+    default: return NativeTextAlign::Center;
+    }
+}
+
+struct ButtonContentTokens final {
+    float leadingSize{};
+    float leadingGap{};
+    float stateCueSize{};
+    float stateCueLane{};
+};
+
+[[nodiscard]] ButtonContentTokens ResolveButtonContentTokens(
+    const Rect content,
+    const float requestedLeadingSize,
+    const bool hasLeading,
+    const bool hasText,
+    const bool reserveTrailingStateCue) noexcept {
+    ButtonContentTokens result;
+    result.leadingSize = hasLeading && std::isfinite(requestedLeadingSize)
+        ? std::clamp(requestedLeadingSize, 0.0F, std::min(content.width, content.height))
+        : 0.0F;
+    result.leadingGap = hasLeading && hasText && content.width > result.leadingSize
+        ? std::min(kButtonIconLabelGap, content.width - result.leadingSize)
+        : 0.0F;
+    if (!reserveTrailingStateCue) return result;
+
+    const auto naturalCueSize = std::min({
+        kButtonStateCueMaximumSize,
+        std::max(kButtonStateCueMinimumSize, content.height * kButtonStateCueHeightFactor),
+        content.width,
+        content.height,
+    });
+    result.stateCueLane = std::min(
+        naturalCueSize + kButtonStateCueGap,
+        content.width * 0.5F);
+    result.stateCueSize = std::min(naturalCueSize, result.stateCueLane);
+    return result;
 }
 
 } // namespace
@@ -421,7 +478,10 @@ struct DeclarativeRenderer::RenderPass final {
         element.flexShrink = style.flexShrink();
         if (!style.flexBasisAuto()) element.flexBasis = style.flexBasisPx();
         element.aspectRatio = style.aspectRatio();
-        if (node.kind == L"slider") {
+        if (node.kind == L"button") {
+            element.minHeight = std::max(
+                element.minHeight.value_or(0.0F), kMinimumControlSize);
+        } else if (node.kind == L"slider") {
             element.minWidth = std::max(element.minWidth.value_or(0.0F), 160.0F);
             element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
         } else if (node.kind == L"actionSurface") {
@@ -948,13 +1008,55 @@ struct DeclarativeRenderer::RenderPass final {
         if (node.kind == L"text")
             return MeasureText(node, style, constraints);
         if (node.kind == L"button") {
-            const auto text = MeasureText(node, style, constraints);
-            const auto leadingWidth = !node.imageSource.empty()
-                ? 52.0F
-                : node.glyph.empty() ? 0.0F : 28.0F;
+            const bool hasLeading = !node.imageSource.empty() || !node.glyph.empty();
+            const bool hasText = !node.text.empty();
+            const bool reserveStateCue = hasText &&
+                (node.isBusy || node.isSelected || node.isDisabled);
+            const auto lineHeight = style.fontSizePx() * style.lineHeight();
+            const auto maximumLeadingSize = node.imageSource.empty() ? 32.0F : 44.0F;
+            const auto alignment = ResolveButtonContentAlignment(node, style, false, false);
+            const auto& padding = style.paddingPx();
+            const auto verticalPadding = padding.top + padding.bottom;
+            const auto preferredOuterHeight = std::max({
+                kMinimumControlSize,
+                style.minHeightPx().value_or(0.0F),
+                style.heightPx().value_or(0.0F),
+            });
+            const auto minimumContentHeight = std::max(
+                0.0F, preferredOuterHeight - verticalPadding);
+            const auto provisionalHeight = std::max(
+                1.0F, std::min(constraints.maximumHeight,
+                    std::max(lineHeight, minimumContentHeight)));
+            const auto measureAtHeight = [&](const float contentHeight) {
+                const auto leadingSize = hasLeading
+                    ? std::min(maximumLeadingSize, contentHeight)
+                    : 0.0F;
+                const Rect available{
+                    0.0F, 0.0F, constraints.maximumWidth, contentHeight};
+                const auto budget = DeclarativeRenderer::ComputeButtonContentPlacement(
+                    available, leadingSize, std::numeric_limits<float>::max(), hasLeading,
+                    hasText, reserveStateCue, alignment);
+                const auto text = hasText
+                    ? MeasureText(node, style, {budget.text.width, constraints.maximumHeight})
+                    : Size{};
+                return std::pair{leadingSize, text};
+            };
+            const auto [firstLeadingSize, firstText] = measureAtHeight(provisionalHeight);
+            const auto resolvedContentHeight = std::max({
+                provisionalHeight, firstLeadingSize, firstText.height});
+            const auto [leadingSize, text] = measureAtHeight(resolvedContentHeight);
+            const Rect available{
+                0.0F, 0.0F, constraints.maximumWidth,
+                std::max({resolvedContentHeight, leadingSize, text.height})};
+            const auto tokens = ResolveButtonContentTokens(
+                available, leadingSize, hasLeading, hasText, reserveStateCue);
+            const auto stateWidth = reserveStateCue
+                ? tokens.stateCueLane * (alignment == NativeTextAlign::Center ? 2.0F : 1.0F)
+                : 0.0F;
             return {
-                std::min(constraints.maximumWidth, text.width + leadingWidth + 24.0F),
-                std::max(kMinimumControlSize, text.height + 16.0F),
+                std::min(constraints.maximumWidth,
+                    text.width + tokens.leadingSize + tokens.leadingGap + stateWidth),
+                std::max({minimumContentHeight, tokens.leadingSize, text.height}),
             };
         }
         if (node.kind == L"image") return {120.0F, 120.0F};
@@ -1427,7 +1529,8 @@ struct DeclarativeRenderer::RenderPass final {
         const WidgetNode& node,
         const NativeRenderStyle& style,
         const Rect rect,
-        const float opacity) {
+        const float opacity,
+        const std::optional<Rect> assignedCue = std::nullopt) {
         if (!target || (node.kind != L"button" && node.kind != L"actionSurface")) return;
         if (node.text.empty() && node.kind != L"actionSurface") {
             // Icon-only controls have no trailing-label space for a checkmark
@@ -1461,12 +1564,15 @@ struct DeclarativeRenderer::RenderPass final {
             return;
         }
         const auto size = std::clamp(rect.height * 0.36F, 14.0F, 22.0F);
-        const Rect cue{
+        const Rect fallbackCue{
             rect.x + rect.width - size - 10.0F,
             rect.y + (rect.height - size) * 0.5F,
             size,
             size,
         };
+        const auto cue = assignedCue && assignedCue->width > 0.0F && assignedCue->height > 0.0F
+            ? *assignedCue
+            : fallbackCue;
         if (node.isBusy) {
             DrawSemanticIcon(node, style, cue, opacity, L"refresh");
         } else if (node.isSelected) {
@@ -1591,23 +1697,21 @@ struct DeclarativeRenderer::RenderPass final {
             const auto iconSize = hasLeading
                 ? std::min(maximumLeadingSize, std::max(0.0F, textRect.height))
                 : 0.0F;
-            const bool hasTextAlignment = HasComputedProperty(
-                node, L"text-align", focused, node.id == pressedId);
-            const auto alignment = hasText && hasTextAlignment
-                ? style.textAlign()
+            const auto alignment = hasText
+                ? ResolveButtonContentAlignment(node, style, focused, node.id == pressedId)
                 : NativeTextAlign::Center;
-            const auto stateCueReserve = reserveStateCue
-                ? std::min(34.0F, textRect.width * 0.25F)
-                : 0.0F;
-            const auto textBudget = std::max(
-                1.0F, textRect.width - (hasLeading && hasText ? iconSize + 8.0F : 0.0F) -
-                    stateCueReserve);
+            const auto budget = DeclarativeRenderer::ComputeButtonContentPlacement(
+                textRect, iconSize, std::numeric_limits<float>::max(), hasLeading, hasText,
+                reserveStateCue, alignment);
             const auto measured = hasText
-                ? MeasureText(node, style, {textBudget, textRect.height})
+                ? MeasureText(node, style, {std::max(1.0F, budget.text.width), textRect.height})
                 : Size{};
             const auto placement = DeclarativeRenderer::ComputeButtonContentPlacement(
                 textRect, iconSize, measured.width, hasLeading, hasText,
                 reserveStateCue, alignment);
+#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+            result.buttonContentPlacements[node.id] = placement;
+#endif
             textRect = placement.text;
             if (hasLeading) {
                 const Rect iconRect = placement.leading;
@@ -1621,7 +1725,7 @@ struct DeclarativeRenderer::RenderPass final {
                     DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
             }
             if (hasText) DrawTextContent(node, style, textRect, opacity);
-            DrawStateCue(node, style, paintRect, opacity);
+            DrawStateCue(node, style, paintRect, opacity, placement.trailingStateCue);
         } else if (node.kind == L"progress") {
             DrawProgress(node, style, presented.contentBox, opacity);
         } else if (node.kind == L"slider") {
@@ -1975,27 +2079,26 @@ ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
     const bool reserveTrailingStateCue,
     const NativeTextAlign alignment) noexcept {
     if (!FiniteRect(content) || content.width <= 0.0F || content.height <= 0.0F) {
-        return {{}, {}};
+        return {{}, {}, {}};
     }
 
-    // A trailing semantic cue must not collide with the primary content, but
-    // it consumes space on the trailing side only. Reserving the same amount
-    // on both sides needlessly starves compact icon-label buttons (especially
-    // disabled controls, which also render a trailing unavailable cue).
-    const auto cueInset = reserveTrailingStateCue
-        ? std::min(34.0F, content.width * 0.25F)
+    const auto tokens = ResolveButtonContentTokens(
+        content, leadingSize, hasLeading, hasText, reserveTrailingStateCue);
+    const auto centeredCueInset = reserveTrailingStateCue && alignment == NativeTextAlign::Center
+        ? tokens.stateCueLane
+        : 0.0F;
+    const auto trailingCueInset = reserveTrailingStateCue
+        ? tokens.stateCueLane
         : 0.0F;
     const Rect safe{
-        content.x,
+        content.x + centeredCueInset,
         content.y,
-        std::max(0.0F, content.width - cueInset),
+        std::max(0.0F, content.width - centeredCueInset - trailingCueInset),
         content.height,
     };
-    const auto resolvedLeading = hasLeading && std::isfinite(leadingSize)
-        ? std::clamp(leadingSize, 0.0F, std::min(safe.width, safe.height))
-        : 0.0F;
+    const auto resolvedLeading = std::min(tokens.leadingSize, std::min(safe.width, safe.height));
     const auto gap = hasLeading && hasText && safe.width > resolvedLeading
-        ? std::min(8.0F, safe.width - resolvedLeading)
+        ? std::min(tokens.leadingGap, safe.width - resolvedLeading)
         : 0.0F;
     const auto textBudget = std::max(0.0F, safe.width - resolvedLeading - gap);
     const auto resolvedText = hasText && std::isfinite(measuredTextWidth)
@@ -2008,21 +2111,7 @@ ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
         alignment == NativeTextAlign::End ? remaining : remaining * 0.5F,
         0.0F,
         remaining);
-    auto textX = groupX + resolvedLeading + gap;
-    if (alignment == NativeTextAlign::Center && hasText) {
-        // A button label is the primary affordance. Keep the label itself on
-        // the control's visual center and place a leading icon beside it when
-        // there is room. Centering the complete icon-label group makes every
-        // label drift right by half the icon/gap, which is especially visible
-        // in paired controller actions such as Spotify Connect and Setup.
-        const auto centeredTextX = content.x + (content.width - resolvedText) * 0.5F;
-        const auto leadingX = centeredTextX - gap - resolvedLeading;
-        if ((!hasLeading || leadingX >= safe.x) &&
-            centeredTextX + resolvedText <= safe.x + safe.width) {
-            textX = centeredTextX;
-            groupX = hasLeading ? leadingX : centeredTextX;
-        }
-    }
+    const auto textX = groupX + resolvedLeading + gap;
     const Rect leading{
         groupX,
         safe.y + (safe.height - resolvedLeading) * 0.5F,
@@ -2035,7 +2124,15 @@ ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
         resolvedText,
         safe.height,
     };
-    return {leading, text};
+    const Rect trailingStateCue = reserveTrailingStateCue
+        ? Rect{
+            content.x + content.width - tokens.stateCueSize,
+            content.y + (content.height - tokens.stateCueSize) * 0.5F,
+            tokens.stateCueSize,
+            tokens.stateCueSize,
+        }
+        : Rect{};
+    return {leading, text, trailingStateCue};
 }
 
 } // namespace gba
