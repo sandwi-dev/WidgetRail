@@ -31,6 +31,7 @@ serialized through an explicit integration assignment owned by the planner.
 
 The review and planning agent owns:
 
+- `docs/review-planner-goal.md`
 - `docs/implementation-agent-goal.md`
 - `docs/delivery-plan.md`
 - `docs/roadmap.md`
