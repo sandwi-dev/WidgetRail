@@ -92,6 +92,33 @@ broker 49/49, widget 39/39, documentation 51, and the minimal real-package
 AppContainer group 6/6. Two earlier conformance failures were retained and
 corrected at their concrete harness assumptions; no canonical aggregate ran.
 
+### DLV-003 — Correct shared button-content geometry
+
+**State:** Done
+**Closing commit:** `27b0319` (`[DLV-003] correct shared button geometry`)
+**Integrated on `main`:** `703c5bb`
+
+**Reviewer disposition:** Accepted. One native placement model now owns Button
+icon, label, and semantic-cue geometry; intrinsic measurement uses the same
+width budget as paint, including wrapped and 150% text cases. Focused Release
+renderer checks passed 4,685 assertions, the production host built, and the
+retained 12-capture matrix reported no renderer diagnostics. The repository
+does not currently claim RTL layout support, so no unverified RTL behavior was
+added. Physical controller/display sign-off remains in the evidence queue.
+
+### DLV-007 — Make Spotify presentation state coherent
+
+**State:** Done
+**Closing commit:** `ff706d2` (`[DLV-007] make Spotify presentation state coherent`)
+**Integrated on `main`:** `0941e41`
+
+**Reviewer disposition:** Accepted. Rendering now consumes one immutable
+presentation revision and playlist detail is keyed by playlist ID plus a
+monotonic selection generation. Forced interleavings cover Back, rapid
+reselection, late success/failure, refresh, and Active-lifetime cancellation
+and reactivation; Spotify passed 35/35 and the minimal package conformance seam
+passed 6/6. Live Spotify and physical-controller proof remain manual evidence.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -99,7 +126,7 @@ Branch: `codex/impl-widgets`
 
 ### DLV-007 — Make Spotify presentation state coherent
 
-**State:** Assigned after task migration
+**State:** Done; accepted and integrated as `0941e41`
 **Baseline:** `1738618` plus the reviewer control-plane commit
 **Owner:** Spotify managed widget state, routes, and credential-free tests
 
@@ -129,8 +156,8 @@ native focus semantics, authentication, or a materially different Spotify UX.
 
 ### DLV-008 — Split Spotify by stable responsibility
 
-**State:** Ready after DLV-007
-**Baseline:** closing commit of DLV-007
+**State:** Assigned
+**Baseline:** `ff706d2`
 **Owner:** Spotify managed widget internals
 
 **Objective:** After coherent state exists, separate lifecycle/action wiring,
@@ -159,7 +186,7 @@ gap or requires cross-lane changes.
 
 ### DLV-009 — Consolidate YT Music lifecycle and render ownership
 
-**State:** Ready after DLV-008
+**State:** Planned; awaiting DLV-004 and the next accepted widgets baseline
 **Baseline:** closing commit of DLV-008
 **Owner:** YT Music managed widget and existing public SDK primitives
 
@@ -189,7 +216,7 @@ the repeated pattern and consumer evidence before changing the public API.
 
 ### DLV-010 — Prove the external widget package journey
 
-**State:** Ready after DLV-009
+**State:** Planned; awaiting DLV-009
 **Baseline:** closing commit of DLV-009
 **Owner:** managed scaffold/CLI, sample package, and public authoring docs
 
@@ -225,7 +252,7 @@ Branch: `codex/impl-platform`
 
 ### DLV-003 — Correct shared button-content geometry
 
-**State:** Assigned after task creation
+**State:** Done; accepted and integrated as `703c5bb`
 **Baseline:** `1738618` plus the reviewer control-plane commit
 **Owner:** native declarative renderer and shared component styles
 
@@ -253,8 +280,8 @@ requires incompatible protocol semantics.
 
 ### DLV-005 — Hold Y to refresh the selected tray widget
 
-**State:** Ready after DLV-003
-**Baseline:** closing commit of DLV-003
+**State:** Assigned
+**Baseline:** `27b0319`
 **Owner:** OverlayHost controller gesture state and existing host reload path
 
 **Objective:** Preserve tap Y for reorder while a clearly hinted bounded hold Y
@@ -372,7 +399,7 @@ one Assigned on an accepted integrated baseline.
 
 ### DLV-004 — Repair the Games & Apps product surface
 
-**State:** Awaiting integration of accepted DLV-003 into `main`
+**State:** Ready for widgets-lane dispatch after DLV-008 at a clean boundary
 **Intended lead:** widgets lane
 **Dependencies:** DLV-002 and DLV-003
 

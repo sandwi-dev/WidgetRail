@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against implementation HEAD `1738618`, accepted DLV-001 authority recovery, accepted DLV-002 trusted-game curation, DLV-002 focused results (provider 31/31, broker 49/49, widget 39/39, docs 51), its minimal real-package AppContainer group 6/6, stable dirty full-gate run `20260810T030727Z-449cac31`, and the retained clean full-gate result for `0598e5a`<br>
+Last reassessed: 2026-08-09 against integrated `main` `0941e41`, including accepted DLV-003 shared Button geometry (`27b0319`) and accepted DLV-007 Spotify presentation coherence (`ff706d2`), their focused Release evidence, stable dirty full-gate run `20260810T030727Z-449cac31`, and the retained clean full-gate result for `0598e5a`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -24,8 +24,9 @@ walks the bounded trusted catalog, preserves user order and focus, retains
 missing identities for stable reappearance, treats replacement identities as
 new games, and keeps Application/Unknown entries opt-in. Its focused and
 minimal real-package evidence is green without paying the repository-wide test
-cost. The presentation repair, shared button geometry, Audio endpoint blocker,
-and hold-Y tray refresh remain open.
+cost. Shared Button geometry and Spotify's coherent presentation boundary are
+now accepted. The Games & Apps surface repair, Audio endpoint blocker, hold-Y
+tray refresh, and advanced-widget responsibility split remain open.
 
 There is substantial good engineering here: the installed-widget runtime uses
 an explicit AppContainer and broker boundary; protocol and package inputs are
@@ -2616,9 +2617,9 @@ product claim remains Verifying.
 
 ### EQ-025 — P2 — Spotify composes one screen from independently versioned state owners
 
-**Status: Open at current implementation HEAD `0be052b`; Spotify pagination
-tests changed, but this independently revised presentation-state ownership did
-not. This review inspected source and retained evidence but did not execute it.**
+**Status: Resolved by DLV-007 commit `ff706d2`, integrated on `main` as
+`0941e41`. The reviewer inspected the exact diff and accepted retained focused
+Release evidence: Spotify 35/35 and the minimal package seam 6/6.**
 
 **Evidence.** `samples/SpotifyWidget/SpotifyWidget.cs` is 2,015 lines and one
 class owns authorization, playback, destinations, queue/devices/local playback,
@@ -2691,6 +2692,15 @@ and expanded focus restoration. Assert every rendered detail model carries the
 same selection key as its heading and that an action from a stale snapshot is
 rejected or maps only to the exact keyed item. Then execute and retain the
 Spotify suite plus production worker/bridge conformance.
+
+**Accepted resolution.** `SpotifyPresentationState` is now the single immutable
+render-facing projection. Playlist detail carries a selection record keyed by
+playlist ID and monotonic generation; selection/reset/load admission is atomic
+under the widget owner, rendering no longer reads live resources, and only the
+active route admits pagination. Deterministic provider gates cover late A
+success/failure after B, refresh after newer selection, Back, and
+deactivation/reactivation. Responsibility splitting and live Spotify proof are
+separate follow-up work, not reasons to keep this coherence defect open.
 
 ### EQ-026 — P1 — Focus-edge pagination needs composed and live verification
 
@@ -3601,12 +3611,12 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
 | Action dispatch | Commits through `ddb66c2` unify admission and generation-bound failure handling, add allocation-free per-widget feedback, and compose bounded catalog/pump/surface/timer/Hide/Stop ownership behind one production host adapter; its 305-check target is retained in dirty 41-step/784-case evidence. `5804eaa` proves a packaged Spotify Next command, but no advanced-widget failure has traversed bridge/native controller ingress into painted/UIA status and clean evidence stops at `0598e5a` | Exercise Spotify and YT Music late failure through the real worker/bridge/native host route, assert exact surface/expiry/UIA behavior and no restart, then retain clean exact-commit evidence |
 | Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | One narrow typed dispatcher with deterministic no-sleep invariant tests, a bounded forced drain, and one asynchronous native read owner/correlation table |
-| Responsive/controller UI | `5c3ce72` repairs host edge admission/focus precedence; `023ea46` adds real Spotify 29-item resource traversal plus exact native 12/12/5 IDs/topology and one-shot refresh coverage. The new product requests remain absent: tray Y is an immediate reorder action with no tap/hold recognizer, and F5/recovery restart accepts only the open-widget surface. Supplied Games & Apps and Spotify captures still show clipping or optically misaligned icon/label content despite shared native placement code and synthetic alignment tests | Implement the tray-only tap-Y/reorder versus hold-Y/restart contract with visible progress/cancel semantics and exact one-shot tests; repair shared button/layout behavior at the renderer/recipe boundary and retain current packaged screenshots plus controller traversal at the reported profiles |
-| Games & Apps | DLV-002 (`1738618`) implements schema-v2 automatic provenance plus explicit exclusions, bounded multi-page trusted-game reconciliation, v1 migration, stable order/focus, disappearance/reappearance, identity replacement, authoritative reclassification, failure fallback, and exact opaque launch revalidation. Focused provider 31/31, broker 49/49, widget 39/39, docs 51, and real-package AppContainer 6/6 evidence pass. The supplied layout defects and packaged controller/scale proof remain open | Integrate DLV-003 shared geometry, then execute DLV-004 over empty, short, long, maximum-page, loading, error, compact/standard/wide, and 100-150% scale states with retained captures and controller traversal |
+| Responsive/controller UI | DLV-003 (`27b0319`, integrated by `703c5bb`) moves icon, label, selected/busy/unavailable cue, wrapped measurement, and explicit start/center/end placement onto one shared renderer model. Its focused target passed 4,685 checks and 12 retained Games & Apps/Spotify captures reported zero renderer diagnostics. Tray Y is still an immediate reorder action with no tap/hold recognizer, and physical full-shell/scale proof remains open | Complete DLV-005 tray tap-Y/reorder versus hold-Y/restart with visible progress/cancel semantics and exact one-shot tests; exercise the accepted shared geometry through DLV-004's current product states and physical controller/display evidence |
+| Games & Apps | DLV-002 (`1738618`) implements schema-v2 automatic provenance plus explicit exclusions, bounded multi-page trusted-game reconciliation, v1 migration, stable order/focus, disappearance/reappearance, identity replacement, authoritative reclassification, failure fallback, and exact opaque launch revalidation. DLV-003 shared geometry is now integrated. The product-surface defects and packaged controller/scale proof remain open | Execute DLV-004 over empty, short, long, maximum-page, loading, error, compact/standard/wide, and 100-150% scale states with retained captures and controller traversal |
 | Audio Mixer | The broker/provider exposes read-only device/default markers and commands for per-session plus current default input/output volume and mute. There is no supported endpoint-selection command or native setter, and the platform architecture explicitly says default-device switching is unsupported | Treat endpoint selection as a later API spike: choose a documented/supported Windows mechanism and role policy, define consent/error/event semantics, then add the typed capability and widget UI. Do not base a public contract on undocumented `PolicyConfig` COM behavior |
 | Windows accessibility | Commits through `9ec0374` provide real composite UIA and physical-only origin enforcement. `6a079b6` mirrors managed Back semantics across focus/no-focus, disabled/busy, ancestor, stale, and nested-scope cases using allocation-free bounded recursion; separate algorithm ownership and real route proof remain open, typed choices remain open, and exact clean evidence stops at `0598e5a` | Bind native/managed Back through shared conformance or one protocol result, retain clean evidence, then prove full real-client Picker/ActionSheet/Navigator traversal plus packaged Narrator/MSAA/AppContainer evidence |
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
-| Spotify | `023ea46` now proves real compact/expanded 29-item playlist resources, exact IDs/counts, joined slow input, cached reverse, and matching native topology; it manually bridges widget/native pieces and detail reverse stops at the middle page. No live retest exists, and the roughly 2,015-line class still assembles independently revised state | Compose the shipped host/bridge round trip and complete detail reverse/live retest, then introduce one immutable presentation model plus a Spotify-local keyed detail owner; add forced interleavings, credential-free full-state visuals, and live auth/playback gates |
+| Spotify | DLV-007 (`ff706d2`, integrated by `0941e41`) gives rendering one immutable presentation revision and keys playlist detail by ID plus selection generation. Forced Back/reselection/late success/failure/refresh/lifecycle interleavings pass in the 35/35 focused suite; 12/12/5 paging remains covered. The application-sized class and live/composed proof remain | Complete DLV-008's behavior-neutral responsibility split, then retain credential-free full-state/composed-host visuals and live auth/playback gates when credentials are authorized |
 | CLI author workflow | Data inspection is non-executable; source scaffolding fails honestly without an SDK and builds externally with explicit `--sdk-project`, but the template directory is not parsed/versioned/bounded or transactionally published; there is also no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Transactional manifest-driven template generation, versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 with clean retained 45/45 proof for cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget with cancellation-ignoring drain proof and cancellable correlation-safe off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness. User-supplied Games & Apps and Spotify captures show concrete clipping/alignment concerns that current synthetic renderer checks do not settle | Clean current package/state/profile matrix covering the reported surfaces, semantic icon-label and clipping assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
@@ -3668,14 +3678,14 @@ documents untouched, and the implementation stream must continue to leave them
 unstaged. This workflow boundary does not replace the three product actions
 below.
 
-1. **Platform DLV-003 — repair shared button-content geometry.** Correct icon,
-   label, checkmark, busy, wrapped, disabled, and focused alignment once in the
-   native renderer/shared component boundary, not with widget-local offsets.
-2. **Widgets DLV-007 — make Spotify presentation state coherent.** Bind route,
-   selection, detail resource, busy/error state, and rendering to one immutable
-   revision before splitting the application-sized class.
-3. **Integration DLV-004 — repair the Games & Apps product surface.** After
-   DLV-003 is accepted and integrated, close empty/library/catalog/loading/error,
+1. **Widgets DLV-008 — split Spotify by stable responsibility.** Preserve the
+   accepted immutable state and singular resource/action ownership while making
+   lifecycle, controller/domain behavior, route data, and pure views reviewable.
+2. **Platform DLV-005 — hold Y to refresh the selected tray widget.** Reuse the
+   F5 reload authority with deterministic threshold, cancellation, stale-target,
+   and exactly-once behavior while preserving tap Y for reorder.
+3. **Integration DLV-004 — repair the Games & Apps product surface.** With
+   DLV-003 accepted and integrated, close empty/library/catalog/loading/error,
    clipping, scale, long-name, mutation, and controller-reachability defects and
    retain representative captures. DLV-004 is the next scheduled exact-commit
    integration checkpoint.

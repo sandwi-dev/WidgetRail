@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a truthful local-SDK scaffold, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, and inner physical-only gesture enforcement are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, coherent advanced-widget presentation state, verified publisher trust, automated update discovery, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a truthful local-SDK scaffold, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, and one coherent advanced-widget presentation state are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against implementation HEAD `1738618`, accepted DLV-001 authority recovery, accepted DLV-002 Games & Apps schema-v2 reconciliation, DLV-002 focused provider/broker/widget/docs and minimal real-package evidence, stable dirty full run `20260810T030727Z-449cac31`, the retained clean full-gate result for `0598e5a`, and the two-lane delivery plan for Spotify coherence, YT Music lifecycle ownership, external package tooling, shared geometry, native failure composition, accessibility, and performance<br>
+Reassessed: 2026-08-09 against integrated `main` `0941e41`, including accepted DLV-003 shared Button geometry and accepted DLV-007 Spotify presentation coherence, their focused Release evidence, stable dirty full run `20260810T030727Z-449cac31`, the retained clean full-gate result for `0598e5a`, and the two-lane delivery plan<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -22,15 +22,15 @@ accessibility, permissions, and lifecycle, while isolated C# workers contribute
 renderer-neutral UI and react to typed actions. Simple widgets are already easy
 to express.
 
-The current cycle is **flat for external widget authors but stronger as a
-product proof**. DLV-001 adds no community authority, and DLV-002 deliberately
+The current cycle is **stronger as an advanced-widget product proof, but still
+flat for external onboarding**. DLV-001 adds no community authority, and DLV-002 deliberately
 implements Games & Apps curation as widget-owned versioned private state over a
 bounded trusted capability. Its pure reconciliation type, explicit automatic
 provenance/exclusions, deterministic lifecycle races, and credential-free
 real-package fixture are useful patterns, but they do not yet simplify the
-public multi-page/remote-state authoring path. The two implementation lanes now
-schedule that missing work directly: Spotify receives one coherent presentation
-revision before responsibility splitting, YT Music becomes the second lifecycle
+public multi-page/remote-state authoring path. Spotify now has one coherent
+presentation revision and an explicitly keyed playlist-detail owner; its
+behavior-neutral responsibility split is in progress. YT Music becomes the second lifecycle
 proof, and the external scaffold/package journey receives its own bounded
 milestone while native geometry, feedback, accessibility, and performance work
 continues independently.
@@ -249,7 +249,7 @@ between a minimal and an application-like widget:
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
 | Games & Apps | 1,150 lines | Navigation, paging, private state, and launch commands |
 | YT Music | About 1,180 lines | Connection lifecycle and optimistic media state |
-| Spotify | About 2,020 lines | OAuth, playback, four destinations, bounded page/cache state with a reverse-navigation fix still awaiting composed/live proof, and local playback |
+| Spotify | About 2,020 lines before DLV-008 | OAuth, playback, four destinations, bounded page/cache state, one immutable render projection, explicitly keyed playlist detail, and local playback |
 | Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
 
@@ -260,9 +260,10 @@ progress loop after adopting `WidgetModel<State>` and
 `WidgetOptimisticCommand`. YT Music has moved one transport-refresh family to
 `WidgetOperations.RunLatest`, but still owns three activation tasks, two
 semaphores, one state lock, and a manual optimistic confirmation list. Spotify
-has adopted paged resources and one page-operation lane, but still owns four
-task fields, two semaphores, several lock domains, generation/cache state, and
-separate command, authorization, refresh, and polling paths. Audio Mixer and
+has adopted paged resources, one immutable presentation projection, and an
+explicit selection generation, but still owns four task fields, two semaphores,
+several lock domains, and separate command, authorization, refresh, and polling
+paths. Audio Mixer and
 Network Controls remain roughly 2,500 and 2,000 lines with about 61 and 44
 textual lock sites and no adoption of the new model/resource/operation layer.
 These figures are navigation aids rather than code-quality scores: they show
@@ -1693,16 +1694,12 @@ Splitting files alone does not remove complexity, but it makes the remaining
 domain complexity reviewable. Framework helpers should remove coordination
 code first; file splitting should then expose the actual Spotify behavior.
 
-The first step is a state boundary, not this directory move. Introduce an
-immutable `SpotifyPresentationState` owned by `WidgetModel<TState>` or a narrow
-Spotify controller. Represent playlist detail with a
-`PlaylistSelectionKey(playlistId, generation)` and require the detail snapshot
-to carry the same key before the renderer can display it. Selection, detail
-reset, and load admission should be one controller operation; a mismatched
-resource snapshot renders loading/empty rather than prior items. Implement this
-as a local composition first. Only publish a generic keyed-resource API after a
-second production widget proves the same key, cache, cancellation, and retry
-semantics.
+DLV-007 completed the prerequisite state boundary before the directory move.
+`SpotifyPresentationState` is now the immutable render-facing projection, and
+playlist detail carries `PlaylistSelectionKey(playlistId, generation)` through
+an atomic selection/reset/load transition. This remains a Spotify-local
+composition; a generic keyed-resource API should still wait until a second
+production widget proves the same key, cache, cancellation, and retry semantics.
 
 Use deterministic phase barriers to prove the boundary: pause between selection
 commit and detail reset, complete a cancellation-ignoring old load after a new
@@ -1747,10 +1744,10 @@ Next work:
    credentials to be replaced while requests are in flight.
 5. Design cursor/append resource state separately from current-value and
    offset-page semantics.
-6. Give Spotify one immutable render-facing model and an explicitly keyed
-   playlist-detail owner before migrating more operation families. Prove the
-   selection/reset/load interleavings locally; generalize keyed resources only
-   after another widget demonstrates the same contract.
+6. Completed by DLV-007 (`ff706d2`): Spotify has one immutable render-facing
+   model and explicitly keyed playlist-detail owner with deterministic
+   selection/reset/load interleavings. Generalize keyed resources only after
+   another widget demonstrates the same contract.
 7. Add focused recipes for provider-event merge, confirmation deadlines, and
    absolute-value command coalescing without making them implicit.
 
