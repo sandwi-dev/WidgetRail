@@ -323,7 +323,9 @@ integrated, Audio Mixer is the next managed production decomposition because it
 remains the largest first-party monolith and DLV-037 was only a queue-order
 dependency. DLV-029 must preserve current focus IDs and navigation behavior so
 the independent native/shared-scroll correction remains separately reviewable.
-DLV-035, DLV-036, and DLV-037 then continue the platform-policy hotspot queue;
+DLV-035 and DLV-041 keep the Windows network backend and its native interop
+owner adjacent; DLV-036 and DLV-037 then continue the platform-policy hotspot
+queue;
 DLV-039 and DLV-040 finish the residual bridge-server responsibility split
 before test-harness cleanup. DLV-006 must still land before Spotify continuous-
 list and launcher work.
@@ -996,11 +998,62 @@ aggregate or unrelated widget suite.
 provider authority or Windows behavior, introduces another owner thread/state
 owner, or overlaps the preserved native platform worktree.
 
-### DLV-036 — Split Settings by page policy and privileged operations
+### DLV-041 — Split Windows network native interop by stable responsibility
 
 **State:** Ready after DLV-035
 **Baseline:** closing commit of DLV-035
-**Dependencies:** DLV-001 and DLV-035 only for queue order
+**Dependencies:** DLV-035
+**Owner:** managed Windows network native-adapter internals and deterministic
+interop fixtures; no widget, broker, public capability/protocol, or native
+OverlayHost files
+
+**Objective:** Preserve one adapter lifetime, WLAN handle, native callback
+registration, generation, and disposal authority while making connectivity
+projection, saved-profile/scan/connect operations, or Wi-Fi radio transactions
+changeable without understanding the complete roughly 1,180-line
+`WindowsNetworkNativeAdapter` implementation.
+
+**In scope:** a before/after responsibility, native-resource, callback, and
+coordination inventory; one injected bounded native-call seam; named
+connectivity/interface projection, WLAN profile/scan/connect, and radio-query/
+transaction policies where independently testable; strict native buffer and
+identifier validation; callback-to-current-generation event projection;
+deterministic open/register/recovery, malformed native data, scan/connect
+completion, radio partial failure/rollback, late callback, and disposal cases;
+deletion of superseded cross-boundary mutable knowledge.
+
+**Out of scope:** changing the existing `IWindowsNetworkNativeAdapter` product
+contract without planner authority, new Wi-Fi/Bluetooth features, provider
+command/timer/state policy owned by DLV-035, undocumented Windows APIs, moving
+P/Invoke declarations merely to reduce file length, one class per native call,
+generic interop frameworks, or hardware-dependent acceptance evidence.
+
+**Acceptance criteria:** exactly one owner opens/closes the WLAN handle,
+registers/unregisters callbacks, owns the adapter generation, and publishes
+terminal disposal; extracted policies are value-based or consume a narrow
+injected native-call boundary and own no competing lifetime; one connectivity,
+profile/scan/connect, or radio rule can be tested without constructing the
+complete provider backend or using physical hardware; late callbacks and
+partial native failures cannot mutate or publish through a disposed/replaced
+adapter; native allocations/handles are released exactly once on every tested
+terminal path; the completion report quantifies responsibilities, handles,
+callbacks, locks, and cross-boundary mutable dependencies before and after.
+
+**Verification:** Tier 1 Windows Network native-adapter/provider Release suites
+with manually controlled native-call and callback fixtures, plus the smallest
+affected broker network-mapping group. No aggregate, live radio change, or
+unrelated widget suite.
+
+**Stop/escalate when:** meaningful separation requires a public contract or
+Windows-behavior change, duplicates WLAN/callback/disposal authority, cannot be
+proved without physical network mutation, or overlaps the preserved native
+platform worktree.
+
+### DLV-036 — Split Settings by page policy and privileged operations
+
+**State:** Ready after DLV-041
+**Baseline:** closing commit of DLV-041
+**Dependencies:** DLV-001 and DLV-041 only for queue order
 **Owner:** managed Settings widget internals and direct Settings fixtures
 
 **Objective:** Keep one widget lifecycle and committed settings state while
@@ -1206,7 +1259,7 @@ its own bounded assignment.
 
 **State:** Ready after DLV-040
 **Baseline:** closing commit of DLV-040
-**Dependencies:** DLV-031, DLV-032, DLV-037, DLV-029, and DLV-040 so active
+**Dependencies:** DLV-031, DLV-032, DLV-037, DLV-029, DLV-040, and DLV-041 so active
 production architecture work has already stabilized the affected suites
 **Owner:** managed test-only source organization and narrow reusable fixture
 support; no production, public SDK, protocol, native-host, or product behavior

@@ -1864,7 +1864,8 @@ keeping the contract-audit closure of EQ-009 out of the defect count.
 DLV-007/008 Spotify, accepted DLV-009/030 YT Music, accepted DLV-027 Games &
 Apps, and accepted DLV-028 Network Controls prove useful lifecycle,
 presentation, and responsibility boundaries. DLV-029 owns Audio Mixer after
-DLV-026 proves the current scroll defect's native/managed owner.**
+accepted DLV-032/DLV-034 integration while preserving the current focus graph;
+DLV-026 independently owns the shared reverse-scroll defect.**
 
 **Evidence.** Current primary files are approximately 2,496 lines for Audio
 Mixer, 1,241 for Network Controls after accepted DLV-028, 1,274 for Games &
@@ -1981,8 +1982,8 @@ structure is promoted as the public template.
 ### EQ-029 — P2 — Managed platform policy remains concentrated in central classes
 
 **Status: DLV-031, DLV-032, and DLV-034 are accepted and integrated. Remaining
-concentration has bounded delivery coverage in DLV-029, DLV-035, DLV-036,
-DLV-037, DLV-039, and DLV-040. Existing EQ-020 remains the authoritative
+concentration has bounded delivery coverage in DLV-029, DLV-035, DLV-041,
+DLV-036, DLV-037, DLV-039, and DLV-040. Existing EQ-020 remains the authoritative
 liveness finding; EQ-022 records the accepted scheduling boundary.**
 
 **Evidence.** Before accepted DLV-031, `PlatformCapabilityBroker` spanned about
@@ -2002,6 +2003,18 @@ not because it contains one comparable monolith.
 class owns configuration, OAuth/PKCE callbacks, token refresh/vault state,
 retry/rate-limit policy, playback/devices/queue/playlists, local-player transfer,
 response parsing, validation, and broker mapping.
+
+The 1,297-line `WindowsNetworkNativeAdapter.cs` is also one roughly 1,180-line
+production owner rather than only an interop declarations file. It combines
+WLAN handle and callback lifetime, registration recovery, IP/connectivity
+projection, saved-profile and available-network queries, scan/connect
+operations, Wi-Fi radio transactions, native decoding/mapping, generation-
+filtered event publication, and disposal. DLV-035 deliberately keeps that
+adapter behind its existing interface while separating provider owner-thread,
+command, timeout, reconciliation, and event policy. DLV-041 now dispositions
+the residual native-adapter hotspot with one retained handle/callback/disposal
+authority and injected deterministic interop seams; moving P/Invoke declarations
+or naming one wrapper per native call will not count as closure.
 
 Accepted DLV-031 (`ffa1edc`, integrated by `27adec1`) reduces the broker
 authority type from 2,377 physical lines/117,433 bytes to 837 lines/36,377 bytes.
@@ -2057,7 +2070,10 @@ reflection dispatch, a service locator, a generic mediator, or one base class
 per capability. DLV-034 separates Spotify provider session/transport/domain
 policy only after DLV-023 identifies the failure owner. Reassess
 `WidgetProcessClient` after those boundaries and the native asynchronous-client
-work land; do not schedule a cosmetic split from its line count.
+work land; do not schedule a cosmetic split from its line count. Keep DLV-035's
+provider policy split separate from DLV-041's native-resource split so neither
+creates a second owner thread, WLAN handle, callback registration, committed
+provider state, or disposal authority.
 
 **Resolution evidence.** A developer can add or change one capability through
 one named domain policy plus the explicit authorized route, and can change one
@@ -3805,7 +3821,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Bridge scheduling | Accepted DLV-032 (`8c11a27` plus `9abdc6b`, integrated through `a92378a`) gives one typed dispatcher duplicate-ID, global-bound, per-widget FIFO, fatal-cancellation, cleanup, and two-second drain ownership. Deadline-expired work releases IDs/tails/slots but remains observed in quarantine; final Bridge passes 52/52 after retaining and correcting a predecessor-failure regression | Scheduling is closed. The shipping native client still cannot pipeline; DLV-033 owns its later asynchronous read/correlation boundary. The retained 1,312-line server's client/catalog/residency and diagnostics/recovery responsibilities are explicitly assigned to DLV-039 and DLV-040 |
 | Managed capability broker | Accepted DLV-031 (`ffa1edc`, integrated by `27adec1`) reduces the broker authority owner from 2,377 lines to 837 while retaining singular identity, consent, lifecycle, lease, gesture, subscription, revocation, and event-sequence authority. Seven typed internal domain routes own value-based decoding, validation, backend execution, and projection | Retain the focused authority/domain tests as new capabilities arrive; do not reintroduce distant validators, a generic mediator, or public-protocol churn |
 | Spotify platform provider | Accepted DLV-034 (`a5c80ac` plus `344ab48`, integrated through `a92378a`) reduces the singular identity/OAuth/vault/token/local-player owner from 1,724 lines to 1,032 and extracts endpoint, retry/rate-limit, and strict parsing seams. Provider 34/34 directly covers late canceled refresh non-publication and Disconnect session isolation; no second authority or public protocol appears | **Cohesive exception at the accepted boundary:** the retained owner exclusively holds package identity, OAuth/PKCE, vault/token-session replacement, local-player lifecycle, and provider-event authority. Preserve those singular responsibilities and reopen decomposition if another independently testable policy or material growth enters that owner. Live-account behavior remains manual evidence |
-| Windows network provider | `WindowsNetworkPlatformBackend` is roughly 1,186 lines and combines an owner thread/command queue, scan and connection timers, committed provider state, reconciliation, equality policy, and three event pumps | DLV-035 follows the broker split and preserves one owner thread/state while extracting directly testable command, timeout, reconciliation, and event-projection policy; the separate 1,297-line native-adapter file is an interop aggregation review signal, not an automatic file-splitting target |
+| Windows network provider | `WindowsNetworkPlatformBackend` is roughly 1,186 lines and combines an owner thread/command queue, scan and connection timers, committed provider state, reconciliation, equality policy, and three event pumps. Its separate 1,297-line native-adapter file contains one roughly 1,180-line owner spanning WLAN handle/callback lifetime, connectivity projection, profile/scan/connect operations, radio transactions, native mapping, and disposal | DLV-035 preserves one provider owner thread/state while extracting directly testable command, timeout, reconciliation, and event-projection policy. DLV-041 then preserves one native handle/callback/disposal authority while extracting deterministic connectivity, WLAN operation, and radio transaction seams. Neither assignment accepts cosmetic P/Invoke movement or one wrapper per native call |
 | Settings widget | The roughly 1,090-line widget combines lifecycle/action orchestration, six page renderers, preference persistence, diagnostics, and exact-token authority-recovery selection/actions | DLV-036 separates snapshot-only page/navigation policy, ordinary preference persistence, and privileged diagnostic/recovery policy while retaining one lifecycle and committed-state owner |
 | Managed worker client | The roughly 1,027-line `WidgetProcessClient` combines worker process and pipe/session lifecycle, request correlation, content/companion leases, failure cleanup, and dashboard-gesture reservation/expiry | DLV-037 follows DLV-032 and gives transport/session, pending requests, leases, and gesture policy named singular owners without changing protocol or authority |
 | Responsive/controller UI | DLV-003 (`27b0319`, integrated by `703c5bb`) owns the narrow Button placement slice. DLV-005 (`3fc3770`, integrated by `aaf36d9`) adds one host-owned 700 ms tray-Y recognizer. DLV-020 (`b0c95ca`, integrated by `7cda335`) retains one admitted visual-only surface through destination startup, but its static production-HWND evidence did not predict real temporal behavior. DLV-025 then measured real populated first paints near 31 ms, six successful Spotify paints over 674 ms for 14 inputs, and five consecutive corrected captures with an exposed dark band. Removing repeated HWND interpolation was insufficient: resizing the current Direct2D HWND target exposes undefined content before successful draw, and a later `DwmFlush` cannot undo already composed frames | DLV-025 is blocked at its documented new-compositor stop condition. Resume only after a bounded user-authorized offscreen atomic-present or DirectComposition/swap-chain design. DLV-021 then owns shared component geometry; DLV-026 owns Audio Mixer reverse scrolling; DLV-006 plus DLV-022 own continuous list/focus composition. |
@@ -3896,9 +3912,10 @@ below.
    Audio Mixer; accepted DLV-031 owns the managed capability broker;
    DLV-032 bridge scheduling;
    DLV-033 native widget-session ownership; DLV-034 the Spotify provider;
-   DLV-035 the Windows network backend; DLV-036 Settings; and DLV-037 the
-   managed worker client. DLV-039 and DLV-040 then separate residual bridge
-   client/residency and diagnostics/recovery ownership.
+   DLV-035 the Windows network backend; DLV-041 its native interop owner;
+   DLV-036 Settings; and DLV-037 the managed worker client. DLV-039 and DLV-040
+   then separate residual bridge client/residency and diagnostics/recovery
+   ownership.
    DLV-038 then pilots responsibility-based organization for the largest managed
    test harnesses without delaying the production train. Each milestone must
    reduce shared mutable knowledge or expose a focused policy seam—cosmetic files
