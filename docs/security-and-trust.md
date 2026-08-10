@@ -159,19 +159,25 @@ planned. A structurally valid package is not necessarily trustworthy.
   constructor, and returns path-free errors for rejected assembly/type cases.
   The assembly is loaded inside its already-contained worker, never into the
   native host or bridge.
-- Exact package DACL changes use one host-owned cross-process write-ahead
-  journal. Schema 2 persists the Windows volume/file identity beside every
-  original DACL. The protected journal is flushed before the first mutation and
-  is unreadable and unwritable from a production AppContainer token. DACL work
+- Exact package DACL changes use one host-owned cross-process mutation lock and
+  profile-keyed write-ahead records. Schema 3 adds a unique confirmation token
+  and persists the Windows volume/file identity beside every original DACL;
+  legacy schema-2 global records remain recoverable by their recorded owner. A flushed temporary record is atomically
+  published before the first mutation, so an interrupted write cannot become a
+  partially committed transaction. The protected journal is unreadable and
+  unwritable from a production AppContainer token. DACL work
   uses one non-reparse handle per captured target; later recovery must reopen
-  the same identity before restoring it. Broad `ALL APPLICATION PACKAGES` and
-  `ALL RESTRICTED APPLICATION PACKAGES` read/execute grants fail before
-  mutation. Corrupt, unknown, reparse-shaped, unavailable, or identity-mismatched
+  the same identity before restoring it. Read/execute grants for any different
+  AppContainer package SID fail before mutation. Disjoint quarantined profiles
+  may continue, while equal, nested, or same-object authority targets remain
+  serialized and blocked. Corrupt, unknown, reparse-shaped, unavailable, or identity-mismatched
   journal state fails closed before process launch. The catalog captures object
   identities from its pinned session handles, the bridge carries them with each
   typed authority target, and runtime rejects a different object before journal
-  publication or DACL mutation. There is not yet a controller-accessible
-  privileged repair surface, and ancestor traversal is not yet handle-relative.
+  publication or DACL mutation. A host-only service provides bounded sanitized
+  inspection and exact-token verified retry without a raw clear operation;
+  there is not yet a controller-accessible route, and ancestor traversal is not
+  yet handle-relative.
 
 ## Not yet a production guarantee
 
@@ -191,8 +197,8 @@ The following are **not implemented as a complete public security boundary**:
 - a general OAuth/account broker, readable credential API, or internet/LAN
   authority beyond the narrow implemented local-companion services;
 - automatic update discovery/review, version removal, or crash-quarantine UI;
-- handle-relative catalog-root traversal and a privileged authority-journal
-  inspection/repair UI;
+- handle-relative catalog-root traversal and an authenticated Settings/CLI
+  route to the host-only authority-journal inspection/retry service;
 - a graphical/file-picker installer and safe automatic updates;
 - universal anti-cheat or controller-containment compatibility.
 

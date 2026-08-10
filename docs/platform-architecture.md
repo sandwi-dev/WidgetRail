@@ -156,19 +156,22 @@ is verified. A reported failure restores and verifies all attempted targets in
 reverse, including the target whose write failed; complete rollback clears the
 record and returns a stable retryable admission failure.
 
-Process termination between any two mutations leaves the write-ahead record.
-Before any later community start, regardless of profile, the next lock owner
-reopens each target without following its final reparse point, requires the
-recorded volume/file identity, and restores and verifies every recorded DACL or
-fails closed with the record still pending. Corrupt, unknown-version,
+Process termination between any two mutations leaves a profile-keyed
+schema-3 write-ahead record. The root-wide lock still serializes every mutation. A later
+start for that profile reopens each target without following its final reparse
+point, requires the recorded volume/file identity, and restores and verifies
+every recorded DACL or fails closed with the record still pending. A disjoint
+profile may continue, but publication scans every other bounded record and
+refuses equal, nested, or same-object targets. Corrupt, unknown-version,
 reparse-shaped, unwritable, or unflushable
 journal state fails before mutation. The profile being controlled cannot read
 or write the journal root; this is verified with a real AppContainer token. No
 pipe or worker process is created on any journal, apply, rollback, or recovery
 failure.
 
-The runtime also rejects pre-existing read/execute grants for `ALL APPLICATION
-PACKAGES` or `ALL RESTRICTED APPLICATION PACKAGES` before journal publication.
+The runtime also rejects pre-existing read/execute grants for any different
+AppContainer package SID, including `ALL APPLICATION PACKAGES` and
+`ALL RESTRICTED APPLICATION PACKAGES`, before journal publication.
 The catalog records the Windows volume/file identity from every directory and
 file handle that pins the verified session content. The bridge transports one
 bounded typed target list containing path, authority role, and identity; runtime
@@ -178,8 +181,10 @@ handles must match that evidence before journal publication or DACL mutation.
 This closes pathname replacement between catalog capture and runtime authority
 capture without persisting volatile file IDs in catalog state. Absolute-path
 opens still rely on separately checked ancestors rather than handle-relative
-component traversal, and a user-facing privileged recovery/repair surface also
-remains open. The lease is released only after
+component traversal. A host-only service can list bounded sanitized
+profile/token/count metadata and retry exact verified restoration; it exposes
+no clear or caller-selected path operation. An authenticated user-facing route
+to that service remains open. The lease is released only after
 the pipe, process, and Job are detached, and every
 crash, restart, intentional unload, disable, or shutdown must reacquire it. Exact
 ACL application and the subsequent handshake do not yet share that five-second

@@ -270,23 +270,27 @@ DACL is verified. A reported failure restores and
 verifies targets in reverse order including the failing target; a complete
 restore clears the record and reports a stable retryable admission failure.
 
-If the host terminates during mutation or a restore remains incomplete, the
-write-ahead record survives. Before any later community worker starts, the next
-host reopens every path without following the final reparse point, requires the
+If the host terminates during mutation or a restore remains incomplete, its
+profile-keyed schema-3 write-ahead record survives. Legacy schema-2 global
+records remain recoverable by their recorded profile owner. The next start for that generation
+reopens every path without following the final reparse point, requires the
 recorded volume/file identity, and recovers and verifies that transaction or
-refuses launch with the record still pending. Invalid, reparse-shaped,
+refuses launch with the record still pending. Disjoint profiles can continue;
+equal, nested, or same-object authority remains blocked under the shared
+mutation lock. Invalid, reparse-shaped,
 unwritable, or unflushable journal state
 fails before mutation. A production AppContainer-token fixture proves the
 sandboxed profile cannot read or overwrite this host journal. Pre-existing
-read/execute grants for `ALL APPLICATION PACKAGES` or `ALL RESTRICTED
-APPLICATION PACKAGES` also fail before journal publication. The catalog reads
+read/execute grants for any different AppContainer package SID also fail before
+journal publication. The catalog reads
 Windows volume/file identities from the same handles that pin verified
 directories and files, and the bridge carries a single bounded typed target
 sequence into runtime. Runtime authority handles must match those identities
 before the pending record or any DACL mutation. This evidence is session-local,
 not persisted installation metadata. Ancestor path components are still checked
-by pathname rather than opened handle-relative, and a user-facing privileged
-repair surface remains open.
+by pathname rather than opened handle-relative. A host-only service can inspect
+sanitized recovery tokens and retry exact verified restoration, but its
+authenticated Settings/CLI surface remains open.
 
 The runtime separately
 grants the generic worker executable, supplies a stripped environment, and

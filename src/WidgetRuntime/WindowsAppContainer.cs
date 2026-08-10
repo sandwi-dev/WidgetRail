@@ -85,6 +85,23 @@ internal sealed class WindowsAppContainer : IDisposable
         }
     }
 
+    internal static WindowsAppContainer OpenExistingProfile(string profileName)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("AppContainer recovery requires Windows.");
+        if (!IsProfileName(profileName))
+            throw new ArgumentException("AppContainer profile name is invalid.", nameof(profileName));
+        var result = NativeMethods.DeriveAppContainerSidFromAppContainerName(
+            profileName, out var sid);
+        if (result < 0 || sid.IsInvalid)
+        {
+            sid?.Dispose();
+            throw new Win32Exception(
+                result, "Could not resolve the community-worker AppContainer profile.");
+        }
+        return new WindowsAppContainer(sid, profileName);
+    }
+
     public void GrantReadAndExecute(IEnumerable<string> paths)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -143,8 +160,15 @@ internal sealed class WindowsAppContainer : IDisposable
             {
                 try
                 {
+                    using var recoveryContainer = string.Equals(
+                            pending.ProfileName, _profileName, StringComparison.Ordinal)
+                        ? null
+                        : OpenExistingProfile(pending.ProfileName);
+                    using var recoveryOperations = recoveryContainer?
+                        .CreateAuthorityOperationsForTesting();
                     AppContainerAuthorityTransaction.Recover(
-                        pending, authorityOperations);
+                        pending.Snapshots,
+                        recoveryOperations ?? authorityOperations);
                     journalLease.ClearPending();
                 }
                 catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -269,9 +293,15 @@ internal sealed class WindowsAppContainer : IDisposable
         _sid.Dispose();
     }
 
-    private static string ProfileNameFor(string isolationKey) =>
+    internal static string ProfileNameFor(string isolationKey) =>
         ProfilePrefix + Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(isolationKey)).AsSpan(0, 16));
+
+    private static bool IsProfileName(string value) =>
+        value.Length == ProfilePrefix.Length + 32 &&
+        value.StartsWith(ProfilePrefix, StringComparison.Ordinal) &&
+        value.AsSpan(ProfilePrefix.Length).ToString().All(character =>
+            character is >= '0' and <= '9' or >= 'A' and <= 'F');
 
     internal IAppContainerAuthorityOperations CreateAuthorityOperationsForTesting()
     {
@@ -306,10 +336,6 @@ internal sealed class WindowsAppContainer : IDisposable
     private sealed class WindowsAuthorityOperations(SecurityIdentifier identity)
         : IAppContainerAuthorityOperations
     {
-        private static readonly SecurityIdentifier AllApplicationPackages =
-            new("S-1-15-2-1");
-        private static readonly SecurityIdentifier AllRestrictedApplicationPackages =
-            new("S-1-15-2-2");
         private readonly Dictionary<AppContainerAuthorityTarget, SafeFileHandle> _handles = [];
         private bool _disposed;
 
@@ -565,7 +591,7 @@ internal sealed class WindowsAppContainer : IDisposable
             }
         }
 
-        private static void RejectAlternateAppContainerAuthority(
+        private void RejectAlternateAppContainerAuthority(
             AppContainerAuthorityTarget target,
             string descriptor)
         {
@@ -579,12 +605,13 @@ internal sealed class WindowsAppContainer : IDisposable
                 .Cast<FileSystemAccessRule>();
             if (grants.Any(rule =>
                     rule.AccessControlType == AccessControlType.Allow &&
-                    (AllApplicationPackages.Equals(rule.IdentityReference) ||
-                     AllRestrictedApplicationPackages.Equals(rule.IdentityReference)) &&
+                    rule.IdentityReference is SecurityIdentifier sid &&
+                    !identity.Equals(sid) &&
+                    sid.Value.StartsWith("S-1-15-2-", StringComparison.Ordinal) &&
                     (rule.FileSystemRights & FileSystemRights.ReadAndExecute) != 0))
             {
                 throw new IOException(
-                    "An AppContainer content-authority target grants broad application-package access.");
+                    "An AppContainer content-authority target grants alternate application-package access.");
             }
         }
 

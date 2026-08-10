@@ -44,10 +44,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Incomplete content authority rollback recovers before the next launch", ContentAuthorityRollbackRecoversGeneration),
     ("Content authority journal failures happen before ACL mutation", ContentAuthorityJournalFailsBeforeMutation),
     ("Host authority journal rejects corrupt and hostile entries", ContentAuthorityJournalRejectsUnsafeState),
+    ("Profile authority quarantine permits disjoint worker recovery", ProfileQuarantinePermitsDisjointWorker),
+    ("Profile authority quarantine rejects overlapping worker targets", ProfileQuarantineRejectsOverlap),
+    ("Authority recovery retries exact state and rejects stale confirmation", AuthorityRecoveryIsExact),
+    ("Legacy authority recovery uses the recorded profile owner", LegacyAuthorityRecoveryUsesOwner),
     ("Host authority journal recovers real DACLs after process termination", AuthorityJournalRecoversAfterHostTermination),
     ("Handle-bound authority cannot be redirected by path replacement", AuthorityHandlesResistPathReplacement),
     ("Pending authority recovery rejects changed object identity", AuthorityRecoveryRejectsIdentityChange),
-    ("Broad AppContainer group authority fails before mutation", AlternateAppContainerAuthorityFailsClosed),
+    ("Alternate AppContainer package authority fails before mutation", AlternateAppContainerAuthorityFailsClosed),
     ("Content leases require exact object identity evidence", ContentLeaseRequiresObjectIdentity),
     ("Catalog identity mismatch rejects before authority mutation", ContentLeaseIdentityMismatchFailsClosed),
     ("Verified content leases follow exact worker sessions", ContentLeaseFollowsSession),
@@ -553,9 +557,12 @@ static Task ContentAuthorityJournalRejectsUnsafeState()
     }
     using (var lease = journal.Acquire(
                $"GameBarAlternative.Widget.{Guid.NewGuid():N}"))
-        Assert.SequenceEqual(new[] { snapshot }, lease.ReadPending()!);
+        Assert.True(lease.ReadPending() is null,
+            "A disjoint profile observed another profile's pending transaction.");
+    using (var lease = journal.Acquire(profile))
+        Assert.SequenceEqual(new[] { snapshot }, lease.ReadPending()!.Snapshots);
 
-    var pendingPath = Path.Combine(journal.RootPath, ".authority.pending.json");
+    var pendingPath = Path.Combine(journal.RootPath, "pending", profile + ".json");
     var validDocument = File.ReadAllText(pendingPath);
     File.WriteAllText(
         pendingPath,
@@ -615,6 +622,171 @@ static Task ContentAuthorityJournalRejectsUnsafeState()
     return Task.CompletedTask;
 }
 
+static async Task ProfileQuarantinePermitsDisjointWorker()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var first = new TemporaryDirectory();
+    using var second = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var firstFile = Path.Combine(first.Path, "verified.txt");
+    var secondFile = Path.Combine(second.Path, "verified.txt");
+    await File.WriteAllTextAsync(firstFile, "first");
+    await File.WriteAllTextAsync(secondFile, "second");
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(controlPlane.Path, "journal"));
+    var firstProfile = WindowsAppContainer.ProfileNameFor(
+        $"runtime-profile-first-{Guid.NewGuid():N}");
+    var firstSnapshots = TestFileObjectIdentity.Targets(
+            first.Path, [first.Path], [firstFile])
+        .Select(expected => new AppContainerAuthoritySnapshot(
+            expected.Target, "D:", expected.ObjectIdentity))
+        .ToArray();
+    using (var lease = journal.Acquire(firstProfile))
+        lease.WritePending(firstSnapshots);
+
+    var secondKey = $"runtime-profile-second-{Guid.NewGuid():N}";
+    using var secondContainer = WindowsAppContainer.OpenOrCreate(secondKey);
+    var operations = new TestAuthorityOperations();
+    secondContainer.ReplaceReadAndExecuteGrant(
+        TestFileObjectIdentity.Targets(
+            second.Path, [second.Path], [secondFile]),
+        operations,
+        journal);
+    Assert.Equal(2, operations.ApplyCount);
+    var pending = journal.ListPending();
+    Assert.Equal(1, pending.Count);
+    Assert.Equal(firstProfile, pending[0].ProfileName);
+}
+
+static async Task ProfileQuarantineRejectsOverlap()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var package = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var verified = Path.Combine(package.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(controlPlane.Path, "journal"));
+    var targets = TestFileObjectIdentity.Targets(
+        package.Path, [package.Path], [verified]);
+    var firstProfile = WindowsAppContainer.ProfileNameFor(
+        $"runtime-overlap-first-{Guid.NewGuid():N}");
+    using (var lease = journal.Acquire(firstProfile))
+        lease.WritePending(targets.Select(expected => new AppContainerAuthoritySnapshot(
+            expected.Target, "D:", expected.ObjectIdentity)).ToArray());
+
+    using var secondContainer = WindowsAppContainer.OpenOrCreate(
+        $"runtime-overlap-second-{Guid.NewGuid():N}");
+    var operations = new TestAuthorityOperations();
+    var failure = Assert.Throws<WidgetProcessAdmissionException>(() =>
+        secondContainer.ReplaceReadAndExecuteGrant(targets, operations, journal));
+    Assert.Equal("Worker content authority journal is unavailable.", failure.Message);
+    Assert.Equal(0, operations.ApplyCount);
+    Assert.Equal(1, journal.ListPending().Count);
+}
+
+static async Task AuthorityRecoveryIsExact()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var package = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var verified = Path.Combine(package.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var isolationKey = $"runtime-repair-{Guid.NewGuid():N}";
+    var profile = WindowsAppContainer.ProfileNameFor(isolationKey);
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(controlPlane.Path, "journal"));
+    using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
+    var targets = TestFileObjectIdentity.Targets(
+            package.Path, [package.Path], [verified])
+        .Select(expected => expected.Target)
+        .ToArray();
+    IReadOnlyList<AppContainerAuthoritySnapshot> originals;
+    using (var operations = container.CreateAuthorityOperationsForTesting())
+    {
+        originals = AppContainerAuthorityTransaction.Capture(targets, operations);
+        using (var lease = journal.Acquire(profile)) lease.WritePending(originals);
+        AppContainerAuthorityTransaction.Apply(originals, operations);
+    }
+
+    var service = new AppContainerAuthorityRecoveryService(journal);
+    var candidate = service.ListPending().Single();
+    Assert.Equal(profile, candidate.ProfileName);
+    Assert.Equal(originals.Count, candidate.TargetCount);
+    Assert.True(!candidate.IsLegacy, "New recovery state was mislabeled as legacy.");
+    Assert.True(!candidate.ToString().Contains(package.Path, StringComparison.OrdinalIgnoreCase),
+        "Sanitized recovery metadata leaked an authority path.");
+    service.Retry(candidate.ConfirmationToken);
+    Assert.Equal(0, service.ListPending().Count);
+    using (var operations = container.CreateAuthorityOperationsForTesting())
+    {
+        foreach (var original in originals)
+            Assert.Equal(
+                original.AccessDescriptor,
+                operations.Capture(original.Target).AccessDescriptor);
+    }
+    var stale = Assert.Throws<AppContainerAuthorityRecoveryException>(() =>
+        service.Retry(candidate.ConfirmationToken));
+    Assert.Equal("stale_confirmation", stale.Code);
+}
+
+static async Task LegacyAuthorityRecoveryUsesOwner()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var first = new TemporaryDirectory();
+    using var second = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var firstFile = Path.Combine(first.Path, "verified.txt");
+    var secondFile = Path.Combine(second.Path, "verified.txt");
+    await File.WriteAllTextAsync(firstFile, "first");
+    await File.WriteAllTextAsync(secondFile, "second");
+    var firstKey = $"runtime-legacy-first-{Guid.NewGuid():N}";
+    var firstProfile = WindowsAppContainer.ProfileNameFor(firstKey);
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(controlPlane.Path, "journal"));
+    using var firstContainer = WindowsAppContainer.OpenOrCreate(firstKey);
+    var firstTargets = TestFileObjectIdentity.Targets(
+            first.Path, [first.Path], [firstFile])
+        .Select(expected => expected.Target)
+        .ToArray();
+    IReadOnlyList<AppContainerAuthoritySnapshot> originals;
+    string transactionId;
+    using (var operations = firstContainer.CreateAuthorityOperationsForTesting())
+    {
+        originals = AppContainerAuthorityTransaction.Capture(firstTargets, operations);
+        using (var lease = journal.Acquire(firstProfile))
+        {
+            lease.WritePending(originals);
+            transactionId = lease.ReadPending()!.ConfirmationToken;
+        }
+        AppContainerAuthorityTransaction.Apply(originals, operations);
+    }
+    var profilePath = Path.Combine(
+        journal.RootPath, "pending", firstProfile + ".json");
+    var legacyPath = Path.Combine(journal.RootPath, ".authority.pending.json");
+    var legacyDocument = File.ReadAllText(profilePath)
+        .Replace("\"Version\":3", "\"Version\":2", StringComparison.Ordinal)
+        .Replace(
+            $",\"TransactionId\":\"{transactionId}\"",
+            string.Empty,
+            StringComparison.Ordinal);
+    File.WriteAllText(legacyPath, legacyDocument);
+    File.Delete(profilePath);
+
+    using var secondContainer = WindowsAppContainer.OpenOrCreate(
+        $"runtime-legacy-second-{Guid.NewGuid():N}");
+    secondContainer.ReplaceReadAndExecuteGrant(
+        TestFileObjectIdentity.Targets(
+            second.Path, [second.Path], [secondFile]),
+        journal: journal);
+    Assert.Equal(0, journal.ListPending().Count);
+    using var verification = firstContainer.CreateAuthorityOperationsForTesting();
+    foreach (var original in originals)
+        Assert.Equal(
+            original.AccessDescriptor,
+            verification.Capture(original.Target).AccessDescriptor);
+}
+
 static async Task AuthorityJournalRecoversAfterHostTermination()
 {
     if (!OperatingSystem.IsWindows()) return;
@@ -623,7 +795,7 @@ static async Task AuthorityJournalRecoversAfterHostTermination()
     var verified = Path.Combine(package.Path, "verified.txt");
     await File.WriteAllTextAsync(verified, "verified");
     var isolationKey = $"runtime-content-crash-{Guid.NewGuid():N}";
-    var profile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    var profile = WindowsAppContainer.ProfileNameFor(isolationKey);
     var journalRoot = Path.Combine(controlPlane.Path, "journal");
     var journal = new FileAppContainerAuthorityJournal(journalRoot);
     using (journal.Acquire(profile)) { }
@@ -678,7 +850,7 @@ static async Task AuthorityJournalRecoversAfterHostTermination()
         var pending = lease.ReadPending();
         Assert.True(pending is not null,
             "Process termination left no durable pending authority record.");
-        AppContainerAuthorityTransaction.Recover(pending!, recoveryOperations);
+        AppContainerAuthorityTransaction.Recover(pending!.Snapshots, recoveryOperations);
         lease.ClearPending();
     }
     foreach (var original in originals)
@@ -762,7 +934,7 @@ static Task AuthorityRecoveryRejectsIdentityChange()
     using (var operations = container.CreateAuthorityOperationsForTesting())
         snapshot = operations.Capture(target);
 
-    var profile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    var profile = WindowsAppContainer.ProfileNameFor(isolationKey);
     var journal = new FileAppContainerAuthorityJournal(
         Path.Combine(controlPlane.Path, "journal"));
     using (var lease = journal.Acquire(profile)) lease.WritePending([snapshot]);
@@ -803,40 +975,45 @@ static async Task AlternateAppContainerAuthorityFailsClosed()
     var directory = new DirectoryInfo(package.Path);
     var original = directory.GetAccessControl(AccessControlSections.Access)
         .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
-    var modified = new DirectorySecurity();
-    modified.SetSecurityDescriptorSddlForm(original, AccessControlSections.Access);
-    modified.AddAccessRule(new FileSystemAccessRule(
-        new SecurityIdentifier("S-1-15-2-1"),
-        FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
-        InheritanceFlags.None,
-        PropagationFlags.None,
-        AccessControlType.Allow));
-    directory.SetAccessControl(modified);
-    var released = 0;
-    var journal = new FileAppContainerAuthorityJournal(
-        Path.Combine(controlPlane.Path, "journal"));
+    using var alternate = WindowsAppContainer.OpenOrCreate(
+        $"runtime-content-alternate-owner-{Guid.NewGuid():N}");
     try
     {
-        await using var client = CreateClient(
-            contentLeaseFactory: _ => new TestContentLease(
-                package.Path,
-                [package.Path],
-                [verified],
-                () => Interlocked.Increment(ref released)),
-            contentIsolationKey:
-                $"runtime-content-alternate-authority-{Guid.NewGuid():N}",
-            contentAuthorityJournal: journal);
-        var failure = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
-            () => client.GetSnapshotAsync());
-        Assert.Equal("Worker content authority could not be established.", failure.Message);
-        Assert.True(failure.InnerException is IOException,
-            "Alternate AppContainer authority lost its host diagnostic cause.");
-        Assert.Equal(0, client.Starts);
-        Assert.Equal(1, released);
-        using var lease = journal.Acquire(
-            $"GameBarAlternative.Widget.{Guid.NewGuid():N}");
-        Assert.True(lease.ReadPending() is null,
-            "Alternate authority failure wrote a pending mutation record.");
+        foreach (var sid in new[] { "S-1-15-2-1", "S-1-15-2-2", alternate.Sid })
+        {
+            var modified = new DirectorySecurity();
+            modified.SetSecurityDescriptorSddlForm(original, AccessControlSections.Access);
+            modified.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(sid),
+                FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+                InheritanceFlags.None,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+            directory.SetAccessControl(modified);
+            var released = 0;
+            var journal = new FileAppContainerAuthorityJournal(
+                Path.Combine(controlPlane.Path, Guid.NewGuid().ToString("N")));
+            await using var client = CreateClient(
+                contentLeaseFactory: _ => new TestContentLease(
+                    package.Path,
+                    [package.Path],
+                    [verified],
+                    () => Interlocked.Increment(ref released)),
+                contentIsolationKey:
+                    $"runtime-content-alternate-authority-{Guid.NewGuid():N}",
+                contentAuthorityJournal: journal);
+            var failure = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+                () => client.GetSnapshotAsync());
+            Assert.Equal("Worker content authority could not be established.", failure.Message);
+            Assert.True(failure.InnerException is IOException,
+                "Alternate AppContainer authority lost its host diagnostic cause.");
+            Assert.Equal(0, client.Starts);
+            Assert.Equal(1, released);
+            using var lease = journal.Acquire(
+                $"GameBarAlternative.Widget.{Guid.NewGuid():N}");
+            Assert.True(lease.ReadPending() is null,
+                "Alternate authority failure wrote a pending mutation record.");
+        }
     }
     finally
     {
@@ -3186,28 +3363,33 @@ file sealed class TestAuthorityJournal(bool failWrite = false)
     : IAppContainerAuthorityJournal
 {
     private readonly bool _failWrite = failWrite;
+    private readonly Dictionary<string, AppContainerAuthorityPendingTransaction> _pending =
+        new(StringComparer.Ordinal);
     private int _held;
 
-    public IReadOnlyList<AppContainerAuthoritySnapshot>? Pending { get; private set; }
+    public IReadOnlyList<AppContainerAuthoritySnapshot>? Pending =>
+        _pending.Count == 0 ? null : _pending.Values.Single().Snapshots;
 
     public IAppContainerAuthorityJournalLease Acquire(string profileName)
     {
         if (Interlocked.Exchange(ref _held, 1) != 0)
             throw new AppContainerAuthorityJournalException(
                 "The test authority journal is already held.");
-        return new Lease(this);
+        return new Lease(this, profileName);
     }
 
-    private sealed class Lease(TestAuthorityJournal owner)
+    private sealed class Lease(TestAuthorityJournal owner, string profileName)
         : IAppContainerAuthorityJournalLease
     {
         private TestAuthorityJournal? _owner = owner;
 
-        public IReadOnlyList<AppContainerAuthoritySnapshot>? ReadPending() =>
-            _owner?.Pending?.ToArray()
-            ?? (_owner is null
-                ? throw new ObjectDisposedException(nameof(Lease))
-                : null);
+        public AppContainerAuthorityPendingTransaction? ReadPending()
+        {
+            var current = _owner ?? throw new ObjectDisposedException(nameof(Lease));
+            return current._pending.TryGetValue(profileName, out var pending)
+                ? pending with { Snapshots = pending.Snapshots.ToArray() }
+                : null;
+        }
 
         public void WritePending(IReadOnlyList<AppContainerAuthoritySnapshot> snapshots)
         {
@@ -3215,13 +3397,14 @@ file sealed class TestAuthorityJournal(bool failWrite = false)
             if (current._failWrite)
                 throw new AppContainerAuthorityJournalException(
                     "The test journal rejected its pending record.");
-            current.Pending = snapshots.ToArray();
+            current._pending[profileName] = new AppContainerAuthorityPendingTransaction(
+                new string('A', 64), profileName, snapshots.ToArray(), IsLegacy: false);
         }
 
         public void ClearPending()
         {
             var current = _owner ?? throw new ObjectDisposedException(nameof(Lease));
-            current.Pending = null;
+            current._pending.Remove(profileName);
         }
 
         public void Dispose()

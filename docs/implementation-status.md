@@ -781,23 +781,28 @@ community AppContainer authority, exact grant replacement, content-generation
 isolation, trusted-runtime/content-root overlap refusal, caller-preserving
 content-admission cancellation, timeouts and session release, bounded intentional
 unload, and private two-clock dashboard-gesture propagation. Its focused Release
-harness passes 60/60. The authority fixtures prove reverse restoration of every
+harness passes 64/64. The authority fixtures prove reverse restoration of every
 attempted root/directory/file DACL including the failing target, retry without
 quarantine after a complete rollback, pre-mutation refusal when journal
 publication fails, cross-profile lock ownership, corrupt/hostile-entry refusal,
-and recovery after an incomplete rollback. A bounded child process terminates
+and recovery after an incomplete rollback. Profile-keyed records let a disjoint
+generation proceed while equal, nested, or same-object targets remain blocked;
+legacy global records recover with their recorded profile owner. The host-only
+recovery service lists only confirmation token/profile/count metadata, clears
+only after exact verified restoration, and rejects stale confirmation. A
+bounded child process terminates
 immediately after the second real DACL mutation; the next host restores and
 exactly verifies all original DACLs from the pending record before clearing it.
 The production AppContainer probe also proves the sandbox cannot read or write
 the protected host journal. Additional fixtures rename and replace a captured
 file, prove handle-bound apply changes only the original object, reject a
 different volume/file identity during fresh-host recovery without touching the
-replacement or clearing the journal, and refuse broad AppContainer-group
-authority before mutation. All failure paths reject before process launch and
-release the content lease. New cases reject missing, malformed, duplicate, and
+replacement or clearing the journal, and refuse any different AppContainer
+package SID authority before mutation. All failure paths reject before process
+launch and release the content lease. New cases reject missing, malformed, duplicate, and
 byte-identical replacement identity evidence before authority capture or journal
 publication, while releasing both residency and content leases. The bounded
-512-file exact-grant fixture completes in 426.742 ms in the current focused Release run;
+512-file exact-grant fixture completes in 471.257 ms in the current focused Release run;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
@@ -1108,16 +1113,21 @@ with C++ installed:
   pre-admission insertions fail before launch; later insertions do not receive
   worker authority. Each verified content generation receives a distinct
   AppContainer identity, so a later version cannot inherit an older root grant.
-  Content DACL updates use one host-only, cross-process schema-2 write-ahead
-  journal: bounded original DACLs and Windows volume/file identities are flushed
-  before mutation, every apply/restore uses one bound non-reparse handle, and a
-  pending transaction must reopen the same identity before any later community
-  start. Broad application-package group grants, journal corruption, identity
+  Content DACL updates use one host-only cross-process lock and profile-keyed
+  schema-3 write-ahead records: unique confirmation tokens, bounded original
+  DACLs, and Windows volume/file
+  identities are flushed before mutation, every apply/restore uses one bound
+  non-reparse handle, and a
+  pending transaction must reopen the same identity before that profile starts.
+  Disjoint profile records may proceed under the global mutation lock, while
+  overlapping target paths or identities fail closed. Alternate application-
+  package SID grants, journal corruption, identity
   mismatch, or persistence failure reject before launch. Catalog session handles
   now supply their volume/file identities through one typed bridge lease target
   sequence; runtime requires exact consistent evidence and compares its bound
   handles before journal publication or DACL mutation. Handle-relative ancestor
-  traversal, a privileged repair UI, and one aggregate ACL/handshake start
+  traversal, an authenticated Settings/CLI route to the host-only sanitized
+  recovery service, and one aggregate ACL/handshake start
   deadline remain open.
   Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
