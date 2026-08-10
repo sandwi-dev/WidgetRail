@@ -85,8 +85,11 @@ authorize implementation.
 ### Branch and integration protocol
 
 - The `widgets` task works only in its Codex worktree on
-  `codex/impl-widgets`; the `platform` task works only in its Codex worktree on
-  `codex/impl-platform`.
+  `codex/impl-widgets`. The active `platform` task works only in
+  `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative` on
+  `codex/impl-platform-visible`; the original `codex/impl-platform` worktree is
+  preserved blocked DLV-025 evidence and is not an active implementation
+  surface.
 - Tasks may continue through independent same-lane Ready work. The planner may
   integrate only an accepted contiguous prefix; later commits on the same
   branch remain unaccepted until reviewed.
