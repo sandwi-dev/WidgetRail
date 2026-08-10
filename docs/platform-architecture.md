@@ -150,6 +150,18 @@ and media backends. They remain behind the same typed, declared, consented
 contract. See [widget
 capabilities](capabilities.md).
 
+The managed Windows network backend retains one dedicated MTA owner thread for
+the native adapter and one committed provider-state owner. A closed internal
+command policy maps saved/available connection, scan, and radio results; an
+owner-thread operation policy orders connection and scan generations and their
+deadlines; a reconciliation policy normalizes bounded native snapshots and
+opaque identities into immutable values; and a pure event projection maps only
+those committed values to the existing broker vocabulary. Timer callbacks can
+only enqueue typed deadline commands, so native callbacks, commands, timeout
+decisions, reconciliation, and disposal all serialize through the same owner
+thread. These boundaries add no capability, protocol, Windows API, or native-
+adapter authority.
+
 ## Resource behavior
 
 The overlay starts hidden. It retains the Guide system-button callback but

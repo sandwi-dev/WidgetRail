@@ -5,6 +5,11 @@ using GameBarAlternative.WindowsNetworkProvider;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Construction and subscription are inert", ConstructionIsLazy),
+    ("Command policy owns typed native operation results", WindowsNetworkPolicyScenarios.CommandResultsAreClosed),
+    ("Operation policy serializes deadlines and provider outcomes", WindowsNetworkPolicyScenarios.OperationOrderingIsDeterministic),
+    ("Manually completed deadlines stay ordered on the provider owner thread", WindowsNetworkPolicyScenarios.ManualDeadlinesAreOwnerSerialized),
+    ("Reconciliation policy preserves bounded identities and suppresses duplicates", WindowsNetworkPolicyScenarios.ReconciliationIsStable),
+    ("Event projection uses the closed network capability vocabulary", WindowsNetworkPolicyScenarios.EventProjectionIsClosed),
     ("Snapshots expose bounded sanitized labels and stable opaque IDs", SnapshotsAreSafeAndStable),
     ("Privacy restriction suppresses active Wi-Fi identity and signal", PrivacyRestrictionSuppressesDetails),
     ("Transport, radio, service, and access states remain explicit", NetworkStatesAreExplicit),
@@ -449,23 +454,24 @@ static async Task AvailableWifiIdsAreGenerationBound()
     const string nativeKey = "interface|same-network";
     var adapter = new FakeNativeAdapter(Snapshot());
     await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter));
+    var events = WifiEventChannel(backend);
 
     await backend.RequestWifiScanAsync(CancellationToken.None);
     adapter.SetAvailableWifiSnapshot(new(1, NativeWifiScanState.Ready, [
         new(nativeKey, "Home", 80, WifiSecurityKind.Personal, false, false, true),
     ]));
     adapter.RaiseWifiScanOutcome(NativeWifiScanOutcome.Completed);
-    await WaitUntilAsync(() => adapter.AvailableWifiReadCalls >= 1);
-    var firstId = Assert.Single(
-        (await backend.GetAvailableWifiNetworksAsync(CancellationToken.None)).Networks).NetworkId;
+    var firstId = Assert.Single((await ReadWifiUntilAsync(events.Reader,
+        snapshot => snapshot.ScanState == WifiScanState.Ready)).Networks).NetworkId;
 
     adapter.SetAvailableWifiSnapshot(new(1, NativeWifiScanState.Ready, [
         new(nativeKey, "Home renamed", 70, WifiSecurityKind.Personal, false, false, true),
     ]));
     adapter.RaiseChanged();
-    await WaitUntilAsync(() => adapter.AvailableWifiReadCalls >= 2);
-    var sameGeneration = Assert.Single(
-        (await backend.GetAvailableWifiNetworksAsync(CancellationToken.None)).Networks);
+    var sameGeneration = Assert.Single((await ReadWifiUntilAsync(events.Reader,
+        snapshot => snapshot.ScanState == WifiScanState.Ready &&
+            snapshot.Networks.Count == 1 && snapshot.Networks[0].DisplayName == "Home renamed"))
+        .Networks);
     Assert.Equal(firstId, sameGeneration.NetworkId);
 
     adapter.SetWifiScanStartResult(NativeWifiScanStartResult.Started);
@@ -477,9 +483,8 @@ static async Task AvailableWifiIdsAreGenerationBound()
         new(nativeKey, "Home", 75, WifiSecurityKind.Personal, false, false, true),
     ]));
     adapter.RaiseWifiScanOutcome(NativeWifiScanOutcome.Completed);
-    await WaitUntilAsync(() => adapter.AvailableWifiReadCalls >= 3);
-    var nextId = Assert.Single(
-        (await backend.GetAvailableWifiNetworksAsync(CancellationToken.None)).Networks).NetworkId;
+    var nextId = Assert.Single((await ReadWifiUntilAsync(events.Reader,
+        snapshot => snapshot.ScanState == WifiScanState.Ready)).Networks).NetworkId;
     Assert.True(firstId != nextId);
     await Assert.ThrowsBrokerAsync(
         () => backend.ConnectAvailableWifiNetworkAsync(firstId, CancellationToken.None),
@@ -520,12 +525,12 @@ static async Task AvailableWifiSavedAndOpenConnectionsStart()
     {
         var adapter = new FakeNativeAdapter(Snapshot());
         await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter));
+        var wifiEvents = WifiEventChannel(backend);
         await backend.RequestWifiScanAsync(CancellationToken.None);
         adapter.SetAvailableWifiSnapshot(new(1, NativeWifiScanState.Ready, [network]));
         adapter.RaiseWifiScanOutcome(NativeWifiScanOutcome.Completed);
-        await WaitUntilAsync(() => adapter.AvailableWifiReadCalls >= 1);
-        var visible = Assert.Single(
-            (await backend.GetAvailableWifiNetworksAsync(CancellationToken.None)).Networks);
+        var visible = Assert.Single((await ReadWifiUntilAsync(wifiEvents.Reader,
+            snapshot => snapshot.ScanState == WifiScanState.Ready)).Networks);
 
         await backend.ConnectAvailableWifiNetworkAsync(visible.NetworkId, CancellationToken.None);
         Assert.Equal(1, adapter.AvailableWifiConnectCalls);
@@ -548,15 +553,15 @@ static async Task AvailableWifiOutcomesCorrelateOpaqueAttempts()
         var adapter = new FakeNativeAdapter(Snapshot());
         await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter));
         var events = EventChannel(backend);
+        var wifiEvents = WifiEventChannel(backend);
         await backend.RequestWifiScanAsync(CancellationToken.None);
         adapter.SetAvailableWifiSnapshot(new(41, NativeWifiScanState.Ready, [
             new(privateNativeKey, "Visible network", 88, WifiSecurityKind.Personal,
                 false, false, true),
         ]));
         adapter.RaiseWifiScanOutcome(NativeWifiScanOutcome.Completed);
-        await WaitUntilAsync(() => adapter.AvailableWifiReadCalls >= 1);
-        var opaqueId = Assert.Single(
-            (await backend.GetAvailableWifiNetworksAsync(CancellationToken.None)).Networks).NetworkId;
+        var opaqueId = Assert.Single((await ReadWifiUntilAsync(wifiEvents.Reader,
+            snapshot => snapshot.ScanState == WifiScanState.Ready)).Networks).NetworkId;
 
         await backend.ConnectAvailableWifiNetworkAsync(opaqueId, CancellationToken.None);
         var connecting = await ReadUntilAsync(events.Reader,
@@ -594,15 +599,15 @@ static async Task AvailableWifiConnectionErrorsAreTyped()
     {
         var adapter = new FakeNativeAdapter(Snapshot());
         await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter));
+        var wifiEvents = WifiEventChannel(backend);
         await backend.RequestWifiScanAsync(CancellationToken.None);
         adapter.SetAvailableWifiSnapshot(new(1, NativeWifiScanState.Ready, [
             new("interface|secured", "Secured", 80, WifiSecurityKind.Personal,
                 true, false, false),
         ]));
         adapter.RaiseWifiScanOutcome(NativeWifiScanOutcome.Completed);
-        await WaitUntilAsync(() => adapter.AvailableWifiReadCalls >= 1);
-        var id = Assert.Single(
-            (await backend.GetAvailableWifiNetworksAsync(CancellationToken.None)).Networks).NetworkId;
+        var id = Assert.Single((await ReadWifiUntilAsync(wifiEvents.Reader,
+            snapshot => snapshot.ScanState == WifiScanState.Ready)).Networks).NetworkId;
         adapter.SetWifiConnectStartResult(native);
         await Assert.ThrowsBrokerAsync(
             () => backend.ConnectAvailableWifiNetworkAsync(id, CancellationToken.None), code);
@@ -1055,18 +1060,21 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
 
     public NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot()
     {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
         AvailableWifiReadCalls++;
         lock (_gate) return _availableWifi;
     }
 
     public NativeWifiScanStartResult TryStartWifiScan()
     {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
         WifiScanCalls++;
         return _scanStartResult;
     }
 
     public NativeWifiConnectStartResult TryConnectAvailableWifiNetwork(string nativeNetworkKey)
     {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
         AvailableWifiConnectCalls++;
         ConnectedAvailableWifiNativeKeys.Add(nativeNetworkKey);
         return _wifiConnectStartResult;

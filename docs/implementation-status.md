@@ -775,6 +775,43 @@ grants. Unpair and generic Bluetooth Connect/Disconnect remain outside the
 current broker surface, and physical pairing still needs reversible hardware
 verification.
 
+DLV-035 keeps `WindowsNetworkPlatformBackend` as the only native-adapter
+lifetime, MTA owner-thread, command-queue, committed provider-state, event-
+channel, subscriber-publication, and disposal owner. Before the split, its
+1,186 lines (51,201 bytes) also contained the complete closed command
+vocabulary and native-result mapping, both timeout state machines, opaque-ID
+allocation and snapshot normalization, equality/duplicate suppression, and
+broker-event construction. The root is now 831 lines (33,738 bytes). Command
+admission/execution is a 134-line internal policy, owner-thread connection/scan
+transitions are 96 lines, native-state reconciliation is 258 lines, event
+projection is 21 lines, and the injected one-shot deadline mechanism is 19
+lines.
+
+The extracted owners add no thread, lock, task, channel, semaphore,
+cancellation source, capability, or public API. The root retains one state lock
+and one start lock, one bounded command queue, one coalesced native-outcome
+queue, three single-value event channels/pumps, and the same two one-shot
+deadline slots. Reconciliation and transient-operation policy are invoked only
+by the MTA owner and return bounded values that the root commits atomically.
+Timer callbacks no longer mutate connection state directly: both connection
+and scan deadlines enqueue generation-keyed commands behind native callbacks
+and provider operations, so stale deadlines are rejected in the single owner-
+thread order. Direct credential-free policy fixtures cover typed command
+results, public-ID admission, provider outcome/mismatch, current and stale
+connection/scan deadlines, provider disappearance/reappearance, bounded label
+projection, opaque-ID generation, duplicate projection, and the closed event
+vocabulary. The composed provider cases retain cancellation, radio rollback,
+provider churn, degraded recovery, late callbacks, deadline failure, and
+owner-thread disposal coverage. Broader live hardware/privacy/performance
+evidence remains open.
+
+Bounded dirty-worktree Release run `20260810T171344Z-feced08e` passed Windows
+Network provider 36/36, PlatformBroker 51/51, and documentation validation
+across 52 Markdown files in 22.469 seconds. Its starting and finishing commit
+and dirty-status fingerprint are identical, so it is stable assignment-scoped
+implementation evidence rather than release-eligible clean-worktree evidence.
+No aggregate, widget, native adapter, or OverlayHost suite was run.
+
 Games & Apps has replaced Recent Apps in the bundled catalog and first-party
 package conformance path. It is an ordinary public-SDK package in the generic
 AppContainer, requires `system.apps.library.read.v1`, optionally declares the
