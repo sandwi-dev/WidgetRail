@@ -150,6 +150,28 @@ and media backends. They remain behind the same typed, declared, consented
 contract. See [widget
 capabilities](capabilities.md).
 
+The managed Windows network backend retains one dedicated MTA owner thread for
+the native adapter and one committed provider-state owner. A closed internal
+command policy maps saved/available connection, scan, and radio results; an
+owner-thread operation policy orders connection and scan generations and their
+deadlines; a reconciliation policy normalizes bounded native snapshots and
+opaque identities into immutable values; and a pure event projection maps only
+those committed values to the existing broker vocabulary. Timer callbacks can
+only enqueue typed deadline commands. A dedicated internal admission owner
+keeps the single queue at 128 entries: ordinary admission stops at 124, leaving
+four physical deadline positions. If delayed callbacks fill those positions,
+the admission owner retains at most one highest-generation overflow value for
+connection and one for scan. Overflow values preserve cross-type arrival order
+and are promoted only into a newly available FIFO tail position, so stale
+callbacks cannot displace the current deadline or move it to an older signal's
+position. The owner thread still rejects stale generations. A packed closed/
+admission-count state closes the queue without blocking timer or native-
+callback threads and lets every in-flight producer balance its reservation
+during disposal. Native callbacks, commands, timeout decisions, reconciliation,
+and disposal therefore all serialize through the same owner thread. These
+boundaries add no capability, protocol, Windows API, or native-adapter
+authority.
+
 ## Resource behavior
 
 The overlay starts hidden. It retains the Guide system-button callback but
