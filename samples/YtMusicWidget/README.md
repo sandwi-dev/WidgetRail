@@ -71,6 +71,40 @@ pending-command, progress, status, and pairing-code inputs are published as one
 immutable render-facing revision. A cancellation-ignoring companion completion
 cannot update that revision after its operation is superseded or deactivated.
 
+## Responsibility boundaries
+
+The widget keeps one lifecycle and committed-state owner. Before the current
+split, the 1,365-line, 57,993-byte `YtMusicWidget.cs` also contained action
+routing, connection-status policy, optimistic confirmation/rollback and
+progress reconciliation, plus every semantic view branch. Those helpers all
+had lexical access to the mutable client, presentation, locks, time source, and
+SDK operation registry even when they did not need that authority.
+
+The split makes those dependencies explicit without adding another
+coordinator:
+
+- `YtMusicWidget` alone owns lifecycle callbacks, the provider client, the
+  `_stateLock`, both provider serialization gates, SDK Active operation lanes,
+  committed `YtMusicPresentationState`, invalidation, and disposal.
+- `YtMusicActionPolicy` is a closed action-ID-to-route table. It receives only
+  an action ID and cannot access provider or presentation state.
+- `YtMusicConnectionPolicy` maps immutable presentation values and sanitized
+  exceptions to connection transitions and status copy.
+- `YtMusicCompanionPolicy` receives immutable presentation/snapshot values,
+  monotonic timestamps, and the bounded update policy. It returns confirmation,
+  progress, and exact-feature rollback values; it owns no locks, client, task,
+  cancellation source, or publication callback.
+- `YtMusicPresentation` composes a `WidgetView` from one immutable committed
+  presentation and its already projected playback snapshot. Repeating the
+  composition with the same values produces identical semantic snapshot bytes.
+
+Coordination therefore remains one committed-state lock, two existing provider
+serialization semaphores, and the SDK operation registry. The split adds zero
+revision counters, task registries, cancellation sources, or cross-boundary
+mutable owner references. Provider calls and late-result admission remain in
+the widget; the extracted policy and presentation seams are directly testable
+as value transformations.
+
 Each authoritative poll is reconciled against the widget's monotonic projected
 position. Small stale backward reports are ignored while playback continues;
 modest forward drift is eased in at a bounded rate instead of jumping. A drift
