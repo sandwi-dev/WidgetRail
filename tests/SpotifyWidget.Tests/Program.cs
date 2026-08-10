@@ -39,6 +39,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Failed controls roll back optimistic state", FailedControlRollback),
     ("Permission denial remains an actionable UI state", PermissionDenied),
     ("Manifest declares least-privilege partial consent", ManifestContract),
+    ("Spotify internals remain split by stable responsibility", ResponsibilitySplitContract),
     ("Time labels are stable", TimeFormatting),
 };
 
@@ -1261,6 +1262,53 @@ static Task ManifestContract()
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
 }
+
+static Task ResponsibilitySplitContract()
+{
+    var sourceRoot = Path.Combine(AppContext.BaseDirectory, "source");
+    var lifecycle = File.ReadAllText(Path.Combine(sourceRoot, "SpotifyWidget.cs"));
+    var routes = File.ReadAllText(Path.Combine(sourceRoot, "SpotifyWidget.Routes.cs"));
+    var playback = File.ReadAllText(Path.Combine(sourceRoot, "SpotifyWidget.Playback.cs"));
+    var presentation = File.ReadAllText(
+        Path.Combine(sourceRoot, "SpotifyWidget.Presentation.cs"));
+
+    foreach (var source in new[] { lifecycle, routes, playback, presentation })
+        AssertSourceContains(source, "public sealed partial class SpotifyWidget");
+
+    AssertSourceContains(lifecycle, "OnActivatedAsync");
+    AssertSourceContains(lifecycle, "OnActionAsync");
+    AssertSourceContains(lifecycle, "CapturePresentationState");
+    AssertSourceContains(lifecycle, "private readonly WidgetPagedResource");
+    Assert.True(!lifecycle.Contains("RenderConnected(", StringComparison.Ordinal),
+        "Lifecycle/action wiring regained view composition.");
+
+    AssertSourceContains(routes, "NavigateAndLoadAsync");
+    AssertSourceContains(routes, "LoadDestinationAsync");
+    AssertSourceContains(routes, "ClearPlaylistSelectionLocked");
+    Assert.True(!routes.Contains("OnActivatedAsync", StringComparison.Ordinal),
+        "Route data gained lifecycle ownership.");
+
+    AssertSourceContains(playback, "ExecuteAsync");
+    AssertSourceContains(playback, "ApplyOptimistic");
+    AssertSourceContains(playback, "StartPlaybackAsync");
+    Assert.True(!playback.Contains("RenderConnected(", StringComparison.Ordinal),
+        "Playback behavior gained view composition.");
+
+    AssertSourceContains(presentation, "SpotifyPresentationState presentation");
+    AssertSourceContains(presentation, "RenderConnected");
+    Assert.True(!presentation.Contains("lock (_gate)", StringComparison.Ordinal),
+        "Pure presentation builders read mutable widget state.");
+    Assert.True(!presentation.Contains("HostServices", StringComparison.Ordinal),
+        "Pure presentation builders acquired provider ownership.");
+    Assert.True(!presentation.Contains("private readonly WidgetPagedResource",
+            StringComparison.Ordinal),
+        "Presentation code duplicated resource ownership.");
+    return Task.CompletedTask;
+}
+
+static void AssertSourceContains(string source, string value) =>
+    Assert.True(source.Contains(value, StringComparison.Ordinal),
+        $"Expected source boundary to contain '{value}'.");
 
 static Task TimeFormatting()
 {
