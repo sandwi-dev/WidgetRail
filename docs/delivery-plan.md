@@ -604,11 +604,26 @@ error-contract gap, or credential issue rather than widget state policy.
 
 ### DLV-028 — Split Network Controls by stable responsibility
 
-**State:** Assigned
+**State:** Done
 **Baseline:** accepted DLV-023 integration `4dc1bd5` plus the reviewer
 control-plane commit assigning this milestone
+**Closing commit:** `4ec931b` (`[DLV-028] Split Network Controls by stable responsibility`)
+**Integrated on `main`:** `4ec931b`
 **Owner:** Network Controls managed internals and credential-free multi-provider
 fixtures
+
+**Reviewer disposition:** Accepted. The 2,020-line widget no longer owns its
+provider normalization/merge, command admission/feedback, closed action
+vocabulary, stable element identity, and complete view composition. The
+1,241-line orchestration owner remains the sole lifecycle, host-command,
+committed-state, and invalidation owner; pure provider, command, action, and
+presentation boundaries share values rather than mutable state. Coordination
+changed from one lock, one semaphore, one generation, one field cancellation
+source, and two detached observer roots to one lock, one semaphore, one
+generation, no field cancellation source, and one SDK-owned Active latest-
+operation lane. Focused dirty-worktree evidence passed the SDK build with zero
+warnings/errors, Widget SDK 84/84, Network Controls 22/22, generic AppContainer
+worker 6/6, and 52 documentation contracts. No aggregate was required.
 
 **Objective:** Replace the application-sized Network Controls class with named,
 testable boundaries for multi-provider state merge, command policy, route/action
@@ -642,8 +657,9 @@ that needs its own bounded assignment.
 
 ### DLV-010 — Prove the external widget package journey
 
-**State:** Ready after DLV-028
-**Baseline:** closing commit of DLV-028
+**State:** Assigned
+**Baseline:** accepted DLV-028 integration `4ec931b` plus the reviewer
+control-plane commit assigning this milestone
 **Owner:** managed scaffold/CLI, sample package, and public authoring docs
 
 **Objective:** Make the recommended community path reproducible from scaffold
@@ -670,6 +686,160 @@ manifest itself changes.
 
 **Stop/escalate when:** completion requires external publication, credentials,
 or weakening package validation/trust boundaries.
+
+### DLV-030 — Split YT Music by stable responsibility
+
+**State:** Ready after DLV-010
+**Baseline:** closing commit of DLV-010
+**Dependencies:** DLV-009 and DLV-023
+**Owner:** YT Music managed internals and credential-free companion fixtures
+
+**Objective:** Preserve DLV-009's single immutable presentation revision and
+SDK-owned Active operation lanes while making one transport-confirmation rule
+or one screen change possible without reading the complete application-sized
+widget.
+
+**In scope:** a before/after ownership inventory; named provider/connection
+policy, companion-specific optimistic confirmation and rollback, closed action/
+route orchestration, and snapshot-only view composition boundaries; deletion
+of superseded cross-boundary mutable knowledge; focused late-result, timeout,
+rollback, lifecycle-drain, and repeated-presentation fixtures.
+
+**Out of scope:** live companion credentials, Google/YouTube authentication,
+new product features, public SDK/protocol abstractions, coordinator chains,
+cosmetic partial files, or a provider-specific public base class.
+
+**Acceptance criteria:** one lifecycle and committed-state owner remains; the
+existing SDK Active lanes still own continuing work; provider/confirmation and
+view policies are directly testable without the complete widget; one screen or
+transport rule changes through a named boundary; late success/failure,
+confirmation timeout/rollback, deactivate/destroy drain, and deterministic
+repeated presentation remain exact; the completion report quantifies
+responsibilities, coordination primitives, and cross-boundary mutable
+dependencies before and after.
+
+**Verification:** Tier 1 YT Music, Widget SDK operation/lifecycle, smallest
+generic-worker, and affected documentation Release suites. No aggregate.
+
+**Stop/escalate when:** a meaningful boundary requires a public SDK/protocol
+change, duplicates lifecycle or committed-state ownership, needs credentials,
+or exposes a separate product defect outside this architecture milestone.
+
+### DLV-031 — Separate capability-domain policy from broker authority
+
+**State:** Ready after DLV-030
+**Baseline:** closing commit of DLV-030
+**Dependencies:** DLV-023 and DLV-028
+**Owner:** managed `PlatformCapabilityBroker` internals and direct broker policy
+fixtures; no native-host files
+
+**Objective:** Keep one broker authority for identity, declarations, consent,
+lifecycle, request leases, event sequence, and dashboard gestures while making
+one capability domain's strict decoding, validation, and projection changeable
+without editing a central multipurpose class and distant switch regions.
+
+**In scope:** a before/after responsibility map; named internal policies or
+handlers for audio, network/Bluetooth, app library, media/Spotify, loopback,
+secrets, and private state where the policies are independently testable;
+explicit typed routing from the singular broker authority; removal of
+superseded duplicated validation/dispatch knowledge; malformed, oversized,
+stale, revoked, cancelled, and unknown-domain fixtures.
+
+**Out of scope:** public capability/protocol changes, native host work, new
+capabilities, a service locator, reflection dispatch, a generic mediator,
+duplicated authorization/lease/event authority, or one class per request.
+
+**Acceptance criteria:** `PlatformCapabilityBroker` remains the only authority
+owner; each extracted domain boundary is value-in/value-out and directly
+testable; changing one existing domain no longer requires coordinated edits to
+one central switch plus distant validators; all fail-closed bounds, revocation,
+stale-result, cancellation, and event-sequence behavior remain exact; the
+completion report quantifies the responsibility and cross-boundary dependency
+reduction.
+
+**Verification:** Tier 1 PlatformBroker/capability Release suites plus the
+smallest affected provider and generic-worker routing groups. No aggregate and
+no unrelated native suites.
+
+**Stop/escalate when:** correct separation requires a public protocol or threat-
+model change, creates a second authority owner, or overlaps the preserved dirty
+platform worktree.
+
+### DLV-032 — Extract the bridge request dispatcher
+
+**State:** Ready after DLV-031
+**Baseline:** closing commit of DLV-031
+**Dependencies:** DLV-031 when shared broker/bridge test infrastructure changes
+**Owner:** managed `WidgetBridgeServer` request scheduling and direct bridge
+fixtures; framing and session ownership remain in the server
+
+**Objective:** Give global/per-widget request admission, duplicate IDs, FIFO
+tails, completion cleanup, fatal-session cancellation, and bounded drain one
+narrow directly tested owner without turning the bridge into a generic task
+framework.
+
+**In scope:** an internal `BridgeRequestDispatcher` or equivalent; an explicit
+decision about `ClientRegistration.OperationGate`; manually completed handlers;
+success, failure, cancellation, predecessor-failure, duplicate, capacity, and
+forced-drain cases; deletion of superseded scheduling state from the server.
+
+**Out of scope:** framing/envelope changes, reserved Stop-lane redesign,
+catalog/client ownership changes, write-path changes, public protocol changes,
+native host work, or reflection/generic mediator infrastructure.
+
+**Acceptance criteria:** one dispatcher owns every scheduling invariant and
+leaves zero residual IDs, slots, tails, or tasks after every terminal path;
+same-widget ordering and cross-widget/global bounds remain deterministic with
+no sleep-based proof; `WidgetBridgeServer` retains framing, strict decoding,
+session/catalog ownership, Stop authority, and writes; no second implicit
+serialization policy remains.
+
+**Verification:** Tier 1 managed bridge/dispatcher Release suites and the
+smallest generic-worker failure/drain route. No aggregate unless a verifier or
+public protocol unexpectedly changes, which requires planner escalation first.
+
+**Stop/escalate when:** extraction requires a protocol/threat-model change,
+duplicates client/session authority, or touches native platform work.
+
+### DLV-034 — Split the Spotify platform backend by stable responsibility
+
+**State:** Ready after DLV-032
+**Baseline:** closing commit of DLV-032
+**Dependencies:** DLV-023 and DLV-031
+**Owner:** managed Windows Spotify provider internals and injected-transport
+fixtures
+
+**Objective:** Preserve one integration identity and token-session owner while
+making one Spotify endpoint family, retry rule, or response parser changeable
+without constructing or understanding the complete authorization/browser/local-
+playback backend.
+
+**In scope:** a before/after ownership inventory; named OAuth/PKCE and vault
+policy, bounded HTTP retry/rate-limit policy, playback/device/local-transfer
+commands, collection queries, and strict response parsing boundaries where
+they are independently testable; injected deterministic transport; deletion of
+duplicated endpoint/session knowledge.
+
+**Out of scope:** live OAuth/Premium proof, credentials, public provider/
+capability protocol changes, one class per endpoint, a generic REST framework,
+duplicated token authority, widget presentation changes, or new Spotify
+features.
+
+**Acceptance criteria:** one identity/token-refresh authority remains; endpoint
+and parser boundaries receive explicit bounded values and cannot bypass scope,
+response-size, retry, cancellation, or event-publication policy; concurrent
+token demand, cancellation-ignoring refresh, 401 refresh, 429/backoff,
+malformed/oversized responses, disconnect, and stale integration identity are
+deterministic; one endpoint family can be tested without browser/vault/local-
+player construction; the completion report quantifies ownership reduction.
+
+**Verification:** Tier 1 Windows Spotify provider and affected broker mapping
+Release suites with injected transport. No live account, generic aggregate, or
+unrelated widget suite.
+
+**Stop/escalate when:** the split requires credentials, public protocol or
+threat-model changes, a second token/session owner, or behavior owned by the
+Spotify widget rather than the platform backend.
 
 ## Platform lane
 
@@ -1060,60 +1230,6 @@ versus pending command, cancellation-ignoring completion, timeout/rollback,
 session churn, deactivation, and pure presentation with focused tests. No public
 audio authority or protocol expansion belongs here.
 
-### DLV-030 — Split YT Music by stable responsibility
-
-**State:** Awaiting a free widgets-lane baseline after DLV-028
-**Intended lead:** widgets lane
-**Dependencies:** DLV-009 and DLV-023
-
-Preserve DLV-009's single immutable presentation revision and SDK-owned Active
-operation lanes while separating provider/connection policy, companion-specific
-optimistic confirmation and rollback, action/route orchestration, and pure view
-composition. Begin with a before/after ownership inventory and require a
-developer to change one transport confirmation rule or one screen without
-reading the complete roughly 1,365-line class. Retain one lifecycle and
-committed-state owner; do not replace the class with coordinator chains,
-cosmetic partials, or a public abstraction based on one provider. Prove late
-success/failure rejection, confirmation timeout/rollback, deactivate/destroy
-drain, and deterministic repeated presentation through focused credential-free
-tests.
-
-### DLV-031 — Separate capability-domain policy from broker authority
-
-**State:** Awaiting a planner-selected serialized managed-platform baseline
-**Intended lead:** planner-selected managed platform lane
-**Dependencies:** DLV-023 and DLV-028
-
-Keep `PlatformCapabilityBroker` as the singular identity, declaration, consent,
-lifecycle, request-lease, event-sequence, and dashboard-gesture authority, but
-move independently testable audio, network/Bluetooth, app-library, media/
-Spotify, loopback, secret, and private-state decoding/validation/projection into
-named internal domain handlers or policies. The current roughly 2,265-line
-broker class must no longer require edits across one central switch and distant
-validation regions to add or change one capability. Avoid a service locator,
-reflection dispatch, generic mediator, duplicated authorization, or public
-protocol changes. Preserve exact fail-closed bounds and add direct policy plus
-broker-routing tests for malformed, oversized, stale, revoked, and cancelled
-requests.
-
-### DLV-032 — Extract the bridge request dispatcher
-
-**State:** Awaiting a planner-selected serialized bridge baseline
-**Intended lead:** planner-selected managed platform lane
-**Dependencies:** DLV-031 only when both assignments touch broker/bridge test
-infrastructure; otherwise the planner may baseline it independently
-
-Implement EQ-022's narrow internal `BridgeRequestDispatcher`: one owner for
-global/per-widget admission, duplicate request IDs, FIFO tails, completion
-cleanup, fatal-session cancellation, and bounded drain. Leave framing, strict
-envelope decoding, the reserved Stop lane, catalog/client ownership, and writes
-with `WidgetBridgeServer`. Decide and document whether
-`ClientRegistration.OperationGate` remains authoritative instead of retaining
-two implicit serialization policies. Require deterministic no-sleep tests with
-manually completed handlers and zero residual IDs, slots, tails, or tasks after
-every success, failure, cancellation, predecessor-failure, and forced-drain
-case. This is ownership extraction, not a generic task framework.
-
 ### DLV-033 — Establish a host-owned widget session coordinator
 
 **State:** Awaiting DLV-025 architecture decision and accepted bridge baseline
@@ -1130,26 +1246,6 @@ into the coordinator or create a generic event bus. Prove runtime versus
 presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
-
-### DLV-034 — Split the Spotify platform backend by stable responsibility
-
-**State:** Awaiting DLV-023 failure classification and DLV-031 broker boundary
-**Intended lead:** planner-selected managed platform lane
-**Dependencies:** DLV-023 and DLV-031
-
-Preserve one integration identity/token-session owner while separating OAuth/
-PKCE and vault policy, bounded HTTP retry/rate-limit policy, playback/device/
-local-transfer commands, collection queries, and strict Spotify response parsing
-from the roughly 1,724-line `WindowsSpotifyPlatformBackend`. The split must make
-one endpoint family or parser change directly testable without constructing the
-complete authorization/browser/local-playback stack. Keep provider error codes,
-scope checks, request/response bounds, token refresh serialization, and event
-publication exact; do not create one class per endpoint, a generic REST client,
-or duplicate token authority. Use DLV-023 evidence to distinguish widget
-transient-state policy from provider transport/auth defects before moving code.
-Prove cancellation-ignoring refresh, concurrent token demand, 401 refresh,
-429/backoff, malformed/oversized payloads, disconnect, and stale integration
-identity through deterministic injected-transport tests.
 
 ### DLV-019 — Add Audio Mixer dashboard master controls
 

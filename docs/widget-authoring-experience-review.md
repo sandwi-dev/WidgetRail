@@ -256,7 +256,7 @@ between a minimal and an application-like widget:
 | Games & Apps | About 2,340 lines across five responsibility files; 1,274-line orchestration owner | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, launch commands, and pure presentation/policy seams |
 | YT Music | About 1,365 lines | SDK-owned lifecycle lanes, one immutable presentation revision, and authored companion confirmation policy |
 | Spotify | About 1,950 lines across four responsibility files | Lifecycle/action wiring and singular state/resource ownership; route data; playback behavior; snapshot-only presentation over four destinations |
-| Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
+| Network Controls | About 2,230 lines across seven responsibility files; 1,241-line orchestration owner | One committed provider state, SDK-owned Active observation, pure provider/command/action policies, and snapshot-only presentation |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
 
 The exact counts are less important than the shape of the code. A current
@@ -279,11 +279,16 @@ policy in the same controller/view class. Spotify
 has adopted paged resources, one immutable presentation projection, an explicit
 selection generation, and named route/playback/presentation boundaries, but its
 partial owner still contains four task fields, two semaphores, several lock
-domains, and separate command, authorization, refresh, and polling paths. Audio Mixer and
-Network Controls remain roughly 2,500 and 2,000 lines with about 61 and 44
-textual lock sites and no adoption of the new model/resource/operation layer.
-These figures are navigation aids rather than code-quality scores: they show
-that safe coordination is still concentrated in the primary class.
+domains, and separate command, authorization, refresh, and polling paths.
+Accepted DLV-028 moves Network Controls provider merge, command admission,
+closed action routing, element identity, and complete presentation behind named
+value-based boundaries. Its 1,241-line owner now retains one state lock, one
+command semaphore, one generation, and one SDK-owned Active latest-operation
+lane, with no field cancellation source or detached observer roots. Audio Mixer
+remains roughly 2,500 lines with about 61 textual lock sites and no adoption of
+the new model/resource/operation layer. These figures are navigation aids rather
+than code-quality scores: they show where safe coordination remains
+concentrated.
 
 Spotify's presentation also includes about 500 lines of GBSS and its dedicated
 test program is about 1,200 lines. Those tests are valuable, but their size
@@ -1986,10 +1991,11 @@ boundaries before it is a complete teachable reference. Require another advanced
 widget to reproduce any proposed boundary before promoting it into templates.
 For Spotify, coherence comes before extraction:
 one immutable presentation state and an explicitly keyed playlist-detail
-snapshot must replace the current cross-owner render assembly. Give Audio Mixer
-and Network Controls their own
-explicit command-confirmation and multi-provider-merge designs rather than
-forcing their domain rules into a universal helper.
+snapshot must replace the current cross-owner render assembly. Network Controls
+now supplies the multi-provider comparison point: its provider and command
+policies remain domain-specific, value-based, and private. Give Audio Mixer its
+own absolute-value confirmation/coalescing design rather than forcing either
+domain into a universal helper.
 
 The protocol-v11 pagination change is a strong example to repeat: identify a
 generic behavior proven by a demanding widget, move the security- and

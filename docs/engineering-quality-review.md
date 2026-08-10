@@ -1858,17 +1858,19 @@ keeping the contract-audit closure of EQ-009 out of the defect count.
 ### EQ-006 — P2 — Advanced widgets remain application-sized monoliths
 
 **Status: Open with bounded delivery coverage. Media Sessions, accepted
-DLV-007/008 Spotify, accepted DLV-009 YT Music, and accepted DLV-027 Games &
-Apps prove useful lifecycle, presentation, and responsibility boundaries.
-DLV-028 owns Network Controls, DLV-029 owns Audio Mixer after DLV-026 proves the
+DLV-007/008 Spotify, accepted DLV-009 YT Music, accepted DLV-027 Games & Apps,
+and accepted DLV-028 Network Controls prove useful lifecycle, presentation, and
+responsibility boundaries. DLV-029 owns Audio Mixer after DLV-026 proves the
 current scroll defect's native/managed owner, and DLV-030 owns the remaining YT
 Music provider/confirmation/view split.**
 
 **Evidence.** Current primary files are approximately 2,496 lines for Audio
-Mixer, 2,020 for Network Controls, 1,274 for Games & Apps after accepted
-DLV-027, and 1,365 for YT Music. Spotify is split into named partial files but
-still spans roughly 2,060 lines across its root, presentation, playback, and
-route files. Line count is only a locator for the deeper ownership issue.
+Mixer, 1,241 for Network Controls after accepted DLV-028, 1,274 for Games &
+Apps after accepted DLV-027, and 1,365 for YT Music. Network Controls now also
+has a 546-line pure presenter and focused provider, command, action, state, and
+element-identity boundaries. Spotify is split into named responsibility files
+and spans roughly 2,060 lines across its root, presentation, playback, and route
+files. Line count is only a locator for the deeper ownership issue.
 
 The migrations show three materially different outcomes:
 
@@ -1893,12 +1895,11 @@ The migrations show three materially different outcomes:
   state/cache fields, action routing, and all view composition in the same
   roughly 1,914-line class. Its existing widget tests call `OnActionAsync`
   directly, so production worker/bridge adoption is not yet demonstrated.
-  Audio Mixer and Network Controls have not adopted the new
-  model/resource/operation primitives: their primary files contain roughly 61
-  and 44 textual lock sites respectively, while retaining handwritten
-  pending/authoritative state and lifecycle coordination. Those counts are not
-  quality scores; they identify where shared mutable ownership remains
-  concentrated.
+  Audio Mixer has not adopted the new model/resource/operation primitives: its
+  primary file contains roughly 61 textual lock sites while retaining
+  handwritten pending/authoritative state and lifecycle coordination. That
+  count is not a quality score; it identifies where shared mutable ownership
+  remains concentrated.
 - Accepted DLV-027 (`df1dc81`, corrected by `69e86ef`) reduces the 1,861-line
   `GamesAppsWidget` to 1,274 lines and gives pure presentation (392 lines),
   schema-v3 policy (500), bounded catalog navigation (105), and CAS storage
@@ -1910,6 +1911,19 @@ The migrations show three materially different outcomes:
   worker/conformance groups also passed. This is a real ownership reduction,
   but the 1,274-line orchestration owner still warrants review before it is
   promoted as the public advanced-widget template.
+- Accepted DLV-028 (`4ec931b`) reduces the 2,020-line Network Controls owner to
+  1,241 lines and moves complete view composition, provider normalization and
+  reconciliation, command admission/feedback, action vocabulary, and stable
+  element identity into named value-based boundaries. The widget remains the
+  sole lifecycle, host-command, committed-state, and invalidation owner.
+  Coordination changes from one lock, one semaphore, one generation, one
+  field cancellation source, and two detached observer roots to one lock, one
+  semaphore, one generation, no field cancellation source, and one SDK-owned
+  Active latest-operation lane. Deterministic tests cover provider events
+  outrunning scan/connect acknowledgements, refresh replacement and four-
+  subscription drain, direct policy behavior, and byte-identical repeated
+  presentation. Focused evidence passes Network Controls 22/22, Widget SDK
+  84/84, the generic worker 6/6, and 52 documentation contracts.
 
 **Why it matters.** These are the examples external developers will copy.
 Framework helpers improve correctness, but a human still has to understand a
@@ -3752,17 +3766,17 @@ below.
    reproduction. Authorize either a narrowly proven offscreen atomic-present
    design or DirectComposition/swap-chain ownership before platform work
    resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-028 — split Network Controls by stable responsibility.**
-   DLV-023 is accepted as `3cfdd27`, integrated by `4dc1bd5`. Next separate
-   multi-provider merge, command policy, route/action orchestration, and pure
-   presentation while retaining one lifecycle and committed-state owner.
+2. **Widgets DLV-010 — prove the external widget package journey.** DLV-028 is
+   accepted as `4ec931b`. Prove scaffold through build, validation, package,
+   local install, version selection/rollback, and removal from a clean external
+   project without checkout-local references or hand-edited generated files.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
    imbalance.
 4. **Continue responsibility milestones rather than line-count refactors.**
-   DLV-028 owns Network Controls; DLV-029 Audio Mixer; DLV-030 YT Music;
-   DLV-031 the managed capability broker; DLV-032 bridge scheduling;
+   DLV-028 has accepted Network Controls; DLV-029 owns Audio Mixer; DLV-030 YT
+   Music; DLV-031 the managed capability broker; DLV-032 bridge scheduling;
    DLV-033 native widget-session ownership; and DLV-034 the Spotify provider.
    Each must reduce shared mutable
    knowledge or expose a focused policy seam—cosmetic files do not qualify.
