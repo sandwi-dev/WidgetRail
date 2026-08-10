@@ -869,6 +869,30 @@ static async Task ExportEvidenceAsync(string outputDirectory)
             var populated = await WaitForActionSnapshotAsync(
                 client, "games.launch", "Conformance Library App");
             await ExportSnapshotAsync(package, configured, "populated", populated);
+            var reopen = Nodes(populated.Root).Single(node =>
+                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent("games.open-catalog", reopen.Id));
+            var removalCatalog = await WaitForActionSnapshotAsync(
+                client, "games.toggle-curation", "Conformance Library App", selected: true);
+            var remove = Nodes(removalCatalog.Root).Single(node =>
+                string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal) &&
+                (node.AccessibilityLabel ?? string.Empty).Contains(
+                    "Conformance Library App", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent("games.toggle-curation", remove.Id));
+            var removing = await WaitForActionSnapshotAsync(
+                client, "games.toggle-curation", "Conformance Library App", selected: false);
+            await ExportSnapshotAsync(package, configured, "removing", removing);
+            await client.SendActionAsync(new WidgetActionEvent("back", removing.Root.Id));
+            var removed = await WaitForActionSnapshotAsync(
+                client, "games.launch", "Conformance Trusted Game");
+            Assert.True(!Nodes(removed.Root).Any(node =>
+                string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
+                Nodes(node).Any(descendant => (descendant.Text ?? string.Empty).Contains(
+                    "Conformance Library App", StringComparison.Ordinal))),
+                "Removing one Catalog entry left the removed row in the Library.");
+            Assert.Equal(1, Nodes(removed.Root).Count(node =>
+                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal)));
+            await ExportSnapshotAsync(package, configured, "removed", removed);
             traces.Add(await WriteTraceAsync("GBA-038-games-apps", new
             {
                 issue = "GBA-038",
@@ -879,6 +903,8 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                     new { action = "games.open-catalog", invariant = "catalog exposes Conformance Library App" },
                     new { action = "games.toggle-curation", invariant = "selected state becomes true" },
                     new { action = "back", invariant = "curated root exposes games.launch" },
+                    new { action = "games.toggle-curation", invariant = "removing one saved Application preserves the unrelated trusted Game" },
+                    new { action = "back", invariant = "Library retains exactly one Add applications action" },
                 },
                 observed = new
                 {
@@ -886,6 +912,8 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                     initialNodeCount = Nodes(initial.Root).Count(),
                     catalogNodeCount = Nodes(catalog.Root).Count(),
                     populatedNodeCount = Nodes(populated.Root).Count(),
+                    removingNodeCount = Nodes(removing.Root).Count(),
+                    removedNodeCount = Nodes(removed.Root).Count(),
                 },
             }));
         }
@@ -1319,21 +1347,32 @@ static async Task<ViewSnapshot> WaitForActionSnapshotAsync(
     bool? selected = null)
 {
     var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+    ViewSnapshot? latest = null;
     while (DateTime.UtcNow < deadline)
     {
-        var snapshot = await client.GetSnapshotAsync();
-        Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
-        if (Nodes(snapshot.Root).Any(node =>
+        latest = await client.GetSnapshotAsync();
+        Assert.Equal(0, ViewSnapshotValidator.Validate(latest).Count);
+        if (Nodes(latest.Root).Any(node =>
                 string.Equals(node.ActionId, actionId, StringComparison.Ordinal) &&
                 Nodes(node).Any(descendant =>
                     (descendant.Text ?? string.Empty).Contains(
                         expectedText, StringComparison.Ordinal)) &&
-                (selected is null || node.IsSelected == selected)))
-            return snapshot;
+                (selected is null || (selected.Value
+                    ? node.IsSelected == true
+                    : node.IsSelected is not true))))
+            return latest;
         await Task.Delay(40);
     }
+    var actionDetails = latest is null
+        ? "none"
+        : string.Join(" | ", Nodes(latest.Root)
+            .Where(node => string.Equals(node.ActionId, actionId, StringComparison.Ordinal))
+            .Select(node => $"{node.Id}:selected={node.IsSelected}:" + string.Join(",",
+                Nodes(node).Select(descendant => descendant.Text)
+                    .Where(text => !string.IsNullOrWhiteSpace(text)))));
     throw new InvalidOperationException(
-        $"Snapshot omitted action '{actionId}' for '{expectedText}'.");
+        $"Snapshot omitted action '{actionId}' for '{expectedText}'. " +
+        $"Latest matching actions: {actionDetails}");
 }
 
 static async Task WaitUntilAsync(Func<bool> predicate)

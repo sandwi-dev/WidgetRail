@@ -185,6 +185,38 @@ continuously painted through Games & Apps admission, while the Games reload
 retains the same 981x668 host extent and Games content. The documentation
 contract passed across all 51 Markdown files.
 
+DLV-024 repairs the managed Library mutation boundary exposed by the catalog
+remove/Back sequence. Catalog and Library removal now compute an immutable
+schema-v3 delta without changing the render projection, serialize it through
+the existing bounded CAS path, and publish only the committed or conflict-
+merged state. The removed SavedId can no longer become an invalid persisted
+selection that normalizes the entire Library to empty. Write failure retains
+the complete prior in-memory and durable Library, while conflict recovery keeps
+unrelated membership, display projection, order, exclusions, and current-
+lifetime resolved launch rows. A removed focus target selects the nearest
+survivor through the committed SavedId selection. Initial/background/explicit
+reconciliation retains the Ready Library and exactly one Add applications
+action rather than substituting a transient loading tree. Library and Catalog
+preferred height is 600 DIPs, more than two 78-DIP row pitches above the former
+430-DIP Library baseline when host safe area permits; compact and 150% profiles
+remain Scroll-bounded by their existing minimums.
+
+The installed-worker regression had a second deterministic trigger: the
+20-rune display projection could end on a space, then fail its own canonical
+trim validation and normalize the complete desired v3 state to empty. Display
+projection now trims that truncation boundary before validation. Broker-shaped
+opaque-ID coverage reproduces the original `Conformance Trusted Game` label and
+proves the SavedId, automatic provenance, selected row, and canonical display
+copy survive the private-state write. Final focused Release evidence passes
+Games & Apps 52/52, Widget SDK 84/84, Windows Community private state 10/10,
+and the fresh isolated first-party generic-worker sequence 6/6.
+Retained evidence at
+`artifacts/evidence/dlv024/20260810T090000Z-dlv024-final-v2` verifies 7
+authoritative semantic snapshots, 2 interaction traces, and 16 standalone
+widget-body captures with zero renderer diagnostics. The before/removing/removed
+Games sequence covers standard, compact, 150% accessible, and wide profiles;
+the bundle honestly retains the unrelated Settings worker-start evidence gap.
+
 ## Implemented
 
 ### Native overlay and input
@@ -638,7 +670,10 @@ display-only last-good copy persist across worker restart/unload in
 `HostServices.PrivateState`. AppIds never persist. Activation shows the saved
 display immediately, then reconciles the bounded catalog and resolves curated
 entries to fresh short-lived launch tokens; checking or missing rows remain
-disabled while the cached Library stays visible. Removal of a Game
+disabled while the cached Library and its single Add applications action stay
+visible. Remove operations publish only after private-state commit, and a
+failed write keeps every prior row; bounded CAS conflict recovery applies the
+exact delta without dropping unrelated display projection. Removal of a Game
 persists an exclusion, same-identity reappearance stays excluded, and explicit
 Catalog addition clears it. Launch is
 enabled only while Interactive and targets only the opaque ID associated with
