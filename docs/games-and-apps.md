@@ -109,6 +109,33 @@ explicit game-library source, not a guess based on process or executable names.
   `unload-after-idle` with a 120-second idle interval; the bridge can recreate
   the worker from its last validated snapshot when it is needed again.
 
+## Managed responsibility map
+
+The DLV-027 boundary is behavioral, not a file-size convention. Before this
+split, the widget class itself composed every visual tree, maintained Catalog
+offset history, interpreted schema-v3 membership/projection/exclusion rules,
+implemented the private-state compare-and-swap loop, called providers, admitted
+actions, and owned lifecycle cancellation. It also mirrored the committed
+schema in three mutable membership/provenance/exclusion lists.
+
+The current implementation has four deliberately narrow internal seams:
+
+| Responsibility | Owner | May not own |
+| --- | --- | --- |
+| Active lifetime, action admission, provider calls, current AppId launch admission, one state lock, one command semaphore, publication/invalidation | `GamesAppsWidget` | A second lifecycle/state coordinator |
+| Library, Catalog, loading, empty, and failure tree composition from one immutable input value; stable hashed element IDs | `GamesAppsPresentation` | Host services, locks, persistence, or provider calls |
+| Current Catalog page, next offset, and visited reverse offsets as bounded immutable transitions | `GamesAppsCatalogPolicy` | Library membership or private state |
+| Schema-v3 normalization, add/remove/order/exclusion policy, display projection, trusted-Game reconciliation, conflict merge, and the two-attempt CAS transaction | `GamesAppsLibraryPolicy` and `GamesAppsLibraryStore` | Rendering, lifecycle, launch, or ambient host-service ownership |
+
+`GamesAppsLibraryState` is now the single committed membership/provenance/
+exclusion/order value; widget-local mirror lists were removed. Rendering captures
+one immutable `GamesAppsPresentationState` under the widget's existing lock and
+the pure presenter consumes only that revision. The store receives explicit
+read/write functions for one bounded transaction, so removal, reconciliation,
+and CAS conflict behavior can be tested without constructing or rendering the
+widget. These types remain package-internal and do not introduce a public SDK
+framework or a new persistence schema.
+
 ## Responsive and accessibility envelope
 
 The surface is a single bounded vertical controller hierarchy. The header and
@@ -282,6 +309,14 @@ AppsFolder, and Steam scans. Broker, SDK, bridge, Settings, and first-party conf
 cover separate read/launch consent, lifecycle denial, invalid payload/backend
 data, transport mapping, permission copy, packaged AppContainer startup, render,
 and a simulated launch.
+
+The DLV-027 focused Release run is retained at
+`artifacts/verification/20260810T102345Z-7c1b0cdd/verification-result.json`.
+It passes Games & Apps 55/55 (including direct policy, Catalog, presentation,
+and source-boundary cases), generic worker lifecycle 9/9, Windows private state
+10/10, the unchanged fresh installed-worker/AppContainer conformance sequence
+6/6, and documentation validation across 52 Markdown files. No canonical
+aggregate was run for this behavior-preserving managed refactor.
 
 The retained auth-free capture path renders automatic Library, Catalog, and
 mixed Library snapshots from the real installed package and generic worker

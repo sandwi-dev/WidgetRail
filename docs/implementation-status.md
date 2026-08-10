@@ -217,6 +217,27 @@ widget-body captures with zero renderer diagnostics. The before/removing/removed
 Games sequence covers standard, compact, 150% accessible, and wide profiles;
 the bundle honestly retains the unrelated Settings worker-start evidence gap.
 
+DLV-027 separates the stabilized Games & Apps implementation by stable
+responsibility without changing its public behavior or schema. The widget
+remains the sole lifecycle/action/provider/launch/publication owner behind one
+state lock and one command semaphore. `GamesAppsPresentation` is snapshot-only;
+`GamesAppsCatalogPolicy` owns immutable bounded paging transitions; and
+`GamesAppsLibraryPolicy` plus `GamesAppsLibraryStore` own schema-v3 mutation,
+projection, exclusion, order, trusted-Game reconciliation, conflict merge, and
+the bounded two-attempt private-state CAS transaction. Three widget-local lists
+that duplicated committed membership, automatic provenance, and exclusions are
+removed; `GamesAppsLibraryState` is the single committed policy value. Focused
+tests invoke removal, provider reconciliation, CAS conflict merge, Catalog
+forward/reverse transitions, and pure presentation without the complete widget,
+while a source-boundary contract rejects provider/lock/persistence ownership in
+presentation and duplicate lifecycle/render ownership in policy seams.
+The bounded focused Release result at
+`artifacts/verification/20260810T102345Z-7c1b0cdd/verification-result.json`
+passes Games & Apps 55/55, generic worker lifecycle 9/9, Windows private state
+10/10, fresh first-party installed-worker/AppContainer conformance 6/6, and 52
+documentation contracts in 84.1 seconds. DLV-027 did not run the canonical
+aggregate.
+
 ## Implemented
 
 ### Native overlay and input

@@ -10,4 +10,11 @@
     <ProjectReference Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsWidget.cs" Link="source\GamesAppsWidget.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsPresentation.cs" Link="source\GamesAppsPresentation.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsCatalogPolicy.cs" Link="source\GamesAppsCatalogPolicy.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsLibraryState.cs" Link="source\GamesAppsLibraryState.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsLibraryStore.cs" Link="source\GamesAppsLibraryStore.cs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

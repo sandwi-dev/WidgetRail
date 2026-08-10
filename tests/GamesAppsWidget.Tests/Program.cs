@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Current resolved classification authoritatively hides an automatic game", ResolvedReclassificationIsAuthoritative),
     ("Concurrent exclusion wins catalog reconciliation through bounded CAS", ConcurrentExclusionWins),
     ("Concurrent display removal wins background reconciliation through bounded CAS", ConcurrentDisplayRemovalWins),
+    ("Library mutation reconciliation and CAS policy is render independent", LibraryPolicyIsRenderIndependent),
     ("Legacy unsupported and invalid schemas reset atomically before fresh reconciliation", LegacySchemasResetAtomically),
     ("Bounded exclusion storage refuses removal without losing membership", FullExclusionSetRefusesRemoval),
     ("Worst-case display projection remains inside private-state bounds", ProjectedStateIsBounded),
@@ -47,6 +48,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("A failed fresh-worker refresh retains disabled last-good display", WarmStartSurvivesRefreshFailure),
     ("Background rejects a cancellation-ignoring fresh-worker resolution", WarmStartRejectsLateResolution),
     ("Catalog pages stay bounded and restore focus in both directions", LoadsMore),
+    ("Catalog navigation policy owns bounded forward and reverse transitions", CatalogPolicyOwnsNavigation),
     ("Rapid repeated load more is one busy controller command", LoadMoreIsSingleFlight),
     ("Pagination stops exactly at the bounded catalog maximum", PaginationStopsAtMaximum),
     ("Rapid repeated launch cannot duplicate a Shell launch", LaunchIsSingleFlight),
@@ -57,6 +59,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Try again performs a fresh provider load and recovers transient failures", RetryRecoversTransientFailure),
     ("Leaving during retry cancels and drains the runtime-owned library load", BackgroundCancelsRetry),
     ("Manifest and GBSS package validate", PackageValidates),
+    ("Games and Apps internals remain split by stable responsibility", ResponsibilitySplitContract),
 };
 
 var failures = 0;
@@ -1993,6 +1996,197 @@ static async Task BackgroundCancelsRetry()
     await retry.WaitAsync(TimeSpan.FromSeconds(1));
     Assert.Equal(GamesAppsPage.Library, widget.Page);
 }
+
+static async Task LibraryPolicyIsRenderIndependent()
+{
+    var alpha = App("alpha", "Alpha");
+    var beta = App("beta", "Beta");
+    var game = App("game", "Game", WidgetAppLibraryKind.Game);
+    var baseline = new GamesAppsLibraryState(
+        3,
+        [alpha.SavedId, beta.SavedId],
+        alpha.SavedId)
+    {
+        DisplayItems =
+        [
+            GamesAppsLibraryPolicy.ToDisplayItem(alpha),
+            GamesAppsLibraryPolicy.ToDisplayItem(beta),
+        ],
+    };
+
+    var removal = GamesAppsLibraryPolicy.Remove(
+        baseline, alpha, [alpha.SavedId, beta.SavedId]);
+    Assert.True(removal.Accepted);
+    Assert.SequenceEqual([beta.SavedId], removal.State.SavedIds);
+    Assert.Equal(beta.SavedId, removal.State.SelectedSavedId);
+    Assert.SequenceEqual([beta.SavedId],
+        removal.State.DisplayItems.Select(item => item.SavedId));
+
+    var reconciliation = GamesAppsLibraryPolicy.Reconcile(
+        removal.State, [beta, game], removal.State.SelectedSavedId);
+    Assert.SequenceEqual([beta.SavedId, game.SavedId], reconciliation.State.SavedIds);
+    Assert.SequenceEqual([game.SavedId], reconciliation.State.AutoGameSavedIds);
+
+    var latest = new GamesAppsLibraryState(
+        3,
+        [alpha.SavedId, beta.SavedId, game.SavedId],
+        alpha.SavedId)
+    {
+        AutoGameSavedIds = [game.SavedId],
+        DisplayItems =
+        [
+            GamesAppsLibraryPolicy.ToDisplayItem(alpha),
+            GamesAppsLibraryPolicy.ToDisplayItem(beta),
+            GamesAppsLibraryPolicy.ToDisplayItem(game),
+        ],
+    };
+    var writes = 0;
+    GamesAppsLibraryState? committed = null;
+    async ValueTask<WidgetPrivateStateMutation> Write(
+        GamesAppsLibraryState state,
+        long revision,
+        CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
+        writes++;
+        if (writes == 1)
+            throw new WidgetCapabilityException(
+                "state_conflict", "The test state changed concurrently.");
+        Assert.Equal(9L, revision);
+        committed = state;
+        return new WidgetPrivateStateMutation(10);
+    }
+    ValueTask<WidgetPrivateStateValue<GamesAppsLibraryState>> Read(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(
+            new WidgetPrivateStateValue<GamesAppsLibraryState>(true, latest, 9));
+    }
+
+    var saved = await GamesAppsLibraryStore.SaveAsync(
+        Write, Read, baseline, removal.State, expectedRevision: 4, CancellationToken.None);
+    Assert.Equal(GamesAppsLibrarySaveStatus.Saved, saved.Status);
+    Assert.Equal(2, writes);
+    Assert.True(committed is not null);
+    Assert.SequenceEqual([beta.SavedId, game.SavedId], committed!.SavedIds);
+    Assert.False(committed.SavedIds.Contains(alpha.SavedId, StringComparer.Ordinal));
+}
+
+static Task CatalogPolicyOwnsNavigation()
+{
+    var first = Enumerable.Range(0, GamesAppsWidget.PageSize)
+        .Select(index => App($"first-{index}", $"First {index}"))
+        .ToArray();
+    var second = Enumerable.Range(0, GamesAppsWidget.PageSize)
+        .Select(index => App($"second-{index}", $"Second {index}"))
+        .ToArray();
+    var initial = GamesAppsCatalogPolicy.ApplyPage(
+        GamesAppsCatalogState.Empty,
+        Page(first, GamesAppsWidget.PageSize),
+        GamesAppsCatalogPageTransition.Initial,
+        0,
+        GamesAppsWidget.PageSize,
+        GamesAppsWidget.MaximumItems);
+    Assert.False(initial.EmptyInitial);
+    Assert.False(initial.State.CanLoadPrevious);
+    Assert.Equal(GamesAppsWidget.PageSize, initial.State.NextOffset);
+
+    var next = GamesAppsCatalogPolicy.ApplyPage(
+        initial.State,
+        Page(second, GamesAppsWidget.PageSize * 2),
+        GamesAppsCatalogPageTransition.Next,
+        GamesAppsWidget.PageSize,
+        GamesAppsWidget.PageSize,
+        GamesAppsWidget.MaximumItems);
+    Assert.True(next.State.CanLoadPrevious);
+    Assert.SequenceEqual([0], next.State.BackOffsets);
+    Assert.Equal("saved-second-0", next.State.Items[0].SavedId);
+
+    var previous = GamesAppsCatalogPolicy.ApplyPage(
+        next.State,
+        Page(first, GamesAppsWidget.PageSize),
+        GamesAppsCatalogPageTransition.Previous,
+        0,
+        GamesAppsWidget.PageSize,
+        GamesAppsWidget.MaximumItems);
+    Assert.False(previous.State.CanLoadPrevious);
+    Assert.Equal("saved-first-0", previous.State.Items[0].SavedId);
+    return Task.CompletedTask;
+}
+
+static Task ResponsibilitySplitContract()
+{
+    var sourceRoot = Path.Combine(AppContext.BaseDirectory, "source");
+    var orchestration = File.ReadAllText(Path.Combine(sourceRoot, "GamesAppsWidget.cs"));
+    var presentation = File.ReadAllText(Path.Combine(sourceRoot, "GamesAppsPresentation.cs"));
+    var catalog = File.ReadAllText(Path.Combine(sourceRoot, "GamesAppsCatalogPolicy.cs"));
+    var policy = File.ReadAllText(Path.Combine(sourceRoot, "GamesAppsLibraryState.cs"));
+    var store = File.ReadAllText(Path.Combine(sourceRoot, "GamesAppsLibraryStore.cs"));
+
+    AssertSourceContains(orchestration, "OnActivatedAsync");
+    AssertSourceContains(orchestration, "OnActionAsync");
+    AssertSourceContains(orchestration, "private readonly object _gate");
+    AssertSourceContains(orchestration, "private readonly SemaphoreSlim _commandGate");
+    Assert.True(!orchestration.Contains("RenderLibrary(", StringComparison.Ordinal),
+        "Lifecycle/action orchestration regained Library composition.");
+    Assert.True(!orchestration.Contains("state_conflict", StringComparison.Ordinal),
+        "Lifecycle/action orchestration regained bounded CAS policy.");
+
+    AssertSourceContains(presentation, "GamesAppsPresentationState state");
+    AssertSourceContains(presentation, "RenderLibrary");
+    AssertSourceContains(presentation, "RenderCatalog");
+    Assert.True(!presentation.Contains("HostServices", StringComparison.Ordinal),
+        "Pure presentation acquired provider ownership.");
+    Assert.True(!presentation.Contains("lock (", StringComparison.Ordinal),
+        "Pure presentation reads mutable widget state.");
+
+    AssertSourceContains(catalog, "GamesAppsCatalogPageResult");
+    Assert.True(!catalog.Contains("HostServices", StringComparison.Ordinal),
+        "Catalog navigation acquired provider ownership.");
+    Assert.True(!catalog.Contains("GamesAppsLibraryState", StringComparison.Ordinal),
+        "Catalog navigation acquired persistence knowledge.");
+
+    AssertSourceContains(policy, "GamesAppsLibraryMutation Remove");
+    AssertSourceContains(policy, "GamesAppsLibraryReconciliation Reconcile");
+    AssertSourceContains(policy, "GamesAppsLibraryProjection Project");
+    Assert.True(!policy.Contains("WidgetView", StringComparison.Ordinal),
+        "Library policy acquired rendering ownership.");
+    Assert.True(!policy.Contains("HostServices", StringComparison.Ordinal),
+        "Library policy acquired ambient host-service ownership.");
+
+    AssertSourceContains(store, "GamesAppsLibraryStore");
+    AssertSourceContains(store, "state_conflict");
+    Assert.True(!store.Contains("GamesAppsWidget", StringComparison.Ordinal),
+        "CAS storage acquired widget ownership.");
+    Assert.True(!store.Contains("WidgetView", StringComparison.Ordinal),
+        "CAS storage acquired rendering ownership.");
+
+    var alpha = App("presented", "Presented");
+    var view = GamesAppsPresentation.Render(new GamesAppsPresentationState(
+        Revision: 1,
+        GamesAppsViewState.Ready,
+        GamesAppsPage.Library,
+        "1 saved",
+        [alpha],
+        [alpha.SavedId],
+        new HashSet<string>([alpha.SavedId], StringComparer.Ordinal),
+        alpha.AppId,
+        LaunchingAppId: null,
+        LoadingMore: false,
+        LibraryMutationBusy: false,
+        NextOffset: null,
+        CanLoadPrevious: false,
+        WidgetLifecycleState.Interactive,
+        Toast: null));
+    Assert.True(view.Root is StackElement);
+    return Task.CompletedTask;
+}
+
+static void AssertSourceContains(string source, string value) =>
+    Assert.True(source.Contains(value, StringComparison.Ordinal),
+        $"Expected source boundary to contain '{value}'.");
 
 static Task PackageValidates()
 {
