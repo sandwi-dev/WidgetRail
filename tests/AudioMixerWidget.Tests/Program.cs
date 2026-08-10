@@ -8,6 +8,10 @@ using GameBarAlternative.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Snapshot-only presentation is repeatable and preserves the focus contract", PresentationIsRepeatable),
+    ("Output policy owns coalescing acknowledgement and provider confirmation", OutputPolicyTransitions),
+    ("Input policy owns failure rollback and cancellation terminals", InputPolicyTransitions),
+    ("Session policy owns removal abandonment and lifecycle reset", SessionPolicyTransitions),
     ("One whole-widget scroll surface keeps every audio control revealable", StateSurfaces),
     ("D-pad and analog focus graph covers every row", ExplicitFocusGraph),
     ("Whole-list focus reaches both extents and restores the last controller row", WholeListFocusRestoration),
@@ -21,6 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Post-ack stale events cannot snap a slider back", PostAckStaleEvent),
     ("External authoritative changes apply when no command is pending", ExternalAuthoritativeUpdate),
     ("Mute and volume failures roll back with bounded feedback", OptimisticRollback),
+    ("Timed-out output command restores the authoritative value", TimeoutRollbackIsAuthoritative),
     ("Master output updates immediately reconciles and rolls back", MasterOutputControls),
     ("Default devices and microphone controls are live controller-native and stable", DeviceAndInputControls),
     ("Optional audio stream revocation and completion clear only their own state", OptionalStreamTerminationIsIsolated),
@@ -36,6 +41,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Visible lifetime fetches once subscribes and never polls", LifecycleAndNoPolling),
     ("Acknowledged subscription closes the snapshot fetch event gap", SubscriptionPrecedesSnapshot),
     ("Lifecycle cancellation rolls back without an error state", CancellationIsNotFailure),
+    ("Cancellation-ignoring session completion cannot publish after deactivation", CancellationIgnoringCompletionIsStale),
     ("Manifest permissions and polished GBSS validate", ShippedAssetsValidate),
 };
 
@@ -56,6 +62,120 @@ foreach (var test in tests)
 
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static Task PresentationIsRepeatable()
+{
+    var session = Session("game", "Space Game", 0.72, active: true);
+    var controls = AudioMixerSessionControlIds.For(session);
+    var state = new AudioMixerPresentationState(
+        AudioMixerViewState.Ready,
+        [new AudioMixerSessionPresentation(session, controls, VolumePending: true, MutePending: false)],
+        new WidgetAudioOutput(0.6, false),
+        [],
+        new WidgetAudioInput(0.5, false),
+        AudioOptionalSectionState.Empty,
+        AudioOptionalSectionState.Healthy,
+        AudioMixerPreferredFocusTarget.Session,
+        session.SessionId,
+        "Master output · 1 audio session · live updates",
+        StatusIsError: false);
+
+    var first = AudioMixerPresentation.Render(state).CreateSnapshot("audio.direct", 7);
+    var second = AudioMixerPresentation.Render(state).CreateSnapshot("audio.direct", 7);
+    Assert.Equal(JsonSerializer.Serialize(first), JsonSerializer.Serialize(second));
+    Assert.Equal(controls.VolumeSlider, first.InitialFocusId);
+    Assert.Equal("audio.input.volume.slider", Node(first.Root, controls.VolumeSlider).Focus!.Up);
+    Assert.Equal("audio.root", first.Root.Id);
+    Assert.Valid(first);
+    Assert.Valid(second);
+    return Task.CompletedTask;
+}
+
+static Task OutputPolicyTransitions()
+{
+    var policy = new AudioMixerOutputCommandPolicy();
+    var current = policy.ReconcileProvider(new WidgetAudioOutput(0.4, false), VolumesNear);
+    var first = policy.QueueVolume(current, 0.65);
+    Assert.True(first.StartWorker, "The first output target did not acquire the worker.");
+    Assert.True(policy.TryBeginVolumeWork(out var firstWork), "The first output work item was missing.");
+    var newer = policy.QueueVolume(first.State, 0.75);
+    Assert.True(!newer.StartWorker, "A coalesced output target acquired a second worker.");
+    Assert.Equal(AudioMixerCommandTransitionKind.NewerRevision,
+        policy.AcknowledgeVolume(firstWork.Revision).Kind);
+    Assert.Equal(AudioMixerCommandTransitionKind.NewerRevision,
+        policy.FailVolume(firstWork.Revision).Kind);
+
+    Assert.True(policy.TryBeginVolumeWork(out var latestWork), "The latest output work item was missing.");
+    var acknowledged = policy.AcknowledgeVolume(latestWork.Revision);
+    Assert.Equal(AudioMixerCommandTransitionKind.Applied, acknowledged.Kind);
+    Assert.True(acknowledged.StartConfirmation && policy.VolumeAwaitingConfirmation,
+        "Output acknowledgement did not retain the target for provider confirmation.");
+    var staleProvider = policy.ReconcileProvider(new WidgetAudioOutput(0.4, false), VolumesNear);
+    Assert.Near(0.75, staleProvider.Volume);
+    Assert.True(policy.VolumeIsPending,
+        "A mismatching output provider event cleared the acknowledged target.");
+    var matchedProvider = policy.ReconcileProvider(new WidgetAudioOutput(0.75, false), VolumesNear);
+    Assert.Near(0.75, matchedProvider.Volume);
+    Assert.True(!policy.VolumeIsPending && !policy.VolumeAwaitingConfirmation,
+        "A matching output provider event did not terminally confirm the target.");
+
+    var mute = policy.QueueMute(matchedProvider, true);
+    Assert.True(policy.TryBeginMuteWork(out var muteWork), "Output mute work was missing.");
+    Assert.True(policy.AcknowledgeMute(muteWork.Revision).StartConfirmation,
+        "Output mute acknowledgement did not enter confirmation.");
+    var rejected = policy.ConfirmMute(muteWork.Revision, mute.State, authoritative: false);
+    Assert.Equal(AudioMixerCommandTransitionKind.Applied, rejected.Kind);
+    Assert.True(!rejected.Matched && !rejected.State.IsMuted && !policy.MuteIsPending,
+        "Output confirmation mismatch did not restore the authoritative mute state.");
+    return Task.CompletedTask;
+}
+
+static Task InputPolicyTransitions()
+{
+    var policy = new AudioMixerInputCommandPolicy();
+    var current = policy.ReconcileProvider(new WidgetAudioInput(0.45, false), VolumesNear);
+    var volume = policy.QueueVolume(current, 0.8);
+    Assert.True(policy.TryBeginVolumeWork(out var volumeWork), "Input volume work was missing.");
+    var failed = policy.FailVolume(volumeWork.Revision);
+    Assert.Equal(AudioMixerCommandTransitionKind.Applied, failed.Kind);
+    Assert.True(failed.HasAuthoritative, "Input failure did not retain an authoritative rollback.");
+    Assert.Near(0.45, failed.Authoritative);
+    Assert.True(!policy.VolumeIsPending && !policy.IsSending,
+        "Input failure left pending or worker state behind.");
+
+    var mute = policy.QueueMute(volume.State, true);
+    Assert.True(mute.StartWorker, "Input mute did not acquire its independent worker.");
+    Assert.True(policy.TryBeginMuteWork(out _), "Input mute work was missing.");
+    var canceled = policy.CancelMute();
+    Assert.Equal(AudioMixerCommandTransitionKind.Applied, canceled.Kind);
+    Assert.Equal(false, canceled.Authoritative);
+    Assert.True(!policy.MuteIsPending && !policy.IsSending,
+        "Input cancellation left pending or worker state behind.");
+    return Task.CompletedTask;
+}
+
+static Task SessionPolicyTransitions()
+{
+    var session = Session("game", "Game", 0.5, muted: false);
+    var policy = new AudioMixerSessionCommandPolicy(session);
+    var admission = policy.QueueMute(session, true);
+    Assert.True(admission.StartWorker && !policy.CanDiscard,
+        "A sending session policy was incorrectly removable.");
+    Assert.True(policy.TryBeginMuteWork(out var work), "Session mute work was missing.");
+    var acknowledged = policy.AcknowledgeMute(work.Revision);
+    Assert.True(acknowledged.StartConfirmation && policy.CanDiscard,
+        "An acknowledged session did not move from worker ownership to confirmation.");
+    Assert.True(policy.AbandonMuteConfirmation(work.Revision),
+        "Session removal did not abandon the exact confirmation revision.");
+    Assert.True(!policy.MuteIsPending, "Session removal retained an abandoned target.");
+
+    var pending = policy.QueueVolume(session, 0.8);
+    var restored = policy.RestoreAndReset(pending.State);
+    Assert.Near(0.5, restored.Volume);
+    Assert.True(!policy.VolumeIsPending && !policy.MuteIsPending && policy.CanDiscard,
+        "Lifecycle reset retained session command ownership.");
+    return Task.CompletedTask;
+}
 
 static async Task StateSurfaces()
 {
@@ -497,6 +617,29 @@ static async Task OptimisticRollback()
     Assert.Contains("previous value restored", status);
     Assert.True(!status.Contains("provider details", StringComparison.Ordinal),
         "Provider exception details leaked into the UI.");
+    await Background(widget);
+}
+
+static async Task TimeoutRollbackIsAuthoritative()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Output = new WidgetAudioOutput(0.6, false),
+    };
+    fake.PlanOutputVolume(failure: new TimeoutException("private provider deadline"));
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    await widget.OnActionAsync(
+        new("output.volume.set", "audio.master.volume.slider", RequestedValue: 0.85));
+    await WaitUntil(() => fake.OutputVolumeRequests.Count == 1);
+    await WaitUntil(() => VolumesNear(widget.Output!.Volume, 0.6));
+    Assert.Near(0.6, widget.Output!.Volume);
+    var status = Text(Snapshot(widget, 1).Root, "audio.status");
+    Assert.True(status.StyleClasses.Contains("is-error"),
+        "A timed-out output command did not expose bounded rollback feedback.");
+    Assert.True(!status.Text!.Contains("private provider", StringComparison.Ordinal),
+        "A timed-out output command leaked provider details.");
     await Background(widget);
 }
 
@@ -1005,6 +1148,30 @@ static async Task CancellationIsNotFailure()
         "Normal lifecycle cancellation rendered as an error.");
 }
 
+static async Task CancellationIgnoringCompletionIsStale()
+{
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("a", "Game", 0.5)],
+    };
+    fake.PlanSessionVolume(release.Task, ignoreCancellation: true);
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var game = SessionPrefix(Snapshot(widget, 0).Root, "Game");
+    await widget.OnActionAsync(
+        new($"{game}.volume.set", $"{game}.volume.slider", RequestedValue: 0.8));
+    await WaitUntil(() => fake.VolumeRequests.Count == 1);
+
+    await Background(widget);
+    Assert.Near(0.5, widget.Sessions.Single().Volume);
+    release.TrySetResult();
+    await widget.DrainCommandWorkersAsync().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Near(0.5, widget.Sessions.Single().Volume);
+    Assert.True(!Text(Snapshot(widget, 1).Root, "audio.status").StyleClasses.Contains("is-error"),
+        "A cancellation-ignoring late completion published an error after deactivation.");
+}
+
 static async Task ShippedAssetsValidate()
 {
     var project = ProjectDirectory();
@@ -1291,9 +1458,13 @@ file sealed class FakeCapabilityClient
     public int SubscriptionCount => Volatile.Read(ref _subscriptionCount);
     public int CanceledSubscriptions => Volatile.Read(ref _canceledSubscriptions);
 
-    public void PlanSessionVolume(Task? gate = null, Exception? failure = null)
+    public void PlanSessionVolume(
+        Task? gate = null,
+        Exception? failure = null,
+        bool ignoreCancellation = false)
     {
-        lock (_gate) _sessionVolumePlans.Enqueue(new ControlPlan(gate, failure));
+        lock (_gate) _sessionVolumePlans.Enqueue(
+            new ControlPlan(gate, failure, ignoreCancellation));
     }
 
     public void PlanSessionMute(Task? gate = null, Exception? failure = null)
@@ -1412,7 +1583,11 @@ file sealed class FakeCapabilityClient
                 VolumeRequests.Add((SetWidgetAudioSessionVolumeRequest)(object)request!);
                 plan = NextPlan(_sessionVolumePlans);
             }
-            if (plan.Gate is not null) await plan.Gate.WaitAsync(cancellationToken);
+            if (plan.Gate is not null)
+            {
+                if (plan.IgnoreCancellation) await plan.Gate;
+                else await plan.Gate.WaitAsync(cancellationToken);
+            }
             if (plan.Failure is not null) throw plan.Failure;
             return (TResponse)(object)new WidgetCapabilityAcknowledgement(true);
         }
@@ -1663,7 +1838,10 @@ file sealed class FakeCapabilityClient
     }
 }
 
-file sealed record ControlPlan(Task? Gate, Exception? Failure);
+file sealed record ControlPlan(
+    Task? Gate,
+    Exception? Failure,
+    bool IgnoreCancellation = false);
 
 file static class Assert
 {

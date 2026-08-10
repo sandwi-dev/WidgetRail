@@ -688,6 +688,43 @@ been adopted.
 Broader hardware/churn coverage and end-to-end hidden/visible performance evidence
 remain open; this is not yet an end-user release claim.
 
+The DLV-029 Audio Mixer split keeps `AudioMixerWidget` as the only lifecycle,
+host-service, committed-state, selection, action-routing, and invalidation
+owner. Before the split, its roughly 2,496-line class also owned all view
+composition and the nested output/input/session pending-command mechanics.
+After the corrected split, the widget is 1,880 lines; a 354-line internal
+command-policy boundary owns the complete output, input, and per-session
+absolute-target transition rules: admission/coalescing, immutable work items,
+acknowledgement and confirmation state, newer-revision refusal, provider-event
+projection, failure/timeout rollback, cancellation, abandonment/removal, and
+lifecycle reset. Its mutable scalar state is private and the widget can consume
+only closed admissions, work items, acknowledgements, projections, and terminal
+results. A separate 351-line snapshot-only presenter owns the unchanged
+controller view/focus graph. The residual widget remains cohesive despite
+exceeding 1,000 lines because it is the single typed host-service/task,
+lifecycle, committed model, selection/action-routing, status-copy, and
+invalidation owner for six audio operations and four provider streams; those
+authoritative side effects are intentionally not duplicated into policies.
+The presenter and policies contain no locks, semaphores, cancellation sources,
+task roots, or lifecycle generations. Coordination is one widget state lock,
+one widget-owned command-task registry, two optional-section retry semaphores,
+one active-run generation, and the same three widget-owned cancellation-source
+slots; the registry replaces unobservable detached command tasks without adding
+a coordinator, lock, generation, or lifecycle owner. Direct deterministic
+coverage exercises repeated presentation; distinct output/input/session
+admission, acknowledgement, confirmation, newer-revision, provider mismatch/
+match, rollback, cancellation, removal, and reset transitions; timeout failure;
+provider churn; and cancellation-ignoring completion followed by an exact
+transitive command drain after deactivation. Every existing `audio.*` focus ID
+and navigation edge remains unchanged. This is an internal responsibility split
+only: it adds no public SDK, protocol, broker, provider, native,
+endpoint-selection, or shared-Scroll surface.
+Bounded dirty-worktree Release run `20260810T155016Z-d0427e67` passed Audio
+Mixer 35/35, Widget SDK 84/84, Platform Broker 51/51, Windows Audio provider
+15/15, and documentation validation across 52 Markdown files in 18.1 seconds.
+This is assignment-scoped implementation evidence, not a canonical aggregate
+or release-eligible clean-worktree result.
+
 The current Network Controls reference slice runs as a manifest-backed bundled
 package through the generic community worker/AppContainer path. It requires
 coarse network and available-Wi-Fi read grants,
