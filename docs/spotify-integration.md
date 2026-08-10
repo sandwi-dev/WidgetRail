@@ -306,9 +306,14 @@ DLV-034 reduced the integration/token owner from 1,724 lines (81,619 bytes) to
 collection endpoint boundary (368 lines), HTTP retry/rate-limit policy (103),
 and strict response parsing (564). Direct fixtures construct endpoint families
 without browser, vault, token session, or local-player dependencies and cover
-explicit scopes, concurrent token demand, cancellation-ignoring transport,
-401 refresh, 429/backoff, malformed and oversized responses, disconnect, and
-stale client identity. No public provider/broker protocol changed.
+explicit scopes, concurrent token demand, 401 refresh, 429/backoff, malformed
+and oversized responses, and stale client identity. A manually gated backend
+fixture also completes a refresh transport after caller cancellation and proves
+that its access token and rotated refresh credential are neither published nor
+reused; the next request performs a fresh exchange. A credential-free local-host
+fixture proves disconnect stops playback, deletes the vault entry, clears the
+cached access token, and prevents a later request from reaching Spotify with the
+pre-disconnect session. No public provider/broker protocol changed.
 
 ## Rate limiting and recovery
 

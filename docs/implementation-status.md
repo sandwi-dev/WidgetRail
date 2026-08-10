@@ -1393,7 +1393,14 @@ with C++ installed:
   event authority. Injected-response bounds now match the production 512 KiB
   transport limit. Retained focused Release run
   `20260810T140244Z-2b2f8821` completed in 12.5 seconds: Windows Spotify provider
-  32/32 and PlatformBroker 51/51. Live-account evidence remains separate.
+  32/32 and PlatformBroker 51/51. Follow-up focused Release run
+  `20260810T141733Z-0e24d4e1` completed in 5.3 seconds with Windows Spotify
+  provider 34/34. Its manually gated backend cases prove that a
+  cancellation-ignoring refresh cannot publish/cache an access token, rotate
+  or save a refresh credential, or authorize the next request, and that
+  disconnect stops local playback, deletes the vault entry, clears the cached
+  token, and prevents later use of the disconnected session. Live-account
+  evidence remains separate.
 - The code clears unused native client pixels to the layered color key,
   separates Now Playing snapshot reads from live-subscription failures, loads
   the Games catalog only after Add, and preserves measured intrinsic height for
