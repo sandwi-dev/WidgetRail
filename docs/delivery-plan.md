@@ -330,6 +330,36 @@ session/subscription/retry lifecycle with committed application orchestration,
 so DLV-042 dispositions that remaining concentration before further product
 growth.
 
+### DLV-042 — Extract Audio Mixer active provider-session ownership
+
+**State:** Done
+**Closing commits:** `37119f7` (`[DLV-042] Extract Audio Mixer provider
+session`), corrected by `0a3635a` (`[DLV-042] Close retry and stop ordering`)
+**Integrated on `main`:** `f64c35a`
+
+**Reviewer disposition:** Accepted after one bounded lifecycle correction. One
+484-line internal Active provider session now owns the linked lifetime, all four
+subscription-before-snapshot paths and event pumps, optional retry signals and
+attempt replacement, bounded failure classification, and exact terminal drain.
+It publishes immutable observations that the widget admits only from the exact
+current session; it owns no committed render state, action/focus policy,
+command transition, status, or invalidation. The widget root falls from 1,880
+to approximately 1,687 lines and has no provider pump, retry semaphore,
+provider attempt cancellation source, or subscription startup method. Candidate
+`37119f7` initially allowed Retry to race terminal semaphore disposal and let a
+widget-side Loading write overwrite a faster Healthy observation. Correction
+`0a3635a` makes retry admission/signal/cancellation atomic with Stop and leaves
+Loading/Healthy/Failure ordering exclusively on the session observation path.
+Deterministic cancellation-callback and immediate-retry handshakes prove drain,
+disposal, zero retained subscriptions/attempts, no post-stop publication, and
+ordered Loading to terminal state without sleeps. Retained stable dirty run
+`20260810T162728Z-cb2f0ef9` passes Audio Mixer 41/41, Widget SDK 84/84,
+generic worker 9/9, Windows Audio 15/15, and documentation 52; bounded
+correction run `20260810T164357Z-e423fe7e` passes Audio Mixer 42/42 and Widget
+SDK 84/84. The residual root receives the cohesive exception recorded in the
+engineering-quality review; material growth or a returning provider,
+presentation, persistence, or independent coordination concern reopens it.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -349,8 +379,8 @@ integrated, Audio Mixer is the next managed production decomposition because it
 remains the largest first-party monolith and DLV-037 was only a queue-order
 dependency. DLV-029 must preserve current focus IDs and navigation behavior so
 the independent native/shared-scroll correction remains separately reviewable.
-After accepted DLV-029, DLV-042 separates the residual Audio Mixer provider-
-lifecycle concentration before dashboard controls add behavior. DLV-035 and
+Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
+concentration before dashboard controls add behavior. DLV-035 and
 DLV-041 then keep the Windows network backend and its native interop owner
 adjacent; DLV-036 and DLV-037 continue the platform-policy hotspot queue;
 DLV-039 and DLV-040 finish the residual bridge-server responsibility split
@@ -990,8 +1020,9 @@ Spotify widget rather than the platform backend.
 
 ### DLV-035 — Split the Windows network backend by stable responsibility
 
-**State:** Ready after DLV-042
-**Baseline:** closing commit of DLV-042
+**State:** Assigned
+**Baseline:** accepted DLV-042 integration `f64c35a` plus the reviewer
+control-plane commit assigning this milestone
 **Dependencies:** DLV-028 and DLV-031
 **Owner:** managed Windows network provider internals and deterministic native-
 adapter fixtures; no widget presentation or native overlay-host files
@@ -1307,8 +1338,9 @@ its own bounded assignment.
 
 ### DLV-042 — Extract Audio Mixer active provider-session ownership
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `f64c35a`
 **Baseline:** accepted DLV-029 integration `6fc8d73`
+**Closing commits:** `37119f7`, corrected by `0a3635a`
 **Dependencies:** DLV-029
 **Owner:** managed Audio Mixer provider lifecycle/ingestion internals and direct
 credential-free session fixtures; no presentation, command-policy, SDK,
@@ -1358,6 +1390,14 @@ aggregate, or unrelated security suite.
 **Stop/escalate when:** the extraction requires public SDK/protocol/provider
 changes, creates a second committed-state or invalidation owner, cannot retain
 one bounded Active session, or needs physical audio hardware.
+
+**Reviewer evidence:** Candidate `37119f7` performs the complete ownership move
+and supplies the required direct session fixtures, but review found Retry could
+resume after Stop disposed a captured semaphore and the widget could overwrite
+a faster retry Healthy observation with its own later Loading write. Correction
+`0a3635a` closes both exact races behind the session's existing gate and one
+ordered observation path. The accepted disposition and retained evidence are
+recorded under Recently completed.
 
 ### DLV-038 — Modularize the largest managed test harnesses by responsibility
 
@@ -1787,9 +1827,9 @@ drain, and Close/Guide responsiveness while another request stalls.
 
 ### DLV-019 — Add Audio Mixer dashboard master controls
 
-**State:** Awaiting DLV-029 and planner-selected serialized baseline
+**State:** Awaiting planner-selected serialized baseline; DLV-042 accepted
 **Intended lead:** planner-selected bridge/broker plus widgets integration lane
-**Dependencies:** DLV-014, DLV-029
+**Dependencies:** DLV-014, DLV-029, DLV-042
 
 Expose LB/RB as bounded master-output volume down/up and X as master mute from
 the icon tray. Reuse the exact snapshot-bound dashboard gesture authority; add
