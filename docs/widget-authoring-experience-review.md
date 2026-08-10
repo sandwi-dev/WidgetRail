@@ -1189,7 +1189,7 @@ still chooses when to read, how to render each state, and how to merge provider
 events. It never starts work from `Render`. Cursor pages and append/infinite
 feeds remain separate open designs.
 
-### 4. Bounded offset-paged resource state — SDK and host repair implemented; composed proof open
+### 4. Bounded offset-paged resource state — replacement-window behavior is not product-complete
 
 The public resource is constructed once through `CreatePagedResource<TItem>`:
 
@@ -1249,6 +1249,16 @@ original live failure has not been retested. Compose those existing pieces
 instead of adding another helper layer. The one-shot refresh case now supports
 the changed-ID design; introduce a new protocol token only if a composed test
 finds a real ambiguity.
+
+The 2026-08-09 packaged product report confirms the composition gap is real:
+crossing a Queue or Playlist page boundary visibly moves focus from the bottom
+to the top (and vice versa), while reverse Playlist traversal can oscillate
+between the fixed Play action and the first row. Replacement-window paging is
+therefore unsuitable as the final infinite-list authoring model even if each
+individual page and cache transition is correct. DLV-006 must provide a
+continuous keyed collection/viewport-anchor contract; DLV-022 then migrates
+Spotify and proves fixed-header boundaries, forward/reverse loading, and focus
+continuity through the production host path.
 
 The resource owns its state-change invalidation and runtime-owned Latest lane,
 including synchronous cache-hit/reset changes that have no operation busy
@@ -1731,10 +1741,12 @@ Media Sessions is the first medium model and command migration.
 
 Next work:
 
-1. Preserve pre-move page admission and prove Spotify compact/expanded 12/12/5
-   forward and reverse controller flows through the real renderer, host, bridge,
-   cache, and snapshot refresh. Include unrelated refresh and live retest; make
-   page-entry focus explicitly one-shot if the changed-ID rule cannot prove it.
+1. Complete DLV-006's continuous keyed collection and viewport-anchor contract,
+   then use DLV-022 to prove Spotify compact/expanded forward and reverse
+   controller flows through the real renderer, host, bridge, cache, and snapshot
+   refresh. Crossing a load boundary must retain the adjacent visual row rather
+   than teleporting to a replacement window; reverse traversal must not
+   oscillate between a fixed header action and the first list row.
 2. Preserve the unified bounded action admission and new native feedback host;
    prove an installed Spotify/YT Music late failure through worker, bridge,
    native controller, selected painted/UIA status, expiry, and no restart.
@@ -1745,8 +1757,9 @@ Next work:
    test recipe.
 4. Define credential/session generation semantics before any flow allows
    credentials to be replaced while requests are in flight.
-5. Design cursor/append resource state separately from current-value and
-   offset-page semantics.
+5. Deliver cursor/append resource state in DLV-006 separately from current-value
+   and offset-page semantics; do not extend the replacement-window contract
+   until it impersonates a continuous collection.
 6. Completed by DLV-007 (`ff706d2`): Spotify has one immutable render-facing
    model and explicitly keyed playlist-detail owner with deterministic
    selection/reset/load interleavings. Generalize keyed resources only after
@@ -1847,11 +1860,12 @@ The improvements should be evaluated against measurable author outcomes:
 - A multipage widget uses one route model and destination set for compact and
   expanded layouts. SDK Gallery now demonstrates this; a larger production
   migration remains the next proof.
-- An offset-paged collection can traverse a partial final page and every cached
-  or reloaded previous page using only controller directions. The host consumes
-  boundary input before geometric escape, applies entering-edge focus once, and
-  preserves that focus across unrelated snapshot refreshes in compact and
-  expanded layouts.
+- An offset-paged collection's focused tests can traverse a partial final page
+  and cached or reloaded previous pages using controller directions, but
+  packaged Spotify evidence shows the replacement-window model still jumps at
+  page boundaries and oscillates against fixed header controls. Product
+  acceptance now requires the DLV-006 continuous keyed collection followed by
+  DLV-022 production composition evidence.
 - Disabled and busy navigation destinations remain reachable and retain stable
   responsive focus, while pointer/controller activation is consistently
   suppressed and the unavailable state is exposed clearly.

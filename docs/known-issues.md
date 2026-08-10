@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll contains every control and restores the last master, microphone, or application focus target; packaged visual/controller verification remains. |
-| GBA-004 | P1 | Verifying | OverlayHost presentation / invalidation | Size-changing widget swaps now move without redraw and synchronously commit one complete frame; packaged visual verification remains. |
+| GBA-004 | P1 | Confirmed | OverlayHost presentation / invalidation | A black border/spacing flash is still reproduced when cycling into Spotify, so the earlier extent-swap fix is incomplete; DLV-020 owns instrumented frame continuity. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -74,6 +74,15 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-053 | P1 | Verifying | Widget SDK resource coordination | Public `WidgetResource<TValue>` now owns bounded non-paged load/cache/retry/last-good/subscription state with lifecycle cancellation and stale-result rejection; broader production migrations and packaged evidence remain. |
 | GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
 | GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | YT Music 0.2.6 now exposes typed status-only service failures and bounded safe UI copy without retaining response bodies or unknown exception messages; real-companion failure evidence remains. |
+| GBA-056 | P1 | Confirmed | Spotify widget focus composition | Left from the inactive seek Slider moves to Previous track instead of the navigation menu to its left; DLV-022 owns explicit responsive focus edges. |
+| GBA-057 | P0 | Confirmed | Widget SDK paged resources / native focus | Auto-loading list transitions visibly jump focus from bottom to top or top to bottom when replacing pages; DLV-006 owns continuous cursor/append and keyed viewport anchoring. |
+| GBA-058 | P1 | Confirmed | SectionHeader / native text geometry / Spotify | The `LIBRARY` header in Spotify Playlists is vertically clipped in the packaged overlay; DLV-021 owns shared header measurement and DLV-022 verifies Spotify composition. |
+| GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
+| GBA-060 | P1 | Confirmed | Native renderer / shared component geometry | Button text/icon/checkmark alignment remains visibly inconsistent across first-party surfaces including Now Playing; DLV-021 reopens shared end-to-end measurement and paint evidence. |
+| GBA-061 | P0 | Investigating | Spotify lifecycle / provider failure policy | Spotify can randomly replace the usable surface with `Spotify could not be loaded`; manual refresh recovers it. DLV-023 owns typed transient/fatal classification and last-good recovery. |
+| GBA-062 | P1 | Open | Audio Mixer / dashboard gesture authority | The icon tray has no LB/RB master-volume or X master-mute shortcuts; DLV-019 owns the exact-operation authority and widget integration. |
+| GBA-063 | P0 | Confirmed | Games & Apps private state / cold start | Durable IDs/order exist, but a new worker cannot render persisted display rows before provider resolution and appears to reload the full library; DLV-017 owns a bounded non-launchable warm projection. |
+| GBA-064 | P0 | Confirmed | Spotify list/header focus / native navigation | Reverse playlist traversal can oscillate between the header Play action and first row during scroll/load replacement; DLV-006 and DLV-022 own continuous keyed focus and composed verification. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -173,10 +182,12 @@ focused checks do not replace packaged controller and visual verification.
 
 ## GBA-004 — Widget switching can flash tray/panel spacing
 
-**Evidence:** The user reports a transient black border/spacing flash when
-switching specifically from Audio Mixer to Network Controls in the packaged
-Release overlay. This means the earlier same-extent placement optimization is
-not sufficient evidence that presentation is visually continuous.
+**Evidence:** The user first reported a transient black border/spacing flash
+when switching from Audio Mixer to Network Controls. A 2026-08-09 packaged run
+now reproduces the same class of flash around Spotify while cycling widgets and
+describes the transition itself as jarring. The earlier same-extent/extent-
+changing placement optimization is therefore not sufficient evidence that
+presentation is visually continuous.
 
 **Root cause and implementation evidence:** The Audio-to-Network transition
 changes the requested panel extent, so Windows could expose an intermediate
@@ -1674,6 +1685,149 @@ ordinary/authorization failure rejection after supersession or lifecycle exit.
    exception-text exclusion.
 4. A packaged real-companion run records representative authorization, 4xx,
    5xx, malformed-response, timeout, and unavailable failures before closure.
+
+## GBA-056 — Spotify seek navigation does not enter the menu to its left
+
+**Evidence:** In the expanded Spotify player, pressing Left while the inactive
+seek Slider owns focus moves to Previous track below it. The selected navigation
+rail is the visually and structurally intended destination to the left.
+
+**Ownership:** Spotify's explicit responsive focus graph first. The native
+geometric resolver is a verification seam, not a reason to encode Spotify IDs
+in the host.
+
+**Acceptance:** Expanded Left enters the selected rail destination; compact
+mode uses its corresponding navigation tab; Slider adjustment mode still owns
+Left/Right after activation; disabled/busy and responsive changes retain a
+valid target; controller tests exercise both explicit and geometric fallbacks.
+
+## GBA-057 — Replacement-page loading makes continuous lists jump focus
+
+**Evidence:** Forward and reverse traversal in auto-loading lists visibly moves
+the cursor from the last row to the first row, or the first to the last, when a
+new page replaces the current 12-row window. Existing tests assert that exact
+replacement behavior, so this is a design gap rather than an untested edge.
+
+**Ownership:** DLV-006's shared SDK/protocol/native cursor-append collection.
+Individual widgets must not hide it with duplicate page caches or ordinal
+focus hacks.
+
+**Acceptance:** A keyed item and viewport anchor remain continuous across
+forward/reverse loads, sparse results, cache hits/eviction, refresh, insertion,
+deletion, cancellation, and final pages; focus never wraps merely because a
+transport page changed; retained items and artwork remain bounded.
+
+## GBA-058 — Spotify Playlists clips its Library header
+
+**Evidence:** The supplied packaged screenshot shows `LIBRARY` vertically
+clipped above the playlists content. Spotify currently overrides shared
+SectionHeader content height, while shared intrinsic measurement and trailing
+actions also participate in allocation.
+
+**Ownership:** DLV-021 must reproduce and correct shared SectionHeader
+measurement/paint first; DLV-022 verifies Spotify no longer adds compensating
+geometry.
+
+**Acceptance:** Eyebrow, title, description, and optional Play/trailing action
+fit their measured content at compact/standard/wide and 100-150% scales, remain
+unclipped during responsive changes, and expose matching semantic bounds.
+
+## GBA-059 — Games & Apps lacks trusted artwork for saved games
+
+**Evidence:** The supplied Games & Apps screenshot shows a large Play fallback
+for `007 First Light`. The widget already renders `IconPngBase64` when supplied,
+but the trusted provider only rasterizes selected shortcut/AppsFolder icons;
+the Steam source has no artwork implementation and broad discovery is
+deliberately text-only.
+
+**Ownership:** The trusted source adapters and DLV-006 lazy-artwork contract,
+not the widget and not an arbitrary package URL/file escape.
+
+**Acceptance:** Supported sources resolve bounded artwork lazily through opaque
+handles, validate identity/format/dimensions/bytes, cap decode/cache/transport
+cost, reject stale assets, and use an honest semantic fallback only when the
+exact registration has no trusted artwork.
+
+## GBA-060 — Shared button content remains visibly misaligned
+
+**Evidence:** The supplied Now Playing screenshot and hands-on reports show
+text, leading icon, and trailing checkmark/busy content with inconsistent
+vertical/optical alignment across multiple first-party widgets even after
+DLV-003's focused Button assertions passed.
+
+**Ownership:** Native declarative measurement/paint plus shared component
+styles. The new evidence reopens packaged product acceptance without rejecting
+DLV-003's narrower automated result.
+
+**Acceptance:** One measured geometry model covers Buttons, action tiles,
+icon-label-checkmark/busy variants, wrapped/ellipsized labels, disabled/
+selected/focused states, and every supported scale; Games & Apps, Spotify, Now
+Playing, Settings, and SDK Gallery require no local pixel offsets.
+
+## GBA-061 — Spotify randomly falls back to a full load-error screen
+
+**Evidence:** The packaged Spotify addon intermittently shows `Spotify could
+not be loaded`; refreshing the addon restores normal operation. Current polling
+maps an unknown/transient exception to the global Error state even when a
+last-good playback/route snapshot exists.
+
+**Ownership:** Spotify refresh/polling state and typed provider-failure policy
+first. DLV-023 must preserve fatal permission/configuration/authorization
+semantics and escalate if retained diagnostics prove a provider or worker
+crash.
+
+**Acceptance:** Recoverable faults retain the last-good usable surface with
+bounded warning/backoff; refresh and automatic recovery share one policy;
+fatal typed states remain explicit; error copy is safe; lifecycle exit cancels
+retry; repeated forced sequences never restart the worker or lose route/focus.
+
+## GBA-062 — Audio Mixer lacks icon-tray master controls
+
+**Evidence:** Audio Mixer publishes no dashboard quick actions. Existing tests
+explicitly reject LB/RB session cycling, and audio control capabilities do not
+currently allow dashboard gesture authority.
+
+**Ownership:** DLV-019 is a serialized widget/bridge/broker milestone. It may
+authorize only current default-output set-volume/set-mute operations for the
+exact visible snapshot gesture.
+
+**Acceptance:** LB/RB adjust master volume by a documented clamped step and X
+toggles master mute; labels and current state are visible; rapid input
+coalesces and reconciles; stale/replayed/expired/wrong-widget/Background/
+permission-denied actions fail closed; session, microphone, and device controls
+receive no new dashboard authority.
+
+## GBA-063 — Games & Apps cold start cannot show persisted rows immediately
+
+**Evidence:** Schema-v2 persists durable IDs, provenance, exclusions, order,
+and selection, but not a bounded display projection. A fresh worker must resolve
+IDs through the provider before it can render names/kinds, which presents as a
+full reload despite persisted user choices.
+
+**Ownership:** Games & Apps private state and lifecycle reconciliation. Launch
+authority remains host/provider-owned and must never be persisted.
+
+**Acceptance:** A fresh worker renders sanitized persisted rows/order/selection
+before a delayed provider returns, clearly marks them checking/non-launchable,
+then atomically enables exact resolved rows and merges automatic changes without
+focus churn; failure retains last-good display; state remains bounded and
+contains no AppId/path/AUMID/command/provider identity.
+
+## GBA-064 — Reverse Spotify list traversal oscillates at the header boundary
+
+**Evidence:** When scrolling upward through a Spotify playlist, focus repeatedly
+jumps between the header Play action and the first list row. The current fixed
+header sits outside a replacement-page Scroll, so snapshot replacement,
+requested page-entry focus, geometric navigation, and focus memory can compete.
+
+**Ownership:** DLV-006 provides continuous keyed collection focus; DLV-022 owns
+Spotify's explicit header/list graph and composed host proof. The host must stay
+generic.
+
+**Acceptance:** Up from the first retained row reaches Play/header once only
+when spatially intended; Down returns predictably; reverse loading cannot steal
+focus back; Back, refresh, compact/expanded changes, sparse pages, late
+completion, and cache transitions preserve one stable keyed target.
 
 ## Closed issues
 

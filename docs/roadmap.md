@@ -198,8 +198,10 @@ remains off until the publisher-trust gates in Phase 4.
   opacity tracks and new/replaced widget content uses a 100 ms reveal; reversal,
   reduced motion, same-identity no-flash, focus snap, and one-shot hide have
   native coverage. The transient pressed-state map is connected to exact
-  physical actions. Remaining motion work is packaged visual/frame-time
-  evidence plus later product-target transitions.
+  physical actions. A 2026-08-09 packaged Spotify switch still exposed a black
+  border flash and visually abrupt replacement, so product acceptance is
+  reopened as DLV-020: repair the shared host/compositor transition and retain
+  full-shell frame evidence rather than adding widget-specific animation.
   Do not import web-
   centric staggered entrances, ambient looping motion, editorial serif/faux-
   macOS defaults, or decorative animation into the controller shell.
@@ -207,9 +209,12 @@ remains off until the publisher-trust gates in Phase 4.
   into widgets that need durable preferences. Games & Apps now persists its
   curated SavedIds, selection, and recent-first order through revision/CAS and
   resolves them to fresh launch tokens on activation without enumerating the
-  broad catalog. Remaining product work includes per-widget clear-local-data
-  UI, uninstall/retention policy review, storage/profile cleanup, and other
-  widget-specific migrations.
+  broad catalog. DLV-017 must add a bounded, non-launchable persisted display
+  projection so the saved Library paints immediately after overlay restart,
+  then reconcile fresh trusted registrations in the background. Launch
+  authority remains short-lived and revalidated. Remaining product work
+  includes per-widget clear-local-data UI, uninstall/retention policy review,
+  storage/profile cleanup, and other widget-specific migrations.
 - Continue the public authoring-coordination layer. `WidgetOperations`,
   `WidgetModel<TState>`, non-paged `WidgetResource<TValue>`, bounded
   offset-paged resources, `WidgetNavigator<TRoute>`, and `WidgetIds` are implemented;
@@ -247,9 +252,12 @@ remains off until the publisher-trust gates in Phase 4.
   after the selected exact registration launches successfully; failure keeps it
   open with feedback. Bounded current-user AppsFolder/AUMID discovery, exact
   revalidated null-argument activation, and curated Shell icons are now
-  implemented beside Start Menu shortcuts. Launcher sources, authoritative game
-  classification, history, search, source grouping, running-program
-  capture, and file-picker additions remain roadmap work.
+  implemented beside Start Menu shortcuts. User evidence still shows the Play
+  fallback where trusted artwork is absent. DLV-018 adds bounded, lazy artwork
+  handles in the trusted provider/source adapters, including Steam, without
+  serializing large base64 images into every widget snapshot. Launcher sources,
+  authoritative game classification, history, search, source grouping,
+  running-program capture, and file-picker additions remain roadmap work.
 - Capture proof and widget if Windows API tests pass
 - Expand the implemented Spotify Community addon beyond its controller-first
   player core. The trusted provider is composed by `WidgetBridge`, the local
@@ -276,6 +284,11 @@ remains off until the publisher-trust gates in Phase 4.
   eligibility, PID-safe ownership, and live EME/autoplay/resource evidence.
   Do not claim public distribution while the documented five-user Development
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
+  Before expanding breadth, DLV-022 must repair the explicit responsive focus
+  graph and migrate Queue/Playlist traversal onto the continuous keyed-list
+  contract from DLV-006; DLV-023 must keep transient provider/poll failures on
+  the last-good player with bounded warning/backoff while preserving explicit
+  fatal configuration, permission, and authentication states.
 - Discord remains deferred until eligibility and production communications/RPC
   access are confirmed; do not build against undocumented client internals. See
   [Discord integration research](discord-integration.md).
@@ -359,6 +372,9 @@ not irreversible API priority:
    Library changes. Close this item with semantic layout assertions plus
    packaged screenshots and controller traversal for empty, short, long,
    maximum-page, loading, and error states.
+   DLV-004 owns this immediate surface pass. DLV-017 then owns restart warm
+   start/reconciliation and DLV-018 owns trusted lazy artwork; those data-plane
+   concerns must not be buried in presentation offsets or base64 row payloads.
 3. **Select input and output devices from Audio Mixer.** Add controller-first
    pickers that show the current defaults and change the intended Windows audio
    endpoint and role with explicit pending, success, denial, disappearance, and
@@ -377,8 +393,10 @@ not irreversible API priority:
    without icons at every supported scale, including wrapped labels, and retain
    renderer assertions plus packaged Games & Apps, Spotify, and component-
    gallery captures.
-   **Implemented by DLV-003 (`27b0319`, integrated by `703c5bb`); physical
-   full-shell/display evidence remains.**
+   **DLV-003 (`27b0319`, integrated by `703c5bb`) implemented the narrow Button
+   geometry slice, but 2026-08-09 packaged Now Playing evidence still shows
+   shared icon/label/trailing-content imbalance. Product acceptance is reopened
+   as DLV-021 across Button, ActionSurface, and SectionHeader composition.**
 5. **Hold Y to refresh the selected widget from the icon tray.** Keep tap Y as
    the existing enter/exit-reorder command, but defer that tap decision long
    enough for a clearly hinted hold gesture. Crossing the bounded hold threshold
@@ -681,6 +699,9 @@ permission policy.
 - set volume or mute for one opaque session while the widget is Interactive;
 - expose a compact dashboard summary and a controller-first session list where
   focus, adjustment, mute, and error feedback remain unambiguous; and
+- expose only the exact master-output actions authorized for dashboard use:
+  LB/RB apply a fixed, clamped volume step and X toggles mute, with immediate
+  feedback, coalescing, and provider reconciliation; and
 - publish bounded, coalesced session-change events without a timer polling
   loop.
 
@@ -708,10 +729,12 @@ remaining item requires a separate capability, privacy/feedback design, and prov
 undocumented `PolicyConfig`, registry write, or shell-automation output switch
 is acceptable.
 
-Version-1 broker control grants are Interactive-only. Do not route master mute,
-volume, saved-network switching, or another general control through a Visible
-dashboard quick action; that would require a distinct bounded host-mediated
-authority and security review.
+Version-1 broker control grants are Interactive-only. DLV-019 may add only a
+distinct bounded host-mediated dashboard authority for exact current-master
+set-volume/set-mute operations and their fixed widget gestures. It must not
+promote the broad Audio Control grant or expose session, input, device-selection,
+or arbitrary-value authority while merely Visible. Saved-network switching and
+other general controls remain prohibited without their own reviewed authority.
 
 The host broker owns OS handles, COM lifetime, device/session observation,
 permission policy, and sanitized identity. The widget receives bounded semantic
