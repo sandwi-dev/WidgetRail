@@ -1213,11 +1213,26 @@ duplicates catalog/client state from DLV-039.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
-**State:** Assigned
+**State:** Correction required; candidate `9647718` returned for incomplete
+command-policy ownership and non-deterministic late-completion proof
 **Baseline:** accepted DLV-032/DLV-034 integration `a92378a`
 **Dependencies:** DLV-031; DLV-026 is independent
 **Owner:** managed Audio Mixer internals and direct widget fixtures; no native
 host, broker, capability, or protocol files
+
+**Reviewer evidence:** Candidate `9647718` validly moves the complete 351-line
+snapshot-only presentation surface, but its 135-line command boundary is a
+broadly settable state bag with three empty endpoint subclasses. The retained
+1,969-line widget still owns six command-entry methods, six worker loops, six
+confirmation paths, six rollback paths, and six cancellation paths and directly
+mutates policy targets, revisions, worker flags, confirmation flags, and
+authoritative values. The direct policy test repeats the same base-type behavior
+three times rather than proving those production transitions, while the new
+cancellation-ignoring case signals before the fake call returns and assumes one
+`Task.Yield()` proves the production continuation consumed the late result.
+Focused dirty-worktree run `20260810T152503Z-d11fafee` is stable and passes the
+assigned five groups, but green behavior preservation does not close the
+ownership or deterministic-proof requirements.
 
 **Objective:** Preserve Audio Mixer's domain-specific absolute-value command
 coalescing, authoritative confirmation/rollback, and provider-event
@@ -1238,12 +1253,19 @@ command framework, partial-class-only splitting, or visual redesign.
 
 **Acceptance criteria:** one lifecycle and committed-state owner remains;
 output, input, and session policies are directly testable without constructing
-the complete widget; success, failure, cancellation-ignoring completion,
-timeout/rollback, provider churn, session removal, and deactivation remain
-deterministic; existing focus IDs and current navigation behavior are preserved
+the complete widget; those policies own target/revision/worker/confirmation and
+terminal transition rules behind narrow methods/results rather than exposing
+their mutable internals back to the widget; the root consumes policy decisions
+while retaining singular service-call/task, committed-state, lock, lifecycle,
+and invalidation ownership and no longer contains parallel confirmation,
+rollback, and cancellation state-machine regions; success, failure, cancellation-
+ignoring completion, timeout/rollback, provider churn, session removal, and
+deactivation remain deterministic; existing focus IDs and current navigation
+behavior are preserved
 for DLV-026 to diagnose and correct separately; the completion report quantifies
 responsibilities, locks/semaphores/tasks, and cross-boundary mutable dependencies
-before and after.
+before and after. Late-completion proof uses an exact observable handshake and
+does not rely on `Task.Yield`, sleep, or an unobserved scheduling assumption.
 
 **Verification:** Tier 1 Audio Mixer, Widget SDK operation/lifecycle, and the
 smallest affected audio-provider/broker mapping Release suites with manually
