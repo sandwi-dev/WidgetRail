@@ -32,6 +32,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("A slow refresh cannot replace a newer playlist route", RefreshPreservesNewerPlaylist),
     ("Playlist detail cancellation reloads the retained selection on reactivation", PlaylistDetailLifecycle),
     ("Active polling reuses configuration and authorization state", PollingRequestBudget),
+    ("Transient refresh failures retain the last-good route and use bounded backoff", TransientRefreshRetainsLastGood),
+    ("Fatal refresh failures select exact safe states", FatalRefreshFailuresSelectSafeState),
+    ("Refresh polling cannot publish after the Active lifetime", RefreshPollingLifecycle),
     ("Devices expose trusted local playback and safe transfer actions", DeviceActions),
     ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
     ("Progress is projected locally without provider polling", ProjectedProgress),
@@ -738,10 +741,174 @@ static async Task PollingRequestBudget()
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     var configurationCalls = harness.ConfigurationCalls;
     var playbackCalls = harness.PlaybackCalls;
+    var retainedTitle = widget.Playback?.Item?.Title;
+    harness.PlaybackHandler = _ =>
+        ValueTask.FromException<WidgetSpotifyPlaybackSummary>(
+            new WidgetCapabilityUnavailableException("provider internals must not render"));
     await Task.Delay(TimeSpan.FromMilliseconds(2_250));
     Assert.Equal(configurationCalls, harness.ConfigurationCalls);
     Assert.True(harness.PlaybackCalls > playbackCalls,
         "Adaptive playback polling did not refresh live state.");
+    await WaitUntil(() => widget.Status.Contains("updates unavailable", StringComparison.Ordinal));
+    Assert.Equal(SpotifyWidgetViewState.Ready, widget.ViewState);
+    Assert.Equal(retainedTitle, widget.Playback?.Item?.Title);
+    var warning = widget.RenderSnapshot("spotify.poll-warning", 1);
+    Assert.NotNull(Find(warning.Root, "spotify.refresh-warning"));
+    Assert.True(ContainsTextFragment(warning.Root, "Automatic retry in up to 5 seconds"),
+        "The first automatic failure did not enter the bounded backoff policy.");
+    Assert.True(!ContainsTextFragment(warning.Root, "provider internals"),
+        "A provider exception message reached the widget surface.");
+
+    harness.PlaybackHandler = null;
+    harness.Playback = harness.Playback with
+    {
+        Item = harness.Playback.Item! with { Title = "Recovered automatically" },
+    };
+    await widget.OnActionAsync(new WidgetActionEvent("spotify.refresh", "spotify.refresh.wide"));
+    Assert.Equal("Recovered automatically", widget.Playback?.Item?.Title);
+    Assert.True(!ContainsId(widget.RenderSnapshot("spotify.poll-recovered", 2).Root,
+            "spotify.refresh-warning"),
+        "Manual recovery did not clear the warning created by automatic polling.");
+    await StopAsync(widget);
+}
+
+static async Task TransientRefreshRetainsLastGood()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await WaitForNode(widget, "spotify.playlist.item.wide.0");
+    var before = widget.RenderSnapshot("spotify.transient-before", 1);
+    var initialFocus = before.InitialFocusId;
+    var retainedTitle = widget.Playback?.Item?.Title;
+
+    var failures = new (Exception Exception, string Code, int DelaySeconds)[]
+    {
+        (new WidgetCapabilityUnavailableException("secret provider address"),
+            "spotify_refresh_provider_unavailable", 5),
+        (new WidgetCapabilityException("malformed_response", "raw response body"),
+            "spotify_refresh_invalid_response", 15),
+        (new InvalidOperationException("unexpected private diagnostic"),
+            "spotify_refresh_failed", 30),
+        (new WidgetCapabilityException("provider_busy", "internal retry metadata"),
+            "spotify_refresh_failed", 30),
+    };
+
+    foreach (var failure in failures)
+    {
+        harness.PlaybackHandler = _ =>
+            ValueTask.FromException<WidgetSpotifyPlaybackSummary>(failure.Exception);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "spotify.refresh", "spotify.refresh.wide"));
+        var snapshot = widget.RenderSnapshot("spotify.transient", failure.DelaySeconds);
+        Assert.Equal(SpotifyWidgetViewState.Ready, widget.ViewState);
+        Assert.Equal(SpotifyDestination.Playlists, widget.Destination);
+        Assert.Equal(retainedTitle, widget.Playback?.Item?.Title);
+        Assert.Equal(initialFocus, snapshot.InitialFocusId);
+        Assert.NotNull(Find(snapshot.Root, "spotify.playlist.item.wide.0"));
+        Assert.True(ContainsTextFragment(snapshot.Root, failure.Code),
+            $"Safe diagnostic '{failure.Code}' was not rendered.");
+        Assert.True(ContainsTextFragment(snapshot.Root,
+                $"Automatic retry in up to {failure.DelaySeconds} seconds"),
+            "Transient refresh backoff did not remain bounded.");
+        Assert.True(!ContainsTextFragment(snapshot.Root, failure.Exception.Message),
+            "A transient exception message reached the retained surface.");
+    }
+
+    harness.PlaybackHandler = null;
+    harness.Playback = harness.Playback with
+    {
+        Item = harness.Playback.Item! with { Title = "Recovered track" },
+    };
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.refresh", "spotify.refresh.wide"));
+    var recovered = widget.RenderSnapshot("spotify.transient-recovered", 5);
+    Assert.Equal("Recovered track", widget.Playback?.Item?.Title);
+    Assert.Equal(SpotifyDestination.Playlists, widget.Destination);
+    Assert.Equal(initialFocus, recovered.InitialFocusId);
+    Assert.NotNull(Find(recovered.Root, "spotify.playlist.item.wide.0"));
+    Assert.True(!ContainsId(recovered.Root, "spotify.refresh-warning"),
+        "Successful recovery retained a stale warning.");
+    await StopAsync(widget);
+}
+
+static async Task FatalRefreshFailuresSelectSafeState()
+{
+    var failures = new (string Code, SpotifyWidgetViewState State, string ExpectedText)[]
+    {
+        ("capability_revoked", SpotifyWidgetViewState.PermissionDenied,
+            "Spotify permission is off"),
+        ("authorization_expired", SpotifyWidgetViewState.Disconnected,
+            "Connect Spotify"),
+        ("capability_not_declared", SpotifyWidgetViewState.Error,
+            "Spotify could not be loaded"),
+    };
+
+    foreach (var failure in failures)
+    {
+        var harness = SpotifyHarness.Ready();
+        var widget = await StartAsync(harness);
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        harness.ConfigurationError = new WidgetCapabilityException(
+            failure.Code, $"private diagnostic for {failure.Code}");
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "spotify.refresh", "spotify.refresh.wide"));
+        var snapshot = widget.RenderSnapshot("spotify.fatal", 1);
+        Assert.Equal(failure.State, widget.ViewState);
+        Assert.True(ContainsTextFragment(snapshot.Root, failure.ExpectedText),
+            $"Fatal code '{failure.Code}' did not select its exact safe state.");
+        Assert.True(!ContainsTextFragment(snapshot.Root, "private diagnostic"),
+            "A fatal provider exception message reached the widget surface.");
+        Assert.Equal<WidgetSpotifyPlaybackSummary?>(null, widget.Playback);
+        await StopAsync(widget);
+    }
+}
+
+static async Task RefreshPollingLifecycle()
+{
+    var delayed = new TaskCompletionSource<WidgetSpotifyPlaybackSummary>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var canceled = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var harness = SpotifyHarness.Ready();
+    var baseline = harness.Playback;
+    var recovered = baseline with
+    {
+        Item = baseline.Item! with { Title = "Fresh lifecycle result" },
+    };
+    var calls = 0;
+    harness.PlaybackHandler = async cancellationToken =>
+    {
+        var call = Interlocked.Increment(ref calls);
+        if (call == 1) return baseline;
+        if (call == 2)
+        {
+            using var registration = cancellationToken.Register(() => canceled.TrySetResult());
+            return await delayed.Task.ConfigureAwait(false);
+        }
+        return recovered;
+    };
+
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await WaitUntil(() => Volatile.Read(ref calls) == 2);
+    var background = WidgetTestHost.SetLifecycleStateAsync(
+        widget, WidgetLifecycleState.Background).AsTask();
+    await canceled.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    delayed.SetResult(recovered);
+    await background.WaitAsync(TimeSpan.FromSeconds(3));
+    Assert.Equal("Small Hours", widget.Playback?.Item?.Title);
+    Assert.True(!ContainsId(widget.RenderSnapshot("spotify.lifecycle-stale", 1).Root,
+            "spotify.refresh-warning"),
+        "A cancellation-ignoring stale poll published after deactivation.");
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    await WaitUntil(() => string.Equals(widget.Playback?.Item?.Title,
+        "Fresh lifecycle result", StringComparison.Ordinal));
+    Assert.True(Volatile.Read(ref calls) >= 3,
+        "Reactivation did not start a fresh generation-bound refresh.");
     await StopAsync(widget);
 }
 
@@ -1381,6 +1548,10 @@ static bool ContainsId(ViewNode node, string id) =>
 static bool ContainsText(ViewNode node, string text) =>
     string.Equals(node.Text, text, StringComparison.Ordinal) ||
     node.Children.Any(child => ContainsText(child, text));
+
+static bool ContainsTextFragment(ViewNode node, string text) =>
+    (node.Text?.Contains(text, StringComparison.Ordinal) ?? false) ||
+    node.Children.Any(child => ContainsTextFragment(child, text));
 
 static void AssertShortcut(ViewNode root, ControllerButton button, string action)
 {

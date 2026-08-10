@@ -188,7 +188,21 @@ public sealed partial class SpotifyWidget
             .Classes("spotify-shell", "spotify-shell-compact")
             .VisibleWhen(ResponsiveVisibility.CompactOnly);
 
-        var root = UI.Stack("spotify.root", header, wide, compact)
+        var content = new List<WidgetElement> { header };
+        if (presentation.RefreshWarning is { } warning)
+            content.Add(UI.Alert(
+                    warning.ConsecutiveFailures ==
+                        SpotifyRefreshFailurePolicy.MaximumTrackedFailures
+                            ? "Spotify updates still delayed"
+                            : "Spotify update delayed",
+                    $"{warning.Detail} Diagnostic: {warning.DiagnosticCode}.",
+                    AlertTone.Warning,
+                    "spotify.refresh-warning",
+                    new ComponentAction("Retry now", "spotify.refresh", WidgetGlyph.Refresh))
+                .Classes("spotify-refresh-warning"));
+        content.Add(wide);
+        content.Add(compact);
+        var root = UI.Stack("spotify.root", content.ToArray())
             .InputScope(InputScope)
             .Classes("spotify-widget", "is-ready");
         if (playlistDetail is not null && destination == SpotifyDestination.Playlists)

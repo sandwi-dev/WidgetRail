@@ -32,6 +32,7 @@ internal sealed record SpotifyPresentationState(
     WidgetSpotifyPlaybackSummary? Playback,
     WidgetSpotifyPlaybackOperation? PendingOperation,
     string Status,
+    SpotifyRefreshWarning? RefreshWarning,
     bool ShowSetup,
     long SetupViewGeneration,
     SpotifyDestination Destination,

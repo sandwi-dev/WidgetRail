@@ -175,19 +175,21 @@ public sealed partial class SpotifyWidget
 
     private void ClearPageCaches()
     {
-        lock (_gate)
-        {
-            _playlists.Reset(invalidate: false);
-            ClearPlaylistSelectionLocked();
-            _queue = null;
-            _devices = null;
-            _localPlayback = null;
-            _queueCachedAt = null;
-            _devicesCachedAt = null;
-            _preferredPlaybackDeviceId = null;
-            _pageLoading = false;
-            _pageError = null;
-        }
+        lock (_gate) ClearPageCachesLocked();
+    }
+
+    private void ClearPageCachesLocked()
+    {
+        _playlists.Reset(invalidate: false);
+        ClearPlaylistSelectionLocked();
+        _queue = null;
+        _devices = null;
+        _localPlayback = null;
+        _queueCachedAt = null;
+        _devicesCachedAt = null;
+        _preferredPlaybackDeviceId = null;
+        _pageLoading = false;
+        _pageError = null;
     }
 
     private void ClearPlaylistSelectionLocked()

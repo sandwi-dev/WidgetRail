@@ -370,8 +370,51 @@ public sealed partial class SpotifyWidget
             _status = status;
             _playback = playback;
             _pendingOperation = null;
+            _refreshWarning = null;
+            _consecutiveRefreshFailures = 0;
         }
         Invalidate();
+    }
+
+    private void ApplyRefreshFailure(long generation, Exception exception)
+    {
+        var failure = SpotifyRefreshFailurePolicy.Classify(exception);
+        var invalidate = false;
+        lock (_gate)
+        {
+            if (generation != Volatile.Read(ref _activeGeneration)) return;
+            if (failure.Disposition == SpotifyRefreshFailureDisposition.Transient &&
+                _viewState == SpotifyWidgetViewState.Ready)
+            {
+                _consecutiveRefreshFailures = Math.Min(
+                    SpotifyRefreshFailurePolicy.MaximumTrackedFailures,
+                    _consecutiveRefreshFailures + 1);
+                _refreshWarning = SpotifyRefreshFailurePolicy.CreateWarning(
+                    failure, _consecutiveRefreshFailures);
+                _status = _refreshWarning.Status;
+                _pendingOperation = null;
+                invalidate = true;
+            }
+            else
+            {
+                _consecutiveRefreshFailures = 0;
+                _refreshWarning = null;
+                _viewState = failure.FallbackState;
+                _status = failure.Status;
+                _playback = null;
+                _pendingOperation = null;
+                if (failure.Disposition != SpotifyRefreshFailureDisposition.Transient)
+                {
+                    ClearPageCachesLocked();
+                    if (failure.Disposition ==
+                        SpotifyRefreshFailureDisposition.AuthorizationRequired)
+                        _authorizationState =
+                            WidgetSpotifyAuthorizationState.ReauthorizationRequired;
+                }
+                invalidate = true;
+            }
+        }
+        if (invalidate) Invalidate();
     }
 
     private void SetCommandStatus(string status)

@@ -20,6 +20,16 @@ items from an older request. Cancellation-ignoring provider results are drained
 without changing the current screen, and a retained detail selection reloads
 when the widget becomes visible again.
 
+Playback refresh and Active polling share one typed failure policy. A transient
+provider outage, invalid response, or unexpected request failure keeps the last
+accepted Player, route, and focus visible, adds one bounded warning with a safe
+diagnostic code, and backs automatic polling off through 5, 15, then at most 30
+seconds. Y retries immediately through the same policy. A successful response
+clears the warning without navigating; permission revocation, authorization
+expiry, and incompatible configuration still select their explicit safe state
+and clear provider-derived data. Provider exception messages and response bodies
+are never rendered.
+
 Playlist and detail collections use bounded 12-row windows with focus-edge
 pagination. Down at the final row enters the next page, Up at the first row
 restores the preceding cached page, and a short final page remains reversible.
