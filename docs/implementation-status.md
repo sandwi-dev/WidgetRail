@@ -621,9 +621,13 @@ themes also use non-shrinking fixed regions, a thin native Slider
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late
- success and failure, refresh, and Active-lifetime cancellation/reactivation;
- Spotify passes 35/35. Packaged physical-controller evidence and a live retest
- remain open. The controller guide is
+ success and failure, refresh, and Active-lifetime cancellation/reactivation.
+ DLV-008 keeps that one widget/resource owner while separating lifecycle and
+ action wiring, route data, playback behavior, and snapshot-only presentation
+ into named internal partials; a source-boundary contract prevents duplicated
+ coordination or mutable reads in view composition. Spotify passes 36/36.
+ Packaged physical-controller evidence and a live retest remain open. The
+ controller guide is
  density-aware and no-wrap, the widget viewport has a
  host-owned rounded clip, and size-changing widget swaps commit one synchronous
  complete repaint after a no-redraw move to avoid an intermediate black frame.
