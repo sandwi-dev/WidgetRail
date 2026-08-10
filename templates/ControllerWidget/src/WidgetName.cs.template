@@ -6,12 +6,14 @@ namespace {{Publisher}}.{{WidgetName}};
 public sealed class {{WidgetName}} : Widget
 {
     private int _level = 2;
+    private bool _active;
 
     public override WidgetView Render() => new(
         UI.Stack("root",
             UI.Text("{{WidgetName}}", "title", "{{WidgetName}} heading")
                 .Classes("title"),
-            UI.Text($"Level {_level}", "status", "Current level")
+            UI.Text($"{(_active ? "Active" : "Paused")} · Level {_level}",
+                    "status", "Current lifecycle and level")
                 .Classes("status"),
             UI.Row("actions",
                 UI.Button("Lower", "lower", "lower")
@@ -49,6 +51,20 @@ public sealed class {{WidgetName}} : Widget
                 // Call a brokered capability here, then invalidate if visible state changes.
                 break;
         }
+        return ValueTask.CompletedTask;
+    }
+
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    {
+        _active = true;
+        Invalidate();
+        return ValueTask.CompletedTask;
+    }
+
+    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    {
+        _active = false;
+        Invalidate();
         return ValueTask.CompletedTask;
     }
 }

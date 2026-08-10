@@ -86,6 +86,39 @@ foreach (var contract in requiredAuthorityRecoveryContracts)
     if (!quickstart.Contains(contract, StringComparison.Ordinal))
         failures.Add($"docs/widget-quickstart.md is missing '{contract}'.");
 
+var publishing = File.ReadAllText(Path.Combine(
+    repository, "docs", "publishing-and-installation.md"));
+var cliReadme = File.ReadAllText(Path.Combine(
+    repository, "tools", "GbarCli", "README.md"));
+string[] requiredExternalAuthorContracts =
+[
+    ".gbar\\packages",
+    "tests\\VolumeControl.Tests.csproj",
+    "gbar pack .\\scratch\\VolumeControl",
+    "entrypoint.assembly",
+];
+foreach (var contract in requiredExternalAuthorContracts)
+    if (!quickstart.Contains(contract, StringComparison.Ordinal))
+        failures.Add($"docs/widget-quickstart.md is missing '{contract}'.");
+foreach (var (name, text) in new[]
+         {
+             ("docs/widget-quickstart.md", quickstart),
+             ("docs/widget-authoring-guide.md", guide),
+             ("docs/publishing-and-installation.md", publishing),
+             ("tools/GbarCli/README.md", cliReadme),
+         })
+{
+    if (text.Contains("--sdk-project", StringComparison.Ordinal) ||
+        text.Contains("WidgetSdk.csproj", StringComparison.Ordinal))
+        failures.Add($"{name} retains the checkout-bound SDK project workflow.");
+}
+if (!publishing.Contains("NuGet.Config", StringComparison.Ordinal) ||
+    !publishing.Contains("bounded isolated Release build", StringComparison.Ordinal))
+    failures.Add("docs/publishing-and-installation.md is missing the external source-pack contract.");
+if (!cliReadme.Contains("GameBarAlternative.WidgetSdk", StringComparison.Ordinal) ||
+    !cliReadme.Contains("private intermediates", StringComparison.Ordinal))
+    failures.Add("tools/GbarCli/README.md is missing the offline scaffold/source-pack contract.");
+
 RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");

@@ -4,7 +4,7 @@ Status: the package schema, managed SDK, additive declarative protocol versions 
 controller routing, lifecycle, GBSS, local packaging/install workflow, and
 typed host capabilities described as **implemented** below exist in this
 repository, including exact-port local JSON and write-only private secrets.
-Public NuGet packages, publisher signing/revocation, a widget gallery,
+An externally published SDK NuGet feed, publisher signing/revocation, a widget gallery,
 automatic updates, a graphical installer, readable/general secret storage,
 and arbitrary internet/LAN/socket access are **not implemented**.
 
@@ -96,10 +96,12 @@ versions. Widget code does not set or negotiate them; use
 
 ## Tutorial 1: scaffold and run the minimal widget
 
-Prerequisites are Windows, PowerShell, the .NET 8 SDK, and this repository.
-The SDK is not yet a supported public NuGet package, so the generator creates
-a source `ProjectReference` only after it discovers or receives the exact SDK
-project.
+Prerequisites are Windows, PowerShell, the .NET 8 SDK, and a `gbar` build or
+installation containing the controller template. The generator writes its
+matching `GameBarAlternative.WidgetSdk` package into `.gbar/packages` and a
+`NuGet.Config` that clears external feeds. The generated project therefore
+builds offline after scaffolding, without a platform checkout or an absolute
+machine-specific project reference.
 
 Build the CLI and scaffold a widget:
 
@@ -113,14 +115,17 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
   --publisher dev.example
 
 dotnet build .\scratch\Clock\Clock.csproj -c Release
+dotnet run --project .\scratch\Clock\tests\Clock.Tests.csproj `
+  -c Release -- .\scratch\Clock\fixtures\ready.snapshot.json
 & $gbar validate .\scratch\Clock
 ```
 
-The source checkout is auto-discovered. When running copied CLI/template
-artifacts from an unrelated directory, add
-`--sdk-project C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj`.
-Missing SDK resolution fails before any scaffold files are written; `gbar new`
-does not emit a placeholder NuGet reference.
+The local package is a deterministic offline scaffold dependency bundled by
+that `gbar` version; it is not an externally published feed or proof of
+publisher identity. The generated executable test drives lifecycle changes,
+one state-changing action, retained state, and exports the bounded snapshot
+used by render/replay. If the CLI installation lacks its SDK assemblies or the
+bundled template, scaffolding fails before the target directory is written.
 
 The smallest useful widget is a public `Widget` subclass with a public
 parameterless constructor (or one whose parameters are all optional):
@@ -1547,27 +1552,28 @@ external URLs or substitute for compiling the samples and SDK tests.
 
 ## Package and install locally
 
-`gbar pack` includes every file under its input directory. Always stage a clean
-package root rather than packing source, `obj`, secrets, or unrelated files:
+For the normal scaffold, give `gbar pack` the source directory or `.csproj`.
+Source mode validates manifest and GBSS, runs a bounded isolated Release build,
+omits compiler symbols and machine-specific debug paths, stages the manifest,
+declared entrypoint, dependencies, and styles, then applies deterministic
+package validation:
 
 ```powershell
-$packageRoot = '.\artifacts\Clock-package'
-New-Item -ItemType Directory -Force `
-  -Path "$packageRoot\payload", "$packageRoot\styles"
-
-dotnet publish .\scratch\Clock\Clock.csproj `
-  -c Release `
-  -o "$packageRoot\payload"
-Copy-Item .\scratch\Clock\manifest.json "$packageRoot\manifest.json"
-Copy-Item .\scratch\Clock\styles\default.gbss `
-  "$packageRoot\styles\default.gbss"
-
-& $gbar validate $packageRoot
-& $gbar pack $packageRoot `
+& $gbar validate .\scratch\Clock
+& $gbar pack .\scratch\Clock `
+  --configuration Release `
   --output .\artifacts\dev.example.clock-1.0.0.gbarwidget
 & $gbar install .\artifacts\dev.example.clock-1.0.0.gbarwidget
 & $gbar list
 ```
+
+An already-staged package directory remains the low-level escape hatch. In
+that mode `pack` includes every bounded file under its input directory, so use
+only an exact release root containing root `manifest.json`, the declared
+entrypoint, and intentional styles/assets—never source, `obj`, secrets, or
+unrelated files. If a source build does not produce the declared entrypoint,
+the command identifies it and directs the author to align `AssemblyName` or
+`entrypoint.assembly`; no partial archive is published.
 
 The archive is ZIP-compatible and contains exact-case root `manifest.json`,
 the declared entrypoint under `payload/`, and optional `styles/` and `assets/`.

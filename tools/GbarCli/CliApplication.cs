@@ -34,7 +34,8 @@ public static class CliApplication
                 "preview" => await ScenarioPreviewCommand.RunAsync(args[1..], output, cancellationToken),
                 "render" => await RenderCommand.RunAsync(args[1..], output),
                 "replay" => await ReplayCommand.RunAsync(args[1..], output),
-                "pack" => await PackCommand.RunAsync(args[1..], output),
+                "pack" => await PackCommand.RunAsync(
+                    args[1..], output, error, cancellationToken),
                 "install" => await InstallCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
                 "uninstall" => await UninstallCommand.RunAsync(args[1..], output, cancellationToken),
                 "repair" => await RepairCommand.RunAsync(args[1..], output, cancellationToken),
@@ -90,13 +91,13 @@ public static class CliApplication
         gbar - controller widget development tools
 
         Usage:
-          gbar new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>] [--sdk-project <WidgetSdk.csproj>]
+          gbar new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>]
           gbar validate <widget-directory|manifest.json|style.gbss>
           gbar dev <widget-directory|widget.csproj|file.gbarwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>]
           gbar preview <widget-directory|gbar.scenarios.json> [--scenario <name>] [--output <snapshot.json>] [--instance <id>]
           gbar render <snapshot.json> [--output <canonical-snapshot.json>]
           gbar replay <snapshot.json> <input-replay.json>
-          gbar pack <widget-directory> [--output <file.gbarwidget>]
+          gbar pack <widget-directory|widget.csproj> [--output <file.gbarwidget>] [--configuration <name>] [--build-timeout-seconds <10-600>]
           gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> [--sha256 <64-hex>] [--catalog <root>]
           gbar uninstall <widget-id> [--catalog <root>]
           gbar repair list [--catalog <root>]

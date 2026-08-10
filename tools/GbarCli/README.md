@@ -11,11 +11,13 @@ the graphical simulator exists. It has no third-party runtime dependencies.
 
 ```text
 gbar new widget VolumeControl --id dev.example.volume-control
+dotnet build .\\VolumeControl\\VolumeControl.csproj -c Release
+dotnet run --project .\\VolumeControl\\tests\\VolumeControl.Tests.csproj -c Release -- .\\VolumeControl\\fixtures\\ready.snapshot.json
 gbar validate .\\VolumeControl
 gbar dev .\\VolumeControl
-gbar render .\\fixtures\\volume-control.snapshot.json --output snapshot.json
-gbar replay snapshot.json .\\VolumeControl\\replays\\smoke.json
-gbar pack .\\VolumeControl --output .\\VolumeControl-1.0.0.gbarwidget
+gbar render .\\VolumeControl\\fixtures\\ready.snapshot.json --output snapshot.json
+gbar replay .\\VolumeControl\\fixtures\\ready.snapshot.json .\\VolumeControl\\replays\\smoke.json
+gbar pack .\\VolumeControl --configuration Release --output .\\VolumeControl-1.0.0.gbarwidget
 gbar install .\\VolumeControl-1.0.0.gbarwidget
 gbar install github:example/widgets@v1.0.0/volume-control.gbarwidget --sha256 <64-hex-digest>
 gbar list
@@ -24,6 +26,8 @@ gbar version list dev.example.volume-control
 gbar version select dev.example.volume-control 1.0.0
 gbar version rollback dev.example.volume-control
 gbar enable dev.example.volume-control
+gbar disable dev.example.volume-control
+gbar uninstall dev.example.volume-control
 
 gbar authority-recovery list
 gbar authority-recovery retry <confirmation-token>
@@ -39,11 +43,13 @@ gbar theme list
 
 ## Commands
 
-- `new widget` instantiates the bundled controller-first C# template. It uses
-  a discovered source `ProjectReference` inside this repository. Outside the
-  checkout, pass `--sdk-project <path-to-WidgetSdk.csproj>`. Because no
-  supported SDK package is published yet, unresolved SDK input fails before
-  creating a partial scaffold; the CLI never emits a placeholder package.
+- `new widget` instantiates the bundled controller-first C# template and a
+  matching `GameBarAlternative.WidgetSdk` package in `.gbar/packages`. Its
+  generated `NuGet.Config` clears external feeds and resolves that dependency
+  only from the relative project-local feed, so the scaffold builds offline in
+  a clean directory without a platform checkout or machine-specific project
+  reference. The generated executable test drives lifecycle, state, and
+  actions and exports the snapshot consumed by the replay example.
 - `validate` checks strict manifest JSON and every GBSS file in a widget
   directory. GBSS validation uses the shared `WidgetStyling` parser/compiler,
   enforces typed bounded properties, and blocks scripts, expressions, URLs,
@@ -85,12 +91,15 @@ gbar theme list
   it retains the production AppContainer/worker boundary.
 - `replay` walks explicit D-pad focus edges and resolves `A` actions and
   declared non-Guide shortcuts from a versioned JSON event stream.
-- `pack` validates the root manifest and entrypoint, rejects reparse points,
-  path escapes, ambiguous Windows names, case collisions, and oversized trees,
-  then writes a deterministic `.gbarwidget` ZIP. Files use ordinal path order,
-  fixed timestamps and fixed metadata, so identical content produces identical
-  package bytes. The default output is `<id>-<version>.gbarwidget` beside the
-  widget directory.
+- `pack` accepts a source widget directory or `.csproj`, or an already-staged
+  package directory. Source mode validates manifest and GBSS, runs a bounded
+  isolated build with private intermediates, omits compiler symbols, stages the
+  declared payload, and then applies the normal packer. Directory mode remains
+  the low-level contract and includes its complete bounded tree. Both modes
+  reject reparse points, path escapes, ambiguous Windows names, case
+  collisions, and oversized trees, then write an ordinal, fixed-metadata,
+  deterministic `.gbarwidget` ZIP. Use `--configuration` and the bounded
+  `--build-timeout-seconds` only for source mode.
 - `install` accepts a local `.gbarwidget`, an absolute HTTPS URL, or the
   deterministic GitHub shorthand
   `github:owner/repository@tag/asset.gbarwidget`. The shorthand maps directly

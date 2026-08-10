@@ -30,13 +30,14 @@ signature and does not prove that the manifest publisher or GitHub account is
 the author. Share the expected digest through an independent authenticated
 channel.
 
-The SDK does not yet have a supported public NuGet release. External widget
-repositories must currently reference a checked-out SDK project or vendor a
-specific compatible SDK build. `gbar new widget --sdk-project
-C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj` creates that
-explicit local-project contract. Without a discovered or supplied project, the
-command fails before writing; it no longer emits the unpublished placeholder
-package reference.
+The SDK does not yet have an externally published NuGet feed. Instead,
+`gbar new widget` writes the matching `GameBarAlternative.WidgetSdk` package to
+the generated repository's `.gbar/packages` directory and a `NuGet.Config`
+that clears external sources. The repository therefore builds offline without
+a Game Bar Alternative checkout or absolute project reference. Commit that
+small local dependency with the generated source when sharing the repository;
+it identifies the `gbar` SDK build used by the scaffold but is not a signature
+or publisher-trust assertion.
 
 ## `.gbarwidget` packages
 
@@ -57,24 +58,27 @@ Installation is immutable by `<id>/<version>` and fails if the same version
 already exists. See the
 complete [packaging contract](widget-packaging.md).
 
-`gbar pack` recursively includes the supplied directory, so package from a
-clean staging directory rather than a project tree containing `obj`, source,
-secrets, or unrelated files. The staging root must contain exact-case
-`manifest.json` and the assembly path named by the manifest.
-
-For the standard `payload/<Widget>.dll` layout, one possible staging flow is:
+For the standard scaffold, source-aware `gbar pack` is the supported high-level
+operation. It validates manifest/GBSS, runs a bounded isolated Release build,
+omits compiler symbols and machine-specific debug paths, stages the declared
+payload, and then applies the same deterministic catalog validation used for
+installation:
 
 ```powershell
-$packageRoot = '.\artifacts\VolumeControl-package'
-New-Item -ItemType Directory -Force -Path "$packageRoot\payload", "$packageRoot\styles"
-dotnet publish .\VolumeControl\VolumeControl.csproj -c Release -o "$packageRoot\payload"
-Copy-Item .\VolumeControl\manifest.json "$packageRoot\manifest.json"
-Copy-Item .\VolumeControl\styles\default.gbss "$packageRoot\styles\default.gbss"
-
-gbar validate $packageRoot
-gbar pack $packageRoot --output .\artifacts\dev.example.volume-control-0.1.0.gbarwidget
+gbar validate .\VolumeControl
+gbar pack .\VolumeControl `
+  --configuration Release `
+  --output .\artifacts\dev.example.volume-control-0.1.0.gbarwidget
 Get-FileHash .\artifacts\dev.example.volume-control-0.1.0.gbarwidget -Algorithm SHA256
 ```
+
+Advanced build systems may still pass an already-staged package directory.
+That low-level mode recursively includes the complete bounded directory, so
+the staging root must contain exact-case root `manifest.json`, the assembly at
+the manifest's exact entrypoint path, and only intentional dependencies,
+styles, and assets—not source, `obj`, secrets, or unrelated files. A failed
+source build or missing entrypoint leaves no output and reports whether to
+correct `AssemblyName` or `entrypoint.assembly`.
 
 Packing uses ordinal entry order, fixed timestamps/metadata, bounded content,
 and the same installer inspection used later by `gbar install`, so identical

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="gbar-local-sdk" value=".gbar/packages" />
+  </packageSources>
+  <packageSourceMapping>
+    <packageSource key="gbar-local-sdk">
+      <package pattern="GameBarAlternative.WidgetSdk" />
+    </packageSource>
+  </packageSourceMapping>
+</configuration>

@@ -569,9 +569,12 @@ Up/Down navigation.
   `enable`, `disable`, and `version list|select|rollback` commands. Local and
   remote updates share an exact-stream pre-publish enabled-ID guard. Remote
   acquisition requires SHA-256 pinning, reports the actual digest, and installs
-  disabled pending explicit review. `gbar new` auto-discovers the source SDK or
-  accepts an exact `--sdk-project`; unresolved external use fails before write
-  instead of emitting an unpublished placeholder package. `gbar dev` provides a bounded unsigned
+  disabled pending explicit review. `gbar new` emits the matching SDK as a
+  project-local offline NuGet package, clears external feeds, and generates a
+  lifecycle/state/action snapshot test without an absolute checkout reference.
+  Source-aware `gbar pack` reuses the bounded isolated dev build/validation
+  path, stages only runtime output without compiler symbols, and preserves the
+  raw deterministic directory packer for advanced staging. `gbar dev` provides a bounded unsigned
   source/package watch-build-run loop through the production generic worker,
   AppContainer, broker, lifecycle, renderer, and Settings permission path. A
   controller/hotkey-free candidate must authenticate its exact catalog/widget/
@@ -1082,8 +1085,12 @@ enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
 polling. Styling and platform settings/themes pass 23/23 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
-passes 52/52, including unrelated-directory scaffold failure-before-write and
-an explicit-SDK Release build, bounded data-only snapshot rendering, fail-closed DLL
+passes 53/53, including an unrelated-directory offline scaffold that builds
+against its content-addressed local SDK package, drives generated
+lifecycle/state/action snapshot coverage, validates/renders/replays, produces
+byte-identical symbol-free packages without checkout paths, installs two
+versions, selects/rolls back, and removes them without hand edits. It also
+proves actionable missing-entrypoint refusal, bounded data-only snapshot rendering, fail-closed DLL
 and scenario execution, bounded scenario-manifest discovery,
 authenticated candidate/active development readiness,
 last-good retention/restart, complete bounded source/package watching, cleanup

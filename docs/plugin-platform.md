@@ -376,11 +376,13 @@ The SDK succeeds only if the safe path is also the easiest path.
 
 Available now:
 
-- `gbar new widget` scaffolds a strict manifest, typed C# widget, test/replay,
-  and safe starter GBSS;
+- `gbar new widget` scaffolds a strict manifest, typed lifecycle-aware C#
+  widget, executable state/action snapshot test, replay, safe starter GBSS,
+  and a matching SDK package in a relative offline feed;
 - `gbar validate`, `render`, and `replay` exercise manifests, styles,
   snapshots, focus, and controller actions;
-- `gbar pack` creates a deterministic `.gbarwidget` bundle;
+- `gbar pack` owns the bounded build/stage/validate path for source projects
+  and retains deterministic low-level packing for staged directories;
 - local/HTTPS/GitHub Release install, catalog list/enable/disable, and immutable
   `gbar version list|select|rollback` commands;
 - `gbar theme new|validate|preview|pack|inspect|install|list` for deterministic,
@@ -404,7 +406,8 @@ Remaining tooling:
 - manifest/theme schemas for editors and CI;
 - resource-budget, responsiveness, accessibility, and controller-only
   conformance harnesses;
-- a published supported SDK/NuGet/template workflow outside this repository;
+- an externally published/versioned SDK feed and template release channel (the
+  generated local offline dependency is implemented, but is not that channel);
 - native graphical theme preview plus package remove/update discovery; and
 - an SDK Gallery widget covering the complete public primitive/state matrix.
 

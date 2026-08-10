@@ -72,18 +72,14 @@ Run it from this checkout, use the built executable with its copied templates,
 or set `GBAR_TEMPLATE_ROOT` to the directory containing
 `templates/ControllerWidget/template.json`.
 
-## `gbar new` cannot resolve WidgetSdk
+## `gbar new` reports that its bundled SDK is unavailable
 
-The SDK is not yet published as a supported package. Run `gbar new` from this
-source checkout, or pass the exact local project explicitly:
-
-```powershell
-gbar new widget Example `
-  --sdk-project C:\path\to\GameBarAlternative\src\WidgetSdk\WidgetSdk.csproj
-```
-
-The command validates SDK resolution before creating its output directory. It
-does not leave a partial project or silently reference an unpublished package.
+The CLI creates a project-local offline `GameBarAlternative.WidgetSdk` package;
+it does not search for a source project or use an external feed. Rebuild or
+reinstall the complete `gbar` distribution so `gbar.exe`, `WidgetSdk.dll`,
+`WidgetProtocol.dll`, and the controller template come from the same build,
+then rerun `gbar new`. The command validates those bounded inputs before it
+creates the target directory and never leaves a partial scaffold.
 
 ## Spotify Connect returns `ERR_CONNECTION_REFUSED`
 
@@ -215,10 +211,14 @@ snapshot. DLL input fails closed; use `gbar dev` for isolated widget execution.
 
 ## Package, download, or catalog command fails
 
-- `gbar pack` requires a clean directory with exact-case root `manifest.json`
-  and the manifest's `entrypoint.assembly` at that exact relative path/casing.
-- Pack recursively includes the directory. Stage only intended release files;
-  do not package a project tree containing source, `obj`, or secrets.
+- For a source directory or `.csproj`, `gbar pack` performs the bounded build,
+  isolated staging, and package validation itself. A successful build that
+  misses `entrypoint.assembly` means `AssemblyName` and the manifest disagree;
+  the diagnostic names the missing entry and no archive is published.
+- For an already-staged package directory, `gbar pack` requires exact-case root
+  `manifest.json` and the manifest's entrypoint at that relative path/casing.
+  It recursively includes the complete bounded directory, so stage only
+  intended release files and never source, `obj`, or secrets.
 - Output must end in `.gbarwidget`.
 - Installed versions are immutable. Bump the canonical dotted manifest version
   instead of reinstalling or overwriting the same `<id>/<version>`.
