@@ -1,0 +1,218 @@
+using System.Text.Json;
+using GameBarAlternative.FirstPartyWidgets.Settings;
+using GameBarAlternative.PlatformDiagnostics;
+using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetProtocol;
+
+internal static class SettingsPolicyScenarios
+{
+    public static Task PresentationIsRepeatable()
+    {
+        var state = new SettingsPresentationState(
+            SettingsPage.Root,
+            PlatformSettingsDocument.Default,
+            new ThemeCatalogSnapshot([]),
+            PlatformDiagnosticsSnapshot.Unavailable(),
+            null,
+            "Ready",
+            SettingsValid: true,
+            Busy: false,
+            Error: false);
+
+        Require(SettingsPresentation.TryRender(state, out var first),
+            "Root presentation was not owned by the snapshot presenter.");
+        Require(SettingsPresentation.TryRender(state, out var second),
+            "Repeated root presentation was not owned by the snapshot presenter.");
+        var firstJson = JsonSerializer.Serialize(first.CreateSnapshot("settings-policy", 1));
+        var secondJson = JsonSerializer.Serialize(second.CreateSnapshot("settings-policy", 1));
+        Equal(firstJson, secondJson, "Repeated presentation changed semantic output.");
+        return Task.CompletedTask;
+    }
+
+    public static Task NavigationAndPreferencePoliciesAreClosed()
+    {
+        Require(SettingsNavigationPolicy.TryResolve(
+                "open.appearance", SettingsPage.Root, SettingsPage.Permissions, out var appearance),
+            "Appearance navigation was not admitted.");
+        Equal(SettingsPage.Appearance, appearance, "Appearance navigation targeted the wrong page.");
+        Require(SettingsNavigationPolicy.TryResolve(
+                "back", SettingsPage.ThemePicker, SettingsPage.Permissions, out var parent),
+            "Back navigation was not admitted.");
+        Equal(SettingsPage.Appearance, parent, "Theme Back did not return to Appearance.");
+        Require(!SettingsNavigationPolicy.TryResolve(
+                "capability.grant", SettingsPage.Root, SettingsPage.Permissions, out _),
+            "Ordinary navigation admitted a privileged capability action.");
+
+        Require(SettingsPreferencePolicy.TryCreate("text.increase", out var increase),
+            "Text preference was not admitted.");
+        var maximum = PlatformSettingsDocument.Default with
+        {
+            Appearance = PlatformSettingsDocument.Default.Appearance with
+            {
+                TextScale = AppearanceSettings.MaximumTextScale,
+            },
+        };
+        Equal(AppearanceSettings.MaximumTextScale, increase.Apply(maximum).Appearance.TextScale,
+            "Text preference exceeded its bound.");
+        Require(!SettingsPreferencePolicy.TryCreate("authority.recovery.retry", out _),
+            "Ordinary preferences admitted privileged recovery.");
+        Require(!SettingsPreferencePolicy.TryCreate("capability.grant", out _),
+            "Ordinary preferences admitted a capability decision.");
+        Require(!SettingsPreferencePolicy.TryCreate("unknown", out _),
+            "Ordinary preferences admitted an unknown action.");
+        return Task.CompletedTask;
+    }
+
+    public static async Task PreferencePersistenceOwnsWrites()
+    {
+        using var temp = new PolicyTemporaryDirectory();
+        var store = new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path));
+        await store.ReplaceAsync(PlatformSettingsDocument.Default);
+        Require(SettingsPreferencePolicy.TryCreate("opacity.increase", out var increase),
+            "Opacity preference was not admitted.");
+        var updated = await SettingsPreferencePolicy.PersistAsync(
+            store,
+            PlatformSettingsDocument.Default,
+            currentIsValid: true,
+            increase,
+            CancellationToken.None);
+        Equal(0.69d, updated.Appearance.BackdropOpacity,
+            "Valid-state persistence did not update the stored document.");
+
+        var recoveryBase = PlatformSettingsDocument.Default with
+        {
+            Appearance = PlatformSettingsDocument.Default.Appearance with
+            {
+                BackdropOpacity = AppearanceSettings.MinimumBackdropOpacity,
+            },
+        };
+        var recovered = await SettingsPreferencePolicy.PersistAsync(
+            store,
+            recoveryBase,
+            currentIsValid: false,
+            increase,
+            CancellationToken.None);
+        Equal(0.40d, recovered.Appearance.BackdropOpacity,
+            "Invalid-state recovery did not replace from the committed safe document.");
+        Equal(recovered, await store.LoadAsync(),
+            "Preference persistence did not commit its returned document.");
+    }
+
+    public static Task AuthorityRecoverySelectionIsExact()
+    {
+        var recoveryId = new string('A', PlatformDiagnosticsSnapshot.RecoveryIdLength);
+        var token = new string('B', PlatformDiagnosticsSnapshot.ConfirmationTokenLength);
+        var changedToken = new string('C', PlatformDiagnosticsSnapshot.ConfirmationTokenLength);
+        var retryable = new PlatformAuthorityRecoveryDiagnostic(
+            recoveryId,
+            "Zeta package",
+            PlatformAuthorityRecoveryState.Pending,
+            "recovery_pending",
+            true,
+            token);
+        var unavailable = new PlatformAuthorityRecoveryDiagnostic(
+            new string('D', PlatformDiagnosticsSnapshot.RecoveryIdLength),
+            "Alpha package",
+            PlatformAuthorityRecoveryState.Unavailable,
+            "recovery_unavailable",
+            false,
+            null);
+        var diagnostics = PlatformDiagnosticsSnapshot.Unavailable() with
+        {
+            Revision = 10,
+            AuthorityRecoveries = [retryable, unavailable],
+        };
+
+        Require(SettingsAuthorityRecoveryPolicy.TrySelect(diagnostics, 1, out var selection),
+            "Sorted retryable recovery could not be selected.");
+        Equal(recoveryId, selection.RecoveryId, "Selection did not follow deterministic display order.");
+        Require(SettingsAuthorityRecoveryPolicy.TryAuthorize(diagnostics, selection, out var request),
+            "Exact current recovery selection was refused.");
+        Equal(token, request.ConfirmationToken, "Authorized request changed the exact token.");
+
+        var replaced = diagnostics with
+        {
+            Revision = 11,
+            AuthorityRecoveries = [retryable with { ConfirmationToken = changedToken }, unavailable],
+        };
+        Require(!SettingsAuthorityRecoveryPolicy.TryAuthorize(replaced, selection, out _),
+            "A replaced token was authorized without renewed confirmation.");
+        Require(SettingsAuthorityRecoveryPolicy.TrySelect(diagnostics, 0, out var disabled),
+            "Unavailable recovery could not be reviewed.");
+        Require(!SettingsAuthorityRecoveryPolicy.TryAuthorize(diagnostics, disabled, out _),
+            "Unavailable recovery was authorized.");
+
+        var pending = SettingsAuthorityRecoveryPolicy.Result(
+            new(PlatformAuthorityRecoveryRetryStatus.StillPending, "sharing_violation"),
+            diagnostics,
+            request);
+        Equal(SettingsPage.AuthorityRecovery, pending.Page,
+            "Still-pending recovery left its confirmation page.");
+        Equal(token, pending.Selection?.ConfirmationToken,
+            "Still-pending recovery lost the exact reviewed token.");
+        var cancelled = SettingsAuthorityRecoveryPolicy.Cancelled(request);
+        Equal(token, cancelled.Selection?.ConfirmationToken,
+            "Cancellation changed the exact reviewed token.");
+        var recovered = SettingsAuthorityRecoveryPolicy.Result(
+            new(PlatformAuthorityRecoveryRetryStatus.Recovered, "recovered"),
+            diagnostics with { AuthorityRecoveries = [] },
+            request);
+        Equal(SettingsPage.Diagnostics, recovered.Page,
+            "Recovered authority did not return to diagnostics.");
+        Require(recovered.Selection is null, "Recovered authority retained a selection.");
+
+        var state = new SettingsPresentationState(
+            SettingsPage.AuthorityRecovery,
+            PlatformSettingsDocument.Default,
+            new ThemeCatalogSnapshot([]),
+            diagnostics,
+            recoveryId,
+            "Review",
+            SettingsValid: true,
+            Busy: false,
+            Error: false);
+        Require(SettingsPresentation.TryRender(state, out var view),
+            "Recovery confirmation presentation was unavailable.");
+        Require(!JsonSerializer.Serialize(view.CreateSnapshot("settings-policy", 1))
+                .Contains(token, StringComparison.Ordinal),
+            "Opaque recovery token escaped through presentation metadata.");
+        return Task.CompletedTask;
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static void Equal<T>(T expected, T actual, string message)
+    {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
+            throw new InvalidOperationException($"{message} Expected {expected}; actual {actual}.");
+    }
+
+    private sealed class PolicyTemporaryDirectory : IDisposable
+    {
+        public PolicyTemporaryDirectory()
+        {
+            Path = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), $"gbar-settings-policy-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            try
+            {
+                Directory.Delete(Path, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+}

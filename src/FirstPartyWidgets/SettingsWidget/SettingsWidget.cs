@@ -33,8 +33,6 @@ public enum SettingsPage
 
 public sealed partial class SettingsWidget : Widget
 {
-    private const double ScaleStep = 0.05;
-    private const double OpacityStep = 0.05;
     private readonly PlatformSettingsStore _store;
     private readonly ThemeCatalog _catalog;
     private readonly CatalogService _widgetCatalog;
@@ -56,7 +54,7 @@ public sealed partial class SettingsWidget : Widget
     private string? _selectedInstalledWidgetId;
     private string? _selectedBuiltInWidgetId;
     private WidgetCatalogRepairCandidate? _selectedRepairCandidate;
-    private string? _selectedAuthorityRecoveryId;
+    private SettingsAuthorityRecoverySelection? _selectedAuthorityRecovery;
     private SettingsPage _page;
     private int _activationLoadCount;
     private bool _settingsValid = true;
@@ -115,23 +113,24 @@ public sealed partial class SettingsWidget : Widget
             error = _error;
             settingsValid = _settingsValid;
             diagnostics = _diagnostics;
-            selectedAuthorityRecoveryId = _selectedAuthorityRecoveryId;
+            selectedAuthorityRecoveryId = _selectedAuthorityRecovery?.RecoveryId;
             status = _status;
         }
 
-        var header = UI.Stack("settings.header",
-            UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title"),
-            UI.Text(status, "settings.status", status).Classes(
-                "settings-status", error ? "is-error" : busy ? "is-busy" : "is-ready"))
-            .Classes("settings-header");
+        var presentation = new SettingsPresentationState(
+            page,
+            settings,
+            themes,
+            diagnostics,
+            selectedAuthorityRecoveryId,
+            status,
+            settingsValid,
+            busy,
+            error);
+        if (SettingsPresentation.TryRender(presentation, out var view)) return view;
+        var header = SettingsPresentation.Header(presentation);
         return page switch
         {
-            SettingsPage.Root => RenderRoot(header, settings, busy),
-            SettingsPage.Appearance => RenderAppearance(header, settings, themes, busy),
-            SettingsPage.ThemePicker => RenderThemes(header, settings, themes, busy),
-            SettingsPage.Accessibility => RenderAccessibility(header, settings, busy),
-            SettingsPage.AccessibilityVisual => RenderVisualAccessibility(header, settings, busy),
-            SettingsPage.Overlay => RenderOverlay(header, settings, busy),
             SettingsPage.InstalledWidgets => RenderInstalledWidgets(header, busy),
             SettingsPage.InstalledWidgetDetails => RenderInstalledWidgetDetails(header, busy),
             SettingsPage.InstalledWidgetVersions => RenderInstalledWidgetVersions(header, busy),
@@ -140,12 +139,7 @@ public sealed partial class SettingsWidget : Widget
             SettingsPage.PermissionDiagnostics => RenderPermissionDiagnostics(header),
             SettingsPage.PackageCapabilities => RenderPackageCapabilities(header, busy),
             SettingsPage.CapabilityDecision => RenderCapabilityDecision(header, busy),
-            SettingsPage.Diagnostics => RenderDiagnostics(
-                header, settings, themes, settingsValid, diagnostics, busy),
-            SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(
-                header, diagnostics, selectedAuthorityRecoveryId, busy),
-            SettingsPage.Reset => RenderReset(header, busy),
-            _ => RenderRoot(header, settings, busy),
+            _ => throw new InvalidOperationException($"Unsupported Settings page {page}."),
         };
     }
 
@@ -171,23 +165,26 @@ public sealed partial class SettingsWidget : Widget
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (SettingsNavigationPolicy.TryResolve(
+                    action.ActionId,
+                    CurrentPage,
+                    PackageCapabilitiesReturnPage(),
+                    out var targetPage))
+            {
+                Navigate(targetPage);
+                return;
+            }
+            if (SettingsPreferencePolicy.TryCreate(action.ActionId, out var preference))
+            {
+                await PersistPreferenceAsync(preference, cancellationToken).ConfigureAwait(false);
+                return;
+            }
             switch (action.ActionId)
             {
-                case "open.appearance": Navigate(SettingsPage.Appearance); break;
-                case "open.accessibility": Navigate(SettingsPage.Accessibility); break;
-                case "open.visual-accessibility": Navigate(SettingsPage.AccessibilityVisual); break;
-                case "open.overlay": Navigate(SettingsPage.Overlay); break;
-                case "open.installed-widgets": Navigate(SettingsPage.InstalledWidgets); break;
-                case "open.permissions": Navigate(SettingsPage.Permissions); break;
                 case "installed.permissions.open": OpenSelectedInstalledPermissions(); break;
                 case "open.permission-diagnostics": OpenPermissionDiagnostics(); break;
-                case "open.diagnostics": Navigate(SettingsPage.Diagnostics); break;
                 case "authority.recovery.retry": await RetrySelectedAuthorityRecoveryAsync(
                     cancellationToken).ConfigureAwait(false); break;
-                case "authority.recovery.cancel": Navigate(SettingsPage.Diagnostics); break;
-                case "open.reset": Navigate(SettingsPage.Reset); break;
-                case "open.themes": Navigate(SettingsPage.ThemePicker); break;
-                case "back": Navigate(ParentPage(CurrentPage)); break;
                 case "installed.previous-page": ChangeInstalledWidgetPage(-1); break;
                 case "installed.next-page": ChangeInstalledWidgetPage(1); break;
                 case "installed.versions.open": OpenInstalledWidgetVersions(); break;
@@ -201,76 +198,7 @@ public sealed partial class SettingsWidget : Widget
                     ConsentDecision.Grant, cancellationToken).ConfigureAwait(false); break;
                 case "capability.deny": await ChangeConsentAsync(
                     ConsentDecision.Deny, cancellationToken).ConfigureAwait(false); break;
-                case "text.decrease": await ChangeAppearanceAsync(
-                    appearance => appearance with { TextScale = Step(
-                        appearance.TextScale, -ScaleStep,
-                        AppearanceSettings.MinimumTextScale,
-                        AppearanceSettings.MaximumTextScale) }, "Text size saved", cancellationToken).ConfigureAwait(false); break;
-                case "text.increase": await ChangeAppearanceAsync(
-                    appearance => appearance with { TextScale = Step(
-                        appearance.TextScale, ScaleStep,
-                        AppearanceSettings.MinimumTextScale,
-                        AppearanceSettings.MaximumTextScale) }, "Text size saved", cancellationToken).ConfigureAwait(false); break;
-                case "interface.decrease": await ChangeAppearanceAsync(
-                    appearance => appearance with { InterfaceScale = Step(
-                        appearance.InterfaceScale, -ScaleStep,
-                        AppearanceSettings.MinimumInterfaceScale,
-                        AppearanceSettings.MaximumInterfaceScale) }, "Interface size saved", cancellationToken).ConfigureAwait(false); break;
-                case "interface.increase": await ChangeAppearanceAsync(
-                    appearance => appearance with { InterfaceScale = Step(
-                        appearance.InterfaceScale, ScaleStep,
-                        AppearanceSettings.MinimumInterfaceScale,
-                        AppearanceSettings.MaximumInterfaceScale) }, "Interface size saved", cancellationToken).ConfigureAwait(false); break;
-                case "opacity.decrease": await ChangeAppearanceAsync(
-                    appearance => appearance with { BackdropOpacity = Step(
-                        appearance.BackdropOpacity, -OpacityStep,
-                        AppearanceSettings.MinimumBackdropOpacity,
-                        AppearanceSettings.MaximumBackdropOpacity) }, "Backdrop saved", cancellationToken).ConfigureAwait(false); break;
-                case "opacity.increase": await ChangeAppearanceAsync(
-                    appearance => appearance with { BackdropOpacity = Step(
-                        appearance.BackdropOpacity, OpacityStep,
-                        AppearanceSettings.MinimumBackdropOpacity,
-                        AppearanceSettings.MaximumBackdropOpacity) }, "Backdrop saved", cancellationToken).ConfigureAwait(false); break;
-                case "motion.system": await ChangeAppearanceAsync(
-                    appearance => appearance with
-                    {
-                        Motion = appearance.Motion == MotionPreference.System
-                            ? MotionPreference.Full
-                            : MotionPreference.System,
-                    }, "Motion preference saved", cancellationToken).ConfigureAwait(false); break;
-                case "motion.reduced": await ChangeAppearanceAsync(
-                    appearance => appearance with
-                    {
-                        Motion = appearance.Motion == MotionPreference.Reduced
-                            ? MotionPreference.Full
-                            : MotionPreference.Reduced,
-                    }, "Motion preference saved", cancellationToken).ConfigureAwait(false); break;
-                case "contrast.system": await ChangeAppearanceAsync(
-                    appearance => appearance with
-                    {
-                        Contrast = appearance.Contrast == ContrastPreference.System
-                            ? ContrastPreference.Standard
-                            : ContrastPreference.System,
-                    }, "Contrast preference saved", cancellationToken).ConfigureAwait(false); break;
-                case "contrast.high": await ChangeAppearanceAsync(
-                    appearance => appearance with
-                    {
-                        Contrast = appearance.Contrast == ContrastPreference.High
-                            ? ContrastPreference.Standard
-                            : ContrastPreference.High,
-                    }, "Contrast preference saved", cancellationToken).ConfigureAwait(false); break;
-                case "bold-text.toggle": await ChangeAppearanceAsync(
-                    appearance => appearance with { BoldText = !appearance.BoldText },
-                    "Bold text preference saved", cancellationToken).ConfigureAwait(false); break;
-                case "transparency.reduced": await ChangeAppearanceAsync(
-                    appearance => appearance with
-                    {
-                        Transparency = appearance.Transparency == TransparencyPreference.Reduced
-                            ? TransparencyPreference.Full
-                            : TransparencyPreference.Reduced,
-                    }, "Transparency preference saved", cancellationToken).ConfigureAwait(false); break;
                 case "reset.confirm": await ResetAsync(cancellationToken).ConfigureAwait(false); break;
-                case "reset.cancel": Navigate(SettingsPage.Root); break;
                 default:
                     if (TryThemeIndex(action.ActionId, out var index))
                         await SelectThemeAsync(index, cancellationToken).ConfigureAwait(false);
@@ -374,30 +302,17 @@ public sealed partial class SettingsWidget : Widget
         }
     }
 
-    private async Task ChangeAppearanceAsync(
-        Func<AppearanceSettings, AppearanceSettings> mutation,
-        string success,
-        CancellationToken cancellationToken)
-    {
-        await PersistAsync(
-            current => current with { Appearance = mutation(current.Appearance) },
-            success,
-            cancellationToken).ConfigureAwait(false);
-    }
-
     private async Task SelectThemeAsync(int index, CancellationToken cancellationToken)
     {
         ThemeCatalogEntry? entry;
         lock (_stateLock)
             entry = index >= 0 && index < _themes.Themes.Count ? _themes.Themes[index] : null;
         if (entry is null || !entry.IsValid) return;
-        await ChangeAppearanceAsync(
-            appearance => appearance with
-            {
-                ThemeId = entry.Descriptor.Id,
-                ThemeVersion = entry.Descriptor.Version.ToString(),
-            },
-            $"Theme set to {entry.Descriptor.Name}",
+        await PersistPreferenceAsync(
+            SettingsPreferencePolicy.Theme(
+                entry.Descriptor.Id,
+                entry.Descriptor.Version.ToString(),
+                entry.Descriptor.Name),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -427,15 +342,13 @@ public sealed partial class SettingsWidget : Widget
         Invalidate();
     }
 
-    private async Task PersistAsync(
-        Func<PlatformSettingsDocument, PlatformSettingsDocument> mutation,
-        string success,
+    private async Task PersistPreferenceAsync(
+        SettingsPreferenceMutation mutation,
         CancellationToken cancellationToken)
     {
         SetOperation("Saving…", busy: true, error: false);
         try
         {
-            PlatformSettingsDocument saved;
             bool valid;
             PlatformSettingsDocument fallback;
             lock (_stateLock)
@@ -443,17 +356,16 @@ public sealed partial class SettingsWidget : Widget
                 valid = _settingsValid;
                 fallback = _settings;
             }
-            if (valid)
-                saved = await _store.UpdateAsync(mutation, cancellationToken).ConfigureAwait(false);
-            else
-                saved = await _store.ReplaceAsync(mutation(fallback), cancellationToken).ConfigureAwait(false);
+            var saved = await SettingsPreferencePolicy.PersistAsync(
+                    _store, fallback, valid, mutation, cancellationToken)
+                .ConfigureAwait(false);
             lock (_stateLock)
             {
                 _settings = saved;
                 _settingsValid = true;
                 _busy = false;
                 _error = false;
-                _status = success;
+                _status = mutation.SuccessStatus;
             }
         }
         catch (PlatformSettingsException exception)
@@ -464,323 +376,14 @@ public sealed partial class SettingsWidget : Widget
         Invalidate();
     }
 
-    private static WidgetView RenderRoot(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        bool busy)
-    {
-        var appearance = UI.Button("Appearance", "open.appearance", "category.appearance")
-            .Busy(busy).Classes("category-card");
-        var accessibility = UI.Button("Accessibility", "open.accessibility", "category.accessibility")
-            .Busy(busy).Classes("category-card");
-        var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
-            .Busy(busy).Classes("category-card");
-        var installedWidgets = UI.Button("Installed widgets", "open.installed-widgets", "category.installed-widgets")
-            .Busy(busy).Classes("category-card");
-        var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
-            .Classes("category-card");
-        var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
-            .Busy(busy).Classes("category-card");
-        var reset = UI.Button("Reset", "open.reset", "category.reset")
-            .Classes("category-card", "danger-card");
-        return View(
-            header,
-            UI.VerticalScroll("settings.categories",
-                UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
-                    "settings.summary", "Selected theme").Classes("settings-summary"),
-                UI.ResponsiveGrid("settings.category-grid", 250, 2,
-                        appearance, accessibility, overlay, installedWidgets, diagnostics, refresh, reset)
-                    .Classes("category-grid")).Classes("category-list"),
-            "category.appearance",
-            "settings-root");
-    }
-
-    private static WidgetView RenderAppearance(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        ThemeCatalogSnapshot themes,
-        bool busy)
-    {
-        var selected = themes.Themes.FirstOrDefault(entry =>
-            entry.IsValid && entry.Descriptor.Id == settings.Appearance.ThemeId &&
-            entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion);
-        var label = selected is null
-            ? $"Theme: unavailable ({settings.Appearance.ThemeId})"
-            : $"Theme: {selected.Descriptor.Name}";
-        var content = PageScope("appearance.page",
-            UI.Text("Appearance", "appearance.heading", "Appearance settings").Classes("page-heading"),
-            UI.Button(label, "open.themes", "appearance.theme")
-                .Busy(busy).Classes("setting-row"),
-            UI.Text("Choose a versioned theme package. Invalid packages remain visible but cannot be selected.",
-                "appearance.help", "Theme picker help").Classes("page-help"));
-        return View(header, content, "appearance.theme", "appearance.page");
-    }
-
-    private static WidgetView RenderAccessibility(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        bool busy)
-    {
-        var appearance = settings.Appearance;
-        var text = LinkStepper(
-            UI.Stepper("Text size", Percent(appearance.TextScale), "text.decrease", "text.increase", "text.stepper",
-                appearance.TextScale > AppearanceSettings.MinimumTextScale,
-                appearance.TextScale < AppearanceSettings.MaximumTextScale),
-            up: null, down: "motion.system", busy: busy);
-        var system = UI.ToggleButton("Follow Windows motion", appearance.Motion == MotionPreference.System,
-                "motion.system", "motion.system")
-            .FocusUp("text.stepper.decrement").FocusDown("motion.reduced").Busy(busy);
-        var reduced = UI.ToggleButton("Reduced motion", appearance.Motion == MotionPreference.Reduced,
-                "motion.reduced", "motion.reduced")
-            .FocusUp("motion.system").FocusDown("accessibility.visual").Busy(busy);
-        var visual = UI.Button("Contrast and visibility", "open.visual-accessibility",
-                "accessibility.visual")
-            .FocusUp("motion.reduced").Busy(busy).Classes("setting-row");
-        return View(header,
-            PageScope("accessibility.page",
-                UI.Text("Accessibility", "accessibility.heading", "Accessibility settings").Classes("page-heading"),
-                text, system, reduced, visual),
-            "text.stepper.decrement", "accessibility.page");
-    }
-
-    private static WidgetView RenderVisualAccessibility(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        bool busy)
-    {
-        var appearance = settings.Appearance;
-        var systemContrast = UI.ToggleButton(
-                "Follow Windows high contrast", appearance.Contrast == ContrastPreference.System,
-                "contrast.system", "contrast.system")
-            .FocusDown("contrast.high").Busy(busy);
-        var highContrast = UI.ToggleButton(
-                "High contrast", appearance.Contrast == ContrastPreference.High,
-                "contrast.high", "contrast.high")
-            .FocusUp("contrast.system").FocusDown("bold-text.toggle").Busy(busy);
-        var boldText = UI.ToggleButton(
-                "Bold text", appearance.BoldText,
-                "bold-text.toggle", "bold-text.toggle")
-            .FocusUp("contrast.high").FocusDown("transparency.reduced").Busy(busy);
-        var reducedTransparency = UI.ToggleButton(
-                "Reduced transparency", appearance.Transparency == TransparencyPreference.Reduced,
-                "transparency.reduced", "transparency.reduced")
-            .FocusUp("bold-text.toggle").Busy(busy);
-        return View(header,
-            PageScope("accessibility.visual.page",
-                UI.Text("Contrast and visibility", "accessibility.visual.heading",
-                    "Contrast and visibility settings").Classes("page-heading"),
-                systemContrast, highContrast, boldText, reducedTransparency,
-                UI.Text("Accessibility overrides every theme and widget style.",
-                    "accessibility.visual.help", "Accessibility policy help").Classes("page-help")),
-            "contrast.system", "accessibility.visual.page");
-    }
-
-    private static WidgetView RenderOverlay(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        bool busy)
-    {
-        var appearance = settings.Appearance;
-        var interfaceScale = LinkStepper(
-            UI.Stepper("Interface size", Percent(appearance.InterfaceScale),
-                "interface.decrease", "interface.increase", "interface.stepper",
-                appearance.InterfaceScale > AppearanceSettings.MinimumInterfaceScale,
-                appearance.InterfaceScale < AppearanceSettings.MaximumInterfaceScale),
-            up: null, down: "opacity.stepper.decrement", busy: busy);
-        var opacity = LinkStepper(
-            UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity),
-                "opacity.decrease", "opacity.increase", "opacity.stepper",
-                appearance.BackdropOpacity > AppearanceSettings.MinimumBackdropOpacity,
-                appearance.BackdropOpacity < AppearanceSettings.MaximumBackdropOpacity),
-            up: "interface.stepper.decrement", down: null, busy: busy);
-        return View(header,
-            PageScope("overlay.page",
-                UI.Text("Overlay", "overlay.heading", "Overlay settings").Classes("page-heading"),
-                interfaceScale, opacity,
-                UI.Text("Changes are stored atomically and applied by the host theme pipeline.",
-                    "overlay.help", "Overlay settings help").Classes("page-help")),
-            "interface.stepper.decrement", "overlay.page");
-    }
-
-    private static WidgetView RenderDiagnostics(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        ThemeCatalogSnapshot themes,
-        bool settingsValid,
-        PlatformDiagnosticsSnapshot diagnostics,
-        bool busy)
-    {
-        var invalidThemes = themes.Themes.Count(theme => !theme.IsValid);
-        var runningWorkers = diagnostics.Workers.Count(worker => worker.IsRunning);
-        var failedWorkers = diagnostics.Workers.Count(worker => worker.LastFailureCode is not null);
-        var areas = new[]
-        {
-            diagnostics.Bridge,
-            diagnostics.Catalog,
-            diagnostics.Appearance,
-            diagnostics.Providers,
-            diagnostics.Consent,
-            diagnostics.Overlay,
-            diagnostics.Guide,
-        };
-        var children = new List<WidgetElement>
-        {
-            UI.Text("Diagnostics", "diagnostics.heading", "Settings diagnostics").Classes("page-heading"),
-            UI.Text(settingsValid ? "Settings file: valid" : "Settings file: invalid; defaults shown",
-                "diagnostics.settings", "Settings file status").Classes(settingsValid ? "diagnostic-ok" : "diagnostic-error"),
-            UI.Text($"Theme packages: {themes.Themes.Count} total, {invalidThemes} invalid",
-                "diagnostics.themes", "Theme package status").Classes(
-                    invalidThemes == 0 ? "diagnostic-ok" : "diagnostic-error"),
-            UI.CodeText($"Schema: {settings.SchemaVersion}; runtime snapshot {diagnostics.Revision}",
-                "diagnostics.schema", "Settings and runtime diagnostics schema")
-                .AddClasses("diagnostic-line"),
-        };
-        children.AddRange(areas.Select(area => UI.Text(
-            $"{DiagnosticPrefix(area.State)} {area.Label}: {area.Summary}",
-            $"diagnostics.area.{area.Id}",
-            $"{area.Label} diagnostic: {area.State}; {area.Summary}").Classes(
-                area.State == PlatformDiagnosticState.Healthy ? "diagnostic-ok" : "diagnostic-error")));
-        children.Add(UI.Text(
-            $"Workers: {runningWorkers}/{diagnostics.Workers.Count} running; {failedWorkers} with a recorded failure",
-            "diagnostics.workers", "Widget worker status").Classes(
-                failedWorkers == 0 ? "diagnostic-ok" : "diagnostic-error"));
-        foreach (var worker in diagnostics.Workers.Where(worker => worker.LastFailureCode is not null).Take(3))
-        {
-            children.Add(UI.CodeText(
-                $"{worker.WidgetName}: {worker.LastFailureCode}; " +
-                (worker.IsRunning
-                    ? "running after the recorded failure"
-                    : worker.CanRestart ? "will restart on demand" : "restart limit reached"),
-                $"diagnostics.worker.{worker.WidgetId}",
-                $"{worker.WidgetName} worker failure").AddClasses("diagnostic-error"));
-        }
-        var recoveryOrder = OrderedAuthorityRecoveryIndexes(diagnostics);
-        children.Add(UI.Text(
-            recoveryOrder.Length == 0
-                ? "Content authority recovery: no pending records"
-                : $"Content authority recovery: {recoveryOrder.Length} " +
-                  (recoveryOrder.Length == 1
-                      ? "record requires review"
-                      : "records require review"),
-            "diagnostics.authority.summary",
-            recoveryOrder.Length == 0
-                ? "No content authority recovery records are pending"
-                : $"{recoveryOrder.Length} content authority recovery " +
-                  (recoveryOrder.Length == 1
-                      ? "record requires review"
-                      : "records require review"))
-            .Classes(recoveryOrder.Length == 0 ? "diagnostic-ok" : "diagnostic-error"));
-        for (var displayIndex = 0; displayIndex < recoveryOrder.Length; displayIndex++)
-        {
-            var recovery = diagnostics.AuthorityRecoveries[recoveryOrder[displayIndex]];
-            var button = UI.Button(
-                    $"Review recovery · {recovery.DisplayName} · {recovery.State}",
-                    $"authority.recovery.select.{displayIndex}",
-                    $"diagnostics.authority.item.{displayIndex}")
-                .Busy(busy)
-                .Classes(recovery.CanRetry ? "danger-button" : "secondary-button") with
-                {
-                    AccessibilityLabel =
-                        $"Review content authority recovery {recovery.DisplayName}, " +
-                        $"state {recovery.State}, status {recovery.StatusCode}, " +
-                        (recovery.CanRetry ? "retry available" : "retry unavailable"),
-                };
-            children.Add(button);
-        }
-        children.Add(UI.Button("Refresh diagnostics", "refresh", "diagnostics.refresh")
-            .Icon(WidgetGlyph.Refresh, "Refresh diagnostics")
-            .Busy(busy).Classes("primary-button"));
-        children.Add(UI.Button("Back", "back", "diagnostics.back")
-            .Classes("secondary-button"));
-        LinkVertical(children);
-        return View(header,
-            PageScope("diagnostics.page", children.ToArray()),
-            recoveryOrder.Length == 0 ? "diagnostics.refresh" : "diagnostics.authority.item.0",
-            "diagnostics.page");
-    }
-
-    private static WidgetView RenderAuthorityRecovery(
-        StackElement header,
-        PlatformDiagnosticsSnapshot diagnostics,
-        string? recoveryId,
-        bool busy)
-    {
-        var matches = diagnostics.AuthorityRecoveries
-            .Where(item => string.Equals(
-                item.RecoveryId, recoveryId, StringComparison.Ordinal))
-            .Take(1)
-            .ToArray();
-        if (matches.Length == 0)
-        {
-            var stale = new List<WidgetElement>
-            {
-                UI.Text("Recovery record changed", "authority.recovery.heading",
-                    "Content authority recovery record changed").Classes("page-heading"),
-                UI.Text(
-                    "This recovery record is no longer pending or its confirmation token changed. " +
-                    "Return to diagnostics and review the current bounded list before retrying.",
-                    "authority.recovery.stale", "Recovery record is stale")
-                    .Classes("diagnostic-error"),
-                UI.Button("Review current diagnostics", "authority.recovery.cancel",
-                    "authority.recovery.review-current")
-                    .Busy(busy).Classes("primary-button"),
-                UI.Button("Back", "back", "authority.recovery.back")
-                    .Classes("secondary-button"),
-            };
-            LinkVertical(stale);
-            return View(header, PageScope("authority.recovery.page", stale.ToArray()),
-                "authority.recovery.review-current", "authority.recovery.page");
-        }
-
-        var recovery = matches[0];
-        var children = new List<WidgetElement>
-        {
-            UI.Text("Retry content authority recovery?", "authority.recovery.heading",
-                "Confirm content authority recovery retry").Classes("page-heading"),
-            UI.Text(recovery.DisplayName, "authority.recovery.display-name",
-                $"Recovery {recovery.DisplayName}").Classes("diagnostic-line"),
-            UI.CodeText($"Recovery ID: {recovery.RecoveryId}", "authority.recovery.id",
-                $"Recovery ID {recovery.RecoveryId}").AddClasses("diagnostic-line"),
-            UI.Text($"State: {recovery.State}", "authority.recovery.state",
-                $"Recovery state {recovery.State}").Classes(
-                    recovery.CanRetry ? "diagnostic-error" : "diagnostic-line"),
-            UI.CodeText($"Status: {recovery.StatusCode}", "authority.recovery.status-code",
-                $"Recovery status {recovery.StatusCode}").AddClasses("diagnostic-line"),
-            UI.Text(
-                recovery.CanRetry
-                    ? "The host will retry this exact pending record. It clears the record only after verified recovery; there is no force-clear action."
-                    : "This record cannot currently be retried. Return to diagnostics after resolving the reported condition; there is no force-clear action.",
-                "authority.recovery.help", "Content authority recovery safety")
-                .Classes("page-help"),
-            UI.Button("Retry verified recovery", "authority.recovery.retry",
-                "authority.recovery.retry")
-                .Disabled(!recovery.CanRetry || recovery.ConfirmationToken is null)
-                .Busy(busy).Classes("danger-button"),
-            UI.Button("Cancel", "authority.recovery.cancel", "authority.recovery.cancel")
-                .Classes("secondary-button"),
-        };
-        LinkVertical(children);
-        return View(header, PageScope("authority.recovery.page", children.ToArray()),
-            "authority.recovery.cancel", "authority.recovery.page");
-    }
-
-    private static int[] OrderedAuthorityRecoveryIndexes(PlatformDiagnosticsSnapshot diagnostics) =>
-        Enumerable.Range(0, diagnostics.AuthorityRecoveries.Count)
-            .OrderBy(index => diagnostics.AuthorityRecoveries[index].DisplayName,
-                StringComparer.OrdinalIgnoreCase)
-            .ThenBy(index => diagnostics.AuthorityRecoveries[index].RecoveryId,
-                StringComparer.Ordinal)
-            .ToArray();
-
     private void SelectAuthorityRecovery(int displayIndex)
     {
         lock (_stateLock)
         {
             if (_page != SettingsPage.Diagnostics) return;
-            var order = OrderedAuthorityRecoveryIndexes(_diagnostics);
-            if (displayIndex < 0 || displayIndex >= order.Length) return;
-            _selectedAuthorityRecoveryId =
-                _diagnostics.AuthorityRecoveries[order[displayIndex]].RecoveryId;
+            if (!SettingsAuthorityRecoveryPolicy.TrySelect(
+                    _diagnostics, displayIndex, out var selection)) return;
+            _selectedAuthorityRecovery = selection;
             _page = SettingsPage.AuthorityRecovery;
         }
         Invalidate();
@@ -788,55 +391,40 @@ public sealed partial class SettingsWidget : Widget
 
     private async Task RetrySelectedAuthorityRecoveryAsync(CancellationToken cancellationToken)
     {
-        string? recoveryId;
-        string? confirmationToken;
-        string? displayName;
+        SettingsAuthorityRecoveryRequest request;
+        bool authorized;
         lock (_stateLock)
         {
-            recoveryId = _page == SettingsPage.AuthorityRecovery
-                ? _selectedAuthorityRecoveryId
+            var selection = _page == SettingsPage.AuthorityRecovery
+                ? _selectedAuthorityRecovery
                 : null;
-            var matches = _diagnostics.AuthorityRecoveries
-                .Where(item => string.Equals(
-                    item.RecoveryId, recoveryId, StringComparison.Ordinal))
-                .Take(1)
-                .ToArray();
-            confirmationToken = matches.Length == 0 || !matches[0].CanRetry
-                ? null
-                : matches[0].ConfirmationToken;
-            displayName = matches.Length == 0 ? null : matches[0].DisplayName;
+            authorized = SettingsAuthorityRecoveryPolicy.TryAuthorize(
+                _diagnostics, selection, out request);
         }
-        if (recoveryId is null || confirmationToken is null || displayName is null)
+        if (!authorized)
         {
             lock (_stateLock)
-            {
-                _page = SettingsPage.Diagnostics;
-                _selectedAuthorityRecoveryId = null;
-                _busy = false;
-                _error = true;
-                _status = "Authority recovery request changed; review current diagnostics";
-            }
+                ApplyAuthorityTransitionLocked(SettingsAuthorityRecoveryPolicy.Changed());
             Invalidate();
             return;
         }
 
-        SetOperation($"Retrying verified recovery for {displayName}…", busy: true, error: false);
+        SetOperation(
+            $"Retrying verified recovery for {request.DisplayName}…",
+            busy: true,
+            error: false);
         PlatformAuthorityRecoveryRetryResult result;
         try
         {
             result = await _diagnosticsService.RetryAuthorityRecoveryAsync(
-                    confirmationToken, cancellationToken)
+                    request.ConfirmationToken, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             lock (_stateLock)
-            {
-                _busy = false;
-                _error = false;
-                _status =
-                    "Authority recovery was cancelled; review current diagnostics before retrying";
-            }
+                ApplyAuthorityTransitionLocked(
+                    SettingsAuthorityRecoveryPolicy.Cancelled(request));
             Invalidate();
             throw;
         }
@@ -855,15 +443,9 @@ public sealed partial class SettingsWidget : Widget
             lock (_stateLock)
             {
                 if (refreshed is not null) _diagnostics = refreshed;
-                var stillPending = _diagnostics.AuthorityRecoveries.Any(item =>
-                    string.Equals(item.RecoveryId, recoveryId, StringComparison.Ordinal));
-                _page = stillPending ? SettingsPage.AuthorityRecovery : SettingsPage.Diagnostics;
-                if (_page == SettingsPage.Diagnostics) _selectedAuthorityRecoveryId = null;
-                _busy = false;
-                _error = true;
-                _status = !stillPending
-                    ? $"Authority recovery request changed ({exception.Code}); review current diagnostics"
-                    : $"Authority recovery failed ({exception.Code}); the record remains pending";
+                ApplyAuthorityTransitionLocked(
+                    SettingsAuthorityRecoveryPolicy.Failure(
+                        _diagnostics, request, exception.Code));
             }
             Invalidate();
             return;
@@ -878,149 +460,39 @@ public sealed partial class SettingsWidget : Widget
         catch (PlatformDiagnosticsException exception)
         {
             lock (_stateLock)
-            {
-                _page = result.Status is PlatformAuthorityRecoveryRetryStatus.Recovered or
-                    PlatformAuthorityRecoveryRetryStatus.Stale
-                    ? SettingsPage.Diagnostics
-                    : SettingsPage.AuthorityRecovery;
-                if (_page == SettingsPage.Diagnostics) _selectedAuthorityRecoveryId = null;
-                _busy = false;
-                _error = true;
-                _status = $"Authority recovery returned {result.Status}; diagnostics refresh failed ({exception.Code})";
-            }
+                ApplyAuthorityTransitionLocked(
+                    SettingsAuthorityRecoveryPolicy.RefreshFailure(
+                        result, request, exception.Code));
             Invalidate();
             return;
         }
         lock (_stateLock)
         {
             _diagnostics = diagnostics;
-            var stillPending = diagnostics.AuthorityRecoveries.Any(item =>
-                string.Equals(item.RecoveryId, recoveryId, StringComparison.Ordinal));
-            _page = result.Status switch
-            {
-                PlatformAuthorityRecoveryRetryStatus.Recovered => SettingsPage.Diagnostics,
-                PlatformAuthorityRecoveryRetryStatus.Stale => SettingsPage.Diagnostics,
-                _ when !stillPending => SettingsPage.Diagnostics,
-                _ => SettingsPage.AuthorityRecovery,
-            };
-            if (_page == SettingsPage.Diagnostics) _selectedAuthorityRecoveryId = null;
-            _busy = false;
-            _error = result.Status != PlatformAuthorityRecoveryRetryStatus.Recovered;
-            _status = result.Status switch
-            {
-                PlatformAuthorityRecoveryRetryStatus.Recovered =>
-                    $"Recovered content authority for {displayName}",
-                PlatformAuthorityRecoveryRetryStatus.StillPending =>
-                    $"Authority recovery remains pending ({result.Code})",
-                PlatformAuthorityRecoveryRetryStatus.Stale =>
-                    $"Authority recovery request changed ({result.Code}); review current diagnostics",
-                PlatformAuthorityRecoveryRetryStatus.Unavailable =>
-                    $"Authority recovery is unavailable ({result.Code}); the record remains pending",
-                _ => $"Authority recovery was refused ({result.Code})",
-            };
+            ApplyAuthorityTransitionLocked(
+                SettingsAuthorityRecoveryPolicy.Result(result, diagnostics, request));
         }
         Invalidate();
     }
 
-    private static string DiagnosticPrefix(PlatformDiagnosticState state) => state switch
+    private void ApplyAuthorityTransitionLocked(SettingsAuthorityRecoveryTransition transition)
     {
-        PlatformDiagnosticState.Healthy => "OK",
-        PlatformDiagnosticState.Degraded => "Check",
-        _ => "Unavailable",
-    };
-
-    private static WidgetView RenderReset(StackElement header, bool busy) => View(
-        header,
-        PageScope("reset.page",
-            UI.Text("Reset settings?", "reset.heading", "Reset settings confirmation").Classes("page-heading"),
-            UI.Text("This restores the built-in theme, sizing, backdrop, and motion defaults.",
-                "reset.warning", "Reset warning").Classes("page-help"),
-            UI.Row("reset.actions",
-                UI.Button("Reset", "reset.confirm", "reset.confirm")
-                    .FocusRight("reset.cancel").Busy(busy).Classes("danger-button"),
-                UI.Button("Cancel", "reset.cancel", "reset.cancel")
-                    .FocusLeft("reset.confirm").Classes("secondary-button")).Classes("reset-actions")),
-        "reset.cancel", "reset.page");
-
-    private static WidgetView RenderThemes(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        ThemeCatalogSnapshot themes,
-        bool busy)
-    {
-        var options = new PickerOption[themes.Themes.Count];
-        var initialFocus = themes.Themes.Count > 0 ? "theme.item.0" : null;
-        for (var index = 0; index < themes.Themes.Count; index++)
-        {
-            var entry = themes.Themes[index];
-            var selected = entry.IsValid &&
-                entry.Descriptor.Id == settings.Appearance.ThemeId &&
-                entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion;
-            var diagnostic = entry.Diagnostics.FirstOrDefault()?.Code;
-            var label = entry.IsValid
-                ? $"{entry.Descriptor.Name}  {entry.Descriptor.Version}"
-                : $"Invalid · {entry.Descriptor.Name} · {diagnostic ?? "validation error"}";
-            var accessibilityLabel = entry.IsValid
-                ? $"{entry.Descriptor.Name}, version {entry.Descriptor.Version}"
-                : $"{entry.Descriptor.Name}, invalid theme, {diagnostic ?? "validation error"}";
-            options[index] = new PickerOption(
-                $"theme.item.{index}",
-                label,
-                $"theme.select.{index}",
-                IsSelected: selected,
-                AccessibilityLabel: accessibilityLabel,
-                IsDisabled: !entry.IsValid,
-                IsBusy: busy);
-            if (selected) initialFocus = $"theme.item.{index}";
-        }
-        var picker = UI.Picker(
-                "Choose theme",
-                "theme.picker",
-                "theme.picker",
-                "back",
-                options,
-                "Themes change the overlay and every widget that uses shared semantic styles.")
-            .AddClasses("theme-picker");
-        return View(header, picker, initialFocus, "theme.picker");
+        _page = transition.Page;
+        _selectedAuthorityRecovery = transition.Selection;
+        _busy = false;
+        _error = transition.IsError;
+        _status = transition.Status;
     }
 
     private static ScrollElement PageScope(string id, params WidgetElement[] children) =>
-        UI.VerticalScroll(id, children).InputScope(id).Shortcut(ControllerButton.B, "back").Classes("settings-page");
+        SettingsPresentation.PageScope(id, children);
 
     private static WidgetView View(
         StackElement header,
         WidgetElement content,
         string? initialFocus,
-        string activeScope) => new(
-            UI.Stack("settings-root", header, content).Classes("settings-widget"),
-            initialFocus,
-            ActiveInputScopeId: activeScope,
-            Surface: new WidgetSurfaceHints
-            {
-                Mode = WidgetSurfaceMode.Standard,
-                PreferredWidth = 880,
-                PreferredHeight = 520,
-                MinimumWidth = 520,
-                MinimumHeight = 360,
-            });
-
-    private static RowElement LinkStepper(RowElement stepper, string? up, string? down, bool busy)
-    {
-        var children = stepper.Children.Select(child => child switch
-        {
-            ButtonElement button => button with
-            {
-                IsBusy = busy ? true : null,
-                FocusNeighbors = (button.FocusNeighbors ?? new FocusNeighbors()) with
-                {
-                    Up = up,
-                    Down = down,
-                },
-            },
-            _ => child,
-        }).ToArray();
-        return stepper with { Children = children };
-    }
+        string activeScope) =>
+        SettingsPresentation.View(header, content, initialFocus, activeScope);
 
     private void Navigate(SettingsPage page)
     {
@@ -1046,21 +518,6 @@ public sealed partial class SettingsWidget : Widget
         Invalidate();
     }
 
-    private SettingsPage ParentPage(SettingsPage page) => page switch
-    {
-        SettingsPage.ThemePicker => SettingsPage.Appearance,
-        SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
-        SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
-        SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,
-        SettingsPage.InstalledWidgetRecovery => SettingsPage.InstalledWidgets,
-        SettingsPage.PermissionDiagnostics => SettingsPage.Permissions,
-        SettingsPage.PackageCapabilities => PackageCapabilitiesReturnPage(),
-        SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,
-        SettingsPage.AuthorityRecovery => SettingsPage.Diagnostics,
-        SettingsPage.Root => SettingsPage.Root,
-        _ => SettingsPage.Root,
-    };
-
     private SettingsPage PackageCapabilitiesReturnPage()
     {
         lock (_stateLock) return _packageCapabilitiesReturnPage;
@@ -1082,9 +539,4 @@ public sealed partial class SettingsWidget : Widget
                    CultureInfo.InvariantCulture, out index);
     }
 
-    private static double Step(double current, double delta, double minimum, double maximum) =>
-        Math.Clamp(Math.Round(current + delta, 2, MidpointRounding.AwayFromZero), minimum, maximum);
-
-    private static string Percent(double value) =>
-        $"{Math.Round(value * 100, MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture)}%";
 }

@@ -338,6 +338,19 @@ settings file/theme tree without polling, debounces events, retains last-good
 revisions, and resolves platform → widget → user layers before returning a
 snapshot. User layer priority wins before selector specificity.
 
+The Settings worker retains one lifecycle, operation gate, committed-state
+lock, and invalidation owner. Its ordinary root/appearance/accessibility/
+overlay/diagnostics pages are composed by a pure snapshot presenter; closed
+navigation and preference policies return value mutations for the widget to
+commit. The preference policy owns only strict settings-store writes and cannot
+admit capability or authority-recovery actions. Privileged content-authority
+recovery instead uses a separate exact-token policy: selection captures the
+reviewed recovery ID and opaque token, retry is authorized only while both
+still match the current sanitized diagnostic, and closed results return value
+transitions for the widget owner to commit. No opaque token enters the view
+snapshot. Installed-widget and permission review remain cohesive residual
+sections of the same Settings owner rather than new lifecycle or state owners.
+
 The bridge also publishes bounded semantic shell styles and persisted
 interface/text scale, backdrop opacity, motion, contrast, bold-text, and
 transparency. The native client consumes

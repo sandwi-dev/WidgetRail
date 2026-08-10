@@ -11,6 +11,10 @@ using GameBarAlternative.WidgetStyling;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Root keeps widget permissions inside Installed Widgets", RootCategories),
+    ("Snapshot presentation is repeatable", SettingsPolicyScenarios.PresentationIsRepeatable),
+    ("Navigation and preference policies are closed", SettingsPolicyScenarios.NavigationAndPreferencePoliciesAreClosed),
+    ("Preference persistence owns valid and recovery writes", SettingsPolicyScenarios.PreferencePersistenceOwnsWrites),
+    ("Authority recovery selection is exact-token bound", SettingsPolicyScenarios.AuthorityRecoverySelectionIsExact),
     ("Settings uses a bounded controller-scroll surface", ControllerScrollSurface),
     ("Nested pages own scoped B navigation", NestedScopesAndBack),
     ("Settings composites expose controller semantics", CompositeControls),

@@ -1287,13 +1287,31 @@ evidence because the milestone and unrelated review work were present at both
  proves late pairing and polling cannot publish after deactivation, direct
  confirmation-window expiry and exact-feature rollback, closed action and
  connection transitions, byte-deterministic repeated snapshot composition,
- and that no widget-owned Task or CancellationTokenSource registry remains. The current
-Settings Release suite passes 45/45, including
+ and that no widget-owned Task or CancellationTokenSource registry remains.
+DLV-036 reduces the logical Settings partial type from 2,872 lines across its
+1,090-line root, 794-line installed-widget section, and 988-line permissions
+section to 2,324 lines across a 542-line root and the unchanged residual
+sections. The moved behavior is owned by non-partial snapshot presentation,
+closed navigation/preference policy, and exact-token authority-recovery policy
+boundaries rather than another partial-file split. One lifecycle, operation
+gate, committed-state lock, service set, and invalidation owner remain in the
+root. Direct fixtures prove repeatable semantic rendering, bounded ordinary
+preference mutation and persistence, rejection of privileged actions by the
+ordinary policy, exact reviewed-token replacement refusal, closed recovery
+results, and token-free snapshots. The current Settings Release suite passes
+49/49, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,
 enablement-versus-consent copy, fail-closed catalog/compatibility behavior,
 nested visual-accessibility controls, legacy appearance defaults, and no
-polling. Styling and platform settings/themes pass 23/23 and 15/15,
+polling. The still-large installed-widget and permission sections remain
+explicit follow-up ownership work; this milestone does not claim that residual
+hotspot closed. Focused dirty-worktree run
+`20260810T192328Z-f5898174` passes Settings 49/49, PlatformDiagnostics
+15/15, Widget SDK 84/84 after a clean SDK build, and the documentation
+contract across 52 Markdown files in 20.5 seconds; it is scoped milestone
+evidence, not a clean aggregate. Styling and platform settings/themes pass
+23/23 and 15/15,
 including Busy-state composition and legacy schema-1 theme compatibility. CLI
 passes 53/53, including an unrelated-directory offline scaffold that builds
 against its content-addressed local SDK package, drives generated
