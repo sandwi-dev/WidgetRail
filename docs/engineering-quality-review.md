@@ -1980,10 +1980,10 @@ structure is promoted as the public template.
 
 ### EQ-029 — P2 — Managed platform policy remains concentrated in central classes
 
-**Status: DLV-031 and DLV-034 accepted; remaining concentration has bounded
-delivery coverage in DLV-032, DLV-035, DLV-036, and DLV-037. DLV-034 awaits
-contiguous integration behind the rejected DLV-032 parent. Existing EQ-020 and
-EQ-022 remain the authoritative liveness and bridge-scheduling findings.**
+**Status: DLV-031, DLV-032, and DLV-034 are accepted and integrated. Remaining
+concentration has bounded delivery coverage in DLV-029, DLV-035, DLV-036,
+DLV-037, DLV-039, and DLV-040. Existing EQ-020 remains the authoritative
+liveness finding; EQ-022 records the accepted scheduling boundary.**
 
 **Evidence.** Before accepted DLV-031, `PlatformCapabilityBroker` spanned about
 2,265 lines inside a 2,377-line file and owned identity/declaration/consent/
@@ -2027,8 +2027,21 @@ vault, reach the API, or supply the next request; Disconnect stops active local
 playback, deletes the vault entry, clears cached authorization, and prevents
 session reuse. Retained provider run `20260810T141733Z-0e24d4e1` passes 34/34
 and documentation run `20260810T141833Z-a8567e3e` passes all 52 Markdown
-contracts. The split is accepted but cannot be integrated until its rejected
-DLV-032 parent is corrected.
+contracts. The split and its corrected DLV-032 parent are integrated on `main`
+through `a92378a`.
+
+Accepted DLV-032 commits `8c11a27` and `9abdc6b`, integrated through `a92378a`,
+move request admission, duplicate IDs, typed per-widget FIFO tails, fatal
+cancellation, cleanup, and bounded drain into one 327-line dispatcher. A
+118-line closed classifier replaces raw `JsonElement` scheduling convention.
+The production deadline is two seconds; cancellation-ignoring work releases
+IDs, tails, and slots at the deadline but remains observed in quarantine until
+termination, with no late reply or fatal publication. The final retained run
+passes Bridge 52/52; the grouped run retains WorkerHost 9/9 and the corrected
+51/52 predecessor-failure regression. The server falls to 1,312 lines but still
+owns client/catalog/residency and diagnostics/recovery in addition to its
+cohesive session/framing/write role, so DLV-039 and DLV-040 disposition that
+residual hotspot rather than calling line reduction closure.
 
 **Why it matters.** Adding one capability or changing one scheduling rule
 currently requires understanding distant policy and cleanup regions inside a
@@ -3099,11 +3112,9 @@ that disposition independently.
 
 ### EQ-022 — P2 — Bridge scheduling policy is embedded in the transport session
 
-**Status: Candidate DLV-032 commit `8c11a27` is not accepted. It creates the
-cohesive dispatcher seam, but production drain remains unbounded for
-cancellation-ignoring work and request classification remains an implicit raw-
-JSON convention. A correction is required after the already-started DLV-034
-preservation boundary.**
+**Status: Resolved for scheduling by DLV-032 commits `8c11a27` and `9abdc6b`,
+integrated through `a92378a`. The residual multipurpose server is separately
+open under EQ-029 and DLV-039/DLV-040.**
 
 **Evidence.** `WidgetBridgeServer.RunAsync` now owns a 16-slot
 `SemaphoreSlim`, `activeRequestIds`, `requestTasks`, a lock-protected
@@ -3141,6 +3152,22 @@ strict decoding. The retained focused run `20260810T133940Z-18b2982e` passes
 Bridge 51/51, worker 9/9, and documentation 52, but those green cases do not
 exercise the missing cancellation-ignoring deadline or typed malformed/unknown
 classification boundary.
+
+Correction `9abdc6b` supplies the missing boundary. Production drain has a
+two-second deadline; handlers that ignore cancellation relinquish request IDs,
+FIFO tails, and capacity slots while remaining explicitly observed until they
+terminate. Their late reply path uses the canceled request token and their late
+fault cannot publish into the closed or replacement session. One closed typed
+classifier strictly decodes known payloads and gives malformed/unknown requests
+no widget key. Manually controlled tests cover deadline timing, two quarantined
+handlers, disposal before their completion, zero admission/FIFO state, eventual
+observation, no late reply/fatal, malformed payloads, invalid IDs, and unknown
+types without sleeps. A grouped run retained a real predecessor-failure
+regression at 51/52 while WorkerHost passed 9/9; after suppression was narrowed
+to handlers that actually started under dispatcher-owned drain, final Bridge
+run `20260810T145134Z-be1c9952` passes 52/52 and documentation run
+`20260810T145223Z-665e4ef0` passes all 52 files. These are stable dirty-worktree
+assignment artifacts rather than release evidence.
 
 **Why it matters.** This is the bridge's concurrency kernel. A missed cleanup
 can leak one of only 16 slots, a missed request classification can reorder state,
@@ -3775,9 +3802,9 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | DLV-009 (`08d44db`, integrated by `304102a`) makes YT Music the second repeatable lifecycle/state proof: SDK Active lanes own auto-connect/progress/poll/Latest transport work, one immutable presentation record owns rendering, and no Task/CTS registry remains. DLV-030 (`549da57`, integrated by `6b9144d`) adds the responsibility proof through value-based connection, confirmation/rollback, action, and snapshot-only presentation seams. Spotify DLV-007/008 independently proves coherent keyed presentation and responsibility files | Document a narrow operation/responsibility migration recipe; keep domain policy private until another consumer proves a reusable public boundary; retain packaged churn evidence |
 | Action dispatch | DLV-014 (`2a160b4`, integrated by `9060f12`) composes a deterministic YT Music post-admission failure through the real worker/runtime/bridge/native host into painted and polite UIA status. It proves exact generation/action/source, sanitized logging, focus retention, replacement/expiry, Hide/Stop, and no restart; native Release, bridge 47/47, and isolated addon acceptance passed | Retain physical GameInput and packaged assistive-technology evidence; do not reopen implementation unless those gates expose a concrete defect |
-| Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | DLV-032 owns one narrow typed dispatcher with deterministic no-sleep invariant tests and bounded forced drain; DLV-033 owns the later asynchronous native read owner/correlation table. DLV-032 closes scheduling only: at its closing commit the planner must separately disposition the retained `WidgetBridgeServer` responsibilities as a cohesive exception or a follow-up DLV before accepting material growth |
+| Bridge scheduling | Accepted DLV-032 (`8c11a27` plus `9abdc6b`, integrated through `a92378a`) gives one typed dispatcher duplicate-ID, global-bound, per-widget FIFO, fatal-cancellation, cleanup, and two-second drain ownership. Deadline-expired work releases IDs/tails/slots but remains observed in quarantine; final Bridge passes 52/52 after retaining and correcting a predecessor-failure regression | Scheduling is closed. The shipping native client still cannot pipeline; DLV-033 owns its later asynchronous read/correlation boundary. The retained 1,312-line server's client/catalog/residency and diagnostics/recovery responsibilities are explicitly assigned to DLV-039 and DLV-040 |
 | Managed capability broker | Accepted DLV-031 (`ffa1edc`, integrated by `27adec1`) reduces the broker authority owner from 2,377 lines to 837 while retaining singular identity, consent, lifecycle, lease, gesture, subscription, revocation, and event-sequence authority. Seven typed internal domain routes own value-based decoding, validation, backend execution, and projection | Retain the focused authority/domain tests as new capabilities arrive; do not reintroduce distant validators, a generic mediator, or public-protocol churn |
-| Spotify platform provider | Accepted DLV-034 (`a5c80ac` plus `344ab48`) reduces the singular identity/OAuth/vault/token/local-player owner from 1,724 lines to 1,032 and extracts endpoint, retry/rate-limit, and strict parsing seams. Provider 34/34 directly covers late canceled refresh non-publication and Disconnect session isolation; no second authority or public protocol appears | **Cohesive exception at the accepted boundary:** the retained owner exclusively holds package identity, OAuth/PKCE, vault/token-session replacement, local-player lifecycle, and provider-event authority. Preserve those singular responsibilities, integrate only after the rejected DLV-032 parent is corrected, and reopen decomposition if another independently testable policy or material growth enters that owner. Live-account behavior remains manual evidence |
+| Spotify platform provider | Accepted DLV-034 (`a5c80ac` plus `344ab48`, integrated through `a92378a`) reduces the singular identity/OAuth/vault/token/local-player owner from 1,724 lines to 1,032 and extracts endpoint, retry/rate-limit, and strict parsing seams. Provider 34/34 directly covers late canceled refresh non-publication and Disconnect session isolation; no second authority or public protocol appears | **Cohesive exception at the accepted boundary:** the retained owner exclusively holds package identity, OAuth/PKCE, vault/token-session replacement, local-player lifecycle, and provider-event authority. Preserve those singular responsibilities and reopen decomposition if another independently testable policy or material growth enters that owner. Live-account behavior remains manual evidence |
 | Windows network provider | `WindowsNetworkPlatformBackend` is roughly 1,186 lines and combines an owner thread/command queue, scan and connection timers, committed provider state, reconciliation, equality policy, and three event pumps | DLV-035 follows the broker split and preserves one owner thread/state while extracting directly testable command, timeout, reconciliation, and event-projection policy; the separate 1,297-line native-adapter file is an interop aggregation review signal, not an automatic file-splitting target |
 | Settings widget | The roughly 1,090-line widget combines lifecycle/action orchestration, six page renderers, preference persistence, diagnostics, and exact-token authority-recovery selection/actions | DLV-036 separates snapshot-only page/navigation policy, ordinary preference persistence, and privileged diagnostic/recovery policy while retaining one lifecycle and committed-state owner |
 | Managed worker client | The roughly 1,027-line `WidgetProcessClient` combines worker process and pipe/session lifecycle, request correlation, content/companion leases, failure cleanup, and dashboard-gesture reservation/expiry | DLV-037 follows DLV-032 and gives transport/session, pending requests, leases, and gesture policy named singular owners without changing protocol or authority |
@@ -3789,7 +3816,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | YT Music | DLV-009 (`08d44db`, integrated by `304102a`) removes three lifecycle task fields and the auto-connect flag and adopts SDK Active lanes plus one immutable presentation record. DLV-030 (`549da57`, integrated by `6b9144d`) reduces the owner from 1,365 to 677 physical lines, preserves singular lifecycle/client/state authority, and directly tests connection, confirmation/rollback, action, and pure presentation seams; retained focused evidence passes 55/55 plus SDK 84/84, worker 9/9, and docs 52 | Real companion, packaged lifecycle/controller/accessibility, and visual evidence remain; use the private seams as a reference, not yet a mandatory public framework |
 | Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while separating lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partials. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy: recoverable refresh/poll faults retain route, focus, playback, and cached list state with bounded 5/15/30-second backoff, fatal permission/auth/configuration remains explicit, recovery clears the warning, and stale Active-generation results are rejected. User evidence still confirms an incomplete seek/nav focus graph, replacement-page jumps, fixed-header oscillation, and clipped Library text | DLV-022 owns the explicit focus graph and continuous-list migration after DLV-006/DLV-021. Keep GBA-061 Verifying until live recurrence testing; retain current credential-free full-state/composed-host visuals and run live auth/playback gates only when authorized |
 | CLI author workflow | DLV-010 (`83cc32d`, integrated by `e68b8be`) provides a cloneable offline SDK dependency, generated lifecycle/state/action snapshot exporter, bounded source build/stage/validate/pack operation, deterministic checkout-path-free package proof, and local two-version install/select/rollback/removal. Focused retained evidence passes 53/53 CLI, 35/35 catalog, and 52 documentation contracts | Transactional manifest-driven template generation with strict inventory/version/binary handling; externally published/versioned SDK/template release and checked-in API-compatibility baseline; isolated semantic scenario execution, native preview, publisher provenance/signing, and automated update/CI evidence |
-| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 with clean retained 45/45 proof for cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget with cancellation-ignoring drain proof and cancellable correlation-safe off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
+| Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and accepted DLV-032 bounds managed dispatch to 16 plus session drain to two seconds with manually controlled cancellation-ignoring quarantine proof; exact ACL application remains unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget and cancellable correlation-safe off-UI-thread native bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists. DLV-024 retains 16 current widget-body captures and seven semantic snapshots for Games continuity, including compact, 150%, and wide removal states, with zero renderer diagnostics. DLV-020's 44 real-HWND frames removed startup blanking in its bounded harness, but DLV-025 real temporal evidence now proves the current HWND resize path still exposes repeated dark-band frames on list-heavy product surfaces. Other captures still show clipped Spotify `LIBRARY`, missing Games & Apps artwork, and shared Now Playing alignment imbalance | Choose an atomic compositor architecture for DLV-025, then repeat timestamped first-party intervals. Retain clean current package/state/profile plus physical full-shell/controller/DPI evidence; offscreen body captures cannot close compositor behavior. |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | DLV-033 owns one tested `WidgetSessionCoordinator` after DLV-025/DLV-032; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp` and retain typed persistent session failures |
 | Verification gate | Clean release-eligible run `20260809T201448Z-0249ae81` remains the last exact full proof: 41/41 and 778 cases for `0598e5a`. Commit `7c8a5b8` adds a live verifier lease, final commit/status, final package hashes, and typed reasons. DLV-001's final stable dirty run `20260810T030727Z-449cac31` passes 41/41 with identical endpoints/fingerprint but is correctly ineligible; its later clean attempt was interrupted before producing a result. The delivery plan now prohibits repeating the same aggregate dirty and clean and names DLV-004/DLV-006 as the next exact-commit checkpoints | **Verification evidence only:** retain one authoritative bundle at the next named checkpoint; do not let provenance cleanup displace DLV-002/003 or cause duplicate six-minute runs |
@@ -3854,11 +3881,11 @@ below.
    reproduction. Authorize either a narrowly proven offscreen atomic-present
    design or DirectComposition/swap-chain ownership before platform work
    resumes; do not commit the preserved known-bad prototype.
-2. **Widgets DLV-032 — extract the bridge request dispatcher.** DLV-031 is
-   accepted as `ffa1edc` and integrated as `27adec1`. Keep framing, strict
-   decoding, client/catalog/session ownership, Stop authority, and response
-   writes in `WidgetBridgeServer` while one typed dispatcher owns admission,
-   duplicate IDs, FIFO tails, slots, cleanup, cancellation, and drain.
+2. **Widgets DLV-029 — split Audio Mixer by stable responsibility.** Accepted
+   DLV-032/DLV-034 integration `a92378a` is now the baseline. Separate output,
+   input, per-session confirmation/reconciliation, lifecycle/action, immutable
+   committed state, and pure presentation without changing current focus IDs or
+   masking the independent DLV-026 scroll defect.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
@@ -3870,7 +3897,8 @@ below.
    DLV-032 bridge scheduling;
    DLV-033 native widget-session ownership; DLV-034 the Spotify provider;
    DLV-035 the Windows network backend; DLV-036 Settings; and DLV-037 the
-   managed worker client.
+   managed worker client. DLV-039 and DLV-040 then separate residual bridge
+   client/residency and diagnostics/recovery ownership.
    DLV-038 then pilots responsibility-based organization for the largest managed
    test harnesses without delaying the production train. Each milestone must
    reduce shared mutable knowledge or expose a focused policy seam—cosmetic files

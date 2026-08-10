@@ -323,8 +323,10 @@ integrated, Audio Mixer is the next managed production decomposition because it
 remains the largest first-party monolith and DLV-037 was only a queue-order
 dependency. DLV-029 must preserve current focus IDs and navigation behavior so
 the independent native/shared-scroll correction remains separately reviewable.
-DLV-035, DLV-036, and DLV-037 then continue the platform-policy hotspot queue.
-DLV-006 must still land before Spotify continuous-list and launcher work.
+DLV-035, DLV-036, and DLV-037 then continue the platform-policy hotspot queue;
+DLV-039 and DLV-040 finish the residual bridge-server responsibility split
+before test-harness cleanup. DLV-006 must still land before Spotify continuous-
+list and launcher work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -843,28 +845,31 @@ platform worktree.
 
 ### DLV-032 — Extract the bridge request dispatcher
 
-**State:** Assigned for a separate correction from the accepted DLV-034 branch
-boundary; candidate `8c11a27` is not accepted or integrated
-**Baseline:** accepted-but-not-integrated DLV-034 correction `344ab48`, whose
-history preserves candidate `8c11a27` without rewriting it
+**State:** Done; accepted and integrated on `main` as `a92378a`
+**Baseline:** accepted DLV-031 integration `27adec1`
+**Closing commits:** `8c11a27` (`[DLV-032] Extract bridge request
+dispatcher`), corrected by `9abdc6b` (`[DLV-032] Bound bridge dispatcher
+drain`)
 **Dependencies:** DLV-031 when shared broker/bridge test infrastructure changes
 **Owner:** managed `WidgetBridgeServer` request scheduling and direct bridge
 fixtures; framing and session ownership remain in the server
 
-**Reviewer correction:** Candidate `8c11a27` creates a cohesive internal
-dispatcher and removes the server's scheduling registries, but it does not meet
-the bounded-drain acceptance boundary. Production `CancelAndDrainAsync` awaits
-`Task.WhenAll` without a deadline, while the direct forced-drain test covers only
-handlers that honor cancellation. It also retains raw `JsonElement` `widgetId`
-extraction as an implicit scheduling convention rather than one closed typed
-request-classification/key seam. After DLV-034 reaches its already-started clean
-commit, a separate DLV-032 correction must add a production-enforced drain
-deadline, safely observe/quarantine cancellation-ignoring late completions with
-no late reply/fatal publication into a closed or replacement session, clear all
-dispatcher IDs/slots/tails at the deadline, and add deterministic manually
-controlled deadline plus malformed/unknown classification tests. Stop if this
-requires a wider lifecycle/protocol change; do not fake closure by dropping
-references to harmful continuing work.
+**Reviewer disposition:** Accepted. One internal dispatcher owns duplicate IDs,
+the global admitted bound, typed per-widget FIFO tails, fatal cancellation,
+terminal cleanup, and a production-enforced two-second drain deadline. One
+closed classifier strictly decodes every known request into a global or
+canonical widget scheduling key; malformed and unknown requests receive no
+implicit widget key. Deadline-expired cancellation-ignoring tasks release IDs,
+tails, and slots while remaining observed in quarantine until termination, and
+cannot publish a late reply or session fatal. The retained grouped run
+`20260810T144506Z-bbd2dbe6` passed WorkerHost 9/9 and exposed a real Bridge
+predecessor-failure regression (51/52); the corrected final run
+`20260810T145134Z-be1c9952` passes Bridge 52/52, and documentation run
+`20260810T145223Z-665e4ef0` passes all 52 Markdown files. These are stable dirty-
+worktree assignment artifacts, not release evidence. No public protocol/API,
+native files, session authority, Stop authority, or write ownership changed.
+The retained 1,312-line server remains a separate hotspot now dispositioned by
+DLV-039 and DLV-040; DLV-032 closes scheduling only.
 
 **Objective:** Give global/per-widget request admission, duplicate IDs, FIFO
 tails, completion cleanup, fatal-session cancellation, and bounded drain one
@@ -896,8 +901,7 @@ duplicates client/session authority, or touches native platform work.
 
 ### DLV-034 — Split the Spotify platform backend by stable responsibility
 
-**State:** Accepted by the reviewer through correction `344ab48`; awaiting an
-accepted DLV-032 correction before contiguous integration
+**State:** Done; accepted and integrated on `main` as `a92378a`
 **Baseline:** unaccepted DLV-032 candidate `8c11a27`
 **Closing commits:** `a5c80ac` (`[DLV-034] Split Spotify backend
 responsibilities`), corrected by `344ab48` (`[DLV-034] Prove refresh
@@ -1067,11 +1071,97 @@ generic-worker Release suites. No native aggregate.
 requires native-host edits, weakens sandbox or gesture authority, or creates a
 second lifecycle/session owner.
 
+### DLV-039 — Extract bridge client and residency ownership
+
+**State:** Ready after DLV-037
+**Baseline:** closing commit of DLV-037
+**Dependencies:** DLV-032 and DLV-037
+**Owner:** managed `WidgetBridgeServer` client/catalog/residency internals and
+direct bridge lifecycle fixtures; no native host or public protocol files
+
+**Objective:** Keep `WidgetBridgeServer` as the pipe-session, framing,
+handshake, reserved-Stop, request-routing, and serialized-write owner while
+making catalog reconciliation, worker registration/replacement, residency,
+idle unload, restart, and client disposal changeable without understanding the
+complete 1,312-line server.
+
+**In scope:** a before/after responsibility and resource map; one internal
+client/registry owner for configured descriptors, current registrations,
+generation replacement, worker residency leases/budget, operation gates, idle
+unload, restart, catalog revision/reconciliation, and terminal disposal;
+value-based status/query seams for request routing and diagnostics; deletion of
+the server's duplicated client/catalog mutable knowledge; deterministic
+replacement, removal, idle/unload race, restart, failed start, stale generation,
+budget refusal/release, concurrent operation, and disposal cases.
+
+**Out of scope:** pipe framing or write-path changes, DLV-032 dispatcher changes,
+diagnostic/recovery projection owned by DLV-040, public protocol/capability
+changes, native host work, a service locator, generic repository/unit-of-work
+framework, or more than one client-lifecycle authority.
+
+**Acceptance criteria:** the server has no direct registration dictionary,
+catalog mutation lock, residency budget mutation, idle-unload task ownership,
+or registration disposal policy; one registry owns every client generation and
+terminal path; request handlers consume narrow typed operations rather than
+reaching mutable registration internals; stale replacement/removal/idle results
+cannot affect the current client; the completion report quantifies fields,
+locks, tasks, cancellation sources, and mutable dependencies before and after.
+
+**Verification:** Tier 1 WidgetBridge catalog/lifecycle/residency/restart suites
+and the smallest Widget Runtime worker lifecycle group. No aggregate or native
+suite.
+
+**Stop/escalate when:** extraction changes session/framing/write/Stop authority,
+requires a public protocol or threat-model change, duplicates worker lifecycle
+ownership, or overlaps native platform work.
+
+### DLV-040 — Extract bridge diagnostics and recovery projection
+
+**State:** Ready after DLV-039
+**Baseline:** closing commit of DLV-039
+**Dependencies:** DLV-001, DLV-031, and DLV-039
+**Owner:** managed bridge diagnostics/recovery internals and direct typed
+diagnostic fixtures; no Settings presentation or installed-widget policy work
+
+**Objective:** Keep authenticated request routing and host-effect publication in
+`WidgetBridgeServer` while making one diagnostics area, safe projection rule,
+or exact authority-recovery retry changeable without reading session, client-
+lifecycle, and catalog-mutation code.
+
+**In scope:** a before/after responsibility map; one bounded diagnostic snapshot
+owner over injected read-only appearance, consent, catalog, registry, residency,
+and provider status; one exact-token recovery projection/retry owner using the
+existing authority service; revision, safe label/code, timeout, stale catalog,
+partial failure, cancellation, and retry result policy; deletion of superseded
+server diagnostic/recovery fields and helpers; deterministic degraded,
+unavailable, malformed, timeout, stale, unauthorized, failed, and canceled
+fixtures.
+
+**Out of scope:** new diagnostics, Settings UI changes, catalog/security-policy
+redesign, broader recovery authority, force cleanup, public protocol/capability
+changes, reopening installed-widget hardening, generic telemetry frameworks, or
+moving pipe/write/client lifecycle ownership.
+
+**Acceptance criteria:** diagnostic projection performs no client/catalog
+mutation and exposes only bounded sanitized values; recovery requires the same
+exact host-owned token and fail-closed authority as DLV-001; one diagnostics
+area or recovery policy changes through a named focused seam; the server retains
+only typed request routing and effect/write publication for this surface; the
+closing responsibility map gives the residual server an explicit cohesive
+exception or another bounded disposition.
+
+**Verification:** Tier 1 WidgetBridge diagnostics/recovery, Platform Settings
+exact-token recovery, and documentation Release suites. No aggregate and no
+unrelated security work.
+
+**Stop/escalate when:** separation changes recovery authority or threat model,
+requires Settings product changes, broadens installed-widget hardening, or
+duplicates catalog/client state from DLV-039.
+
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
-**State:** Awaiting reviewer acceptance and integration of the DLV-032
-correction and DLV-034; next managed production assignment after that boundary
-**Baseline:** future accepted main integration through DLV-032 and DLV-034
+**State:** Assigned
+**Baseline:** accepted DLV-032/DLV-034 integration `a92378a`
 **Dependencies:** DLV-031; DLV-026 is independent
 **Owner:** managed Audio Mixer internals and direct widget fixtures; no native
 host, broker, capability, or protocol files
@@ -1114,10 +1204,10 @@ its own bounded assignment.
 
 ### DLV-038 — Modularize the largest managed test harnesses by responsibility
 
-**State:** Ready after DLV-037
-**Baseline:** closing commit of DLV-037
-**Dependencies:** DLV-031, DLV-032, DLV-037, and DLV-029 so active production
-architecture work has already stabilized the affected suites
+**State:** Ready after DLV-040
+**Baseline:** closing commit of DLV-040
+**Dependencies:** DLV-031, DLV-032, DLV-037, DLV-029, and DLV-040 so active
+production architecture work has already stabilized the affected suites
 **Owner:** managed test-only source organization and narrow reusable fixture
 support; no production, public SDK, protocol, native-host, or product behavior
 
