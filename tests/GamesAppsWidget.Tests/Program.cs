@@ -16,6 +16,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Current resolved classification authoritatively hides an automatic game", ResolvedReclassificationIsAuthoritative),
     ("Concurrent exclusion wins catalog reconciliation through bounded CAS", ConcurrentExclusionWins),
     ("Concurrent display removal wins background reconciliation through bounded CAS", ConcurrentDisplayRemovalWins),
+    ("Legacy unsupported and invalid schemas reset atomically before fresh reconciliation", LegacySchemasResetAtomically),
     ("Bounded exclusion storage refuses removal without losing membership", FullExclusionSetRefusesRemoval),
     ("Worst-case display projection remains inside private-state bounds", ProjectedStateIsBounded),
     ("Empty add catalog returns to the library without a dead end", EmptyCatalogReturnsToLibrary),
@@ -38,6 +39,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Fast cold load completes without publishing loading state", FastColdLoadDoesNotFlashLoading),
     ("Slow cold load publishes an honest delayed loading state", SlowColdLoadShowsDelayedLoading),
     ("Curated SavedIds survive a fresh widget worker instance", CurationSurvivesNewInstance),
+    ("Current schema mutations order and selection survive a fresh worker", CurrentStateSurvivesRestart),
     ("A fresh worker renders persisted display before delayed authority resolves", WarmStartPrecedesAuthorityResolution),
     ("A failed fresh-worker refresh retains disabled last-good display", WarmStartSurvivesRefreshFailure),
     ("Background rejects a cancellation-ignoring fresh-worker resolution", WarmStartRejectsLateResolution),
@@ -436,8 +438,9 @@ static async Task ConcurrentExclusionWins()
         {
             injected = true;
             state.SimulateExternalWriteJson(
-                "{\"Version\":2,\"SavedIds\":[],\"SelectedSavedId\":null," +
-                "\"AutoGameSavedIds\":[],\"ExcludedGameSavedIds\":[\"saved-game\"]}");
+                "{\"Version\":3,\"SavedIds\":[],\"SelectedSavedId\":null," +
+                "\"AutoGameSavedIds\":[],\"ExcludedGameSavedIds\":[\"saved-game\"]," +
+                "\"DisplayItems\":[]}");
         }
         return ValueTask.FromResult(Page([
             App("game", "Game", WidgetAppLibraryKind.Game),
@@ -493,17 +496,86 @@ static async Task ConcurrentDisplayRemovalWins()
     await Background(widget);
 }
 
+static async Task LegacySchemasResetAtomically()
+{
+    foreach (var (version, invalidCurrent) in new[]
+             {
+                 (Version: 1, InvalidCurrent: false),
+                 (Version: 2, InvalidCurrent: false),
+                 (Version: 99, InvalidCurrent: false),
+                 (Version: 3, InvalidCurrent: true),
+             })
+    {
+        var state = new WidgetTestPrivateState(
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Version = version,
+                SavedIds = invalidCurrent
+                    ? new[] { "saved-stale", "saved-stale" }
+                    : ["saved-stale"],
+                SelectedSavedId = "saved-stale",
+                AutoGameSavedIds = new[] { "saved-stale" },
+                ExcludedGameSavedIds = new[] { "saved-fresh" },
+                DisplayItems = new[]
+                {
+                    new
+                    {
+                        SavedId = "saved-stale",
+                        DisplayName = "Legacy stale app",
+                        Kind = WidgetAppLibraryKind.Game,
+                    },
+                },
+            }), 1);
+        var fake = new FakeAppLibraryHost
+        {
+            PrivateState = state,
+            Pages =
+            {
+                [0] = Page([App($"fresh-{version}", "Fresh game",
+                    WidgetAppLibraryKind.Game) with { SavedId = "saved-fresh" }], null),
+            },
+        };
+        var widget = Create(fake);
+        await Interactive(widget);
+        await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                              state.Revision == 2);
+
+        Assert.SequenceEqual([$"fresh-{version}"],
+            widget.CuratedItems.Select(item => item.AppId));
+        var snapshot = Snapshot(widget, 230 + version);
+        Assert.False(Nodes(snapshot.Root).Any(node =>
+            string.Equals(node.Text, "Legacy stale app", StringComparison.Ordinal)));
+        await widget.OnActionAsync(new("games.launch", LibraryElementId("saved-stale")));
+        Assert.Equal(0, fake.LaunchedIds.Count);
+        var fresh = ActionSurfaces(snapshot.Root).Single(tile =>
+            tile.ActionId == "games.launch" && TileTitle(tile) == "Fresh game");
+        await widget.OnActionAsync(new("games.launch", fresh.Id));
+        Assert.SequenceEqual([$"fresh-{version}"], fake.LaunchedIds);
+
+        using var persisted = System.Text.Json.JsonDocument.Parse(state.Json!);
+        Assert.Equal(3, persisted.RootElement.GetProperty("Version").GetInt32());
+        Assert.SequenceEqual(["saved-fresh"], persisted.RootElement
+            .GetProperty("SavedIds").EnumerateArray().Select(item => item.GetString()!));
+        Assert.Equal(0, persisted.RootElement.GetProperty("ExcludedGameSavedIds")
+            .GetArrayLength());
+        Assert.False(state.Json!.Contains("saved-stale", StringComparison.Ordinal));
+        Assert.False(state.Json.Contains("Legacy stale app", StringComparison.Ordinal));
+        await Background(widget);
+    }
+}
+
 static async Task FullExclusionSetRefusesRemoval()
 {
     var exclusions = Enumerable.Range(0, 128)
         .Select(index => $"saved-excluded-{index}").ToArray();
     var state = new WidgetTestPrivateState(System.Text.Json.JsonSerializer.Serialize(new
     {
-        Version = 2,
+        Version = 3,
         SavedIds = Array.Empty<string>(),
         SelectedSavedId = (string?)null,
         AutoGameSavedIds = Array.Empty<string>(),
         ExcludedGameSavedIds = exclusions,
+        DisplayItems = Array.Empty<object>(),
     }), 1);
     var fake = new FakeAppLibraryHost
     {
@@ -1181,6 +1253,79 @@ static async Task CurationSurvivesNewInstance()
     await Background(restarted);
 }
 
+static async Task CurrentStateSurvivesRestart()
+{
+    var sharedState = new WidgetTestPrivateState();
+    var firstHost = new FakeAppLibraryHost
+    {
+        PrivateState = sharedState,
+        Pages =
+        {
+            [0] = Page([
+                App("alpha", "Alpha", WidgetAppLibraryKind.Game),
+                App("beta", "Beta", WidgetAppLibraryKind.Game),
+                App("gamma", "Gamma", WidgetAppLibraryKind.Application),
+            ], null),
+        },
+    };
+    var first = Create(firstHost);
+    await Interactive(first);
+    await WaitUntil(() => first.CuratedItems.Count == 2);
+    await AddFromCatalog(first, "Gamma");
+    await BackToLibrary(first);
+    var alpha = ActionSurfaces(Snapshot(first, 320).Root)
+        .Single(tile => TileTitle(tile) == "Alpha");
+    await first.OnActionAsync(new("games.remove", alpha.Id));
+    var gamma = ActionSurfaces(Snapshot(first, 321).Root)
+        .Single(tile => TileTitle(tile) == "Gamma");
+    await first.OnActionAsync(new("games.launch", gamma.Id));
+    Assert.SequenceEqual(["gamma", "beta"],
+        first.CuratedItems.Select(item => item.AppId));
+    await Background(first);
+
+    var discovery = new TaskCompletionSource<WidgetAppLibraryPage>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var freshItems = new[]
+    {
+        App("fresh-alpha", "Alpha", WidgetAppLibraryKind.Game) with
+            { SavedId = "saved-alpha" },
+        App("fresh-beta", "Beta", WidgetAppLibraryKind.Game) with
+            { SavedId = "saved-beta" },
+        App("fresh-gamma", "Gamma", WidgetAppLibraryKind.Application) with
+            { SavedId = "saved-gamma" },
+    };
+    var restartedHost = new FakeAppLibraryHost
+    {
+        PrivateState = sharedState,
+        Pages = { [0] = Page(freshItems, null) },
+        ReadHandler = (_, token) => new ValueTask<WidgetAppLibraryPage>(
+            discovery.Task.WaitAsync(token)),
+    };
+    var restarted = Create(restartedHost);
+    await Interactive(restarted);
+    await WaitUntil(() => restarted.CuratedItems.Count == 2);
+
+    var warm = Snapshot(restarted, 322);
+    Assert.SequenceEqual(["Gamma", "Beta"],
+        restarted.CuratedItems.Select(item => item.DisplayName));
+    Assert.True(restarted.CuratedItems.All(item =>
+        item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
+    Assert.Equal(LibraryElementId("saved-gamma"), warm.InitialFocusId);
+    Assert.False(ActionSurfaces(warm.Root).Any(tile => TileTitle(tile) == "Alpha"));
+    using (var persisted = System.Text.Json.JsonDocument.Parse(sharedState.Json!))
+        Assert.SequenceEqual(["saved-alpha"], persisted.RootElement
+            .GetProperty("ExcludedGameSavedIds").EnumerateArray()
+            .Select(item => item.GetString()!));
+
+    discovery.SetResult(Page(freshItems, null));
+    await WaitUntil(() => restarted.CuratedItems.All(item =>
+        !item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
+    Assert.SequenceEqual(["fresh-gamma", "fresh-beta"],
+        restarted.CuratedItems.Select(item => item.AppId));
+    Assert.Equal(LibraryElementId("saved-gamma"), Snapshot(restarted, 323).InitialFocusId);
+    await Background(restarted);
+}
+
 static async Task WarmStartPrecedesAuthorityResolution()
 {
     var state = ProjectedState(
@@ -1684,7 +1829,8 @@ static WidgetTestPrivateState SavedState(params string[] savedIds)
     var ids = string.Join(',', savedIds.Select(id => $"\"{id}\""));
     var selected = savedIds.FirstOrDefault();
     return new WidgetTestPrivateState(
-        $"{{\"Version\":1,\"SavedIds\":[{ids}],\"SelectedSavedId\":\"{selected}\"}}", 1);
+        $"{{\"Version\":3,\"SavedIds\":[{ids}],\"SelectedSavedId\":\"{selected}\"," +
+        "\"AutoGameSavedIds\":[],\"ExcludedGameSavedIds\":[],\"DisplayItems\":[]}", 1);
 }
 
 static WidgetTestPrivateState ProjectedState(
@@ -1752,6 +1898,13 @@ static async Task Background(GamesAppsWidget widget) =>
 
 static ViewSnapshot Snapshot(GamesAppsWidget widget, long sequence) =>
     widget.RenderSnapshot("games.test", sequence);
+
+static string LibraryElementId(string savedId)
+{
+    var hash = System.Security.Cryptography.SHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes(savedId));
+    return "games.item." + Convert.ToHexString(hash.AsSpan(0, 10)).ToLowerInvariant();
+}
 
 static IEnumerable<ViewNode> Nodes(ViewNode node)
 {

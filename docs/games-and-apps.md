@@ -49,9 +49,13 @@ explicit game-library source, not a guess based on process or executable names.
 - Curation, automatic-membership provenance, exclusions, recent-first order,
   selected SavedId, and a display-only last-good projection are stored in a
   schema-v3 document through
-  `HostServices.PrivateState`. Version-1 membership migrates as explicit user
-  membership. A bounded compare-and-swap merge reapplies the widget's exact
-  delta to newer state, so a concurrent exclusion is not overwritten.
+  `HostServices.PrivateState`. During single-user development, v1, v2,
+  unsupported, or invalid documents reset atomically to an empty v3 state before
+  the current trusted catalog reconciles. No legacy membership, exclusion,
+  selection, or display row is partially retained, and no legacy value can
+  authorize launch. A bounded compare-and-swap merge reapplies the widget's
+  exact delta to newer valid v3 state, so a concurrent exclusion is not
+  overwritten.
 - The last-good projection contains only SavedId, a sanitized 20-scalar display
   prefix, and the closed Game/Application/Unknown kind. It never stores AppId,
   icon pixels, path, AUMID, Steam ID, command, or other provider identity. A
@@ -242,11 +246,12 @@ location, and content hash, then opens only
 
 ## Executable evidence
 
-Focused tests cover first and later trusted-Game discovery, idempotence,
-schema-v1 migration, automatic-versus-explicit provenance, bounded exclusions,
-concurrent compare-and-swap exclusion, disappearance/reappearance, same-title
-identity replacement, stable order/focus across AppId rotation, stale action
-rejection, healthy empty and sanitized failure states, Catalog add/remove,
+Focused tests cover first and later trusted-Game discovery, idempotence, atomic
+v1/v2/unsupported/invalid-state reset, current-v3 restart continuity,
+automatic-versus-explicit provenance, bounded exclusions, concurrent
+compare-and-swap exclusion, disappearance/reappearance, same-title identity
+replacement, stable order/focus across AppId rotation, stale action rejection,
+healthy empty and sanitized failure states, Catalog add/remove,
 confirmed recent-first ordering, nearest-row removal focus, opaque selected
 launch, bidirectional 32-row Catalog paging through the 512-item bound,
 64-entry long-name Library snapshots, shared component classes, and responsive

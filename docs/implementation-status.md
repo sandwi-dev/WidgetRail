@@ -46,7 +46,10 @@ subsequent activation. Only entries classified `Game` by a reviewed provider
 are added automatically; `Application` and `Unknown` remain explicit opt-ins.
 The widget owns a schema-v3 private-state policy for ordered SavedIds,
 automatic-membership provenance, exact SavedId exclusions, and selection.
-Version-1 membership migrates as explicit user choice. Missing identities keep
+During single-user development, v1, v2, unsupported, or invalid documents reset
+as a whole to empty v3 state before fresh trusted-catalog reconciliation; no
+legacy membership, exclusions, projection, selection, or launch authority is
+partially retained. Missing identities keep
 their bounded order tombstones, reappearing identities receive fresh launch
 tokens without focus drift, and a different SavedId remains a distinct game
 even when its display title is identical. A bounded CAS merge preserves a
@@ -130,7 +133,8 @@ failure retains last-good display with explicit safe status. Active-lifetime
 transitions and failed authority refreshes discard cached AppIds before showing
 the projection, so only a current exact resolution enables launch. The exclusion cap
 is 128 so the proven worst escaped-Unicode schema remains below 64 KiB. Focused
-Release coverage passes 47/47, including delayed fresh-worker resolution,
+Release coverage passes 49/49, including atomic legacy/invalid-state reset,
+current-v3 mutation and restart continuity, delayed fresh-worker resolution,
 stale-launch refusal, CAS/exclusion behavior, failure retention, and a
 cancellation-ignoring completion rejected after Background.
 
