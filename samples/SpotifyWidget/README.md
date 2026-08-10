@@ -13,6 +13,13 @@ Version 0.2 adds four controller-first destinations:
 
 Wide surfaces use a navigation rail with a persistent player. Compact surfaces use tabs and one content pane. Playlist detail is a nested navigation entry: B returns to the exact playlist tile; B at a root destination remains available to the overlay shell. Search is intentionally absent until the SDK has a controller-appropriate text-entry contract.
 
+Rendering captures one immutable presentation revision. Playlist detail is keyed
+to both its playlist ID and selection generation, so Back, rapid reselection,
+refresh, and lifecycle cancellation cannot pair a newer heading or route with
+items from an older request. Cancellation-ignoring provider results are drained
+without changing the current screen, and a retained detail selection reloads
+when the widget becomes visible again.
+
 Playlist and detail collections use bounded 12-row windows with focus-edge
 pagination. Down at the final row enters the next page, Up at the first row
 restores the preceding cached page, and a short final page remains reversible.

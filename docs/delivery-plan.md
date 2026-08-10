@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-09
+Status: reviewer-owned two-lane execution queue, 2026-08-10
 Planning owner: independent review and delivery-planning agent
 Execution owners: `widgets` implementation lane and `platform` implementation lane
 
@@ -92,14 +92,138 @@ broker 49/49, widget 39/39, documentation 51, and the minimal real-package
 AppContainer group 6/6. Two earlier conformance failures were retained and
 corrected at their concrete harness assumptions; no canonical aggregate ran.
 
+### DLV-003 — Correct shared button-content geometry
+
+**State:** Done
+**Closing commit:** `27b0319` (`[DLV-003] correct shared button geometry`)
+**Integrated on `main`:** `703c5bb`
+
+**Reviewer disposition:** Accepted. One native placement model now owns Button
+icon, label, and semantic-cue geometry; intrinsic measurement uses the same
+width budget as paint, including wrapped and 150% text cases. Focused Release
+renderer checks passed 4,685 assertions, the production host built, and the
+retained 12-capture matrix reported no renderer diagnostics. The repository
+does not currently claim RTL layout support, so no unverified RTL behavior was
+added. Physical controller/display sign-off remains in the evidence queue.
+
+### DLV-007 — Make Spotify presentation state coherent
+
+**State:** Done
+**Closing commit:** `ff706d2` (`[DLV-007] make Spotify presentation state coherent`)
+**Integrated on `main`:** `0941e41`
+
+**Reviewer disposition:** Accepted. Rendering now consumes one immutable
+presentation revision and playlist detail is keyed by playlist ID plus a
+monotonic selection generation. Forced interleavings cover Back, rapid
+reselection, late success/failure, refresh, and Active-lifetime cancellation
+and reactivation; Spotify passed 35/35 and the minimal package conformance seam
+passed 6/6. Live Spotify and physical-controller proof remain manual evidence.
+
+### DLV-008 — Split Spotify by stable responsibility
+
+**State:** Done
+**Closing commit:** `2f42ab8` (`[DLV-008] split Spotify by responsibility`)
+**Integrated on `main`:** `80e54af`
+
+**Reviewer disposition:** Accepted. The same partial widget remains the single
+lifecycle, state, resource, and action owner, while named route, playback, and
+snapshot-only presentation files expose stable responsibilities without a new
+public abstraction or behavior change. The source-boundary contract rejects
+provider/lock/resource ownership in presentation. Spotify passed 36/36,
+documentation contracts covered 51 files, and the minimal installed-package
+conformance seam passed 6/6. The accepted package builds and validates, but the
+already-installed immutable `0.2.10` generation was not destructively replaced.
+
+### DLV-005 — Hold Y to refresh the selected tray widget
+
+**State:** Done
+**Closing commit:** `3fc3770` (`[DLV-005] add tray hold refresh`)
+**Integrated on `main`:** `aaf36d9`
+
+**Reviewer disposition:** Accepted. One host-owned five-state recognizer on the
+existing visible controller cadence preserves tap Y for reorder and sends one
+revalidated hold through the F5 restart authority. Threshold/release edges,
+repeat suppression, stale selection, context/device cancellation, reload
+failure, target resolution, guide density, and accessibility help are covered.
+Focused evidence passed 107 controller checks, 108,547 placement checks, the
+Release host build, and 51 documentation contracts. Physical-controller proof
+remains in the verification queue.
+
+### DLV-004 — Repair the Games & Apps product surface
+
+**State:** Done
+**Closing commit:** `7e0b83e` (`[DLV-004] repair Games and Apps surface`)
+**Integrated on `main`:** `76032bb`
+
+**Reviewer disposition:** Accepted. The managed widget now composes Library,
+Catalog, loading, empty, and failure states from shared components; bounds the
+Catalog to one 32-row semantic page with explicit Previous/Next actions; and
+revalidates route plus stable SavedId-derived source before using a current
+short-lived AppId. Focused evidence covers 42 widget cases, the 6/6 installed
+generic-worker/AppContainer group, 52 documentation contracts, and retained
+compact/standard/150%-accessible/wide-high-contrast captures. Physical packaged
+controller/display review remains verification evidence.
+
+### DLV-014 — Compose advanced action failure through the production host
+
+**State:** Done
+**Closing commit:** `2a160b4` (`[DLV-014] compose advanced action failure route`)
+**Integrated on `main`:** `9060f12`
+
+**Reviewer disposition:** Accepted. A deterministic YT Music worker now drives
+the real production host action ingress through worker runtime, managed bridge,
+native failure drain, painted status, and UI Automation live-region projection.
+The bounded fixture proves exact generation/action/source diagnostics, sanitized
+copy/logging, focus retention, replacement/expiry, Hide non-resurrection, Stop
+cleanup, and no worker restart. Physical GameInput remains manual evidence.
+
+### DLV-009 — Consolidate YT Music lifecycle and render ownership
+
+**State:** Done
+**Closing commit:** `08d44db` (`[DLV-009] consolidate YT Music lifecycle ownership`)
+**Integrated on `main`:** `304102a`
+
+**Reviewer disposition:** Accepted. SDK Active operation lanes now own and
+drain auto-connect, progress, polling, and latest transport reconciliation;
+one immutable presentation record supplies render state; and current-attempt
+checks reject cancellation-ignoring late pairing, polling, authorization, and
+transport outcomes. Reflection coverage confirms zero widget-owned Task/CTS
+registry fields, while the remaining state lock and connection/client gates
+retain narrow domain serialization roles. YT Music passes 51/51; real companion,
+physical controller, and packaged visual evidence remain manual gates.
+
+### DLV-017 — Show a durable Games & Apps warm start
+
+**State:** Done
+**Closing commits:** `24a8944`, corrected by `b844fd8`
+**Integrated on `main`:** `5aedfe8`
+
+**Reviewer disposition:** Accepted. Schema v3 stores only bounded sanitized
+display projection plus durable SavedId membership/provenance/exclusions/order/
+selection; every displayed row remains non-authorizing until the current Active
+lifetime resolves an exact AppId. Unsupported or semantically invalid pre-
+release state resets as a whole before fresh trusted-catalog reconciliation,
+rather than retaining compatibility branches or partially migrating values.
+Focused Release evidence passes Widget SDK 84/84, worker host 9/9, Games & Apps
+49/49, and 52 documentation contracts. Packaged cold-start timing and physical
+controller/display evidence remain in the verification queue. Subsequent user
+testing exposed separate Library mutation/presentation regressions now bounded
+by DLV-024; the accepted authority and whole-state-reset design remains intact.
+
 ## Widgets lane
 
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
+The ordered widgets queue keeps newly reproduced Games & Apps continuity
+regressions adjacent to DLV-017, then returns to the advanced-widget lifecycle/
+package path. Spotify list work
+that depends on shared cursor/append foundations remains in the serialized
+integration queue rather than being patched locally.
+
 ### DLV-007 — Make Spotify presentation state coherent
 
-**State:** Assigned after task migration
+**State:** Done; accepted and integrated as `0941e41`
 **Baseline:** `1738618` plus the reviewer control-plane commit
 **Owner:** Spotify managed widget state, routes, and credential-free tests
 
@@ -129,8 +253,8 @@ native focus semantics, authentication, or a materially different Spotify UX.
 
 ### DLV-008 — Split Spotify by stable responsibility
 
-**State:** Ready after DLV-007
-**Baseline:** closing commit of DLV-007
+**State:** Done; accepted and integrated as `80e54af`
+**Baseline:** `ff706d2`
 **Owner:** Spotify managed widget internals
 
 **Objective:** After coherent state exists, separate lifecycle/action wiring,
@@ -157,10 +281,96 @@ conformance used by DLV-007. No aggregate.
 **Stop/escalate when:** preserving behavior exposes a real DLV-007 correctness
 gap or requires cross-lane changes.
 
+### DLV-004 — Repair the Games & Apps product surface
+
+**State:** Done; accepted and integrated as `76032bb`
+**Baseline:** accepted `main` through `aaf36d9` plus the reviewer dispatch commit
+**Dependencies:** DLV-002, DLV-003, and DLV-008
+**Owner:** Games & Apps managed widget, its credential-free fixtures, and
+directly affected public feature documentation
+**Concurrency:** May run with platform DLV-014; no shared protocol, native
+renderer, catalog authority, or platform-lane files may change
+
+**Objective:** Use the accepted trusted-game curation and shared Button geometry
+to make Library, empty, discovery/loading/error, and Add applications one
+coherent responsive controller surface.
+
+**In scope:** empty, short, long-name, maximum bounded page, loading, error,
+compact/standard/wide, 100-150% text/interface scale, mutation while focused,
+clipping, safe-area, semantic hierarchy, stable focus, and controller
+reachability behavior; shared managed component/style use where already public;
+representative deterministic captures and exact-commit product evidence.
+
+**Out of scope:** public protocol/SDK or native renderer changes, new catalog or
+launch authority, launcher/store expansion, title/path-derived identity,
+undocumented Windows APIs, or unrelated visual redesign.
+
+**Acceptance criteria:** automatically curated Games and explicitly added Apps
+share one professional hierarchy; Add/empty/loading/error/library transitions
+preserve a valid stable focus or deterministic fallback; every essential action
+is reachable without clipping across the named surfaces/scales; long and
+maximum-page data remains bounded; no widget-local geometry workaround appears;
+retained semantics/captures cover the full state matrix.
+
+**Verification:** Tier 1 Games & Apps Release tests, affected managed component
+and documentation contracts, plus the smallest native semantic/capture target
+needed for exact shared-geometry consumption. **Integration checkpoint:** after
+the coherent DLV-004 commit, run the canonical Tier-3 verifier exactly once from
+that clean exact commit and inspect its machine-readable provenance.
+
+**Stop/escalate when:** completion requires native/protocol changes, a new
+catalog/launch contract, physical display/controller action, or a materially
+different Games & Apps information architecture.
+
+### DLV-017 — Show a durable Games & Apps warm start
+
+**State:** Done; accepted and integrated as `5aedfe8`
+**Baseline:** `08d44db`, the accepted widgets-lane DLV-009 closing commit
+**Owner:** Games & Apps private-state projection, lifecycle reconciliation, and
+credential-free fixtures
+
+**Objective:** Make a cold worker or overlay restart show the user's persisted
+Library, order, selection, explicit additions, and exclusions immediately while
+fresh opaque launch authority and automatic trusted-Game changes reconcile in
+the background.
+
+**In scope:** one bounded current schema that persists sanitized display
+projection separately from short-lived AppIds; an atomic documented reset of
+unsupported older local overlay state rather than partial migration or silent
+truncation; disabled/checking launch state until exact resolution; last-good-
+first rendering; lifecycle-owned background resolve plus catalog
+reconciliation; atomic replacement, missing/reappearing identity,
+authoritative reclassification, exclusions, CAS conflicts, and failure/retry
+behavior; accurate stale/checking/accessibility copy.
+
+**Out of scope:** retaining obsolete pre-release schema compatibility solely to
+preserve this development user's local state; partially reinterpreting legacy
+state; persisting AppIds, raw paths, AUMIDs, Steam IDs, commands, or unbounded
+icon pixels; launching stale entries; changing provider discovery; new store
+adapters; or hiding a failed authority refresh.
+
+**Acceptance criteria:** unsupported older state resets atomically as a whole
+and cannot partially preserve membership, exclusions, projection, selection,
+or launch authority; a fresh widget instance renders the bounded current-
+schema Library before a delayed provider completes; stale rows cannot launch;
+exact resolved rows become actionable without focus/order churn; current-
+schema additions, removals, exclusions, recent-first ordering, and selection
+survive overlay and worker restart; failed refresh retains last-good display
+with actionable safe status; background exit cancels and rejects late
+completion.
+
+**Verification:** Tier 1 Games & Apps, private-state, lifecycle, and generic
+worker Release suites plus one bounded fresh-worker delayed-provider fixture.
+No aggregate.
+
+**Stop/escalate when:** the design requires new ambient persistence authority,
+stores executable/provider identity, exceeds private-state bounds, or requires
+a public protocol change.
+
 ### DLV-009 — Consolidate YT Music lifecycle and render ownership
 
-**State:** Ready after DLV-008
-**Baseline:** closing commit of DLV-008
+**State:** Done; accepted and integrated as `304102a`
+**Baseline:** `7e0b83e`, the accepted widgets-lane DLV-004 closing commit
 **Owner:** YT Music managed widget and existing public SDK primitives
 
 **Objective:** Make YT Music the second advanced proof that supported SDK
@@ -187,10 +397,91 @@ existing generic-worker group covering lifecycle serialization. No aggregate.
 **Stop/escalate when:** a missing SDK primitive is genuinely required; report
 the repeated pattern and consumer evidence before changing the public API.
 
+### DLV-024 — Stabilize Games & Apps library continuity and density
+
+**State:** Assigned
+**Baseline:** `b844fd8`, the accepted widgets-lane DLV-017 closing commit
+**Owner:** Games & Apps managed presentation/state mutation, surface hints,
+credential-free fixtures, and directly affected feature documentation
+
+**Objective:** Correct the reproduced post-DLV-017 product regressions: removing
+one saved entry from Add applications must not make the other Library rows
+disappear, the Add applications action must remain visually stable throughout
+Library refresh/reconciliation, and the normal surface should use available
+vertical space to show materially more entries.
+
+**In scope:** a deterministic remove-one-from-catalog/Back/re-render/restart
+reproduction over schema v3; atomic in-memory and persisted mutation;
+membership/provenance/exclusion/display-projection consistency; persistence
+failure and CAS-conflict rollback/reconciliation; last-good Library rendering
+during background work; stable keyed selection/focus after removal; measured
+Library/Catalog preferred-height adjustment within the documented host safe
+area; compact/standard/wide and 100-150% scale semantics/captures.
+
+**Out of scope:** native-host transition or renderer changes, public SDK or
+protocol changes, DLV-006 continuous collections, trusted artwork, new catalog
+authority, storing AppIds, per-widget renderer offsets, or preserving obsolete
+pre-release schemas.
+
+**Acceptance criteria:** removing one explicit or automatic saved row changes
+only that row and its intended exclusion/provenance state; every other row,
+order, display projection, and exact current-lifetime launch admission survives
+Back, invalidation, worker restart, delayed/failed provider reconciliation, and
+one forced CAS conflict. A Ready Library snapshot always contains exactly one
+reachable Add applications action; background work may annotate/disable
+affected controls but cannot replace the last-good Library with a transient
+loading tree. At standard 100% scale the preferred surface shows at least two
+more normal rows than the accepted 430-DIP baseline when the host safe area
+allows it, while compact and 150% layouts remain bounded, scrollable, and
+unclipped. Focus moves to the nearest surviving stable row or the Add action.
+
+**Verification:** Tier 1 Games & Apps and private-state Release suites,
+documentation contracts, a fresh-worker delayed/failing-provider fixture, and
+retained before/during/after semantic plus capture sequences for the three
+reported behaviors. No aggregate.
+
+**Stop/escalate when:** the disappearing rows reproduce outside managed widget
+state, the height/visibility defect requires a native surface-contract change,
+or a correct fix requires public collection/protocol behavior owned by DLV-006.
+
+### DLV-023 — Keep transient Spotify failures on the last-good surface
+
+**State:** Ready after DLV-024
+**Baseline:** closing commit of DLV-024
+**Owner:** Spotify managed refresh/polling state, typed provider-failure policy,
+and credential-free tests
+
+**Objective:** Eliminate random full-widget `Spotify could not be loaded`
+replacement for recoverable refresh/poll/provider faults while preserving
+explicit fatal configuration, permission, and authorization states.
+
+**In scope:** typed transient/fatal classification; last-good playback and route
+retention; bounded non-blocking status/feedback; automatic backoff and recovery;
+refresh parity; generation/lifecycle cancellation; safe diagnostic codes;
+forced transient-success, repeated-failure, permission-revocation, provider-
+unavailable, malformed-response, and recovery sequences.
+
+**Out of scope:** live OAuth/Premium proof, exposing provider bodies or exception
+messages, infinite retry, swallowing authorization expiry, restarting the
+worker as recovery, or redesigning Spotify screens.
+
+**Acceptance criteria:** one transient failure never replaces a usable
+last-good surface; repeated failures remain bounded and actionable; fatal
+permission/configuration/authorization changes still select their exact safe
+state; Y/manual refresh and automatic polling converge through one policy;
+successful recovery clears the warning without focus/route loss; no work or
+retry survives Active lifetime.
+
+**Verification:** Tier 1 Spotify and Widget SDK operation/resource Release
+suites plus the smallest generic-worker failure route. No aggregate.
+
+**Stop/escalate when:** evidence identifies a provider/bridge crash, public
+error-contract gap, or credential issue rather than widget state policy.
+
 ### DLV-010 — Prove the external widget package journey
 
-**State:** Ready after DLV-009
-**Baseline:** closing commit of DLV-009
+**State:** Ready after DLV-023
+**Baseline:** closing commit of DLV-023
 **Owner:** managed scaffold/CLI, sample package, and public authoring docs
 
 **Objective:** Make the recommended community path reproducible from scaffold
@@ -223,9 +514,14 @@ or weakening package validation/trust boundaries.
 Task identity: `platform`
 Branch: `codex/impl-platform`
 
+The platform queue prioritizes newly reproduced presentation continuity and
+shared geometry defects before broader accessibility/performance evidence.
+Shared collection and dashboard-audio authority changes remain serialized in
+the integration queue.
+
 ### DLV-003 — Correct shared button-content geometry
 
-**State:** Assigned after task creation
+**State:** Done; accepted and integrated as `703c5bb`
 **Baseline:** `1738618` plus the reviewer control-plane commit
 **Owner:** native declarative renderer and shared component styles
 
@@ -253,8 +549,8 @@ requires incompatible protocol semantics.
 
 ### DLV-005 — Hold Y to refresh the selected tray widget
 
-**State:** Ready after DLV-003
-**Baseline:** closing commit of DLV-003
+**State:** Done; accepted and integrated as `aaf36d9`
+**Baseline:** `27b0319`
 **Owner:** OverlayHost controller gesture state and existing host reload path
 
 **Objective:** Preserve tap Y for reorder while a clearly hinted bounded hold Y
@@ -280,7 +576,7 @@ requires hidden-overlay polling.
 
 ### DLV-014 — Compose advanced action failure through the production host
 
-**State:** Ready after DLV-005
+**State:** Done; accepted and integrated as `9060f12`
 **Baseline:** closing commit of DLV-005
 **Owner:** bridge/native controller ingress, feedback surface, and host tests
 
@@ -307,10 +603,80 @@ installed-widget conformance group. Do not run the aggregate.
 **Stop/escalate when:** the proof requires product-widget source changes owned
 by the widgets lane or a public protocol change not already represented.
 
+### DLV-020 — Make widget switching visually continuous
+
+**State:** Assigned
+**Baseline:** `2a160b4`, the accepted platform-lane DLV-014 closing commit
+**Owner:** OverlayHost presentation, invalidation, rounded clipping, render
+target lifecycle, and transition tests
+
+**Objective:** Remove the jarring switch and transient black border/spacing
+flash now reproduced when cycling into Spotify, while keeping the tray and host
+chrome continuously painted.
+
+**In scope:** instrumented old/new extent and identity swaps; placement,
+snapshot/style arrival, render-target recreation, rounded viewport clip,
+background clear, shell/content reveal, and invalidation ordering; bounded
+product-target transition using the existing host timeline; reduced motion;
+rapid reversal; same-identity refresh; compact/standard/wide and 100-150%
+scale; retained frame/capture evidence.
+
+**Out of scope:** widget-authored transition hacks, decorative/staggered motion,
+ambient animation, per-widget black backgrounds, hiding the flash with a delay,
+or additional idle frame scheduling.
+
+**Acceptance criteria:** Audio/Network/Spotify/Games & Apps switch matrices show
+no cleared border, unmasked square root, stale extent, blank content frame, or
+tray flash; focus and input ownership transfer once; reduced motion is
+immediate; interruptions retarget from presented state; settled/hidden cost is
+unchanged; diagnostics identify the original cause.
+
+**Verification:** Tier 1 OverlayTransition, placement/targeting, renderer, and
+host Release tests plus a bounded frame-sequence capture. No aggregate.
+
+**Stop/escalate when:** correction requires a new compositor/window technology,
+substantial theme redesign, or interactive game/display evidence unavailable to
+automation.
+
+### DLV-021 — Correct shared text and component geometry end to end
+
+**State:** Ready after DLV-020
+**Baseline:** closing commit of DLV-020
+**Owner:** native declarative measurement/paint, shared Button/ActionSurface/
+SectionHeader styles, and component-level semantic/capture tests
+
+**Objective:** Resolve the remaining cross-widget text/icon/checkmark baseline
+misalignment and the clipped Spotify `LIBRARY` header in shared geometry rather
+than per-widget offsets.
+
+**In scope:** one measurement/placement model for Button, icon-label-checkmark,
+Now Playing/action tiles, SectionHeader eyebrow/title/description/trailing
+content, busy/selected states, wrapped/ellipsized text, font metrics, compact/
+standard/wide, 100-150% text/interface scale, and high-contrast/reduced-
+transparency profiles; exact Games & Apps, Spotify, Now Playing, Settings, and
+SDK Gallery fixtures.
+
+**Out of scope:** arbitrary optical constants per widget, changing information
+architecture, global font replacement, unrelated renderer refactoring, or
+claiming RTL support where it is not documented.
+
+**Acceptance criteria:** text and icons share stable measured/painted centers;
+no eyebrow/title/description is vertically clipped; trailing actions cannot
+steal required header height/width; disabled/busy/selected states do not shift
+content; first-party widgets delete or avoid local compensation; retained
+bounds and reviewed captures cover all named profiles.
+
+**Verification:** Tier 1 native layout/renderer/style/component suites,
+production host build, documentation contracts, and representative semantic/
+capture matrix. No aggregate.
+
+**Stop/escalate when:** the defect is proven to be product-specific composition
+with no shared geometry cause, or correction changes a public layout contract.
+
 ### DLV-015 — Add deterministic real-host accessibility proof
 
-**State:** Ready after DLV-014
-**Baseline:** closing commit of DLV-014
+**State:** Ready after DLV-021
+**Baseline:** closing commit of DLV-021
 **Owner:** native accessibility adapter, host harness, and retained evidence
 
 **Objective:** Exercise the production UI Automation projection over
@@ -370,28 +736,71 @@ game/hardware choice, or a product budget decision not already documented.
 These are planned but are not executable by either lane until the planner marks
 one Assigned on an accepted integrated baseline.
 
-### DLV-004 — Repair the Games & Apps product surface
-
-**State:** Awaiting integration of accepted DLV-003 into `main`
-**Intended lead:** widgets lane
-**Dependencies:** DLV-002 and DLV-003
-
-Use the corrected shared geometry to make Library, empty, discovery/loading/
-error, and Add applications one coherent responsive controller surface. Cover
-empty, short, long-name, maximum bounded page, loading, error,
-compact/standard/wide, 100-150% scale, mutation while focused, clipping, safe
-areas, and reachability. This is the next exact-commit Tier-3 checkpoint.
-
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Awaiting DLV-004 and DLV-005 acceptance
+**State:** Dependencies accepted; awaiting planner-selected free lane/baseline
 **Intended lead:** planner-selected serialized protocol lane
 **Dependencies:** DLV-004 and DLV-005
 
 Add the minimum cursor/append virtualized collection, lazy artwork handles,
 stable keyed focus, bounded retention, and 2,000/10,000-item production-style
-fake needed by the future Game Launcher. Public semantics and native adoption
-must land as one serialized design. This is an exact-commit Tier-3 checkpoint.
+fake needed by the future Game Launcher. The contract must also replace the
+currently reported page-window jump: advancing or reversing at a focus edge
+keeps one continuous keyed list/viewport anchor instead of replacing a 12-row
+window and moving focus from bottom to top or top to bottom. Cover a fixed
+header action above the list so reverse loading cannot oscillate between the
+header and first item. Public semantics and native adoption must land as one
+serialized design. This is an exact-commit Tier-3 checkpoint.
+
+### DLV-018 — Supply trusted artwork for Games & Apps
+
+**State:** Awaiting DLV-006; DLV-017 accepted as `5aedfe8`
+**Intended lead:** planner-selected serialized provider/collection lane
+**Dependencies:** DLV-006, DLV-017
+
+Complete the trusted artwork path for Start Menu, AppsFolder, Steam, and future
+source adapters without exposing paths or allowing ordinary widgets to fetch
+arbitrary files/URLs. Use DLV-006 lazy handles and bounded decode/cache budgets;
+show a semantic per-source fallback only when an exact registration has no
+trusted local artwork. Revalidate artwork with the same provider identity as
+launch, reject stale/malformed/oversized images, and cover missing/change/churn,
+2,000/10,000-item demand, memory/transport bounds, and current Games & Apps
+captures. Do not solve this by embedding hundreds of base64 icons in snapshots.
+
+### DLV-019 — Add Audio Mixer dashboard master controls
+
+**State:** Awaiting planner-selected serialized baseline after DLV-014
+**Intended lead:** planner-selected bridge/broker plus widgets integration lane
+**Dependencies:** DLV-014
+
+Expose LB/RB as bounded master-output volume down/up and X as master mute from
+the icon tray. Reuse the exact snapshot-bound dashboard gesture authority; add
+dashboard permission only for the existing master-output set-volume/set-mute
+operations, not session/input/device controls or the whole audio subsystem.
+The widget must publish visible labels/current mute/volume state, clamp a
+documented step, re-read/reconcile authoritative output, coalesce rapid input,
+reject stale snapshot/lifecycle/consent/authority, roll back failures, preserve
+open-widget slider behavior, and prove no control occurs from an unselected,
+hidden, Background, replayed, or expired action. This is a Tier-2 cross-process
+authority milestone, not a speculative security program.
+
+### DLV-022 — Repair Spotify spatial and continuous-list focus
+
+**State:** Awaiting DLV-006 and DLV-021 acceptance
+**Intended lead:** widgets lane on an accepted shared collection/geometry baseline
+**Dependencies:** DLV-006, DLV-021
+
+Migrate Spotify playlists and playlist items to the shared continuous
+cursor/append collection and correct the explicit responsive focus graph. In
+expanded mode, Left from the inactive seek Slider must enter the selected
+navigation-rail destination rather than Previous track; compact mode must use
+the spatially corresponding navigation tab. Reverse traversal from the first
+playlist item must move to the Play/header action only once when intended and
+must never oscillate during load/snapshot replacement. Queue/list traversal,
+12/12/5 and sparse pages, forward/reverse cache transitions, Back/return focus,
+rapid refresh, compact/expanded responsive identity, and the clipped `LIBRARY`
+header must have composed host/renderer/controller evidence. Do not add
+widget-local page caches, renderer offsets, or title-derived focus IDs.
 
 ### DLV-011 — Feasibility gate for host-owned pinned surfaces
 
@@ -425,3 +834,11 @@ These are evidence tasks, not authorization to redesign implementations:
 4. Physical high-scale/high-contrast Games & Apps captures after DLV-004.
 5. Physical Y-hold threshold and exactly-once refresh smoke after DLV-005.
 6. Physical Narrator/MSAA traversal after DLV-015.
+7. Packaged Spotify seek/list forward/reverse traversal and transient-failure
+   recovery after DLV-022/DLV-023.
+8. Packaged widget-switch frame continuity and shared Button/SectionHeader
+   alignment matrix after DLV-020/DLV-021.
+9. Packaged Games & Apps cold-restart first-paint timing and real trusted-source
+   artwork coverage after DLV-017/DLV-018.
+10. Physical Audio Mixer LB/RB/X dashboard quick-action authority, step,
+    coalescing, mute, and failure smoke after DLV-019.

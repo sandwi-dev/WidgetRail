@@ -20,10 +20,11 @@ The current authoring-coordination milestone also implements public non-paged
 `WidgetIds`/opaque `KeyedId`, active input-scope propagation on every standard
 open-widget action, protocol-v13 explicit focus persistence, and the responsive
 `UI.NavigationShell`. SDK Gallery is the production-style navigation/ID
-migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
-uses one lifecycle-owned Active/Latest lane for transport reconciliation; it
-neither retains provider response bodies nor renders unknown exception text.
-Focused Release suites pass Widget SDK 84/84, SDK Gallery 6/6, YT Music 48/48,
+ migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
+ uses SDK-owned Active operation lanes for connection, progress, polling, and
+ latest-wins transport reconciliation; it neither retains provider response
+ bodies nor renders unknown exception text. Focused Release suites pass Widget
+ SDK 84/84, SDK Gallery 6/6, YT Music 51/51,
 and Gbar CLI 52/52. Packaged controller/companion evidence remains separate.
 
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
@@ -43,9 +44,12 @@ contract passes with the Settings and CLI operator guidance present.
 DLV-002 makes Games & Apps reconcile the bounded trusted catalog on initial and
 subsequent activation. Only entries classified `Game` by a reviewed provider
 are added automatically; `Application` and `Unknown` remain explicit opt-ins.
-The widget owns a schema-v2 private-state policy for ordered SavedIds,
+The widget owns a schema-v3 private-state policy for ordered SavedIds,
 automatic-membership provenance, exact SavedId exclusions, and selection.
-Version-1 membership migrates as explicit user choice. Missing identities keep
+During single-user development, v1, v2, unsupported, or invalid documents reset
+as a whole to empty v3 state before fresh trusted-catalog reconciliation; no
+legacy membership, exclusions, projection, selection, or launch authority is
+partially retained. Missing identities keep
 their bounded order tombstones, reappearing identities receive fresh launch
 tokens without focus drift, and a different SavedId remains a distinct game
 even when its display title is identical. A bounded CAS merge preserves a
@@ -93,6 +97,30 @@ pass 107 and 108,547 checks respectively, and the production OverlayHost Release
 target builds. Physical-controller threshold proof remains in the verification
 queue.
 
+DLV-004 repairs the Games & Apps product surface without changing catalog
+authority, protocol, or native geometry. Library, Add applications, loading,
+healthy-empty, and failure states now share the same bounded responsive
+hierarchy and the public SectionHeader, StatusBadge, Card, EmptyState, Alert,
+AppTile, and Toast components retain their shared style classes. Catalog
+navigation keeps only one 32-row page in a semantic snapshot while preserving
+bounded Next/Previous offsets through the 512-entry provider envelope. Render
+no longer publishes a mutable element-to-app lookup; actions revalidate the
+current route and stable SavedId-derived element before using the current
+short-lived AppId. Back preserves a curated selection, and removal chooses the
+nearest surviving row. Focused Release coverage includes shared loading/empty/
+error surfaces, a 64-entry long-name Library, maximum Catalog traversal,
+bidirectional focus, mutation, lifecycle, and GBSS flex contracts. Retained
+standalone captures cover automatic, Catalog, and mixed Library surfaces across
+compact, standard, 150%-accessible, and wide/high-contrast profiles. Exact
+focused integration evidence at
+`artifacts/verification/20260810T053135Z-3f63fdf8` passes the 6/6 installed
+generic-worker/AppContainer conformance group; final Tier-1 evidence at
+`artifacts/verification/20260810T053438Z-64812600` passes Games & Apps 42/42
+and the 52-file documentation contract. The clean-commit
+capture bundle is published under
+`artifacts/evidence/dlv004/dlv004-product-surface/manifest.json`; packaged
+physical-controller/display evidence remains a separate release gate.
+
 DLV-014 composes a real advanced-widget post-admission failure through the
 production OverlayHost process. A credential-free deterministic worker
 constructs the production YT Music widget with a complete connected snapshot,
@@ -112,6 +140,23 @@ feedback checks, 149 accessibility-provider checks, 32 host-accessibility checks
 and the production-process fixture; the managed bridge suite passed 47/47, and
 the isolated YT Music Community-addon acceptance passed without changing the
 real user catalog.
+
+DLV-017 adds a bounded display-only warm-start projection to the Games & Apps
+schema without persisting launch authority. A fresh worker immediately renders
+the saved order, selection, automatic/explicit membership, and exclusions as
+disabled **Checking…** AppTiles containing only SavedId, a sanitized 20-scalar
+name prefix, and closed kind. Fresh resolution atomically replaces them with
+short-lived AppIds while SavedId-derived focus and order remain stable. Missing
+identities stay visible but disabled, reappearance receives new authority,
+authoritative reclassification still hides automatic non-Games, and refresh
+failure retains last-good display with explicit safe status. Active-lifetime
+transitions and failed authority refreshes discard cached AppIds before showing
+the projection, so only a current exact resolution enables launch. The exclusion cap
+is 128 so the proven worst escaped-Unicode schema remains below 64 KiB. Focused
+Release coverage passes 49/49, including atomic legacy/invalid-state reset,
+current-v3 mutation and restart continuity, delayed fresh-worker resolution,
+stale-launch refusal, CAS/exclusion behavior, failure retention, and a
+cancellation-ignoring completion rejected after Background.
 
 DLV-020 makes open-widget switching one host-owned presentation transaction.
 The last admitted snapshot and surface remain painted as visual-only content
@@ -588,11 +633,12 @@ through the nested vertical Catalog. Library and Catalog entries are full-width 
 rows can place the bounded trusted PNG inside that same Button target. A
 toggles Catalog membership, X removes from Library, and one
 confirmed launch moves that exact item to the front. Curation, selected item,
-automatic provenance, exact Game exclusions, and recent-first order persist
-across worker restart/unload as authority-scoped durable `SavedId` values in
-`HostServices.PrivateState`. Activation reconciles the bounded catalog and
-resolves curated entries to fresh short-lived launch tokens; a cached Library
-remains visible during subsequent lifecycle-owned refresh. Removal of a Game
+automatic provenance, exact Game exclusions, recent-first order, and bounded
+display-only last-good copy persist across worker restart/unload in
+`HostServices.PrivateState`. AppIds never persist. Activation shows the saved
+display immediately, then reconciles the bounded catalog and resolves curated
+entries to fresh short-lived launch tokens; checking or missing rows remain
+disabled while the cached Library stays visible. Removal of a Game
 persists an exclusion, same-identity reappearance stays excluded, and explicit
 Catalog addition clears it. Launch is
 enabled only while Interactive and targets only the opaque ID associated with
@@ -667,12 +713,17 @@ request-scoped host-side invalidation of the exact rejected Bearer slot on HTTP
 It performs a non-blocking automatic connection attempt and renders media
 metadata, artwork, transport state, and
 dashboard quick actions through the declarative protocol. It auto-connects on
-first entry into Visible/Interactive, interpolates progress there at four Hz,
+entry into Visible/Interactive when disconnected, interpolates progress there at four Hz,
 reconciles the companion every two seconds, and uses bounded optimistic transport/rating
 updates with rollback on command failure. Like, dislike, shuffle, and repeat
 publish immediate semantic selected/busy feedback, preserve independent pending
 features through stale polls, and clear or roll back on reconciliation.
-Accepted play/pause commands now reconcile in a bounded widget-lifetime task
+DLV-009 removes the widget's three lifecycle task fields and its hidden
+auto-connect admission flag. SDK-owned Active operation lanes now own and drain
+auto-connect, progress, polling, and latest-wins transport work. One immutable
+presentation record supplies every render input, and current-attempt checks
+reject cancellation-ignoring late pairing, polling, and transport completions.
+Accepted play/pause commands reconcile in a bounded Active-lifetime operation
 rather than the shorter input-action lifetime. The completion test inspects
 pending authoritative confirmation instead of the merged optimistic snapshot,
 and repeated toggles supersede the earlier refresh burst without blocking.
@@ -702,9 +753,17 @@ themes also use non-shrinking fixed regions, a thin native Slider
  cancellation-ignoring page, joined repeated edge input, cached reverse pages,
  absolute visible IDs, and exact provider call counts. Matching native tests use the
  exact Spotify scroll/rail IDs and five-row final topology. Focused Release
- coverage passes 24 widget-surface focus checks, 47 focus-navigation checks, and
- Spotify 32/32; packaged physical-controller evidence and a live retest remain
- open. The controller guide is
+ coverage passes 24 widget-surface focus checks and 47 focus-navigation checks.
+ DLV-007 now captures Spotify rendering through one private immutable
+ presentation revision and keys playlist detail by playlist ID plus selection
+ generation. Forced Release interleavings cover Back, rapid reselection, late
+ success and failure, refresh, and Active-lifetime cancellation/reactivation.
+ DLV-008 keeps that one widget/resource owner while separating lifecycle and
+ action wiring, route data, playback behavior, and snapshot-only presentation
+ into named internal partials; a source-boundary contract prevents duplicated
+ coordination or mutable reads in view composition. Spotify passes 36/36.
+ Packaged physical-controller evidence and a live retest remain open. The
+ controller guide is
  density-aware and no-wrap, the widget viewport has a
  host-owned rounded clip, and size-changing widget swaps commit one synchronous
  complete repaint after a no-redraw move to avoid an intermediate black frame.
@@ -938,10 +997,12 @@ start/finish commit `dc30be9`, including 58/58 runtime tests, the native build
 and tests, documentation contracts, and the hidden-overlay smoke test. The run
 recorded 29 artifact digests; it is intentionally not clean-tree release
 evidence because the milestone and unrelated review work were present at both
-endpoints. The current SDK, SDK Gallery, and YT Music focused suites pass
-84/84, 6/6, and 48/48 respectively, including navigation/resource contracts,
-safe typed companion errors, serialization, and widget recovery for host-side
-rejected-Bearer invalidation without a second widget delete. The current
+ endpoints. The current SDK, SDK Gallery, and YT Music focused suites pass
+ 84/84, 6/6, and 51/51 respectively, including navigation/resource contracts,
+ safe typed companion errors, serialization, and widget recovery for host-side
+ rejected-Bearer invalidation without a second widget delete. YT Music also
+ proves late pairing and polling cannot publish after deactivation and that no
+ widget-owned Task or CancellationTokenSource registry remains. The current
 Settings Release suite passes 45/45, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,

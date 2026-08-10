@@ -838,6 +838,10 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 string.Equals(node.AccessibilityLabel,
                     "Conformance Trusted Game, Game, Ready", StringComparison.Ordinal)),
                 "The trusted Game was not auto-curated in the real package path.");
+            Assert.True(Nodes(initial.Root).Any(node =>
+                string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
+                node.StyleClasses.Contains("gbar-app-tile", StringComparer.Ordinal)),
+                "Games & Apps did not retain the shared AppTile geometry classes.");
             Assert.True(!Nodes(initial.Root).Any(node =>
                 (node.Text ?? string.Empty).Contains(
                     "Conformance Library App", StringComparison.Ordinal)),
@@ -847,6 +851,12 @@ static async Task ExportEvidenceAsync(string outputDirectory)
             await client.SendActionAsync(new WidgetActionEvent("games.open-catalog", open.Id));
             var catalog = await WaitForActionSnapshotAsync(
                 client, "games.toggle-curation", "Conformance Library App");
+            Assert.True(Nodes(catalog.Root).Any(node =>
+                string.Equals(node.Id, "games.section", StringComparison.Ordinal) &&
+                node.StyleClasses.Contains("gbar-section-header", StringComparer.Ordinal)),
+                "The Catalog did not retain the shared section hierarchy.");
+            Assert.True(Nodes(catalog.Root).Count() < ProtocolConstants.MaximumNodeCount,
+                "The bounded Catalog page exceeded the protocol node budget.");
             await ExportSnapshotAsync(package, configured, "catalog", catalog);
             var add = Nodes(catalog.Root).Single(node =>
                 string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal) &&

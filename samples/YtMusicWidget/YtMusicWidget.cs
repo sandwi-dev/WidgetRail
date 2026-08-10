@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Diagnostics;
+using System.Collections.Immutable;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
@@ -22,6 +23,9 @@ public class YtMusicWidget : Widget
     private const string ConnectAction = "connect";
     private const string PairAction = "pair";
     private const string RefreshAction = "refresh";
+    private const string ConnectionOperation = "ytmusic.connection";
+    private const string ProgressOperation = "ytmusic.progress";
+    private const string PollOperation = "ytmusic.poll";
     private const string TransportRefreshOperation = "ytmusic.transport-refresh";
     private static readonly WidgetSurfaceHints StandardSurface = new()
     {
@@ -45,18 +49,7 @@ public class YtMusicWidget : Widget
     private readonly object _stateLock = new();
     private readonly TimeProvider _timeProvider;
     private readonly YtMusicUpdatePolicy _updatePolicy;
-    private YtMusicWidgetConnectionState _connectionState;
-    private YtMusicPlaybackSnapshot _snapshot = YtMusicPlaybackSnapshot.Empty;
-    private long _snapshotTimestamp;
-    private double _pendingForwardCorrectionSeconds;
-    private bool _hasProgressSnapshot;
-    private readonly List<PendingOptimisticState> _pendingOptimistic = [];
-    private string _status = "Connect to YTMDesktop2 to begin";
-    private string? _pairingCode;
-    private int _autoConnectStarted;
-    private Task? _autoConnectTask;
-    private Task? _progressLoop;
-    private Task? _pollLoop;
+    private YtMusicPresentationState _presentation;
 
     public YtMusicWidget(
         IYtMusicClient? client = null,
@@ -67,12 +60,12 @@ public class YtMusicWidget : Widget
         _updatePolicy = updatePolicy ?? new YtMusicUpdatePolicy();
         _updatePolicy.Validate();
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _snapshotTimestamp = _timeProvider.GetTimestamp();
+        _presentation = YtMusicPresentationState.Initial(_timeProvider.GetTimestamp());
     }
 
     public YtMusicWidgetConnectionState ConnectionState
     {
-        get { lock (_stateLock) return _connectionState; }
+        get { lock (_stateLock) return _presentation.ConnectionState; }
     }
 
     private static WidgetQuickActionCapability LoopbackControlAuthority() => new(
@@ -95,19 +88,19 @@ public class YtMusicWidget : Widget
 
     public override WidgetView Render()
     {
-        YtMusicWidgetConnectionState connection;
-        YtMusicPlaybackSnapshot snapshot;
-        HashSet<YtMusicCommand> pendingCommands;
-        string status;
-        string? pairingCode;
+        YtMusicPresentationState presentation;
         lock (_stateLock)
-        {
-            connection = _connectionState;
-            snapshot = ProjectProgress(_snapshot, _snapshotTimestamp);
-            pendingCommands = _pendingOptimistic.Select(item => item.Command).ToHashSet();
-            status = _status;
-            pairingCode = _pairingCode;
-        }
+            presentation = _presentation;
+        var connection = presentation.ConnectionState;
+        var snapshot = ProjectProgress(
+            presentation.Snapshot,
+            presentation.SnapshotTimestamp,
+            presentation.PendingForwardCorrectionSeconds);
+        var pendingCommands = presentation.PendingOptimistic
+            .Select(item => item.Command)
+            .ToHashSet();
+        var status = presentation.Status;
+        var pairingCode = presentation.PairingCode;
 
         if (connection is YtMusicWidgetConnectionState.Connecting or YtMusicWidgetConnectionState.Pairing)
         {
@@ -233,23 +226,38 @@ public class YtMusicWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        if (Interlocked.CompareExchange(ref _autoConnectStarted, 1, 0) == 0)
-            _autoConnectTask = AutoConnectAsync(activeLifetime);
-        _progressLoop = RunPeriodicUpdatesWhileActiveAsync(
-            _updatePolicy.ProgressInterval,
-            _ =>
+        lock (_stateLock)
+            Operations.RunLatest(
+                ConnectionOperation,
+                AutoConnectAsync,
+                WidgetOperationLifetime.Active);
+        Operations.RunSingleFlight(
+            ProgressOperation,
+            RunProgressLoopAsync,
+            WidgetOperationLifetime.Active);
+        Operations.RunSingleFlight(
+            PollOperation,
+            RunPollLoopAsync,
+            WidgetOperationLifetime.Active);
+        return ValueTask.CompletedTask;
+    }
+
+    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    {
+        lock (_stateLock)
+        {
+            if (_presentation.ConnectionState is
+                YtMusicWidgetConnectionState.Connecting or
+                YtMusicWidgetConnectionState.Pairing)
             {
-                YtMusicPlaybackSnapshot snapshot;
-                lock (_stateLock) snapshot = _snapshot;
-                if (snapshot.IsPlaying && ConnectionState == YtMusicWidgetConnectionState.Connected)
-                    Invalidate();
-                return ValueTask.CompletedTask;
-            },
-            invalidateAfterTick: false);
-        _pollLoop = RunPeriodicUpdatesWhileActiveAsync(
-            _updatePolicy.PollInterval,
-            PollConnectedStateAsync,
-            invalidateAfterTick: false);
+                _presentation = _presentation with
+                {
+                    ConnectionState = YtMusicWidgetConnectionState.Disconnected,
+                    Status = "Connection paused · reconnect when visible",
+                    PairingCode = null,
+                };
+            }
+        }
         return ValueTask.CompletedTask;
     }
 
@@ -262,21 +270,6 @@ public class YtMusicWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
-    {
-        var tasks = new[] { _autoConnectTask, _progressLoop, _pollLoop }
-            .Where(task => task is not null)
-            .Cast<Task>()
-            .ToArray();
-        _autoConnectTask = null;
-        _progressLoop = null;
-        _pollLoop = null;
-        if (tasks.Length != 0)
-            await Task.WhenAll(tasks).WaitAsync(transitionToken).ConfigureAwait(false);
-        if (ConnectionState != YtMusicWidgetConnectionState.Connected)
-            Interlocked.Exchange(ref _autoConnectStarted, 0);
-    }
-
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
         var client = Interlocked.Exchange(ref _client, null);
@@ -284,15 +277,13 @@ public class YtMusicWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    private async Task AutoConnectAsync(CancellationToken activeLifetime)
+    private async ValueTask AutoConnectAsync(WidgetOperationContext context)
     {
-        var entered = false;
+        var activeLifetime = context.CancellationToken;
         try
         {
-            await _connectionGate.WaitAsync(activeLifetime).ConfigureAwait(false);
-            entered = true;
-            if (ConnectionState == YtMusicWidgetConnectionState.Disconnected)
-                await ConnectAsync(activeLifetime).ConfigureAwait(false);
+            if (context.IsCurrent && ConnectionState == YtMusicWidgetConnectionState.Disconnected)
+                await ConnectAsync(activeLifetime, context).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (activeLifetime.IsCancellationRequested)
         {
@@ -300,21 +291,43 @@ public class YtMusicWidget : Widget
         }
         catch (Exception exception)
         {
-            SetError(exception);
-        }
-        finally
-        {
-            if (entered) _connectionGate.Release();
+            TrySetError(context, exception);
         }
     }
 
-    private async ValueTask PollConnectedStateAsync(CancellationToken activeLifetime)
+    private ValueTask RunProgressLoopAsync(WidgetOperationContext context) => new(
+        WidgetTicker.RunWhileActiveAsync(
+            _updatePolicy.ProgressInterval,
+            _ =>
+            {
+                YtMusicPresentationState presentation;
+                lock (_stateLock) presentation = _presentation;
+                if (context.IsCurrent &&
+                    presentation.Snapshot.IsPlaying &&
+                    presentation.ConnectionState == YtMusicWidgetConnectionState.Connected)
+                    Invalidate();
+                return ValueTask.CompletedTask;
+            },
+            context.CancellationToken));
+
+    private ValueTask RunPollLoopAsync(WidgetOperationContext context) => new(
+        WidgetTicker.RunWhileActiveAsync(
+            _updatePolicy.PollInterval,
+            token => PollConnectedStateAsync(context, token),
+            context.CancellationToken));
+
+    private async ValueTask PollConnectedStateAsync(
+        WidgetOperationContext context,
+        CancellationToken activeLifetime)
     {
-        if (ConnectionState != YtMusicWidgetConnectionState.Connected) return;
+        if (!context.IsCurrent || ConnectionState != YtMusicWidgetConnectionState.Connected) return;
         if (!await _clientGate.WaitAsync(0, activeLifetime).ConfigureAwait(false)) return;
         try
         {
-            await FetchConnectedSnapshotAsync(force: false, activeLifetime).ConfigureAwait(false);
+            await FetchConnectedSnapshotAsync(
+                force: false,
+                activeLifetime,
+                context).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (activeLifetime.IsCancellationRequested)
         {
@@ -322,11 +335,11 @@ public class YtMusicWidget : Widget
         }
         catch (YtMusicAuthorizationRequiredException)
         {
-            await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+            TrySetAuthorizationRequired(context);
         }
         catch (Exception)
         {
-            SetConnectedStatus("Playback update delayed · retrying…");
+            TrySetConnectedStatus(context, "Playback update delayed · retrying…");
         }
         finally
         {
@@ -337,6 +350,9 @@ public class YtMusicWidget : Widget
     public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (LifecycleState is WidgetLifecycleState.Background or WidgetLifecycleState.Destroying)
+            return;
         switch (action.ActionId)
         {
             case ConnectAction:
@@ -373,13 +389,32 @@ public class YtMusicWidget : Widget
     }
 
     private async Task RunConnectionActionAsync(
-        Func<CancellationToken, Task> action,
+        Func<CancellationToken, WidgetOperationContext?, Task> action,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        WidgetOperationHandle operation;
+        lock (_stateLock)
+            operation = Operations.RunLatest(
+                ConnectionOperation,
+                context => new ValueTask(action(context.CancellationToken, context)),
+                WidgetOperationLifetime.Active);
+        if (operation.IsAccepted)
+        {
+            var result = await operation.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (result.Status == WidgetOperationStatus.Failed && result.Exception is { } failure)
+                throw failure;
+            return;
+        }
+
+        // Direct invocation remains available for deterministic source-level
+        // tests before host lifecycle initialization. Installed widgets always
+        // use the runtime-owned operation lane above.
+        if (LifecycleState != WidgetLifecycleState.Created) return;
         await _connectionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await action(cancellationToken).ConfigureAwait(false);
+            await action(cancellationToken, null).ConfigureAwait(false);
         }
         finally
         {
@@ -387,23 +422,38 @@ public class YtMusicWidget : Widget
         }
     }
 
-    private async Task ConnectAsync(CancellationToken cancellationToken)
+    private async Task ConnectAsync(
+        CancellationToken cancellationToken,
+        WidgetOperationContext? operationContext)
     {
-        SetState(YtMusicWidgetConnectionState.Connecting, "Connecting to YTMDesktop2…", pairingCode: null);
+        if (!TrySetState(
+                operationContext,
+                YtMusicWidgetConnectionState.Connecting,
+                "Connecting to YTMDesktop2…",
+                pairingCode: null))
+            return;
         try
         {
             await _clientGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 var status = await Client.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+                if (cancellationToken.IsCancellationRequested ||
+                    operationContext is { IsCurrent: false })
+                    return;
                 if (status.AuthRequired && !status.HasCredential)
                 {
-                    SetState(YtMusicWidgetConnectionState.Disconnected, "Connected · pairing required", pairingCode: null);
+                    TrySetState(
+                        operationContext,
+                        YtMusicWidgetConnectionState.Disconnected,
+                        "Connected · pairing required",
+                        pairingCode: null);
                     return;
                 }
                 await FetchConnectedSnapshotAsync(
                     force: true,
                     cancellationToken,
+                    operationContext,
                     establishConnection: true).ConfigureAwait(false);
             }
             finally
@@ -413,33 +463,59 @@ public class YtMusicWidget : Widget
         }
         catch (OperationCanceledException)
         {
-            SetState(YtMusicWidgetConnectionState.Disconnected, "Connection canceled", pairingCode: null);
+            TrySetState(
+                operationContext,
+                YtMusicWidgetConnectionState.Disconnected,
+                "Connection canceled",
+                pairingCode: null);
             throw;
         }
         catch (YtMusicAuthorizationRequiredException)
         {
-            await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+            if (operationContext is null)
+                await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+            else
+                TrySetAuthorizationRequired(operationContext);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            SetError(exception);
+            TrySetError(operationContext, exception);
         }
     }
 
-    private async Task PairAsync(CancellationToken cancellationToken)
+    private async Task PairAsync(
+        CancellationToken cancellationToken,
+        WidgetOperationContext? operationContext)
     {
-        SetState(YtMusicWidgetConnectionState.Pairing, "Requesting a pairing code…", pairingCode: null);
+        if (!TrySetState(
+                operationContext,
+                YtMusicWidgetConnectionState.Pairing,
+                "Requesting a pairing code…",
+                pairingCode: null))
+            return;
         try
         {
             await _clientGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 var pairing = await Client.RequestPairingCodeAsync(cancellationToken).ConfigureAwait(false);
-                SetState(YtMusicWidgetConnectionState.Pairing, "Approve this code in YTMDesktop2", pairing.Code);
+                if (cancellationToken.IsCancellationRequested ||
+                    operationContext is { IsCurrent: false })
+                    return;
+                if (!TrySetState(
+                        operationContext,
+                        YtMusicWidgetConnectionState.Pairing,
+                        "Approve this code in YTMDesktop2",
+                        pairing.Code))
+                    return;
                 await Client.CompletePairingAsync(pairing.Code, cancellationToken).ConfigureAwait(false);
+                if (cancellationToken.IsCancellationRequested ||
+                    operationContext is { IsCurrent: false })
+                    return;
                 await FetchConnectedSnapshotAsync(
                     force: true,
                     cancellationToken,
+                    operationContext,
                     establishConnection: true).ConfigureAwait(false);
             }
             finally
@@ -449,16 +525,23 @@ public class YtMusicWidget : Widget
         }
         catch (OperationCanceledException)
         {
-            SetState(YtMusicWidgetConnectionState.Disconnected, "Pairing canceled", pairingCode: null);
+            TrySetState(
+                operationContext,
+                YtMusicWidgetConnectionState.Disconnected,
+                "Pairing canceled",
+                pairingCode: null);
             throw;
         }
         catch (YtMusicAuthorizationRequiredException)
         {
-            await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+            if (operationContext is null)
+                await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+            else
+                TrySetAuthorizationRequired(operationContext);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            SetError(exception);
+            TrySetError(operationContext, exception);
         }
     }
 
@@ -499,8 +582,13 @@ public class YtMusicWidget : Widget
         lock (_stateLock)
         {
             optimistic = ApplyOptimisticState(command, message);
-            _pendingOptimistic.RemoveAll(candidate => SameStateFeature(candidate.Command, command));
-            _pendingOptimistic.Add(optimistic);
+            _presentation = _presentation with
+            {
+                PendingOptimistic = _presentation.PendingOptimistic
+                    .Where(candidate => !SameStateFeature(candidate.Command, command))
+                    .Append(optimistic)
+                    .ToImmutableArray(),
+            };
         }
         Invalidate();
         try
@@ -509,6 +597,7 @@ public class YtMusicWidget : Widget
                 command,
                 cancellationToken,
                 optimistic.ToggleState).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (isTransport)
             {
                 ScheduleTransportRefresh(command);
@@ -547,7 +636,7 @@ public class YtMusicWidget : Widget
         WidgetOperationHandle operation;
         lock (_stateLock)
         {
-            if (_connectionState != YtMusicWidgetConnectionState.Connected) return;
+            if (_presentation.ConnectionState != YtMusicWidgetConnectionState.Connected) return;
             // Admission shares the state lock with attempt-local commits. A
             // replacement therefore cannot become current between an older
             // attempt's final currency check and its state mutation.
@@ -618,11 +707,12 @@ public class YtMusicWidget : Widget
             // the unmerged companion snapshot confirms it or its bounded
             // confirmation window expires. Inspecting the rendered snapshot
             // here would mistake our optimistic value for server confirmation.
-            if (_pendingOptimistic.Any(candidate =>
+            if (_presentation.PendingOptimistic.Any(candidate =>
                     SameStateFeature(candidate.Command, command)))
                 return false;
             return command == YtMusicCommand.TogglePlayback ||
-                   _snapshot.HasCompleteMetadata && MetadataMatchesState(_snapshot);
+                   _presentation.Snapshot.HasCompleteMetadata &&
+                   MetadataMatchesState(_presentation.Snapshot);
         }
     }
 
@@ -632,45 +722,64 @@ public class YtMusicWidget : Widget
         WidgetOperationContext? operationContext = null,
         bool establishConnection = false)
     {
+        if (cancellationToken.IsCancellationRequested ||
+            operationContext is { IsCurrent: false })
+            return false;
         var snapshot = await Client.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        if (operationContext is { IsCurrent: false }) return false;
+        if (cancellationToken.IsCancellationRequested ||
+            operationContext is { IsCurrent: false })
+            return false;
         lock (_stateLock)
         {
-            if (operationContext is { IsCurrent: false }) return false;
-            if (!establishConnection &&
-                _connectionState != YtMusicWidgetConnectionState.Connected)
+            if (cancellationToken.IsCancellationRequested ||
+                operationContext is { IsCurrent: false })
                 return false;
-            snapshot = PreserveStableMetadata(_snapshot, snapshot);
-            snapshot = PreserveUnavailableToggleState(_snapshot, snapshot);
+            if (!establishConnection &&
+                _presentation.ConnectionState != YtMusicWidgetConnectionState.Connected)
+                return false;
+            var presentation = _presentation;
+            snapshot = PreserveStableMetadata(presentation.Snapshot, snapshot);
+            snapshot = PreserveUnavailableToggleState(presentation.Snapshot, snapshot);
             var now = _timeProvider.GetTimestamp();
+            var pending = presentation.PendingOptimistic.ToBuilder();
             if (force)
             {
-                _pendingOptimistic.Clear();
+                pending.Clear();
             }
             else
             {
-                for (var index = _pendingOptimistic.Count - 1; index >= 0; index--)
+                for (var index = pending.Count - 1; index >= 0; index--)
                 {
-                    var pending = _pendingOptimistic[index];
+                    var optimistic = pending[index];
                     var withinConfirmationWindow =
-                        _timeProvider.GetElapsedTime(now, pending.DeadlineTimestamp) > TimeSpan.Zero;
-                    if (Confirms(pending, snapshot) || !withinConfirmationWindow)
+                        _timeProvider.GetElapsedTime(now, optimistic.DeadlineTimestamp) > TimeSpan.Zero;
+                    if (Confirms(optimistic, snapshot) || !withinConfirmationWindow)
                     {
-                        _pendingOptimistic.RemoveAt(index);
+                        pending.RemoveAt(index);
                     }
                     else
                     {
-                        snapshot = MergeExpectedState(snapshot, pending);
+                        snapshot = MergeExpectedState(snapshot, optimistic);
                     }
                 }
             }
-            snapshot = ReconcileProgress(snapshot, now, force);
-            _snapshot = snapshot;
-            _snapshotTimestamp = now;
-            _connectionState = YtMusicWidgetConnectionState.Connected;
-            if (_pendingOptimistic.Count == 0)
-                _status = snapshot.IsPlaying ? "Playing through YTMDesktop2" : "Connected to YTMDesktop2";
-            _pairingCode = null;
+            var reconciliation = ReconcileProgress(presentation, snapshot, now, force);
+            var nextPending = pending.ToImmutable();
+            _presentation = presentation with
+            {
+                Snapshot = reconciliation.Snapshot,
+                SnapshotTimestamp = now,
+                PendingForwardCorrectionSeconds = reconciliation.PendingForwardCorrectionSeconds,
+                HasProgressSnapshot = true,
+                PendingOptimistic = nextPending,
+                ConnectionState = YtMusicWidgetConnectionState.Connected,
+                Status = nextPending.Length == 0
+                    ? reconciliation.Snapshot.IsPlaying
+                        ? "Playing through YTMDesktop2"
+                        : "Connected to YTMDesktop2"
+                    : presentation.Status,
+                PairingCode = null,
+            };
         }
         Invalidate();
         return true;
@@ -678,11 +787,12 @@ public class YtMusicWidget : Widget
 
     private PendingOptimisticState ApplyOptimisticState(YtMusicCommand command, string message)
     {
+        var presentation = _presentation;
         var now = _timeProvider.GetTimestamp();
         var beforeProjection = ProjectProgressState(
-            _snapshot,
-            _snapshotTimestamp,
-            _pendingForwardCorrectionSeconds,
+            presentation.Snapshot,
+            presentation.SnapshotTimestamp,
+            presentation.PendingForwardCorrectionSeconds,
             now);
         var before = beforeProjection.Snapshot;
         bool? toggleState = command switch
@@ -715,14 +825,17 @@ public class YtMusicWidget : Widget
             },
             _ => before,
         };
-        _snapshot = expected;
-        _snapshotTimestamp = now;
-        _pendingForwardCorrectionSeconds = command is
-            YtMusicCommand.TogglePlayback or YtMusicCommand.Previous or YtMusicCommand.Next
-                ? 0
-                : beforeProjection.RemainingForwardCorrectionSeconds;
-        _hasProgressSnapshot = true;
-        _status = message;
+        _presentation = presentation with
+        {
+            Snapshot = expected,
+            SnapshotTimestamp = now,
+            PendingForwardCorrectionSeconds = command is
+                YtMusicCommand.TogglePlayback or YtMusicCommand.Previous or YtMusicCommand.Next
+                    ? 0
+                    : beforeProjection.RemainingForwardCorrectionSeconds,
+            HasProgressSnapshot = true,
+            Status = message,
+        };
         var confirmationWindow = command is YtMusicCommand.Previous or YtMusicCommand.Next
             ? _updatePolicy.TransportConfirmationWindow
             : _updatePolicy.OptimisticConfirmationWindow;
@@ -741,31 +854,47 @@ public class YtMusicWidget : Widget
     {
         lock (_stateLock)
         {
-            var index = _pendingOptimistic.FindIndex(candidate => ReferenceEquals(candidate, optimistic));
+            var presentation = _presentation;
+            var index = -1;
+            for (var candidateIndex = 0;
+                 candidateIndex < presentation.PendingOptimistic.Length;
+                 candidateIndex++)
+            {
+                if (!ReferenceEquals(
+                        presentation.PendingOptimistic[candidateIndex],
+                        optimistic))
+                    continue;
+                index = candidateIndex;
+                break;
+            }
             if (index < 0) return;
-            _pendingOptimistic.RemoveAt(index);
+            var pending = presentation.PendingOptimistic.RemoveAt(index);
             var now = _timeProvider.GetTimestamp();
             var currentProjection = ProjectProgressState(
-                _snapshot,
-                _snapshotTimestamp,
-                _pendingForwardCorrectionSeconds,
+                presentation.Snapshot,
+                presentation.SnapshotTimestamp,
+                presentation.PendingForwardCorrectionSeconds,
                 now);
             var beforeProjection = ProjectProgressState(
                 optimistic.Before,
                 optimistic.StartedTimestamp,
                 optimistic.BeforeForwardCorrectionSeconds,
                 now);
-            _snapshot = RestorePreviousState(
-                currentProjection.Snapshot,
-                optimistic,
-                beforeProjection.Snapshot);
-            _pendingForwardCorrectionSeconds = optimistic.Command is
-                YtMusicCommand.TogglePlayback or YtMusicCommand.Previous or YtMusicCommand.Next
-                    ? beforeProjection.RemainingForwardCorrectionSeconds
-                    : currentProjection.RemainingForwardCorrectionSeconds;
-            _snapshotTimestamp = now;
-            _connectionState = YtMusicWidgetConnectionState.Connected;
-            _status = message;
+            _presentation = presentation with
+            {
+                Snapshot = RestorePreviousState(
+                    currentProjection.Snapshot,
+                    optimistic,
+                    beforeProjection.Snapshot),
+                PendingForwardCorrectionSeconds = optimistic.Command is
+                    YtMusicCommand.TogglePlayback or YtMusicCommand.Previous or YtMusicCommand.Next
+                        ? beforeProjection.RemainingForwardCorrectionSeconds
+                        : currentProjection.RemainingForwardCorrectionSeconds,
+                SnapshotTimestamp = now,
+                PendingOptimistic = pending,
+                ConnectionState = YtMusicWidgetConnectionState.Connected,
+                Status = message,
+            };
         }
         Invalidate();
     }
@@ -915,19 +1044,20 @@ public class YtMusicWidget : Widget
             ? snapshot.TrackId
             : snapshot.MetadataTrackId;
 
-    private YtMusicPlaybackSnapshot ReconcileProgress(
+    private ProgressReconciliation ReconcileProgress(
+        YtMusicPresentationState presentation,
         YtMusicPlaybackSnapshot authoritative,
         long now,
         bool force)
     {
         authoritative = ClampProgress(authoritative);
         var currentProjection = ProjectProgressState(
-            _snapshot,
-            _snapshotTimestamp,
-            _pendingForwardCorrectionSeconds,
+            presentation.Snapshot,
+            presentation.SnapshotTimestamp,
+            presentation.PendingForwardCorrectionSeconds,
             now);
         var current = currentProjection.Snapshot;
-        var trackChanged = _hasProgressSnapshot &&
+        var trackChanged = presentation.HasProgressSnapshot &&
                            !string.IsNullOrWhiteSpace(current.TrackId) &&
                            !string.IsNullOrWhiteSpace(authoritative.TrackId) &&
                            !string.Equals(
@@ -936,21 +1066,18 @@ public class YtMusicWidget : Widget
                                StringComparison.Ordinal);
         var drift = authoritative.PositionSeconds - current.PositionSeconds;
         var mustAnchor = force ||
-                         !_hasProgressSnapshot ||
+                         !presentation.HasProgressSnapshot ||
                          trackChanged ||
                          !authoritative.IsPlaying ||
                          !current.IsPlaying ||
                          Math.Abs(drift) >= SeekSnapThresholdSeconds;
-        _hasProgressSnapshot = true;
         if (mustAnchor)
-        {
-            _pendingForwardCorrectionSeconds = 0;
-            return authoritative;
-        }
+            return new(authoritative, 0);
 
+        double pendingForwardCorrectionSeconds;
         if (drift > ProgressDriftToleranceSeconds)
         {
-            _pendingForwardCorrectionSeconds = Math.Max(
+            pendingForwardCorrectionSeconds = Math.Max(
                 currentProjection.RemainingForwardCorrectionSeconds,
                 drift);
         }
@@ -959,21 +1086,23 @@ public class YtMusicWidget : Widget
             // Small backward movement is normally the age of the HTTP snapshot,
             // not a user seek. Keep the monotonic presentation and drop any
             // forward correction that is no longer supported by the server.
-            _pendingForwardCorrectionSeconds = 0;
+            pendingForwardCorrectionSeconds = 0;
         }
         else
         {
-            _pendingForwardCorrectionSeconds =
+            pendingForwardCorrectionSeconds =
                 currentProjection.RemainingForwardCorrectionSeconds;
         }
 
-        return authoritative with
-        {
-            PositionSeconds = Math.Clamp(
-                current.PositionSeconds,
-                0,
-                Math.Max(0, authoritative.DurationSeconds)),
-        };
+        return new(
+            authoritative with
+            {
+                PositionSeconds = Math.Clamp(
+                    current.PositionSeconds,
+                    0,
+                    Math.Max(0, authoritative.DurationSeconds)),
+            },
+            pendingForwardCorrectionSeconds);
     }
 
     private static YtMusicPlaybackSnapshot ClampProgress(YtMusicPlaybackSnapshot snapshot)
@@ -1005,11 +1134,14 @@ public class YtMusicWidget : Widget
         _ => "Repeat off · change repeat mode",
     };
 
-    private YtMusicPlaybackSnapshot ProjectProgress(YtMusicPlaybackSnapshot snapshot, long observedTimestamp)
+    private YtMusicPlaybackSnapshot ProjectProgress(
+        YtMusicPlaybackSnapshot snapshot,
+        long observedTimestamp,
+        double pendingForwardCorrectionSeconds)
         => ProjectProgressState(
             snapshot,
             observedTimestamp,
-            _pendingForwardCorrectionSeconds,
+            pendingForwardCorrectionSeconds,
             _timeProvider.GetTimestamp()).Snapshot;
 
     private ProgressProjection ProjectProgressState(
@@ -1047,9 +1179,9 @@ public class YtMusicWidget : Widget
         var changed = false;
         lock (_stateLock)
         {
-            if (_connectionState != YtMusicWidgetConnectionState.Connected) return;
-            changed = !string.Equals(_status, message, StringComparison.Ordinal);
-            _status = message;
+            if (_presentation.ConnectionState != YtMusicWidgetConnectionState.Connected) return;
+            changed = !string.Equals(_presentation.Status, message, StringComparison.Ordinal);
+            _presentation = _presentation with { Status = message };
         }
         if (changed) Invalidate();
     }
@@ -1060,10 +1192,10 @@ public class YtMusicWidget : Widget
         lock (_stateLock)
         {
             if (!context.IsCurrent ||
-                _connectionState != YtMusicWidgetConnectionState.Connected)
+                _presentation.ConnectionState != YtMusicWidgetConnectionState.Connected)
                 return false;
-            changed = !string.Equals(_status, message, StringComparison.Ordinal);
-            _status = message;
+            changed = !string.Equals(_presentation.Status, message, StringComparison.Ordinal);
+            _presentation = _presentation with { Status = message };
         }
         if (changed) Invalidate();
         return true;
@@ -1074,10 +1206,13 @@ public class YtMusicWidget : Widget
         lock (_stateLock)
         {
             if (!context.IsCurrent) return false;
-            _pendingOptimistic.Clear();
-            _connectionState = YtMusicWidgetConnectionState.Disconnected;
-            _status = "Authorization expired · pair device";
-            _pairingCode = null;
+            _presentation = _presentation with
+            {
+                PendingOptimistic = [],
+                ConnectionState = YtMusicWidgetConnectionState.Disconnected,
+                Status = "Authorization expired · pair device",
+                PairingCode = null,
+            };
         }
         // This current delegate returns immediately, so canceling its own lane
         // is unnecessary. Avoiding a second lane-wide cancellation also keeps
@@ -1086,26 +1221,46 @@ public class YtMusicWidget : Widget
         return true;
     }
 
-    private void SetState(YtMusicWidgetConnectionState state, string status, string? pairingCode)
+    private bool TrySetState(
+        WidgetOperationContext? context,
+        YtMusicWidgetConnectionState state,
+        string status,
+        string? pairingCode)
     {
         lock (_stateLock)
         {
-            _connectionState = state;
-            _status = status;
-            _pairingCode = pairingCode;
+            if (context is { IsCurrent: false }) return false;
+            _presentation = _presentation with
+            {
+                ConnectionState = state,
+                Status = status,
+                PairingCode = pairingCode,
+            };
         }
         Invalidate();
+        return true;
     }
+
+    private void SetState(YtMusicWidgetConnectionState state, string status, string? pairingCode) =>
+        TrySetState(context: null, state, status, pairingCode);
 
     private void SetError(Exception exception)
     {
         SetState(YtMusicWidgetConnectionState.Error, SafeStatus(exception), pairingCode: null);
     }
 
+    private bool TrySetError(WidgetOperationContext? context, Exception exception) =>
+        TrySetState(
+            context,
+            YtMusicWidgetConnectionState.Error,
+            SafeStatus(exception),
+            pairingCode: null);
+
     private Task SetAuthorizationRequiredAsync()
     {
         Operations.Cancel(TransportRefreshOperation);
-        lock (_stateLock) _pendingOptimistic.Clear();
+        lock (_stateLock)
+            _presentation = _presentation with { PendingOptimistic = [] };
         SetState(
             YtMusicWidgetConnectionState.Disconnected,
             "Authorization expired · pair device",
@@ -1166,6 +1321,31 @@ public class YtMusicWidget : Widget
     private sealed record ProgressProjection(
         YtMusicPlaybackSnapshot Snapshot,
         double RemainingForwardCorrectionSeconds);
+
+    private sealed record ProgressReconciliation(
+        YtMusicPlaybackSnapshot Snapshot,
+        double PendingForwardCorrectionSeconds);
+
+    private sealed record YtMusicPresentationState(
+        YtMusicWidgetConnectionState ConnectionState,
+        YtMusicPlaybackSnapshot Snapshot,
+        long SnapshotTimestamp,
+        double PendingForwardCorrectionSeconds,
+        bool HasProgressSnapshot,
+        ImmutableArray<PendingOptimisticState> PendingOptimistic,
+        string Status,
+        string? PairingCode)
+    {
+        internal static YtMusicPresentationState Initial(long timestamp) => new(
+            YtMusicWidgetConnectionState.Disconnected,
+            YtMusicPlaybackSnapshot.Empty,
+            timestamp,
+            0,
+            false,
+            [],
+            "Connect to YTMDesktop2 to begin",
+            null);
+    }
 
     private static StackElement Header(string status, YtMusicWidgetConnectionState connection) =>
         UI.Stack("header",
