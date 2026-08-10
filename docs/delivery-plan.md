@@ -392,6 +392,33 @@ Network Provider 42/42 and all 52 documentation contracts; the original stable
 run also passed PlatformBroker 51/51. Both are correctly dirty-worktree focused
 evidence, and no aggregate, native adapter, widget, or OverlayHost suite ran.
 
+### DLV-041 — Split Windows network native interop by stable responsibility
+
+**State:** Done
+**Closing commits:** `3e6d779` (`[DLV-041] split Windows network native
+adapter responsibilities`), corrected by `4060f4b` (`[DLV-041] linearize
+native adapter terminal disposal`)
+**Integrated on `main`:** `4630866`
+
+**Reviewer disposition:** Accepted after two bounded lifetime corrections. The
+1,297-line adapter is now a 404-line singular lifetime owner over separate
+connectivity, WLAN profile/scan/connect, radio-transaction, and injected
+native-call policies. It retains exactly three handles, three callbacks, one
+adapter generation, one lifetime gate, and active/disposing/terminal disposal
+authority; extracted policies retain no handle, callback, lock, task, or
+disposal ownership. Candidate `3e6d779` originally allowed an admitted snapshot
+to re-register IP/connectivity notifications after disposal's cancellation pass
+and allowed callback publication to race past disposal. Correction `4060f4b`
+linearizes every registration/use/cancellation and publication admission on the
+same gate, drains committed publications outside the lock, suppresses admitted-
+but-unpublished callbacks, supports reentrant handler disposal without self-
+deadlock, and makes concurrent external disposers wait for one terminal exact-
+once cleanup. Manually controlled barriers prove those orderings without sleeps.
+Retained stable dirty run `20260810T185231Z-21f21f42` passes Windows Network
+Provider 51/51, Platform Broker 51/51, and all 52 documentation contracts in
+24.827 seconds. No aggregate, live radio mutation, native OverlayHost, or
+unrelated widget suite ran.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -413,8 +440,9 @@ dependency. DLV-029 must preserve current focus IDs and navigation behavior so
 the independent native/shared-scroll correction remains separately reviewable.
 Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
 concentration before dashboard controls add behavior. Accepted DLV-035 and
-assigned DLV-041 keep the Windows network backend and its native interop owner
-adjacent; DLV-036 and DLV-044 disposition the aggregate Settings partial type;
+DLV-041 separate the Windows network backend and its native interop owner while
+retaining singular lifetime authority; DLV-036 and DLV-044 now disposition the
+aggregate Settings partial type;
 DLV-037 continues the platform-policy hotspot queue; DLV-039 and DLV-040 finish
 the residual bridge-server responsibility split; and DLV-043 replaces
 Spotify's partial-file organization with real type boundaries before test-
@@ -1093,9 +1121,10 @@ owner, or overlaps the preserved native platform worktree.
 
 ### DLV-041 — Split Windows network native interop by stable responsibility
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `4630866`
 **Baseline:** accepted DLV-035 integration `d151173` plus the reviewer
 control-plane commit assigning this milestone
+**Closing commits:** `3e6d779`, corrected by `4060f4b`
 **Dependencies:** DLV-035
 **Owner:** managed Windows network native-adapter internals and deterministic
 interop fixtures; no widget, broker, public capability/protocol, or native
@@ -1145,8 +1174,9 @@ platform worktree.
 
 ### DLV-036 — Split Settings by page policy and privileged operations
 
-**State:** Ready after DLV-041
-**Baseline:** closing commit of DLV-041
+**State:** Assigned
+**Baseline:** accepted DLV-041 integration `4630866` plus the reviewer
+control-plane commit assigning this milestone
 **Dependencies:** DLV-001 and DLV-041 only for queue order
 **Owner:** managed Settings widget internals and direct Settings fixtures
 
