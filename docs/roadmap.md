@@ -204,10 +204,15 @@ remains off until the publisher-trust gates in Phase 4.
   opacity tracks and new/replaced widget content uses a 100 ms reveal; reversal,
   reduced motion, same-identity no-flash, focus snap, and one-shot hide have
   native coverage. The transient pressed-state map is connected to exact
-  physical actions. A 2026-08-09 packaged Spotify switch still exposed a black
-  border flash and visually abrupt replacement, so product acceptance is
-  reopened as DLV-020: repair the shared host/compositor transition and retain
-  full-shell frame evidence rather than adding widget-specific animation.
+  physical actions. DLV-020 (`b0c95ca`, integrated by `7cda335`) now keeps one
+  previously admitted surface painted as visual-only content during a delayed
+  destination start, transfers semantic/input authority immediately, and then
+  resizes the existing HWND target from presented geometry over a bounded
+  140 ms. Its focused Release run and 44 reviewed production-HWND frames cover
+  delayed Spotify/Games admission, rapid reversal, and same-identity reload
+  without the startup dialog, black clear, square edge, stale extent, or tray
+  loss. Physical packaged display/controller verification remains; do not add
+  widget-specific animation.
   Do not import web-
   centric staggered entrances, ambient looping motion, editorial serif/faux-
   macOS defaults, or decorative animation into the controller shell.

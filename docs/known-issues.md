@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll contains every control and restores the last master, microphone, or application focus target; packaged visual/controller verification remains. |
-| GBA-004 | P1 | Confirmed | OverlayHost presentation / invalidation | A black border/spacing flash is still reproduced when cycling into Spotify, so the earlier extent-swap fix is incomplete; DLV-020 owns instrumented frame continuity. |
+| GBA-004 | P1 | Verifying | OverlayHost presentation / invalidation | DLV-020 retains the prior admitted surface until the destination snapshot arrives, then performs one bounded in-place resize; 44 reviewed production-HWND frames show no startup dialog, black clear, square edge, stale extent, or tray loss. Physical packaged display/controller verification remains. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -191,13 +191,20 @@ describes the transition itself as jarring. The earlier same-extent/extent-
 changing placement optimization is therefore not sufficient evidence that
 presentation is visually continuous.
 
-**Root cause and implementation evidence:** The Audio-to-Network transition
-changes the requested panel extent, so Windows could expose an intermediate
-cleared/recreated surface between placement and the later repaint. Visible
-extent changes now use `SWP_NOREDRAW`, rebuild against the final client size,
-then synchronously commit one complete `RedrawWindow(...RDW_UPDATENOW...)`
-frame. Same-extent transitions remain repaint-only. Placement/targeting tests
-cover both branches; packaged Release visual verification is still required.
+**Root cause and implementation evidence:** The host synchronously painted its
+own `Starting isolated ...` surface before the queued destination snapshot
+request, and visible extent changes could recreate/clear the Direct2D target
+between placement and the later repaint. DLV-020 (`b0c95ca`, integrated by
+`7cda335`) retains one bounded admitted snapshot and exact surface as visual-
+only content until the destination snapshot is admitted; destination input,
+lifecycle, focus, and UI Automation authority transfer immediately. Admission
+then retargets a bounded 140 ms extent curve from presented geometry and resizes
+the existing HWND render target in place. The focused Release run passed the
+placement, targeting, transition, chrome, renderer, and two production-host
+fixtures. Forty-four reviewed HWND frames cover Audio, Network, delayed Spotify,
+delayed Games & Apps, rapid reversal, and same-identity Games reload without a
+startup dialog, black clear, square edge, stale extent, or tray loss. Physical
+packaged display/controller verification remains.
 
 **Acceptance:**
 

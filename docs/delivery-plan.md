@@ -210,6 +210,26 @@ controller/display evidence remain in the verification queue. Subsequent user
 testing exposed separate Library mutation/presentation regressions now bounded
 by DLV-024; the accepted authority and whole-state-reset design remains intact.
 
+### DLV-020 — Make widget switching visually continuous
+
+**State:** Done
+**Closing commit:** `b0c95ca` (`[DLV-020] make widget switching visually continuous`)
+**Integrated on `main`:** `7cda335`
+
+**Reviewer disposition:** Accepted. The host now retains one previously
+admitted snapshot and its surface as visual-only presentation while the
+destination worker has no admitted snapshot; input, lifecycle, focus, and UI
+Automation authority already belong to the destination. Snapshot admission
+starts a bounded 140 ms in-place extent transition from the currently
+presented geometry, reduced motion snaps, and interruption retargets without a
+new timer or settled work. The focused Release run passed 108,547 placement,
+54 targeting, 56 transition, 25 color-key chrome, and 4,685 renderer checks
+plus both production-host fixtures. Forty-four reviewed HWND captures retain
+Network through delayed Spotify startup, Spotify through delayed Games startup,
+and Games through same-identity reload without the `Starting isolated ...`
+surface, black clear, square edge, stale extent, or tray loss. Physical display,
+controller, and assistive-technology sign-off remains verification debt.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -605,7 +625,7 @@ by the widgets lane or a public protocol change not already represented.
 
 ### DLV-020 — Make widget switching visually continuous
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `7cda335`
 **Baseline:** `2a160b4`, the accepted platform-lane DLV-014 closing commit
 **Owner:** OverlayHost presentation, invalidation, rounded clipping, render
 target lifecycle, and transition tests
@@ -640,8 +660,8 @@ automation.
 
 ### DLV-021 — Correct shared text and component geometry end to end
 
-**State:** Ready after DLV-020
-**Baseline:** closing commit of DLV-020
+**State:** Assigned
+**Baseline:** `7cda335`, the accepted DLV-020 integration baseline
 **Owner:** native declarative measurement/paint, shared Button/ActionSurface/
 SectionHeader styles, and component-level semantic/capture tests
 
