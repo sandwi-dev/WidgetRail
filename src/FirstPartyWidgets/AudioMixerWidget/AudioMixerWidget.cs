@@ -59,11 +59,7 @@ public sealed class AudioMixerWidget : Widget
     private readonly AudioMixerOutputCommandPolicy _outputPending = new();
     private readonly AudioMixerInputCommandPolicy _inputPending = new();
     private readonly HashSet<Task> _commandWorkers = [];
-    private readonly SemaphoreSlim _deviceRetrySignal = new(0, 1);
-    private readonly SemaphoreSlim _inputRetrySignal = new(0, 1);
-    private CancellationTokenSource? _deviceAttemptLifetime;
-    private CancellationTokenSource? _inputAttemptLifetime;
-    private CancellationTokenSource? _runLifetime;
+    private AudioMixerProviderSession? _providerSession;
     private long _runGeneration;
     private int _activationCount;
     private int _fetchCount;
@@ -158,23 +154,20 @@ public sealed class AudioMixerWidget : Widget
         return AudioMixerPresentation.Render(state);
     }
 
-    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         Interlocked.Increment(ref _activationCount);
-        StartActiveRun(activeLifetime);
-        return ValueTask.CompletedTask;
+        await StartActiveRunAsync(activeLifetime).ConfigureAwait(false);
     }
 
-    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        StopActiveRun();
-        return ValueTask.CompletedTask;
+        await StopActiveRunAsync().ConfigureAwait(false);
     }
 
-    protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
+    protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        StopActiveRun();
-        return ValueTask.CompletedTask;
+        await StopActiveRunAsync().ConfigureAwait(false);
     }
 
     public override async ValueTask OnActionAsync(
@@ -211,13 +204,14 @@ public sealed class AudioMixerWidget : Widget
                 await ToggleInputMuteAsync(cancellationToken).ConfigureAwait(false);
                 break;
             case "devices.retry":
-                RetryOptionalSection(OptionalAudioSection.Devices);
+                RetryOptionalSection(AudioMixerProviderSection.Devices);
                 break;
             case "input.retry":
-                RetryOptionalSection(OptionalAudioSection.Input);
+                RetryOptionalSection(AudioMixerProviderSection.Input);
                 break;
             case "retry":
-                if (IsActive) StartActiveRun(ActiveCancellationToken);
+                if (IsActive)
+                    await StartActiveRunAsync(ActiveCancellationToken).ConfigureAwait(false);
                 break;
         }
     }
@@ -261,17 +255,19 @@ public sealed class AudioMixerWidget : Widget
         }
     }
 
-    private void StartActiveRun(CancellationToken activeLifetime)
+    private async ValueTask StartActiveRunAsync(CancellationToken activeLifetime)
     {
-        CancellationTokenSource? previous;
-        CancellationTokenSource current;
-        long generation;
+        AudioMixerProviderSession? previous;
+        AudioMixerProviderSession current;
         lock (_stateLock)
         {
-            previous = _runLifetime;
-            current = CancellationTokenSource.CreateLinkedTokenSource(activeLifetime);
-            _runLifetime = current;
-            generation = ++_runGeneration;
+            previous = _providerSession;
+            current = new AudioMixerProviderSession(
+                HostServices.Audio,
+                activeLifetime,
+                ApplyProviderObservation);
+            _providerSession = current;
+            ++_runGeneration;
             _viewState = AudioMixerViewState.Loading;
             _status = "Loading audio sessions…";
             _statusIsError = false;
@@ -283,22 +279,31 @@ public sealed class AudioMixerWidget : Widget
             _deviceState = AudioOptionalSectionState.Loading;
             _inputState = AudioOptionalSectionState.Loading;
         }
-        DrainSignal(_deviceRetrySignal);
-        DrainSignal(_inputRetrySignal);
-        previous?.Cancel();
-        previous?.Dispose();
         Invalidate();
-        _ = ObserveAudioAsync(generation, current.Token);
+        if (previous is not null)
+            await previous.StopAsync().ConfigureAwait(false);
+
+        var started = false;
+        lock (_stateLock)
+        {
+            if (ReferenceEquals(_providerSession, current) && !activeLifetime.IsCancellationRequested)
+            {
+                current.Start();
+                started = true;
+            }
+        }
+        if (!started)
+            await current.StopAsync().ConfigureAwait(false);
     }
 
-    private void StopActiveRun()
+    private async ValueTask StopActiveRunAsync()
     {
-        CancellationTokenSource? lifetime;
+        AudioMixerProviderSession? session;
         lock (_stateLock)
         {
             ++_runGeneration;
-            lifetime = _runLifetime;
-            _runLifetime = null;
+            session = _providerSession;
+            _providerSession = null;
             if (_sessions.Count != 0)
             {
                 var restored = _sessions.ToArray();
@@ -315,234 +320,87 @@ public sealed class AudioMixerWidget : Widget
             else _inputPending.Reset();
             _sessionPending.Clear();
         }
-        lifetime?.Cancel();
-        lifetime?.Dispose();
+        if (session is not null)
+            await session.StopAsync().ConfigureAwait(false);
     }
 
-    private async Task ObserveAudioAsync(long generation, CancellationToken cancellationToken)
+    private void ApplyProviderObservation(
+        AudioMixerProviderSession session,
+        AudioMixerProviderObservation observation)
     {
-        try
-        {
-            // Establish and acknowledge the coalesced event buffer before the
-            // current snapshot request. A full event received during the GET is
-            // applied afterward, closing the classic subscribe-after-fetch gap.
-            await using var sessionSubscription = await HostServices.Audio
-                .OpenSessionsSubscriptionAsync(cancellationToken).ConfigureAwait(false);
-            await using var outputSubscription = await HostServices.Audio
-                .OpenOutputSubscriptionAsync(cancellationToken).ConfigureAwait(false);
-            Interlocked.Increment(ref _fetchCount);
-            var output = await HostServices.Audio.GetOutputAsync(cancellationToken).ConfigureAwait(false);
-            var sessions = await HostServices.Audio.GetSessionsAsync(cancellationToken).ConfigureAwait(false);
-            if (!IsCurrentRun(generation, cancellationToken)) return;
-            ApplyOutput(output, generation);
-            ApplySessions(sessions, generation);
-
-            using var observers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var sessionObserver = ObserveSessionChangesAsync(
-                sessionSubscription, generation, observers.Token);
-            var outputObserver = ObserveOutputChangesAsync(
-                outputSubscription, generation, observers.Token);
-            var auxiliaryObservers = new[]
-            {
-                ObserveOptionalDevicesAsync(generation, observers.Token),
-                ObserveOptionalInputAsync(generation, observers.Token),
-            };
-            await Task.WhenAny(sessionObserver, outputObserver).ConfigureAwait(false);
-            observers.Cancel();
-            try
-            {
-                await Task.WhenAll(auxiliaryObservers.Append(sessionObserver).Append(outputObserver))
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (observers.IsCancellationRequested) { }
-
-            if (IsCurrentRun(generation, cancellationToken))
-                SetProviderError(AudioMixerViewState.ChannelClosed,
-                    "Audio service channel closed", generation);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // Leaving Visible/Interactive or replacing a retry run is normal.
-        }
-        catch (WidgetCapabilityUnavailableException)
-        {
-            SetProviderError(AudioMixerViewState.ServiceUnavailable,
-                "Host audio service unavailable", generation);
-        }
-        catch (WidgetCapabilityException exception)
-        {
-            var (state, status) = MapCapabilityFailure(exception.ErrorCode);
-            SetProviderError(state, status, generation);
-        }
-        catch (Exception)
-        {
-            SetProviderError(AudioMixerViewState.Error,
-                "Audio provider returned an unexpected error", generation);
-        }
-    }
-
-    private async Task ObserveOptionalDevicesAsync(long generation, CancellationToken cancellationToken)
-    {
-        while (IsCurrentRun(generation, cancellationToken))
-        {
-            SetOptionalLoading(OptionalAudioSection.Devices, generation);
-            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            SetOptionalAttempt(OptionalAudioSection.Devices, attempt, generation);
-            try
-            {
-                await using var subscription = await HostServices.Audio
-                    .OpenDevicesSubscriptionAsync(attempt.Token).ConfigureAwait(false);
-                ApplyDevices(await HostServices.Audio.GetDevicesAsync(attempt.Token)
-                    .ConfigureAwait(false), generation);
-                await ObserveDeviceChangesAsync(subscription, generation, attempt.Token)
-                    .ConfigureAwait(false);
-                if (!cancellationToken.IsCancellationRequested)
-                    SetOptionalFailure(OptionalAudioSection.Devices,
-                        AudioOptionalSectionState.Unavailable, generation);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (OperationCanceledException) when (attempt.IsCancellationRequested)
-            {
-                // Explicit section retry replaces only this attempt.
-            }
-            catch (Exception exception)
-            {
-                SetOptionalFailure(OptionalAudioSection.Devices,
-                    MapOptionalFailure(exception), generation);
-            }
-            finally
-            {
-                ClearOptionalAttempt(OptionalAudioSection.Devices, attempt, generation);
-            }
-            await _deviceRetrySignal.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async Task ObserveOptionalInputAsync(long generation, CancellationToken cancellationToken)
-    {
-        while (IsCurrentRun(generation, cancellationToken))
-        {
-            SetOptionalLoading(OptionalAudioSection.Input, generation);
-            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            SetOptionalAttempt(OptionalAudioSection.Input, attempt, generation);
-            try
-            {
-                await using var subscription = await HostServices.Audio
-                    .OpenInputSubscriptionAsync(attempt.Token).ConfigureAwait(false);
-                ApplyInput(await HostServices.Audio.GetInputAsync(attempt.Token)
-                    .ConfigureAwait(false), generation);
-                await ObserveInputChangesAsync(subscription, generation, attempt.Token)
-                    .ConfigureAwait(false);
-                if (!cancellationToken.IsCancellationRequested)
-                    SetOptionalFailure(OptionalAudioSection.Input,
-                        AudioOptionalSectionState.Unavailable, generation);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (OperationCanceledException) when (attempt.IsCancellationRequested)
-            {
-                // Explicit section retry replaces only this attempt.
-            }
-            catch (Exception exception)
-            {
-                SetOptionalFailure(OptionalAudioSection.Input,
-                    MapOptionalFailure(exception), generation);
-            }
-            finally
-            {
-                ClearOptionalAttempt(OptionalAudioSection.Input, attempt, generation);
-            }
-            await _inputRetrySignal.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async Task ObserveSessionChangesAsync(
-        IWidgetCapabilitySubscription<WidgetAudioSessionsChanged> subscription,
-        long generation,
-        CancellationToken cancellationToken)
-    {
-        await foreach (var change in subscription.ReadAllAsync(cancellationToken)
-                           .WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            if (!IsCurrentRun(generation, cancellationToken)) return;
-            if (!change.IsAvailable)
-            {
-                SetProviderError(AudioMixerViewState.ServiceUnavailable,
-                    "Windows audio session provider unavailable", generation);
-                continue;
-            }
-            ApplySessions(change.Sessions, generation);
-        }
-    }
-
-    private async Task ObserveOutputChangesAsync(
-        IWidgetCapabilitySubscription<WidgetAudioOutputChanged> subscription,
-        long generation,
-        CancellationToken cancellationToken)
-    {
-        await foreach (var change in subscription.ReadAllAsync(cancellationToken)
-                           .WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            if (!IsCurrentRun(generation, cancellationToken)) return;
-            if (!change.IsAvailable || change.Output is null)
-            {
-                SetProviderError(AudioMixerViewState.ServiceUnavailable,
-                    "Windows master output unavailable", generation);
-                continue;
-            }
-            ApplyOutput(change.Output, generation);
-        }
-    }
-
-    private async Task ObserveDeviceChangesAsync(
-        IWidgetCapabilitySubscription<WidgetAudioDevicesChanged> subscription,
-        long generation,
-        CancellationToken cancellationToken)
-    {
-        await foreach (var change in subscription.ReadAllAsync(cancellationToken)
-                           .WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            if (!IsCurrentRun(generation, cancellationToken)) return;
-            if (!change.IsAvailable)
-                SetOptionalFailure(OptionalAudioSection.Devices,
-                    AudioOptionalSectionState.Unavailable, generation);
-            else
-                ApplyDevices(change.Devices, generation);
-        }
-    }
-
-    private async Task ObserveInputChangesAsync(
-        IWidgetCapabilitySubscription<WidgetAudioInputChanged> subscription,
-        long generation,
-        CancellationToken cancellationToken)
-    {
-        await foreach (var change in subscription.ReadAllAsync(cancellationToken)
-                           .WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            if (!IsCurrentRun(generation, cancellationToken)) return;
-            if (!change.IsAvailable)
-                SetOptionalFailure(OptionalAudioSection.Input,
-                    AudioOptionalSectionState.Unavailable, generation);
-            else if (change.Input is null)
-                ClearInput(generation, AudioOptionalSectionState.Empty);
-            else
-                ApplyInput(change.Input, generation);
-        }
-    }
-
-    private void ApplyOutput(WidgetAudioOutput incoming, long generation)
-    {
-        var normalized = new WidgetAudioOutput(
-            double.IsFinite(incoming.Volume) ? Math.Clamp(incoming.Volume, 0, 1) : 0,
-            incoming.IsMuted);
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
+            if (!ReferenceEquals(_providerSession, session)) return;
+        }
+
+        switch (observation.Kind)
+        {
+            case AudioMixerProviderObservationKind.RequiredFetchStarted:
+                Interlocked.Increment(ref _fetchCount);
+                break;
+            case AudioMixerProviderObservationKind.RequiredSnapshot:
+                ApplyRequiredSnapshot(observation.Output!, observation.Sessions, session);
+                break;
+            case AudioMixerProviderObservationKind.SessionsChanged:
+                ApplySessions(observation.Sessions, session);
+                break;
+            case AudioMixerProviderObservationKind.OutputChanged:
+                ApplyOutput(observation.Output!, session);
+                break;
+            case AudioMixerProviderObservationKind.DevicesLoading:
+                SetOptionalLoading(AudioMixerProviderSection.Devices, session);
+                break;
+            case AudioMixerProviderObservationKind.DevicesChanged:
+                ApplyDevices(observation.Devices, session);
+                break;
+            case AudioMixerProviderObservationKind.DevicesFailed:
+                SetOptionalFailure(AudioMixerProviderSection.Devices,
+                    observation.OptionalState, session);
+                break;
+            case AudioMixerProviderObservationKind.InputLoading:
+                SetOptionalLoading(AudioMixerProviderSection.Input, session);
+                break;
+            case AudioMixerProviderObservationKind.InputChanged:
+                ApplyInput(observation.Input!, session);
+                break;
+            case AudioMixerProviderObservationKind.InputCleared:
+                ClearInput(session, observation.OptionalState);
+                break;
+            case AudioMixerProviderObservationKind.InputFailed:
+                SetOptionalFailure(AudioMixerProviderSection.Input,
+                    observation.OptionalState, session);
+                break;
+            case AudioMixerProviderObservationKind.RequiredFailed:
+                SetProviderError(observation.ViewState, observation.Status!, session);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(observation));
+        }
+    }
+
+    private void ApplyRequiredSnapshot(
+        WidgetAudioOutput incomingOutput,
+        IReadOnlyList<WidgetAudioSession>? incomingSessions,
+        AudioMixerProviderSession providerSession)
+    {
+        var output = NormalizeOutput(incomingOutput);
+        var sessions = NormalizeSessions(incomingSessions);
+        var (controls, actions) = BuildSessionRouting(sessions);
+        lock (_stateLock)
+        {
+            if (!ReferenceEquals(_providerSession, providerSession)) return;
+            _output = _outputPending.ReconcileProvider(output, VolumesMatch);
+            ApplySessionsLocked(sessions, controls, actions);
+        }
+        Invalidate();
+    }
+
+    private void ApplyOutput(WidgetAudioOutput incoming, AudioMixerProviderSession session)
+    {
+        var normalized = NormalizeOutput(incoming);
+        lock (_stateLock)
+        {
+            if (!ReferenceEquals(_providerSession, session)) return;
             normalized = _outputPending.ReconcileProvider(normalized, VolumesMatch);
             _output = normalized;
             UpdateHealthyStateLocked();
@@ -550,7 +408,13 @@ public sealed class AudioMixerWidget : Widget
         Invalidate();
     }
 
-    private void ApplyDevices(IReadOnlyList<WidgetAudioDevice>? incoming, long generation)
+    private static WidgetAudioOutput NormalizeOutput(WidgetAudioOutput incoming) =>
+        new(double.IsFinite(incoming.Volume) ? Math.Clamp(incoming.Volume, 0, 1) : 0,
+            incoming.IsMuted);
+
+    private void ApplyDevices(
+        IReadOnlyList<WidgetAudioDevice>? incoming,
+        AudioMixerProviderSession session)
     {
         var devices = (incoming ?? [])
             .Where(device => device is not null && !string.IsNullOrWhiteSpace(device.DeviceId) &&
@@ -561,7 +425,7 @@ public sealed class AudioMixerWidget : Widget
             .ToArray();
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
+            if (!ReferenceEquals(_providerSession, session)) return;
             _devices = devices;
             _deviceState = devices.Length == 0
                 ? AudioOptionalSectionState.Empty
@@ -570,25 +434,25 @@ public sealed class AudioMixerWidget : Widget
         Invalidate();
     }
 
-    private void ClearDevices(long generation, AudioOptionalSectionState state)
+    private void ClearDevices(AudioMixerProviderSession session, AudioOptionalSectionState state)
     {
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
+            if (!ReferenceEquals(_providerSession, session)) return;
             _devices = [];
             _deviceState = state;
         }
         Invalidate();
     }
 
-    private void ApplyInput(WidgetAudioInput incoming, long generation)
+    private void ApplyInput(WidgetAudioInput incoming, AudioMixerProviderSession session)
     {
         var normalized = new WidgetAudioInput(
             double.IsFinite(incoming.Volume) ? Math.Clamp(incoming.Volume, 0, 1) : 0,
             incoming.IsMuted);
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
+            if (!ReferenceEquals(_providerSession, session)) return;
             normalized = _inputPending.ReconcileProvider(normalized, VolumesMatch);
             _input = normalized;
             _inputState = AudioOptionalSectionState.Healthy;
@@ -597,11 +461,11 @@ public sealed class AudioMixerWidget : Widget
         Invalidate();
     }
 
-    private void ClearInput(long generation, AudioOptionalSectionState state)
+    private void ClearInput(AudioMixerProviderSession session, AudioOptionalSectionState state)
     {
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
+            if (!ReferenceEquals(_providerSession, session)) return;
             _input = null;
             _inputState = state;
             _inputPending.Reset();
@@ -609,12 +473,14 @@ public sealed class AudioMixerWidget : Widget
         Invalidate();
     }
 
-    private void SetOptionalLoading(OptionalAudioSection section, long generation)
+    private void SetOptionalLoading(
+        AudioMixerProviderSection section,
+        AudioMixerProviderSession session)
     {
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
-            if (section == OptionalAudioSection.Devices)
+            if (!ReferenceEquals(_providerSession, session)) return;
+            if (section == AudioMixerProviderSection.Devices)
                 _deviceState = AudioOptionalSectionState.Loading;
             else
                 _inputState = AudioOptionalSectionState.Loading;
@@ -623,88 +489,35 @@ public sealed class AudioMixerWidget : Widget
     }
 
     private void SetOptionalFailure(
-        OptionalAudioSection section,
+        AudioMixerProviderSection section,
         AudioOptionalSectionState state,
-        long generation)
+        AudioMixerProviderSession session)
     {
         if (!IsRetryable(state))
             throw new ArgumentOutOfRangeException(nameof(state));
-        if (section == OptionalAudioSection.Devices)
-            ClearDevices(generation, state);
+        if (section == AudioMixerProviderSection.Devices)
+            ClearDevices(session, state);
         else
-            ClearInput(generation, state);
+            ClearInput(session, state);
     }
 
-    private void RetryOptionalSection(OptionalAudioSection section)
+    private void RetryOptionalSection(AudioMixerProviderSection section)
     {
-        SemaphoreSlim signal;
-        CancellationTokenSource? attempt;
+        AudioMixerProviderSession? session;
         lock (_stateLock)
         {
-            if (_runLifetime is null) return;
-            if (section == OptionalAudioSection.Devices)
+            session = _providerSession;
+            if (session is null) return;
+            if (section == AudioMixerProviderSection.Devices)
             {
                 if (!IsRetryable(_deviceState)) return;
-                _deviceState = AudioOptionalSectionState.Loading;
-                signal = _deviceRetrySignal;
-                attempt = _deviceAttemptLifetime;
             }
             else
             {
                 if (!IsRetryable(_inputState)) return;
-                _inputState = AudioOptionalSectionState.Loading;
-                signal = _inputRetrySignal;
-                attempt = _inputAttemptLifetime;
             }
         }
-        try { signal.Release(); }
-        catch (SemaphoreFullException) { }
-        attempt?.Cancel();
-        Invalidate();
-    }
-
-    private void SetOptionalAttempt(
-        OptionalAudioSection section,
-        CancellationTokenSource attempt,
-        long generation)
-    {
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return;
-            if (section == OptionalAudioSection.Devices)
-                _deviceAttemptLifetime = attempt;
-            else
-                _inputAttemptLifetime = attempt;
-        }
-    }
-
-    private void ClearOptionalAttempt(
-        OptionalAudioSection section,
-        CancellationTokenSource attempt,
-        long generation)
-    {
-        lock (_stateLock)
-        {
-            if (_runGeneration != generation) return;
-            if (section == OptionalAudioSection.Devices &&
-                ReferenceEquals(_deviceAttemptLifetime, attempt))
-                _deviceAttemptLifetime = null;
-            else if (section == OptionalAudioSection.Input &&
-                     ReferenceEquals(_inputAttemptLifetime, attempt))
-                _inputAttemptLifetime = null;
-        }
-    }
-
-    private static AudioOptionalSectionState MapOptionalFailure(Exception exception)
-    {
-        if (exception is not WidgetCapabilityException capability)
-            return AudioOptionalSectionState.Unavailable;
-        return capability.ErrorCode switch
-        {
-            "permission_denied" => AudioOptionalSectionState.PermissionDenied,
-            "capability_revoked" => AudioOptionalSectionState.Revoked,
-            _ => AudioOptionalSectionState.Unavailable,
-        };
+        session.Retry(section);
     }
 
     private static bool IsRetryable(AudioOptionalSectionState state) => state is
@@ -712,62 +525,67 @@ public sealed class AudioMixerWidget : Widget
         AudioOptionalSectionState.Revoked or
         AudioOptionalSectionState.Unavailable;
 
-    private static void DrainSignal(SemaphoreSlim signal)
-    {
-        while (signal.Wait(0)) { }
-    }
-
-    private void ApplySessions(IReadOnlyList<WidgetAudioSession>? incoming, long generation)
+    private void ApplySessions(
+        IReadOnlyList<WidgetAudioSession>? incoming,
+        AudioMixerProviderSession providerSession)
     {
         var normalized = NormalizeSessions(incoming);
         var (controls, actions) = BuildSessionRouting(normalized);
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
-            var previousId = _selectedSessionId;
-            var previousIndex = _selectedIndex;
-
-            var presentIds = new HashSet<string>(StringComparer.Ordinal);
-            for (var index = 0; index < normalized.Count; index++)
-            {
-                var session = normalized[index];
-                presentIds.Add(session.SessionId);
-                if (!_sessionPending.TryGetValue(session.SessionId, out var pending))
-                {
-                    pending = new AudioMixerSessionCommandPolicy(session);
-                    _sessionPending.Add(session.SessionId, pending);
-                }
-                session = pending.ReconcileProvider(session, VolumesMatch);
-                normalized[index] = session;
-            }
-
-            foreach (var staleId in _sessionPending.Keys
-                         .Where(id => !presentIds.Contains(id) && _sessionPending[id].CanDiscard)
-                         .ToArray())
-                _sessionPending.Remove(staleId);
-
-            _sessions = normalized;
-            _sessionControls = controls;
-            _sessionActions = actions;
-            if (normalized.Count == 0)
-            {
-                _selectedSessionId = null;
-                _selectedIndex = 0;
-            }
-            else
-            {
-                var retained = previousId is null
-                    ? -1
-                    : normalized.FindIndex(session =>
-                        string.Equals(session.SessionId, previousId, StringComparison.Ordinal));
-                _selectedIndex = retained >= 0
-                    ? retained
-                    : Math.Clamp(previousIndex, 0, normalized.Count - 1);
-                _selectedSessionId = normalized[_selectedIndex].SessionId;
-            }
-            UpdateHealthyStateLocked();
+            if (!ReferenceEquals(_providerSession, providerSession)) return;
+            ApplySessionsLocked(normalized, controls, actions);
         }
         Invalidate();
+    }
+
+    private void ApplySessionsLocked(
+        List<WidgetAudioSession> normalized,
+        IReadOnlyDictionary<string, AudioMixerSessionControlIds> controls,
+        IReadOnlyDictionary<string, SessionActionTarget> actions)
+    {
+        var previousId = _selectedSessionId;
+        var previousIndex = _selectedIndex;
+
+        var presentIds = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < normalized.Count; index++)
+        {
+            var session = normalized[index];
+            presentIds.Add(session.SessionId);
+            if (!_sessionPending.TryGetValue(session.SessionId, out var pending))
+            {
+                pending = new AudioMixerSessionCommandPolicy(session);
+                _sessionPending.Add(session.SessionId, pending);
+            }
+            session = pending.ReconcileProvider(session, VolumesMatch);
+            normalized[index] = session;
+        }
+
+        foreach (var staleId in _sessionPending.Keys
+                     .Where(id => !presentIds.Contains(id) && _sessionPending[id].CanDiscard)
+                     .ToArray())
+            _sessionPending.Remove(staleId);
+
+        _sessions = normalized;
+        _sessionControls = controls;
+        _sessionActions = actions;
+        if (normalized.Count == 0)
+        {
+            _selectedSessionId = null;
+            _selectedIndex = 0;
+        }
+        else
+        {
+            var retained = previousId is null
+                ? -1
+                : normalized.FindIndex(session =>
+                    string.Equals(session.SessionId, previousId, StringComparison.Ordinal));
+            _selectedIndex = retained >= 0
+                ? retained
+                : Math.Clamp(previousIndex, 0, normalized.Count - 1);
+            _selectedSessionId = normalized[_selectedIndex].SessionId;
+        }
+        UpdateHealthyStateLocked();
     }
 
     private void UpdateHealthyStateLocked()
@@ -869,7 +687,7 @@ public sealed class AudioMixerWidget : Widget
             _status = $"Setting {session.DisplayName} to {VolumePercent(desired)}%…";
             _statusIsError = false;
             generation = _runGeneration;
-            runToken = _runLifetime?.Token ?? ActiveCancellationToken;
+            runToken = _providerSession?.CancellationToken ?? ActiveCancellationToken;
         }
         Invalidate();
         if (startWorker)
@@ -896,7 +714,7 @@ public sealed class AudioMixerWidget : Widget
             _status = desired ? $"Muting {session.DisplayName}…" : $"Unmuting {session.DisplayName}…";
             _statusIsError = false;
             generation = _runGeneration;
-            runToken = _runLifetime?.Token ?? ActiveCancellationToken;
+            runToken = _providerSession?.CancellationToken ?? ActiveCancellationToken;
         }
         Invalidate();
         if (startWorker)
@@ -924,7 +742,7 @@ public sealed class AudioMixerWidget : Widget
             _status = $"Setting master output to {VolumePercent(desired)}%…";
             _statusIsError = false;
             generation = _runGeneration;
-            runToken = _runLifetime?.Token ?? ActiveCancellationToken;
+            runToken = _providerSession?.CancellationToken ?? ActiveCancellationToken;
         }
         Invalidate();
         if (startWorker) TrackCommandWorker(RunOutputVolumeQueueAsync(generation, runToken));
@@ -948,7 +766,7 @@ public sealed class AudioMixerWidget : Widget
             _status = desired ? "Muting master output…" : "Unmuting master output…";
             _statusIsError = false;
             generation = _runGeneration;
-            runToken = _runLifetime?.Token ?? ActiveCancellationToken;
+            runToken = _providerSession?.CancellationToken ?? ActiveCancellationToken;
         }
         Invalidate();
         if (startWorker) TrackCommandWorker(RunOutputMuteQueueAsync(generation, runToken));
@@ -975,7 +793,7 @@ public sealed class AudioMixerWidget : Widget
             _status = $"Setting microphone to {VolumePercent(desired)}%…";
             _statusIsError = false;
             generation = _runGeneration;
-            runToken = _runLifetime?.Token ?? ActiveCancellationToken;
+            runToken = _providerSession?.CancellationToken ?? ActiveCancellationToken;
         }
         Invalidate();
         if (startWorker) TrackCommandWorker(RunInputVolumeQueueAsync(generation, runToken));
@@ -999,7 +817,7 @@ public sealed class AudioMixerWidget : Widget
             _status = desired ? "Muting microphone…" : "Unmuting microphone…";
             _statusIsError = false;
             generation = _runGeneration;
-            runToken = _runLifetime?.Token ?? ActiveCancellationToken;
+            runToken = _providerSession?.CancellationToken ?? ActiveCancellationToken;
         }
         Invalidate();
         if (startWorker) TrackCommandWorker(RunInputMuteQueueAsync(generation, runToken));
@@ -1805,17 +1623,14 @@ public sealed class AudioMixerWidget : Widget
         _sessions = copy;
     }
 
-    private bool IsCurrentRun(long generation, CancellationToken cancellationToken)
-    {
-        lock (_stateLock)
-            return _runGeneration == generation && !cancellationToken.IsCancellationRequested;
-    }
-
-    private void SetProviderError(AudioMixerViewState state, string status, long generation)
+    private void SetProviderError(
+        AudioMixerViewState state,
+        string status,
+        AudioMixerProviderSession session)
     {
         lock (_stateLock)
         {
-            if (_runGeneration != generation) return;
+            if (!ReferenceEquals(_providerSession, session)) return;
             _sessions = [];
             _sessionControls = new Dictionary<string, AudioMixerSessionControlIds>(StringComparer.Ordinal);
             _sessionActions = new Dictionary<string, SessionActionTarget>(StringComparer.Ordinal);
@@ -1834,17 +1649,6 @@ public sealed class AudioMixerWidget : Widget
         }
         Invalidate();
     }
-
-    private static (AudioMixerViewState State, string Status) MapCapabilityFailure(string errorCode) =>
-        errorCode switch
-        {
-            "permission_denied" => (AudioMixerViewState.PermissionDenied, "Audio read permission denied"),
-            "lifecycle_denied" => (AudioMixerViewState.LifecycleDenied, "Audio request denied by widget lifecycle"),
-            "channel_closed" => (AudioMixerViewState.ChannelClosed, "Audio service channel closed"),
-            "platform_unavailable" or "provider_unavailable" =>
-                (AudioMixerViewState.ServiceUnavailable, "Windows audio provider unavailable"),
-            _ => (AudioMixerViewState.Error, "Audio provider request failed"),
-        };
 
     private static string MapControlFailure(string errorCode) => errorCode switch
     {
@@ -1870,11 +1674,5 @@ public sealed class AudioMixerWidget : Widget
     }
 
     private sealed record SessionActionTarget(string SessionId, SessionAction Action);
-
-    private enum OptionalAudioSection
-    {
-        Devices,
-        Input,
-    }
 
 }
