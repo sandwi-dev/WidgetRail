@@ -16,6 +16,7 @@ internal static class BridgeClientRegistryScenarios
         first.RaiseInvalidated(7);
         first.RaiseActionFailed("old-action");
         first.RaiseFailure();
+        await fixture.Registry.DrainNotificationsAsync(initial.Id);
         RegistryAssert.Equal(1, fixture.Invalidations.Count);
         RegistryAssert.Equal(1, fixture.ActionFailures.Count);
         RegistryAssert.Equal(1, fixture.Failures.Count);
@@ -52,6 +53,7 @@ internal static class BridgeClientRegistryScenarios
         await fixture.SetLifecycleAsync(replacement.Id, WidgetLifecycleState.Interactive);
         var second = fixture.Clients[1];
         second.RaiseInvalidated(9);
+        await fixture.Registry.DrainNotificationsAsync(replacement.Id);
         RegistryAssert.Equal(2, fixture.Invalidations.Count);
         RegistryAssert.Equal(Fingerprint('c')[..32].ToLowerInvariant(),
             fixture.Registry.CatalogSnapshot().Catalog.Widgets.Single().RuntimeGeneration);
@@ -204,17 +206,14 @@ internal static class BridgeClientRegistryScenarios
                 WidgetLifecycleState.Visible,
                 CancellationToken.None,
                 CancellationToken.None);
-            RegistryAssert.Equal(1, eventFixture.Clients.Count);
-            RegistryAssert.True(!old.Disposed.IsCompleted && !replacementOperation.IsCompleted,
-                "Replacement passed an admitted old-generation event publication.");
-
-            eventFixture.ReleaseInvalidationPublication();
+            await eventFixture.InvalidationPublicationCancelled.WaitAsync(TimeSpan.FromSeconds(2));
             await eventFixture.InvalidationPublicationCompleted.WaitAsync(TimeSpan.FromSeconds(2));
             using var replacementPublication = await replacementOperation.WaitAsync(
                 TimeSpan.FromSeconds(2));
             await old.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
             RegistryAssert.Equal(2, eventFixture.Clients.Count);
-            RegistryAssert.Equal(1, eventFixture.Invalidations.Count);
+            RegistryAssert.Equal(0, eventFixture.Invalidations.Count);
+            RegistryAssert.Equal(1, old.DisposeCount);
         }
 
         await using var resultFixture = new RegistryFixture(Catalog(initial));
@@ -237,6 +236,255 @@ internal static class BridgeClientRegistryScenarios
             TimeSpan.FromSeconds(2));
         await resultOld.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
         RegistryAssert.Equal(2, resultFixture.Clients.Count);
+    }
+
+    internal static async Task NotificationLaneBoundsAndBalancesAdmission()
+    {
+        var failures = 0;
+        var accepted = 0;
+        var released = 0;
+        var firstReleased = 0;
+        var pendingInvalidationReleased = 0;
+        var coalescedReleased = 0;
+        var fullReleased = 0;
+        var closedReleased = 0;
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var lane = new BridgeClientNotificationLane(_ => failures++);
+
+        BridgeClientNotificationAdmission Enqueue(
+            BridgeClientNotificationKind kind,
+            Func<CancellationToken, Task> publish,
+            Action release)
+        {
+            var admission = lane.Enqueue(kind, publish, release, out var startPump);
+            if (admission == BridgeClientNotificationAdmission.Accepted) accepted++;
+            if (startPump) lane.StartPump();
+            return admission;
+        }
+
+        var first = Enqueue(
+            BridgeClientNotificationKind.Invalidation,
+            async cancellationToken =>
+            {
+                RegistryAssert.True(!lane.IsGateHeldByCurrentThread,
+                    "The lane invoked external publication while holding its gate.");
+                entered.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                    .ConfigureAwait(false);
+            },
+            () =>
+            {
+                RegistryAssert.True(!lane.IsGateHeldByCurrentThread,
+                    "The lane released a registry admission while holding its gate.");
+                firstReleased++;
+                released++;
+            });
+        RegistryAssert.Equal(BridgeClientNotificationAdmission.Accepted, first);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var pending = Enqueue(
+            BridgeClientNotificationKind.Invalidation,
+            _ => Task.CompletedTask,
+            () => { pendingInvalidationReleased++; released++; });
+        var coalesced = Enqueue(
+            BridgeClientNotificationKind.Invalidation,
+            _ => Task.CompletedTask,
+            () => { coalescedReleased++; released++; });
+        RegistryAssert.Equal(BridgeClientNotificationAdmission.Accepted, pending);
+        RegistryAssert.Equal(BridgeClientNotificationAdmission.Coalesced, coalesced);
+        for (var index = 0; index < BridgeClientNotificationLane.MaximumPendingFailures; index++)
+        {
+            RegistryAssert.Equal(
+                BridgeClientNotificationAdmission.Accepted,
+                Enqueue(
+                    BridgeClientNotificationKind.Failure,
+                    _ => Task.CompletedTask,
+                    () => released++));
+        }
+        var full = Enqueue(
+            BridgeClientNotificationKind.Failure,
+            _ => Task.CompletedTask,
+            () => { fullReleased++; released++; });
+        RegistryAssert.Equal(BridgeClientNotificationAdmission.RejectedFull, full);
+        RegistryAssert.Equal(33, lane.PendingCount);
+        RegistryAssert.Equal(1, lane.DroppedFailures);
+        RegistryAssert.Equal(34, accepted);
+
+        await lane.CloseAndDrainAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.Equal(34, released);
+        RegistryAssert.Equal(1, firstReleased);
+        RegistryAssert.Equal(1, pendingInvalidationReleased);
+        RegistryAssert.Equal(0, coalescedReleased);
+        RegistryAssert.Equal(0, fullReleased);
+        RegistryAssert.Equal(0, failures);
+        RegistryAssert.Equal(0, lane.PendingCount);
+
+        var closed = Enqueue(
+            BridgeClientNotificationKind.Failure,
+            _ => Task.CompletedTask,
+            () => { closedReleased++; released++; });
+        RegistryAssert.Equal(BridgeClientNotificationAdmission.RejectedClosed, closed);
+        RegistryAssert.Equal(34, accepted);
+        RegistryAssert.Equal(34, released);
+        RegistryAssert.Equal(0, closedReleased);
+
+        var orderingEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var orderingRelease = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var published = new List<int>();
+        var orderingLane = new BridgeClientNotificationLane(_ => failures++);
+        RegistryAssert.Equal(
+            BridgeClientNotificationAdmission.Accepted,
+            orderingLane.Enqueue(
+                BridgeClientNotificationKind.Invalidation,
+                async cancellationToken =>
+                {
+                    orderingEntered.TrySetResult();
+                    await orderingRelease.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    published.Add(1);
+                },
+                () => { },
+                out var startOrderingPump));
+        RegistryAssert.True(startOrderingPump);
+        orderingLane.StartPump();
+        await orderingEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.Equal(
+            BridgeClientNotificationAdmission.Accepted,
+            orderingLane.Enqueue(
+                BridgeClientNotificationKind.Invalidation,
+                _ =>
+                {
+                    published.Add(2);
+                    return Task.CompletedTask;
+                },
+                () => { },
+                out _));
+        RegistryAssert.Equal(
+            BridgeClientNotificationAdmission.Coalesced,
+            orderingLane.Enqueue(
+                BridgeClientNotificationKind.Invalidation,
+                _ =>
+                {
+                    published.Add(3);
+                    return Task.CompletedTask;
+                },
+                () => { },
+                out _));
+        orderingRelease.TrySetResult();
+        await orderingLane.DrainAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.SequenceEqual([1, 3], published);
+        await orderingLane.CloseAndDrainAsync();
+    }
+
+    internal static async Task NotificationBurstIsBoundedAndRetires()
+    {
+        var initial = Widget("notification-burst", worker: 'b', catalog: 'b');
+        var replacement = initial with
+        {
+            WorkerFingerprint = Fingerprint('c'),
+            CatalogFingerprint = Fingerprint('c'),
+        };
+        await using var fixture = new RegistryFixture(Catalog(initial));
+        await fixture.SetLifecycleAsync(initial.Id, WidgetLifecycleState.Visible);
+        fixture.BlockInvalidationPublication = true;
+        var old = fixture.Clients.Single();
+        old.RaiseInvalidated(1);
+        await fixture.InvalidationPublicationEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        for (var revision = 2; revision <= 100; revision++) old.RaiseInvalidated(revision);
+        for (var index = 0; index < 100; index++) old.RaiseActionFailed($"failure-{index}");
+
+        var bounded = fixture.Registry.NotificationStatus(initial.Id);
+        RegistryAssert.Equal(33, bounded.Pending);
+        RegistryAssert.Equal(68, bounded.DroppedFailures);
+        RegistryAssert.Equal(34, bounded.ActivePublications);
+        RegistryAssert.True(!bounded.IsRetiring);
+
+        RegistryAssert.True(fixture.Registry.ApplyCatalog(Catalog(replacement), revision: 1));
+        await fixture.InvalidationPublicationCancelled.WaitAsync(TimeSpan.FromSeconds(2));
+        await fixture.SetLifecycleAsync(replacement.Id, WidgetLifecycleState.Visible);
+        await old.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.Equal(1, old.DisposeCount);
+        RegistryAssert.Equal(0, fixture.Invalidations.Count);
+        RegistryAssert.Equal(0, fixture.ActionFailures.Count);
+        var current = fixture.Registry.NotificationStatus(replacement.Id);
+        RegistryAssert.Equal(0, current.Pending);
+        RegistryAssert.Equal(0, current.ActivePublications);
+        RegistryAssert.Equal(0, current.DroppedFailures);
+    }
+
+    internal static async Task CancelledRestartTransfersRetirement()
+    {
+        var configured = Widget("restart-cancel", worker: 'd', catalog: 'd');
+        await using var fixture = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) =>
+            {
+                if (client.ClientGeneration == 1) client.BlockDispose = true;
+            });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        fixture.BlockInvalidationPublication = true;
+        var old = fixture.Clients.Single();
+        old.RaiseInvalidated(1);
+        await fixture.InvalidationPublicationEntered.WaitAsync(TimeSpan.FromSeconds(2));
+
+        using var cancellation = new CancellationTokenSource();
+        var restart = fixture.Registry.RestartAsync(configured.Id, cancellation.Token);
+        await old.DisposeEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        await fixture.InvalidationPublicationCancelled.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        _ = await RegistryAssert.ThrowsAsync<OperationCanceledException>(() => restart);
+
+        var concurrent = fixture.Registry.SetLifecycleAsync(
+            configured.Id,
+            WidgetLifecycleState.Visible,
+            CancellationToken.None,
+            CancellationToken.None);
+        RegistryAssert.True(!concurrent.IsCompleted,
+            "Cancelled restart released its reserved generation before exact retirement completed.");
+        old.ReleaseDispose();
+        using var current = await concurrent.WaitAsync(TimeSpan.FromSeconds(2));
+        await old.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.Equal(1, old.DisposeCount);
+        RegistryAssert.Equal(2, fixture.Clients.Count);
+        RegistryAssert.Equal(1, fixture.Registry.RunningWorkerCount);
+
+        var terminal = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) => client.BlockDispose = true);
+        await terminal.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        var terminalOld = terminal.Clients.Single();
+        using var terminalCancellation = new CancellationTokenSource();
+        var terminalRestart = terminal.Registry.RestartAsync(
+            configured.Id, terminalCancellation.Token);
+        await terminalOld.DisposeEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        terminalCancellation.Cancel();
+        _ = await RegistryAssert.ThrowsAsync<OperationCanceledException>(() => terminalRestart);
+        var firstDispose = terminal.Registry.DisposeAsync().AsTask();
+        var secondDispose = terminal.Registry.DisposeAsync().AsTask();
+        RegistryAssert.True(!firstDispose.IsCompleted && !secondDispose.IsCompleted,
+            "Terminal registry disposal returned before transferred restart retirement.");
+        terminalOld.ReleaseDispose();
+        await Task.WhenAll(firstDispose, secondDispose).WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.Equal(1, terminalOld.DisposeCount);
+        RegistryAssert.Equal(1, terminal.Clients.Count);
+        await terminal.DisposeAsync();
+    }
+
+    internal static async Task ExternalRetirementStartsOutsideIdentityGate()
+    {
+        var configured = Widget("external-dispose", worker: 'e', catalog: 'e');
+        await using var fixture = new RegistryFixture(Catalog(configured));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        var client = fixture.Clients.Single();
+        client.OnDisposeStarted = () => RegistryAssert.True(
+            !fixture.Registry.IsGateHeldByCurrentThread,
+            "External client disposal began under the registry identity gate.");
+
+        RegistryAssert.True(fixture.Registry.ApplyCatalog(Catalog(), revision: 1));
+        await client.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.Equal(1, client.DisposeCount);
     }
 
     internal static async Task BudgetRefusalAndFailedStartReleaseReservations()
@@ -317,7 +565,9 @@ internal static class BridgeClientRegistryScenarios
             Catalog(throwing, healthy),
             configure: (configured, client) =>
             {
-                if (configured.Id == throwing.Id) client.ThrowOnDispose = true;
+                if (configured.Id == throwing.Id)
+                    client.DisposeFailure = new OutOfMemoryException(
+                        "synthetic fatal disposal failure");
             });
         await fixture.SetLifecycleAsync(throwing.Id, WidgetLifecycleState.Visible);
         await fixture.SetLifecycleAsync(healthy.Id, WidgetLifecycleState.Visible);
@@ -362,9 +612,9 @@ internal sealed class RegistryFixture : IAsyncDisposable
     private readonly Action<ConfiguredWidget, RegistryTestClient>? _configure;
     private readonly TaskCompletionSource _invalidationPublicationEntered = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource _invalidationPublicationRelease = new(
-        TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _invalidationPublicationCompleted = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _invalidationPublicationCancelled = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal RegistryFixture(
@@ -378,27 +628,37 @@ internal sealed class RegistryFixture : IAsyncDisposable
             catalog,
             options ?? new WorkerResidencyBudgetOptions(),
             CreateClient,
-            async item =>
+            async (item, cancellationToken) =>
             {
+                if (BlockInvalidationPublication)
+                {
+                    _invalidationPublicationEntered.TrySetResult();
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _invalidationPublicationCancelled.TrySetResult();
+                        throw;
+                    }
+                    finally
+                    {
+                        _invalidationPublicationCompleted.TrySetResult();
+                    }
+                }
                 Invalidations.Add(item);
-                if (!BlockInvalidationPublication) return;
-                _invalidationPublicationEntered.TrySetResult();
-                try
-                {
-                    await _invalidationPublicationRelease.Task.ConfigureAwait(false);
-                }
-                finally
-                {
-                    _invalidationPublicationCompleted.TrySetResult();
-                }
             },
-            item =>
+            (item, cancellationToken) =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ActionFailures.Add(item);
                 return Task.CompletedTask;
             },
-            item =>
+            (item, cancellationToken) =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 Failures.Add(item);
                 return Task.CompletedTask;
             },
@@ -413,6 +673,7 @@ internal sealed class RegistryFixture : IAsyncDisposable
     internal bool BlockInvalidationPublication { get; set; }
     internal Task InvalidationPublicationEntered => _invalidationPublicationEntered.Task;
     internal Task InvalidationPublicationCompleted => _invalidationPublicationCompleted.Task;
+    internal Task InvalidationPublicationCancelled => _invalidationPublicationCancelled.Task;
 
     public ValueTask DisposeAsync() => Registry.DisposeAsync();
 
@@ -435,9 +696,6 @@ internal sealed class RegistryFixture : IAsyncDisposable
             widgetId, CancellationToken.None);
         return publication.Value;
     }
-
-    internal void ReleaseInvalidationPublication() =>
-        _invalidationPublicationRelease.TrySetResult();
 
     private IBridgeWidgetClient CreateClient(
         ConfiguredWidget configured,
@@ -486,9 +744,10 @@ internal sealed class RegistryTestClient(
     internal int ClientGeneration { get; } = clientGeneration;
     internal bool BlockSnapshots { get; set; }
     internal bool BlockDispose { get; set; }
-    internal bool ThrowOnDispose { get; set; }
+    internal Exception? DisposeFailure { get; set; }
     internal int FailStartsAfterReservation { get; set; }
     internal int FailLifecycleTransitions { get; set; }
+    internal Action? OnDisposeStarted { get; set; }
     internal Task SnapshotEntered => _snapshotEntered.Task;
     internal Task Disposed => _disposed.Task;
     internal Task DisposeEntered => _disposeEntered.Task;
@@ -569,14 +828,15 @@ internal sealed class RegistryTestClient(
     {
         if (Interlocked.Increment(ref _disposeCount) == 1)
         {
+            OnDisposeStarted?.Invoke();
             Stop();
             _disposeEntered.TrySetResult();
             try
             {
                 if (BlockDispose)
                     await _disposeRelease.Task.ConfigureAwait(false);
-                if (ThrowOnDispose)
-                    throw new ApplicationException("synthetic disposal failure");
+                if (DisposeFailure is { } failure)
+                    throw failure;
             }
             finally
             {

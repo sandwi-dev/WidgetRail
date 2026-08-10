@@ -118,9 +118,25 @@ action, lifecycle, controller, restart, host-effect, invalidation, and failure
 results carry an internal exact-generation publication lease through the
 server's actual serialized reply/event send. Replacement can mark the old
 generation closed to new admission, but cannot install or expose its successor
-until those admitted sends release. Detached catalog retirements are tracked
-and observed, and terminal registry disposal attempts every captured client
-before publishing one shared success or aggregate failure outcome.
+until those admitted sends release. Worker notifications enter one bounded
+per-generation lane: the latest queued invalidation replaces an older queued
+invalidation, while at most 32 non-coalescible action/runtime failures retain
+FIFO order. Full, closed, and coalesced results create no new publication
+lease; an accepted item owns exactly one lease until send, cancellation, or
+retirement drain. Lane cancellation can withdraw a queued event before writer
+admission. After frame writing begins, the server uses its bounded session
+write deadline instead; timeout ends that pipe session before any subsequent
+frame can follow a possibly partial write.
+
+Catalog identity mutation only reserves retirement under the registry gate;
+notification cancellation, operation drain, and external client disposal start
+after that gate is released. Cancellation or the internal restart deadline
+abandons fresh-worker publication but leaves the old reserved generation in
+the same tracked exact-once retirement path. Once that path finishes, waiters
+may create one successor. Terminal disposal waits those resource paths and
+active restart owners, attempts every captured client, and retains a bounded
+saturating failure count plus the first terminal failure for its shared
+outcome.
 
 ## Capability flow
 

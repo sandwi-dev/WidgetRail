@@ -14,6 +14,7 @@ namespace GameBarAlternative.WidgetBridge;
 
 public sealed class WidgetBridgeServer : IAsyncDisposable
 {
+    private static readonly TimeSpan EventWriteDeadline = TimeSpan.FromSeconds(4);
     private readonly string _pipeName;
     private readonly int _maximumMessageBytes;
     private readonly PlatformAppearanceService? _appearance;
@@ -26,6 +27,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private long _hostEffectSequence;
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
+    private CancellationTokenSource? _activeSessionCancellation;
     private bool _disposed;
 
     public WidgetBridgeServer(
@@ -82,6 +84,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         using var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
         _sessionCancellation = sessionCancellation.Token;
+        Volatile.Write(ref _activeSessionCancellation, sessionCancellation);
         await using var requestDispatcher = new BridgeRequestDispatcher(
             sessionCancellation.Token,
             _ => sessionCancellation.Cancel());
@@ -148,7 +151,14 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             if (_catalogMonitor is not null) _catalogMonitor.Changed -= OnCatalogChanged;
             if (_appearance is not null) _appearance.Changed -= OnAppearanceChanged;
             _channel = null;
-            await _registry.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await _registry.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                Volatile.Write(ref _activeSessionCancellation, null);
+            }
         }
 
         if (requestDispatcher.FatalException is { } fatal)
@@ -392,12 +402,17 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         return new WidgetProcessBridgeClient(client);
     }
 
-    private Task PublishClientInvalidation(BridgeClientInvalidation invalidation) =>
+    private Task PublishClientInvalidation(
+        BridgeClientInvalidation invalidation,
+        CancellationToken cancellationToken) =>
         SendEventAsync(
             BridgeMessageTypes.Invalidation,
-            new BridgeInvalidation(invalidation.WidgetId, invalidation.Revision));
+            new BridgeInvalidation(invalidation.WidgetId, invalidation.Revision),
+            cancellationToken);
 
-    private Task PublishClientActionFailure(BridgeClientActionFailure item) =>
+    private Task PublishClientActionFailure(
+        BridgeClientActionFailure item,
+        CancellationToken cancellationToken) =>
         SendEventAsync(
             BridgeMessageTypes.Failure,
             new
@@ -409,9 +424,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 item.Failure.SourceElementId,
                 item.Failure.Message,
                 canRestart = false,
-            });
+            },
+            cancellationToken);
 
-    private Task PublishClientFailure(BridgeClientRuntimeFailure item) =>
+    private Task PublishClientFailure(
+        BridgeClientRuntimeFailure item,
+        CancellationToken cancellationToken) =>
         SendEventAsync(
             BridgeMessageTypes.Failure,
             new
@@ -421,7 +439,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 item.Failure.ExitCode,
                 item.Failure.RestartsUsed,
                 item.Failure.CanRestart,
-            });
+            },
+            cancellationToken);
 
     private async ValueTask<PlatformDiagnosticsSnapshot> CreateDiagnosticsSnapshotAsync(
         CancellationToken cancellationToken)
@@ -750,17 +769,52 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
 
     private async Task SendEventAsync<T>(string type, T payload)
     {
+        await SendEventAsync(type, payload, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private async Task SendEventAsync<T>(
+        string type,
+        T payload,
+        CancellationToken publicationCancellation)
+    {
+        var gateEntered = false;
         try
         {
-            await SendAsync(new BridgeEnvelope
+            using var admission = CancellationTokenSource.CreateLinkedTokenSource(
+                _sessionCancellation, publicationCancellation);
+            await _writeGate.WaitAsync(admission.Token).ConfigureAwait(false);
+            gateEntered = true;
+            admission.Token.ThrowIfCancellationRequested();
+            var channel = _channel ?? throw new InvalidOperationException(
+                "Native host is not connected.");
+            using var writeDeadline = CancellationTokenSource.CreateLinkedTokenSource(
+                _sessionCancellation);
+            writeDeadline.CancelAfter(EventWriteDeadline);
+            try
             {
-                Type = type,
-                Payload = BridgeJson.ToElement(payload),
-            }, _sessionCancellation).ConfigureAwait(false);
+                await channel.WriteAsync(new BridgeEnvelope
+                {
+                    Type = type,
+                    Payload = BridgeJson.ToElement(payload),
+                }, writeDeadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (
+                !_sessionCancellation.IsCancellationRequested &&
+                writeDeadline.IsCancellationRequested)
+            {
+                // A canceled in-flight frame may be partial. End the session
+                // before any later frame can be written to the same stream.
+                Volatile.Read(ref _activeSessionCancellation)?.Cancel();
+                throw;
+            }
         }
         catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
         {
             // The main request loop owns native-host disconnect handling.
+        }
+        finally
+        {
+            if (gateEntered) _writeGate.Release();
         }
     }
 

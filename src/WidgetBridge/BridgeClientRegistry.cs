@@ -29,6 +29,11 @@ internal sealed record BridgeClientActionFailure(
     string RuntimeGeneration,
     WidgetActionFailure Failure);
 internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure Failure);
+internal sealed record BridgeClientNotificationStatus(
+    int Pending,
+    int DroppedFailures,
+    int ActivePublications,
+    bool IsRetiring);
 
 internal sealed class BridgeClientPublication<TValue>(
     TValue value,
@@ -105,17 +110,21 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 {
     private static readonly TimeSpan OperationDeadline = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan RetireDeadline = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan RestartDeadline = TimeSpan.FromSeconds(12);
     private readonly object _gate = new();
     private readonly Dictionary<string, ClientRegistration> _clients =
         new(StringComparer.Ordinal);
     private readonly WorkerResidencyBudget _residentBudget;
     private readonly Func<ConfiguredWidget, Func<IDisposable>, IBridgeWidgetClient> _clientFactory;
-    private readonly Func<BridgeClientInvalidation, Task> _invalidated;
-    private readonly Func<BridgeClientActionFailure, Task> _actionFailed;
-    private readonly Func<BridgeClientRuntimeFailure, Task> _failed;
+    private readonly Func<BridgeClientInvalidation, CancellationToken, Task> _invalidated;
+    private readonly Func<BridgeClientActionFailure, CancellationToken, Task> _actionFailed;
+    private readonly Func<BridgeClientRuntimeFailure, CancellationToken, Task> _failed;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
-    private readonly HashSet<Task> _detachedTasks = [];
-    private readonly List<Exception> _detachedFailures = [];
+    private readonly HashSet<ClientRegistration> _activeRetirements = [];
+    private int _terminalFailureCount;
+    private Exception? _firstTerminalFailure;
+    private int _activeRestarts;
+    private TaskCompletionSource? _restartsDrained;
     private BridgeCatalog _catalog;
     private long _catalogRevision;
     private bool _disposed;
@@ -126,9 +135,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         BridgeCatalog catalog,
         WorkerResidencyBudgetOptions residencyBudget,
         Func<ConfiguredWidget, Func<IDisposable>, IBridgeWidgetClient> clientFactory,
-        Func<BridgeClientInvalidation, Task> invalidated,
-        Func<BridgeClientActionFailure, Task> actionFailed,
-        Func<BridgeClientRuntimeFailure, Task> failed,
+        Func<BridgeClientInvalidation, CancellationToken, Task> invalidated,
+        Func<BridgeClientActionFailure, CancellationToken, Task> actionFailed,
+        Func<BridgeClientRuntimeFailure, CancellationToken, Task> failed,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -151,6 +160,34 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     }
 
     internal WorkerResidencyBudgetSnapshot ResidencyBudget => _residentBudget.Snapshot;
+
+    internal bool IsGateHeldByCurrentThread => Monitor.IsEntered(_gate);
+
+    internal BridgeClientNotificationStatus NotificationStatus(string widgetId)
+    {
+        lock (_gate)
+        {
+            var registration = _clients.TryGetValue(widgetId, out var current)
+                ? current
+                : throw new BridgeProtocolException($"Unknown widget '{widgetId}'.");
+            return new BridgeClientNotificationStatus(
+                registration.NotificationLane.PendingCount,
+                registration.NotificationLane.DroppedFailures,
+                registration.ActivePublications,
+                registration.IsRetiring);
+        }
+    }
+
+    internal Task DrainNotificationsAsync(string widgetId)
+    {
+        lock (_gate)
+        {
+            var registration = _clients.TryGetValue(widgetId, out var current)
+                ? current
+                : throw new BridgeProtocolException($"Unknown widget '{widgetId}'.");
+            return registration.NotificationLane.DrainAsync();
+        }
+    }
 
     internal (BridgeCatalog Catalog, long Revision) CatalogSnapshot()
     {
@@ -313,8 +350,24 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         string widgetId,
         CancellationToken cancellationToken)
     {
+        AdmitRestart();
+        try
+        {
+            return await RestartCoreAsync(widgetId, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseRestart();
+        }
+    }
+
+    private async Task<BridgeClientPublication<WidgetLifecycleState>> RestartCoreAsync(
+        string widgetId,
+        CancellationToken cancellationToken)
+    {
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ClientRegistration oldRegistration;
             Task? priorRetirement = null;
             lock (_gate)
@@ -352,10 +405,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
             var reserved = false;
             var published = false;
+            var startRetirement = false;
             ClientRegistration? freshRegistration = null;
+            WidgetLifecycleState previousState;
             try
             {
-                WidgetLifecycleState previousState;
                 lock (_gate)
                 {
                     DemandNotDisposed();
@@ -364,17 +418,36 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                         !ReferenceEquals(current, oldRegistration) ||
                         oldRegistration.IsRetiring)
                         continue;
-                    oldRegistration.BeginRetirementLocked();
-                    oldRegistration.RetirementTask = oldRegistration.RetirementCompletion;
                     previousState = oldRegistration.HostLifecycle;
+                    startRetirement = ReserveRetirementLocked(
+                        oldRegistration, restartReserved: true);
                     reserved = true;
                 }
+            }
+            finally
+            {
+                oldRegistration.OperationGate.Release();
+            }
 
-                await oldRegistration.PublicationsDrained.ConfigureAwait(false);
-                oldRegistration.CancelIdleUnload();
-                await oldRegistration.BeginTerminalAndDrainIdleUnloadAsync(OperationDeadline)
-                    .ConfigureAwait(false);
-                await DisposeClientWithDeadlineAsync(oldRegistration).ConfigureAwait(false);
+            if (startRetirement) StartRetirement(oldRegistration);
+            try
+            {
+                using var restartDeadline = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken);
+                restartDeadline.CancelAfter(RestartDeadline);
+                try
+                {
+                    await oldRegistration.ResourceRetired.WaitAsync(restartDeadline.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new BridgeProtocolException(
+                        $"Widget '{widgetId}' did not retire within the restart deadline.");
+                }
+                if (oldRegistration.RetirementFailure is { } retirementFailure)
+                    throw new AggregateException(
+                        $"Widget '{widgetId}' failed retirement.", retirementFailure);
 
                 ConfiguredWidget configured;
                 lock (_gate)
@@ -397,6 +470,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     var latest = _catalog.GetConfigured(widgetId);
                     if (!_clients.TryGetValue(widgetId, out var current) ||
                         !ReferenceEquals(current, oldRegistration) ||
+                        !oldRegistration.RestartReserved ||
                         !string.Equals(
                             latest.WorkerFingerprint,
                             freshRegistration.Configured.WorkerFingerprint,
@@ -405,6 +479,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                             $"Widget '{widgetId}' changed while its fresh worker was prepared.");
                     _clients[widgetId] = freshRegistration;
                     result = AdmitPublicationLocked(freshRegistration, previousState);
+                    oldRegistration.RestartReserved = false;
                     oldRegistration.CompleteRetirementLocked();
                     published = true;
                 }
@@ -429,15 +504,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             {
                 if (reserved && !published)
                 {
-                    lock (_gate)
-                    {
-                        if (_clients.TryGetValue(widgetId, out var current) &&
-                            ReferenceEquals(current, oldRegistration))
-                            _clients.Remove(widgetId);
-                        oldRegistration.CompleteRetirementLocked();
-                    }
+                    lock (_gate) AbandonRestartLocked(oldRegistration);
                 }
-                oldRegistration.OperationGate.Release();
             }
         }
     }
@@ -446,6 +514,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(catalog);
         if (revision < 0) throw new ArgumentOutOfRangeException(nameof(revision));
+        List<ClientRegistration>? starts = null;
         lock (_gate)
         {
             DemandNotDisposed();
@@ -468,9 +537,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     pair.Value.Configured = configured;
                     continue;
                 }
-                _ = StartDetachedRetirementLocked(pair.Value);
+                if (ReserveRetirementLocked(pair.Value, restartReserved: false))
+                    (starts ??= []).Add(pair.Value);
             }
         }
+        if (starts is not null)
+            foreach (var registration in starts) StartRetirement(registration);
         return true;
     }
 
@@ -496,16 +568,23 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         ClientRegistration[]? registrations = null;
-        Task[]? retirementCompletions = null;
+        List<ClientRegistration>? starts = null;
+        Task? restartsDrained = null;
         lock (_gate)
         {
             if (!_disposed)
             {
                 _disposed = true;
                 registrations = _clients.Values.ToArray();
-                retirementCompletions = registrations
-                    .Select(StartDetachedRetirementLocked)
-                    .ToArray();
+                foreach (var registration in registrations)
+                {
+                    registration.RestartReserved = false;
+                    if (ReserveRetirementLocked(registration, restartReserved: false))
+                        (starts ??= []).Add(registration);
+                    if (registration.ResourceRetired.IsCompleted)
+                        CompleteRegistrationRetirementLocked(registration);
+                }
+                restartsDrained = _restartsDrained?.Task ?? Task.CompletedTask;
             }
         }
         if (registrations is null)
@@ -516,20 +595,31 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
         try
         {
-            await Task.WhenAll(retirementCompletions!).ConfigureAwait(false);
+            if (starts is not null)
+                foreach (var registration in starts) StartRetirement(registration);
+            await Task.WhenAll(registrations.Select(item => item.RetirementCompletion))
+                .ConfigureAwait(false);
+            await restartsDrained!.ConfigureAwait(false);
             while (true)
             {
-                Task[] detached;
-                lock (_gate) detached = _detachedTasks.ToArray();
-                if (detached.Length == 0) break;
-                try { await Task.WhenAll(detached).ConfigureAwait(false); }
-                catch (Exception exception) when (exception is not OutOfMemoryException) { }
+                Task[] active;
+                lock (_gate)
+                    active = _activeRetirements.Select(item => item.ResourceRetired).ToArray();
+                if (active.Length == 0) break;
+                await Task.WhenAll(active).ConfigureAwait(false);
             }
 
-            Exception[] failures;
-            lock (_gate) failures = _detachedFailures.ToArray();
-            if (failures.Length != 0)
-                throw new AggregateException("One or more bridge clients failed terminal disposal.", failures);
+            Exception? firstFailure;
+            int failureCount;
+            lock (_gate)
+            {
+                firstFailure = _firstTerminalFailure;
+                failureCount = _terminalFailureCount;
+            }
+            if (firstFailure is not null)
+                throw new AggregateException(
+                    $"{failureCount} bridge client terminal operation(s) failed; only the first failure is retained.",
+                    firstFailure);
             _terminal.TrySetResult();
         }
         catch (Exception exception)
@@ -546,6 +636,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         while (true)
         {
             Task? retirement = null;
+            ClientRegistration? start = null;
             lock (_gate)
             {
                 DemandNotDisposed();
@@ -557,7 +648,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                             configured.WorkerFingerprint,
                             StringComparison.Ordinal))
                         return existing;
-                    retirement = StartDetachedRetirementLocked(existing);
+                    if (ReserveRetirementLocked(existing, restartReserved: false))
+                        start = existing;
+                    retirement = existing.RetirementCompletion;
                 }
                 else
                 {
@@ -567,37 +660,65 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 }
             }
 
+            if (start is not null) StartRetirement(start);
             await retirement.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private Task StartDetachedRetirementLocked(ClientRegistration registration)
+    private bool ReserveRetirementLocked(
+        ClientRegistration registration,
+        bool restartReserved)
     {
-        if (registration.RetirementTask is not null)
-            return registration.RetirementCompletion;
         registration.BeginRetirementLocked();
-        var task = RetireRegistrationAsync(registration);
-        registration.RetirementTask = task;
-        TrackDetachedLocked(task);
-        return registration.RetirementCompletion;
+        if (restartReserved) registration.RestartReserved = true;
+        if (registration.RetirementStarted) return false;
+        registration.RetirementStarted = true;
+        _activeRetirements.Add(registration);
+        return true;
     }
+
+    private void StartRetirement(ClientRegistration registration) =>
+        registration.SetRetirementTask(RetireRegistrationAsync(registration));
 
     private async Task RetireRegistrationAsync(ClientRegistration registration)
     {
+        Exception? failure = null;
         try
         {
+            await registration.NotificationLane.CloseAndDrainAsync().ConfigureAwait(false);
             await DisposeRegistrationAsync(registration).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
         }
         finally
         {
             lock (_gate)
             {
-                if (_clients.TryGetValue(registration.Configured.Id, out var current) &&
-                    ReferenceEquals(current, registration))
-                    _clients.Remove(registration.Configured.Id);
-                registration.CompleteRetirementLocked();
+                registration.RetirementFailure = failure;
+                if (failure is not null) RecordTerminalFailureLocked(failure);
+                _activeRetirements.Remove(registration);
+                registration.CompleteResourceRetirementLocked();
+                if (!registration.RestartReserved)
+                    CompleteRegistrationRetirementLocked(registration);
             }
         }
+    }
+
+    private void CompleteRegistrationRetirementLocked(ClientRegistration registration)
+    {
+        if (_clients.TryGetValue(registration.Configured.Id, out var current) &&
+            ReferenceEquals(current, registration))
+            _clients.Remove(registration.Configured.Id);
+        registration.CompleteRetirementLocked();
+    }
+
+    private void AbandonRestartLocked(ClientRegistration registration)
+    {
+        registration.RestartReserved = false;
+        if (registration.ResourceRetired.IsCompleted)
+            CompleteRegistrationRetirementLocked(registration);
     }
 
     private ClientRegistration CreateRegistration(ConfiguredWidget configured)
@@ -610,43 +731,54 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 configured.Id,
                 configured.MemoryLimitMb,
                 WidgetBridgeServer.IsTrustedSettings(configured)));
-        var registration = new ClientRegistration(configured, client);
+        var registration = new ClientRegistration(configured, client, RecordTerminalFailure);
         var runtimeGeneration = configured.PublicDescriptor().RuntimeGeneration;
         client.Invalidated += (_, revision) =>
-            TrackDetached(PublishIfCurrentAsync(
+            EnqueueNotification(
                 registration,
-                () => _invalidated(new BridgeClientInvalidation(configured.Id, revision)),
-                requireInvalidationAuthority: true));
+                BridgeClientNotificationKind.Invalidation,
+                cancellationToken => _invalidated(
+                    new BridgeClientInvalidation(configured.Id, revision), cancellationToken),
+                requireInvalidationAuthority: true);
         client.ActionFailed += (_, failure) =>
-            TrackDetached(PublishIfCurrentAsync(
+            EnqueueNotification(
                 registration,
-                () => _actionFailed(new BridgeClientActionFailure(
-                    configured.Id, runtimeGeneration, failure))));
+                BridgeClientNotificationKind.Failure,
+                cancellationToken => _actionFailed(new BridgeClientActionFailure(
+                    configured.Id, runtimeGeneration, failure), cancellationToken));
         client.Failed += (_, failure) =>
         {
             registration.RecordFailure(failure);
-            TrackDetached(PublishIfCurrentAsync(
+            EnqueueNotification(
                 registration,
-                () => _failed(new BridgeClientRuntimeFailure(configured.Id, failure))));
+                BridgeClientNotificationKind.Failure,
+                cancellationToken => _failed(
+                    new BridgeClientRuntimeFailure(configured.Id, failure), cancellationToken));
         };
         return registration;
     }
 
-    private async Task PublishIfCurrentAsync(
+    private void EnqueueNotification(
         ClientRegistration registration,
-        Func<Task> publish,
+        BridgeClientNotificationKind kind,
+        Func<CancellationToken, Task> publish,
         bool requireInvalidationAuthority = false)
     {
-        BridgeClientPublication<bool>? admission = null;
+        var startPump = false;
         lock (_gate)
         {
-            if (IsCurrentLocked(registration) &&
-                (!requireInvalidationAuthority || registration.MayPublishInvalidation))
-                admission = AdmitPublicationLocked(registration, true);
+            if (!IsCurrentLocked(registration) ||
+                (requireInvalidationAuthority && !registration.MayPublishInvalidation))
+                return;
+            var admission = registration.NotificationLane.Enqueue(
+                kind,
+                publish,
+                () => ReleasePublication(registration),
+                out startPump);
+            if (admission == BridgeClientNotificationAdmission.Accepted)
+                registration.AdmitPublicationLocked();
         }
-        if (admission is null) return;
-        using (admission)
-            await publish().ConfigureAwait(false);
+        if (startPump) registration.NotificationLane.StartPump();
     }
 
     private BridgeClientPublication<TValue> AdmitPublication<TValue>(
@@ -677,37 +809,35 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         lock (_gate) registration.ReleasePublicationLocked();
     }
 
-    private void TrackDetached(Task task)
+    private void RecordTerminalFailure(Exception failure)
     {
-        if (task.IsCompletedSuccessfully) return;
-        lock (_gate) TrackDetachedLocked(task);
+        lock (_gate) RecordTerminalFailureLocked(failure);
     }
 
-    private void TrackDetachedLocked(Task task)
+    private void RecordTerminalFailureLocked(Exception failure)
     {
-        if (task.IsCompletedSuccessfully) return;
-        _detachedTasks.Add(task);
-        _ = ObserveDetachedAsync(task);
+        _firstTerminalFailure ??= failure;
+        if (_terminalFailureCount < int.MaxValue) _terminalFailureCount++;
     }
 
-    private async Task ObserveDetachedAsync(Task task)
+    private void AdmitRestart()
     {
-        Exception? failure = null;
-        try
+        lock (_gate)
         {
-            await task.ConfigureAwait(false);
+            DemandNotDisposed();
+            if (_activeRestarts++ == 0)
+                _restartsDrained = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
         }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
+    }
+
+    private void ReleaseRestart()
+    {
+        lock (_gate)
         {
-            failure = exception;
-        }
-        finally
-        {
-            lock (_gate)
-            {
-                _detachedTasks.Remove(task);
-                if (failure is not null) _detachedFailures.Add(failure);
-            }
+            if (_activeRestarts <= 0)
+                throw new InvalidOperationException("Restart admission was released twice.");
+            if (--_activeRestarts == 0) _restartsDrained!.TrySetResult();
         }
     }
 
@@ -838,7 +968,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            if (disposal is not null) _ = ObserveCompletionAsync(disposal);
+            RecordTerminalFailure(new TimeoutException(
+                $"Widget '{registration.Configured.Id}' client disposal exceeded its deadline."));
+            if (disposal is not null) ObserveLateCompletion(disposal);
         }
         catch (Exception exception) when (exception is IOException or
                                                InvalidOperationException or
@@ -855,39 +987,26 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
-    private async Task DisposeClientWithDeadlineAsync(ClientRegistration registration)
-    {
-        var retirement = registration.Client.DisposeAsync().AsTask();
-        using var retireTimeout = new CancellationTokenSource(RetireDeadline);
-        try
-        {
-            await retirement.WaitAsync(retireTimeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            _ = ObserveCompletionAsync(retirement);
-            throw new BridgeProtocolException(
-                $"Widget '{registration.Configured.Id}' could not be retired within the restart deadline.");
-        }
-    }
-
     private async Task DisposeUnpublishedAsync(ClientRegistration registration)
     {
-        lock (_gate) registration.BeginRetirementLocked();
-        try
-        {
-            await DisposeRegistrationAsync(registration).ConfigureAwait(false);
-        }
-        finally
-        {
-            lock (_gate) registration.CompleteRetirementLocked();
-        }
+        bool start;
+        lock (_gate) start = ReserveRetirementLocked(registration, restartReserved: false);
+        if (start) StartRetirement(registration);
+        await registration.ResourceRetired.ConfigureAwait(false);
+        if (registration.RetirementFailure is { } failure)
+            throw new AggregateException("An unpublished bridge client failed disposal.", failure);
     }
 
-    private static async Task ObserveCompletionAsync(Task task)
+    private void ObserveLateCompletion(Task task)
     {
-        try { await task.ConfigureAwait(false); }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        _ = task.ContinueWith(
+            completed =>
+            {
+                if (completed.Exception is { } failure) RecordTerminalFailure(failure);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private void DemandNotDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
@@ -937,7 +1056,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     private sealed class ClientRegistration(
         ConfiguredWidget configured,
-        IBridgeWidgetClient client)
+        IBridgeWidgetClient client,
+        Action<Exception> recordFailure)
     {
         private ConfiguredWidget _configured = configured;
         internal ConfiguredWidget Configured
@@ -947,6 +1067,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
 
         internal IBridgeWidgetClient Client { get; } = client;
+        internal BridgeClientNotificationLane NotificationLane { get; } = new(recordFailure);
         internal SemaphoreSlim OperationGate { get; } = new(1, 1);
         private int _hostLifecycle = (int)WidgetLifecycleState.Background;
         internal WidgetLifecycleState HostLifecycle
@@ -968,11 +1089,18 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _retirementCompletion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _resourceRetired = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         internal WorkerFailureDiagnostic? LastFailure => Volatile.Read(ref _lastFailure);
         internal bool IsRetiring { get; private set; }
-        internal Task? RetirementTask { get; set; }
+        internal bool RetirementStarted { get; set; }
+        internal bool RestartReserved { get; set; }
+        internal Task? RetirementTask { get; private set; }
+        internal Exception? RetirementFailure { get; set; }
         internal Task RetirementCompletion => _retirementCompletion.Task;
+        internal Task ResourceRetired => _resourceRetired.Task;
         internal Task PublicationsDrained => _publicationsDrained.Task;
+        internal int ActivePublications => _activePublications;
         internal bool MayPublishInvalidation =>
             HostLifecycle != WidgetLifecycleState.Background ||
             WidgetResidencyPolicies.Resolve(Configured.ResidencyPolicy).Mode ==
@@ -999,6 +1127,16 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
         internal void CompleteRetirementLocked() =>
             _retirementCompletion.TrySetResult();
+
+        internal void CompleteResourceRetirementLocked() =>
+            _resourceRetired.TrySetResult();
+
+        internal void SetRetirementTask(Task task)
+        {
+            if (RetirementTask is not null)
+                throw new InvalidOperationException("Retirement task was assigned twice.");
+            RetirementTask = task;
+        }
 
         internal void AdmitPublicationLocked()
         {
@@ -1076,7 +1214,16 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
-                _ = ObserveCompletionAsync(drain);
+                recordFailure(new TimeoutException(
+                    $"Widget '{Configured.Id}' idle-unload drain exceeded its deadline."));
+                _ = drain.ContinueWith(
+                    completed =>
+                    {
+                        if (completed.Exception is { } failure) recordFailure(failure);
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             }
         }
 
@@ -1088,8 +1235,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             {
                 await task.ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is not OutOfMemoryException)
+            catch (Exception exception)
             {
+                recordFailure(exception);
             }
             finally
             {

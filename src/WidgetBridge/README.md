@@ -104,15 +104,30 @@ registry owns the current catalog revision and every worker generation,
 including operation serialization, residency admission, cached snapshots,
 idle unload, restart, catalog replacement/removal, and terminal disposal.
 Request handlers consume typed registry operations and immutable results; they
-never retain mutable registration objects. A retiring generation remains the
-reserved widget slot, closed to new admission, until its exact-generation
-publication leases, tracked idle work, client, and residency lease drain.
-Replies and asynchronous events retain that internal publication lease through
-the server's actual serialized send, so replacement cannot overtake a result
-that already won admission. Restart prepares and lifecycle-restores one fresh
-client before publishing it; every unpublished client is disposed on failure.
-Detached retirements are observed, and terminal disposal attempts every client
-before completing its one shared outcome.
+never retain mutable registration objects. Each generation has one bounded
+notification lane: it retains only the latest queued invalidation and at most
+32 ordered, non-coalescible action/runtime failures. Overflow is counted with a
+saturating counter, never converted into an unbounded task or exception list.
+Only an accepted lane item receives a publication lease; coalesced, full, and
+closed admissions do not create one.
+
+A retiring generation remains the reserved widget slot, closed to new
+admission, until its exact-generation publication leases, tracked idle work,
+client, and residency lease drain. Retirement closes and cancels its
+notification lane before waiting for admitted sends. Lane cancellation may
+withdraw an event while it waits for the server's serialized writer, but once
+a frame starts it finishes under the bounded session write deadline. A stalled
+in-flight frame terminates the session before another frame can use the
+possibly partial stream. Registry identity changes
+happen under the catalog gate, while external client cancellation and disposal
+start only after leaving that gate. A cancelled or timed-out restart transfers
+the reserved generation to the same tracked exact-once retirement path, so
+concurrent requests cannot create a competing worker. Replies and admitted
+events retain their internal generation lease through the server's serialized
+send. Restart prepares and lifecycle-restores one fresh client before
+publication; every unpublished client is disposed on failure. Terminal
+disposal attempts every client and retains only a saturating failure count plus
+the first failure before completing its one shared outcome.
 
 A launched Background worker remains resident under the default `keep-alive`
 policy. Entering Background cancels the shared Visible/Interactive lifetime
