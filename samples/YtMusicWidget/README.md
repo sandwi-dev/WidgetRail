@@ -56,13 +56,20 @@ injectable test seam, while the production default client is created lazily
 after `HostServices` attachment and uses only `HostServices.Loopback` and
 `HostServices.PrivateSecrets`.
 
-The first entry into the shared Visible/Interactive lifetime starts a
-non-blocking automatic connection attempt; a mere render does not connect.
+Each entry into the shared Visible/Interactive lifetime admits a non-blocking
+automatic connection attempt when the presentation is disconnected; a mere
+render does not connect. Auto-connect, progress repainting, polling, and
+transport reconciliation use SDK operation lanes rather than widget-owned task
+fields or cancellation sources. Their failures are observed by the SDK and
+their exact Active lifetime is canceled and drained by the lifecycle runtime.
 While `Visible` or `Interactive`, the widget repaints locally interpolated
 progress at the SDK's bounded four-Hz cadence and reconciles authoritative
 YTMDesktop2 state every two seconds. Returning to `Background` cancels the
 connect, interpolation, and polling work and awaits completion. The worker
-process remains resident in Background by default.
+process remains resident in Background by default. Connection, snapshot,
+pending-command, progress, status, and pairing-code inputs are published as one
+immutable render-facing revision. A cancellation-ignoring companion completion
+cannot update that revision after its operation is superseded or deactivated.
 
 Each authoritative poll is reconciled against the widget's monotonic projected
 position. Small stale backward reports are ignored while playback continues;

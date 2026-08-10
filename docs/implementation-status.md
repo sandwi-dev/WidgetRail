@@ -20,10 +20,11 @@ The current authoring-coordination milestone also implements public non-paged
 `WidgetIds`/opaque `KeyedId`, active input-scope propagation on every standard
 open-widget action, protocol-v13 explicit focus persistence, and the responsive
 `UI.NavigationShell`. SDK Gallery is the production-style navigation/ID
-migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
-uses one lifecycle-owned Active/Latest lane for transport reconciliation; it
-neither retains provider response bodies nor renders unknown exception text.
-Focused Release suites pass Widget SDK 84/84, SDK Gallery 6/6, YT Music 48/48,
+ migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
+ uses SDK-owned Active operation lanes for connection, progress, polling, and
+ latest-wins transport reconciliation; it neither retains provider response
+ bodies nor renders unknown exception text. Focused Release suites pass Widget
+ SDK 84/84, SDK Gallery 6/6, YT Music 51/51,
 and Gbar CLI 52/52. Packaged controller/companion evidence remains separate.
 
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
@@ -663,12 +664,17 @@ request-scoped host-side invalidation of the exact rejected Bearer slot on HTTP
 It performs a non-blocking automatic connection attempt and renders media
 metadata, artwork, transport state, and
 dashboard quick actions through the declarative protocol. It auto-connects on
-first entry into Visible/Interactive, interpolates progress there at four Hz,
+entry into Visible/Interactive when disconnected, interpolates progress there at four Hz,
 reconciles the companion every two seconds, and uses bounded optimistic transport/rating
 updates with rollback on command failure. Like, dislike, shuffle, and repeat
 publish immediate semantic selected/busy feedback, preserve independent pending
 features through stale polls, and clear or roll back on reconciliation.
-Accepted play/pause commands now reconcile in a bounded widget-lifetime task
+DLV-009 removes the widget's three lifecycle task fields and its hidden
+auto-connect admission flag. SDK-owned Active operation lanes now own and drain
+auto-connect, progress, polling, and latest-wins transport work. One immutable
+presentation record supplies every render input, and current-attempt checks
+reject cancellation-ignoring late pairing, polling, and transport completions.
+Accepted play/pause commands reconcile in a bounded Active-lifetime operation
 rather than the shorter input-action lifetime. The completion test inspects
 pending authoritative confirmation instead of the merged optimistic snapshot,
 and repeated toggles supersede the earlier refresh burst without blocking.
@@ -942,10 +948,12 @@ start/finish commit `dc30be9`, including 58/58 runtime tests, the native build
 and tests, documentation contracts, and the hidden-overlay smoke test. The run
 recorded 29 artifact digests; it is intentionally not clean-tree release
 evidence because the milestone and unrelated review work were present at both
-endpoints. The current SDK, SDK Gallery, and YT Music focused suites pass
-84/84, 6/6, and 48/48 respectively, including navigation/resource contracts,
-safe typed companion errors, serialization, and widget recovery for host-side
-rejected-Bearer invalidation without a second widget delete. The current
+ endpoints. The current SDK, SDK Gallery, and YT Music focused suites pass
+ 84/84, 6/6, and 51/51 respectively, including navigation/resource contracts,
+ safe typed companion errors, serialization, and widget recovery for host-side
+ rejected-Bearer invalidation without a second widget delete. YT Music also
+ proves late pairing and polling cannot publish after deactivation and that no
+ widget-owned Task or CancellationTokenSource registry remains. The current
 Settings Release suite passes 45/45, including
 scrollable identity and permission review,
 disabled-only version selection/rollback, required/optional separation,

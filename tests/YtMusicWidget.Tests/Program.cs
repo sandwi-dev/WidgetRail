@@ -20,7 +20,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Disconnected UI offers controller-first connect and pair", DisconnectedUi),
     ("Every connection state publishes one bounded standard surface", SurfaceContractAcrossConnectionStates),
     ("First activation starts one non-blocking automatic connection", AutoConnectStartsOnce),
+    ("Runtime operation lanes replace widget-owned task registries", RuntimeOperationsOwnLifecycleWork),
     ("Lifecycle preserves one visibility lifetime across visible and interactive states", LifecycleVisibilityLifetime),
+    ("Late pairing completion cannot survive the active lifetime", LatePairingCannotCommitAfterDeactivation),
+    ("Late polling completion cannot publish after deactivation", LatePollCannotCommitAfterDeactivation),
     ("Active playback interpolates and polls only while active", ActivePlaybackUpdates),
     ("Authoritative polls reconcile drift without visible regressions", ProgressPollReconciliation),
     ("Optimistic playback survives stale confirmation and rolls back failures", OptimisticStateRules),
@@ -442,6 +445,118 @@ static async Task AutoConnectStartsOnce()
     Assert.Equal(1, fake.StatusCalls);
     Assert.True(invalidations >= 2, "Automatic state changes must invalidate the host view.");
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+}
+
+static Task RuntimeOperationsOwnLifecycleWork()
+{
+    var fields = typeof(YtMusicWidget).GetFields(
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic |
+        System.Reflection.BindingFlags.DeclaredOnly);
+    var taskRegistry = fields
+        .Where(field => typeof(Task).IsAssignableFrom(field.FieldType) ||
+                        field.FieldType == typeof(CancellationTokenSource))
+        .Select(field => field.Name)
+        .ToArray();
+    Assert.Equal(0, taskRegistry.Length);
+    Assert.Equal(1, fields.Count(field =>
+        field.FieldType.Name.Contains("YtMusicPresentationState", StringComparison.Ordinal)));
+    Assert.True(fields.All(field => field.Name is not (
+            "_autoConnectTask" or "_progressLoop" or "_pollLoop" or "_autoConnectStarted")),
+        "Superseded widget-local lifecycle coordination remains in the widget.");
+    return Task.CompletedTask;
+}
+
+static async Task LatePairingCannotCommitAfterDeactivation()
+{
+    var pairingGate = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var cancellationObserved = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeClient
+    {
+        StatusInfo = new YtMusicConnectionInfo(AuthRequired: true),
+        Snapshot = PlayingSnapshot("Late paired track"),
+        PairCompletionAsync = token =>
+        {
+            token.Register(() => cancellationObserved.TrySetResult());
+            return pairingGate.Task; // Deliberately ignores cancellation.
+        },
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy() with
+    {
+        ProgressInterval = TimeSpan.FromSeconds(5),
+        PollInterval = TimeSpan.FromSeconds(30),
+    });
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await WaitUntil(() => fake.StatusCalls == 1 &&
+                          widget.ConnectionState == YtMusicWidgetConnectionState.Disconnected);
+
+    var pairing = widget.OnActionAsync(new WidgetActionEvent("pair", "pair")).AsTask();
+    await WaitUntil(() => FindOrNull(
+        widget.Render().CreateSnapshot("ytmusic.late-pair", 1).Root,
+        "pairing-code") is not null);
+
+    var backgrounding = widget.SetLifecycleStateAsync(
+        WidgetLifecycleState.Background,
+        CancellationToken.None).AsTask();
+    await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    pairingGate.SetResult();
+    await backgrounding.WaitAsync(TimeSpan.FromSeconds(1));
+    await pairing.WaitAsync(TimeSpan.FromSeconds(1));
+
+    Assert.Equal(YtMusicWidgetConnectionState.Disconnected, widget.ConnectionState);
+    var snapshot = widget.Render().CreateSnapshot("ytmusic.late-pair", 2);
+    Assert.True(FindOrNull(snapshot.Root, "pairing-code") is null,
+        "A lifecycle-stale pairing code remained visible.");
+    Assert.True(FindOrNull(snapshot.Root, "track-title") is null,
+        "A lifecycle-stale pairing completion published now-playing state.");
+    Assert.Equal(0, fake.SnapshotCalls);
+}
+
+static async Task LatePollCannotCommitAfterDeactivation()
+{
+    var initial = PlayingSnapshot("Current poll state");
+    var stale = PlayingSnapshot("Lifecycle-stale poll state");
+    var pollGate = new TaskCompletionSource<YtMusicPlaybackSnapshot>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var cancellationObserved = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeClient { Snapshot = initial };
+    fake.SnapshotAsync = (call, token) => call switch
+    {
+        1 => Task.FromResult(initial),
+        2 => IgnoreCancellationAsync(token, cancellationObserved, pollGate.Task),
+        _ => Task.FromResult(initial),
+    };
+    var widget = new YtMusicWidget(fake, FastUpdatePolicy() with
+    {
+        ProgressInterval = TimeSpan.FromMilliseconds(250),
+        PollInterval = TimeSpan.FromMilliseconds(250),
+    });
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+
+    var backgrounding = widget.SetLifecycleStateAsync(
+        WidgetLifecycleState.Background,
+        CancellationToken.None).AsTask();
+    await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    pollGate.SetResult(stale);
+    await backgrounding.WaitAsync(TimeSpan.FromSeconds(1));
+
+    Assert.Equal("Current poll state", Find(
+        widget.Render().CreateSnapshot("ytmusic.late-poll", 1).Root,
+        "track-title").Text);
+}
+
+static async Task<T> IgnoreCancellationAsync<T>(
+    CancellationToken token,
+    TaskCompletionSource cancellationObserved,
+    Task<T> completion)
+{
+    token.Register(() => cancellationObserved.TrySetResult());
+    return await completion.ConfigureAwait(false);
 }
 
 static async Task LifecycleVisibilityLifetime()
@@ -1940,6 +2055,7 @@ file sealed class FakeClient : IYtMusicClient
     public Task? CommandTask { get; set; }
     public int SnapshotCalls => Volatile.Read(ref _snapshotCalls);
     public Task? PairCompletionTask { get; set; }
+    public Func<CancellationToken, Task>? PairCompletionAsync { get; set; }
     public string? CompletedPairingCode { get; private set; }
     public int StatusCalls => Volatile.Read(ref _statusCalls);
     public bool HasCredential { get; set; }
@@ -1989,7 +2105,10 @@ file sealed class FakeClient : IYtMusicClient
     public async Task CompletePairingAsync(string code, CancellationToken cancellationToken = default)
     {
         CompletedPairingCode = code;
-        if (PairCompletionTask is not null) await PairCompletionTask.WaitAsync(cancellationToken);
+        if (PairCompletionAsync is not null)
+            await PairCompletionAsync(cancellationToken);
+        else if (PairCompletionTask is not null)
+            await PairCompletionTask.WaitAsync(cancellationToken);
         HasCredential = true;
     }
 
