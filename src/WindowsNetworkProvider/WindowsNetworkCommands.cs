@@ -4,6 +4,11 @@ namespace GameBarAlternative.WindowsNetworkProvider;
 
 internal abstract record NetworkCommand;
 
+internal interface INetworkCommandAdmissionObserver
+{
+    void AfterReservation(NetworkCommand command);
+}
+
 internal sealed record RefreshCommand : NetworkCommand
 {
     public static RefreshCommand Instance { get; } = new();

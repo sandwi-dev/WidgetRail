@@ -8,6 +8,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Command policy owns typed native operation results", WindowsNetworkPolicyScenarios.CommandResultsAreClosed),
     ("Operation policy serializes deadlines and provider outcomes", WindowsNetworkPolicyScenarios.OperationOrderingIsDeterministic),
     ("Manually completed deadlines stay ordered on the provider owner thread", WindowsNetworkPolicyScenarios.ManualDeadlinesAreOwnerSerialized),
+    ("Current deadlines survive saturated ordinary command admission", WindowsNetworkPolicyScenarios.DeadlinesSurviveOrdinaryCapacity),
+    ("Delayed stale callbacks cannot displace current deadlines", WindowsNetworkPolicyScenarios.DelayedStaleCallbacksRetainCurrentDeadline),
+    ("Failed deadline promotion preserves cross-type overflow order", WindowsNetworkPolicyScenarios.CrossTypeOverflowOrderIsStable),
+    ("Replacement deadlines retain their own FIFO position", WindowsNetworkPolicyScenarios.ReplacementDeadlineKeepsTailOrder),
+    ("Replacement scan deadlines retain their own FIFO position", WindowsNetworkPolicyScenarios.ReplacementScanDeadlineKeepsTailOrder),
+    ("Admission and disposal settle every queue counter", WindowsNetworkPolicyScenarios.AdmissionAndDisposalAreBalanced),
     ("Reconciliation policy preserves bounded identities and suppresses duplicates", WindowsNetworkPolicyScenarios.ReconciliationIsStable),
     ("Event projection uses the closed network capability vocabulary", WindowsNetworkPolicyScenarios.EventProjectionIsClosed),
     ("Snapshots expose bounded sanitized labels and stable opaque IDs", SnapshotsAreSafeAndStable),
@@ -1134,6 +1140,12 @@ static class Assert
     {
         if (values.Count != 1) throw new InvalidOperationException($"Expected one item, got {values.Count}.");
         return values[0];
+    }
+    public static void SequenceEqual<T>(IReadOnlyList<T> expected, IReadOnlyList<T> actual)
+    {
+        if (!expected.SequenceEqual(actual))
+            throw new InvalidOperationException(
+                $"Expected [{string.Join(", ", expected)}], got [{string.Join(", ", actual)}].");
     }
     public static async Task ThrowsAnyAsync<TException>(Func<Task> action) where TException : Exception
     {

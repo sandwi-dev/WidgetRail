@@ -115,10 +115,8 @@ internal static class WindowsNetworkPolicyScenarios
             (await ReadStatusAsync(statusEvents.Reader,
                 NetworkConnectionAttemptState.Connecting)).ConnectionAttemptState);
         Assert.Equal(1, deadlines.Count);
-        deadlines.Fire(0);
-        Assert.Equal(NetworkConnectionAttemptState.Failed,
-            (await ReadStatusAsync(statusEvents.Reader,
-                NetworkConnectionAttemptState.Failed)).ConnectionAttemptState);
+        adapter.RaiseOutcome(nativeKey, NativeNetworkConnectionResult.Failed);
+        _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Failed);
 
         await backend.SwitchSavedNetworkProfileAsync(profile.ProfileId, CancellationToken.None);
         _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Connecting);
@@ -153,6 +151,396 @@ internal static class WindowsNetworkPolicyScenarios
         Assert.True(adapter.NativeCallThreadIds.Count > 0);
         Assert.True(adapter.NativeCallThreadIds.All(id => id == adapter.NativeCallThreadIds[0]));
     }
+
+    public static async Task DeadlinesSurviveOrdinaryCapacity()
+    {
+        await ConnectionDeadlineSurvivesOrdinaryCapacity();
+        await ScanDeadlineSurvivesOrdinaryCapacity();
+    }
+
+    public static async Task DelayedStaleCallbacksRetainCurrentDeadline()
+    {
+        await DelayedConnectionCallbacksRetainCurrentDeadline();
+        await DelayedScanCallbacksRetainCurrentDeadline();
+    }
+
+    public static Task CrossTypeOverflowOrderIsStable()
+    {
+        using var queue = new WindowsNetworkCommandQueue(observer: null);
+        for (var generation = 1; generation <= 4; generation++)
+            queue.EnqueueDeadline(new ConnectionTimeoutCommand(generation));
+        queue.EnqueueDeadline(new ConnectionTimeoutCommand(5));
+        queue.EnqueueDeadline(new WifiScanTimeoutCommand(5));
+        Assert.Equal(4, queue.DeadlineCommandsQueued);
+        Assert.Equal(2, queue.PendingDeadlineOverflowCount);
+
+        Assert.True(queue.TryTake(out var first));
+        queue.Release(first);
+        Assert.SequenceEqual(
+            ["connection:2", "connection:3", "connection:4", "connection:5"],
+            queue.QueuedCommandKinds);
+        Assert.Equal(1, queue.PendingDeadlineOverflowCount);
+
+        Assert.True(queue.TryTake(out var second));
+        queue.Release(second);
+        Assert.SequenceEqual(
+            ["connection:3", "connection:4", "connection:5", "scan:5"],
+            queue.QueuedCommandKinds);
+        Assert.Equal(0, queue.PendingDeadlineOverflowCount);
+
+        queue.Close();
+        while (queue.TryTake(out var pending)) queue.Release(pending);
+        Assert.Equal(0, queue.DeadlineCommandsQueued);
+        return Task.CompletedTask;
+    }
+
+    public static async Task ReplacementDeadlineKeepsTailOrder()
+    {
+        const string nativeKey = "native-saved";
+        var adapter = AdapterWithSavedProfile(nativeKey);
+        var deadlines = new ManualNetworkDeadlineScheduler();
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter), TimeSpan.FromSeconds(30), deadlines);
+        var statusEvents = Channel.CreateUnbounded<NetworkStatusSummary>();
+        var failures = 0;
+        backend.EventPublished += (_, value) =>
+        {
+            if (value.Payload is not NetworkStatusChangedEvent status) return;
+            statusEvents.Writer.TryWrite(status.Status);
+            if (status.Status.ConnectionAttemptState == NetworkConnectionAttemptState.Failed)
+                Interlocked.Increment(ref failures);
+        };
+
+        var profile = Assert.Single(await backend.GetSavedNetworkProfilesAsync(CancellationToken.None));
+        await backend.SwitchSavedNetworkProfileAsync(profile.ProfileId, CancellationToken.None);
+        _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Connecting);
+
+        adapter.BlockNextRead();
+        adapter.RaiseOutcome(nativeKey, NativeNetworkConnectionResult.Succeeded);
+        Assert.True(adapter.ReadEntered.Wait(TimeSpan.FromSeconds(2)));
+        deadlines.BlockNextScheduleReturn();
+        var replacement = backend.SwitchSavedNetworkProfileAsync(
+            profile.ProfileId, CancellationToken.None);
+        deadlines.Fire(0);
+
+        adapter.AllowRead.Set();
+        Assert.True(deadlines.ScheduleEntered.Wait(TimeSpan.FromSeconds(2)));
+        var intervening = backend.SetWifiRadioAsync(enabled: true, CancellationToken.None);
+        deadlines.Fire(1);
+        Assert.Equal(2, backend.DeadlineCommandsQueued);
+        Assert.SequenceEqual(
+            ["connection:1", "radio", "connection:2"],
+            backend.QueuedCommandKinds);
+        deadlines.AllowScheduleReturn.Set();
+
+        await replacement;
+        await intervening;
+        _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Failed);
+        await backend.DisposeAsync();
+        Assert.Equal(1, failures);
+        Assert.Equal(0, backend.OrdinaryCommandsQueued);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+    }
+
+    public static async Task ReplacementScanDeadlineKeepsTailOrder()
+    {
+        var adapter = AdapterWithSavedProfile("native-scan-order");
+        var deadlines = new ManualNetworkDeadlineScheduler();
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter), TimeSpan.FromSeconds(30), deadlines);
+        var wifiEvents = Channel.CreateUnbounded<AvailableWifiNetworksSummary>();
+        var failures = 0;
+        backend.EventPublished += (_, value) =>
+        {
+            if (value.Payload is not AvailableWifiNetworksChangedEvent wifi) return;
+            wifiEvents.Writer.TryWrite(wifi.Snapshot);
+            if (wifi.Snapshot.ScanState == WifiScanState.Unavailable)
+                Interlocked.Increment(ref failures);
+        };
+
+        _ = await backend.GetNetworkStatusAsync(CancellationToken.None);
+        await backend.RequestWifiScanAsync(CancellationToken.None);
+        _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Scanning);
+        adapter.SetAvailableWifiSnapshot(new(1, NativeWifiScanState.Scanning, []));
+        adapter.BlockNextRead();
+        adapter.RaiseChanged();
+        Assert.True(adapter.ReadEntered.Wait(TimeSpan.FromSeconds(2)));
+
+        deadlines.BlockNextScheduleReturn();
+        var replacement = backend.RequestWifiScanAsync(CancellationToken.None);
+        deadlines.Fire(0);
+        adapter.AllowRead.Set();
+        Assert.True(deadlines.ScheduleEntered.Wait(TimeSpan.FromSeconds(2)));
+        var intervening = backend.SetWifiRadioAsync(enabled: true, CancellationToken.None);
+        deadlines.Fire(1);
+        Assert.Equal(2, backend.DeadlineCommandsQueued);
+        Assert.SequenceEqual(
+            ["scan:1", "radio", "scan:2"],
+            backend.QueuedCommandKinds);
+        deadlines.AllowScheduleReturn.Set();
+
+        await replacement;
+        await intervening;
+        _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Unavailable);
+        await backend.DisposeAsync();
+        Assert.Equal(1, failures);
+        Assert.Equal(0, backend.OrdinaryCommandsQueued);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+    }
+
+    public static async Task AdmissionAndDisposalAreBalanced()
+    {
+        await OrdinaryAdmissionAndDisposalAreBalanced();
+        await DeadlineAdmissionAndDisposalAreBalanced();
+    }
+
+    private static async Task OrdinaryAdmissionAndDisposalAreBalanced()
+    {
+        var adapter = AdapterWithSavedProfile("native-admission");
+        var observer = new ManualCommandAdmissionObserver(typeof(SetWifiRadioCommand));
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter),
+            TimeSpan.FromSeconds(30),
+            new ManualNetworkDeadlineScheduler(),
+            observer);
+        _ = await backend.GetNetworkStatusAsync(CancellationToken.None);
+
+        var admission = Task.Run(async () =>
+        {
+            try { await backend.SetWifiRadioAsync(enabled: true, CancellationToken.None); }
+            catch (ObjectDisposedException) { }
+        });
+        Assert.True(observer.ReservationEntered.Wait(TimeSpan.FromSeconds(2)));
+        Assert.Equal(1, backend.OrdinaryCommandsQueued);
+        var dispose = Task.Run(async () => await backend.DisposeAsync());
+        Assert.True(SpinWait.SpinUntil(() => backend.CommandAdmissionClosed, TimeSpan.FromSeconds(2)));
+        await dispose.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, backend.OrdinaryCommandsQueued);
+        observer.AllowAdmission.Set();
+
+        await admission;
+        Assert.Equal(0, backend.OrdinaryCommandsQueued);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+        Assert.Equal(0, backend.PendingDeadlineOverflowCount);
+        Assert.Equal(0, backend.QueuedCommandKinds.Count);
+    }
+
+    private static async Task DeadlineAdmissionAndDisposalAreBalanced()
+    {
+        var adapter = AdapterWithSavedProfile("native-deadline-admission");
+        var observer = new ManualCommandAdmissionObserver(typeof(ConnectionTimeoutCommand));
+        var deadlines = new ManualNetworkDeadlineScheduler();
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter), TimeSpan.FromSeconds(30), deadlines, observer);
+        var profile = Assert.Single(await backend.GetSavedNetworkProfilesAsync(CancellationToken.None));
+        await backend.SwitchSavedNetworkProfileAsync(profile.ProfileId, CancellationToken.None);
+
+        var admission = Task.Run(() => deadlines.Fire(0));
+        Assert.True(observer.ReservationEntered.Wait(TimeSpan.FromSeconds(2)));
+        Assert.Equal(1, backend.DeadlineCommandsQueued);
+        var dispose = Task.Run(async () => await backend.DisposeAsync());
+        Assert.True(SpinWait.SpinUntil(() => backend.CommandAdmissionClosed, TimeSpan.FromSeconds(2)));
+        await dispose.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, backend.DeadlineCommandsQueued);
+        observer.AllowAdmission.Set();
+
+        await admission;
+        Assert.Equal(0, backend.OrdinaryCommandsQueued);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+        Assert.Equal(0, backend.PendingDeadlineOverflowCount);
+        Assert.Equal(0, backend.QueuedCommandKinds.Count);
+    }
+
+    private static async Task ConnectionDeadlineSurvivesOrdinaryCapacity()
+    {
+        var adapter = AdapterWithSavedProfile("native-capacity");
+        var deadlines = new ManualNetworkDeadlineScheduler();
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter), TimeSpan.FromSeconds(30), deadlines);
+        var statusEvents = Channel.CreateUnbounded<NetworkStatusSummary>();
+        var terminalCount = 0;
+        backend.EventPublished += (_, value) =>
+        {
+            if (value.Payload is not NetworkStatusChangedEvent status) return;
+            statusEvents.Writer.TryWrite(status.Status);
+            if (status.Status.ConnectionAttemptState == NetworkConnectionAttemptState.Failed)
+                Interlocked.Increment(ref terminalCount);
+        };
+
+        var profile = Assert.Single(await backend.GetSavedNetworkProfilesAsync(CancellationToken.None));
+        await backend.SwitchSavedNetworkProfileAsync(profile.ProfileId, CancellationToken.None);
+        _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Connecting);
+        adapter.BlockNextRead();
+        adapter.RaiseChanged();
+        Assert.True(adapter.ReadEntered.Wait(TimeSpan.FromSeconds(2)));
+
+        var ordinary = await FillOrdinaryCapacityAsync(backend);
+        deadlines.Fire(0);
+        Assert.Equal(WindowsNetworkPlatformBackend.MaximumOrdinaryQueuedCommands,
+            backend.OrdinaryCommandsQueued);
+        Assert.Equal(1, backend.DeadlineCommandsQueued);
+        adapter.AllowRead.Set();
+
+        await Task.WhenAll(ordinary);
+        _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Failed);
+        await backend.DisposeAsync();
+        Assert.Equal(1, terminalCount);
+        Assert.Equal(0, backend.OrdinaryCommandsQueued);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+    }
+
+    private static async Task DelayedConnectionCallbacksRetainCurrentDeadline()
+    {
+        const string nativeKey = "native-delayed-deadlines";
+        var adapter = AdapterWithSavedProfile(nativeKey);
+        var deadlines = new ManualNetworkDeadlineScheduler();
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter), TimeSpan.FromSeconds(30), deadlines);
+        var statusEvents = Channel.CreateUnbounded<NetworkStatusSummary>();
+        var terminalCount = 0;
+        backend.EventPublished += (_, value) =>
+        {
+            if (value.Payload is not NetworkStatusChangedEvent status) return;
+            statusEvents.Writer.TryWrite(status.Status);
+            if (status.Status.ConnectionAttemptState == NetworkConnectionAttemptState.Failed)
+                Interlocked.Increment(ref terminalCount);
+        };
+
+        var profile = Assert.Single(await backend.GetSavedNetworkProfilesAsync(CancellationToken.None));
+        for (var index = 0; index < 6; index++)
+        {
+            await backend.SwitchSavedNetworkProfileAsync(profile.ProfileId, CancellationToken.None);
+            _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Connecting);
+            adapter.RaiseOutcome(nativeKey, NativeNetworkConnectionResult.Succeeded);
+            _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.None);
+        }
+        await backend.SwitchSavedNetworkProfileAsync(profile.ProfileId, CancellationToken.None);
+        _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Connecting);
+        Assert.Equal(7, deadlines.Count);
+
+        adapter.BlockNextRead();
+        adapter.RaiseChanged();
+        Assert.True(adapter.ReadEntered.Wait(TimeSpan.FromSeconds(2)));
+        for (var index = 0; index < deadlines.Count; index++) deadlines.Fire(index);
+        Assert.Equal(4, backend.DeadlineCommandsQueued);
+        Assert.Equal(1, backend.PendingDeadlineOverflowCount);
+        adapter.AllowRead.Set();
+
+        _ = await ReadStatusAsync(statusEvents.Reader, NetworkConnectionAttemptState.Failed);
+        await backend.DisposeAsync();
+        Assert.Equal(1, terminalCount);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+        Assert.Equal(0, backend.PendingDeadlineOverflowCount);
+    }
+
+    private static async Task DelayedScanCallbacksRetainCurrentDeadline()
+    {
+        var adapter = AdapterWithSavedProfile("native-delayed-scan-deadlines");
+        var deadlines = new ManualNetworkDeadlineScheduler();
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter), TimeSpan.FromSeconds(30), deadlines);
+        var wifiEvents = Channel.CreateUnbounded<AvailableWifiNetworksSummary>();
+        var terminalCount = 0;
+        backend.EventPublished += (_, value) =>
+        {
+            if (value.Payload is not AvailableWifiNetworksChangedEvent wifi) return;
+            wifiEvents.Writer.TryWrite(wifi.Snapshot);
+            if (wifi.Snapshot.ScanState == WifiScanState.Unavailable)
+                Interlocked.Increment(ref terminalCount);
+        };
+
+        _ = await backend.GetNetworkStatusAsync(CancellationToken.None);
+        for (var index = 0; index < 6; index++)
+        {
+            await backend.RequestWifiScanAsync(CancellationToken.None);
+            _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Scanning);
+            adapter.SetAvailableWifiSnapshot(new(index + 1, NativeWifiScanState.Ready, []));
+            adapter.RaiseChanged();
+            _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Ready);
+        }
+        await backend.RequestWifiScanAsync(CancellationToken.None);
+        _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Scanning);
+        Assert.Equal(7, deadlines.Count);
+
+        adapter.SetAvailableWifiSnapshot(new(7, NativeWifiScanState.Scanning, []));
+        adapter.BlockNextRead();
+        adapter.RaiseChanged();
+        Assert.True(adapter.ReadEntered.Wait(TimeSpan.FromSeconds(2)));
+        for (var index = 0; index < deadlines.Count; index++) deadlines.Fire(index);
+        Assert.Equal(4, backend.DeadlineCommandsQueued);
+        Assert.Equal(1, backend.PendingDeadlineOverflowCount);
+        adapter.AllowRead.Set();
+
+        _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Unavailable);
+        await backend.DisposeAsync();
+        Assert.Equal(1, terminalCount);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+        Assert.Equal(0, backend.PendingDeadlineOverflowCount);
+    }
+
+    private static async Task ScanDeadlineSurvivesOrdinaryCapacity()
+    {
+        var adapter = AdapterWithSavedProfile("native-scan-capacity");
+        var deadlines = new ManualNetworkDeadlineScheduler();
+        var backend = new WindowsNetworkPlatformBackend(
+            new FakeFactory(adapter), TimeSpan.FromSeconds(30), deadlines);
+        var wifiEvents = Channel.CreateUnbounded<AvailableWifiNetworksSummary>();
+        var terminalCount = 0;
+        backend.EventPublished += (_, value) =>
+        {
+            if (value.Payload is not AvailableWifiNetworksChangedEvent wifi) return;
+            wifiEvents.Writer.TryWrite(wifi.Snapshot);
+            if (wifi.Snapshot.ScanState == WifiScanState.Unavailable)
+                Interlocked.Increment(ref terminalCount);
+        };
+
+        _ = await backend.GetNetworkStatusAsync(CancellationToken.None);
+        await backend.RequestWifiScanAsync(CancellationToken.None);
+        _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Scanning);
+        adapter.SetAvailableWifiSnapshot(new(1, NativeWifiScanState.Scanning, []));
+        adapter.BlockNextRead();
+        adapter.RaiseChanged();
+        Assert.True(adapter.ReadEntered.Wait(TimeSpan.FromSeconds(2)));
+
+        var ordinary = await FillOrdinaryCapacityAsync(backend);
+        deadlines.Fire(0);
+        Assert.Equal(WindowsNetworkPlatformBackend.MaximumOrdinaryQueuedCommands,
+            backend.OrdinaryCommandsQueued);
+        Assert.Equal(1, backend.DeadlineCommandsQueued);
+        adapter.AllowRead.Set();
+
+        await Task.WhenAll(ordinary);
+        _ = await ReadWifiAsync(wifiEvents.Reader, WifiScanState.Unavailable);
+        await backend.DisposeAsync();
+        Assert.Equal(1, terminalCount);
+        Assert.Equal(0, backend.OrdinaryCommandsQueued);
+        Assert.Equal(0, backend.DeadlineCommandsQueued);
+    }
+
+    private static async Task<Task[]> FillOrdinaryCapacityAsync(
+        WindowsNetworkPlatformBackend backend)
+    {
+        var commands = Enumerable.Range(
+                0, WindowsNetworkPlatformBackend.MaximumOrdinaryQueuedCommands)
+            .Select(_ => backend.SetWifiRadioAsync(enabled: true, CancellationToken.None))
+            .ToArray();
+        Assert.Equal(
+            WindowsNetworkPlatformBackend.MaximumOrdinaryQueuedCommands,
+            backend.OrdinaryCommandsQueued);
+        await Assert.ThrowsBrokerAsync(
+            () => backend.SetWifiRadioAsync(enabled: true, CancellationToken.None),
+            "provider_busy");
+        return commands;
+    }
+
+    private static FakeNativeAdapter AdapterWithSavedProfile(string nativeKey) => new(
+        new NativeNetworkSnapshot(
+            NetworkConnectivity.None,
+            NativeNetworkMedium.None,
+            null,
+            null,
+            null,
+            [new NativeSavedNetworkProfile(nativeKey, "Saved", false, null)]));
 
     public static Task ReconciliationIsStable()
     {
@@ -273,23 +661,61 @@ internal static class WindowsNetworkPolicyScenarios
 internal sealed class ManualNetworkDeadlineScheduler : INetworkDeadlineScheduler
 {
     private readonly List<Entry> _entries = [];
+    private int _blockNextScheduleReturn;
 
     public int Count => _entries.Count;
+    public ManualResetEventSlim ScheduleEntered { get; } = new(false);
+    public ManualResetEventSlim AllowScheduleReturn { get; } = new(false);
+
+    public void BlockNextScheduleReturn()
+    {
+        ScheduleEntered.Reset();
+        AllowScheduleReturn.Reset();
+        Interlocked.Exchange(ref _blockNextScheduleReturn, 1);
+    }
 
     public IDisposable Schedule(TimeSpan dueTime, Action callback)
     {
         Assert.True(dueTime > TimeSpan.Zero);
         var entry = new Entry(callback);
         _entries.Add(entry);
+        if (Interlocked.Exchange(ref _blockNextScheduleReturn, 0) != 0)
+        {
+            ScheduleEntered.Set();
+            Assert.True(AllowScheduleReturn.Wait(TimeSpan.FromSeconds(5)));
+        }
         return entry;
     }
 
-    public void Fire(int index) => _entries[index].Callback();
+    public void Fire(int index) => _entries[index].Fire();
 
     private sealed class Entry(Action callback) : IDisposable
     {
-        public Action Callback { get; } = callback;
+        private readonly Action _callback = callback;
+        private int _fired;
         public bool IsDisposed { get; private set; }
+        public void Fire()
+        {
+            if (Interlocked.Exchange(ref _fired, 1) == 0) _callback();
+        }
         public void Dispose() => IsDisposed = true;
+    }
+}
+
+internal sealed class ManualCommandAdmissionObserver(Type commandType)
+    : INetworkCommandAdmissionObserver
+{
+    private readonly Type _commandType = commandType;
+    private int _blocked;
+
+    public ManualResetEventSlim ReservationEntered { get; } = new(false);
+    public ManualResetEventSlim AllowAdmission { get; } = new(false);
+
+    public void AfterReservation(NetworkCommand command)
+    {
+        if (command.GetType() != _commandType ||
+            Interlocked.Exchange(ref _blocked, 1) != 0) return;
+        ReservationEntered.Set();
+        Assert.True(AllowAdmission.Wait(TimeSpan.FromSeconds(10)));
     }
 }

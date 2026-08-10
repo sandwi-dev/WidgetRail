@@ -781,29 +781,50 @@ channel, subscriber-publication, and disposal owner. Before the split, its
 1,186 lines (51,201 bytes) also contained the complete closed command
 vocabulary and native-result mapping, both timeout state machines, opaque-ID
 allocation and snapshot normalization, equality/duplicate suppression, and
-broker-event construction. The root is now 831 lines (33,738 bytes). Command
-admission/execution is a 134-line internal policy, owner-thread connection/scan
+broker-event construction. The root is now 836 lines (34,189 bytes). Command
+execution is a 139-line internal policy, bounded admission and draining are a
+275-line internal owner, owner-thread connection/scan
 transitions are 96 lines, native-state reconciliation is 258 lines, event
 projection is 21 lines, and the injected one-shot deadline mechanism is 19
 lines.
 
 The extracted owners add no thread, lock, task, channel, semaphore,
 cancellation source, capability, or public API. The root retains one state lock
-and one start lock, one bounded command queue, one coalesced native-outcome
-queue, three single-value event channels/pumps, and the same two one-shot
-deadline slots. Reconciliation and transient-operation policy are invoked only
-by the MTA owner and return bounded values that the root commits atomically.
-Timer callbacks no longer mutate connection state directly: both connection
-and scan deadlines enqueue generation-keyed commands behind native callbacks
-and provider operations, so stale deadlines are rejected in the single owner-
-thread order. Direct credential-free policy fixtures cover typed command
-results, public-ID admission, provider outcome/mismatch, current and stale
-connection/scan deadlines, provider disappearance/reappearance, bounded label
-projection, opaque-ID generation, duplicate projection, and the closed event
-vocabulary. The composed provider cases retain cancellation, radio rollback,
-provider churn, degraded recovery, late callbacks, deadline failure, and
-owner-thread disposal coverage. Broader live hardware/privacy/performance
-evidence remains open.
+and one start lock, one bounded 128-entry command queue, one coalesced native-
+outcome queue, three single-value event channels/pumps, and the same two
+one-shot deadline schedulers. The admission owner reserves four physical queue
+entries from the fixed bound, so ordinary admission stops at 124. Because a
+disposed one-shot timer can already have a callback queued, an additional
+bounded projection retains only the highest overflow generation for connection
+and scan. It preserves the original cross-type arrival sequence across failed
+promotion attempts and promotes a value only into a newly available FIFO tail
+position. Arbitrarily many delayed stale callbacks therefore cannot consume
+unbounded memory, displace the current deadline, or make a newer generation
+inherit an older signal's position. Reconciliation and transient-operation
+policy are invoked only by the MTA owner and return bounded values that the root
+commits atomically. Timer callbacks no longer mutate connection state directly
+or block on queue pressure. They admit generation-keyed commands through a
+packed closed/count gate, and owner consumption or terminal draining releases
+each admission exactly once. The gate uses a non-disposable completion signal,
+so a producer finishing after the bounded close wait cannot publish into a
+disposed queue or fault a timer callback. Stale deadlines remain rejected in
+the single owner-thread order.
+
+Direct credential-free policy fixtures cover typed command results, public-ID
+admission, provider outcome/mismatch, current and stale connection/scan
+deadlines, provider disappearance/reappearance, bounded label projection,
+opaque-ID generation, duplicate projection, and the closed event vocabulary.
+The composed provider cases additionally fill all 124 ordinary slots and prove
+current connection and scan deadlines still reach terminal state exactly once;
+delay more than four stale callbacks for each operation type and prove the
+current generation survives bounded overflow; preserve cross-type arrival
+order across failed promotion; place stale and replacement deadlines at their
+distinct FIFO positions; and hold ordinary and deadline producers beyond the
+bounded close wait to prove exception-free callback completion, zero queued
+commands, zero overflow values, and zero admission counters. They retain
+cancellation, radio rollback, provider churn, degraded recovery, late callbacks,
+deadline failure, and owner-thread disposal coverage. Broader live hardware/
+privacy/performance evidence remains open.
 
 Bounded dirty-worktree Release run `20260810T171344Z-feced08e` passed Windows
 Network provider 36/36, PlatformBroker 51/51, and documentation validation
@@ -811,6 +832,14 @@ across 52 Markdown files in 22.469 seconds. Its starting and finishing commit
 and dirty-status fingerprint are identical, so it is stable assignment-scoped
 implementation evidence rather than release-eligible clean-worktree evidence.
 No aggregate, widget, native adapter, or OverlayHost suite was run.
+
+Bounded correction run `20260810T175643Z-9adefc14` passed Windows Network
+provider 42/42 and documentation validation across 52 Markdown files in 18.537
+seconds. The run retained the same `51a6ec4` commit and dirty-status fingerprint
+from start to finish. It is focused dirty-worktree evidence for ordinary and
+deadline capacity, greater-than-four delayed callback overflow, cross-type FIFO
+promotion, replacement ordering, and admission-versus-disposal balance; no
+PlatformBroker, aggregate, native adapter, or OverlayHost suite was repeated.
 
 Games & Apps has replaced Recent Apps in the bundled catalog and first-party
 package conformance path. It is an ordinary public-SDK package in the generic

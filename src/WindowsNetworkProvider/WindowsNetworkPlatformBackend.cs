@@ -10,6 +10,8 @@ namespace GameBarAlternative.WindowsNetworkProvider;
 /// </summary>
 public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBackend, IAsyncDisposable
 {
+    internal const int MaximumOrdinaryQueuedCommands =
+        WindowsNetworkCommandQueue.MaximumOrdinaryQueuedCommands;
     private static readonly TimeSpan DefaultConnectionAttemptTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan WifiScanTimeout = TimeSpan.FromSeconds(6);
     private readonly IWindowsNetworkNativeAdapterFactory _factory;
@@ -17,7 +19,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private readonly TimeSpan _connectionAttemptTimeout;
     private readonly WindowsNetworkOperationPolicy _operations = new();
     private readonly WindowsNetworkStateReconciler _reconciler = new();
-    private readonly BlockingCollection<NetworkCommand> _commands = new(128);
+    private readonly WindowsNetworkCommandQueue _commands;
     private readonly Channel<NetworkStatusSummary> _events = Channel.CreateBounded<NetworkStatusSummary>(
         new BoundedChannelOptions(1)
         {
@@ -63,6 +65,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private int _started;
     private int _refreshQueued;
     private int _disposeStarted;
+    private int _ownerStopped;
     private volatile bool _degraded;
     private volatile bool _wirelessAccessRestricted;
     private volatile bool _ownerUnavailable;
@@ -107,10 +110,12 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     internal WindowsNetworkPlatformBackend(
         IWindowsNetworkNativeAdapterFactory factory,
         TimeSpan connectionAttemptTimeout,
-        INetworkDeadlineScheduler deadlineScheduler)
+        INetworkDeadlineScheduler deadlineScheduler,
+        INetworkCommandAdmissionObserver? admissionObserver = null)
     {
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         _deadlineScheduler = deadlineScheduler ?? throw new ArgumentNullException(nameof(deadlineScheduler));
+        _commands = new(admissionObserver);
         _connectionAttemptTimeout = connectionAttemptTimeout;
         if (_connectionAttemptTimeout <= TimeSpan.Zero ||
             _connectionAttemptTimeout > TimeSpan.FromMinutes(5))
@@ -131,6 +136,12 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
 
     /// <summary>Construction and event subscription do not activate any Windows network API.</summary>
     public bool IsStarted => Volatile.Read(ref _started) != 0;
+
+    internal int OrdinaryCommandsQueued => _commands.OrdinaryCommandsQueued;
+    internal int DeadlineCommandsQueued => _commands.DeadlineCommandsQueued;
+    internal int PendingDeadlineOverflowCount => _commands.PendingDeadlineOverflowCount;
+    internal bool CommandAdmissionClosed => _commands.IsClosed;
+    internal IReadOnlyList<string> QueuedCommandKinds => _commands.QueuedCommandKinds;
 
     public async Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken)
     {
@@ -203,7 +214,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     {
         try
         {
-            if (!_commands.TryAdd(command))
+            if (!_commands.TryEnqueueOrdinary(command))
                 throw new BrokerException("provider_busy", "The network provider is busy.");
         }
         catch (InvalidOperationException exception)
@@ -230,7 +241,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         var command = new RetryRefreshCommand(cancellationToken);
         try
         {
-            if (!_commands.TryAdd(command)) return;
+            if (!_commands.TryEnqueueOrdinary(command)) return;
         }
         catch (InvalidOperationException)
         {
@@ -255,15 +266,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             throw new BrokerException("platform_unavailable", "Windows networking is temporarily unavailable.");
 
         var command = new ConnectCommand(profileId, cancellationToken);
-        try
-        {
-            if (!_commands.TryAdd(command))
-                throw new BrokerException("provider_busy", "The network provider is busy.");
-        }
-        catch (InvalidOperationException exception)
-        {
-            throw new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend), exception);
-        }
+        EnqueueCommand(command);
         await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -284,6 +287,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
 
             foreach (var command in _commands.GetConsumingEnumerable())
             {
+                _commands.Release(command);
                 switch (command)
                 {
                     case RefreshCommand:
@@ -332,9 +336,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         }
         finally
         {
+            Volatile.Write(ref _ownerStopped, 1);
             Volatile.Write(ref _activeGeneration, 0);
-            try { _commands.CompleteAdding(); }
-            catch (ObjectDisposedException) { }
+            _commands.Close();
             if (adapter is not null)
             {
                 adapter.StateChanged -= OnNativeStateChanged;
@@ -344,6 +348,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             if (apartmentInitialized) NetworkInterop.Uninitialize();
             while (_commands.TryTake(out var pending))
             {
+                _commands.Release(pending);
                 switch (pending)
                 {
                     case ConnectCommand connect:
@@ -411,7 +416,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         if (Interlocked.CompareExchange(ref _refreshQueued, 1, 0) != 0) return;
         try
         {
-            if (!_commands.TryAdd(RefreshCommand.Instance))
+            if (!_commands.TryEnqueueOrdinary(RefreshCommand.Instance))
                 Interlocked.Exchange(ref _refreshQueued, 0);
         }
         catch (InvalidOperationException)
@@ -508,9 +513,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
 
     private void OnWifiScanTimeout(long generation)
     {
-        if (Volatile.Read(ref _disposeStarted) != 0) return;
-        try { _commands.TryAdd(new WifiScanTimeoutCommand(generation)); }
-        catch (InvalidOperationException) { }
+        if (Volatile.Read(ref _disposeStarted) != 0 ||
+            Volatile.Read(ref _ownerStopped) != 0) return;
+        _commands.EnqueueDeadline(new WifiScanTimeoutCommand(generation));
     }
 
     private void ExecuteWifiScanTimeout(long generation)
@@ -643,9 +648,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
 
     private void OnConnectionAttemptTimeout(long generation)
     {
-        if (Volatile.Read(ref _disposeStarted) != 0) return;
-        try { _commands.TryAdd(new ConnectionTimeoutCommand(generation)); }
-        catch (InvalidOperationException) { }
+        if (Volatile.Read(ref _disposeStarted) != 0 ||
+            Volatile.Read(ref _ownerStopped) != 0) return;
+        _commands.EnqueueDeadline(new ConnectionTimeoutCommand(generation));
     }
 
     private void ExecuteConnectionTimeout(long generation)
@@ -812,7 +817,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         lock (_startGate)
         {
             if (Interlocked.Exchange(ref _disposeStarted, 1) != 0) return;
-            _commands.CompleteAdding();
+            _commands.Close();
             if (_started == 0)
             {
                 _events.Writer.TryComplete();
