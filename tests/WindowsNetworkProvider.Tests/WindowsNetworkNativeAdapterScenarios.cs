@@ -81,6 +81,110 @@ internal static class WindowsNetworkNativeAdapterScenarios
         return Task.CompletedTask;
     }
 
+    public static async Task RecoveryAndDisposalAreLinearized()
+    {
+        using var calls = ControlledNetworkNativeCalls.CreateDefault();
+        calls.IpRegistrationResults.Enqueue(1);
+        calls.ConnectivityRegistrationResults.Enqueue(1);
+        using var registrationEntered = new ManualResetEventSlim();
+        using var continueRegistration = new ManualResetEventSlim();
+        using var disposalAttempted = new ManualResetEventSlim();
+        var adapter = new WindowsNetworkNativeAdapter(
+            51,
+            calls,
+            new(BeforeDisposalGate: disposalAttempted.Set));
+        calls.IpRegistrationEntered = registrationEntered;
+        calls.ContinueIpRegistration = continueRegistration;
+
+        var read = Task.Run(adapter.ReadSnapshot);
+        Assert.True(registrationEntered.Wait(TimeSpan.FromSeconds(5)));
+        var dispose = Task.Run(adapter.Dispose);
+        Assert.True(disposalAttempted.Wait(TimeSpan.FromSeconds(5)));
+        Assert.False(dispose.IsCompleted);
+
+        continueRegistration.Set();
+        _ = await read.ConfigureAwait(false);
+        await dispose.ConfigureAwait(false);
+
+        Assert.Equal(2, calls.IpRegistrationCalls);
+        Assert.Equal(2, calls.ConnectivityRegistrationCalls);
+        Assert.Equal(2, calls.CancelNotificationCalls);
+        Assert.Equal(0, calls.ActiveChangeNotificationCount);
+        Assert.Equal(1, calls.WlanUnregistrationCalls);
+        Assert.Equal(1, calls.CloseCalls);
+        adapter.Dispose();
+        Assert.Equal(2, calls.CancelNotificationCalls);
+        Assert.Equal(1, calls.WlanUnregistrationCalls);
+        Assert.Equal(1, calls.CloseCalls);
+    }
+
+    public static async Task DisposalDrainsAdmittedPublication()
+    {
+        using var calls = ControlledNetworkNativeCalls.CreateDefault();
+        using var publicationAdmitted = new ManualResetEventSlim();
+        using var continuePublication = new ManualResetEventSlim();
+        using var disposalLinearized = new ManualResetEventSlim();
+        using var disposalEntrances = new CountdownEvent(2);
+        var adapter = new WindowsNetworkNativeAdapter(
+            52,
+            calls,
+            new(
+                BeforeDisposalGate: () => disposalEntrances.Signal(),
+                DisposalLinearized: disposalLinearized.Set,
+                BeforeEventPublication: () =>
+                {
+                    publicationAdmitted.Set();
+                    Assert.True(continuePublication.Wait(TimeSpan.FromSeconds(5)));
+                }));
+        var publications = 0;
+        adapter.StateChanged += (_, _) => Interlocked.Increment(ref publications);
+
+        var callback = Task.Run(calls.FireIpChange);
+        Assert.True(publicationAdmitted.Wait(TimeSpan.FromSeconds(5)));
+        var firstDispose = Task.Run(adapter.Dispose);
+        Assert.True(disposalLinearized.Wait(TimeSpan.FromSeconds(5)));
+        var secondDispose = Task.Run(adapter.Dispose);
+        Assert.True(disposalEntrances.Wait(TimeSpan.FromSeconds(5)));
+        Assert.False(firstDispose.IsCompleted);
+        Assert.False(secondDispose.IsCompleted);
+        Assert.Equal(0, Volatile.Read(ref publications));
+
+        continuePublication.Set();
+        await callback.ConfigureAwait(false);
+        await Task.WhenAll(firstDispose, secondDispose).ConfigureAwait(false);
+        Assert.Equal(0, Volatile.Read(ref publications));
+        calls.FireIpChange();
+        calls.FireConnectivityChange();
+        calls.FireScanComplete(calls.InterfaceId);
+        Assert.Equal(0, Volatile.Read(ref publications));
+        Assert.Equal(2, calls.CancelNotificationCalls);
+        Assert.Equal(0, calls.ActiveChangeNotificationCount);
+        Assert.Equal(1, calls.WlanUnregistrationCalls);
+        Assert.Equal(1, calls.CloseCalls);
+    }
+
+    public static Task ReentrantPublicationDisposalIsTerminal()
+    {
+        using var calls = ControlledNetworkNativeCalls.CreateDefault();
+        var adapter = new WindowsNetworkNativeAdapter(53, calls);
+        var publications = 0;
+        adapter.StateChanged += (_, _) =>
+        {
+            publications++;
+            adapter.Dispose();
+        };
+
+        calls.FireIpChange();
+        Assert.Equal(1, publications);
+        calls.FireIpChange();
+        Assert.Equal(1, publications);
+        Assert.Equal(2, calls.CancelNotificationCalls);
+        Assert.Equal(0, calls.ActiveChangeNotificationCount);
+        Assert.Equal(1, calls.WlanUnregistrationCalls);
+        Assert.Equal(1, calls.CloseCalls);
+        return Task.CompletedTask;
+    }
+
     public static Task FailedOpenRecoversWithoutDuplicateHandle()
     {
         using var calls = ControlledNetworkNativeCalls.CreateDefault();
@@ -252,6 +356,8 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
 {
     private const uint ErrorSuccess = 0;
     private readonly HashSet<IntPtr> _allocations = [];
+    private readonly HashSet<IntPtr> _activeChangeNotifications = [];
+    private readonly object _notificationGate = new();
     private long _nextHandle = 100;
     private bool _wlanOpen;
 
@@ -272,6 +378,12 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
     public int CancelNotificationCalls { get; private set; }
     public int FreeCalls { get; private set; }
     public int OutstandingAllocations => _allocations.Count;
+    public int ActiveChangeNotificationCount
+    {
+        get { lock (_notificationGate) return _activeChangeNotifications.Count; }
+    }
+    public ManualResetEventSlim? IpRegistrationEntered { get; set; }
+    public ManualResetEventSlim? ContinueIpRegistration { get; set; }
     public int? InterfaceDeclaredCount { get; set; }
     public int? RadioDeclaredCount { get; set; }
     public int BestInterfaceIndex { get; set; } = 7;
@@ -445,8 +557,17 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
     {
         IpRegistrationCalls++;
         var result = Next(IpRegistrationResults);
+        if (IpRegistrationEntered is not null)
+        {
+            IpRegistrationEntered.Set();
+            Assert.True(ContinueIpRegistration?.Wait(TimeSpan.FromSeconds(5)) == true);
+        }
         handle = result == ErrorSuccess ? NewHandle() : IntPtr.Zero;
-        if (result == ErrorSuccess) IpCallback = callback;
+        if (result == ErrorSuccess)
+        {
+            IpCallback = callback;
+            lock (_notificationGate) _activeChangeNotifications.Add(handle);
+        }
         return result;
     }
 
@@ -457,13 +578,18 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
         ConnectivityRegistrationCalls++;
         var result = Next(ConnectivityRegistrationResults);
         handle = result == ErrorSuccess ? NewHandle() : IntPtr.Zero;
-        if (result == ErrorSuccess) ConnectivityCallback = callback;
+        if (result == ErrorSuccess)
+        {
+            ConnectivityCallback = callback;
+            lock (_notificationGate) _activeChangeNotifications.Add(handle);
+        }
         return result;
     }
 
     public uint CancelChangeNotification(IntPtr handle)
     {
         Assert.True(handle != IntPtr.Zero);
+        lock (_notificationGate) Assert.True(_activeChangeNotifications.Remove(handle));
         CancelNotificationCalls++;
         return ErrorSuccess;
     }

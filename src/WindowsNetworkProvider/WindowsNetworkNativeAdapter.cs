@@ -8,12 +8,20 @@ public sealed class WindowsNetworkNativeAdapterFactory : IWindowsNetworkNativeAd
         new WindowsNetworkNativeAdapter(generation);
 }
 
+internal sealed record WindowsNetworkNativeAdapterTestHooks(
+    Action? BeforeDisposalGate = null,
+    Action? DisposalLinearized = null,
+    Action? BeforeEventPublication = null);
+
 /// <summary>
 /// Sole owner of the Windows WLAN/IP notification lifetime, adapter generation, and terminal
 /// disposal. Value and operation policies receive its current handle but cannot retain it.
 /// </summary>
 internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
 {
+    private const int LifetimeActive = 0;
+    private const int LifetimeDisposing = 1;
+    private const int LifetimeTerminal = 2;
     private const uint ErrorSuccess = 0;
     private const uint WlanNotificationSourceNone = 0;
     private const uint WlanNotificationSourceAcm = 0x00000008;
@@ -23,41 +31,53 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
     private readonly NativeWifiNotificationCallback _wlanCallback;
     private readonly IpInterfaceChangeCallback _ipCallback;
     private readonly NetworkConnectivityHintChangeCallback _connectivityCallback;
-    private readonly object _wlanGate = new();
+    private readonly WindowsNetworkNativeAdapterTestHooks? _testHooks;
+    private readonly object _lifetimeGate = new();
+    private readonly Dictionary<int, int> _publicationDepthByThread = [];
     private IntPtr _wlanHandle;
     private IntPtr _ipNotificationHandle;
     private IntPtr _connectivityNotificationHandle;
-    private int _disposed;
+    private int _lifetimeState;
     private int _degraded;
     private bool _wlanServiceAvailable;
     private bool _wlanNotificationsRegistered;
     private bool _connectivityNotificationsSupported = true;
+    private bool _cleanupComplete;
+    private int _activePublications;
 
     internal WindowsNetworkNativeAdapter(long generation)
-        : this(generation, WindowsNetworkNativeCalls.Instance, requireWindows: true)
+        : this(generation, WindowsNetworkNativeCalls.Instance, null, requireWindows: true)
     {
     }
 
-    internal WindowsNetworkNativeAdapter(long generation, IWindowsNetworkNativeCalls calls)
-        : this(generation, calls, requireWindows: false)
+    internal WindowsNetworkNativeAdapter(
+        long generation,
+        IWindowsNetworkNativeCalls calls,
+        WindowsNetworkNativeAdapterTestHooks? testHooks = null)
+        : this(generation, calls, testHooks, requireWindows: false)
     {
     }
 
     private WindowsNetworkNativeAdapter(
         long generation,
         IWindowsNetworkNativeCalls calls,
+        WindowsNetworkNativeAdapterTestHooks? testHooks,
         bool requireWindows)
     {
         if (requireWindows && !OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Windows network APIs require Windows.");
         _calls = calls ?? throw new ArgumentNullException(nameof(calls));
+        _testHooks = testHooks;
         Generation = generation;
         _wlanCallback = OnWlanNotification;
         _ipCallback = OnIpInterfaceChanged;
         _connectivityCallback = OnConnectivityHintChanged;
-        TryOpenNativeWifi();
-        TryRegisterIpNotifications();
-        TryRegisterConnectivityNotifications();
+        lock (_lifetimeGate)
+        {
+            TryOpenNativeWifi();
+            TryRegisterIpNotifications();
+            TryRegisterConnectivityNotifications();
+        }
     }
 
     public event EventHandler<NativeNetworkStateChangedEventArgs>? StateChanged;
@@ -72,7 +92,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         NetworkWirelessAvailability wirelessAvailability;
         IReadOnlyList<NativeSavedNetworkProfile> profiles;
         bool registrationDegraded;
-        lock (_wlanGate)
+        lock (_lifetimeGate)
         {
             ThrowIfDisposed();
             TryRecoverEventRegistrations();
@@ -122,7 +142,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         }
         try
         {
-            lock (_wlanGate)
+            lock (_lifetimeGate)
             {
                 ThrowIfDisposed();
                 return _wlan.TryConnectSavedProfile(
@@ -141,7 +161,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
     public NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot()
     {
         ThrowIfDisposed();
-        lock (_wlanGate)
+        lock (_lifetimeGate)
         {
             ThrowIfDisposed();
             return _wlan.ReadAvailableSnapshot(_calls, _wlanHandle);
@@ -151,7 +171,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
     public NativeWifiScanStartResult TryStartWifiScan()
     {
         ThrowIfDisposed();
-        lock (_wlanGate)
+        lock (_lifetimeGate)
         {
             ThrowIfDisposed();
             return _wlan.TryStartScan(_calls, _wlanHandle);
@@ -162,7 +182,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         string nativeNetworkKey)
     {
         ThrowIfDisposed();
-        lock (_wlanGate)
+        lock (_lifetimeGate)
         {
             ThrowIfDisposed();
             return _wlan.TryConnectAvailableNetwork(
@@ -175,7 +195,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
     public NativeWifiRadioSnapshot ReadWifiRadio()
     {
         ThrowIfDisposed();
-        lock (_wlanGate)
+        lock (_lifetimeGate)
         {
             ThrowIfDisposed();
             var interfaces = _wlan.EnumerateInterfaces(_calls, _wlanHandle);
@@ -186,7 +206,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
     public NativeWifiRadioSetResult TrySetWifiRadio(bool enabled)
     {
         ThrowIfDisposed();
-        lock (_wlanGate)
+        lock (_lifetimeGate)
         {
             ThrowIfDisposed();
             var interfaces = _wlan.EnumerateInterfaces(_calls, _wlanHandle);
@@ -272,9 +292,9 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
     private void OnWlanNotification(ref WlanNotificationData data, IntPtr context)
     {
         NativeWlanNotificationProjection projection;
-        lock (_wlanGate)
+        lock (_lifetimeGate)
         {
-            if (Volatile.Read(ref _disposed) != 0) return;
+            if (_lifetimeState != LifetimeActive) return;
             projection = _wlan.ProcessNotification(ref data);
         }
         RaiseChanged(projection.ConnectionOutcome, projection.ScanOutcome);
@@ -284,35 +304,81 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         NativeNetworkConnectionOutcome? outcome,
         NativeWifiScanOutcome? scanOutcome = null)
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
-        StateChanged?.Invoke(this, new NativeNetworkStateChangedEventArgs(Generation)
+        var threadId = Environment.CurrentManagedThreadId;
+        lock (_lifetimeGate)
         {
-            ConnectionOutcome = outcome,
-            WifiScanOutcome = scanOutcome,
-        });
+            if (_lifetimeState != LifetimeActive) return;
+            _activePublications++;
+            _publicationDepthByThread.TryGetValue(threadId, out var depth);
+            _publicationDepthByThread[threadId] = depth + 1;
+        }
+        try
+        {
+            _testHooks?.BeforeEventPublication?.Invoke();
+            EventHandler<NativeNetworkStateChangedEventArgs>? handlers;
+            lock (_lifetimeGate)
+            {
+                if (_lifetimeState != LifetimeActive) return;
+                handlers = StateChanged;
+            }
+            handlers?.Invoke(this, new NativeNetworkStateChangedEventArgs(Generation)
+            {
+                ConnectionOutcome = outcome,
+                WifiScanOutcome = scanOutcome,
+            });
+        }
+        finally
+        {
+            lock (_lifetimeGate)
+            {
+                _activePublications--;
+                var depth = _publicationDepthByThread[threadId] - 1;
+                if (depth == 0) _publicationDepthByThread.Remove(threadId);
+                else _publicationDepthByThread[threadId] = depth;
+                if (_lifetimeState == LifetimeDisposing &&
+                    _cleanupComplete &&
+                    _activePublications == 0)
+                    _lifetimeState = LifetimeTerminal;
+                Monitor.PulseAll(_lifetimeGate);
+            }
+        }
     }
 
     private void ThrowIfDisposed()
     {
-        if (Volatile.Read(ref _disposed) != 0)
+        if (Volatile.Read(ref _lifetimeState) != LifetimeActive)
             throw new ObjectDisposedException(nameof(WindowsNetworkNativeAdapter));
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        if (_ipNotificationHandle != IntPtr.Zero)
+        _testHooks?.BeforeDisposalGate?.Invoke();
+        lock (_lifetimeGate)
         {
-            _ = _calls.CancelChangeNotification(_ipNotificationHandle);
-            _ipNotificationHandle = IntPtr.Zero;
-        }
-        if (_connectivityNotificationHandle != IntPtr.Zero)
-        {
-            _ = _calls.CancelChangeNotification(_connectivityNotificationHandle);
-            _connectivityNotificationHandle = IntPtr.Zero;
-        }
-        lock (_wlanGate)
-        {
+            _publicationDepthByThread.TryGetValue(
+                Environment.CurrentManagedThreadId,
+                out var reentrantDepth);
+            if (_lifetimeState == LifetimeTerminal) return;
+            if (_lifetimeState == LifetimeDisposing)
+            {
+                if (reentrantDepth != 0) return;
+                while (_lifetimeState != LifetimeTerminal)
+                    Monitor.Wait(_lifetimeGate);
+                return;
+            }
+
+            Volatile.Write(ref _lifetimeState, LifetimeDisposing);
+            _testHooks?.DisposalLinearized?.Invoke();
+            if (_ipNotificationHandle != IntPtr.Zero)
+            {
+                _ = _calls.CancelChangeNotification(_ipNotificationHandle);
+                _ipNotificationHandle = IntPtr.Zero;
+            }
+            if (_connectivityNotificationHandle != IntPtr.Zero)
+            {
+                _ = _calls.CancelChangeNotification(_connectivityNotificationHandle);
+                _connectivityNotificationHandle = IntPtr.Zero;
+            }
             if (_wlanHandle != IntPtr.Zero)
             {
                 if (_wlanNotificationsRegistered)
@@ -325,6 +391,14 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
                 _wlanHandle = IntPtr.Zero;
             }
             _wlan.Clear();
+            _cleanupComplete = true;
+            while (_activePublications > reentrantDepth)
+                Monitor.Wait(_lifetimeGate);
+            if (_activePublications == 0)
+            {
+                _lifetimeState = LifetimeTerminal;
+                Monitor.PulseAll(_lifetimeGate);
+            }
         }
     }
 }
