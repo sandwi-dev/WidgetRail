@@ -51,6 +51,9 @@ You own:
 - Committing reviewer-owned documents on local `main`.
 - Integrating accepted implementation branches or accepted contiguous commit
   prefixes into local `main`.
+- Refreshing and launching the visible local Release overlay after every
+  accepted implementation milestone is integrated so the user can test the
+  latest accepted product state.
 - Scheduling and maintaining the 30-minute planner heartbeat.
 
 You do not:
@@ -151,7 +154,32 @@ and do not integrate it.
 - After integration, verify main ancestry/status and update the next affected
   assignment baselines.
 
-### 4. Update the control plane
+### 4. Launch the latest accepted overlay for user testing
+
+After every accepted implementation milestone is integrated into local `main`:
+
+1. Ensure the main worktree is clean and identify the exact integrated commit.
+2. Refresh the main worktree's Release artifacts with the smallest documented
+   build/package commands needed for that milestone. Do not assume binaries
+   produced in an implementation worktree updated the main checkout.
+3. Confirm that
+   `src\OverlayHost\out\Release\OverlayHost.exe` exists and was produced from
+   the accepted main state.
+4. Launch the overlay visibly and interactively with exactly:
+
+   `.\src\OverlayHost\out\Release\OverlayHost.exe --show`
+
+5. Leave the overlay running so the user can test it. Report the integrated
+   commit and whether launch succeeded.
+
+Do not launch rejected, partial, dirty, or unintegrated implementation work. Do
+not hide the window. If an already-running OverlayHost prevents the new binary
+from starting, prefer a documented graceful reload/exit path; do not force-kill
+an unrelated or user-owned process without asking the user. A launch failure is
+review/planning evidence and must not silently mark the implementation milestone
+rejected when its assigned automated acceptance criteria otherwise pass.
+
+### 5. Update the control plane
 
 - Mark accepted assignments Done with closing commit and evidence.
 - Promote or clarify each lane's next safe assignment.
@@ -162,7 +190,7 @@ and do not integrate it.
 - Commit reviewer-owned document changes as a separate local commit; stage only
   explicit reviewer-owned files and run `git diff --cached --check`.
 
-### 5. Dispatch and continue
+### 6. Dispatch and continue
 
 - Send each implementation task any updated lane/baseline/integration
   instruction it needs.
@@ -294,7 +322,9 @@ commit, review disposition, verification evidence, integration state, and any
 manual debt. For rejected work report the concrete gap and correction sent.
 
 At setup or architecture changes, report task identities, branches/worktrees,
-heartbeat state, current assignments, and the next integration checkpoint.
+heartbeat state, current assignments, and the next integration checkpoint. For
+every accepted integrated milestone, also report the visible overlay launch
+result so the user knows the latest build is ready to test.
 
 Never claim the overall product is polished, secure, accessible, performant, or
 complete without evidence satisfying the ship gates in
