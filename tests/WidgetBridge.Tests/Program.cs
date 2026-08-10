@@ -18,6 +18,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
     ("Event cancellation preserves the serialized frame boundary", BridgeEventWriteBoundaryScenarios.CancellationPreservesFrameBoundary),
+    ("Bridge read and reply timeouts have exact frame owners", BridgeFrameOwnershipScenarios.TimeoutAndCancellationHaveExactOwners),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
     ("Settings reviews the same catalog selected by the bridge", SettingsUsesSelectedCatalog),
@@ -861,7 +862,6 @@ static async Task PipelinedWidgetRequestsStayOrdered()
         responses.Select(response => response.Type));
     Assert.Equal("enqueued", responses[0].Payload.GetProperty("admission").GetString());
     Assert.Equal("enqueued", responses[1].Payload.GetProperty("admission").GetString());
-    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
     _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
     var completed = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
@@ -2422,8 +2422,17 @@ file sealed class BridgeHarness : IAsyncDisposable
     {
         try
         {
-            await Client.RequestAsync(BridgeMessageTypes.Stop, new { });
-            await _serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+            if (!Client.IsTerminal)
+                await Client.RequestAsync(BridgeMessageTypes.Stop, new { });
+            try
+            {
+                await _serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch (Exception exception) when (
+                Client.ReadWasCanceled &&
+                exception is IOException or OperationCanceledException or ObjectDisposedException)
+            {
+            }
         }
         finally
         {
@@ -2603,8 +2612,10 @@ file sealed class RawBridgeConnection : IAsyncDisposable
 
 file sealed class BridgeTestClient : IAsyncDisposable
 {
+    private static readonly TimeSpan ReadDeadline = TimeSpan.FromSeconds(4);
     private readonly NamedPipeClientStream _pipe;
     private readonly BridgeFrameChannel _channel;
+    private readonly BridgeTestFrameReader _reader;
     private readonly Queue<BridgeEnvelope> _events = new();
     private long _requestId;
     public int PendingEventCount => _events.Count;
@@ -2613,7 +2624,11 @@ file sealed class BridgeTestClient : IAsyncDisposable
     {
         _pipe = pipe;
         _channel = channel;
+        _reader = new BridgeTestFrameReader(channel, pipe.Dispose);
     }
+
+    public bool IsTerminal => _reader.IsTerminal;
+    public bool ReadWasCanceled => _reader.WasCanceled;
 
     public static async Task<BridgeTestClient> ConnectAsync(string pipeName, int maximumBytes)
     {
@@ -2638,8 +2653,7 @@ file sealed class BridgeTestClient : IAsyncDisposable
         }, CancellationToken.None);
         while (true)
         {
-            var response = await _channel.ReadAsync(CancellationToken.None).AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(4));
+            var response = await _reader.ReadAsync(ReadDeadline);
             if (response.RequestId == 0)
             {
                 _events.Enqueue(response);
@@ -2670,8 +2684,7 @@ file sealed class BridgeTestClient : IAsyncDisposable
         var responses = new Dictionary<long, BridgeEnvelope>();
         while (responses.Count != requestIds.Length)
         {
-            var response = await _channel.ReadAsync(CancellationToken.None).AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(4));
+            var response = await _reader.ReadAsync(ReadDeadline);
             if (response.RequestId == 0)
             {
                 _events.Enqueue(response);
@@ -2696,8 +2709,7 @@ file sealed class BridgeTestClient : IAsyncDisposable
         }
         while (true)
         {
-            var message = await _channel.ReadAsync(CancellationToken.None).AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(4));
+            var message = await _reader.ReadAsync(ReadDeadline);
             if (message.RequestId != 0)
                 throw new InvalidOperationException("Expected an event, received a response.");
             if (message.Type == type) return message;

@@ -9,6 +9,7 @@ internal static class BridgeEventWriteBoundaryScenarios
     {
         await QueuedCancellationWritesNothingAsync();
         await StartedFrameDeadlineEndsSessionAsync();
+        await OrdinaryReplyCancellationFinishesExactFrameAsync();
     }
 
     private static async Task QueuedCancellationWritesNothingAsync()
@@ -16,7 +17,7 @@ internal static class BridgeEventWriteBoundaryScenarios
         await using var adapter = new ManualEventWriteAdapter(
             initiallyAdmitWriter: false,
             blockFrameBody: false);
-        var boundary = new BridgeEventWriteBoundary(adapter);
+        var boundary = new BridgeFrameWriteBoundary(adapter);
         using var cancellation = new CancellationTokenSource();
 
         var withdrawn = boundary.WriteAsync(
@@ -24,7 +25,8 @@ internal static class BridgeEventWriteBoundaryScenarios
             cancellation.Token);
         await adapter.FirstWriterWaiting.WaitAsync(TimeSpan.FromSeconds(2));
         cancellation.Cancel();
-        await withdrawn.WaitAsync(TimeSpan.FromSeconds(2));
+        _ = await BoundaryAssert.ThrowsAsync<OperationCanceledException>(
+            () => withdrawn.WaitAsync(TimeSpan.FromSeconds(2)));
 
         BoundaryAssert.Equal(0, adapter.Stream.Bytes.Length);
         BoundaryAssert.Equal(0, adapter.ReleaseCount);
@@ -43,6 +45,7 @@ internal static class BridgeEventWriteBoundaryScenarios
         BoundaryAssert.Equal("intact", frame.Payload.GetProperty("value").GetString());
         BoundaryAssert.Equal(stream.Length, stream.Position);
         BoundaryAssert.Equal(1, adapter.ReleaseCount);
+        BoundaryAssert.Equal(1, adapter.ChannelAccessCount);
         BoundaryAssert.Equal(0, adapter.AbortCount);
     }
 
@@ -51,7 +54,7 @@ internal static class BridgeEventWriteBoundaryScenarios
         await using var adapter = new ManualEventWriteAdapter(
             initiallyAdmitWriter: true,
             blockFrameBody: true);
-        var boundary = new BridgeEventWriteBoundary(adapter);
+        var boundary = new BridgeFrameWriteBoundary(adapter);
         using var publicationCancellation = new CancellationTokenSource();
 
         var partial = boundary.WriteAsync(
@@ -76,17 +79,62 @@ internal static class BridgeEventWriteBoundaryScenarios
         await adapter.SecondWriterWaiting.WaitAsync(TimeSpan.FromSeconds(2));
 
         adapter.TriggerDeadline();
-        await Task.WhenAll(partial, excluded).WaitAsync(TimeSpan.FromSeconds(2));
+        _ = await BoundaryAssert.ThrowsAsync<OperationCanceledException>(
+            () => partial.WaitAsync(TimeSpan.FromSeconds(2)));
+        _ = await BoundaryAssert.ThrowsAsync<OperationCanceledException>(
+            () => excluded.WaitAsync(TimeSpan.FromSeconds(2)));
 
         BoundaryAssert.Equal(1, adapter.AbortCount);
-        BoundaryAssert.Equal(1, adapter.ReleaseCount);
+        BoundaryAssert.Equal(1, adapter.ChannelAccessCount);
         BoundaryAssert.Equal(sizeof(int), adapter.Stream.Bytes.Length);
         BoundaryAssert.True(
             adapter.SessionCancellation.IsCancellationRequested,
             "The partial-frame timeout did not terminate the session.");
         BoundaryAssert.Equal(
-            BridgeEventWriteBoundary.WriteDeadline,
+            BridgeFrameWriteBoundary.WriteDeadline,
             adapter.ObservedDeadline);
+    }
+
+    private static async Task OrdinaryReplyCancellationFinishesExactFrameAsync()
+    {
+        await using var adapter = new ManualEventWriteAdapter(
+            initiallyAdmitWriter: true,
+            blockFrameBody: true,
+            releaseBlockedBody: true);
+        var boundary = new BridgeFrameWriteBoundary(adapter);
+        using var requestCancellation = new CancellationTokenSource();
+
+        var reply = boundary.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Acknowledged,
+            RequestId = 41,
+            Payload = BridgeJson.ToElement(new { value = "reply" }),
+        }, requestCancellation.Token);
+        await adapter.Stream.BodyWriteEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        requestCancellation.Cancel();
+        BoundaryAssert.True(
+            !reply.IsCompleted,
+            "Request cancellation interrupted an ordinary reply after its header.");
+
+        var successor = boundary.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Acknowledged,
+            RequestId = 42,
+            Payload = BridgeJson.ToElement(new { value = "successor" }),
+        }, CancellationToken.None);
+        await adapter.SecondWriterWaiting.WaitAsync(TimeSpan.FromSeconds(2));
+        adapter.Stream.ReleaseBody();
+        await Task.WhenAll(reply, successor).WaitAsync(TimeSpan.FromSeconds(2));
+
+        await using var stream = new MemoryStream(adapter.Stream.Bytes, writable: false);
+        var channel = new BridgeFrameChannel(stream, MaximumMessageBytes);
+        var first = await channel.ReadAsync(CancellationToken.None);
+        var second = await channel.ReadAsync(CancellationToken.None);
+        BoundaryAssert.Equal(41L, first.RequestId);
+        BoundaryAssert.Equal(42L, second.RequestId);
+        BoundaryAssert.Equal(stream.Length, stream.Position);
+        BoundaryAssert.Equal(2, adapter.ReleaseCount);
+        BoundaryAssert.Equal(0, adapter.AbortCount);
     }
 
     private static BridgeEnvelope Envelope(string type, string value) => new()
@@ -96,24 +144,30 @@ internal static class BridgeEventWriteBoundaryScenarios
     };
 }
 
-internal sealed class ManualEventWriteAdapter : IBridgeEventWriteAdapter, IAsyncDisposable
+internal sealed class ManualEventWriteAdapter : IBridgeFrameWriteAdapter, IAsyncDisposable
 {
     private readonly SemaphoreSlim _writerGate;
     private readonly CancellationTokenSource _session = new();
     private readonly CancellationTokenSource _deadline = new();
+    private readonly BridgeFrameChannel _channel;
+    private int _channelAccessCount;
     private int _waitingWriters;
 
-    internal ManualEventWriteAdapter(bool initiallyAdmitWriter, bool blockFrameBody)
+    internal ManualEventWriteAdapter(
+        bool initiallyAdmitWriter,
+        bool blockFrameBody,
+        bool releaseBlockedBody = false)
     {
         _writerGate = new SemaphoreSlim(initiallyAdmitWriter ? 1 : 0, 1);
-        Stream = new ManualFrameStream(blockFrameBody);
-        Channel = new BridgeFrameChannel(Stream, 64 * 1024);
+        Stream = new ManualFrameStream(blockFrameBody, releaseBlockedBody);
+        _channel = new BridgeFrameChannel(Stream, 64 * 1024);
     }
 
     internal ManualFrameStream Stream { get; }
     internal Task FirstWriterWaiting => _firstWriterWaiting.Task;
     internal Task SecondWriterWaiting => _secondWriterWaiting.Task;
     internal int AbortCount { get; private set; }
+    internal int ChannelAccessCount => Volatile.Read(ref _channelAccessCount);
     internal int ReleaseCount { get; private set; }
     internal TimeSpan ObservedDeadline { get; private set; }
 
@@ -122,7 +176,14 @@ internal sealed class ManualEventWriteAdapter : IBridgeEventWriteAdapter, IAsync
     private readonly TaskCompletionSource _secondWriterWaiting = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public BridgeFrameChannel? Channel { get; }
+    public BridgeFrameChannel? Channel
+    {
+        get
+        {
+            Interlocked.Increment(ref _channelAccessCount);
+            return _channel;
+        }
+    }
     public CancellationToken SessionCancellation => _session.Token;
 
     public async Task AcquireWriterAsync(CancellationToken cancellationToken)
@@ -166,7 +227,9 @@ internal sealed class ManualEventWriteAdapter : IBridgeEventWriteAdapter, IAsync
     }
 }
 
-internal sealed class ManualFrameStream(bool blockFrameBody) : Stream
+internal sealed class ManualFrameStream(
+    bool blockFrameBody,
+    bool releaseBlockedBody) : Stream
 {
     private readonly MemoryStream _bytes = new();
     private int _writeCount;
@@ -193,17 +256,24 @@ internal sealed class ManualFrameStream(bool blockFrameBody) : Stream
     {
         var write = Interlocked.Increment(ref _writeCount);
         if (blockFrameBody && write == 2)
-            return new ValueTask(BlockBodyAsync(cancellationToken));
+            return new ValueTask(BlockBodyAsync(buffer.ToArray(), cancellationToken));
         _bytes.Write(buffer.Span);
         return ValueTask.CompletedTask;
     }
 
-    private async Task BlockBodyAsync(CancellationToken cancellationToken)
+    private async Task BlockBodyAsync(
+        byte[] buffer,
+        CancellationToken cancellationToken)
     {
         _bodyWriteEntered.TrySetResult();
-        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
-            .ConfigureAwait(false);
+        await _bodyRelease.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (releaseBlockedBody) _bytes.Write(buffer);
     }
+
+    private readonly TaskCompletionSource _bodyRelease = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal void ReleaseBody() => _bodyRelease.TrySetResult();
 
     public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public override void Flush() { }
@@ -227,5 +297,19 @@ internal static class BoundaryAssert
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
             throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
+    }
+
+    internal static async Task<T> ThrowsAsync<T>(Func<Task> action)
+        where T : Exception
+    {
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        catch (T exception)
+        {
+            return exception;
+        }
+        throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 }

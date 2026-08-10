@@ -124,10 +124,11 @@ invalidation, while at most 32 non-coalescible action/runtime failures retain
 FIFO order. Full, closed, and coalesced results create no new publication
 lease; an accepted item owns exactly one lease until send, cancellation, or
 retirement drain. Lane cancellation can withdraw a queued event before writer
-admission. One internal event-write boundary owns that admission, the unchanged
-four-second in-flight deadline, and session abort through one server adapter to
-the real frame channel. After frame writing begins, publication cancellation no
-longer interrupts the frame; timeout ends that pipe session before any
+admission. One internal frame-write boundary owns serialized admission for both
+ordinary replies and events, the unchanged four-second in-flight deadline, and
+session abort through one server adapter to the real frame channel. After frame
+writing begins, request or publication cancellation no longer interrupts the
+frame; timeout ends that pipe session before any
 subsequent frame can follow a possibly partial write. Framing bytes and the
 public protocol are unchanged.
 
