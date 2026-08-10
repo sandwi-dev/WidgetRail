@@ -80,6 +80,7 @@ internal static class AudioMixerProviderSessionScenarios
         fixture.DeviceSubscriptionException = null;
         fixture.Devices = [new WidgetAudioDevice(
             "headset", "Headset", WidgetAudioDeviceDirection.Output, true)];
+        var beforeRetry = observations.TotalCount;
         Assert.True(session.Retry(AudioMixerProviderSection.Devices),
             "The active session refused an optional retry.");
         await observations.WaitUntilAsync(items => fixture.DeviceSubscriptionCount == 2 &&
@@ -89,9 +90,95 @@ internal static class AudioMixerProviderSessionScenarios
         Assert.Equal(1, fixture.InputSubscriptionCount);
         Assert.Equal(1, fixture.SessionsSubscriptionCount);
         Assert.Equal(1, fixture.OutputSubscriptionCount);
+        var retryObservations = observations.Snapshot()
+            .Skip(beforeRetry)
+            .Where(observation => observation.Kind is
+                AudioMixerProviderObservationKind.DevicesLoading or
+                AudioMixerProviderObservationKind.DevicesChanged or
+                AudioMixerProviderObservationKind.DevicesFailed)
+            .ToArray();
+        Assert.True(retryObservations.Length >= 2,
+            "The retry did not publish its loading and terminal observations.");
+        Assert.Equal(AudioMixerProviderObservationKind.DevicesLoading,
+            retryObservations[0].Kind);
+        Assert.Equal(AudioMixerProviderObservationKind.DevicesChanged,
+            retryObservations[^1].Kind);
 
         await session.StopAsync();
         Assert.Equal(0, fixture.ActiveSubscriptions);
+    }
+
+    internal static async Task RetryAndStopAreAtomic()
+    {
+        var fixture = new ProviderSessionFixture
+        {
+            Sessions = [Session("game", "Game", 0.5)],
+            BlockDeviceCancellation = true,
+        };
+        var observations = new ObservationLog();
+        var session = CreateSession(fixture, observations);
+        session.Start();
+        await observations.WaitUntilAsync(items => items.Any(observation =>
+            observation.Kind == AudioMixerProviderObservationKind.DevicesChanged));
+
+        var retryStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var retry = Task.Run(() =>
+        {
+            retryStarted.TrySetResult();
+            return session.Retry(AudioMixerProviderSection.Devices);
+        });
+        await retryStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await fixture.DeviceCancellationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var stopStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var stop = Task.Run(async () =>
+        {
+            stopStarted.TrySetResult();
+            await session.StopAsync();
+        });
+        await stopStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(!stop.IsCompleted,
+            "Terminal stop overtook the admitted retry transition.");
+
+        fixture.ReleaseDeviceCancellation.TrySetResult();
+        Assert.True(await retry.WaitAsync(TimeSpan.FromSeconds(2)),
+            "The admitted retry did not complete.");
+        await stop.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, fixture.ActiveSubscriptions);
+        Assert.True(!session.Retry(AudioMixerProviderSection.Devices),
+            "A terminally stopped session admitted another retry.");
+
+        var terminalObservationCount = observations.TotalCount;
+        fixture.EmitDevices([new WidgetAudioDevice(
+            "late", "Late device", WidgetAudioDeviceDirection.Output, true)]);
+        Assert.Equal(terminalObservationCount, observations.TotalCount);
+
+        var fields = typeof(AudioMixerProviderSession).GetFields(
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.True(((Task)fields.Single(field => field.Name == "_runTask")
+                .GetValue(session)!).IsCompleted,
+            "The stopped session retained continuing root work.");
+        Assert.True(fields.Single(field => field.Name == "_devicesAttemptLifetime")
+                .GetValue(session) is null &&
+            fields.Single(field => field.Name == "_inputAttemptLifetime")
+                .GetValue(session) is null,
+            "The stopped session retained an optional attempt.");
+        foreach (var name in new[] { "_devicesRetrySignal", "_inputRetrySignal" })
+        {
+            var disposed = false;
+            try
+            {
+                ((SemaphoreSlim)fields.Single(field => field.Name == name)
+                    .GetValue(session)!).Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                disposed = true;
+            }
+            Assert.True(disposed, "The stopped session retained a retry signal.");
+        }
     }
 
     internal static async Task CancellationIgnoringWorkDrains()
@@ -324,6 +411,16 @@ internal static class AudioMixerProviderSessionScenarios
             lock (_gate) return _items.Count(item => item.Kind == kind);
         }
 
+        internal int TotalCount
+        {
+            get { lock (_gate) return _items.Count; }
+        }
+
+        internal IReadOnlyList<AudioMixerProviderObservation> Snapshot()
+        {
+            lock (_gate) return _items.ToArray();
+        }
+
         private static TaskCompletionSource NewSignal() =>
             new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -352,10 +449,15 @@ internal static class AudioMixerProviderSessionScenarios
         internal bool HoldSessionsGet { get; set; }
         internal bool IgnoreSessionsGetCancellation { get; set; }
         internal bool IgnoreSessionsEventCancellation { get; set; }
+        internal bool BlockDeviceCancellation { get; set; }
         internal Action? OnSessionsGet { get; set; }
         internal TaskCompletionSource SessionsGetStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource ReleaseSessionsGet { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource DeviceCancellationEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource ReleaseDeviceCancellation { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         internal IReadOnlyList<string> Operations
@@ -402,6 +504,15 @@ internal static class AudioMixerProviderSessionScenarios
             Channel<WidgetAudioSessionsChanged>[] subscribers;
             lock (_gate) subscribers = _sessions.ToArray();
             foreach (var subscriber in subscribers) subscriber.Writer.TryComplete();
+        }
+
+        internal void EmitDevices(IReadOnlyList<WidgetAudioDevice> value)
+        {
+            Devices = value;
+            Channel<WidgetAudioDevicesChanged>[] subscribers;
+            lock (_gate) subscribers = _devices.ToArray();
+            foreach (var subscriber in subscribers)
+                subscriber.Writer.TryWrite(new WidgetAudioDevicesChanged(value));
         }
 
         private async ValueTask<IReadOnlyList<WidgetAudioSession>> GetSessionsAsync(
@@ -473,7 +584,7 @@ internal static class AudioMixerProviderSessionScenarios
             if (DeviceSubscriptionException is not null) throw DeviceSubscriptionException;
             var channel = CreateChannel<WidgetAudioDevicesChanged>();
             lock (_gate) _devices.Add(channel);
-            return Read(channel, _devices, cancellationToken);
+            return ReadDevices(channel, cancellationToken);
         }
 
         private IAsyncEnumerable<WidgetAudioInputChanged> OpenInput(
@@ -525,6 +636,29 @@ internal static class AudioMixerProviderSessionScenarios
             finally
             {
                 lock (_gate) owner.Remove(channel);
+                Interlocked.Decrement(ref _activeSubscriptions);
+            }
+        }
+
+        private async IAsyncEnumerable<WidgetAudioDevicesChanged> ReadDevices(
+            Channel<WidgetAudioDevicesChanged> channel,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _activeSubscriptions);
+            using var registration = cancellationToken.Register(() =>
+            {
+                if (!BlockDeviceCancellation) return;
+                DeviceCancellationEntered.TrySetResult();
+                ReleaseDeviceCancellation.Task.GetAwaiter().GetResult();
+            });
+            try
+            {
+                await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                    yield return item;
+            }
+            finally
+            {
+                lock (_gate) _devices.Remove(channel);
                 Interlocked.Decrement(ref _activeSubscriptions);
             }
         }

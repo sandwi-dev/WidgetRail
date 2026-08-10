@@ -128,12 +128,12 @@ internal sealed class AudioMixerProviderSession
 
     internal bool Retry(AudioMixerProviderSection section)
     {
-        CancellationTokenSource? attempt;
-        SemaphoreSlim signal;
         lock (_gate)
         {
             if (_stopping || _disposed || _runTask is null || _runTask.IsCompleted)
                 return false;
+            CancellationTokenSource? attempt;
+            SemaphoreSlim signal;
             if (section == AudioMixerProviderSection.Devices)
             {
                 attempt = _devicesAttemptLifetime;
@@ -144,31 +144,28 @@ internal sealed class AudioMixerProviderSession
                 attempt = _inputAttemptLifetime;
                 signal = _inputRetrySignal;
             }
-        }
 
-        try { signal.Release(); }
-        catch (SemaphoreFullException) { }
-        attempt?.Cancel();
-        return true;
+            try { signal.Release(); }
+            catch (SemaphoreFullException) { }
+            attempt?.Cancel();
+            return true;
+        }
     }
 
     internal async ValueTask StopAsync()
     {
         Task task;
-        CancellationTokenSource? devicesAttempt;
-        CancellationTokenSource? inputAttempt;
         lock (_gate)
         {
             if (_disposed) return;
             _stopping = true;
             task = _runTask ?? Task.CompletedTask;
-            devicesAttempt = _devicesAttemptLifetime;
-            inputAttempt = _inputAttemptLifetime;
         }
 
+        // Both optional attempts are linked to this lifetime. One terminal
+        // cancellation avoids retaining and re-canceling an attempt that may
+        // finish and dispose while the root task drains.
         _lifetime.Cancel();
-        devicesAttempt?.Cancel();
-        inputAttempt?.Cancel();
         await task.ConfigureAwait(false);
 
         lock (_gate)

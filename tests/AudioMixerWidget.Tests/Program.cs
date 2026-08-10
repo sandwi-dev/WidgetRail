@@ -11,6 +11,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Snapshot-only presentation is repeatable and preserves the focus contract", PresentationIsRepeatable),
     ("Provider session subscribes before every snapshot and closes the fetch gap", AudioMixerProviderSessionScenarios.SubscriptionPrecedesEverySnapshot),
     ("Provider session retries one optional section without replacing healthy streams", AudioMixerProviderSessionScenarios.OptionalRetryIsIsolated),
+    ("Provider retry and terminal stop are one exception-free ownership transition", AudioMixerProviderSessionScenarios.RetryAndStopAreAtomic),
     ("Provider session drains cancellation-ignoring results and events without publication", AudioMixerProviderSessionScenarios.CancellationIgnoringWorkDrains),
     ("Replacement provider session rejects the canceled session's late snapshot", AudioMixerProviderSessionScenarios.ReplacementRejectsLateSnapshot),
     ("Provider session classifies required failure and stream completion with bounded state", AudioMixerProviderSessionScenarios.RequiredFailureIsClassified),

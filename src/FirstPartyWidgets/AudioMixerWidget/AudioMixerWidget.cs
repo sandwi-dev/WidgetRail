@@ -517,16 +517,7 @@ public sealed class AudioMixerWidget : Widget
                 if (!IsRetryable(_inputState)) return;
             }
         }
-        if (!session.Retry(section)) return;
-        lock (_stateLock)
-        {
-            if (!ReferenceEquals(_providerSession, session)) return;
-            if (section == AudioMixerProviderSection.Devices)
-                _deviceState = AudioOptionalSectionState.Loading;
-            else
-                _inputState = AudioOptionalSectionState.Loading;
-        }
-        Invalidate();
+        session.Retry(section);
     }
 
     private static bool IsRetryable(AudioOptionalSectionState state) => state is
